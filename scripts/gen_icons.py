@@ -3,6 +3,9 @@
 Matches photo-ocr / voice-transcriber's solid-white-on-black, flat,
 no-outlines style. The rocket nose points up and the exhaust plume
 trails below — keeps the silhouette recognisable at favicon size.
+
+Writes ``icon-512.png``, ``icon-512-maskable.png``, ``icon-180.png``
+and a multi-size ``favicon.ico`` (16/32/48) into ``app/webapp/static/``.
 """
 
 from __future__ import annotations
@@ -107,6 +110,11 @@ def main() -> None:
     draw_rocket(512, inset=0.06).save(OUT_DIR / "icon-512.png", "PNG")
     draw_rocket(512, inset=0.20).save(OUT_DIR / "icon-512-maskable.png", "PNG")
     draw_rocket(180, inset=0.06).save(OUT_DIR / "icon-180.png", "PNG")
+    draw_rocket(256, inset=0.06).save(
+        OUT_DIR / "favicon.ico",
+        "ICO",
+        sizes=[(16, 16), (32, 32), (48, 48)],
+    )
 
     print(f"wrote icons to {OUT_DIR}")
 

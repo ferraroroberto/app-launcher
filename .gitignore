@@ -29,10 +29,15 @@ Thumbs.db
 config/config.json
 config/webapp_config.json
 config/apps.json
+config/webauthn_devices.json
 
 # --- Webapp runtime data --------------------------------------------------
 webapp/last_tunnel_url.txt
 webapp/certificates/
 webapp/cloudflared.yml
+webapp/sessions/
 app/webapp/static/launcher-ca.mobileconfig
 app/webapp/static/ca.crt
+
+# --- Interactive-terminal scratch (image uploads land here) --------------
+.launcher-tmp/

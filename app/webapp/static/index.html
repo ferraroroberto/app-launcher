@@ -9,17 +9,16 @@
   <meta name="theme-color" content="#0a0a0a">
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-180.png">
-  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <link rel="icon" href="/static/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/static/icon-512.png">
+  <link rel="stylesheet" href="/static/vendor/xterm.css">
+  <link rel="stylesheet" href="/static/styles.css?v=11">
   <title>🚀 Launcher</title>
 </head>
 <body>
   <main class="app">
     <header class="header">
       <h1>🚀 Launcher</h1>
-      <div class="header-actions">
-        <button id="rescanBtn" type="button" class="header-icon-btn" title="Scan for new apps">🔎</button>
-        <button id="settingsBtn" type="button" class="header-icon-btn" title="Settings">⚙️</button>
-      </div>
     </header>
 
     <nav class="tabs">
@@ -31,7 +30,11 @@
       <section class="card claude-card">
         <div class="card-header">
           <h2>⚙️ Claude options</h2>
-          <button id="genBatBtn" type="button" class="ghost-btn">📜 Generate BAT files</button>
+          <label class="toggle detached-toggle"
+                 title="Launch detached: a console window on the PC, listed and killable here but no phone terminal — the Claude cloud app drives it">
+            <input type="checkbox" id="claudeDetached">
+            <span>☁️ Detached</span>
+          </label>
         </div>
 
         <div class="opt-row">
@@ -55,7 +58,8 @@
           <button id="refreshSessions" type="button" class="ghost-btn" title="Refresh">🔄</button>
         </div>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
-        <p id="sessionsEmpty" class="muted small">No Claude Code sessions running.</p>
+        <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
+        <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
       </section>
 
       <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
@@ -83,6 +87,10 @@
 
     <details id="settingsPanel" class="card settings-card">
       <summary>⚙️ Settings</summary>
+      <label class="toggle">
+        <input type="checkbox" id="editMode">
+        <span>✏️ Edit mode — show rename &amp; remove on every row</span>
+      </label>
       <label class="stacked">
         <span>Projects dir (Claude Code scan)</span>
         <input id="projectsDir" type="text" class="input-native">
@@ -93,6 +101,21 @@
       </label>
       <div class="row">
         <button id="saveSettings" type="button" class="big-btn">💾 Save</button>
+      </div>
+      <div class="row settings-actions">
+        <button id="rescanBtn" type="button" class="ghost-btn">🔎 Scan for new entries</button>
+        <button id="genBatBtn" type="button" class="ghost-btn">📜 Create BATs</button>
+      </div>
+      <hr>
+      <div class="webauthn-section">
+        <h3>🔐 Terminal access (passkey)</h3>
+        <p id="webauthnStatus" class="muted small">Checking…</p>
+        <ul id="webauthnDevices" class="webauthn-devices"></ul>
+        <button id="enrollDeviceBtn" type="button" class="big-btn" hidden>📲 Enroll this device</button>
+        <p class="muted small">
+          Open the enrollment window from the tray menu
+          (<strong>🔐 Enroll device</strong>) on the PC, then tap the button above.
+        </p>
       </div>
       <hr>
       <p class="muted small">
@@ -144,6 +167,24 @@
     </form>
   </div>
 
-  <script src="/static/app.js?v=5"></script>
+  <div id="terminalOverlay" class="terminal-overlay" hidden>
+    <div class="terminal-bar">
+      <button id="terminalBack" type="button" class="term-btn">‹ Sessions</button>
+      <span id="terminalTitle" class="terminal-title">session</span>
+      <div class="terminal-bar-actions">
+        <button id="terminalImage" type="button" class="term-btn" title="Send image">🖼️</button>
+        <button id="terminalCtrlC" type="button" class="term-btn" title="Send Ctrl+C">^C</button>
+        <button id="terminalQuit" type="button" class="term-btn danger" title="Quit session">⏹</button>
+      </div>
+    </div>
+    <div id="terminalHost" class="terminal-host"></div>
+    <div id="terminalStatus" class="terminal-status" hidden></div>
+    <input id="terminalImageInput" type="file" accept="image/*" hidden>
+  </div>
+
+  <script src="/static/vendor/xterm.js"></script>
+  <script src="/static/vendor/addon-fit.js"></script>
+  <script src="/static/vendor/addon-web-links.js"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>

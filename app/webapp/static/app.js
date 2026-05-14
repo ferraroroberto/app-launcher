@@ -28,7 +28,17 @@
     sessions: [],
     pendingScan: [],
     genPreview: null,
+    webauthn: { configured: false, enrollment_open: false, devices: [] },
+    terminal: null,   // { sid, ws, term, fit, onWindowResize }
+    status: null,     // /api/status payload (incl. terminal reachability)
+    // Edit mode (Settings toggle) reveals rename + remove on every row,
+    // so the lists stay icon-free in normal use. Persisted across reloads.
+    editMode: localStorage.getItem('launcher.editMode') === '1',
   };
+
+  const TT_KEY = 'launcher.tt';
+  const TT_EXP_KEY = 'launcher.tt.exp';
+  const WEBAUTHN_POLL_MS = 15000;
 
   // ----------------------------------------------------------------- DOM
   const els = {
@@ -41,6 +51,7 @@
     claudeEffort: document.getElementById('claudeEffort'),
     claudeVerbose: document.getElementById('claudeVerbose'),
     claudeDebug: document.getElementById('claudeDebug'),
+    claudeDetached: document.getElementById('claudeDetached'),
     claudeFlagsPreview: document.getElementById('claudeFlagsPreview'),
     claudeList: document.getElementById('claudeList'),
     claudeEmpty: document.getElementById('claudeEmpty'),
@@ -51,8 +62,8 @@
     appsEmpty: document.getElementById('appsEmpty'),
 
     rescanBtn: document.getElementById('rescanBtn'),
-    settingsBtn: document.getElementById('settingsBtn'),
     settingsPanel: document.getElementById('settingsPanel'),
+    editMode: document.getElementById('editMode'),
     projectsDir: document.getElementById('projectsDir'),
     appsScanRoot: document.getElementById('appsScanRoot'),
     saveSettings: document.getElementById('saveSettings'),
@@ -83,6 +94,21 @@
     loginForm: document.getElementById('loginForm'),
     loginPassword: document.getElementById('loginPassword'),
     loginError: document.getElementById('loginError'),
+
+    terminalOverlay: document.getElementById('terminalOverlay'),
+    terminalBar: document.querySelector('.terminal-bar'),
+    terminalBack: document.getElementById('terminalBack'),
+    terminalTitle: document.getElementById('terminalTitle'),
+    terminalHost: document.getElementById('terminalHost'),
+    terminalStatus: document.getElementById('terminalStatus'),
+    terminalImage: document.getElementById('terminalImage'),
+    terminalImageInput: document.getElementById('terminalImageInput'),
+    terminalCtrlC: document.getElementById('terminalCtrlC'),
+    terminalQuit: document.getElementById('terminalQuit'),
+
+    webauthnStatus: document.getElementById('webauthnStatus'),
+    webauthnDevices: document.getElementById('webauthnDevices'),
+    enrollDeviceBtn: document.getElementById('enrollDeviceBtn'),
   };
 
   // ----------------------------------------------------------- auth utils
@@ -101,6 +127,21 @@
   }
   function readToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
   function writeToken(t) { if (t) localStorage.setItem(TOKEN_KEY, t); }
+
+  // ?terminal=<sid> deep-link — the PC mirror window opens straight into a
+  // session's terminal. Read it once, strip it from the visible URL.
+  function terminalFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sid = (params.get('terminal') || '').trim();
+    if (!sid) return null;
+    params.delete('terminal');
+    const q = params.toString();
+    window.history.replaceState(
+      {}, '',
+      window.location.pathname + (q ? '?' + q : '') + window.location.hash
+    );
+    return sid;
+  }
 
   async function api(path, opts) {
     opts = opts || {};
@@ -311,37 +352,64 @@
 
       li.appendChild(main);
 
-      const actions = document.createElement('div');
-      actions.className = 'row-actions';
-      const renameBtn = document.createElement('button');
-      renameBtn.type = 'button';
-      renameBtn.className = 'icon-btn';
-      renameBtn.textContent = '✏️';
-      renameBtn.title = 'Rename';
-      renameBtn.setAttribute('aria-label', 'Rename');
-      renameBtn.addEventListener('click', function () { openRename(a); });
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'icon-btn danger';
-      removeBtn.textContent = '🗑️';
-      removeBtn.title = 'Remove';
-      removeBtn.setAttribute('aria-label', 'Remove');
-      removeBtn.addEventListener('click', function () { removeApp(a); });
-      actions.appendChild(renameBtn);
-      actions.appendChild(removeBtn);
-      li.appendChild(actions);
+      // Rename + remove are gated behind Settings → Edit mode, so the
+      // lists stay icon-free in normal use (no per-row icon inflation).
+      if (state.editMode) {
+        const actions = document.createElement('div');
+        actions.className = 'row-actions';
+
+        const renameBtn = document.createElement('button');
+        renameBtn.type = 'button';
+        renameBtn.className = 'icon-btn';
+        renameBtn.textContent = '✏️';
+        renameBtn.title = 'Rename';
+        renameBtn.setAttribute('aria-label', 'Rename');
+        renameBtn.addEventListener('click', function () { openRename(a); });
+        actions.appendChild(renameBtn);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'icon-btn danger';
+        removeBtn.textContent = '🗑️';
+        removeBtn.title = 'Remove';
+        removeBtn.setAttribute('aria-label', 'Remove');
+        removeBtn.addEventListener('click', function () { removeApp(a); });
+        actions.appendChild(removeBtn);
+
+        li.appendChild(actions);
+      }
 
       host.appendChild(li);
     });
   }
 
+  // Claude Code launch mode is the ☁️ Detached toggle in the options
+  // card: checked → 'remote' (detached console window, cloud-driven,
+  // listed + killable here but no phone terminal); unchecked →
+  // full-control PTY streamed to the phone.
   async function launchApp(a) {
+    const mode = (a.kind === 'claude-code' && els.claudeDetached &&
+      els.claudeDetached.checked) ? 'remote' : null;
     try {
-      await jsonApi('/api/apps/' + encodeURIComponent(a.id) + '/launch', { method: 'POST' });
-      toast('🚀 Launched ' + a.name, 'good');
-      // After a tunnel launch the URL takes a few seconds to appear —
-      // schedule a refresh.
-      if (a.kind === 'tunnel') {
+      const opts = { method: 'POST' };
+      if (mode) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = JSON.stringify({ mode: mode });
+      }
+      const body = await jsonApi(
+        '/api/apps/' + encodeURIComponent(a.id) + '/launch', opts
+      );
+      toast(
+        '🚀 Launched ' + a.name + (mode === 'remote' ? ' (detached)' : ''),
+        'good'
+      );
+      if (a.kind === 'claude-code' && body.session) {
+        fetchSessions().catch(function () {});
+        // Full-control sessions drop straight into the terminal; detached
+        // ones only appear in the running-sessions list.
+        if (body.session.kind !== 'remote') openTerminal(body.session);
+      } else if (a.kind === 'tunnel') {
+        // The tunnel URL takes a few seconds to appear — schedule a refresh.
         setTimeout(fetchApps, 5000);
       }
     } catch (exc) {
@@ -378,40 +446,49 @@
 
     state.sessions.forEach(function (s) {
       const li = document.createElement('li');
-      li.className = 'app-item';
+      li.className = 'app-item session-item';
 
       const main = document.createElement('div');
       main.className = 'app-main';
-      const body = document.createElement('div');
-      body.className = 'session-body';
+
+      const remote = s.kind === 'remote';
+      // Full-control rows open the live terminal on tap. Detached rows
+      // can't be streamed, so the row is inert — it's still killable
+      // from the ⏹️ button.
+      const open = document.createElement(remote ? 'div' : 'button');
+      open.className = 'launch-btn session-open' + (remote ? ' inert' : '');
+      if (!remote) open.type = 'button';
 
       const head = document.createElement('div');
       head.className = 'session-head';
       const dot = document.createElement('span');
-      dot.className = 'health-dot up';
+      dot.className = 'health-dot ' + (s.alive === false ? 'down' : 'up');
       head.appendChild(dot);
+      const kindTag = document.createElement('span');
+      kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
+      kindTag.textContent = remote ? '☁️ detached' : '⚡ full control';
+      head.appendChild(kindTag);
       const name = document.createElement('span');
       name.className = 'name';
       name.textContent = s.name;
       head.appendChild(name);
-      body.appendChild(head);
-
-      // Console title — Claude Code's task summary. The one thing that
-      // tells two sessions in the same repo apart.
-      if (s.title) {
-        const titleEl = document.createElement('span');
-        titleEl.className = 'session-title';
-        titleEl.textContent = s.title;
-        body.appendChild(titleEl);
+      if (!remote) {
+        const chev = document.createElement('span');
+        chev.className = 'session-chevron';
+        chev.textContent = '›';
+        head.appendChild(chev);
       }
+      open.appendChild(head);
 
       const meta = document.createElement('span');
       meta.className = 'meta';
       const ago = fmtAgo(s.started_at);
-      meta.textContent = 'pid ' + s.pid + (ago ? ' · up ' + ago : '') +
-        ' · ' + s.project_dir;
-      body.appendChild(meta);
-      main.appendChild(body);
+      meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + s.project_dir;
+      open.appendChild(meta);
+      if (!remote) {
+        open.addEventListener('click', function () { openTerminal(s); });
+      }
+      main.appendChild(open);
       li.appendChild(main);
 
       const actions = document.createElement('div');
@@ -431,19 +508,28 @@
   }
 
   async function stopSession(s) {
-    if (!confirm('Stop the Claude Code session "' + s.name + '" (pid ' + s.pid + ')?\n\n' +
-        'It tries Ctrl+C first, then force-quits if it does not exit.')) {
-      return;
-    }
+    const remote = s.kind === 'remote';
+    const msg = remote
+      ? 'Kill the detached session "' + s.name + '"?\n\n' +
+        'Its console window will be force-closed.'
+      : 'Stop the Claude Code session "' + s.name + '"?\n\n' +
+        'It types /quit so Claude can exit cleanly.';
+    if (!confirm(msg)) return;
     try {
-      const body = await jsonApi(
-        '/api/claude-code/sessions/' + s.pid + '/stop', { method: 'POST' }
+      await jsonApi(
+        '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
+          '/stop',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'quit' }),
+        }
       );
-      const how = body.method === 'ctrl_c' ? 'quit cleanly'
-        : body.method === 'gone' ? 'already gone'
-        : 'force-stopped';
-      toast('🛑 ' + s.name + ' ' + how + '.', 'good');
-      await fetchSessions();
+      toast((remote ? '🛑 Killing ' : '🛑 Stopping ') + s.name + '…', 'good');
+      if (state.terminal && state.terminal.sid === s.session_id) {
+        hideTerminal();
+      }
+      setTimeout(fetchSessions, 1500);
     } catch (exc) {
       toast('Stop failed: ' + (exc.message || exc), 'error');
     }
@@ -688,8 +774,11 @@
   }
 
   // ----------------------------------------------------------- settings
-  els.settingsBtn.addEventListener('click', function () {
-    els.settingsPanel.open = !els.settingsPanel.open;
+  els.editMode.checked = state.editMode;
+  els.editMode.addEventListener('change', function () {
+    state.editMode = els.editMode.checked;
+    localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
+    renderApps();
   });
   els.saveSettings.addEventListener('click', async function () {
     const patch = {
@@ -770,18 +859,453 @@
   async function fetchStatus() {
     try {
       const body = await jsonApi('/api/status');
+      state.status = body;
       const tail = body.tunnel_url ? '📡 ' + body.tunnel_url : 'no tunnel';
-      els.statusReadout.textContent =
-        (body.tls ? '🔒 TLS · ' : 'http · ') + tail;
+      let line = (body.tls ? '🔒 TLS · ' : 'http · ') + tail;
+      if (body.terminal && body.terminal.reachable === false) {
+        line += ' · ⚠️ terminal needs the Tailscale URL';
+      }
+      els.statusReadout.textContent = line;
     } catch (_) {
       els.statusReadout.textContent = '';
     }
   }
 
+  // --------------------------------------------------- webauthn helpers
+  function b64urlToBuf(s) {
+    s = String(s).replace(/-/g, '+').replace(/_/g, '/');
+    const pad = s.length % 4 ? '='.repeat(4 - (s.length % 4)) : '';
+    const bin = atob(s + pad);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+  }
+  function bufToB64url(buf) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function prepCreate(o) {
+    o.challenge = b64urlToBuf(o.challenge);
+    o.user.id = b64urlToBuf(o.user.id);
+    (o.excludeCredentials || []).forEach(function (c) { c.id = b64urlToBuf(c.id); });
+    return o;
+  }
+  function prepGet(o) {
+    o.challenge = b64urlToBuf(o.challenge);
+    (o.allowCredentials || []).forEach(function (c) { c.id = b64urlToBuf(c.id); });
+    return o;
+  }
+  function serializeReg(c) {
+    return {
+      id: c.id,
+      rawId: bufToB64url(c.rawId),
+      type: c.type,
+      response: {
+        attestationObject: bufToB64url(c.response.attestationObject),
+        clientDataJSON: bufToB64url(c.response.clientDataJSON),
+      },
+      clientExtensionResults: c.getClientExtensionResults ? c.getClientExtensionResults() : {},
+      authenticatorAttachment: c.authenticatorAttachment || undefined,
+    };
+  }
+  function serializeAuth(c) {
+    return {
+      id: c.id,
+      rawId: bufToB64url(c.rawId),
+      type: c.type,
+      response: {
+        authenticatorData: bufToB64url(c.response.authenticatorData),
+        clientDataJSON: bufToB64url(c.response.clientDataJSON),
+        signature: bufToB64url(c.response.signature),
+        userHandle: c.response.userHandle ? bufToB64url(c.response.userHandle) : null,
+      },
+      clientExtensionResults: c.getClientExtensionResults ? c.getClientExtensionResults() : {},
+      authenticatorAttachment: c.authenticatorAttachment || undefined,
+    };
+  }
+
+  // ------------------------------------------------- terminal token store
+  function readTerminalToken() {
+    const tok = localStorage.getItem(TT_KEY);
+    const exp = parseInt(localStorage.getItem(TT_EXP_KEY) || '0', 10);
+    if (tok && exp > Date.now()) return tok;
+    return '';
+  }
+  function writeTerminalToken(tok, ttlSeconds) {
+    if (!tok) return;
+    localStorage.setItem(TT_KEY, tok);
+    localStorage.setItem(
+      TT_EXP_KEY, String(Date.now() + (ttlSeconds || 3600) * 1000)
+    );
+  }
+  function clearTerminalToken() {
+    localStorage.removeItem(TT_KEY);
+    localStorage.removeItem(TT_EXP_KEY);
+  }
+
+  // ------------------------------------------------------- webauthn flows
+  async function fetchWebauthnStatus() {
+    try {
+      state.webauthn = await jsonApi('/api/webauthn/status');
+      renderWebauthn();
+    } catch (_) { /* best-effort */ }
+  }
+
+  function renderWebauthn() {
+    const w = state.webauthn || {};
+    if (!els.webauthnStatus) return;
+    if (!w.configured) {
+      els.webauthnStatus.textContent =
+        'Passkey gate not configured — the terminal is Tailscale-only.';
+      els.webauthnDevices.innerHTML = '';
+      els.enrollDeviceBtn.hidden = true;
+      return;
+    }
+    const n = (w.devices || []).length;
+    let msg = n ? n + ' device(s) enrolled.' : 'No device enrolled yet.';
+    if (w.enrollment_open) {
+      msg += ' Enrollment window open (' + w.enrollment_seconds_left + 's).';
+    }
+    els.webauthnStatus.textContent = msg;
+    els.webauthnDevices.innerHTML = '';
+    (w.devices || []).forEach(function (d) {
+      const li = document.createElement('li');
+      const label = document.createElement('span');
+      label.textContent = d.label + ' · ' +
+        (d.last_used ? 'last used ' + d.last_used : 'added ' + d.added_at);
+      li.appendChild(label);
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'icon-btn danger';
+      rm.textContent = '🗑️';
+      rm.title = 'Remove passkey';
+      rm.addEventListener('click', function () { removeDevice(d); });
+      li.appendChild(rm);
+      els.webauthnDevices.appendChild(li);
+    });
+    els.enrollDeviceBtn.hidden = !w.enrollment_open;
+  }
+
+  async function removeDevice(d) {
+    if (!confirm('Remove passkey "' + d.label + '"?')) return;
+    try {
+      await jsonApi('/api/webauthn/devices/' + encodeURIComponent(d.id), {
+        method: 'DELETE',
+      });
+      toast('Removed ' + d.label, 'good');
+      fetchWebauthnStatus();
+    } catch (exc) {
+      toast('Remove failed: ' + (exc.message || exc), 'error');
+    }
+  }
+
+  async function enrollDevice() {
+    if (!window.PublicKeyCredential) {
+      toast('This browser has no passkey support.', 'error');
+      return;
+    }
+    const label = prompt('Name this device', 'iPhone');
+    if (!label) return;
+    try {
+      const opts = await jsonApi('/api/webauthn/enroll/begin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label: label }),
+      });
+      const cred = await navigator.credentials.create({
+        publicKey: prepCreate(opts),
+      });
+      await jsonApi('/api/webauthn/enroll/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serializeReg(cred)),
+      });
+      toast('✅ Device enrolled.', 'good');
+      fetchWebauthnStatus();
+    } catch (exc) {
+      toast('Enrollment failed: ' + (exc.message || exc), 'error');
+    }
+  }
+
+  async function unlockTerminal() {
+    if (!window.PublicKeyCredential) {
+      throw new Error('this browser has no passkey support');
+    }
+    const opts = await jsonApi('/api/webauthn/auth/begin', { method: 'POST' });
+    const cred = await navigator.credentials.get({ publicKey: prepGet(opts) });
+    const body = await jsonApi('/api/webauthn/auth/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(serializeAuth(cred)),
+    });
+    writeTerminalToken(body.terminal_token, body.ttl_seconds);
+    return body.terminal_token;
+  }
+
+  async function ensureTerminalToken() {
+    if (!state.webauthn || !state.webauthn.configured) return '';
+    // On the PC itself (loopback) the server bypasses the passkey gate —
+    // and the iPhone's passkey isn't on this device anyway. Skip it.
+    if (state.status && state.status.terminal &&
+        state.status.terminal.reason === 'loopback') {
+      return '';
+    }
+    const existing = readTerminalToken();
+    if (existing) return existing;
+    return await unlockTerminal();
+  }
+
+  // ------------------------------------------------------- terminal view
+  function termWsUrl(sid, tt) {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const params = new URLSearchParams();
+    const bt = readToken();
+    if (bt) params.set('token', bt);
+    if (tt) params.set('tt', tt);
+    const q = params.toString();
+    return proto + '//' + location.host + '/api/claude-code/sessions/' +
+      encodeURIComponent(sid) + '/ws' + (q ? '?' + q : '');
+  }
+
+  function setTerminalStatus(msg) {
+    if (!els.terminalStatus) return;
+    if (msg) {
+      els.terminalStatus.textContent = msg;
+      els.terminalStatus.hidden = false;
+    } else {
+      els.terminalStatus.hidden = true;
+    }
+  }
+
+  async function openTerminal(session) {
+    const sid = session.session_id;
+    if (!sid) return;
+
+    // The live terminal is Tailscale-only. If this connection can't reach
+    // it (public Cloudflare tunnel, off-tailnet Wi-Fi), explain that up
+    // front instead of opening a terminal that only says "Disconnected".
+    if (state.status && state.status.terminal &&
+        state.status.terminal.reachable === false) {
+      closeTerminal();
+      els.terminalOverlay.hidden = false;
+      document.body.classList.add('terminal-open');
+      els.terminalTitle.textContent = session.name || 'session';
+      els.terminalHost.innerHTML = '';
+      setTerminalStatus(
+        '🔒 ' + (state.status.terminal.reason ||
+          'The live terminal is Tailscale-only.')
+      );
+      return;
+    }
+
+    let tt = '';
+    try {
+      tt = await ensureTerminalToken();
+    } catch (exc) {
+      toast('Passkey unlock failed: ' + (exc.message || exc), 'error');
+      return;
+    }
+    closeTerminal();
+    els.terminalOverlay.hidden = false;
+    document.body.classList.add('terminal-open');
+    els.terminalTitle.textContent = session.name || 'session';
+    setTerminalStatus('Connecting…');
+
+    // The PC mirror window connects over loopback. It renders whatever
+    // size the phone set and never resizes the PTY — the phone is the
+    // single size authority, so the two clients never fight (the server
+    // also ignores resize frames from role=pc).
+    const isMirror = !!(state.status && state.status.terminal &&
+      state.status.terminal.reason === 'loopback');
+
+    const term = new window.Terminal({
+      cursorBlink: true,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      fontSize: 13,
+      scrollback: 10000,
+      theme: { background: '#0a0a0a', foreground: '#e6e6e6' },
+    });
+    let fit = null;
+    if (!isMirror) {
+      fit = new window.FitAddon.FitAddon();
+      term.loadAddon(fit);
+    }
+    try {
+      term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
+    } catch (_) { /* optional */ }
+    term.open(els.terminalHost);
+
+    const ws = new WebSocket(termWsUrl(sid, tt));
+    const t = { sid: sid, ws: ws, term: term, fit: fit, mirror: isMirror };
+    state.terminal = t;
+
+    function applySize() {
+      if (isMirror) {
+        // Match the phone's PTY dimensions; never touch the PTY itself.
+        const s = (state.sessions || []).find(function (x) {
+          return x.session_id === sid;
+        });
+        const cols = (s && s.cols) || session.cols || 120;
+        const rows = (s && s.rows) || session.rows || 40;
+        try { term.resize(cols, rows); } catch (_) {}
+        return;
+      }
+      try { if (fit) fit.fit(); } catch (_) {}
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'resize', rows: term.rows, cols: term.cols,
+        }));
+      }
+    }
+
+    if (isMirror) {
+      // The phone may rotate or resize — re-sync to its size periodically.
+      t.sizeTimer = setInterval(function () {
+        fetchSessions().then(applySize).catch(function () {});
+      }, 2500);
+    } else {
+      setTimeout(applySize, 0);
+      t.onWindowResize = applySize;
+      window.addEventListener('resize', applySize);
+    }
+
+    ws.onopen = function () {
+      setTerminalStatus(null);
+      applySize();
+      term.focus();
+    };
+    ws.onmessage = function (ev) { term.write(ev.data); };
+    ws.onerror = function () { setTerminalStatus('Connection error.'); };
+    ws.onclose = function (ev) {
+      const reason = (ev && ev.reason) ? ev.reason : '';
+      const m = ev.code === 4000 ? 'Session ended.'
+        : ev.code === 4401 ? '🔒 ' + (reason || 'Passkey unlock required') +
+            ' — re-open from Sessions.'
+        : ev.code === 4403 ? '🔒 ' + (reason ||
+            'Terminal is Tailscale-only') + ' — open the launcher over your ' +
+            'Tailscale URL.'
+        : ev.code === 4404 ? 'Session not found — it may have ended.'
+        : ev.code === 4502 ? 'Session host unreachable on the PC.'
+        : (reason || 'Disconnected.');
+      setTerminalStatus(m);
+      if (ev.code === 4401) clearTerminalToken();
+    };
+
+    term.onData(function (d) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', data: d }));
+      }
+    });
+  }
+
+  function closeTerminal() {
+    const t = state.terminal;
+    state.terminal = null;
+    if (!t) return;
+    if (t.sizeTimer) clearInterval(t.sizeTimer);
+    if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
+    try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
+    try { if (t.term) t.term.dispose(); } catch (_) {}
+  }
+
+  function hideTerminal() {
+    closeTerminal();
+    els.terminalOverlay.hidden = true;
+    document.body.classList.remove('terminal-open');
+    els.terminalHost.innerHTML = '';
+    setTerminalStatus(null);
+    fetchSessions().catch(function () {});
+  }
+
+  async function sendImage(file) {
+    const t = state.terminal;
+    if (!t || !file) return;
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'image.png');
+    try {
+      const headers = new Headers();
+      const bt = readToken();
+      if (bt) headers.set('Authorization', 'Bearer ' + bt);
+      const tt = readTerminalToken();
+      if (tt) headers.set('X-Terminal-Token', tt);
+      const res = await fetch(
+        '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image',
+        { method: 'POST', headers: headers, body: fd }
+      );
+      if (!res.ok) {
+        const b = await res.json().catch(function () { return null; });
+        throw new Error((b && b.detail) || ('HTTP ' + res.status));
+      }
+      toast('🖼️ Image sent — its path was pasted into the prompt.', 'good');
+      if (t.term) t.term.focus();
+    } catch (exc) {
+      toast('Image failed: ' + (exc.message || exc), 'error');
+    }
+  }
+
+  els.terminalBack.addEventListener('click', hideTerminal);
+  els.terminalCtrlC.addEventListener('click', function () {
+    const t = state.terminal;
+    if (t && t.ws && t.ws.readyState === WebSocket.OPEN) {
+      t.ws.send(JSON.stringify({ type: 'input', data: '\x03' }));
+    }
+    if (t && t.term) t.term.focus();
+  });
+  els.terminalQuit.addEventListener('click', async function () {
+    const t = state.terminal;
+    if (!t) return;
+    if (!confirm('Quit this Claude session?')) return;
+    try {
+      await jsonApi(
+        '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/stop',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'quit' }),
+        }
+      );
+      toast('🛑 Quitting…', 'good');
+    } catch (exc) {
+      toast('Quit failed: ' + (exc.message || exc), 'error');
+    }
+  });
+  els.terminalImage.addEventListener('click', function () {
+    els.terminalImageInput.click();
+  });
+  els.terminalImageInput.addEventListener('change', function () {
+    const file = els.terminalImageInput.files && els.terminalImageInput.files[0];
+    els.terminalImageInput.value = '';
+    if (file) sendImage(file);
+  });
+  els.terminalHost.addEventListener('paste', function (ev) {
+    const items = (ev.clipboardData && ev.clipboardData.items) || [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type && items[i].type.indexOf('image') === 0) {
+        const file = items[i].getAsFile();
+        if (file) { ev.preventDefault(); sendImage(file); return; }
+      }
+    }
+  });
+  els.terminalHost.addEventListener('dragover', function (ev) {
+    ev.preventDefault();
+  });
+  els.terminalHost.addEventListener('drop', function (ev) {
+    const file = ev.dataTransfer && ev.dataTransfer.files &&
+      ev.dataTransfer.files[0];
+    if (file && file.type && file.type.indexOf('image') === 0) {
+      ev.preventDefault();
+      sendImage(file);
+    }
+  });
+  els.enrollDeviceBtn.addEventListener('click', enrollDevice);
+
   // ----------------------------------------------------------- boot
   async function boot() {
     const fromUrl = tokenFromUrl();
     if (fromUrl) writeToken(fromUrl);
+    const deepLinkSid = terminalFromUrl();
 
     try {
       await fetchConfig();
@@ -795,15 +1319,29 @@
     await fetchSessions();
     await fetchListeners();
     await fetchStatus();
+    await fetchWebauthnStatus();
+
+    // PC mirror window opened with ?terminal=<sid> — drop straight in.
+    if (deepLinkSid) {
+      const found = state.sessions.find(function (s) {
+        return s.session_id === deepLinkSid;
+      });
+      openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
+    }
     setInterval(function () {
       fetchApps().catch(function () {});
     }, TUNNEL_POLL_MS);
     setInterval(function () {
-      fetchSessions().catch(function () {});
+      // Pause the session poll while the terminal is open — it would
+      // re-render the list under the overlay for no reason.
+      if (!state.terminal) fetchSessions().catch(function () {});
     }, SESSIONS_POLL_MS);
     setInterval(function () {
       fetchListeners().catch(function () {});
     }, LISTENERS_POLL_MS);
+    setInterval(function () {
+      fetchWebauthnStatus().catch(function () {});
+    }, WEBAUTHN_POLL_MS);
   }
 
   boot();
