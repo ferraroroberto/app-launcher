@@ -2,6 +2,7 @@
 
 from .base import BaseCommand
 from .scan_cmd import ScanCommand
+from .session_host_cmd import SessionHostCommand
 from .tray_cmd import TrayCommand
 from .webapp_cmd import WebappCommand
 
@@ -9,6 +10,7 @@ COMMANDS = {
     "tray": TrayCommand,
     "webapp": WebappCommand,
     "scan": ScanCommand,
+    "session-host": SessionHostCommand,
 }
 
 

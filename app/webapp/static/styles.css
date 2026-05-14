@@ -40,26 +40,9 @@ html, body {
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 12px 0 4px;
 }
 .header h1 { margin: 0; font-size: 20px; font-weight: 600; }
-.header-actions { display: flex; align-items: center; gap: 8px; }
-.header-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  min-height: 36px;
-  padding: 4px 10px;
-  background: transparent;
-  border: 1px solid #333;
-  border-radius: 10px;
-  color: var(--fg);
-  cursor: pointer;
-  user-select: none;
-}
-.header-icon-btn:active { background: var(--bg-elev-2); }
 
 /* ---------- tabs ---------- */
 .tabs {
@@ -100,6 +83,8 @@ html, body {
   margin-bottom: 10px;
 }
 .card-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.detached-toggle { font-size: 13px; white-space: nowrap; }
+.settings-actions { flex-wrap: wrap; gap: 8px; }
 
 /* ---------- claude options ---------- */
 .opt-row {
@@ -504,4 +489,120 @@ html, body {
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 13px;
+}
+
+/* ---------- running sessions (tap to open the terminal) ---------- */
+.session-item .session-open {
+  width: 100%;
+  text-align: left;
+}
+.session-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.session-head .name { font-weight: 600; }
+.session-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+/* kind tag — full-control PTY vs detached console window */
+.session-kind {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.session-kind.pty { background: rgba(120, 200, 120, 0.16); color: #9fe09f; }
+.session-kind.remote { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+/* detached rows aren't tappable — they have no streamable terminal */
+.session-item .session-open.inert {
+  cursor: default;
+  display: block;
+}
+
+/* ---------- webauthn / passkey settings ---------- */
+.webauthn-section h3 { margin: 0 0 6px; font-size: 15px; }
+.webauthn-devices {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.webauthn-devices li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-elev-2);
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.webauthn-devices li span { flex: 1; word-break: break-word; }
+
+/* ---------- interactive terminal overlay ---------- */
+/* When the terminal is open the body is scroll-locked so the overlay is
+   the only thing on screen — long output can't push the bar off-screen
+   or reveal the app list underneath. */
+body.terminal-open { overflow: hidden; }
+.terminal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: #0a0a0a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.terminal-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid #2a2f42;
+  flex-shrink: 0;
+}
+.terminal-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-bar-actions { display: flex; gap: 6px; }
+.term-btn {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 14px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.term-btn.danger { color: #ffb4b4; border-color: var(--danger); }
+.terminal-host {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 4px 4px 8px;
+  background: #0a0a0a;
+  overflow: hidden;
+}
+.terminal-host .xterm { height: 100%; }
+.terminal-status {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--warn);
+  background: var(--bg-elev);
+  border-top: 1px solid #2a2f42;
+  flex-shrink: 0;
 }

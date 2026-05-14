@@ -19,6 +19,14 @@ Pillow>=10.0
 # Webapp
 fastapi>=0.110
 uvicorn[standard]>=0.27
+# Multipart form parsing — image uploads to the interactive terminal
+python-multipart>=0.0.9
+
+# Launcher-owned PTY sessions (interactive phone terminal — issue #1)
+pywinpty>=2.0; sys_platform == "win32"
+
+# WebAuthn passkey gate for the interactive terminal
+webauthn>=2.0
 
 # Self-signed cert + iOS .mobileconfig generation
 cryptography>=42.0

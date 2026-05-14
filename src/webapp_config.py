@@ -30,6 +30,8 @@ SAMPLE_CONFIG_PATH = PROJECT_ROOT / "config" / "webapp_config.sample.json"
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8445
+# Loopback port the PTY session-host binds. Never network-reachable.
+DEFAULT_SESSION_HOST_PORT = 8446
 
 VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku")
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
@@ -69,6 +71,22 @@ class WebappConfig:
     # browser when the user types it correctly. Lets a fresh device
     # bootstrap without copy-pasting a tokenised URL.
     auth_password: str = ""
+    # --- interactive phone terminal (issue #1) ---------------------------
+    # Loopback port the PTY session-host binds (never network-reachable).
+    session_host_port: int = DEFAULT_SESSION_HOST_PORT
+    # Extra IPs / CIDRs allowed to reach the terminal endpoints on top of
+    # loopback + the Tailscale CGNAT range (100.64.0.0/10). Empty by default.
+    tailnet_allowlist: list = field(default_factory=list)
+    # When true, launching a session from the phone also opens an
+    # interactive terminal window for it on the PC (over loopback, so it
+    # bypasses the Tailscale + passkey gate). Input works from both sides.
+    claude_show_local_window: bool = True
+    # WebAuthn relying-party identity for the passkey gate. rp_id is the
+    # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
+    # https origin the phone connects to. Empty disables the passkey gate.
+    webauthn_rp_id: str = ""
+    webauthn_rp_name: str = "Launcher"
+    webauthn_origin: str = ""
 
 
 def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
@@ -100,6 +118,16 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         claude_debug=bool(raw.get("claude_debug", False)),
         auth_token=str(raw.get("auth_token", "")),
         auth_password=str(raw.get("auth_password", "")),
+        session_host_port=int(
+            raw.get("session_host_port", DEFAULT_SESSION_HOST_PORT)
+        ),
+        tailnet_allowlist=list(raw.get("tailnet_allowlist") or []),
+        claude_show_local_window=bool(
+            raw.get("claude_show_local_window", True)
+        ),
+        webauthn_rp_id=str(raw.get("webauthn_rp_id", "")),
+        webauthn_rp_name=str(raw.get("webauthn_rp_name", "Launcher")),
+        webauthn_origin=str(raw.get("webauthn_origin", "")),
     )
     _validate(cfg)
     return cfg
@@ -121,6 +149,12 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_debug": cfg.claude_debug,
         "auth_token": cfg.auth_token,
         "auth_password": cfg.auth_password,
+        "session_host_port": cfg.session_host_port,
+        "tailnet_allowlist": cfg.tailnet_allowlist,
+        "claude_show_local_window": cfg.claude_show_local_window,
+        "webauthn_rp_id": cfg.webauthn_rp_id,
+        "webauthn_rp_name": cfg.webauthn_rp_name,
+        "webauthn_origin": cfg.webauthn_origin,
     }
 
     tmp = target.with_suffix(target.suffix + ".tmp")
@@ -167,6 +201,12 @@ def build_claude_flags(cfg: WebappConfig) -> str:
 def _validate(cfg: WebappConfig) -> None:
     if not (1 <= cfg.port <= 65535):
         raise ValueError(f"port out of range: {cfg.port}")
+    if not (1 <= cfg.session_host_port <= 65535):
+        raise ValueError(
+            f"session_host_port out of range: {cfg.session_host_port}"
+        )
+    if cfg.session_host_port == cfg.port:
+        raise ValueError("session_host_port must differ from the webapp port")
     if cfg.claude_model not in VALID_CLAUDE_MODELS:
         raise ValueError(
             f"claude_model must be one of {VALID_CLAUDE_MODELS}; got {cfg.claude_model!r}"

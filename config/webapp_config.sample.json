@@ -5,6 +5,10 @@
   "_comment_projects_dir": "Where the Claude Code tab scans for .code-workspace + *-remote.bat files. Defaults to the parent of this repo (E:\\automation\\... by default).",
   "_comment_apps_scan_root": "Where the Apps tab scans recursively for launcher *.bat files. Defaults to the same parent as projects_dir.",
   "_comment_claude_flags": "Persisted default flags for the Claude Code launcher. The 'remote-control' and 'dangerously-skip-permissions' switches are always added — don't list them here.",
+  "_comment_session_host_port": "Loopback port the PTY session-host binds. Never network-reachable; the webapp proxies to it. Must differ from 'port'.",
+  "_comment_tailnet_allowlist": "Extra IPs / CIDRs allowed to reach the interactive terminal endpoints, on top of loopback + the Tailscale CGNAT range 100.64.0.0/10. Leave empty unless you need LAN access.",
+  "_comment_claude_show_local_window": "When true (default), launching a session from the phone also opens an interactive terminal window for it on the PC. It connects over loopback so input works from both the phone and the PC.",
+  "_comment_webauthn": "Passkey gate for the interactive terminal. webauthn_rp_id is the bare tailnet hostname (e.g. 'pc.tailnet.ts.net'); webauthn_origin is the full https origin the phone connects to (e.g. 'https://pc.tailnet.ts.net:8445'). Leave both empty to disable the passkey gate.",
   "host": "0.0.0.0",
   "port": 8445,
   "projects_dir": "",
@@ -14,5 +18,11 @@
   "claude_verbose": true,
   "claude_debug": false,
   "auth_token": "",
-  "auth_password": ""
+  "auth_password": "",
+  "session_host_port": 8446,
+  "tailnet_allowlist": [],
+  "claude_show_local_window": true,
+  "webauthn_rp_id": "",
+  "webauthn_rp_name": "Launcher",
+  "webauthn_origin": ""
 }

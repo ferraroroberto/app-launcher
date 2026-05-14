@@ -18,10 +18,14 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 The web UI has two tabs:
 
-- **Claude Code** — every `.code-workspace` and orphan `*-remote.bat` in your projects directory becomes a button. Tap → fresh CMD window runs `claude` with your saved flags in that project folder. Flags (model / effort / verbose / debug) are a one-tap panel above the project list.
+- **Claude Code** — every `.code-workspace` and orphan `*-remote.bat` in your projects directory becomes a button, with **two launch modes** chosen by the **☁️ Detached** toggle in the options card:
+  - **Toggle off → full control.** `claude` starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, `/quit`, image paste.
+  - **Toggle on → detached.** `claude` opens in its own console window on the PC. The launcher only *tracks* it — it shows in the running-sessions list (tagged `☁️ detached`) and you can kill it from the phone, but there's no streamed terminal; the Claude **cloud app** drives it. It survives a launcher restart.
+
+  Running sessions are listed above the project buttons, each tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. Flags (model / effort / verbose / debug) are a one-tap panel above the list. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 
-Both tabs share **one** registry file: `config/apps.json`. The header **🔎 Scan** button walks both scan paths, shows what's new in a checklist, and saves selections.
+Both tabs share **one** registry file: `config/apps.json`. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks both scan paths and shows what's new in a checklist; **📜 Create BATs** generates `*-remote.bat` files. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on every list — off by default, so the lists stay icon-free in normal use.
 
 Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 
@@ -67,6 +71,42 @@ The tray icon menu has:
 3. On Android, Chrome shows an "Install app" prompt the second visit. The icon goes on the home screen the same way.
 
 After that the launcher behaves like a native app — full-screen, no Safari chrome.
+
+---
+
+## Interactive terminal from the phone
+
+Launching a Claude Code project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. Tap a `⚡ full control` session in the list to re-attach.
+
+When the same session is also open on the PC (the mirror window), the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
+
+**How it's wired**
+
+- A separate long-lived **session-host** process (loopback-only, port `8446`) owns every `claude` ConPTY. The tray starts and owns it like it owns `cloudflared`. Because it's its own process, a *Restart webapp* doesn't kill running sessions (a PC reboot still does).
+- The webapp proxies a WebSocket from the phone through to the session-host. The webapp is the single auth choke point.
+- `xterm.js` renders the terminal in the SPA — no build step, vendored under `app/webapp/static/vendor/`.
+
+**Security model — the terminal is not the same as the launcher**
+
+Launching, listing, and stopping sessions stay public (bearer-token gated, reachable over the Cloudflare tunnel). The **live terminal itself does not**:
+
+- **Tailscale-only.** The terminal WebSocket, image upload, and WebAuthn endpoints refuse any request that arrived over the public Cloudflare tunnel (they're rejected on the `Cf-Ray` header) and require a client IP in the Tailscale CGNAT range `100.64.0.0/10` (plus loopback, plus an optional `tailnet_allowlist`).
+- **Passkey-gated.** When `webauthn_rp_id` + `webauthn_origin` are set, opening or driving a terminal requires a **WebAuthn platform passkey** — Face ID on the enrolled iPhone. A passkey assertion mints a short-lived (12 h) terminal token; the WebSocket and image endpoints require it.
+- **Device whitelist you control.** Enrolled passkeys live in `config/webauthn_devices.json` (gitignored). Enrollment only works during a one-time window you open deliberately from the tray (**🔐 Enroll device** — 5 minutes). Revoke a device from **Settings → Terminal access**.
+- **Audited.** Every terminal action is logged: `webapp/terminal_audit.log` (enroll / unlock / session lifecycle, device, client IP) and per-session `webapp/sessions/<id>.log` (input chunks, image uploads) + `<id>.transcript` (full output).
+
+> `--dangerously-skip-permissions` is still always on. The marginal risk over your existing Tailscale remote access is small (anyone on the tailnet could already RDP in) — the passkey gate + audit log make this surface *more* controlled than plain remote access, not less.
+
+**Enrolling your iPhone**
+
+1. On the PC, set `webauthn_rp_id` (bare tailnet hostname, e.g. `pc.tailnet.ts.net`) and `webauthn_origin` (full origin, e.g. `https://pc.tailnet.ts.net:8445`) in `config/webapp_config.json`, and restart the webapp.
+2. On the iPhone, open the launcher over the Tailscale URL.
+3. On the PC, tray menu → **🔐 Enroll device (5 min)**.
+4. On the iPhone, **Settings → Terminal access → 📲 Enroll this device** → Face ID.
+
+After that, opening any session prompts Face ID once per 12 h.
+
+**Terminal on the PC too.** With `claude_show_local_window: true` (the default), launching a session from the phone also opens an **interactive** terminal window for it on the PC. That window connects over loopback — so it bypasses the Tailscale + passkey gate — and because the session-host fans output to every connected client and accepts input from all of them, **you can type from the phone and the PC interchangeably**. Set it to `false` to launch silently.
 
 ---
 
@@ -130,20 +170,25 @@ app-launcher/
 ├── setup.bat                  # one-shot fresh-clone installer
 │
 ├── app/
-│   ├── cli/                   # argparse dispatcher: tray | webapp | scan
-│   ├── tray/                  # pystray icon — owns webapp + cloudflared
+│   ├── cli/                   # argparse dispatcher: tray | webapp | scan | session-host
+│   ├── tray/                  # pystray icon — owns webapp + cloudflared + session-host
+│   ├── session_host/          # loopback PTY host — owns every claude ConPTY
 │   └── webapp/
-│       ├── server.py          # FastAPI routes
+│       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
 │       ├── manager.py         # adopt-or-spawn uvicorn lifecycle
-│       └── static/            # SPA shell + PWA manifest + icons + CA install
+│       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
-│   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets
+│   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
 │   ├── registry.py            # unified app registry (load/save/scan/mutate)
 │   ├── scanner.py             # bat classifier + claude-code project discovery
 │   ├── bat_generator.py       # workspace ↔ remote.bat sync
-│   ├── launcher.py            # spawn_bat / spawn_claude helpers
+│   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
+│   ├── session_host.py        # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
+│   ├── session_client.py      # webapp → session-host loopback HTTP client
+│   ├── webauthn_gate.py       # passkey enrollment / assertion + terminal tokens
+│   ├── audit.py               # terminal audit + per-session logs
 │   └── diagnostics.py         # log ring buffer + port-owner introspection
 │
 ├── scripts/
@@ -203,6 +248,12 @@ UI prefs + secrets, authored from the web UI:
 | `claude_debug` | `false` | Pass `--debug` |
 | `auth_token` | `""` | Bearer token. Empty = gate off. |
 | `auth_password` | `""` | Optional companion for `/api/login`. |
+| `session_host_port` | `8446` | Loopback port the PTY session-host binds. Never network-reachable; must differ from `port`. |
+| `tailnet_allowlist` | `[]` | Extra IPs / CIDRs allowed to reach the terminal endpoints, on top of loopback + `100.64.0.0/10`. |
+| `claude_show_local_window` | `true` | Open an interactive terminal window on the PC when a session is launched from the phone. |
+| `webauthn_rp_id` | `""` | Passkey relying-party ID — the bare tailnet hostname. Empty disables the passkey gate. |
+| `webauthn_rp_name` | `"Launcher"` | Display name shown in the passkey prompt. |
+| `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |
 
 `--remote-control` and `--dangerously-skip-permissions` are **always** added — that's the whole point of the remote tab.
 
@@ -237,6 +288,8 @@ To test without a reboot: select the task → **Run** in the right-hand pane.
 ## Security notes
 
 - Tailscale already gates network access; the bearer token + password add a second factor in case a tailnet device is compromised.
+- **The interactive terminal is gated harder than the rest of the app.** It is Tailscale-only (refused over the Cloudflare tunnel) and, when WebAuthn is configured, requires a platform passkey on an enrolled device. The enrolled-device whitelist (`config/webauthn_devices.json`) is yours to maintain; every terminal action is audited. See [Interactive terminal](#interactive-terminal-from-the-phone).
+- The session-host binds `127.0.0.1` only — the PTYs are never directly reachable; the webapp is the sole way in.
 - The launcher only ever runs bats from the registered list (id is checked against `config/apps.json`) or `claude` in a registered project_dir — it can't be coerced into running an arbitrary path.
 - The smart-kill endpoint accepts any port in range but only acts on PIDs LISTENing on that port — a port no one is using is a no-op.
 - Self-signed TLS is for loopback + tailnet. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert is intentionally not publicly trusted.
@@ -256,14 +309,19 @@ curl http://127.0.0.1:8445/healthz
 
 ## Files
 
-- `launcher.py` — argparse → `tray` | `webapp` | `scan`
-- `app/webapp/server.py` — FastAPI server + all `/api/*` routes
+- `launcher.py` — argparse → `tray` | `webapp` | `scan` | `session-host`
+- `app/webapp/server.py` — FastAPI server + all `/api/*` routes, Tailscale gating, WS proxy
 - `app/webapp/manager.py` — adopt-or-spawn uvicorn for the tray
-- `app/tray/tray.py` — pystray icon + cloudflared lifecycle
+- `app/session_host/server.py` — loopback PTY host (HTTP + WebSocket)
+- `app/tray/tray.py` — pystray icon + cloudflared + session-host lifecycle
+- `src/session_host.py` — `PtySession` + `SessionManager` (ConPTY via pywinpty)
+- `src/session_client.py` — webapp → session-host loopback client
+- `src/webauthn_gate.py` — passkey enrollment / assertion + terminal tokens
+- `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
 - `src/scanner.py` — bat classifier + Claude-Code project discovery
 - `src/bat_generator.py` — workspace ↔ `*-remote.bat` sync
-- `src/webapp_config.py` — persisted UI prefs + auth secrets
+- `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored
-- `webapp/` — runtime state (certs, tunnel URL, audit log)
+- `webapp/` — runtime state (certs, tunnel URL, audit logs, per-session logs)
