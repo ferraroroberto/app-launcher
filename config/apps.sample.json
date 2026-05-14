@@ -1,0 +1,34 @@
+{
+  "_comment": "Unified app registry. Real file is config/apps.json (gitignored). 'kind' is one of: claude-code | streamlit | webapp | tunnel.",
+  "scan_root": "C:\\path\\to\\your\\projects-root",
+  "apps": [
+    {
+      "id": "automation",
+      "name": "Automation",
+      "kind": "claude-code",
+      "project_dir": "C:\\path\\to\\your\\projects-root\\automation",
+      "added_at": "2026-01-01T00:00:00"
+    },
+    {
+      "id": "example-app-launch-app",
+      "name": "Example App",
+      "kind": "streamlit",
+      "bat_path": "C:\\path\\to\\your\\projects-root\\example-app\\launch_app.bat",
+      "added_at": "2026-01-01T00:00:00"
+    },
+    {
+      "id": "voice-transcriber-webapp",
+      "name": "Voice Transcriber",
+      "kind": "webapp",
+      "bat_path": "C:\\path\\to\\your\\projects-root\\voice-transcriber\\webapp.bat",
+      "added_at": "2026-01-01T00:00:00"
+    },
+    {
+      "id": "voice-transcriber-webapp-tunnel",
+      "name": "Voice Transcriber Tunnel",
+      "kind": "tunnel",
+      "bat_path": "C:\\path\\to\\your\\projects-root\\voice-transcriber\\webapp_tunnel.bat",
+      "added_at": "2026-01-01T00:00:00"
+    }
+  ]
+}

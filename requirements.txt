@@ -1,0 +1,30 @@
+# Runtime deps for the launcher hub.
+#
+#   python -m venv .venv
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# Sister project to photo-ocr and voice-transcriber — same FastAPI + pystray
+# stack so the auth, tunnel, and cert plumbing is shared.
+
+# HTTP client (healthz polling) + YAML (cloudflared config)
+requests>=2.31
+PyYAML>=6.0
+
+# Process introspection (port-owner lookup, smart kill)
+psutil>=5.9
+
+# Icon generation
+Pillow>=10.0
+
+# Webapp
+fastapi>=0.110
+uvicorn[standard]>=0.27
+
+# Self-signed cert + iOS .mobileconfig generation
+cryptography>=42.0
+
+# Tray icon (optional surface — see app/tray/)
+pystray>=0.19
+
+# Windows toast notifications for tray lifecycle events
+winotify>=1.1; sys_platform == "win32"

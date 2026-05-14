@@ -1,0 +1,39 @@
+# Named Cloudflare tunnel config — committed template.
+#
+# Copy this file to webapp/cloudflared.yml and fill in your values.
+# webapp/cloudflared.yml is gitignored so your tunnel UUID + hostname
+# stay out of version control.
+#
+# One-time setup:
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create launcher
+#      → prints a UUID and writes credentials to
+#        ~/.cloudflared/<UUID>.json
+#   3. cloudflared tunnel route dns launcher launcher.<your-domain>
+#   4. Copy this file to webapp/cloudflared.yml and edit `tunnel:` and
+#      `hostname:` to match.
+#   5. webapp_tunnel_named.bat (or just tray.bat — the tray adopts the
+#      same config on startup)
+#
+# See README → "Persistent URL via named Cloudflare tunnel" for the
+# full walkthrough including the Cloudflare Access policy.
+
+# Tunnel UUID — replace with the one returned by `tunnel create`.
+tunnel: 00000000-0000-0000-0000-000000000000
+
+# Credentials file — by default cloudflared looks at
+# ~/.cloudflared/<UUID>.json. Only set this explicitly if you stored
+# the JSON somewhere non-default.
+# credentials-file: C:\Users\<you>\.cloudflared\<UUID>.json
+
+ingress:
+  # Public hostname → local webapp. The webapp serves HTTPS with a
+  # self-signed CA, so noTLSVerify is required (Cloudflare's edge
+  # provides the public TLS — your origin cert just needs to exist).
+  - hostname: launcher.<your-domain>
+    service: https://localhost:8445
+    originRequest:
+      noTLSVerify: true
+  # Catch-all — anything that doesn't match the hostname above gets
+  # a clean 404 instead of being proxied somewhere unexpected.
+  - service: http_status:404

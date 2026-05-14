@@ -1,0 +1,38 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Virtualenvs ----------------------------------------------------------
+.venv/
+venv/
+env/
+
+# --- Node (Vitest harness) ------------------------------------------------
+node_modules/
+
+# --- Runtime state --------------------------------------------------------
+.tray.pid
+*.log
+
+# --- Editor / OS ----------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Config overrides (keep the committed templates) ---------------------
+config/config.json
+config/webapp_config.json
+config/apps.json
+
+# --- Webapp runtime data --------------------------------------------------
+webapp/last_tunnel_url.txt
+webapp/certificates/
+webapp/cloudflared.yml
+app/webapp/static/launcher-ca.mobileconfig
+app/webapp/static/ca.crt

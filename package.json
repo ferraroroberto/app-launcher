@@ -1,0 +1,11 @@
+{
+  "name": "app-launcher-static",
+  "private": true,
+  "description": "JS tests for app/webapp/static/. Python is the primary language of this repo; this package only carries the Vitest harness for the small chunks of frontend logic.",
+  "scripts": {
+    "test": "vitest run app/webapp/static/__tests__/"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0"
+  }
+}

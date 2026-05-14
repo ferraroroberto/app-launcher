@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Launcher">
+  <meta name="theme-color" content="#0a0a0a">
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <link rel="stylesheet" href="/static/styles.css?v=5">
+  <title>🚀 Launcher</title>
+</head>
+<body>
+  <main class="app">
+    <header class="header">
+      <h1>🚀 Launcher</h1>
+      <div class="header-actions">
+        <button id="rescanBtn" type="button" class="header-icon-btn" title="Scan for new apps">🔎</button>
+        <button id="settingsBtn" type="button" class="header-icon-btn" title="Settings">⚙️</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Claude Code</button>
+      <button id="tabApps" type="button" class="tab" data-tab="apps">Apps</button>
+    </nav>
+
+    <section id="paneClaude" class="pane">
+      <section class="card claude-card">
+        <div class="card-header">
+          <h2>⚙️ Claude options</h2>
+          <button id="genBatBtn" type="button" class="ghost-btn">📜 Generate BAT files</button>
+        </div>
+
+        <div class="opt-row">
+          <span class="opt-name">Model</span>
+          <div id="claudeModel" class="segmented" role="radiogroup" aria-label="Model"></div>
+        </div>
+        <div class="opt-row">
+          <span class="opt-name">Effort</span>
+          <div id="claudeEffort" class="segmented" role="radiogroup" aria-label="Effort"></div>
+        </div>
+        <div class="toggles">
+          <label class="toggle"><input type="checkbox" id="claudeVerbose"><span>Verbose</span></label>
+          <label class="toggle"><input type="checkbox" id="claudeDebug"><span>Debug</span></label>
+        </div>
+        <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
+      </section>
+
+      <section class="card sessions-card">
+        <div class="card-header">
+          <h2>🟢 Running sessions</h2>
+          <button id="refreshSessions" type="button" class="ghost-btn" title="Refresh">🔄</button>
+        </div>
+        <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
+        <p id="sessionsEmpty" class="muted small">No Claude Code sessions running.</p>
+      </section>
+
+      <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
+      <div id="claudeEmpty" class="empty" hidden>
+        No Claude Code projects found — drop a <code>.code-workspace</code> in your projects directory and tap 🔎 to rescan.
+      </div>
+    </section>
+
+    <section id="paneApps" class="pane" hidden>
+      <section class="card listeners-card">
+        <div class="card-header">
+          <h2>🟢 Running apps</h2>
+          <button id="refreshListeners" type="button" class="ghost-btn" title="Refresh">🔄</button>
+        </div>
+        <div id="listenersList" class="listeners"></div>
+        <p id="listenersEmpty" class="muted small">Nothing running on common app ports.</p>
+        <p class="launcher-note">The launcher itself isn't listed — it can't kill its own process.</p>
+      </section>
+
+      <ul id="appsList" class="card-list" aria-label="Apps"></ul>
+      <div id="appsEmpty" class="empty" hidden>
+        No apps registered yet — tap 🔎 to scan your projects root.
+      </div>
+    </section>
+
+    <details id="settingsPanel" class="card settings-card">
+      <summary>⚙️ Settings</summary>
+      <label class="stacked">
+        <span>Projects dir (Claude Code scan)</span>
+        <input id="projectsDir" type="text" class="input-native">
+      </label>
+      <label class="stacked">
+        <span>Apps scan root</span>
+        <input id="appsScanRoot" type="text" class="input-native">
+      </label>
+      <div class="row">
+        <button id="saveSettings" type="button" class="big-btn">💾 Save</button>
+      </div>
+      <hr>
+      <p class="muted small">
+        First time on iPhone? Install the trust profile:
+        <a href="/install-ca">/install-ca</a>
+      </p>
+      <p id="statusReadout" class="muted small"></p>
+    </details>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <dialog id="scanDialog" class="scan-dialog">
+      <h2>🔎 New entries</h2>
+      <div id="scanResults" class="scan-results"></div>
+      <div class="row dialog-actions">
+        <button id="scanCancel" type="button" class="ghost-btn">Cancel</button>
+        <button id="scanSave" type="button" class="big-btn">Add selected</button>
+      </div>
+    </dialog>
+
+    <dialog id="genDialog" class="scan-dialog">
+      <h2>📜 Generate BAT files</h2>
+      <div id="genResults" class="scan-results"></div>
+      <div class="row dialog-actions">
+        <button id="genCancel" type="button" class="ghost-btn">Cancel</button>
+        <button id="genRun" type="button" class="big-btn">Generate</button>
+      </div>
+    </dialog>
+
+    <dialog id="renameDialog" class="rename-dialog">
+      <form id="renameForm">
+        <h2>✏️ Rename</h2>
+        <input id="renameInput" type="text" class="input-native" required>
+        <div class="row dialog-actions">
+          <button type="button" id="renameCancel" class="ghost-btn">Cancel</button>
+          <button type="submit" class="big-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+  </main>
+
+  <div id="loginOverlay" class="login-overlay" hidden>
+    <form id="loginForm" class="login-card" autocomplete="off">
+      <h2>🔐 Sign in</h2>
+      <p class="muted small">Enter the password to use the launcher.</p>
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" required>
+      <button type="submit" class="big-btn">Unlock</button>
+      <div id="loginError" class="login-error" hidden></div>
+    </form>
+  </div>
+
+  <script src="/static/app.js?v=5"></script>
+</body>
+</html>

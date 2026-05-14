@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy this file to webapp_config.json (gitignored) or let the webapp create it on the first 'Save defaults' tap. All keys are optional — missing keys fall back to the defaults in src/webapp_config.py.",
+  "_comment_auth_token": "Empty string = auth gate OFF (the default). Run scripts/gen_token.py to generate a strong token; the webapp will then require Authorization: Bearer <token> on every API call from non-loopback callers.",
+  "_comment_auth_password": "Optional companion to auth_token: when set, a fresh device with no token shows a login overlay; entering the password swaps it for the bearer token. Set/clear via scripts/set_password.py. Failed attempts are logged to webapp/auth.log.",
+  "_comment_projects_dir": "Where the Claude Code tab scans for .code-workspace + *-remote.bat files. Defaults to the parent of this repo (E:\\automation\\... by default).",
+  "_comment_apps_scan_root": "Where the Apps tab scans recursively for launcher *.bat files. Defaults to the same parent as projects_dir.",
+  "_comment_claude_flags": "Persisted default flags for the Claude Code launcher. The 'remote-control' and 'dangerously-skip-permissions' switches are always added — don't list them here.",
+  "host": "0.0.0.0",
+  "port": 8445,
+  "projects_dir": "",
+  "apps_scan_root": "",
+  "claude_model": "opus",
+  "claude_effort": "high",
+  "claude_verbose": true,
+  "claude_debug": false,
+  "auth_token": "",
+  "auth_password": ""
+}
