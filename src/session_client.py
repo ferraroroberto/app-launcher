@@ -16,7 +16,16 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+# Default timeout for cheap loopback calls (list / stop / mirror / image).
 _TIMEOUT = 8.0
+# Spawning ``claude`` inside a fresh ConPTY (PTY mode) or a new console
+# (remote mode) routinely takes longer than the default 8 s when several
+# claude processes are already running — pywinpty's spawn is synchronous
+# and node startup is heavy. Use a generous timeout for ``create_session``
+# so the webapp doesn't surface a misleading "session-host unreachable"
+# while the spawn is still in progress (which leaves the user re-tapping
+# launch and stacking duplicate sessions).
+_CREATE_TIMEOUT = 45.0
 
 
 def base_url(port: int) -> str:
@@ -35,10 +44,12 @@ class SessionHostError(RuntimeError):
         self.status = status
 
 
-def _request(method: str, port: int, path: str, **kwargs) -> Any:
+def _request(
+    method: str, port: int, path: str, timeout: float = _TIMEOUT, **kwargs
+) -> Any:
     url = base_url(port) + path
     try:
-        resp = requests.request(method, url, timeout=_TIMEOUT, **kwargs)
+        resp = requests.request(method, url, timeout=timeout, **kwargs)
     except requests.RequestException as exc:
         raise SessionHostError(
             f"session-host unreachable on :{port} ({exc})", status=503
@@ -77,6 +88,7 @@ def create_session(
         "POST",
         port,
         "/sessions",
+        timeout=_CREATE_TIMEOUT,
         json={
             "project_dir": project_dir,
             "name": name,
