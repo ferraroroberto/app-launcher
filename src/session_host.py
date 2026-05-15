@@ -25,8 +25,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
-import psutil
-
 from src.audit import transcript_path
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -62,29 +60,6 @@ KIND_PTY = "pty"
 KIND_REMOTE = "remote"
 
 
-def _direct_children(pid: int) -> List["psutil.Process"]:
-    """Return the immediate child processes of ``pid`` (one level only)."""
-    try:
-        parent = psutil.Process(pid)
-        return parent.children(recursive=False)
-    except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
-        logger.debug(f"_direct_children({pid}) failed: {exc}")
-        return []
-
-
-def _kill_process_tree(pid: int, label: str = "") -> None:
-    """Force-kill ``pid`` and every descendant. Best-effort — never raises."""
-    try:
-        subprocess.run(
-            ["taskkill", "/PID", str(pid), "/T", "/F"],
-            capture_output=True,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            timeout=10,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.debug(f"taskkill {label or pid} failed: {exc}")
-
-
 @dataclass
 class PtySession:
     """One ``claude`` process running inside a launcher-owned ConPTY."""
@@ -101,10 +76,6 @@ class PtySession:
     rows: int = 40
     cols: int = 120
     title: str = ""
-    # PID of the PC-side mirror window (the Edge/Chrome --app browser
-    # process opened by ``open_local_terminal_window``). Stashed via
-    # ``attach_mirror`` so ``Stop & Close`` can dismiss the window.
-    mirror_pid: Optional[int] = None
     _ring: str = ""
     _title_carry: str = ""
     _ring_lock: threading.Lock = field(default_factory=threading.Lock)
@@ -274,22 +245,6 @@ class PtySession:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} force-kill failed: {exc}")
 
-    def attach_mirror(self, pid: int) -> None:
-        """Stash the PID of the PC-side mirror window for later ``kill_mirror``."""
-        self.mirror_pid = int(pid) if pid else None
-
-    def kill_mirror(self) -> bool:
-        """Force-close the PC-side mirror browser window. Best-effort.
-
-        Returns True when a mirror PID was known and a kill was attempted.
-        """
-        pid = self.mirror_pid
-        if not pid:
-            return False
-        _kill_process_tree(pid, label=f"mirror for {self.session_id[:8]}")
-        self.mirror_pid = None
-        return True
-
     @property
     def alive(self) -> bool:
         if self._exited:
@@ -354,36 +309,15 @@ class RemoteSession:
         """
         if self._proc.poll() is not None:
             return
-        _kill_process_tree(
-            self._proc.pid, label=f"remote {self.session_id[:8]}"
-        )
-
-    def stop_inner_only(self) -> None:
-        """Kill just the ``claude.exe`` child, leave the ``cmd.exe`` shell alive.
-
-        Pairs with the ``cmd /k claude`` spawn — when claude is killed the
-        outer shell stays open at a fresh prompt, so the user can read the
-        final transcript on the PC and close the window manually.
-        Falls back to a full tree kill if the child can't be located.
-        """
-        if self._proc.poll() is not None:
-            return
-        children = _direct_children(self._proc.pid)
-        if not children:
-            logger.debug(
-                f"remote {self.session_id[:8]} no children to inner-kill — "
-                "falling back to full tree kill"
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=10,
             )
-            self.stop()
-            return
-        for child in children:
-            try:
-                child.kill()
-            except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
-                logger.debug(
-                    f"remote {self.session_id[:8]} child {child.pid} "
-                    f"kill failed: {exc}"
-                )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
 
     def force_kill(self) -> None:
         self.stop()
@@ -459,12 +393,10 @@ class SessionManager:
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
         session_id = uuid.uuid4().hex
-        # `cmd /k` (not /c) so the shell survives claude exiting — that way
-        # the user can pick "Stop" (kill claude only) and the window stays
-        # open with the final transcript visible. CREATE_NEW_CONSOLE gives
-        # the window its own console so it stays visible on the PC and
-        # outlives this host process. We keep the handle to list / kill it.
-        command = f"cmd /k claude {flags}".strip()
+        # `cmd /c` resolves `claude` off PATH; CREATE_NEW_CONSOLE gives the
+        # window its own console so it stays visible on the PC and outlives
+        # this host process. We keep the handle purely to list / kill it.
+        command = f"cmd /c claude {flags}".strip()
         proc = subprocess.Popen(
             command,
             cwd=str(directory),
@@ -497,40 +429,11 @@ class SessionManager:
         sessions.sort(key=lambda s: s.started_at)
         return sessions
 
-    def stop(
-        self,
-        session_id: str,
-        mode: str = STOP_QUIT,
-        close_window: bool = False,
-    ) -> bool:
-        """Stop a session. ``close_window`` also dismisses the PC-side window.
-
-        For PTY sessions: stops the PTY as today, then (if ``close_window``)
-        force-closes the mirror browser window via :meth:`PtySession.kill_mirror`.
-        For remote sessions: ``close_window=True`` does the existing taskkill
-        of the whole console tree; ``close_window=False`` kills only the
-        inner ``claude.exe`` so the cmd shell — and the window — stay open.
-        """
+    def stop(self, session_id: str, mode: str = STOP_QUIT) -> bool:
         session = self.get(session_id)
         if session is None:
             return False
-        if isinstance(session, RemoteSession):
-            if close_window:
-                session.stop(mode)
-            else:
-                session.stop_inner_only()
-            return True
         session.stop(mode)
-        if close_window and isinstance(session, PtySession):
-            session.kill_mirror()
-        return True
-
-    def attach_mirror(self, session_id: str, pid: int) -> bool:
-        """Stash a mirror-window PID on a PTY session. Returns False if unknown."""
-        session = self.get(session_id)
-        if session is None or not isinstance(session, PtySession):
-            return False
-        session.attach_mirror(pid)
         return True
 
     def remove(self, session_id: str) -> Optional[Any]:

@@ -110,23 +110,9 @@ def resize(port: int, session_id: str, rows: int, cols: int) -> Dict[str, Any]:
     )
 
 
-def stop(
-    port: int,
-    session_id: str,
-    mode: str = "quit",
-    close_window: bool = False,
-) -> Dict[str, Any]:
+def stop(port: int, session_id: str, mode: str = "quit") -> Dict[str, Any]:
     return _request(
-        "POST",
-        port,
-        f"/sessions/{session_id}/stop",
-        json={"mode": mode, "close_window": close_window},
-    )
-
-
-def attach_mirror(port: int, session_id: str, pid: int) -> Dict[str, Any]:
-    return _request(
-        "POST", port, f"/sessions/{session_id}/mirror", json={"pid": pid}
+        "POST", port, f"/sessions/{session_id}/stop", json={"mode": mode}
     )
 
 

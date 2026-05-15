@@ -27,7 +27,7 @@ import subprocess
 import sys
 import webbrowser
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from src import session_client
 
@@ -89,7 +89,7 @@ _BROWSER_APP_CANDIDATES = (
 )
 
 
-def open_local_terminal_window(url: str) -> Optional[int]:
+def open_local_terminal_window(url: str) -> None:
     """Open ``url`` in a window on the PC — the launcher-owned terminal mirror.
 
     Prefers Edge/Chrome ``--app`` mode for a clean, dedicated window that
@@ -99,10 +99,6 @@ def open_local_terminal_window(url: str) -> Optional[int]:
     self-signed cert is intentionally not trusted on the PC — that risk
     doesn't apply to ``127.0.0.1``. ``--test-type`` suppresses the flag
     warning bar. Best-effort — a failure here never breaks the launch.
-
-    Returns the spawned browser process PID when an ``--app`` window was
-    opened, so the caller can stash it for later "Stop & Close" use. Returns
-    ``None`` for the ``webbrowser.open`` fallback (no PID is available).
     """
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     for rel, env_key in _BROWSER_APP_CANDIDATES:
@@ -113,7 +109,7 @@ def open_local_terminal_window(url: str) -> Optional[int]:
         if not exe.is_file():
             continue
         try:
-            proc = subprocess.Popen(
+            subprocess.Popen(
                 [
                     str(exe),
                     f"--app={url}",
@@ -124,8 +120,8 @@ def open_local_terminal_window(url: str) -> Optional[int]:
                 creationflags=creationflags,
                 close_fds=True,
             )
-            logger.info(f"🖥️  opened local terminal window: {url} (pid {proc.pid})")
-            return proc.pid
+            logger.info(f"🖥️  opened local terminal window: {url}")
+            return
         except OSError as exc:
             logger.debug(f"--app launch via {exe} failed: {exc}")
     try:
@@ -133,4 +129,3 @@ def open_local_terminal_window(url: str) -> Optional[int]:
         logger.info(f"🖥️  opened local terminal window (default browser): {url}")
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️  could not open local terminal window: {exc}")
-    return None
