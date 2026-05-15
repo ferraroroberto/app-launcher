@@ -101,6 +101,7 @@
     terminalTitle: document.getElementById('terminalTitle'),
     terminalHost: document.getElementById('terminalHost'),
     terminalStatus: document.getElementById('terminalStatus'),
+    terminalPaste: document.getElementById('terminalPaste'),
     terminalImage: document.getElementById('terminalImage'),
     terminalImageInput: document.getElementById('terminalImageInput'),
     terminalCtrlC: document.getElementById('terminalCtrlC'),
@@ -470,7 +471,9 @@
       head.appendChild(kindTag);
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = s.name;
+      // `title` is the live OSC window title claude sets mid-session; it
+      // falls back to the launch-time name until claude renames itself.
+      name.textContent = s.title || s.name;
       head.appendChild(name);
       if (!remote) {
         const chev = document.createElement('span');
@@ -1091,7 +1094,7 @@
       closeTerminal();
       els.terminalOverlay.hidden = false;
       document.body.classList.add('terminal-open');
-      els.terminalTitle.textContent = session.name || 'session';
+      els.terminalTitle.textContent = session.title || session.name || 'session';
       els.terminalHost.innerHTML = '';
       setTerminalStatus(
         '🔒 ' + (state.status.terminal.reason ||
@@ -1110,7 +1113,7 @@
     closeTerminal();
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
-    els.terminalTitle.textContent = session.name || 'session';
+    els.terminalTitle.textContent = session.title || session.name || 'session';
     setTerminalStatus('Connecting…');
 
     // The PC mirror window connects over loopback. It renders whatever
@@ -1136,6 +1139,18 @@
       term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     } catch (_) { /* optional */ }
     term.open(els.terminalHost);
+
+    // claude renames its terminal mid-session via OSC title sequences.
+    // Reflect that in the bar and in document.title so the PC mirror
+    // `--app` window's OS title bar tracks it too.
+    try {
+      term.onTitleChange(function (title) {
+        const t = (title || '').trim();
+        if (!t) return;
+        els.terminalTitle.textContent = t;
+        document.title = '🚀 ' + t;
+      });
+    } catch (_) { /* optional */ }
 
     const ws = new WebSocket(termWsUrl(sid, tt));
     const t = { sid: sid, ws: ws, term: term, fit: fit, mirror: isMirror };
@@ -1215,6 +1230,7 @@
     els.terminalOverlay.hidden = true;
     document.body.classList.remove('terminal-open');
     els.terminalHost.innerHTML = '';
+    document.title = '🚀 Launcher';
     setTerminalStatus(null);
     fetchSessions().catch(function () {});
   }
@@ -1270,6 +1286,28 @@
     } catch (exc) {
       toast('Quit failed: ' + (exc.message || exc), 'error');
     }
+  });
+  els.terminalPaste.addEventListener('click', async function () {
+    // Mobile click-and-paste into the xterm host is unreliable; this is a
+    // one-tap path — read the OS clipboard and send it as terminal input.
+    const t = state.terminal;
+    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) {
+      toast('No live terminal to paste into.', 'error');
+      return;
+    }
+    let text = '';
+    try {
+      text = await navigator.clipboard.readText();
+    } catch (exc) {
+      toast('Clipboard read blocked: ' + (exc.message || exc), 'error');
+      return;
+    }
+    if (!text) {
+      toast('Clipboard is empty.', 'error');
+      return;
+    }
+    t.ws.send(JSON.stringify({ type: 'input', data: text }));
+    if (t.term) t.term.focus();
   });
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();
