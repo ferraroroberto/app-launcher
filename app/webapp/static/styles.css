@@ -549,7 +549,19 @@ html, body {
 /* When the terminal is open the body is scroll-locked so the overlay is
    the only thing on screen — long output can't push the bar off-screen
    or reveal the app list underneath. */
-body.terminal-open { overflow: hidden; }
+/* iOS standalone PWAs don't fully honor overflow:hidden / overscroll-behavior
+   on <body> — touch drags inside the xterm scroll container still rubber-band
+   the document, which visually slides the fixed overlay (and its bar) up under
+   the iOS status bar. Pinning the body with position:fixed at the captured
+   scroll offset stops that. The offset is restored on close in hideTerminal(). */
+body.terminal-open {
+  overflow: hidden;
+  position: fixed;
+  top: var(--terminal-scroll-y, 0px);
+  left: 0;
+  right: 0;
+  width: 100%;
+}
 .terminal-overlay {
   position: fixed;
   inset: 0;

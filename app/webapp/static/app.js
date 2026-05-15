@@ -1093,7 +1093,7 @@
         state.status.terminal.reachable === false) {
       closeTerminal();
       els.terminalOverlay.hidden = false;
-      document.body.classList.add('terminal-open');
+      lockBodyScroll();
       els.terminalTitle.textContent = session.title || session.name || 'session';
       els.terminalHost.innerHTML = '';
       setTerminalStatus(
@@ -1112,7 +1112,7 @@
     }
     closeTerminal();
     els.terminalOverlay.hidden = false;
-    document.body.classList.add('terminal-open');
+    lockBodyScroll();
     els.terminalTitle.textContent = session.title || session.name || 'session';
     setTerminalStatus('Connecting…');
 
@@ -1228,11 +1228,28 @@
   function hideTerminal() {
     closeTerminal();
     els.terminalOverlay.hidden = true;
-    document.body.classList.remove('terminal-open');
+    unlockBodyScroll();
     els.terminalHost.innerHTML = '';
     document.title = '🚀 Launcher';
     setTerminalStatus(null);
     fetchSessions().catch(function () {});
+  }
+
+  // iOS PWA scroll lock — see styles.css body.terminal-open rule.
+  // We pin <body> at the current scroll offset while the terminal is open,
+  // then restore the offset on close so the user lands back where they were.
+  let savedScrollY = 0;
+  function lockBodyScroll() {
+    if (document.body.classList.contains('terminal-open')) return;
+    savedScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.setProperty('--terminal-scroll-y', '-' + savedScrollY + 'px');
+    document.body.classList.add('terminal-open');
+  }
+  function unlockBodyScroll() {
+    if (!document.body.classList.contains('terminal-open')) return;
+    document.body.classList.remove('terminal-open');
+    document.body.style.removeProperty('--terminal-scroll-y');
+    window.scrollTo(0, savedScrollY);
   }
 
   async function sendImage(file) {
