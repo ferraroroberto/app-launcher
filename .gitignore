@@ -41,3 +41,6 @@ app/webapp/static/ca.crt
 
 # --- Interactive-terminal scratch (image uploads land here) --------------
 .launcher-tmp/
+
+# --- Local handoff / session notes (not for commit) ----------------------
+HANDOFF-*.md
