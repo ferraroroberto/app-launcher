@@ -496,27 +496,53 @@
 
       const actions = document.createElement('div');
       actions.className = 'row-actions';
+      // Two stop buttons, distinct colors:
+      //   ⏹️ Stop          — kill claude only, leave the PC window open so
+      //                       you can read the final transcript.
+      //   ⏏️ Stop & Close  — kill claude AND dismiss the PC window.
+      // Detached (☁️) sessions and full-control (⚡) sessions both get
+      // both buttons; the session-host knows how to handle each kind.
       const stopBtn = document.createElement('button');
       stopBtn.type = 'button';
-      stopBtn.className = 'icon-btn danger';
+      stopBtn.className = 'icon-btn warn';
       stopBtn.textContent = '⏹️';
-      stopBtn.title = 'Stop session';
-      stopBtn.setAttribute('aria-label', 'Stop session');
-      stopBtn.addEventListener('click', function () { stopSession(s); });
+      stopBtn.title = 'Stop session (leave window open)';
+      stopBtn.setAttribute('aria-label', 'Stop session, leave window open');
+      stopBtn.addEventListener('click', function () { stopSession(s, false); });
       actions.appendChild(stopBtn);
+
+      const stopCloseBtn = document.createElement('button');
+      stopCloseBtn.type = 'button';
+      stopCloseBtn.className = 'icon-btn danger';
+      stopCloseBtn.textContent = '⏏️';
+      stopCloseBtn.title = 'Stop and close window';
+      stopCloseBtn.setAttribute('aria-label', 'Stop session and close window');
+      stopCloseBtn.addEventListener('click', function () { stopSession(s, true); });
+      actions.appendChild(stopCloseBtn);
+
       li.appendChild(actions);
 
       host.appendChild(li);
     });
   }
 
-  async function stopSession(s) {
+  async function stopSession(s, closeWindow) {
     const remote = s.kind === 'remote';
-    const msg = remote
-      ? 'Kill the detached session "' + s.name + '"?\n\n' +
-        'Its console window will be force-closed.'
-      : 'Stop the Claude Code session "' + s.name + '"?\n\n' +
-        'It types /quit so Claude can exit cleanly.';
+    let msg;
+    if (closeWindow) {
+      msg = remote
+        ? 'Stop and close "' + s.name + '"?\n\n' +
+          'Claude will be killed and the console window on the PC will be closed.'
+        : 'Stop and close "' + s.name + '"?\n\n' +
+          'Claude will be quit and the mirror window on the PC will be closed.';
+    } else {
+      msg = remote
+        ? 'Stop "' + s.name + '"?\n\n' +
+          'Claude will be killed but the console window on the PC stays open ' +
+          'so you can read the final output.'
+        : 'Stop "' + s.name + '"?\n\n' +
+          'Claude will quit cleanly; the mirror window on the PC stays open.';
+    }
     if (!confirm(msg)) return;
     try {
       await jsonApi(
@@ -525,10 +551,11 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'quit' }),
+          body: JSON.stringify({ mode: 'quit', close_window: !!closeWindow }),
         }
       );
-      toast((remote ? '🛑 Killing ' : '🛑 Stopping ') + s.name + '…', 'good');
+      const verb = closeWindow ? '⏏️ Stopping & closing ' : '🛑 Stopping ';
+      toast(verb + s.name + '…', 'good');
       if (state.terminal && state.terminal.sid === s.session_id) {
         hideTerminal();
       }

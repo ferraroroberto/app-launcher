@@ -144,8 +144,25 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
         mode = str(body.get("mode") or "quit")
-        session.stop(mode)
-        return {"ok": True, "mode": mode}
+        close_window = bool(body.get("close_window") or False)
+        manager.stop(sid, mode=mode, close_window=close_window)
+        return {"ok": True, "mode": mode, "close_window": close_window}
+
+    @app.post("/sessions/{sid}/mirror")
+    async def session_mirror(sid: str, request: Request) -> Dict[str, Any]:
+        """Stash the PC-side mirror window's PID so 'Stop & Close' can dismiss it."""
+        body = await _json(request)
+        try:
+            pid = int(body.get("pid") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="pid must be an integer")
+        if pid <= 0:
+            raise HTTPException(status_code=400, detail="pid must be > 0")
+        if not manager.attach_mirror(sid, pid):
+            raise HTTPException(
+                status_code=404, detail=f"unknown PTY session {sid}"
+            )
+        return {"ok": True, "session_id": sid, "mirror_pid": pid}
 
     @app.post("/sessions/{sid}/image")
     async def session_image(sid: str, file: UploadFile) -> Dict[str, Any]:

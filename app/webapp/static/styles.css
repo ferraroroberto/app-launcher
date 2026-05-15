@@ -244,6 +244,12 @@ html, body {
   color: var(--fg);
 }
 .app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
+/* Two-button stop on session rows: amber ⏹️ (kill claude only, leave the
+   PC window open) sits above red ⏏️ (kill claude and dismiss the window).
+   Tinted at rest, not just on :active, so the pair is distinguishable on
+   the phone without tapping. */
+.app-item .row-actions .icon-btn.warn { color: var(--warn); }
+.app-item .row-actions .icon-btn.danger { color: var(--danger); }
 .app-item .health-dot {
   display: inline-block;
   width: 8px;

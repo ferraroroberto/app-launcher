@@ -596,7 +596,9 @@ def create_app() -> FastAPI:
                 scheme = "https" if _cert_present() else "http"
                 pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
                 asyncio.create_task(
-                    asyncio.to_thread(open_local_terminal_window, pc_url)
+                    _open_and_attach_mirror(
+                        pc_url, sid, cfg.session_host_port
+                    )
                 )
             return {
                 "launched": entry.id,
@@ -728,20 +730,36 @@ def create_app() -> FastAPI:
 
     @app.post("/api/claude-code/sessions/{sid}/stop")
     async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
-        """Stop a PTY session — quit | interrupt | kill (public, token-gated)."""
+        """Stop a PTY session — quit | interrupt | kill (public, token-gated).
+
+        ``close_window`` (bool, default false) also dismisses the PC-side
+        window: for PTY sessions that's the Edge/Chrome ``--app`` mirror
+        (killed by stashed PID); for detached sessions it's a tree taskkill
+        of the cmd console. Without it, detached sessions kill only the
+        inner ``claude.exe`` so the cmd shell — and the window — stay open.
+        """
         cfg: WebappConfig = request.app.state.webapp_config
         body = await _maybe_json(request)
         mode = str(body.get("mode") or "quit")
+        close_window = bool(body.get("close_window") or False)
         try:
             result = await asyncio.to_thread(
-                session_client.stop, cfg.session_host_port, sid, mode
+                session_client.stop,
+                cfg.session_host_port,
+                sid,
+                mode,
+                close_window,
             )
         except session_client.SessionHostError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc))
         audit.audit_event(
-            "session_stop", session=sid, mode=mode, client=_client_ip(request)
+            "session_stop",
+            session=sid,
+            mode=mode,
+            close_window=close_window,
+            client=_client_ip(request),
         )
-        audit.session_log(sid, "stop", mode=mode)
+        audit.session_log(sid, "stop", mode=mode, close_window=close_window)
         return result
 
     @app.post("/api/claude-code/sessions/{sid}/image")
@@ -979,6 +997,26 @@ def _cert_present() -> bool:
         (PROJECT_ROOT / "webapp" / "certificates" / "cert.pem").exists()
         and (PROJECT_ROOT / "webapp" / "certificates" / "key.pem").exists()
     )
+
+
+async def _open_and_attach_mirror(
+    pc_url: str, sid: str, session_host_port: int
+) -> None:
+    """Open the PC-side mirror window and stash its PID on the session.
+
+    Backs the "Stop & Close" button — without the PID the session-host has
+    no handle to dismiss the window. Best-effort: a missed PID just means
+    "Stop & Close" degrades to "Stop" (window stays open) for that session.
+    """
+    pid = await asyncio.to_thread(open_local_terminal_window, pc_url)
+    if not pid:
+        return
+    try:
+        await asyncio.to_thread(
+            session_client.attach_mirror, session_host_port, sid, pid
+        )
+    except session_client.SessionHostError as exc:
+        logger.debug(f"attach_mirror({sid[:8]}, pid={pid}) failed: {exc}")
 
 
 def _client_ip_ws(websocket: WebSocket) -> str:
