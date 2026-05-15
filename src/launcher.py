@@ -25,6 +25,8 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
+import uuid
 import webbrowser
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -103,8 +105,20 @@ def open_local_terminal_window(url: str) -> Optional[int]:
     Returns the spawned browser process PID when an ``--app`` window was
     opened, so the caller can stash it for later "Stop & Close" use. Returns
     ``None`` for the ``webbrowser.open`` fallback (no PID is available).
+
+    A unique ``--user-data-dir`` is passed so the spawned process is its
+    own isolated Edge/Chrome instance and actually owns the window. Without
+    that, Chromium's multi-process model delegates the window to an existing
+    browser instance and the spawned launcher PID dies immediately — making
+    the stashed PID useless for ``taskkill`` later. The temp profile dir is
+    tiny (loopback-only origin, no real user state) and Windows cleans up
+    ``%TEMP%`` periodically.
     """
     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    user_data_dir = (
+        Path(tempfile.gettempdir())
+        / f"launcher-mirror-{uuid.uuid4().hex[:12]}"
+    )
     for rel, env_key in _BROWSER_APP_CANDIDATES:
         base = os.environ.get(env_key)
         if not base:
@@ -120,11 +134,17 @@ def open_local_terminal_window(url: str) -> Optional[int]:
                     "--window-size=1024,720",
                     "--ignore-certificate-errors",
                     "--test-type",
+                    f"--user-data-dir={user_data_dir}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
                 ],
                 creationflags=creationflags,
                 close_fds=True,
             )
-            logger.info(f"🖥️  opened local terminal window: {url} (pid {proc.pid})")
+            logger.info(
+                f"🖥️  opened local terminal window: {url} "
+                f"(pid {proc.pid}, profile {user_data_dir.name})"
+            )
             return proc.pid
         except OSError as exc:
             logger.debug(f"--app launch via {exe} failed: {exc}")
