@@ -187,12 +187,32 @@ class PtySession:
 
     # --------------------------------------------------------------- io
     def write(self, data: str) -> None:
-        if self._exited:
+        # pywinpty.PtyProcess.write can return fewer bytes than requested
+        # (and sometimes 0) when the ConPTY input pipe is busy. The earlier
+        # one-shot call dropped the unwritten remainder, which truncated
+        # long pastes from the phone's paste button. Loop until everything
+        # is written, with a bounded retry budget so a stuck pipe can't
+        # hang the websocket pump indefinitely.
+        if self._exited or not data:
             return
-        try:
-            self._pty.write(data)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
+        remaining = data
+        deadline = time.monotonic() + 5.0
+        while remaining:
+            try:
+                n = self._pty.write(remaining)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
+                return
+            if n:
+                remaining = remaining[n:]
+                continue
+            if time.monotonic() > deadline:
+                logger.warning(
+                    f"PTY {self.session_id[:8]} write stalled — dropped "
+                    f"{len(remaining)} of {len(data)} chars"
+                )
+                return
+            time.sleep(0.01)
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))
