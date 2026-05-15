@@ -99,20 +99,11 @@ def create_app() -> FastAPI:
         kind = str(body.get("kind") or "pty").strip().lower()
         if not project_dir:
             raise HTTPException(status_code=400, detail="project_dir is required")
-        # PtyProcess.spawn / subprocess.Popen are synchronous and slow when
-        # claude+node has to cold-start; running them inline froze the whole
-        # session-host event loop, so /sessions, /mirror, and even the WS the
-        # phone tries to open right after the launch all stalled. Pushing the
-        # spawn to a thread keeps the loop responsive during the spawn.
         try:
             if kind == "remote":
-                session = await asyncio.to_thread(
-                    manager.create_remote, project_dir, name, flags
-                )
+                session = manager.create_remote(project_dir, name, flags)
             else:
-                session = await asyncio.to_thread(
-                    manager.create, project_dir, name, flags
-                )
+                session = manager.create(project_dir, name, flags)
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return session.to_api()
