@@ -277,9 +277,6 @@ class PtySession:
     def attach_mirror(self, pid: int) -> None:
         """Stash the PID of the PC-side mirror window for later ``kill_mirror``."""
         self.mirror_pid = int(pid) if pid else None
-        logger.info(
-            f"🪟 PTY {self.session_id[:8]} mirror_pid attached: {self.mirror_pid}"
-        )
 
     def kill_mirror(self) -> bool:
         """Force-close the PC-side mirror browser window. Best-effort.
@@ -288,14 +285,7 @@ class PtySession:
         """
         pid = self.mirror_pid
         if not pid:
-            logger.info(
-                f"🪟 PTY {self.session_id[:8]} kill_mirror: no mirror_pid "
-                "stashed — nothing to close"
-            )
             return False
-        logger.info(
-            f"🪟 PTY {self.session_id[:8]} kill_mirror: taskkilling pid {pid}"
-        )
         _kill_process_tree(pid, label=f"mirror for {self.session_id[:8]}")
         self.mirror_pid = None
         return True
