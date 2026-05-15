@@ -101,7 +101,6 @@
     terminalTitle: document.getElementById('terminalTitle'),
     terminalHost: document.getElementById('terminalHost'),
     terminalStatus: document.getElementById('terminalStatus'),
-    terminalPaste: document.getElementById('terminalPaste'),
     terminalImage: document.getElementById('terminalImage'),
     terminalImageInput: document.getElementById('terminalImageInput'),
     terminalCtrlC: document.getElementById('terminalCtrlC'),
@@ -471,9 +470,7 @@
       head.appendChild(kindTag);
       const name = document.createElement('span');
       name.className = 'name';
-      // `title` is the live OSC window title claude sets mid-session; it
-      // falls back to the launch-time name until claude renames itself.
-      name.textContent = s.title || s.name;
+      name.textContent = s.name;
       head.appendChild(name);
       if (!remote) {
         const chev = document.createElement('span');
@@ -1093,8 +1090,8 @@
         state.status.terminal.reachable === false) {
       closeTerminal();
       els.terminalOverlay.hidden = false;
-      lockBodyScroll();
-      els.terminalTitle.textContent = session.title || session.name || 'session';
+      document.body.classList.add('terminal-open');
+      els.terminalTitle.textContent = session.name || 'session';
       els.terminalHost.innerHTML = '';
       setTerminalStatus(
         '🔒 ' + (state.status.terminal.reason ||
@@ -1112,8 +1109,8 @@
     }
     closeTerminal();
     els.terminalOverlay.hidden = false;
-    lockBodyScroll();
-    els.terminalTitle.textContent = session.title || session.name || 'session';
+    document.body.classList.add('terminal-open');
+    els.terminalTitle.textContent = session.name || 'session';
     setTerminalStatus('Connecting…');
 
     // The PC mirror window connects over loopback. It renders whatever
@@ -1139,18 +1136,6 @@
       term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
     } catch (_) { /* optional */ }
     term.open(els.terminalHost);
-
-    // claude renames its terminal mid-session via OSC title sequences.
-    // Reflect that in the bar and in document.title so the PC mirror
-    // `--app` window's OS title bar tracks it too.
-    try {
-      term.onTitleChange(function (title) {
-        const t = (title || '').trim();
-        if (!t) return;
-        els.terminalTitle.textContent = t;
-        document.title = '🚀 ' + t;
-      });
-    } catch (_) { /* optional */ }
 
     const ws = new WebSocket(termWsUrl(sid, tt));
     const t = { sid: sid, ws: ws, term: term, fit: fit, mirror: isMirror };
@@ -1228,28 +1213,10 @@
   function hideTerminal() {
     closeTerminal();
     els.terminalOverlay.hidden = true;
-    unlockBodyScroll();
+    document.body.classList.remove('terminal-open');
     els.terminalHost.innerHTML = '';
-    document.title = '🚀 Launcher';
     setTerminalStatus(null);
     fetchSessions().catch(function () {});
-  }
-
-  // iOS PWA scroll lock — see styles.css body.terminal-open rule.
-  // We pin <body> at the current scroll offset while the terminal is open,
-  // then restore the offset on close so the user lands back where they were.
-  let savedScrollY = 0;
-  function lockBodyScroll() {
-    if (document.body.classList.contains('terminal-open')) return;
-    savedScrollY = window.scrollY || window.pageYOffset || 0;
-    document.body.style.setProperty('--terminal-scroll-y', '-' + savedScrollY + 'px');
-    document.body.classList.add('terminal-open');
-  }
-  function unlockBodyScroll() {
-    if (!document.body.classList.contains('terminal-open')) return;
-    document.body.classList.remove('terminal-open');
-    document.body.style.removeProperty('--terminal-scroll-y');
-    window.scrollTo(0, savedScrollY);
   }
 
   async function sendImage(file) {
@@ -1303,28 +1270,6 @@
     } catch (exc) {
       toast('Quit failed: ' + (exc.message || exc), 'error');
     }
-  });
-  els.terminalPaste.addEventListener('click', async function () {
-    // Mobile click-and-paste into the xterm host is unreliable; this is a
-    // one-tap path — read the OS clipboard and send it as terminal input.
-    const t = state.terminal;
-    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) {
-      toast('No live terminal to paste into.', 'error');
-      return;
-    }
-    let text = '';
-    try {
-      text = await navigator.clipboard.readText();
-    } catch (exc) {
-      toast('Clipboard read blocked: ' + (exc.message || exc), 'error');
-      return;
-    }
-    if (!text) {
-      toast('Clipboard is empty.', 'error');
-      return;
-    }
-    t.ws.send(JSON.stringify({ type: 'input', data: text }));
-    if (t.term) t.term.focus();
   });
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();

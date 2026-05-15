@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import subprocess
 import threading
 import time
@@ -46,13 +45,6 @@ STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
 STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
 STOP_KILL = "kill"            # force-terminate the ConPTY
 
-# OSC window-title sequences `claude` emits: ESC ] 0 ; <title> (BEL | ESC \).
-# OSC 0 sets icon + title, OSC 2 sets the title — we treat both as the title.
-_OSC_TITLE_RE = re.compile(r"\x1b\][02];([^\x07\x1b]*)(?:\x07|\x1b\\)")
-# Longest trailing fragment of `_ring` we keep as a carry buffer so a title
-# sequence split across two PTY reads still parses.
-_TITLE_CARRY_MAX = 512
-
 # Session kinds. "pty" is a launcher-owned ConPTY streamed to the phone;
 # "remote" is a detached console window the launcher only tracks (no PTY,
 # no scrollback, no WebSocket — the Claude cloud app drives it).
@@ -75,9 +67,7 @@ class PtySession:
     _pty: "PtyProcess"  # type: ignore[name-defined]
     rows: int = 40
     cols: int = 120
-    title: str = ""
     _ring: str = ""
-    _title_carry: str = ""
     _ring_lock: threading.Lock = field(default_factory=threading.Lock)
     _subscribers: "set[asyncio.Queue]" = field(default_factory=set)
     _reader: Optional[threading.Thread] = None
@@ -119,7 +109,6 @@ class PtySession:
                     break
                 time.sleep(0.01)
                 continue
-            self._scan_title(chunk)
             with self._ring_lock:
                 self._ring += chunk
                 if len(self._ring) > _RING_MAX_CHARS:
@@ -149,23 +138,6 @@ class PtySession:
             self._transcript = None
         logger.info(f"⏹️  PTY session {self.session_id[:8]} ({self.name}) ended")
 
-    def _scan_title(self, chunk: str) -> None:
-        """Track the OSC window title `claude` emits, surfaced via ``to_api``.
-
-        Runs on the reader thread. ``_title_carry`` holds the trailing
-        fragment of the previous chunk so a title sequence straddling a
-        read boundary still parses; only the carry's tail is kept, so this
-        stays O(chunk).
-        """
-        buf = self._title_carry + chunk
-        matches = list(_OSC_TITLE_RE.finditer(buf))
-        if matches:
-            new_title = matches[-1].group(1)
-            if new_title != self.title:
-                self.title = new_title
-        # Keep just enough tail for a sequence split across the boundary.
-        self._title_carry = buf[-_TITLE_CARRY_MAX:]
-
     # ----------------------------------------------------------- subscribe
     def subscribe(self) -> Tuple[str, "asyncio.Queue"]:
         """Register a subscriber. Returns the scrollback snapshot + its queue.
@@ -187,32 +159,12 @@ class PtySession:
 
     # --------------------------------------------------------------- io
     def write(self, data: str) -> None:
-        # pywinpty.PtyProcess.write can return fewer bytes than requested
-        # (and sometimes 0) when the ConPTY input pipe is busy. The earlier
-        # one-shot call dropped the unwritten remainder, which truncated
-        # long pastes from the phone's paste button. Loop until everything
-        # is written, with a bounded retry budget so a stuck pipe can't
-        # hang the websocket pump indefinitely.
-        if self._exited or not data:
+        if self._exited:
             return
-        remaining = data
-        deadline = time.monotonic() + 5.0
-        while remaining:
-            try:
-                n = self._pty.write(remaining)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
-                return
-            if n:
-                remaining = remaining[n:]
-                continue
-            if time.monotonic() > deadline:
-                logger.warning(
-                    f"PTY {self.session_id[:8]} write stalled — dropped "
-                    f"{len(remaining)} of {len(data)} chars"
-                )
-                return
-            time.sleep(0.01)
+        try:
+            self._pty.write(data)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))
@@ -260,7 +212,6 @@ class PtySession:
             "kind": self.kind,
             "project_dir": self.project_dir,
             "name": self.name,
-            "title": self.title,
             "flags": self.flags,
             "started_at": self.started_at,
             "alive": self.alive,
