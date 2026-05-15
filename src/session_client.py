@@ -17,6 +17,11 @@ import requests
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 8.0
+# Creating a session involves a cold-start pywinpty spawn of ``claude``,
+# which can easily exceed 8 s on a freshly-booted box (claude CLI + DLLs
+# still in disk cache). All other calls are cheap loopback ops and stay
+# on the short timeout.
+_CREATE_TIMEOUT = 45.0
 
 
 def base_url(port: int) -> str:
@@ -35,10 +40,10 @@ class SessionHostError(RuntimeError):
         self.status = status
 
 
-def _request(method: str, port: int, path: str, **kwargs) -> Any:
+def _request(method: str, port: int, path: str, timeout: float = _TIMEOUT, **kwargs) -> Any:
     url = base_url(port) + path
     try:
-        resp = requests.request(method, url, timeout=_TIMEOUT, **kwargs)
+        resp = requests.request(method, url, timeout=timeout, **kwargs)
     except requests.RequestException as exc:
         raise SessionHostError(
             f"session-host unreachable on :{port} ({exc})", status=503
@@ -77,6 +82,7 @@ def create_session(
         "POST",
         port,
         "/sessions",
+        timeout=_CREATE_TIMEOUT,
         json={
             "project_dir": project_dir,
             "name": name,
