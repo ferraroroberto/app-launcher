@@ -21,7 +21,7 @@ class TestGetGeneratePreview:
 class TestPostGenerate:
     def test_happy_path_returns_result_shape(self, webapp_client, monkeypatch):
         client, _, _ = webapp_client
-        from app.webapp import server as server_mod
+        from app.webapp.routers import claude_code as claude_code_router
         # run_generate is the real worker — mock it so we don't write bats
         # to the tmp projects_dir.
         canned = GenerateResult(
@@ -30,7 +30,7 @@ class TestPostGenerate:
             ws_created=[],
             errors=[],
         )
-        monkeypatch.setattr(server_mod, "run_generate", lambda **_: canned)
+        monkeypatch.setattr(claude_code_router, "run_generate", lambda **_: canned)
         resp = client.post(
             "/api/claude-code/generate",
             json={"overwrite": [], "create_ws": []},
@@ -47,7 +47,7 @@ class TestPostGenerate:
         selections to run_generate. Catch any future drift that drops
         them silently."""
         client, _, _ = webapp_client
-        from app.webapp import server as server_mod
+        from app.webapp.routers import claude_code as claude_code_router
         captured = {}
 
         def fake_run(*, projects_dir, flags, overwrite_names, create_ws_names):
@@ -55,7 +55,7 @@ class TestPostGenerate:
             captured["create_ws"] = create_ws_names
             return GenerateResult()
 
-        monkeypatch.setattr(server_mod, "run_generate", fake_run)
+        monkeypatch.setattr(claude_code_router, "run_generate", fake_run)
         resp = client.post(
             "/api/claude-code/generate",
             json={"overwrite": ["a", "b"], "create_ws": ["c"]},
