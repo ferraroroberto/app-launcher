@@ -350,6 +350,27 @@ To test without a reboot: select the task → **Run** in the right-hand pane.
 curl http://127.0.0.1:8445/healthz
 ```
 
+### Playwright smoke tests
+
+A small `pytest-playwright` suite under `tests/e2e/` catches the boring regressions on the SPA (JS error on boot, empty config form, broken tab switch, missing stop buttons per session kind, missing login overlay).
+
+One-time setup:
+
+```powershell
+& .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+& .\.venv\Scripts\python.exe -m playwright install chromium
+```
+
+Then with the tray running (`tray.bat`):
+
+```powershell
+.\scripts\run-e2e.ps1
+# or directly:
+& .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
+```
+
+The suite runs against the live tray on `https://127.0.0.1:8445` — it does not boot anything itself. If the tray isn't up, every test is skipped with a clear message instead of hanging.
+
 ---
 
 ## Files
