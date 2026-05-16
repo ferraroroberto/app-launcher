@@ -546,10 +546,23 @@ html, body {
 .webauthn-devices li span { flex: 1; word-break: break-word; }
 
 /* ---------- interactive terminal overlay ---------- */
+/* Stop iOS rubber-band / pull-to-refresh chrome from leaking through
+   into the underlying page when the terminal overlay is open. Applied
+   globally (harmless on the launcher home view) because Safari's
+   negative-overscroll behaviour is rooted at the document, not body. */
+html, body { overscroll-behavior: none; }
 /* When the terminal is open the body is scroll-locked so the overlay is
    the only thing on screen — long output can't push the bar off-screen
-   or reveal the app list underneath. */
-body.terminal-open { overflow: hidden; }
+   or reveal the app list underneath. The JS lockBodyScroll() also pins
+   position:fixed + top:-Ypx + width:100%; the rules below cap the height
+   and isolate touch gestures so iOS doesn't try to scroll the page that
+   isn't there. 100dvh handles the dynamic chrome (URL bar show/hide). */
+body.terminal-open {
+  overflow: hidden;
+  height: 100dvh;
+  height: 100vh;            /* fallback for engines without dvh */
+  touch-action: none;       /* iOS: no system pan/zoom on body itself */
+}
 .terminal-overlay {
   position: fixed;
   inset: 0;
@@ -560,6 +573,12 @@ body.terminal-open { overflow: hidden; }
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 0);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  /* Containment + the iOS-supported `overscroll-behavior: contain`
+     stop any scroll attempt that exits the overlay from bubbling up
+     to the (now-pinned) body and triggering rubber-band. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: none;
 }
 .terminal-bar {
   display: flex;
@@ -596,6 +615,12 @@ body.terminal-open { overflow: hidden; }
   padding: 6px 4px 4px 8px;
   background: #0a0a0a;
   overflow: hidden;
+  /* xterm.js owns the inner scrollback; tell iOS the host is a
+     vertical pan target so edge touches don't get hijacked by
+     system gestures, and give it momentum scrolling on iOS. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 .terminal-host .xterm { height: 100%; }
 .terminal-status {
