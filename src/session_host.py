@@ -52,6 +52,65 @@ KIND_PTY = "pty"
 KIND_REMOTE = "remote"
 
 
+def _parse_osc_title(buffer: str) -> Tuple[str, str]:
+    """Extract OSC window-title sequences from a buffer.
+
+    Returns (remaining_buffer, extracted_title_or_empty).
+    Handles OSC 0 and OSC 2 sequences in both BEL and ST terminator forms.
+    Strips ANSI/control chars and caps length.
+    """
+    extracted = ""
+    remaining = buffer
+
+    while True:
+        # Look for OSC start: ESC ]
+        start_idx = remaining.find("\x1b]")
+        if start_idx == -1:
+            break
+
+        # Look for terminators: BEL (0x07) or ST (ESC \)
+        bel_idx = remaining.find("\x07", start_idx)
+        st_idx = remaining.find("\x1b\\", start_idx)
+
+        # Determine which terminator comes first
+        end_idx = -1
+        term_len = 0
+        if bel_idx != -1 and (st_idx == -1 or bel_idx < st_idx):
+            end_idx = bel_idx
+            term_len = 1
+        elif st_idx != -1:
+            end_idx = st_idx
+            term_len = 2
+
+        if end_idx == -1:
+            # Incomplete sequence; keep in buffer for next chunk
+            break
+
+        try:
+            # Extract the full sequence
+            seq = remaining[start_idx : end_idx + term_len]
+            # Parse: ESC ] <code> ; <text> <term>
+            # Find the code (0 or 2)
+            code_end = remaining.find(";", start_idx)
+            if code_end != -1 and code_end < end_idx:
+                code_part = remaining[start_idx + 2 : code_end].strip()
+                if code_part in ("0", "2"):
+                    text = remaining[code_end + 1 : end_idx]
+                    # Strip ANSI/control chars
+                    clean = "".join(c for c in text if ord(c) >= 32 or c in "\t")
+                    clean = clean.strip()
+                    if clean:
+                        # Cap at 80 chars
+                        extracted = clean[:80]
+        except Exception:
+            pass
+
+        # Remove the processed sequence and continue
+        remaining = remaining[: start_idx] + remaining[end_idx + term_len :]
+
+    return remaining, extracted
+
+
 @dataclass
 class PtySession:
     """One ``claude`` process running inside a launcher-owned ConPTY."""
@@ -73,6 +132,8 @@ class PtySession:
     _reader: Optional[threading.Thread] = None
     _exited: bool = False
     _transcript: Optional[TextIO] = None
+    live_title: str = ""
+    _osc_buffer: str = ""
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -109,6 +170,11 @@ class PtySession:
                     break
                 time.sleep(0.01)
                 continue
+            # Parse OSC window-title sequences and cache the latest title.
+            self._osc_buffer += chunk
+            self._osc_buffer, title = _parse_osc_title(self._osc_buffer)
+            if title:
+                self.live_title = title
             with self._ring_lock:
                 self._ring += chunk
                 if len(self._ring) > _RING_MAX_CHARS:
@@ -217,6 +283,7 @@ class PtySession:
             "alive": self.alive,
             "rows": self.rows,
             "cols": self.cols,
+            "live_title": self.live_title,
         }
 
 
@@ -282,6 +349,7 @@ class RemoteSession:
             "flags": self.flags,
             "started_at": self.started_at,
             "alive": self.alive,
+            "live_title": "",
         }
 
 

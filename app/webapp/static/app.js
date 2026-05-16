@@ -472,7 +472,7 @@
       head.appendChild(kindTag);
       const name = document.createElement('span');
       name.className = 'name';
-      name.textContent = s.name;
+      name.textContent = (s.live_title && s.live_title.trim()) ? s.live_title : s.name;
       head.appendChild(name);
       if (!remote) {
         const chev = document.createElement('span');
@@ -1094,7 +1094,7 @@
       els.terminalOverlay.hidden = false;
       document.body.classList.add('terminal-open');
       lockBodyScroll();
-      els.terminalTitle.textContent = session.name || 'session';
+      els.terminalTitle.textContent = (session.live_title && session.live_title.trim()) ? session.live_title : (session.name || 'session');
       els.terminalHost.innerHTML = '';
       setTerminalStatus(
         '🔒 ' + (state.status.terminal.reason ||
@@ -1114,7 +1114,7 @@
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
     lockBodyScroll();
-    els.terminalTitle.textContent = session.name || 'session';
+    els.terminalTitle.textContent = (session.live_title && session.live_title.trim()) ? session.live_title : (session.name || 'session');
     setTerminalStatus('Connecting…');
 
     // The PC mirror window connects over loopback. It renders whatever
