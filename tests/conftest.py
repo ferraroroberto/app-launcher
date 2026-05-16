@@ -97,13 +97,18 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     if hasattr(app_cfg_mod, "DEFAULT_CONFIG_PATH"):
         monkeypatch.setattr(app_cfg_mod, "DEFAULT_CONFIG_PATH", tmp_app_cfg)
 
-    # Now import the server. Important: import after monkeypatching the
-    # config paths, but before patching session_client (which is the
-    # module-level reference inside server.py).
+    # Now import the server + routers. Important: import after monkeypatching
+    # the config paths, but before patching session_client / audit (which are
+    # module-level references inside each router that talks to them).
     from app.webapp import server as server_mod
+    from app.webapp.routers import apps as apps_router
+    from app.webapp.routers import sessions as sessions_router
 
     # Mock the session-host loopback client. Every route that talks to
-    # :8446 goes through this module, so one patch covers them all.
+    # :8446 goes through this module; after the issue-#26 split the
+    # `session_client` reference lives in both routers/apps.py (launch)
+    # and routers/sessions.py (list/stop/image), so patch both.
+    from src import session_client as real_session_client
     session_mock = MagicMock()
     session_mock.list_sessions.return_value = []
     session_mock.stop.return_value = {"ok": True}
@@ -112,13 +117,19 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "kind": "pty",
     }
     session_mock.upload_image.return_value = {"path": "stub.png"}
-    session_mock.SessionHostError = server_mod.session_client.SessionHostError
-    monkeypatch.setattr(server_mod, "session_client", session_mock)
+    session_mock.SessionHostError = real_session_client.SessionHostError
+    monkeypatch.setattr(apps_router, "session_client", session_mock)
+    monkeypatch.setattr(sessions_router, "session_client", session_mock)
 
     # Audit log writer — stub so no files land in webapp/sessions/ during
-    # tests. The real audit module opens log files lazily.
+    # tests. The real audit module opens log files lazily. After the split
+    # the `audit` import lives in routers/apps.py, routers/sessions.py,
+    # and routers/webauthn.py — patch all three.
     audit_mock = MagicMock()
-    monkeypatch.setattr(server_mod, "audit", audit_mock)
+    from app.webapp.routers import webauthn as webauthn_router
+    monkeypatch.setattr(apps_router, "audit", audit_mock)
+    monkeypatch.setattr(sessions_router, "audit", audit_mock)
+    monkeypatch.setattr(webauthn_router, "audit", audit_mock)
 
     # WebAuthnGate doesn't touch disk until configured (rp_id + origin set)
     # so default tests are safe. We still stub it for the few endpoints that

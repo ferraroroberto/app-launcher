@@ -55,9 +55,9 @@ class TestGetApps:
 class TestScanApps:
     def test_returns_new_key_with_list(self, webapp_client, monkeypatch):
         client, _, _ = webapp_client
-        # discover_new is imported at module level into server.py
-        from app.webapp import server as server_mod
-        monkeypatch.setattr(server_mod, "discover_new", lambda **_: [])
+        # discover_new is imported at module level into routers/apps.py
+        from app.webapp.routers import apps as apps_router
+        monkeypatch.setattr(apps_router, "discover_new", lambda **_: [])
         resp = client.post("/api/apps/scan")
         assert resp.status_code == 200
         assert resp.json() == {"new": []}
@@ -71,7 +71,7 @@ class TestSaveApps:
 
     def test_persists_selected_ids(self, webapp_client, monkeypatch):
         client, _, _ = webapp_client
-        from app.webapp import server as server_mod
+        from app.webapp.routers import apps as apps_router
         candidate = AppEntry(
             id="freshapp",
             name="Fresh App",
@@ -79,7 +79,7 @@ class TestSaveApps:
             bat_path="C:\\stub\\fresh.bat",
             added_at=datetime.now().isoformat(),
         )
-        monkeypatch.setattr(server_mod, "discover_new", lambda **_: [candidate])
+        monkeypatch.setattr(apps_router, "discover_new", lambda **_: [candidate])
         resp = client.post("/api/apps/save", json={"ids": ["freshapp"]})
         assert resp.status_code == 200
         added = resp.json()["added"]
