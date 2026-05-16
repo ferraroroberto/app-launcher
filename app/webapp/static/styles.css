@@ -572,7 +572,12 @@ body.terminal-open {
   flex-direction: column;
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 0);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  /* No padding-bottom: let the xterm host extend edge-to-edge so the
+     dead black band above the iOS home-indicator goes away. The home
+     gesture area itself remains touch-reserved by iOS, so content
+     there isn't interactive but it does fill the screen visually.
+     If a future row of bottom UI ever needs to sit *above* the home
+     indicator, switch this back to env(safe-area-inset-bottom, 0). */
   /* Containment + the iOS-supported `overscroll-behavior: contain`
      stop any scroll attempt that exits the overlay from bubbling up
      to the (now-pinned) body and triggering rubber-band. */
@@ -617,10 +622,19 @@ body.terminal-open {
   overflow: hidden;
   /* xterm.js owns the inner scrollback; tell iOS the host is a
      vertical pan target so edge touches don't get hijacked by
-     system gestures, and give it momentum scrolling on iOS. */
+     system gestures. (Momentum-scrolling hints belong on
+     .xterm-viewport — the actual scrolling element — see below.) */
   touch-action: pan-y;
   overscroll-behavior: contain;
+}
+/* The element xterm.js actually scrolls is .xterm-viewport, not
+   .terminal-host (host has overflow:hidden). On iOS this is where
+   the -webkit-overflow-scrolling: touch hint earns its keep —
+   inside the rendered window xterm can give the browser a real
+   scrollable area, and iOS will apply native momentum there. */
+.terminal-host .xterm-viewport {
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .terminal-host .xterm { height: 100%; }
 .terminal-status {

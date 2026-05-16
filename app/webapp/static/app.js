@@ -104,6 +104,7 @@
     terminalImage: document.getElementById('terminalImage'),
     terminalImageInput: document.getElementById('terminalImageInput'),
     terminalPaste: document.getElementById('terminalPaste'),
+    terminalJumpEnd: document.getElementById('terminalJumpEnd'),
     terminalCtrlC: document.getElementById('terminalCtrlC'),
     terminalQuit: document.getElementById('terminalQuit'),
 
@@ -1351,6 +1352,12 @@
   });
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();
+  });
+  els.terminalJumpEnd.addEventListener('click', function () {
+    const t = state.terminal;
+    if (!t || !t.term) return;
+    try { t.term.scrollToBottom(); } catch (_) {}
+    t.term.focus();
   });
   els.terminalPaste.addEventListener('click', async function () {
     const t = state.terminal;
