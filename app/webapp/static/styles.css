@@ -222,7 +222,6 @@ html, body {
   flex-direction: column;
   flex-shrink: 0;
   border-left: 1px solid #2a2f42;
-  gap: 1px;
 }
 .app-item .row-actions .icon-btn {
   flex: 1;

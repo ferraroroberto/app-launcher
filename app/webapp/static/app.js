@@ -496,20 +496,24 @@
       const actions = document.createElement('div');
       actions.className = 'row-actions session-actions';
 
-      const stopBtn = document.createElement('button');
-      stopBtn.type = 'button';
-      stopBtn.className = 'icon-btn action-stop';
-      stopBtn.textContent = '⏹️';
-      stopBtn.title = 'Stop (leave window open)';
-      stopBtn.setAttribute('aria-label', 'Stop session');
-      stopBtn.addEventListener('click', function () { stopSession(s, false); });
-      actions.appendChild(stopBtn);
+      // For attached (PTY) sessions: show both Stop and Stop & Close.
+      // For detached (remote) sessions: show only Stop & Close (graceful stop requires stdin access).
+      if (!remote) {
+        const stopBtn = document.createElement('button');
+        stopBtn.type = 'button';
+        stopBtn.className = 'icon-btn action-stop';
+        stopBtn.textContent = '⏹️';
+        stopBtn.title = 'Stop (leave window open)';
+        stopBtn.setAttribute('aria-label', 'Stop session');
+        stopBtn.addEventListener('click', function () { stopSession(s, false); });
+        actions.appendChild(stopBtn);
+      }
 
       const stopCloseBtn = document.createElement('button');
       stopCloseBtn.type = 'button';
       stopCloseBtn.className = 'icon-btn action-stop-close';
       stopCloseBtn.textContent = '⏏️';
-      stopCloseBtn.title = 'Stop and close window';
+      stopCloseBtn.title = remote ? 'Stop session' : 'Stop and close window';
       stopCloseBtn.setAttribute('aria-label', 'Stop and close session');
       stopCloseBtn.addEventListener('click', function () { stopSession(s, true); });
       actions.appendChild(stopCloseBtn);
@@ -531,12 +535,9 @@
         : 'Stop and close the Claude Code session "' + s.name + '"?\n\n' +
           'The terminal window will close.';
     } else {
-      // Just Stop
-      msg = remote
-        ? 'Stop the detached session "' + s.name + '"?\n\n' +
-          'Its console window will stay open showing the output.'
-        : 'Stop the Claude Code session "' + s.name + '"?\n\n' +
-          'The terminal window will stay open, and Claude will exit cleanly.';
+      // Just Stop (PtySession only)
+      msg = 'Stop the Claude Code session "' + s.name + '"?\n\n' +
+        'The terminal window will stay open, and Claude will exit cleanly.';
     }
     if (!confirm(msg)) return;
     try {

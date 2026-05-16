@@ -15,7 +15,6 @@ is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 from __future__ import annotations
 
 import asyncio
-import ctypes
 import logging
 import subprocess
 import threading
@@ -340,48 +339,27 @@ class RemoteSession:
         return self._proc.poll() is None
 
     def stop(self, mode: str = STOP_KILL, close_window: bool = False) -> None:
-        """Stop the detached console session.
+        """Stop and close the detached console session.
 
-        If close_window is False: send Ctrl+C to gracefully interrupt claude,
-        leaving the cmd.exe window open to show output.
-        If close_window is True: kill the entire process tree (cmd.exe + claude).
+        Detached processes (RemoteSession) cannot be gracefully stopped without
+        closing the window, since they have no stdin/PTY. We use taskkill /T /F
+        to terminate the entire process tree (cmd.exe + claude + children).
 
-        ``mode`` is accepted for interface parity with :class:`PtySession`
-        but ignored — a remote window has no PTY to send ``/quit`` into.
+        ``close_window`` is accepted for interface parity with :class:`PtySession`
+        but is always treated as True. ``mode`` is ignored — no PTY to send /quit.
         """
         if self._proc.poll() is not None:
             return
 
-        if close_window:
-            # Kill the entire tree: taskkill /PID <cmd.exe> /T /F
-            try:
-                subprocess.run(
-                    ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
-                    capture_output=True,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                    timeout=10,
-                )
-            except (OSError, subprocess.SubprocessError) as exc:
-                logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
-        else:
-            # Send Ctrl+C to the console group to interrupt claude gracefully.
-            # This lets cmd.exe stay open showing the final output.
-            try:
-                # GenerateConsoleCtrlEvent(CTRL_C_EVENT, dwProcessGroupId)
-                # Ctrl+C = 0, Ctrl+Break = 1
-                ctypes.windll.kernel32.GenerateConsoleCtrlEvent(0, self._proc.pid)
-            except (OSError, AttributeError, TypeError) as exc:
-                logger.debug(f"remote {self.session_id[:8]} Ctrl+C failed: {exc}")
-                # Fallback: if Ctrl+C fails, kill the tree anyway
-                try:
-                    subprocess.run(
-                        ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
-                        capture_output=True,
-                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                        timeout=10,
-                    )
-                except (OSError, subprocess.SubprocessError):
-                    pass
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                capture_output=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
 
     def force_kill(self) -> None:
         self.stop()
