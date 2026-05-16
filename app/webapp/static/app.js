@@ -3,10 +3,14 @@
  * State:
  *   state.tab          — 'claude' | 'apps'
  *   state.config       — /api/config payload (claude flags + scan paths)
- *   state.apps         — array from /api/apps
- *   state.health       — { [appId]: 'up'|'down'|null }
+ *   state.apps         — array from /api/apps (each entry carries its own .health)
+ *   state.sessions     — array from /api/claude-code/sessions
  *   state.pendingScan  — array from /api/apps/scan, surfaced in scan dialog
  *   state.genPreview   — { workspaces, orphans } for the generate dialog
+ *   state.webauthn     — { configured, enrollment_open, devices[] }
+ *   state.terminal     — null when overlay closed, else { sid, ws, term, fit, onWindowResize }
+ *   state.status       — /api/status payload (incl. terminal reachability)
+ *   state.editMode     — boolean, persisted to localStorage (launcher.editMode)
  *
  * Auth: a bearer token is stored in localStorage. The page extracts it
  * from ?token=… on first load and strips it from the URL. On 401, the
