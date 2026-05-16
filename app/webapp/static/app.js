@@ -103,6 +103,7 @@
     terminalStatus: document.getElementById('terminalStatus'),
     terminalImage: document.getElementById('terminalImage'),
     terminalImageInput: document.getElementById('terminalImageInput'),
+    terminalPaste: document.getElementById('terminalPaste'),
     terminalCtrlC: document.getElementById('terminalCtrlC'),
     terminalQuit: document.getElementById('terminalQuit'),
 
@@ -1273,6 +1274,18 @@
   });
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();
+  });
+  els.terminalPaste.addEventListener('click', async function () {
+    const t = state.terminal;
+    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+      t.ws.send(JSON.stringify({ type: 'input', data: text }));
+      if (t.term) t.term.focus();
+    } catch (exc) {
+      toast('Clipboard unavailable — paste manually', 'error');
+    }
   });
   els.terminalImageInput.addEventListener('change', function () {
     const file = els.terminalImageInput.files && els.terminalImageInput.files[0];
