@@ -17,6 +17,11 @@ import requests
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 8.0
+# Spawning a PTY session is slow (cold pywinpty + claude --remote-control
+# can take 10–20 s on a freshly booted box). Reuse of the 8 s default here
+# was surfacing 'session-host unreachable' to the phone while the spawn was
+# still in flight, prompting retries that stacked orphan sessions.
+_CREATE_TIMEOUT = 45.0
 
 
 def base_url(port: int) -> str:
@@ -35,10 +40,10 @@ class SessionHostError(RuntimeError):
         self.status = status
 
 
-def _request(method: str, port: int, path: str, **kwargs) -> Any:
+def _request(method: str, port: int, path: str, *, timeout: float = _TIMEOUT, **kwargs) -> Any:
     url = base_url(port) + path
     try:
-        resp = requests.request(method, url, timeout=_TIMEOUT, **kwargs)
+        resp = requests.request(method, url, timeout=timeout, **kwargs)
     except requests.RequestException as exc:
         raise SessionHostError(
             f"session-host unreachable on :{port} ({exc})", status=503
@@ -77,6 +82,7 @@ def create_session(
         "POST",
         port,
         "/sessions",
+        timeout=_CREATE_TIMEOUT,
         json={
             "project_dir": project_dir,
             "name": name,
