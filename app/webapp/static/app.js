@@ -1140,8 +1140,27 @@
     } catch (_) { /* optional */ }
     term.open(els.terminalHost);
 
+    // GPU-accelerated renderer. Falls back to the default DOM renderer
+    // on any failure (no WebGL2, driver bug, OS reclaiming the context
+    // under memory pressure). Without the fallback the terminal would
+    // freeze; with it, worst case is same perf as before.
+    let webgl = null;
+    try {
+      if (window.WebglAddon && window.WebglAddon.WebglAddon) {
+        webgl = new window.WebglAddon.WebglAddon();
+        webgl.onContextLoss(function () {
+          try { webgl.dispose(); } catch (_) {}
+          webgl = null;
+        });
+        term.loadAddon(webgl);
+      }
+    } catch (exc) {
+      try { if (webgl) webgl.dispose(); } catch (_) {}
+      webgl = null;
+    }
+
     const ws = new WebSocket(termWsUrl(sid, tt));
-    const t = { sid: sid, ws: ws, term: term, fit: fit, mirror: isMirror };
+    const t = { sid: sid, ws: ws, term: term, fit: fit, webgl: webgl, mirror: isMirror };
     state.terminal = t;
 
     function applySize() {
@@ -1172,6 +1191,15 @@
       setTimeout(applySize, 0);
       t.onWindowResize = applySize;
       window.addEventListener('resize', applySize);
+      // iOS doesn't fire 'resize' when its chrome (URL bar / home
+      // indicator) shows or hides — those changes ride on the
+      // visualViewport API instead. Without re-fitting, xterm keeps
+      // its old row count and the freed pixels show as a dead black
+      // band at the bottom of the overlay.
+      if (window.visualViewport) {
+        t.onVisualViewport = applySize;
+        window.visualViewport.addEventListener('resize', applySize);
+      }
     }
 
     ws.onopen = function () {
@@ -1179,7 +1207,21 @@
       applySize();
       term.focus();
     };
-    ws.onmessage = function (ev) { term.write(ev.data); };
+    ws.onmessage = function (ev) {
+      // tail -f follow: snap back to bottom on new output, but only
+      // if the user was already there. If they scrolled up to read
+      // history, leave them alone — they'll resume auto-follow by
+      // scrolling back to the bottom themselves. The -1 fudge handles
+      // iOS fractional touch-scroll states that would otherwise stick
+      // the view one row above the tail forever.
+      const b = term.buffer.active;
+      const wasAtBottom = b.viewportY >= b.baseY - 1;
+      term.write(ev.data, function () {
+        if (wasAtBottom) {
+          try { term.scrollToBottom(); } catch (_) {}
+        }
+      });
+    };
     ws.onerror = function () { setTerminalStatus('Connection error.'); };
     ws.onclose = function (ev) {
       const reason = (ev && ev.reason) ? ev.reason : '';
@@ -1209,7 +1251,11 @@
     if (!t) return;
     if (t.sizeTimer) clearInterval(t.sizeTimer);
     if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
+    if (t.onVisualViewport && window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', t.onVisualViewport);
+    }
     try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
+    try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
     try { if (t.term) t.term.dispose(); } catch (_) {}
   }
 
