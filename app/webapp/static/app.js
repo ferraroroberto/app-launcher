@@ -1092,6 +1092,7 @@
       closeTerminal();
       els.terminalOverlay.hidden = false;
       document.body.classList.add('terminal-open');
+      lockBodyScroll();
       els.terminalTitle.textContent = session.name || 'session';
       els.terminalHost.innerHTML = '';
       setTerminalStatus(
@@ -1111,6 +1112,7 @@
     closeTerminal();
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
+    lockBodyScroll();
     els.terminalTitle.textContent = session.name || 'session';
     setTerminalStatus('Connecting…');
 
@@ -1211,10 +1213,39 @@
     try { if (t.term) t.term.dispose(); } catch (_) {}
   }
 
+  // iOS PWA rubber-band lets the user drag the whole body while the
+  // terminal overlay is open, tucking the terminal header under the
+  // status bar. Pin the body with position:fixed and stash the scroll
+  // position so we can restore it on close. Idempotent — re-opens from
+  // the sessions list re-enter through openTerminal but the body must
+  // stay pinned with the original scrollY.
+  let _savedScrollY = 0;
+  function lockBodyScroll() {
+    if (document.body.style.position === 'fixed') return;
+    _savedScrollY = window.scrollY || window.pageYOffset || 0;
+    const s = document.body.style;
+    s.position = 'fixed';
+    s.top = '-' + _savedScrollY + 'px';
+    s.left = '0';
+    s.right = '0';
+    s.width = '100%';
+  }
+  function unlockBodyScroll() {
+    if (document.body.style.position !== 'fixed') return;
+    const s = document.body.style;
+    s.position = '';
+    s.top = '';
+    s.left = '';
+    s.right = '';
+    s.width = '';
+    window.scrollTo(0, _savedScrollY);
+  }
+
   function hideTerminal() {
     closeTerminal();
     els.terminalOverlay.hidden = true;
     document.body.classList.remove('terminal-open');
+    unlockBodyScroll();
     els.terminalHost.innerHTML = '';
     setTerminalStatus(null);
     fetchSessions().catch(function () {});
