@@ -66,11 +66,56 @@ The tray icon menu has:
 
 ## Phone install (PWA)
 
-1. Open `https://<pc-hostname>:8445/install-ca` once on iPhone (Safari) → install the trust profile in Settings → General → VPN & Device Management → enable in Settings → General → About → Certificate Trust Settings.
-2. Open the home URL → Safari **Share → Add to Home Screen**. The launcher rocket icon lands on your home screen.
-3. On Android, Chrome shows an "Install app" prompt the second visit. The icon goes on the home screen the same way.
+The launcher is a PWA — installs to the iPhone home screen, full-screen, no Safari chrome. First-time setup is two short detours because the webapp uses a self-signed cert.
+
+**One-time iPhone trust setup**
+
+1. Open `https://<pc-hostname>:8445/install-ca` in Safari → tap **Allow** to download the profile.
+2. **Settings → General → VPN & Device Management** → tap "Launcher Local CA" → **Install** → enter passcode → confirm.
+3. **Settings → General → About → Certificate Trust Settings** (at the very bottom of the About list) → toggle **Launcher Local CA** ON → confirm the warning. *This step is easy to miss — the install in step 2 places the CA in the keychain but does not trust it for TLS.*
+4. **Force-quit Safari** (swipe up, dismiss the Safari card). Safari caches negative-trust decisions per-process; the toggle alone is not enough to flip an already-open page from "Not Secure" to trusted.
+
+**Then install the PWA**
+
+5. Reopen the launcher URL in Safari. Lock icon should be solid, no "Not Secure".
+6. **Share → Add to Home Screen**. The launcher rocket icon lands on your home screen.
+
+On Android, Chrome shows an "Install app" prompt the second visit; the icon goes on the home screen the same way. Android trusts the system store; for manual install the CA is also served as DER at `/static/ca.crt`.
 
 After that the launcher behaves like a native app — full-screen, no Safari chrome.
+
+---
+
+## TLS cert: regenerate every ~13 months
+
+The leaf cert in `webapp/certificates/cert.pem` is capped at **396 days** because Apple/WebKit reject any server cert with a validity period > 398 days (since iOS 14), regardless of how thoroughly the issuing CA is trusted. After ~13 months, Safari will start showing "Not Secure" on the iPhone again — that is the leaf cert expiring, not a regression.
+
+**Routine renewal (no iPhone re-trust needed):**
+
+```powershell
+.\.venv\Scripts\python.exe scripts\gen_ssl_cert.py --skip-install
+# then: tray menu → 🔄 Restart webapp   (or restart tray.bat / webapp.bat)
+```
+
+The script reuses the existing `ca.pem` + `ca.key` if they exist, so the iPhone trust profile installed once stays valid. Only the leaf cert rotates. On the iPhone, force-quit Safari to clear its TLS cache and the next refresh is clean.
+
+**Force a fresh CA (rarely — e.g. CA key compromise):**
+
+```powershell
+.\.venv\Scripts\python.exe scripts\gen_ssl_cert.py --force-new-ca
+```
+
+After this you **must** re-install the trust profile on every device: delete the old "Launcher Local CA" profile in *VPN & Device Management*, then repeat the one-time setup above.
+
+**Troubleshooting "Not Secure" on iPhone despite the profile being installed:**
+
+| Symptom check | Fix |
+| --- | --- |
+| Full Trust toggle is OFF in *Certificate Trust Settings* | toggle it ON (step 3 above) |
+| Safari was already open before trust changed | force-quit Safari (step 4) |
+| Leaf cert > 398 days — `openssl x509 -in webapp/certificates/cert.pem -noout -dates` | regenerate with the script above |
+| Tailnet hostname or LAN IP changed — `openssl x509 -in webapp/certificates/cert.pem -noout -ext subjectAltName` doesn't list it | regenerate with the script above (it rescans hostnames + IPs) |
+| Still rejected after all of the above | reboot the iPhone — iOS occasionally caches negative-trust decisions device-wide |
 
 ---
 

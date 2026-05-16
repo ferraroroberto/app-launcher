@@ -54,7 +54,12 @@ MOBILECONFIG_FILENAME = "launcher-ca.mobileconfig"
 
 CA_COMMON_NAME = "Launcher Local CA"
 CA_ORG = "Launcher"
-CERT_VALIDITY_YEARS = 10
+CA_VALIDITY_DAYS = 365 * 10        # 10 years — CAs can be long-lived
+LEAF_VALIDITY_DAYS = 395           # Apple/WebKit reject leaf certs > 398 days
+                                   # (server certs issued ≥ 2020-09-01). The
+                                   # 1-day backdate below makes the resulting
+                                   # lifetime LEAF_VALIDITY_DAYS + 1 = 396 days,
+                                   # giving a 2-day margin under Apple's cap.
 
 
 def main() -> int:
@@ -69,6 +74,11 @@ def main() -> int:
         type=Path,
         default=CERT_DIR,
         help="Where to write ca.pem / cert.pem / key.pem (default: webapp/certificates/)",
+    )
+    parser.add_argument(
+        "--force-new-ca",
+        action="store_true",
+        help="Mint a new CA even if ca.pem/ca.key already exist (forces iPhone re-trust)",
     )
     args = parser.parse_args()
 
@@ -86,7 +96,7 @@ def main() -> int:
     logger.info(f"🔎 SAN hostnames: {sorted(hostnames)}")
     logger.info(f"🔎 SAN IPs      : {sorted(str(a) for a in ip_addresses)}")
 
-    ca_key, ca_cert = _build_ca()
+    ca_key, ca_cert = _load_or_build_ca(out_dir, force_new=args.force_new_ca)
     leaf_key, leaf_cert = _build_leaf(ca_key, ca_cert, hostnames, ip_addresses)
 
     _write_pem(out_dir / "ca.pem", ca_cert.public_bytes(serialization.Encoding.PEM))
@@ -219,6 +229,40 @@ def _local_ip_addresses() -> Set[ipaddress.IPv4Address]:
 # ------------------------------------------------------ cert builders
 
 
+def _load_or_build_ca(out_dir: Path, force_new: bool = False):
+    """Reuse existing ca.pem/ca.key if present; otherwise mint a new CA.
+
+    Reusing the CA across leaf-cert rotations means the iPhone trust
+    profile installed once stays valid — only the leaf cert needs to
+    cycle (every ~397 days under Apple's TLS lifetime cap).
+    """
+    ca_pem_path = out_dir / "ca.pem"
+    ca_key_path = out_dir / "ca.key"
+    if (
+        not force_new
+        and ca_pem_path.exists()
+        and ca_key_path.exists()
+    ):
+        try:
+            ca_cert = x509.load_pem_x509_certificate(ca_pem_path.read_bytes())
+            ca_key = serialization.load_pem_private_key(
+                ca_key_path.read_bytes(), password=None
+            )
+            remaining = ca_cert.not_valid_after_utc - datetime.now(timezone.utc)
+            logger.info(
+                f"♻️  reusing existing CA from {ca_pem_path} "
+                f"(expires in {remaining.days} days)"
+            )
+            return ca_key, ca_cert
+        except (ValueError, TypeError) as exc:
+            logger.warning(f"⚠️  could not load existing CA ({exc}); minting fresh")
+    if force_new:
+        logger.info("🔁 --force-new-ca: minting fresh CA (iPhone re-trust required)")
+    else:
+        logger.info("🆕 no existing CA found; minting fresh")
+    return _build_ca()
+
+
 def _build_ca():
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([
@@ -233,7 +277,7 @@ def _build_ca():
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - timedelta(days=1))
-        .not_valid_after(now + timedelta(days=365 * CERT_VALIDITY_YEARS))
+        .not_valid_after(now + timedelta(days=CA_VALIDITY_DAYS))
         .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
         .add_extension(
             x509.KeyUsage(
@@ -278,7 +322,7 @@ def _build_leaf(ca_key, ca_cert, hostnames: Set[str], ips: Set[ipaddress.IPv4Add
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
         .not_valid_before(now - timedelta(days=1))
-        .not_valid_after(now + timedelta(days=365 * CERT_VALIDITY_YEARS))
+        .not_valid_after(now + timedelta(days=LEAF_VALIDITY_DAYS))
         .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
         .add_extension(x509.SubjectAlternativeName(san_entries), critical=False)
         .add_extension(
