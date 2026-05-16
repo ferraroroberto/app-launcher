@@ -176,6 +176,11 @@ def find_pids_on_port(port: int) -> List[int]:
 # misses every app after the first — discover by process instead.
 _APP_PROC_HINTS = ("python", "pythonw", "streamlit")
 
+# IANA dynamic/private range — anything ≥ this on loopback is an internal
+# socket (pywinpty opens one per PTY spawn), not a user-launchable app.
+_EPHEMERAL_PORT_MIN = 49152
+_LOOPBACK_PREFIXES = ("127.", "::1")
+
 
 def list_app_listeners() -> List[PortOwner]:
     """Enumerate every LISTEN socket owned by an app-server-like process.
@@ -204,6 +209,11 @@ def list_app_listeners() -> List[PortOwner]:
             continue
         port = conn.laddr.port
         if port in found or conn.pid == own_pid:
+            continue
+        # Skip loopback ephemeral listeners — pywinpty opens one per
+        # PtyProcess.spawn() and they linger after the session ends.
+        ip = getattr(conn.laddr, "ip", "") or ""
+        if port >= _EPHEMERAL_PORT_MIN and ip.startswith(_LOOPBACK_PREFIXES):
             continue
         try:
             proc = psutil.Process(conn.pid)
