@@ -159,32 +159,12 @@ class PtySession:
 
     # --------------------------------------------------------------- io
     def write(self, data: str) -> None:
-        # pywinpty.PtyProcess.write() returns the count of characters
-        # accepted by the ConPTY input pipe — 0 when the pipe is busy,
-        # < len(data) on a partial accept. Ignoring the return value
-        # silently truncates multi-KB pastes from the phone. Retry the
-        # un-accepted tail with a 5 s total budget; warn if budget elapses.
-        if self._exited or not data:
+        if self._exited:
             return
-        deadline = time.monotonic() + 5.0
-        remaining = data
-        while remaining:
-            try:
-                n = self._pty.write(remaining)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
-                return
-            # Some pywinpty paths return None on a clean full write.
-            if n is None or n >= len(remaining):
-                return
-            remaining = remaining[n:]
-            if time.monotonic() >= deadline:
-                logger.warning(
-                    f"⚠️  PTY {self.session_id[:8]} write budget elapsed; "
-                    f"{len(remaining)} chars dropped"
-                )
-                return
-            time.sleep(0.01)
+        try:
+            self._pty.write(data)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))
