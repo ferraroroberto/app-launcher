@@ -350,6 +350,16 @@ To test without a reboot: select the task → **Run** in the right-hand pane.
 curl http://127.0.0.1:8445/healthz
 ```
 
+### Pytest API tests
+
+In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern). 37 tests across 6 files covering `/healthz`, `/api/config` (GET + POST allow-list), `/api/login` + bearer-token gate, `/api/apps` CRUD, `/api/claude-code/generate`, and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
+
+```powershell
+& .\.venv\Scripts\python.exe -m pytest tests -m "not smoke" -v
+```
+
+Runs in about a second. The `-m "not smoke"` flag excludes the live-tray Playwright suite below.
+
 ### Playwright smoke tests
 
 A small `pytest-playwright` suite under `tests/e2e/` catches the boring regressions on the SPA (JS error on boot, empty config form, broken tab switch, missing stop buttons per session kind, missing login overlay).

@@ -37,8 +37,12 @@ pystray>=0.19
 # Windows toast notifications for tray lifecycle events
 winotify>=1.1; sys_platform == "win32"
 
-# End-to-end smoke tests (tests/e2e). After install:
-#   .venv\Scripts\python.exe -m playwright install chromium
+# Pytest API tests (tests/) — in-process FastAPI TestClient.
+# httpx is starlette.testclient's HTTP backend.
 pytest>=8.0
 pytest-asyncio>=0.23
+httpx>=0.27
+
+# End-to-end browser smoke tests (tests/e2e). After install:
+#   .venv\Scripts\python.exe -m playwright install chromium
 pytest-playwright>=0.5
