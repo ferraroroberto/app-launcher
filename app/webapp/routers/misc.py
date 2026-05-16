@@ -27,7 +27,16 @@ async def index() -> FileResponse:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="index.html missing")
-    return FileResponse(str(index_path))
+    # Force Safari (iPhone PWA especially) to revalidate the HTML on every
+    # load. Without this, a stale cached index.html keeps pointing at a
+    # `?v=N` script that no longer exists after a refactor — the page
+    # renders the static skeleton but no JS runs. The HTML body is tiny
+    # (~9 KB) and Starlette already sets ETag + Last-Modified, so the
+    # round-trip is a 304 in the common case.
+    return FileResponse(
+        str(index_path),
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 
 @router.get("/healthz")
