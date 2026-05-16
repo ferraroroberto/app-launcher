@@ -144,8 +144,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
         mode = str(body.get("mode") or "quit")
-        session.stop(mode)
-        return {"ok": True, "mode": mode}
+        close_window = bool(body.get("close_window", False))
+        session.stop(mode, close_window=close_window)
+        return {"ok": True, "mode": mode, "close_window": close_window}
 
     @app.post("/sessions/{sid}/image")
     async def session_image(sid: str, file: UploadFile) -> Dict[str, Any]:

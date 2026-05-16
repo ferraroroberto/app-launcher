@@ -222,6 +222,7 @@ html, body {
   flex-direction: column;
   flex-shrink: 0;
   border-left: 1px solid #2a2f42;
+  gap: 1px;
 }
 .app-item .row-actions .icon-btn {
   flex: 1;
@@ -236,6 +237,9 @@ html, body {
   color: var(--muted);
   cursor: pointer;
 }
+.app-item .row-actions.session-actions .icon-btn {
+  min-height: 44px;
+}
 .app-item .row-actions .icon-btn + .icon-btn {
   border-top: 1px solid #2a2f42;
 }
@@ -244,6 +248,10 @@ html, body {
   color: var(--fg);
 }
 .app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
+.app-item .row-actions .action-stop-close:active {
+  background: rgba(204, 51, 68, 0.2);
+  color: var(--danger);
+}
 .app-item .health-dot {
   display: inline-block;
   width: 8px;

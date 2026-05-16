@@ -494,28 +494,50 @@
       li.appendChild(main);
 
       const actions = document.createElement('div');
-      actions.className = 'row-actions';
+      actions.className = 'row-actions session-actions';
+
       const stopBtn = document.createElement('button');
       stopBtn.type = 'button';
-      stopBtn.className = 'icon-btn danger';
+      stopBtn.className = 'icon-btn action-stop';
       stopBtn.textContent = '⏹️';
-      stopBtn.title = 'Stop session';
+      stopBtn.title = 'Stop (leave window open)';
       stopBtn.setAttribute('aria-label', 'Stop session');
-      stopBtn.addEventListener('click', function () { stopSession(s); });
+      stopBtn.addEventListener('click', function () { stopSession(s, false); });
       actions.appendChild(stopBtn);
+
+      const stopCloseBtn = document.createElement('button');
+      stopCloseBtn.type = 'button';
+      stopCloseBtn.className = 'icon-btn action-stop-close';
+      stopCloseBtn.textContent = '⏏️';
+      stopCloseBtn.title = 'Stop and close window';
+      stopCloseBtn.setAttribute('aria-label', 'Stop and close session');
+      stopCloseBtn.addEventListener('click', function () { stopSession(s, true); });
+      actions.appendChild(stopCloseBtn);
+
       li.appendChild(actions);
 
       host.appendChild(li);
     });
   }
 
-  async function stopSession(s) {
+  async function stopSession(s, closeWindow) {
     const remote = s.kind === 'remote';
-    const msg = remote
-      ? 'Kill the detached session "' + s.name + '"?\n\n' +
-        'Its console window will be force-closed.'
-      : 'Stop the Claude Code session "' + s.name + '"?\n\n' +
-        'It types /quit so Claude can exit cleanly.';
+    let msg;
+    if (closeWindow) {
+      // Stop & Close
+      msg = remote
+        ? 'Stop and close the detached session "' + s.name + '"?\n\n' +
+          'Its console window will be closed.'
+        : 'Stop and close the Claude Code session "' + s.name + '"?\n\n' +
+          'The terminal window will close.';
+    } else {
+      // Just Stop
+      msg = remote
+        ? 'Stop the detached session "' + s.name + '"?\n\n' +
+          'Its console window will stay open showing the output.'
+        : 'Stop the Claude Code session "' + s.name + '"?\n\n' +
+          'The terminal window will stay open, and Claude will exit cleanly.';
+    }
     if (!confirm(msg)) return;
     try {
       await jsonApi(
@@ -524,10 +546,11 @@
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'quit' }),
+          body: JSON.stringify({ mode: 'quit', close_window: closeWindow }),
         }
       );
-      toast((remote ? '🛑 Killing ' : '🛑 Stopping ') + s.name + '…', 'good');
+      const action = closeWindow ? '🛑 Stopping & closing ' : '🛑 Stopping ';
+      toast(action + s.name + '…', 'good');
       if (state.terminal && state.terminal.sid === s.session_id) {
         hideTerminal();
       }

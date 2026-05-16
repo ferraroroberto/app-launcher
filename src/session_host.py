@@ -15,6 +15,7 @@ is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import logging
 import subprocess
 import threading
@@ -242,8 +243,11 @@ class PtySession:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} resize failed: {exc}")
 
-    def stop(self, mode: str = STOP_QUIT) -> None:
-        """Stop the session — clean ``/quit`` by default, or interrupt / kill."""
+    def stop(self, mode: str = STOP_QUIT, close_window: bool = False) -> None:
+        """Stop the session — clean ``/quit`` by default, or interrupt / kill.
+
+        If close_window is True, signal the mirror page to self-close via a shutdown WS frame.
+        """
         try:
             if mode == STOP_INTERRUPT:
                 self._pty.sendintr()
@@ -257,11 +261,27 @@ class PtySession:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} stop({mode}) failed: {exc}")
 
+        # Signal mirror page to self-close if requested.
+        if close_window:
+            self._signal_shutdown_to_subscribers()
+
     def force_kill(self) -> None:
         try:
             self._pty.terminate(force=True)
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} force-kill failed: {exc}")
+
+    def _signal_shutdown_to_subscribers(self) -> None:
+        """Send a shutdown message to all WebSocket subscribers (mirror page)."""
+        import json
+        msg = json.dumps({"type": "shutdown"})
+        with self._ring_lock:
+            subscribers = list(self._subscribers)
+        for queue in subscribers:
+            try:
+                self._loop.call_soon_threadsafe(queue.put_nowait, msg)
+            except Exception:  # noqa: BLE001
+                pass
 
     @property
     def alive(self) -> bool:
@@ -319,23 +339,49 @@ class RemoteSession:
     def alive(self) -> bool:
         return self._proc.poll() is None
 
-    def stop(self, mode: str = STOP_KILL) -> None:
-        """Kill the detached console and its child process tree.
+    def stop(self, mode: str = STOP_KILL, close_window: bool = False) -> None:
+        """Stop the detached console session.
+
+        If close_window is False: send Ctrl+C to gracefully interrupt claude,
+        leaving the cmd.exe window open to show output.
+        If close_window is True: kill the entire process tree (cmd.exe + claude).
 
         ``mode`` is accepted for interface parity with :class:`PtySession`
         but ignored — a remote window has no PTY to send ``/quit`` into.
         """
         if self._proc.poll() is not None:
             return
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
-                capture_output=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
+
+        if close_window:
+            # Kill the entire tree: taskkill /PID <cmd.exe> /T /F
+            try:
+                subprocess.run(
+                    ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                    capture_output=True,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    timeout=10,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
+        else:
+            # Send Ctrl+C to the console group to interrupt claude gracefully.
+            # This lets cmd.exe stay open showing the final output.
+            try:
+                # GenerateConsoleCtrlEvent(CTRL_C_EVENT, dwProcessGroupId)
+                # Ctrl+C = 0, Ctrl+Break = 1
+                ctypes.windll.kernel32.GenerateConsoleCtrlEvent(0, self._proc.pid)
+            except (OSError, AttributeError, TypeError) as exc:
+                logger.debug(f"remote {self.session_id[:8]} Ctrl+C failed: {exc}")
+                # Fallback: if Ctrl+C fails, kill the tree anyway
+                try:
+                    subprocess.run(
+                        ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                        capture_output=True,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                        timeout=10,
+                    )
+                except (OSError, subprocess.SubprocessError):
+                    pass
 
     def force_kill(self) -> None:
         self.stop()
@@ -448,11 +494,11 @@ class SessionManager:
         sessions.sort(key=lambda s: s.started_at)
         return sessions
 
-    def stop(self, session_id: str, mode: str = STOP_QUIT) -> bool:
+    def stop(self, session_id: str, mode: str = STOP_QUIT, close_window: bool = False) -> bool:
         session = self.get(session_id)
         if session is None:
             return False
-        session.stop(mode)
+        session.stop(mode, close_window=close_window)
         return True
 
     def remove(self, session_id: str) -> Optional[Any]:
