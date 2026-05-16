@@ -732,16 +732,17 @@ def create_app() -> FastAPI:
         cfg: WebappConfig = request.app.state.webapp_config
         body = await _maybe_json(request)
         mode = str(body.get("mode") or "quit")
+        close_window = bool(body.get("close_window", False))
         try:
             result = await asyncio.to_thread(
-                session_client.stop, cfg.session_host_port, sid, mode
+                session_client.stop, cfg.session_host_port, sid, mode, close_window
             )
         except session_client.SessionHostError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc))
         audit.audit_event(
-            "session_stop", session=sid, mode=mode, client=_client_ip(request)
+            "session_stop", session=sid, mode=mode, close_window=close_window, client=_client_ip(request)
         )
-        audit.session_log(sid, "stop", mode=mode)
+        audit.session_log(sid, "stop", mode=mode, close_window=close_window)
         return result
 
     @app.post("/api/claude-code/sessions/{sid}/image")
