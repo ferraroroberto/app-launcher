@@ -40,6 +40,167 @@ function setTerminalStatus(msg) {
   }
 }
 
+// Reconnect backoff: 1s, 2s, 4s, then 8s forever (capped). After
+// ~30s of failed attempts we stop retrying and swap the status line
+// into a tappable "Tap to reconnect" affordance.
+const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
+const RECONNECT_GIVE_UP_MS = 30000;
+
+function connectWs(t) {
+  // Re-bind ws.onclose for the previous socket so a late close event
+  // from the dying connection doesn't interfere with the new one.
+  if (t.ws) {
+    try { t.ws.onopen = null; t.ws.onmessage = null;
+      t.ws.onerror = null; t.ws.onclose = null; } catch (_) {}
+  }
+  const ws = new WebSocket(termWsUrl(t.sid, t.tt));
+  t.ws = ws;
+
+  ws.onopen = function () {
+    if (t !== state.terminal) return;
+    t.retryCount = 0;
+    t.giveUpAt = 0;
+    clearReconnect(t);
+    setTerminalStatus(null);
+    if (t.applySize) t.applySize();
+    if (t.term) t.term.focus();
+  };
+  ws.onmessage = function (ev) {
+    if (!t.term) return;
+    // tail -f follow: snap back to bottom on new output, but only
+    // if the user was already there. If they scrolled up to read
+    // history, leave them alone — they'll resume auto-follow by
+    // scrolling back to the bottom themselves. The -1 fudge handles
+    // iOS fractional touch-scroll states that would otherwise stick
+    // the view one row above the tail forever.
+    const b = t.term.buffer.active;
+    const wasAtBottom = b.viewportY >= b.baseY - 1;
+    t.term.write(ev.data, function () {
+      if (wasAtBottom) {
+        try { t.term.scrollToBottom(); } catch (_) {}
+      }
+    });
+  };
+  ws.onerror = function () { /* onclose drives UI */ };
+  ws.onclose = function (ev) {
+    if (t !== state.terminal) return;
+    const reason = (ev && ev.reason) ? ev.reason : '';
+
+    // Final, non-retriable close codes from the session-host.
+    if (ev.code === 4000) { setTerminalStatus('Session ended.'); return; }
+    if (ev.code === 4403) {
+      setTerminalStatus('🔒 ' + (reason || 'Terminal is Tailscale-only') +
+        ' — open the launcher over your Tailscale URL.');
+      return;
+    }
+    if (ev.code === 4404) {
+      setTerminalStatus('Session not found — it may have ended.');
+      return;
+    }
+
+    // Passkey rejected: clear the cached terminal token and route
+    // through the tap-to-reconnect affordance so the next attempt
+    // re-prompts via ensureTerminalToken().
+    if (ev.code === 4401) {
+      clearTerminalToken();
+      t.tt = '';
+      setTapToReconnect(t, '🔒 ' + (reason || 'Passkey unlock required'));
+      return;
+    }
+
+    // Everything else (1000/1001/1006, uvicorn ping timeout, 4502, …)
+    // is the iOS-suspend case in practice — retry with backoff.
+    if (!t.giveUpAt) t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
+    scheduleReconnect(t);
+  };
+}
+
+function scheduleReconnect(t) {
+  if (!t || t !== state.terminal) return;
+  if (t.retryTimer) return;
+
+  if (Date.now() >= t.giveUpAt) {
+    setTapToReconnect(t, 'Tap to reconnect');
+    return;
+  }
+
+  // iOS suspends background pages aggressively. Don't burn retries
+  // while hidden — wait for the page to come back to the foreground
+  // and try once at that moment, then resume the normal backoff.
+  if (document.visibilityState !== 'visible') {
+    setTerminalStatus('Reconnecting when visible…');
+    if (!t.visibilityListener) {
+      t.visibilityListener = function () {
+        if (document.visibilityState === 'visible') {
+          document.removeEventListener('visibilitychange', t.visibilityListener);
+          t.visibilityListener = null;
+          // Reset deadline and counter on wake so the user gets a
+          // fresh 30s window the first time they look at the phone.
+          t.retryCount = 0;
+          t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
+          scheduleReconnect(t);
+        }
+      };
+      document.addEventListener('visibilitychange', t.visibilityListener);
+    }
+    return;
+  }
+
+  const idx = Math.min(t.retryCount || 0, RECONNECT_DELAYS_MS.length - 1);
+  const delay = RECONNECT_DELAYS_MS[idx];
+  t.retryCount = (t.retryCount || 0) + 1;
+  setTerminalStatus('Reconnecting…');
+  t.retryTimer = setTimeout(function () {
+    t.retryTimer = null;
+    if (t !== state.terminal) return;
+    connectWs(t);
+  }, delay);
+}
+
+function setTapToReconnect(t, label) {
+  if (!t || t !== state.terminal || !els.terminalStatus) return;
+  clearReconnect(t);
+  setTerminalStatus(label || 'Tap to reconnect');
+  els.terminalStatus.style.cursor = 'pointer';
+  els.terminalStatus.style.textDecoration = 'underline';
+  t.tapHandler = function () {
+    if (t !== state.terminal) return;
+    els.terminalStatus.removeEventListener('click', t.tapHandler);
+    t.tapHandler = null;
+    els.terminalStatus.style.cursor = '';
+    els.terminalStatus.style.textDecoration = '';
+    t.retryCount = 0;
+    t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
+    setTerminalStatus('Connecting…');
+    // Refresh the terminal token if we lost it (4401 path); otherwise
+    // ensureTerminalToken returns the cached value without prompting.
+    ensureTerminalToken().then(function (tt) {
+      if (t !== state.terminal) return;
+      t.tt = tt;
+      connectWs(t);
+    }).catch(function (exc) {
+      toast('Passkey unlock failed: ' + (exc.message || exc), 'error');
+      setTapToReconnect(t, 'Tap to reconnect');
+    });
+  };
+  els.terminalStatus.addEventListener('click', t.tapHandler);
+}
+
+function clearReconnect(t) {
+  if (!t) return;
+  if (t.retryTimer) { clearTimeout(t.retryTimer); t.retryTimer = null; }
+  if (t.visibilityListener) {
+    document.removeEventListener('visibilitychange', t.visibilityListener);
+    t.visibilityListener = null;
+  }
+  if (t.tapHandler && els.terminalStatus) {
+    els.terminalStatus.removeEventListener('click', t.tapHandler);
+    t.tapHandler = null;
+    els.terminalStatus.style.cursor = '';
+    els.terminalStatus.style.textDecoration = '';
+  }
+}
+
 export async function openTerminal(session) {
   const sid = session.session_id;
   if (!sid) return;
@@ -119,8 +280,11 @@ export async function openTerminal(session) {
     webgl = null;
   }
 
-  const ws = new WebSocket(termWsUrl(sid, tt));
-  const t = { sid: sid, ws: ws, term: term, fit: fit, webgl: webgl, mirror: isMirror };
+  const t = {
+    sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
+    mirror: isMirror, retryCount: 0, giveUpAt: 0,
+    retryTimer: null, visibilityListener: null, tapHandler: null,
+  };
   state.terminal = t;
 
   function applySize() {
@@ -135,12 +299,13 @@ export async function openTerminal(session) {
       return;
     }
     try { if (fit) fit.fit(); } catch (_) {}
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
+    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
+      t.ws.send(JSON.stringify({
         type: 'resize', rows: term.rows, cols: term.cols,
       }));
     }
   }
+  t.applySize = applySize;
 
   if (isMirror) {
     // The phone may rotate or resize — re-sync to its size periodically.
@@ -162,53 +327,20 @@ export async function openTerminal(session) {
     }
   }
 
-  ws.onopen = function () {
-    setTerminalStatus(null);
-    applySize();
-    term.focus();
-  };
-  ws.onmessage = function (ev) {
-    // tail -f follow: snap back to bottom on new output, but only
-    // if the user was already there. If they scrolled up to read
-    // history, leave them alone — they'll resume auto-follow by
-    // scrolling back to the bottom themselves. The -1 fudge handles
-    // iOS fractional touch-scroll states that would otherwise stick
-    // the view one row above the tail forever.
-    const b = term.buffer.active;
-    const wasAtBottom = b.viewportY >= b.baseY - 1;
-    term.write(ev.data, function () {
-      if (wasAtBottom) {
-        try { term.scrollToBottom(); } catch (_) {}
-      }
-    });
-  };
-  ws.onerror = function () { setTerminalStatus('Connection error.'); };
-  ws.onclose = function (ev) {
-    const reason = (ev && ev.reason) ? ev.reason : '';
-    const m = ev.code === 4000 ? 'Session ended.'
-      : ev.code === 4401 ? '🔒 ' + (reason || 'Passkey unlock required') +
-          ' — re-open from Sessions.'
-      : ev.code === 4403 ? '🔒 ' + (reason ||
-          'Terminal is Tailscale-only') + ' — open the launcher over your ' +
-          'Tailscale URL.'
-      : ev.code === 4404 ? 'Session not found — it may have ended.'
-      : ev.code === 4502 ? 'Session host unreachable on the PC.'
-      : (reason || 'Disconnected.');
-    setTerminalStatus(m);
-    if (ev.code === 4401) clearTerminalToken();
-  };
-
   term.onData(function (d) {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'input', data: d }));
+    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
+      t.ws.send(JSON.stringify({ type: 'input', data: d }));
     }
   });
+
+  connectWs(t);
 }
 
 export function closeTerminal() {
   const t = state.terminal;
   state.terminal = null;
   if (!t) return;
+  clearReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
