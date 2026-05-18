@@ -244,6 +244,18 @@ export async function openTerminal(session) {
   const isMirror = !!(state.status && state.status.terminal &&
     state.status.terminal.reason === 'loopback');
 
+  // Mirror window uses a uniquely identifiable OS title so the launcher
+  // can find this Edge --app window via EnumWindows and dismiss it
+  // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
+  // because Edge sets the title from the page after load. The
+  // console.info is intentional — open DevTools on the mirror window
+  // to confirm the title was actually applied if Stop & Close fails.
+  if (isMirror) {
+    const mirrorTitle = 'app-launcher-mirror-' + sid;
+    document.title = mirrorTitle;
+    console.info('[app-launcher] mirror title set:', mirrorTitle);
+  }
+
   const term = new window.Terminal({
     cursorBlink: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',

@@ -25,6 +25,11 @@ python-multipart>=0.0.9
 # Launcher-owned PTY sessions (interactive phone terminal — issue #1)
 pywinpty>=2.0; sys_platform == "win32"
 
+# Win32 window handle lookup + WM_CLOSE for the PC mirror window
+# (issue #20 — Stop & Close on the phone dismisses the Edge --app window
+# without a fresh --user-data-dir profile).
+pywin32>=306; sys_platform == "win32"
+
 # WebAuthn passkey gate for the interactive terminal
 webauthn>=2.0
 

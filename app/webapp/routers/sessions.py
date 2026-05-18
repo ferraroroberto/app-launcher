@@ -17,7 +17,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSock
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 
-from src import audit, session_client
+from src import audit, launcher, session_client
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -53,6 +53,21 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     mode = str(body.get("mode") or "quit")
     close_window = bool(body.get("close_window", False))
+    # Win32 close of the PC mirror window — primary mechanism for Stop &
+    # Close (issue #20). Best-effort: swallow any exception so a busted
+    # HWND can't keep the session alive. The cooperative WS shutdown
+    # below is the fallback for cases where no HWND was ever captured.
+    if close_window:
+        try:
+            posted = launcher.close_mirror_window(sid)
+            logger.debug(
+                f"close_mirror_window({sid[:8]}) returned {posted}; "
+                f"forwarding stop({mode!r}) to session-host"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"🛑 mirror window close raised for {sid[:8]}: {exc}"
+            )
     try:
         result = await asyncio.to_thread(
             session_client.stop, cfg.session_host_port, sid, mode, close_window

@@ -202,8 +202,10 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         ):
             scheme = "https" if cert_present() else "http"
             pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+            # Pass sid so launcher tracks the mirror window's HWND for
+            # Stop & Close to dismiss it later (issue #20).
             asyncio.create_task(
-                asyncio.to_thread(open_local_terminal_window, pc_url)
+                asyncio.to_thread(open_local_terminal_window, pc_url, sid)
             )
         return {
             "launched": entry.id,
