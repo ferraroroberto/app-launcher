@@ -73,6 +73,7 @@ export const els = {
   listenersEmpty: document.getElementById('listenersEmpty'),
   refreshListeners: document.getElementById('refreshListeners'),
   statusReadout: document.getElementById('statusReadout'),
+  buildReadout: document.getElementById('buildReadout'),
 
   scanDialog: document.getElementById('scanDialog'),
   scanResults: document.getElementById('scanResults'),

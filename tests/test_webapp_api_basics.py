@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 
 class TestHealthz:
     def test_healthz_ok(self, webapp_client):
@@ -19,6 +21,66 @@ class TestIndex:
         resp = client.get("/")
         assert resp.status_code == 200
         assert "text/html" in resp.headers.get("content-type", "")
+
+    def test_index_is_no_cache(self, webapp_client):
+        # Index must always be revalidated — without this, the PWA can
+        # hold a stale shell that references a JS bundle that no longer
+        # exists. Cache hygiene contract for issue #30.
+        client, _, _ = webapp_client
+        resp = client.get("/")
+        assert "no-cache" in resp.headers.get("cache-control", "")
+
+    def test_index_stamps_asset_urls(self, webapp_client):
+        # Every /static/<name>.(css|js) referenced from the index must
+        # carry an ?v=<8-hex-chars> stamp so iOS can't cache across an
+        # asset edit.
+        client, _, _ = webapp_client
+        resp = client.get("/")
+        body = resp.text
+        assert "/static/styles.css?v=" in body
+        assert "/static/main.js?v=" in body
+        # No literal ?v=18 left over from the manual era.
+        assert "?v=18" not in body
+        # Stamps are 8 hex chars.
+        stamps = re.findall(r"/static/[\w\-.]+\.(?:css|js)\?v=([a-f0-9]+)", body)
+        assert stamps, "expected at least one stamped asset URL"
+        for stamp in stamps:
+            assert re.fullmatch(r"[a-f0-9]{8}", stamp), stamp
+
+
+class TestStaticCaching:
+    def test_js_served_immutable_year(self, webapp_client):
+        # Hashed assets get year-long immutable cache — safe because the
+        # URL changes on edit.
+        client, _, _ = webapp_client
+        resp = client.get("/static/main.js")
+        assert resp.status_code == 200
+        cache_control = resp.headers.get("cache-control", "")
+        assert "max-age=31536000" in cache_control
+        assert "immutable" in cache_control
+
+    def test_js_imports_get_stamped(self, webapp_client):
+        # JS files have their own ES-module imports rewritten at serve
+        # time, so editing state.js invalidates everything that imports
+        # it transitively (via the shared fleet hash).
+        client, _, _ = webapp_client
+        resp = client.get("/static/main.js")
+        body = resp.text
+        # main.js imports ./state.js, ./api.js, etc — all should be stamped.
+        assert re.search(r"from\s+['\"]\./state\.js\?v=[a-f0-9]{8}['\"]", body)
+        assert re.search(r"from\s+['\"]\./api\.js\?v=[a-f0-9]{8}['\"]", body)
+
+
+class TestVersion:
+    def test_version_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.get("/api/version")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body.keys()) == {"git_sha", "built_at", "asset_hash"}
+        assert isinstance(body["git_sha"], str) and body["git_sha"]
+        assert isinstance(body["built_at"], str) and body["built_at"]
+        assert isinstance(body["asset_hash"], str)
 
 
 class TestStatus:
