@@ -7,36 +7,99 @@ listener→app label mapping uses the registry but doesn't mutate it.
 
 from __future__ import annotations
 
+import datetime as _dt
+import logging
+import subprocess
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse
 
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
+from src.static_versioning import asset_hash_for, rewrite_index_html
 
-from app.webapp.routers._helpers import STATIC_DIR
+from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
+
+_log = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+def _resolve_git_sha() -> str:
+    """Short git SHA, captured once at module import.
+
+    Falls back to ``"unknown"`` if git isn't on PATH or this isn't a
+    repo — both happen in test envs and shouldn't crash startup. The
+    pythonw tray has no console, so we pass ``CREATE_NO_WINDOW`` to
+    keep a stray cmd from flashing AND to avoid the subprocess
+    failing on console-allocation quirks when its parent has none.
+    """
+    # ``-C <path>`` is more robust than ``cwd=`` when something has
+    # already chdir'd; both belt and braces here.
+    cmd = ["git", "-C", str(PROJECT_ROOT), "rev-parse", "--short", "HEAD"]
+    kwargs: Dict[str, Any] = dict(
+        capture_output=True,
+        # pythonw has no stdin handle — without this, subprocess on
+        # Windows can fail with WinError 6 (invalid handle) before
+        # git even runs.
+        stdin=subprocess.DEVNULL,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        result = subprocess.run(cmd, **kwargs)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log.warning("⚠️ /api/version: git rev-parse raised %s: %s", type(exc).__name__, exc)
+        return "unknown"
+    sha = (result.stdout or "").strip()
+    if not sha:
+        _log.warning(
+            "⚠️ /api/version: git rev-parse exit=%s stderr=%r",
+            result.returncode,
+            (result.stderr or "").strip(),
+        )
+        return "unknown"
+    return sha
+
+
+_GIT_SHA = _resolve_git_sha()
+_BUILT_AT = _dt.datetime.now().replace(microsecond=0).isoformat()
+
+
 @router.get("/")
-async def index() -> FileResponse:
+async def index(request: Request) -> HTMLResponse:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="index.html missing")
+    asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
+    body = index_path.read_text(encoding="utf-8")
+    stamped = rewrite_index_html(body, asset_hashes)
     # Force Safari (iPhone PWA especially) to revalidate the HTML on every
     # load. Without this, a stale cached index.html keeps pointing at a
-    # `?v=N` script that no longer exists after a refactor — the page
-    # renders the static skeleton but no JS runs. The HTML body is tiny
-    # (~9 KB) and Starlette already sets ETag + Last-Modified, so the
-    # round-trip is a 304 in the common case.
-    return FileResponse(
-        str(index_path),
+    # `?v=<old hash>` script that no longer exists after a refactor — the
+    # page renders the static skeleton but no JS runs. The HTML body is
+    # tiny (~9 KB) so the round-trip cost is negligible.
+    return HTMLResponse(
+        content=stamped,
         headers={"Cache-Control": "no-cache, must-revalidate"},
     )
+
+
+@router.get("/api/version")
+async def version(request: Request) -> Dict[str, str]:
+    """Build identity. Stable across requests; cached at module load."""
+    asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
+    return {
+        "git_sha": _GIT_SHA,
+        "built_at": _BUILT_AT,
+        "asset_hash": asset_hash_for(asset_hashes, "styles.css") or "",
+    }
 
 
 @router.get("/healthz")

@@ -49,6 +49,21 @@ async function fetchStatus() {
   }
 }
 
+// --------------------------------------------------------- build identity
+async function fetchVersion() {
+  // Visible proof of which build the PWA is running. Catches stale-cache
+  // confusion before it costs a debugging session. Uses jsonApi so the
+  // bearer token is attached — /api/version is auth-gated like the rest.
+  try {
+    const body = await jsonApi('/api/version');
+    const sha = body.git_sha || 'unknown';
+    const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
+    els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
+  } catch (_) {
+    els.buildReadout.textContent = '';
+  }
+}
+
 // --------------------------------------------------------- boot
 async function boot() {
   const fromUrl = tokenFromUrl();
@@ -67,6 +82,7 @@ async function boot() {
   await fetchSessions();
   await fetchListeners();
   await fetchStatus();
+  await fetchVersion();
   await fetchWebauthnStatus();
 
   // PC mirror window opened with ?terminal=<sid> — drop straight in.
