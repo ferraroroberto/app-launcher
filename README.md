@@ -62,6 +62,21 @@ The tray icon menu has:
 - **🔄 Restart webapp** — pick up code changes without losing the tunnel
 - **ℹ️ Status** — quick popup with running state + base URL
 
+### Confirming which build the phone is running
+
+Every `/static/*.{js,css}` URL carries a content-hash query string (`?v=<8 hex>`) computed at boot, so editing any asset busts iOS Safari's cache automatically — no more "did the deploy take?" guessing. Hashed assets are served with `Cache-Control: public, max-age=31536000, immutable`; `index.html` itself stays `no-cache, must-revalidate`.
+
+To verify visually, the Settings panel (bottom of the launcher) shows a build line:
+
+```
+Build: 35caad4 · 2026-05-19 21:34
+```
+
+- **`git_sha`** — `git rev-parse --short HEAD` at the moment the webapp process started. Changes only across commits.
+- **`built_at`** — process start time. Changes on **every** restart, even with no code change — useful as a "did the tray actually restart?" anchor.
+
+Backed by `GET /api/version`, which also returns the current `asset_hash` for quick diff against the PC. The line updates only when the webapp module re-imports (i.e., tray restart or 🔄 Restart webapp) — a phone refresh alone won't move it.
+
 ---
 
 ## Phone install (PWA)
