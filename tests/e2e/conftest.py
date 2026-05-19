@@ -61,10 +61,28 @@ def _require_live_tray(base_url: str) -> None:
         )
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # Default the e2e suite to dual projections (Chromium-desktop + WebKit-iPhone)
+    # when --browser wasn't passed, so WebKit coverage is impossible to forget
+    # (issue #31). Users can still pin a single engine with `--browser chromium`
+    # for a faster dev loop; pytest-playwright treats --browser as append-style.
+    selected = config.option.browser
+    if not selected:
+        selected.extend(["chromium", "webkit"])
+
+
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args: dict) -> dict:
+def browser_context_args(
+    browser_context_args: dict, browser_name: str, playwright
+) -> dict:
     # Self-signed cert on 8445 — the SPA + service-worker won't load otherwise.
-    return {**browser_context_args, "ignore_https_errors": True}
+    args = {**browser_context_args, "ignore_https_errors": True}
+    if browser_name == "webkit":
+        # Project the WebKit engine onto an iPhone 15 Pro Max — viewport,
+        # user_agent, has_touch, is_mobile, device_scale_factor — so the suite
+        # exercises an iPhone-shaped target on Windows (issue #31).
+        args = {**args, **playwright.devices["iPhone 15 Pro Max"]}
+    return args
 
 
 def _seed_token_init_script(token: str) -> str:

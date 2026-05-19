@@ -49,5 +49,7 @@ pytest-asyncio>=0.23
 httpx>=0.27
 
 # End-to-end browser smoke tests (tests/e2e). After install:
-#   .venv\Scripts\python.exe -m playwright install chromium
+#   .venv\Scripts\python.exe -m playwright install chromium webkit
+# Chromium catches markup/JS regressions; WebKit projects the suite onto an
+# iPhone 15 Pro Max viewport so iOS-engine bugs get caught on Windows (#31).
 pytest-playwright>=0.5
