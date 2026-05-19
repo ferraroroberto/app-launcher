@@ -379,17 +379,20 @@ Runs in about a second. The `-m "not smoke"` flag excludes the live-tray Playwri
 
 A small `pytest-playwright` suite under `tests/e2e/` catches the boring regressions on the SPA (JS error on boot, empty config form, broken tab switch, missing stop buttons per session kind, missing login overlay).
 
+Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
+
 One-time setup:
 
 ```powershell
 & .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-& .\.venv\Scripts\python.exe -m playwright install chromium
+& .\.venv\Scripts\python.exe -m playwright install chromium webkit
 ```
 
 Then with the tray running (`tray.bat`):
 
 ```powershell
-.\scripts\run-e2e.ps1
+.\scripts\run-e2e.ps1                       # both projections
+.\scripts\run-e2e.ps1 --browser chromium    # Chromium-only, faster
 # or directly:
 & .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
 ```
