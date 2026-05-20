@@ -414,6 +414,22 @@ The suite runs against the live tray on `https://127.0.0.1:8445` — it does not
 
 The terminal-related regression tests (reconnect, paste, mirror-close) launch a real `claude` PTY via the `launched_pty_session` fixture and force-kill it in teardown — they don't require any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var). The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
 
+### Verifying changes before ship
+
+`run-e2e.ps1` above is the dev loop — fast, but it *skips* the whole e2e suite if the tray isn't up, which is the wrong default for a final check (a forgotten tray looks like a green run). The pre-ship gate closes that hole:
+
+```powershell
+pwsh -File scripts\verify-before-ship.ps1
+```
+
+It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `tests`), the non-e2e pytest suite, then the Playwright e2e suite on both projections — and **boots its own disposable webapp + session-host** on a free port, so it never silently skips:
+
+- A tray on `:8445` may be running or not. Autoboot picks a free port for its webapp and adopts the tray's session-host on `:8446` if one is up, otherwise spawns its own. The existing tray is left untouched.
+- The disposable instance serves HTTPS reusing `webapp/certificates/` (plain HTTP if no cert pair exists). Subprocess output is captured to `webapp/e2e-autoboot-*.log`.
+- It exits non-zero on the first failure and prints total wall time (~20–40 s typical).
+
+Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/session_host*.py` done. The same autoboot path is available to a plain pytest run with `--e2e-autoboot` (or `LAUNCHER_E2E_AUTOBOOT=1`).
+
 ---
 
 ## Files
