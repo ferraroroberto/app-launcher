@@ -21,6 +21,11 @@ VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 @dataclass
 class AppConfig:
     log_level: str = "INFO"
+    # Tailscale (MagicDNS) hostname of this PC, e.g.
+    # "pc.example-tailnet.ts.net". Used to build each running app's remote
+    # URL (https://<tailnet_host>:<port>/) for the Apps tab's Open button.
+    # Empty string disables the feature (Open button hidden / disabled).
+    tailnet_host: str = ""
     # Optional webapp section — when missing, the tray spawns the webapp
     # on `:8445` with default settings. Set webapp.enabled:false to opt out.
     webapp: Dict = field(default_factory=dict)
@@ -41,6 +46,7 @@ def load_app_config(path: Optional[Path] = None) -> AppConfig:
     _validate(raw)
     return AppConfig(
         log_level=raw.get("log_level", "INFO"),
+        tailnet_host=str(raw.get("tailnet_host", "") or ""),
         webapp=raw.get("webapp") or {},
     )
 

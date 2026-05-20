@@ -5,12 +5,12 @@
  * each fetchX() refreshes its slice of state and re-renders.
  */
 
-import { els, state, LISTENERS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
+import { els, state, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { jsonApi, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchSessions, wireSessions } from './sessions.js';
-import { fetchApps, fetchListeners, wireApps } from './apps.js';
+import { fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
 
@@ -81,6 +81,7 @@ async function boot() {
   await fetchApps();
   await fetchSessions();
   await fetchListeners();
+  await fetchRunningApps();
   await fetchStatus();
   await fetchVersion();
   await fetchWebauthnStatus();
@@ -103,6 +104,10 @@ async function boot() {
   setInterval(function () {
     fetchListeners().catch(function () {});
   }, LISTENERS_POLL_MS);
+  setInterval(function () {
+    // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
+    fetchRunningApps().catch(function () {});
+  }, RUNNING_APPS_POLL_MS);
   setInterval(function () {
     fetchWebauthnStatus().catch(function () {});
   }, WEBAUTHN_POLL_MS);

@@ -4,6 +4,7 @@
  *   state.tab          — 'claude' | 'apps'
  *   state.config       — /api/config payload (claude flags + scan paths)
  *   state.apps         — array from /api/apps (each entry carries its own .health)
+ *   state.runningApps  — array from /api/apps/running (launcher-spawned apps)
  *   state.sessions     — array from /api/claude-code/sessions
  *   state.pendingScan  — array from /api/apps/scan, surfaced in scan dialog
  *   state.genPreview   — { workspaces, orphans } for the generate dialog
@@ -23,13 +24,15 @@ export const TT_EXP_KEY = 'launcher.tt.exp';
 
 export const TUNNEL_POLL_MS = 4000;       // refresh tunnel-kind URLs + health
 export const SESSIONS_POLL_MS = 5000;     // refresh running Claude Code sessions
-export const LISTENERS_POLL_MS = 5000;    // refresh running apps (port listeners)
+export const LISTENERS_POLL_MS = 5000;    // refresh port listeners
+export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
 export const WEBAUTHN_POLL_MS = 15000;
 
 export const state = {
   tab: 'claude',
   config: null,
   apps: [],
+  runningApps: [],
   sessions: [],
   pendingScan: [],
   genPreview: null,
@@ -72,6 +75,9 @@ export const els = {
   listenersList: document.getElementById('listenersList'),
   listenersEmpty: document.getElementById('listenersEmpty'),
   refreshListeners: document.getElementById('refreshListeners'),
+  runningAppsList: document.getElementById('runningAppsList'),
+  runningAppsEmpty: document.getElementById('runningAppsEmpty'),
+  refreshRunningApps: document.getElementById('refreshRunningApps'),
   statusReadout: document.getElementById('statusReadout'),
   buildReadout: document.getElementById('buildReadout'),
 

@@ -129,6 +129,39 @@ class TestRenameApp:
         assert resp.json()["app"]["name"] == "Renamed"
 
 
+class TestLaunchAppTracksSpawn:
+    """Non-claude-code launches must register the spawn with app_runtime
+    so the Running apps panel can list + stop them (issue #35)."""
+
+    def test_launch_bat_records_spawn(self, webapp_client, monkeypatch):
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [
+                AppEntry(
+                    id="alpha",
+                    name="Alpha",
+                    kind="streamlit",
+                    bat_path="C:\\stub\\alpha.bat",
+                    added_at=datetime.now().isoformat(),
+                ),
+            ],
+        )
+        monkeypatch.setattr(apps_router, "spawn_bat", lambda _path: 54321)
+        recorded: list[tuple] = []
+        monkeypatch.setattr(
+            apps_router.app_runtime,
+            "record_spawn",
+            lambda *a: recorded.append(a),
+        )
+
+        resp = client.post("/api/apps/alpha/launch")
+        assert resp.status_code == 200
+        assert recorded == [("alpha", "Alpha", "streamlit", 54321)]
+
+
 class TestDeleteApp:
     def test_404_on_unknown_id(self, webapp_client):
         client, _, _ = webapp_client

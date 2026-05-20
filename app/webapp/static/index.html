@@ -69,9 +69,19 @@
     </section>
 
     <section id="paneApps" class="pane" hidden>
-      <section class="card listeners-card">
+      <section class="card sessions-card">
         <div class="card-header">
           <h2>🟢 Running apps</h2>
+          <button id="refreshRunningApps" type="button" class="ghost-btn" title="Refresh">🔄</button>
+        </div>
+        <ul id="runningAppsList" class="card-list" aria-label="Running apps"></ul>
+        <p id="runningAppsEmpty" class="muted small">Nothing running. (A webapp restart forgets running apps — check Port listeners for orphans.)</p>
+        <p class="launcher-note">Only apps launched from here appear — tap a registered app below to start one.</p>
+      </section>
+
+      <section class="card listeners-card">
+        <div class="card-header">
+          <h2>🔌 Port listeners</h2>
           <button id="refreshListeners" type="button" class="ghost-btn" title="Refresh">🔄</button>
         </div>
         <div id="listenersList" class="listeners"></div>

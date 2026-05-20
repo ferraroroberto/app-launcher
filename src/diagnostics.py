@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import os
+import socket
+import ssl
 import threading
 from collections import deque
 from dataclasses import dataclass, field
@@ -171,6 +173,63 @@ def find_pids_on_port(port: int) -> List[int]:
     return sorted(pids)
 
 
+def listening_port_for_pid_tree(root_pid: int) -> Optional[int]:
+    """Return the first port any process in ``root_pid``'s tree LISTENs on.
+
+    Walks ``root_pid`` itself plus every descendant
+    (``psutil.Process.children(recursive=True)``) — a launcher-spawned bat
+    is typically ``cmd.exe`` → ``cmd.exe`` wrapper → ``python.exe``, and the
+    socket belongs to the leaf python. Returns ``None`` when psutil is
+    unavailable, the tree is gone, or nothing in it is listening.
+    """
+    if psutil is None:
+        return None
+    try:
+        root = psutil.Process(root_pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+    procs = [root]
+    try:
+        procs.extend(root.children(recursive=True))
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+
+    for proc in procs:
+        try:
+            for conn in proc.net_connections(kind="inet"):
+                if (
+                    conn.status == psutil.CONN_LISTEN
+                    and conn.laddr
+                    and conn.laddr.port
+                ):
+                    return int(conn.laddr.port)
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
+    return None
+
+
+def detect_local_scheme(port: int, timeout: float = 1.0) -> str:
+    """Probe loopback ``port`` and report ``"https"`` or ``"http"``.
+
+    Apps in this ecosystem are split: the FastAPI siblings serve HTTPS,
+    a default Streamlit server serves plain HTTP. We can't hard-code
+    either — a wrong scheme makes the phone's browser fail the TLS
+    handshake. So we attempt a TLS handshake against ``127.0.0.1:port``:
+    it completing means HTTPS, failing means HTTP. Falls back to
+    ``"http"`` when the port can't be reached on loopback at all.
+    """
+    ctx = ssl._create_unverified_context()
+    try:
+        with socket.create_connection(
+            ("127.0.0.1", port), timeout=timeout
+        ) as sock:
+            with ctx.wrap_socket(sock, server_hostname="127.0.0.1"):
+                return "https"
+    except (ssl.SSLError, OSError):
+        return "http"
+
+
 # Process names that count as "an app server worth offering to kill".
 # Streamlit auto-increments its port past 8501, so a fixed port list
 # misses every app after the first — discover by process instead.
@@ -239,6 +298,42 @@ def list_app_listeners() -> List[PortOwner]:
         found[port] = owner
 
     return [found[p] for p in sorted(found)]
+
+
+def kill_process_tree(pid: int) -> List[int]:
+    """Kill ``pid`` and every descendant; return the PIDs that were killed.
+
+    Sends ``terminate()`` to the whole tree, waits up to 3 s for a clean
+    exit, then ``kill()``s whatever is still alive. A missing process
+    counts as already-killed. Used by the per-instance Stop endpoint.
+    """
+    if psutil is None:
+        return []
+    try:
+        root = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return [pid]
+
+    procs = [root]
+    try:
+        procs.extend(root.children(recursive=True))
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+
+    for proc in procs:
+        try:
+            proc.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    gone, alive = psutil.wait_procs(procs, timeout=3)
+    for proc in alive:
+        try:
+            proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    return [p.pid for p in procs]
 
 
 def kill_pids(pids: List[int]) -> tuple[List[int], List[str]]:

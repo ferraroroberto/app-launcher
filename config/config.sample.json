@@ -1,6 +1,8 @@
 {
   "_comment": "Copy this file to config.json (gitignored) or let the app create it on first 'Save defaults'. Missing keys fall back to src/app_config.py defaults.",
+  "_comment_tailnet_host": "tailnet_host is the Tailscale (MagicDNS) hostname of this PC, e.g. 'pc.example-tailnet.ts.net'. The Apps tab builds each running app's remote URL as <scheme>://<tailnet_host>:<port>/ (http vs https auto-detected per app) so you can tap it open from the phone. Leave it empty to disable the Open button.",
   "log_level": "INFO",
+  "tailnet_host": "pc.example-tailnet.ts.net",
   "webapp": {
     "enabled": true,
     "host": "0.0.0.0",
