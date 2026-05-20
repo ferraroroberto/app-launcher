@@ -635,13 +635,16 @@ body.terminal-open {
   overscroll-behavior: contain;
 }
 /* The element xterm.js actually scrolls is .xterm-viewport, not
-   .terminal-host (host has overflow:hidden). On iOS this is where
-   the -webkit-overflow-scrolling: touch hint earns its keep —
-   inside the rendered window xterm can give the browser a real
-   scrollable area, and iOS will apply native momentum there. */
+   .terminal-host (host has overflow:hidden). iOS won't grant native
+   momentum to xterm's virtualized viewport, so terminal-momentum.js
+   layers a custom fling here (issue #23); -webkit-overflow-scrolling
+   stays as a harmless hint. touch-action: pan-y keeps single-finger
+   drags as vertical pans (the fling handler's preventDefault claims
+   them) while leaving pinch-zoom to the system. */
 .terminal-host .xterm-viewport {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 .terminal-host .xterm { height: 100%; }
 .terminal-status {

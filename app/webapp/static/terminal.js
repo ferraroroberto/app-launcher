@@ -13,6 +13,7 @@
 import { els, state } from './state.js';
 import { jsonApi, readToken, toast } from './api.js';
 import { fetchSessions } from './sessions.js';
+import { wireTouchMomentum } from './terminal-momentum.js';
 import {
   clearTerminalToken,
   ensureTerminalToken,
@@ -76,7 +77,10 @@ function connectWs(t) {
     const b = t.term.buffer.active;
     const wasAtBottom = b.viewportY >= b.baseY - 1;
     t.term.write(ev.data, function () {
-      if (wasAtBottom) {
+      // An active fling yields no follow: snapping to the bottom mid-
+      // glide would fight the inertial scroll (issue #23). Auto-follow
+      // re-engages naturally once the fling settles at the tail.
+      if (wasAtBottom && !t.flinging) {
         try { t.term.scrollToBottom(); } catch (_) {}
       }
     });
@@ -296,8 +300,21 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
+    momentum: null, flinging: false,
   };
   state.terminal = t;
+
+  // Custom touch-momentum (fling) scrolling — iOS never grants xterm's
+  // virtualized viewport native inertia (issue #23). Phone-only: the
+  // PC mirror window scrolls fine with a wheel and has no touch input.
+  if (!isMirror) {
+    const viewport = els.terminalHost.querySelector('.xterm-viewport');
+    if (viewport) {
+      t.momentum = wireTouchMomentum(viewport, {
+        onFlingState: function (active) { t.flinging = active; },
+      });
+    }
+  }
 
   function applySize() {
     if (isMirror) {
@@ -354,6 +371,7 @@ export function closeTerminal() {
   if (!t) return;
   clearReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
+  if (t.momentum) { try { t.momentum.dispose(); } catch (_) {} }
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
