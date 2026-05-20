@@ -251,6 +251,11 @@ html, body {
   background: rgba(204, 51, 68, 0.2);
   color: var(--danger);
 }
+/* Open button before its app has bound a port / with no tailnet_host */
+.app-item .row-actions .icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 .app-item .health-dot {
   display: inline-block;
   width: 8px;

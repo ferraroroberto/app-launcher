@@ -60,22 +60,33 @@ _HWND_POLL_INTERVAL_SECONDS = 0.1
 _mirror_hwnds: Dict[str, int] = {}
 
 
-def spawn_bat(bat_path: Path) -> None:
-    """Open a new visible CMD window that runs the bat and stays open."""
+def spawn_bat(bat_path: Path) -> int:
+    """Open a new visible CMD window that runs the bat and stays open.
+
+    Returns the PID of the spawned ``cmd /c start`` launcher process. The
+    actual app server runs as a descendant of it — the caller pairs this
+    PID with :func:`src.diagnostics.listening_port_for_pid_tree` to learn
+    which port the app eventually bound.
+    """
     if not bat_path.is_file():
         raise OSError(f"BAT file not found: {bat_path}")
-    cmd = ["cmd", "/c", "start", "", "cmd", "/k", str(bat_path)]
+    # `cmd /k` runs the bat and keeps the window open. Spawned directly
+    # (not via `start`) so the new console's cmd.exe stays a *child* of
+    # this process — `start` would detach it and orphan the descendant
+    # tree, breaking the port-discovery walk in app_runtime.
+    cmd = ["cmd", "/k", str(bat_path)]
     creationflags = 0
     if sys.platform == "win32":
         creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore[attr-defined]
-    subprocess.Popen(
+    proc = subprocess.Popen(
         cmd,
         cwd=str(bat_path.parent),
         shell=False,
         creationflags=creationflags,
         close_fds=True,
     )
-    logger.info(f"🚀 spawned bat: {bat_path}")
+    logger.info(f"🚀 spawned bat: {bat_path} (pid {proc.pid})")
+    return proc.pid
 
 
 def spawn_claude_session(

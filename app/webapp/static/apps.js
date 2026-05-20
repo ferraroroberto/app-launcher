@@ -7,7 +7,7 @@
 
 import { els, state } from './state.js';
 import { jsonApi, toast } from './api.js';
-import { fetchSessions } from './sessions.js';
+import { fetchSessions, fmtAgo } from './sessions.js';
 import { openTerminal } from './terminal.js';
 
 // ----------------------------------------------------------- apps list
@@ -138,9 +138,17 @@ async function launchApp(a) {
       // Full-control sessions drop straight into the terminal; detached
       // ones only appear in the running-sessions list.
       if (body.session.kind !== 'remote') openTerminal(body.session);
-    } else if (a.kind === 'tunnel') {
-      // The tunnel URL takes a few seconds to appear — schedule a refresh.
-      setTimeout(fetchApps, 5000);
+    } else if (a.kind !== 'claude-code') {
+      // Non-claude-code: a bat was spawned and is now tracked. Port
+      // discovery is racy (Streamlit takes 1-3 s to bind) so poll the
+      // running-apps list a few times after the launch.
+      fetchRunningApps().catch(function () {});
+      setTimeout(function () { fetchRunningApps().catch(function () {}); }, 1500);
+      setTimeout(function () { fetchRunningApps().catch(function () {}); }, 4000);
+      if (a.kind === 'tunnel') {
+        // The tunnel URL takes a few seconds to appear — schedule a refresh.
+        setTimeout(fetchApps, 5000);
+      }
     }
   } catch (exc) {
     toast('Launch failed: ' + (exc.message || exc), 'error');
@@ -162,6 +170,124 @@ export async function fetchApps() {
   const body = await jsonApi('/api/apps');
   state.apps = body.apps || [];
   renderApps();
+}
+
+// -------------------------------------------------- running apps panel
+// Apps spawned from the launcher (bats). Mirrors the Claude Code tab's
+// Running sessions panel: list, tap-to-open over Tailscale, per-app stop.
+export function renderRunningApps() {
+  const host = els.runningAppsList;
+  host.innerHTML = '';
+  els.runningAppsEmpty.hidden = state.runningApps.length !== 0;
+
+  state.runningApps.forEach(function (r) {
+    const li = document.createElement('li');
+    li.className = 'app-item session-item';
+    li.dataset.pid = r.pid;
+
+    const main = document.createElement('div');
+    main.className = 'app-main';
+
+    // Inert info block — the row itself isn't tappable; actions are
+    // the two buttons. Reuses .launch-btn styling minus the click.
+    const info = document.createElement('div');
+    info.className = 'launch-btn session-open inert';
+
+    const head = document.createElement('div');
+    head.className = 'session-head';
+    const dot = document.createElement('span');
+    dot.className = 'health-dot ' + ((r.alive && r.port) ? 'up' : 'down');
+    head.appendChild(dot);
+    const pill = document.createElement('span');
+    pill.className = 'kind-pill';
+    pill.textContent = r.kind;
+    head.appendChild(pill);
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = r.name;
+    head.appendChild(name);
+    info.appendChild(head);
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    const ago = fmtAgo(r.started_at);
+    const parts = [];
+    if (ago) parts.push('up ' + ago);
+    parts.push(r.port ? ':' + r.port : 'binding…');
+    parts.push('pid ' + r.pid);
+    meta.textContent = parts.join(' · ');
+    info.appendChild(meta);
+    main.appendChild(info);
+    li.appendChild(main);
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions session-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'icon-btn action-open';
+    openBtn.textContent = '🌐';
+    openBtn.setAttribute('aria-label', 'Open app');
+    if (r.url) {
+      openBtn.title = 'Open ' + r.url;
+      openBtn.addEventListener('click', function () {
+        window.open(r.url, '_blank', 'noopener,noreferrer');
+      });
+    } else {
+      openBtn.disabled = true;
+      openBtn.title = r.port
+        ? 'Set tailnet_host in config/config.json to enable Open'
+        : 'Waiting for the app to bind a port…';
+    }
+    actions.appendChild(openBtn);
+
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'icon-btn action-stop-close';
+    stopBtn.textContent = '⏹️';
+    stopBtn.title = 'Stop ' + r.name;
+    stopBtn.setAttribute('aria-label', 'Stop app');
+    stopBtn.addEventListener('click', function () { stopAppInstance(r); });
+    actions.appendChild(stopBtn);
+
+    li.appendChild(actions);
+    host.appendChild(li);
+  });
+}
+
+async function stopAppInstance(r) {
+  if (!confirm('Stop ' + r.name + ' (pid ' + r.pid + ')?')) return;
+  try {
+    await jsonApi(
+      '/api/apps/' + encodeURIComponent(r.app_id) +
+        '/instances/' + r.pid + '/stop',
+      { method: 'POST' }
+    );
+    toast('🛑 Stopped ' + r.name + '.', 'good');
+    // Optimistic removal — the next poll confirms it's gone.
+    state.runningApps = state.runningApps.filter(function (x) {
+      return !(x.app_id === r.app_id && x.pid === r.pid);
+    });
+    renderRunningApps();
+  } catch (exc) {
+    toast('Stop failed: ' + (exc.message || exc), 'error');
+  }
+}
+
+export async function fetchRunningApps() {
+  // Apps-tab-only poll: pause while another tab is showing so the
+  // background interval doesn't hit the API for an invisible panel.
+  if (state.tab !== 'apps') return;
+  try {
+    const body = await jsonApi('/api/apps/running');
+    state.runningApps = body.running || [];
+    renderRunningApps();
+  } catch (exc) {
+    if (String(exc.message) !== 'auth required') {
+      // Best-effort poll — don't spam toasts.
+      console.warn('running apps fetch failed', exc);
+    }
+  }
 }
 
 // ----------------------------------------------------------- rename dialog
@@ -447,6 +573,12 @@ function renderListeners(items) {
 
 export function wireApps() {
   els.refreshListeners.addEventListener('click', fetchListeners);
+  els.refreshRunningApps.addEventListener('click', fetchRunningApps);
+  // Refresh the running-apps panel the moment the Apps tab is opened —
+  // the background poll pauses while the tab is hidden.
+  els.tabApps.addEventListener('click', function () {
+    fetchRunningApps().catch(function () {});
+  });
   wireRenameDialog();
   wireScanDialog();
   wireGenDialog();

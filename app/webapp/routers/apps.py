@@ -16,7 +16,13 @@ from typing import Any, Dict, List, Tuple
 import requests
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, session_client
+from src import app_runtime, audit, session_client
+from src.app_config import AppConfig
+from src.diagnostics import (
+    detect_local_scheme,
+    kill_process_tree,
+    listening_port_for_pid_tree,
+)
 from src.launcher import (
     open_local_terminal_window,
     spawn_bat,
@@ -221,10 +227,65 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             status_code=400, detail=f"app entry {entry.id} has no bat_path"
         )
     try:
-        spawn_bat(Path(entry.bat_path))
+        pid = spawn_bat(Path(entry.bat_path))
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
     return {"launched": entry.id, "name": entry.name, "kind": entry.kind}
+
+
+@router.get("/api/apps/running")
+async def get_running_apps(request: Request) -> Dict[str, Any]:
+    """List apps spawned from the launcher, each bound to its port + URL.
+
+    State is in-process only (see :mod:`src.app_runtime`) — a webapp
+    restart returns an empty list. ``port`` is null until a descendant
+    of the spawned bat binds a socket; ``url`` is null when ``port`` is
+    null or ``tailnet_host`` is unset.
+    """
+    app_runtime.prune_dead()
+    app_config: AppConfig = request.app.state.app_config
+    tailnet_host = (app_config.tailnet_host or "").strip()
+
+    running: List[Dict[str, Any]] = []
+    for inst in app_runtime.list_running():
+        port = await asyncio.to_thread(listening_port_for_pid_tree, inst.pid)
+        url = None
+        if port and tailnet_host:
+            # The app's scheme isn't known up front — probe it so the
+            # phone doesn't get an https URL for a plain-HTTP Streamlit.
+            scheme = await asyncio.to_thread(detect_local_scheme, port)
+            url = f"{scheme}://{tailnet_host}:{port}/"
+        running.append(
+            {
+                "app_id": inst.app_id,
+                "name": inst.name,
+                "kind": inst.kind,
+                "pid": inst.pid,
+                "started_at": int(inst.started_at),
+                "port": port,
+                "url": url,
+                "alive": True,
+            }
+        )
+    return {"running": running}
+
+
+@router.post("/api/apps/{app_id}/instances/{pid}/stop")
+async def stop_app_instance(app_id: str, pid: int) -> Dict[str, Any]:
+    """Kill a launcher-spawned app instance's process tree.
+
+    Returns 404 when ``(app_id, pid)`` isn't a tracked spawn — this
+    endpoint must never kill an arbitrary PID it didn't launch.
+    """
+    if not app_runtime.is_tracked(app_id, pid):
+        raise HTTPException(
+            status_code=404,
+            detail=f"no tracked instance {app_id}/{pid}",
+        )
+    await asyncio.to_thread(kill_process_tree, pid)
+    app_runtime.forget_spawn(app_id, pid)
+    return {"stopped": pid}
 
 
 # --------------------------------------------------------------- helpers

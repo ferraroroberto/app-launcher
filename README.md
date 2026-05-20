@@ -286,6 +286,7 @@ Cross-surface settings (read by tray, CLI, server):
 ```json
 {
   "log_level": "INFO",
+  "tailnet_host": "pc.example-tailnet.ts.net",
   "webapp": {
     "enabled": true,
     "host": "0.0.0.0",
@@ -293,6 +294,14 @@ Cross-surface settings (read by tray, CLI, server):
   }
 }
 ```
+
+`tailnet_host` is the Tailscale (MagicDNS) hostname of this PC. The Apps
+tab's **Running apps** section uses it to build each launched app's
+remote URL (`<scheme>://<tailnet_host>:<port>/`) so you can tap **🌐 Open**
+from the phone and land on the app. The scheme is auto-detected per app
+(a TLS probe of the bound port — `https` for the FastAPI siblings,
+`http` for a plain Streamlit server). Leave it empty (`""`) to disable
+the feature — the Open button is then shown disabled with a hover hint.
 
 ### `config/webapp_config.json`
 
