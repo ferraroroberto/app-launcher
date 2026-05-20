@@ -60,6 +60,14 @@ Windows / PowerShell:
 - Tests (if any exist): `& .\.venv\Scripts\python.exe -m pytest`
 - Webapp boot check: `& .\.venv\Scripts\python.exe -m uvicorn app.webapp.server:app --host 127.0.0.1 --port 8445` then `curl http://127.0.0.1:8445/healthz`.
 
+For any change touching `app/webapp/`, `src/launcher.py`, or `src/session_host*.py`, the pre-ship gate is mandatory before the task is declared done:
+
+```
+pwsh -File scripts/verify-before-ship.ps1
+```
+
+It byte-compiles, runs the non-e2e pytest suite, then the Playwright e2e suite (Chromium + WebKit/iPhone) against a disposable webapp + session-host it boots itself on a free port — a tray on `:8445` may be running or not. It must exit 0. Don't substitute a bare `pytest` run: that silently skips the e2e suite when no tray is up.
+
 If no checker exists for a project, say so explicitly. Don't claim "tests pass" when there are no tests.
 
 ## Documentation discipline
@@ -105,4 +113,4 @@ Phone-first launcher hub for the rest of the home stack. Two surfaces: a **Claud
 - **Stack:** FastAPI + vanilla JS — **not** Streamlit. The Streamlit conventions section in the template does not apply here; do not introduce Streamlit.
 - **Config & secrets:** there is no `.env`. Project config lives in `config/config.json` (committed template only) and runtime UI prefs + secrets in `config/webapp_config.json` (gitignored).
 - The unified app registry lives in `config/apps.json` (gitignored, committed sample in `config/apps.sample.json`). Every row has a `kind` field: `claude-code` | `streamlit` | `webapp` | `tunnel`. The Claude Code tab is `kind == "claude-code"`; the Apps tab is everything else.
-- **Verification:** after any webapp/SPA edit, run the e2e suite with the tray up: `.\scripts\run-e2e.ps1` (both projections, ~60 s) or `--browser chromium` for a ~15 s dev loop. It runs `tests/e2e/test_smoke.py` plus a regression test per closed iPhone bite (cache hygiene, index revalidation, WS reconnect #28, paste button #29, pywinpty loopback hidden, Edge mirror window #20, WebKit viewport #31). See README "Playwright smoke + regression tests" for the full table. The non-browser suite is `pytest tests -m "not smoke" -v`.
+- **Verification:** during a dev loop, run the e2e suite with the tray up — `.\scripts\run-e2e.ps1` (both projections) or `--browser chromium` for a faster pass. It runs `tests/e2e/test_smoke.py` plus a regression test per closed iPhone bite (cache hygiene, index revalidation, WS reconnect #28, paste button #29, pywinpty loopback hidden, Edge mirror window #20, WebKit viewport #31). Before declaring any webapp/launcher/session-host change done, run the full pre-ship gate `pwsh -File scripts/verify-before-ship.ps1` (boots its own disposable webapp + session-host — no tray needed). See README "Playwright smoke + regression tests" and "Verifying changes before ship" for detail. The non-browser suite alone is `pytest tests -m "not smoke" -v`.
