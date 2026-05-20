@@ -375,11 +375,24 @@ In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern
 
 Runs in about a second. The `-m "not smoke"` flag excludes the live-tray Playwright suite below.
 
-### Playwright smoke tests
+### Playwright smoke + regression tests
 
-A small `pytest-playwright` suite under `tests/e2e/` catches the boring regressions on the SPA (JS error on boot, empty config form, broken tab switch, missing stop buttons per session kind, missing login overlay).
+A `pytest-playwright` suite under `tests/e2e/` covers two things:
 
-Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
+- **Boot smoke** (`test_smoke.py`) — JS error on boot, empty config form, broken tab switch, missing stop buttons per session kind, missing login overlay.
+- **iPhone regression net** — one focused test per closed iOS-only bite, so the next regression of any of them surfaces locally before a deploy instead of after an hour of phone-PC round-trips:
+
+  | File | Pins fix from | What would regress without it |
+  | --- | --- | --- |
+  | `test_cache_busting.py` | `35caad4` + `bf76d0d` (#30) | `?v=<hash>` stamps in served `index.html` diverge from on-disk asset bytes (forgot to restart tray after editing JS) |
+  | `test_iphone_revalidate.py` | `696b723` | iOS Safari serves stale `index.html` and references a `?v=<old>` script that no longer exists → empty Model/Effort controls |
+  | `test_terminal_reconnect.py` | `142e2b4` (#28) | Live terminal WS drops on iOS suspend, overlay sticks on "Disconnected." until manual re-open |
+  | `test_paste_button.py` | (#29) | 📋 paste button in iOS PWA reaches `navigator.clipboard.readText()` but bytes never arrive at the session-host |
+  | `test_ports_probe.py` | `d564114` | Pywinpty's loopback ephemerals leak into the Running-apps panel under bogus high ports |
+  | `test_edge_mirror_close.py` | `b946bc8` (#20) | `terminal.js` stops marking the mirror page with `document.title = 'app-launcher-mirror-<sid>'`, EnumWindows can't find the HWND, Stop & Close leaves the Edge `--app` window hanging |
+  | `test_viewport.py` | (#31) | WebKit projection silently loses the iPhone 15 Pro Max descriptor — the whole projection becomes desktop-shaped and the table above stops catching iOS bugs |
+
+Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. A few tests skip on the duplicate projection where the check is browser-agnostic (server-side header inspection, etc.). Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
 
 One-time setup:
 
@@ -388,16 +401,18 @@ One-time setup:
 & .\.venv\Scripts\python.exe -m playwright install chromium webkit
 ```
 
-Then with the tray running (`tray.bat`):
+**Run after every webapp/SPA edit** with the tray up (`tray.bat`):
 
 ```powershell
-.\scripts\run-e2e.ps1                       # both projections
-.\scripts\run-e2e.ps1 --browser chromium    # Chromium-only, faster
+.\scripts\run-e2e.ps1                       # both projections, ~60 s
+.\scripts\run-e2e.ps1 --browser chromium    # Chromium-only, ~15 s — dev loop
 # or directly:
 & .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
 ```
 
-The suite runs against the live tray on `https://127.0.0.1:8445` — it does not boot anything itself. If the tray isn't up, every test is skipped with a clear message instead of hanging.
+The suite runs against the live tray on `https://127.0.0.1:8445` — it does not boot anything itself. If the tray isn't up, every test is skipped with a clear message instead of hanging. Loopback access auto-bypasses the bearer-token middleware and the passkey gate, so no credentials are needed.
+
+The terminal-related regression tests (reconnect, paste, mirror-close) launch a real `claude` PTY via the `launched_pty_session` fixture and force-kill it in teardown — they don't require any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var). The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
 
 ---
 
