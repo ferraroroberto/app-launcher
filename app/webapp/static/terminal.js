@@ -13,6 +13,7 @@
 import { els, state } from './state.js';
 import { jsonApi, readToken, toast } from './api.js';
 import { fetchSessions } from './sessions.js';
+import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
   clearTerminalToken,
   ensureTerminalToken,
@@ -296,8 +297,14 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
+    disposeTouch: null,
   };
   state.terminal = t;
+
+  // Native iOS momentum (fling) scrolling on the phone (issue #23).
+  // Skipped for the PC mirror window — it scrolls with a wheel and
+  // should keep mouse text-selection.
+  if (!isMirror) t.disposeTouch = enableNativeTouchScroll(term);
 
   function applySize() {
     if (isMirror) {
@@ -354,6 +361,7 @@ export function closeTerminal() {
   if (!t) return;
   clearReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
+  if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
