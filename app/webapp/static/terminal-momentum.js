@@ -1,26 +1,30 @@
-/* Touch-momentum (fling) scrolling for the xterm.js viewport — issue #23.
+/* Touch-momentum (fling) scrolling for the xterm.js terminal — issue #23.
  *
- * xterm virtualizes its scrollback, so iOS WebKit never grants the
- * `.xterm-viewport` element native inertial scrolling: from the
- * browser's view the element keeps "jumping" rather than smoothly
- * scrolling. This module layers a custom fling on top — it tracks the
- * finger, drives `viewport.scrollTop` directly (xterm re-renders from
- * the viewport's own `scroll` event), and on release animates a
- * decaying inertial scroll until it settles.
+ * xterm already scrolls on a touch drag: it binds touchstart/touchmove
+ * to its root element (`.xterm`) and tracks the finger 1:1 into
+ * `.xterm-viewport.scrollTop`. What it never does is *fling* — release
+ * the finger and the scroll stops dead, with no inertia.
  *
- * Selection is preserved: a touch that stays within SLOP_PX is never
- * intercepted, so xterm still gets long-press text-select and
- * double-tap word-select. Only once the finger travels past the slop
- * do we claim the gesture as a pan and start calling preventDefault().
+ * This module layers only that missing piece on top. It is purely
+ * additive: it listens on the same root element xterm uses (a passive
+ * observer — it never calls preventDefault or stopPropagation), tracks
+ * the finger's velocity, and on touchend animates a decaying inertial
+ * scroll of `.xterm-viewport`. xterm keeps full ownership of the drag
+ * itself, so text selection, long-press and double-tap are untouched.
+ *
+ * Why the root element and not `.xterm-viewport`: the viewport is a
+ * *sibling* of `.xterm-screen` (the layer the finger actually touches),
+ * so touch events bubble screen → `.xterm` → document and never reach
+ * the viewport. Listeners there would simply never fire.
  *
  * Desktop is untouched — only `touch*` listeners are wired, so wheel
  * scrolling never reaches this code.
  */
 
 // --- Tuning constants (expect 1-2 phone passes to settle) ------------
-// Pixels the finger may travel before a touch is claimed as a pan
-// rather than a tap/long-press handed to xterm for selection.
-const SLOP_PX = 8;
+// Pixels the finger must travel before a release is eligible to fling
+// at all — keeps a tap (with its few px of jitter) from flinging.
+const SLOP_PX = 10;
 // Per-frame velocity multiplier during the inertial decay, normalised
 // to a 60fps frame. Closer to 1 = longer glide; ~0.95 ≈ a natural
 // phone fling.
@@ -34,14 +38,17 @@ const MIN_DECAY_VELOCITY = 0.015;
 // so a pause-then-release ends with ~zero velocity (snap, not fling)
 // instead of carrying a stale speed from the start of the drag.
 const VELOCITY_WINDOW_MS = 100;
-// A reference frame at 60fps — used to keep FRICTION frame-rate
-// independent when the display runs faster or slower.
+// A reference frame at 60fps — keeps FRICTION frame-rate independent
+// when the display runs faster or slower.
 const FRAME_MS = 1000 / 60;
 
 /**
- * Wire custom touch-momentum scrolling onto an xterm `.xterm-viewport`.
+ * Wire custom touch-momentum (fling) scrolling onto an xterm terminal.
  *
- * @param {HTMLElement} viewport  the `.xterm-viewport` scroll element.
+ * @param {HTMLElement} touchTarget  the xterm root element
+ *        (`term.element`) — the element xterm itself binds touch to.
+ * @param {HTMLElement} viewport     the `.xterm-viewport` scroll
+ *        element whose `scrollTop` the fling animates.
  * @param {{onFlingState?: (active: boolean) => void}} [hooks]
  *        onFlingState fires true when an inertial scroll starts and
  *        false when it settles — the caller uses it to suspend
@@ -49,11 +56,10 @@ const FRAME_MS = 1000 / 60;
  * @returns {{dispose: () => void}}  removes every listener and cancels
  *        any in-flight fling animation.
  */
-export function wireTouchMomentum(viewport, hooks) {
+export function wireTouchMomentum(touchTarget, viewport, hooks) {
   let tracking = false;     // a single-finger touch is in progress
-  let panning = false;      // that touch has passed the slop → we own it
+  let moved = false;        // that touch has travelled past the slop
   let startY = 0;           // clientY at touchstart (slop is measured here)
-  let lastY = 0;            // clientY of the previous applied move
   let velocity = 0;         // px/ms, positive = finger moving down
   let flingRaf = 0;         // requestAnimationFrame id, 0 when idle
   const samples = [];       // recent {y, t} touch points for velocity
@@ -125,49 +131,44 @@ export function wireTouchMomentum(viewport, hooks) {
     if (e.touches.length !== 1) { cancelFling(); tracking = false; return; }
     cancelFling();
     tracking = true;
-    panning = false;
-    startY = lastY = e.touches[0].clientY;
+    moved = false;
+    startY = e.touches[0].clientY;
     samples.length = 0;
     pushSample(startY, e.timeStamp || performance.now());
   }
 
   function onTouchMove(e) {
+    // Passive observer: xterm's own touchmove handler does the actual
+    // per-drag scroll. We only sample the finger to measure velocity.
     if (!tracking || e.touches.length !== 1) return;
     const y = e.touches[0].clientY;
-    const now = e.timeStamp || performance.now();
-    // Still inside the slop: ambiguous between a tap/long-press and a
-    // pan. Leave it for xterm so text selection keeps working.
-    if (!panning && Math.abs(y - startY) < SLOP_PX) return;
-    panning = true;
-    // Non-passive listener: claim the gesture so iOS doesn't also
-    // rubber-band or pan the page underneath.
-    if (e.cancelable) e.preventDefault();
-    viewport.scrollTop -= (y - lastY);
-    lastY = y;
-    pushSample(y, now);
+    if (Math.abs(y - startY) >= SLOP_PX) moved = true;
+    pushSample(y, e.timeStamp || performance.now());
   }
 
   function onTouchEnd(e) {
     if (!tracking) return;
     tracking = false;
-    if (!panning) return;
-    panning = false;
+    if (!moved) return;
+    moved = false;
     velocity = currentVelocity((e && e.timeStamp) || performance.now());
     if (Math.abs(velocity) >= MIN_FLING_VELOCITY) startFling();
   }
 
-  viewport.addEventListener('touchstart', onTouchStart, { passive: true });
-  viewport.addEventListener('touchmove', onTouchMove, { passive: false });
-  viewport.addEventListener('touchend', onTouchEnd, { passive: true });
-  viewport.addEventListener('touchcancel', onTouchEnd, { passive: true });
+  // Every listener is passive: this module never cancels or reorders
+  // the events — it only observes them and animates afterwards.
+  touchTarget.addEventListener('touchstart', onTouchStart, { passive: true });
+  touchTarget.addEventListener('touchmove', onTouchMove, { passive: true });
+  touchTarget.addEventListener('touchend', onTouchEnd, { passive: true });
+  touchTarget.addEventListener('touchcancel', onTouchEnd, { passive: true });
 
   return {
     dispose: function () {
       cancelFling();
-      viewport.removeEventListener('touchstart', onTouchStart);
-      viewport.removeEventListener('touchmove', onTouchMove);
-      viewport.removeEventListener('touchend', onTouchEnd);
-      viewport.removeEventListener('touchcancel', onTouchEnd);
+      touchTarget.removeEventListener('touchstart', onTouchStart);
+      touchTarget.removeEventListener('touchmove', onTouchMove);
+      touchTarget.removeEventListener('touchend', onTouchEnd);
+      touchTarget.removeEventListener('touchcancel', onTouchEnd);
     },
   };
 }

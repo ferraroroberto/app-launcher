@@ -1,19 +1,19 @@
 """Regression pin for issue #23 — touch-momentum (fling) scrolling.
 
-xterm's viewport never gets native iOS inertia because the scrollback is
-virtualized; ``terminal-momentum.js`` layers a custom fling on top. This
-test exercises that module directly: it builds a standalone xterm in the
-page, writes enough scrollback to be scrollable, wires the real momentum
-handler onto its ``.xterm-viewport``, and dispatches synthetic touch
-gestures.
+xterm tracks a touch drag 1:1 but never flings on release;
+``terminal-momentum.js`` layers that inertia on top. This test exercises
+the module directly: it builds a standalone xterm in the page, writes
+enough scrollback to be scrollable, wires the real momentum handler onto
+the xterm root element (``term.element`` — the element xterm itself
+binds touch to), and dispatches synthetic touch gestures.
 
 Two properties are pinned:
 
 * A fast swipe keeps scrolling **after** ``touchend`` (inertia) and then
   settles — a broken handler would stop dead on release.
-* A slow drag (samples spaced past the velocity window) does **not**
-  fling — it must stop where the finger left it, so a deliberate
-  reposition isn't overshot.
+* A paused release (finger held still past the velocity window before
+  lifting) does **not** fling — it must stop where the finger left it,
+  so a deliberate reposition isn't overshot.
 
 Building a throwaway Terminal keeps the test deterministic and free of a
 live ``claude`` PTY: the unit under test only needs a scrollable
@@ -56,12 +56,14 @@ async ({ pauseMs }) => {
   // Start pinned at the tail so a downward swipe has the whole
   // scrollback to glide into.
   viewport.scrollTop = viewport.scrollHeight;
-  const momentum = wireTouchMomentum(viewport, {});
+  const momentum = wireTouchMomentum(term.element, viewport, {});
 
   // WebKit refuses `new Touch()` / `new TouchEvent()` ("Illegal
   // constructor"). The momentum handler only reads touches[0].clientY,
-  // touches.length, timeStamp and cancelable, so a plain Event of the
-  // right type with expando touch lists drives it on every engine.
+  // touches.length and timeStamp, so a plain Event of the right type
+  // with expando touch lists drives it on every engine. Dispatched on
+  // term.element so xterm's own per-drag scroll handler also runs —
+  // the same element both listeners are bound to.
   const fire = (type, y) => {
     const pt = { identifier: 1, clientX: 100, clientY: y, pageX: 100, pageY: y };
     const live = type === 'touchend' ? [] : [pt];
@@ -69,7 +71,7 @@ async ({ pauseMs }) => {
     ev.touches = live;
     ev.targetTouches = live;
     ev.changedTouches = [pt];
-    viewport.dispatchEvent(ev);
+    term.element.dispatchEvent(ev);
   };
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const frame = () => new Promise((r) => requestAnimationFrame(r));

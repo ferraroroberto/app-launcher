@@ -304,13 +304,15 @@ export async function openTerminal(session) {
   };
   state.terminal = t;
 
-  // Custom touch-momentum (fling) scrolling — iOS never grants xterm's
-  // virtualized viewport native inertia (issue #23). Phone-only: the
-  // PC mirror window scrolls fine with a wheel and has no touch input.
+  // Custom touch-momentum (fling) scrolling — xterm tracks a touch drag
+  // 1:1 but never flings on release (issue #23). Wire onto the xterm
+  // root element (where xterm itself binds touch) and animate the
+  // viewport's scrollTop. Phone-only: the PC mirror window scrolls
+  // fine with a wheel and has no touch input.
   if (!isMirror) {
     const viewport = els.terminalHost.querySelector('.xterm-viewport');
-    if (viewport) {
-      t.momentum = wireTouchMomentum(viewport, {
+    if (term.element && viewport) {
+      t.momentum = wireTouchMomentum(term.element, viewport, {
         onFlingState: function (active) { t.flinging = active; },
       });
     }
