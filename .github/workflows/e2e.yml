@@ -1,0 +1,53 @@
+# Pre-ship gate on CI (issue #38, deferred from #33 scope D).
+#
+# Runs the exact same gate as the local `scripts/verify-before-ship.ps1` so the
+# checks run without relying on the developer remembering. The local gate stays
+# the contract — this workflow is supplementary.
+#
+# windows-latest is mandatory: pywinpty is Windows-only and the e2e suite spawns
+# real PTYs. `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`,
+# so the workflow creates `.venv` and installs into it — the script is untouched.
+name: e2e
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-before-ship:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create .venv and install deps
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: .\.venv\Scripts\python.exe -m playwright install chromium webkit
+
+      - name: Seed config files from committed samples
+        # config.json / webapp_config.json / apps.json are gitignored — only the
+        # *.sample.json templates are checked in. Without the real files the
+        # e2e `webapp_config` fixture skips, cascading through `auth_token` and
+        # silently skipping the whole authed suite. Loopback bypasses the bearer
+        # middleware, so the sample tokens are sufficient (see tests/e2e/conftest.py).
+        run: |
+          Copy-Item config/config.sample.json config/config.json
+          Copy-Item config/webapp_config.sample.json config/webapp_config.json
+          Copy-Item config/apps.sample.json config/apps.json
+
+      - name: Run pre-ship gate
+        run: pwsh -File scripts/verify-before-ship.ps1
