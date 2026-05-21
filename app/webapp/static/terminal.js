@@ -11,7 +11,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, readToken, toast } from './api.js';
+import { readToken, toast } from './api.js';
 import { fetchSessions } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
@@ -403,6 +403,7 @@ function unlockBodyScroll() {
 
 export function hideTerminal() {
   closeTerminal();
+  closeKeysPopover();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
   unlockBodyScroll();
@@ -437,33 +438,74 @@ async function sendImage(file) {
   }
 }
 
-export function wireTerminal() {
-  els.terminalBack.addEventListener('click', hideTerminal);
-  els.terminalCtrlC.addEventListener('click', function () {
+// On-screen keys popover (issue #36): a D-pad of arrow/Esc/Tab/Enter
+// keys for iPhone keyboards (SwiftKey etc.) that lack them, so Claude's
+// TUI prompts are navigable from the phone. Each key sends the matching
+// VT/xterm escape sequence over the same WS `input` channel as paste.
+const KEY_BYTES = {
+  up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D',
+  enter: '\r', esc: '\x1b', tab: '\t',
+};
+
+let _keysOutsideHandler = null;
+
+function closeKeysPopover() {
+  if (!els.terminalKeysPopover) return;
+  els.terminalKeysPopover.hidden = true;
+  if (_keysOutsideHandler) {
+    document.removeEventListener('pointerdown', _keysOutsideHandler);
+    _keysOutsideHandler = null;
+  }
+}
+
+function openKeysPopover() {
+  if (!els.terminalKeysPopover) return;
+  els.terminalKeysPopover.hidden = false;
+  // Close on any tap outside the popover or its toggle button. The
+  // opening tap's pointerdown has already fired by the time this click
+  // handler runs, so binding now won't catch it; the contains() guards
+  // cover a tap on the ⌨️ button itself.
+  if (!_keysOutsideHandler) {
+    _keysOutsideHandler = function (ev) {
+      if (els.terminalKeysPopover.contains(ev.target) ||
+          els.terminalKeys.contains(ev.target)) return;
+      closeKeysPopover();
+    };
+    document.addEventListener('pointerdown', _keysOutsideHandler);
+  }
+}
+
+function wireKeysPopover() {
+  els.terminalKeys.addEventListener('click', function () {
+    if (els.terminalKeysPopover.hidden) {
+      openKeysPopover();
+      // Opening the popover means the user is about to drive a prompt,
+      // which lives at the tail — snap to the bottom like the ↓ button.
+      const t = state.terminal;
+      if (t && t.term) { try { t.term.scrollToBottom(); } catch (_) {} }
+    } else {
+      closeKeysPopover();
+    }
+  });
+  // Delegated: the popover stays open across arrow/Tab taps so the user
+  // can chain `↓ ↓ ↵`; Enter/Esc usually end a prompt, so they close it.
+  els.terminalKeysPopover.addEventListener('click', function (ev) {
+    const btn = ev.target.closest('.key-btn');
+    if (!btn) return;
+    const bytes = KEY_BYTES[btn.getAttribute('data-key')];
+    if (!bytes) return;
     const t = state.terminal;
     if (t && t.ws && t.ws.readyState === WebSocket.OPEN) {
-      t.ws.send(JSON.stringify({ type: 'input', data: '\x03' }));
+      t.ws.send(JSON.stringify({ type: 'input', data: bytes }));
     }
     if (t && t.term) t.term.focus();
+    if (bytes === '\r' || bytes === '\x1b') closeKeysPopover();
   });
-  els.terminalQuit.addEventListener('click', async function () {
-    const t = state.terminal;
-    if (!t) return;
-    if (!confirm('Quit this Claude session?')) return;
-    try {
-      await jsonApi(
-        '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/stop',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'quit' }),
-        }
-      );
-      toast('🛑 Quitting…', 'good');
-    } catch (exc) {
-      toast('Quit failed: ' + (exc.message || exc), 'error');
-    }
-  });
+}
+
+export function wireTerminal() {
+  els.terminalBack.addEventListener('click', hideTerminal);
+  wireKeysPopover();
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();
   });
