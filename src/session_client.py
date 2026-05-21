@@ -123,11 +123,19 @@ def stop(port: int, session_id: str, mode: str = "quit", close_window: bool = Fa
 
 
 def upload_image(
-    port: int, session_id: str, filename: str, content: bytes, content_type: str
+    port: int,
+    session_id: str,
+    filename: str,
+    content: bytes,
+    content_type: str,
+    inline: bool = False,
 ) -> Dict[str, Any]:
+    """Upload an image into a session. With ``inline`` the session-host
+    skips pasting the path into the PTY and just returns it (issue #41)."""
     return _request(
         "POST",
         port,
         f"/sessions/{session_id}/image",
         files={"file": (filename, content, content_type)},
+        params={"inline": "1"} if inline else None,
     )
