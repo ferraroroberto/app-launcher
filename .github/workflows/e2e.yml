@@ -38,5 +38,16 @@ jobs:
       - name: Install Playwright browsers
         run: .\.venv\Scripts\python.exe -m playwright install chromium webkit
 
+      - name: Seed config files from committed samples
+        # config.json / webapp_config.json / apps.json are gitignored — only the
+        # *.sample.json templates are checked in. Without the real files the
+        # e2e `webapp_config` fixture skips, cascading through `auth_token` and
+        # silently skipping the whole authed suite. Loopback bypasses the bearer
+        # middleware, so the sample tokens are sufficient (see tests/e2e/conftest.py).
+        run: |
+          Copy-Item config/config.sample.json config/config.json
+          Copy-Item config/webapp_config.sample.json config/webapp_config.json
+          Copy-Item config/apps.sample.json config/apps.json
+
       - name: Run pre-ship gate
         run: pwsh -File scripts/verify-before-ship.ps1
