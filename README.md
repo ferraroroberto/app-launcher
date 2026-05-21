@@ -142,6 +142,15 @@ Launching a Claude Code project in **full control** mode (the default — the �
 
 When the same session is also open on the PC (the mirror window), the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
 
+**Terminal toolbar**
+
+A small toolbar sits under the terminal for the things a phone keyboard can't do well:
+
+- **⌨️ Keys** — a popover D-pad of arrow / `Esc` / `Tab` / `Enter` keys for iPhone keyboards (SwiftKey etc.) that lack them, so Claude's TUI prompts stay navigable (#36).
+- **✏️ Compose** — toggles a slim predictive `<textarea>` above the keyboard. xterm.js wipes its own helper textarea on every keystroke, so iOS/Android autocomplete can't suggest there; the compose bar is a plain textarea, so it can. `➤` Send forwards the buffered text + `Enter` to the PTY in one frame. Hidden in the PC mirror window (#37).
+- **📋 Paste** — reads the clipboard. Bar **closed**: sends straight to the PTY. Bar **open**: drops the text into the textarea at the caret for review before Send.
+- **🖼 Image** — uploads a phone image. A terminal can't hold an image, so the file is saved on the PC and Claude is handed its **file path** (Claude reads the image from that path). Bar **closed**: the path is pasted straight into Claude's prompt. Bar **open** (`?inline=1`, #41): the session-host skips the paste and returns the path, which is inserted into the textarea — so several images + text can be composed and sent together.
+
 **How it's wired**
 
 - A separate long-lived **session-host** process (loopback-only, port `8446`) owns every `claude` ConPTY. The tray starts and owns it like it owns `cloudflared`. Because it's its own process, a *Restart webapp* doesn't kill running sessions (a PC reboot still does).
@@ -404,7 +413,7 @@ A `pytest-playwright` suite under `tests/e2e/` covers two things:
   | `test_viewport.py` | (#31) | WebKit projection silently loses the iPhone 15 Pro Max descriptor — the whole projection becomes desktop-shaped and the table above stops catching iOS bugs |
   | `test_terminal_native_scroll.py` | (#23) | `.xterm-screen` stops being `pointer-events:none`, so touches no longer fall through to `.xterm-viewport` and the phone loses iOS native momentum scrolling |
   | `test_keys_popover.py` | (#36) | `⌨️` popover stops sending arrow/Esc/Tab/Enter escape sequences over the WS, so iPhone keyboards without those keys can't drive Claude's TUI prompts |
-  | `test_compose_bar.py` | (#37) | `✏️` compose bar's `➤` Send stops forwarding `<text>\r` to the PTY, or the bar leaks into the PC mirror window where it doesn't belong |
+  | `test_compose_bar.py` | (#37, #41) | `✏️` compose bar's `➤` Send stops forwarding `<text>\r` to the PTY, the bar leaks into the PC mirror window, or `🖼` stops dropping the uploaded image path into the bar when it's open |
 
 Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. A few tests skip on the duplicate projection where the check is browser-agnostic (server-side header inspection, etc.). Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
 

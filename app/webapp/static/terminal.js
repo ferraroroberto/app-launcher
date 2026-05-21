@@ -423,6 +423,10 @@ export function hideTerminal() {
 async function sendImage(file) {
   const t = state.terminal;
   if (!t || !file) return;
+  // Compose bar open: ask the session-host to skip the paste-into-PTY
+  // step (inline=1) and just return the stored path, so we can drop it
+  // into the textarea for review-before-send — mirroring 📋 (issue #41).
+  const inline = !!t.composeOpen;
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   try {
@@ -432,15 +436,28 @@ async function sendImage(file) {
     const tt = readTerminalToken();
     if (tt) headers.set('X-Terminal-Token', tt);
     const res = await fetch(
-      '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image',
+      '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image' +
+        (inline ? '?inline=1' : ''),
       { method: 'POST', headers: headers, body: fd }
     );
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });
       throw new Error((b && b.detail) || ('HTTP ' + res.status));
     }
-    toast('🖼️ Image sent — its path was pasted into the prompt.', 'good');
-    if (t.term) t.term.focus();
+    if (inline) {
+      const body = await res.json().catch(function () { return null; });
+      const path = body && body.path;
+      if (path) {
+        const ta = els.terminalComposeInput;
+        ta.setRangeText(path, ta.selectionStart, ta.selectionEnd, 'end');
+        growComposeInput();
+        ta.focus();
+      }
+      toast('🖼️ Image uploaded — path added to the compose bar.', 'good');
+    } else {
+      toast('🖼️ Image sent — its path was pasted into the prompt.', 'good');
+      if (t.term) t.term.focus();
+    }
   } catch (exc) {
     toast('Image failed: ' + (exc.message || exc), 'error');
   }

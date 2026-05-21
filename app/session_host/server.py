@@ -149,14 +149,19 @@ def create_app() -> FastAPI:
         return {"ok": True, "mode": mode, "close_window": close_window}
 
     @app.post("/sessions/{sid}/image")
-    async def session_image(sid: str, file: UploadFile) -> Dict[str, Any]:
+    async def session_image(
+        sid: str, file: UploadFile, inline: bool = False
+    ) -> Dict[str, Any]:
         session = manager.get(sid)
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         path = await _save_image(session.project_dir, file)
-        # Bracketed paste so the Claude TUI takes the path as one unit.
-        session.write(f"\x1b[200~{path}\x1b[201~")
-        return {"ok": True, "path": path}
+        # inline=1 (compose bar open): skip the paste — the caller drops the
+        # returned path into the textarea for review-before-send (issue #41).
+        if not inline:
+            # Bracketed paste so the Claude TUI takes the path as one unit.
+            session.write(f"\x1b[200~{path}\x1b[201~")
+        return {"ok": True, "path": path, "inline": inline}
 
     @app.websocket("/sessions/{sid}/ws")
     async def session_ws(websocket: WebSocket, sid: str) -> None:

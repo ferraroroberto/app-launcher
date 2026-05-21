@@ -85,8 +85,14 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
 async def session_image(
     sid: str, request: Request, file: UploadFile = File(...)
 ) -> Dict[str, Any]:
-    """Upload an image into a session (Tailscale-only + passkey)."""
+    """Upload an image into a session (Tailscale-only + passkey).
+
+    ``?inline=1`` (compose bar open) tells the session-host to skip the
+    paste-into-PTY step and just return the stored path so the browser
+    can drop it into the compose textarea for review (issue #41).
+    """
     cfg: WebappConfig = request.app.state.webapp_config
+    inline = request.query_params.get("inline") in ("1", "true")
     content = await file.read()
     try:
         result = await asyncio.to_thread(
@@ -96,11 +102,12 @@ async def session_image(
             file.filename or "image.png",
             content,
             file.content_type or "application/octet-stream",
+            inline,
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     audit.session_log(
-        sid, "image", path=result.get("path"), bytes=len(content)
+        sid, "image", path=result.get("path"), bytes=len(content), inline=inline
     )
     return result
 
