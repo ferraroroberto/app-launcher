@@ -404,6 +404,7 @@ A `pytest-playwright` suite under `tests/e2e/` covers two things:
   | `test_viewport.py` | (#31) | WebKit projection silently loses the iPhone 15 Pro Max descriptor — the whole projection becomes desktop-shaped and the table above stops catching iOS bugs |
   | `test_terminal_native_scroll.py` | (#23) | `.xterm-screen` stops being `pointer-events:none`, so touches no longer fall through to `.xterm-viewport` and the phone loses iOS native momentum scrolling |
   | `test_keys_popover.py` | (#36) | `⌨️` popover stops sending arrow/Esc/Tab/Enter escape sequences over the WS, so iPhone keyboards without those keys can't drive Claude's TUI prompts |
+  | `test_compose_bar.py` | (#37) | `✏️` compose bar's `➤` Send stops forwarding `<text>\r` to the PTY, or the bar leaks into the PC mirror window where it doesn't belong |
 
 Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. A few tests skip on the duplicate projection where the check is browser-agnostic (server-side header inspection, etc.). Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
 

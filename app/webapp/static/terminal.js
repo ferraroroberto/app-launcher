@@ -245,6 +245,12 @@ export async function openTerminal(session) {
   const isMirror = !!(state.status && state.status.terminal &&
     state.status.terminal.reason === 'loopback');
 
+  // The compose bar (issue #37) is phone-only — the PC mirror already
+  // has a real keyboard with full predictive support. Reset the button
+  // visible on every (non-mirror) open so a prior mirror open can't
+  // leave it stuck hidden.
+  els.terminalCompose.hidden = isMirror;
+
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
@@ -297,7 +303,7 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
-    disposeTouch: null,
+    disposeTouch: null, composeOpen: false,
   };
   state.terminal = t;
 
@@ -359,6 +365,8 @@ export function closeTerminal() {
   const t = state.terminal;
   state.terminal = null;
   if (!t) return;
+  // Drop compose state so a re-open never shows a stale bar/draft.
+  resetComposeBar();
   clearReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
@@ -503,9 +511,63 @@ function wireKeysPopover() {
   });
 }
 
+// Compose bar (issue #37): a normal <textarea> with default predictive/
+// autocorrect/spellcheck so iOS/Android keyboards offer suggestions —
+// which they can't inside xterm's per-keystroke-wiped helper textarea.
+// ➤ Send forwards the buffered text + \r to the PTY in one WS frame.
+
+function growComposeInput() {
+  // Auto-grow up to ~4 rows; the iOS return key adds newlines, only
+  // ➤ Send forwards to the PTY.
+  const ta = els.terminalComposeInput;
+  ta.style.height = 'auto';
+  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+  ta.style.height = Math.min(ta.scrollHeight, 4 * lineHeight + 16) + 'px';
+}
+
+function resetComposeBar() {
+  els.terminalComposeBar.hidden = true;
+  els.terminalComposeInput.value = '';
+  els.terminalComposeInput.style.height = '';
+}
+
+function setComposeOpen(open) {
+  const t = state.terminal;
+  if (!t) return;
+  t.composeOpen = open;
+  els.terminalComposeBar.hidden = !open;
+  if (open) {
+    // Focusing the textarea pops the phone keyboard with predictive on.
+    els.terminalComposeInput.focus();
+  } else if (t.term) {
+    // Direct mode resumes — hand focus back to xterm.
+    t.term.focus();
+  }
+}
+
+function wireCompose() {
+  els.terminalCompose.addEventListener('click', function () {
+    const t = state.terminal;
+    if (!t) return;
+    setComposeOpen(!t.composeOpen);
+  });
+  els.terminalComposeSend.addEventListener('click', function () {
+    const t = state.terminal;
+    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+    const text = els.terminalComposeInput.value;
+    if (!text) return;
+    t.ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+    els.terminalComposeInput.value = '';
+    els.terminalComposeInput.style.height = '';
+    els.terminalComposeInput.focus();
+  });
+  els.terminalComposeInput.addEventListener('input', growComposeInput);
+}
+
 export function wireTerminal() {
   els.terminalBack.addEventListener('click', hideTerminal);
   wireKeysPopover();
+  wireCompose();
   els.terminalImage.addEventListener('click', function () {
     els.terminalImageInput.click();
   });
@@ -517,10 +579,20 @@ export function wireTerminal() {
   });
   els.terminalPaste.addEventListener('click', async function () {
     const t = state.terminal;
-    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+    if (!t) return;
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
+      // Compose bar open: drop the clipboard at the textarea caret so
+      // the user can review/edit before Send — don't WS-send.
+      if (t.composeOpen) {
+        const ta = els.terminalComposeInput;
+        ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end');
+        growComposeInput();
+        ta.focus();
+        return;
+      }
+      if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
       t.ws.send(JSON.stringify({ type: 'input', data: text }));
       if (t.term) t.term.focus();
     } catch (exc) {

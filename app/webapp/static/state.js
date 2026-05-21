@@ -116,6 +116,10 @@ export const els = {
   terminalJumpEnd: document.getElementById('terminalJumpEnd'),
   terminalKeys: document.getElementById('terminalKeys'),
   terminalKeysPopover: document.getElementById('terminalKeysPopover'),
+  terminalCompose: document.getElementById('terminalCompose'),
+  terminalComposeBar: document.getElementById('terminalComposeBar'),
+  terminalComposeInput: document.getElementById('terminalComposeInput'),
+  terminalComposeSend: document.getElementById('terminalComposeSend'),
 
   webauthnStatus: document.getElementById('webauthnStatus'),
   webauthnDevices: document.getElementById('webauthnDevices'),

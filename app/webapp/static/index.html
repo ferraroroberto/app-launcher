@@ -186,6 +186,7 @@
         <button id="terminalJumpEnd" type="button" class="term-btn" title="Jump to latest">↓</button>
         <button id="terminalPaste" type="button" class="term-btn" title="Paste from clipboard">📋</button>
         <button id="terminalImage" type="button" class="term-btn" title="Send image">🖼️</button>
+        <button id="terminalCompose" type="button" class="term-btn" title="Compose text with predictive keyboard">✏️</button>
         <button id="terminalKeys" type="button" class="term-btn" title="Keyboard keys">⌨️</button>
       </div>
       <div id="terminalKeysPopover" class="keys-popover" hidden>
@@ -201,6 +202,15 @@
       </div>
     </div>
     <div id="terminalHost" class="terminal-host"></div>
+    <div id="terminalComposeBar" class="compose-bar" hidden>
+      <textarea
+        id="terminalComposeInput"
+        class="compose-input"
+        rows="1"
+        placeholder="Type a prompt — predictive on. ➤ to send."
+        enterkeyhint="enter"></textarea>
+      <button id="terminalComposeSend" type="button" class="compose-send" title="Send (with Enter)">➤</button>
+    </div>
     <div id="terminalStatus" class="terminal-status" hidden></div>
     <input id="terminalImageInput" type="file" accept="image/*" hidden>
   </div>
