@@ -50,17 +50,25 @@ def test_claude_options_populated(authed_page: Page, base_url: str) -> None:
 
 def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:
     _navigate_collecting_errors(authed_page, base_url)
-    sessions_list = authed_page.locator("#sessionsList")
-    expect(sessions_list).to_be_attached()
-    # Either the list has rows OR the empty-state paragraph is visible —
-    # both are valid; we only fail if neither is true.
-    items = sessions_list.locator("li.session-item").count()
-    if items == 0:
-        empty = authed_page.locator("#sessionsEmpty")
-        expect(empty).to_be_visible()
-        expect(empty).to_have_text(
-            "No sessions launched from here yet — tap a project below to start one."
-        )
+    expect(authed_page.locator("#sessionsList")).to_be_attached()
+    # The panel is valid when it has rows OR the empty-state paragraph
+    # (with its copy) is showing. The old test snapshotted the row count
+    # and *then* asserted on #sessionsEmpty — between the two, the 5 s
+    # fetchSessions poll could re-render, flip #sessionsEmpty to hidden,
+    # and add a row, so the assertion saw the now-hidden paragraph (#39).
+    # Evaluate both halves atomically in one retried wait_for_function so
+    # a mid-test re-render can never split the check.
+    authed_page.wait_for_function(
+        """() => {
+          const list = document.getElementById('sessionsList');
+          const empty = document.getElementById('sessionsEmpty');
+          if (!list || !empty) return false;
+          if (list.querySelectorAll('li.session-item').length > 0) return true;
+          return !empty.hidden && empty.textContent.trim() ===
+            'No sessions launched from here yet — tap a project below to start one.';
+        }""",
+        timeout=10_000,
+    )
 
 
 def test_tabs_switch(authed_page: Page, base_url: str) -> None:
