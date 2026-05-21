@@ -1,0 +1,42 @@
+# Pre-ship gate on CI (issue #38, deferred from #33 scope D).
+#
+# Runs the exact same gate as the local `scripts/verify-before-ship.ps1` so the
+# checks run without relying on the developer remembering. The local gate stays
+# the contract — this workflow is supplementary.
+#
+# windows-latest is mandatory: pywinpty is Windows-only and the e2e suite spawns
+# real PTYs. `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`,
+# so the workflow creates `.venv` and installs into it — the script is untouched.
+name: e2e
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-before-ship:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Create .venv and install deps
+        run: |
+          python -m venv .venv
+          .\.venv\Scripts\python.exe -m pip install --upgrade pip
+          .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: .\.venv\Scripts\python.exe -m playwright install chromium webkit
+
+      - name: Run pre-ship gate
+        run: pwsh -File scripts/verify-before-ship.ps1
