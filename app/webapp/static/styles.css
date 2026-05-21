@@ -598,6 +598,7 @@ body.terminal-open {
   overflow-anchor: none;
 }
 .terminal-bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -625,7 +626,34 @@ body.terminal-open {
   min-height: 40px;
   cursor: pointer;
 }
-.term-btn.danger { color: #ffb4b4; border-color: var(--danger); }
+/* On-screen keys popover (issue #36): D-pad anchored below the
+   terminal bar, right-aligned under the ⌨️ button. */
+.keys-popover {
+  position: absolute;
+  top: 48px;
+  right: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-elev-2);
+  border: 1px solid #2a2f42;
+  border-radius: 12px;
+  z-index: 30;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.key-btn {
+  min-height: 52px;
+  font-size: 18px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.key-btn:active { background: var(--bg-elev-2); }
+/* Empty grid cells flanking the down-arrow keep it centered in row 3. */
+.key-spacer { display: block; }
 .terminal-host {
   flex: 1;
   min-height: 0;

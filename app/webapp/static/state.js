@@ -114,8 +114,8 @@ export const els = {
   terminalImageInput: document.getElementById('terminalImageInput'),
   terminalPaste: document.getElementById('terminalPaste'),
   terminalJumpEnd: document.getElementById('terminalJumpEnd'),
-  terminalCtrlC: document.getElementById('terminalCtrlC'),
-  terminalQuit: document.getElementById('terminalQuit'),
+  terminalKeys: document.getElementById('terminalKeys'),
+  terminalKeysPopover: document.getElementById('terminalKeysPopover'),
 
   webauthnStatus: document.getElementById('webauthnStatus'),
   webauthnDevices: document.getElementById('webauthnDevices'),

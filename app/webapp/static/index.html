@@ -186,8 +186,18 @@
         <button id="terminalJumpEnd" type="button" class="term-btn" title="Jump to latest">↓</button>
         <button id="terminalPaste" type="button" class="term-btn" title="Paste from clipboard">📋</button>
         <button id="terminalImage" type="button" class="term-btn" title="Send image">🖼️</button>
-        <button id="terminalCtrlC" type="button" class="term-btn" title="Send Ctrl+C">^C</button>
-        <button id="terminalQuit" type="button" class="term-btn danger" title="Quit session">⏹</button>
+        <button id="terminalKeys" type="button" class="term-btn" title="Keyboard keys">⌨️</button>
+      </div>
+      <div id="terminalKeysPopover" class="keys-popover" hidden>
+        <button type="button" class="key-btn" data-key="esc">Esc</button>
+        <button type="button" class="key-btn" data-key="up">↑</button>
+        <button type="button" class="key-btn" data-key="tab">Tab</button>
+        <button type="button" class="key-btn" data-key="left">←</button>
+        <button type="button" class="key-btn" data-key="enter">↵</button>
+        <button type="button" class="key-btn" data-key="right">→</button>
+        <span class="key-spacer"></span>
+        <button type="button" class="key-btn" data-key="down">↓</button>
+        <span class="key-spacer"></span>
       </div>
     </div>
     <div id="terminalHost" class="terminal-host"></div>
