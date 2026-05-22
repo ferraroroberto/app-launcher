@@ -120,11 +120,14 @@ class TestClaudeFlags:
         assert body["effort"] == "high"
         assert body["verbose"] is True
         assert body["debug"] is False
+        assert body["permission_mode"] == "auto"
         # The always-on flags are surface-area for the SPA's badge; if the
         # tuple ever changes, this test catches it loudly.
         assert "--remote-control" in body["always_on_flags"]
-        assert "--dangerously-skip-permissions" in body["always_on_flags"]
+        # The permission flag is user-selectable now — not always-on.
+        assert "--dangerously-skip-permissions" not in body["always_on_flags"]
         # Computed flags are a string; sanity-check that the model/effort
-        # round-trip through the formatter.
+        # and the default (auto) permission mode round-trip through the formatter.
         assert "--model opus" in body["computed_flags"]
         assert "--effort high" in body["computed_flags"]
+        assert "--permission-mode auto" in body["computed_flags"]

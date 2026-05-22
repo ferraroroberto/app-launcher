@@ -32,8 +32,10 @@ class TestGetConfig:
             "effort",
             "verbose",
             "debug",
+            "permission_mode",
             "models_available",
             "efforts_available",
+            "permission_modes_available",
             "always_on_flags",
             "computed_flags",
         ):
@@ -78,6 +80,29 @@ class TestPatchConfig:
         client, _, _ = webapp_client
         resp = client.post(
             "/api/config", json={"claude_model": "definitely-not-a-real-model"}
+        )
+        assert resp.status_code == 400
+
+    def test_permission_mode_round_trips(self, webapp_client):
+        """claude_permission_mode patches through: 'skip' swaps the default
+        --permission-mode auto for the legacy --dangerously-skip-permissions,
+        and the choice surfaces on the next GET."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"claude_permission_mode": "skip"}
+        )
+        assert resp.status_code == 200
+        flags = resp.json()["claude_flags"]
+        assert "--dangerously-skip-permissions" in flags
+        assert "--permission-mode auto" not in flags
+        assert app.state.webapp_config.claude_permission_mode == "skip"
+        claude = client.get("/api/config").json()["claude"]
+        assert claude["permission_mode"] == "skip"
+
+    def test_rejects_invalid_permission_mode_with_400(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"claude_permission_mode": "bogus"}
         )
         assert resp.status_code == 400
 

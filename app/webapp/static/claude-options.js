@@ -53,6 +53,18 @@ function renderClaudeSubsection() {
     });
     els.claudeEffort.appendChild(b);
   });
+  els.claudePermission.innerHTML = '';
+  (c.permission_modes_available || []).forEach(function (p) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p === 'skip' ? 'Skip permissions' : 'Auto mode';
+    b.dataset.value = p;
+    if (p === c.permission_mode) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ claude_permission_mode: p });
+    });
+    els.claudePermission.appendChild(b);
+  });
   els.claudeVerbose.checked = !!c.verbose;
   els.claudeDebug.checked = !!c.debug;
   els.claudeFlagsPreview.textContent = 'claude ' + (c.computed_flags || '');

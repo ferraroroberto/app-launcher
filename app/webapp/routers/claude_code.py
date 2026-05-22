@@ -14,6 +14,7 @@ from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
+    VALID_CLAUDE_PERMISSION_MODES,
     WebappConfig,
     build_claude_flags,
 )
@@ -29,8 +30,10 @@ async def claude_flags(request: Request) -> Dict[str, Any]:
         "effort": cfg.claude_effort,
         "verbose": cfg.claude_verbose,
         "debug": cfg.claude_debug,
+        "permission_mode": cfg.claude_permission_mode,
         "models_available": list(VALID_CLAUDE_MODELS),
         "efforts_available": list(VALID_CLAUDE_EFFORTS),
+        "permission_modes_available": list(VALID_CLAUDE_PERMISSION_MODES),
         "always_on_flags": list(ALWAYS_ON_CLAUDE_FLAGS),
         "computed_flags": build_claude_flags(cfg),
     }

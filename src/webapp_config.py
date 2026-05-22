@@ -38,6 +38,13 @@ VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "high"
 
+# Claude Code permission mode for the launch command. "auto" maps to
+# `--permission-mode auto` (no prompts, but a classifier blocks dangerous
+# actions — the safer autopilot); "skip" maps to the legacy
+# `--dangerously-skip-permissions` (no prompts, no safety net).
+VALID_CLAUDE_PERMISSION_MODES = ("auto", "skip")
+DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
+
 # Models the GitHub Copilot CLI accepts for the `--model` flag (and the
 # in-session `/model` command). Source: `copilot help config`. An empty
 # `copilot_model` means "don't pass --model" — the CLI then uses its own
@@ -61,10 +68,11 @@ VALID_COPILOT_MODELS = (
     "gpt-4.1",
 )
 
-# Two switches are *always* added to the generated claude command line.
-# Listing them in user config would be misleading because the UI can't
-# turn them off without breaking the remote-control workflow.
-ALWAYS_ON_CLAUDE_FLAGS = ("--remote-control", "--dangerously-skip-permissions")
+# `--remote-control` is *always* added to the generated claude command
+# line — that's the whole point of the Coding tab, and the UI can't turn
+# it off without breaking the workflow. The permission flag used to live
+# here too; it is now user-selectable via `claude_permission_mode`.
+ALWAYS_ON_CLAUDE_FLAGS = ("--remote-control",)
 
 
 def _default_projects_dir() -> str:
@@ -92,6 +100,9 @@ class WebappConfig:
     claude_effort: str = DEFAULT_CLAUDE_EFFORT
     claude_verbose: bool = True
     claude_debug: bool = False
+    # Permission mode for the `claude` launch — "auto" or "skip"
+    # (see VALID_CLAUDE_PERMISSION_MODES).
+    claude_permission_mode: str = DEFAULT_CLAUDE_PERMISSION_MODE
     # Antigravity CLI launch toggles (issue #45 follow-up). The Antigravity
     # CLI exposes no model / effort / verbose flags — its model is chosen
     # with `/model` in-session — so these two switches are the whole story.
@@ -155,6 +166,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
         claude_verbose=bool(raw.get("claude_verbose", True)),
         claude_debug=bool(raw.get("claude_debug", False)),
+        claude_permission_mode=str(
+            raw.get("claude_permission_mode", DEFAULT_CLAUDE_PERMISSION_MODE)
+        ),
         antigravity_skip_permissions=bool(
             raw.get("antigravity_skip_permissions", False)
         ),
@@ -195,6 +209,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_effort": cfg.claude_effort,
         "claude_verbose": cfg.claude_verbose,
         "claude_debug": cfg.claude_debug,
+        "claude_permission_mode": cfg.claude_permission_mode,
         "antigravity_skip_permissions": cfg.antigravity_skip_permissions,
         "antigravity_sandbox": cfg.antigravity_sandbox,
         "copilot_skip_permissions": cfg.copilot_skip_permissions,
@@ -239,6 +254,10 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 def build_claude_flags(cfg: WebappConfig) -> str:
     """Compose the `claude` CLI flags from the persisted defaults."""
     parts: list[str] = list(ALWAYS_ON_CLAUDE_FLAGS)
+    if cfg.claude_permission_mode == "skip":
+        parts.append("--dangerously-skip-permissions")
+    else:
+        parts.extend(["--permission-mode", "auto"])
     if cfg.claude_model in VALID_CLAUDE_MODELS:
         parts.extend(["--model", cfg.claude_model])
     if cfg.claude_effort in VALID_CLAUDE_EFFORTS and cfg.claude_effort != "off":
@@ -293,6 +312,11 @@ def _validate(cfg: WebappConfig) -> None:
     if cfg.claude_model not in VALID_CLAUDE_MODELS:
         raise ValueError(
             f"claude_model must be one of {VALID_CLAUDE_MODELS}; got {cfg.claude_model!r}"
+        )
+    if cfg.claude_permission_mode not in VALID_CLAUDE_PERMISSION_MODES:
+        raise ValueError(
+            f"claude_permission_mode must be one of {VALID_CLAUDE_PERMISSION_MODES}; "
+            f"got {cfg.claude_permission_mode!r}"
         )
     if cfg.claude_effort not in VALID_CLAUDE_EFFORTS:
         raise ValueError(

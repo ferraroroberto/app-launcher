@@ -22,7 +22,7 @@ The web UI has two tabs:
   - **Claude Code** (`claude`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
   - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart.
 
-  Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / verbose / debug), an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles), and a GitHub Copilot subsection (a `--model` picker plus the `--allow-all` toggle). Antigravity has no launch-time model flag — pick its model with `/model` in-session. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
+  Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / permission mode / verbose / debug), an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles), and a GitHub Copilot subsection (a `--model` picker plus the `--allow-all` toggle). Antigravity has no launch-time model flag — pick its model with `/model` in-session. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 
 The **Apps** tab is backed by a registry file (`config/apps.json`); the **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
@@ -212,7 +212,7 @@ Launching, listing, and stopping sessions stay public (bearer-token gated, reach
 - **Device whitelist you control.** Enrolled passkeys live in `config/webauthn_devices.json` (gitignored). Enrollment only works during a one-time window you open deliberately from the tray (**🔐 Enroll device** — 5 minutes). Revoke a device from **Settings → Terminal access**.
 - **Audited.** Every terminal action is logged: `webapp/terminal_audit.log` (enroll / unlock / session lifecycle, device, client IP) and per-session `webapp/sessions/<id>.log` (input chunks, image uploads) + `<id>.transcript` (full output).
 
-> `--dangerously-skip-permissions` is still always on. The marginal risk over your existing Tailscale remote access is small (anyone on the tailnet could already RDP in) — the passkey gate + audit log make this surface *more* controlled than plain remote access, not less.
+> The Claude Code launch runs without permission prompts — by default in **auto mode** (`--permission-mode auto`: a classifier still blocks dangerous actions), or, if you switch the Coding-options selector, with the legacy `--dangerously-skip-permissions` (no safety net). The marginal risk over your existing Tailscale remote access is small (anyone on the tailnet could already RDP in) — the passkey gate + audit log make this surface *more* controlled than plain remote access, not less.
 
 **Enrolling your iPhone**
 
@@ -373,6 +373,7 @@ UI prefs + secrets, authored from the web UI:
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
 | `claude_verbose` | `true` | Pass `--verbose` |
 | `claude_debug` | `false` | Pass `--debug` |
+| `claude_permission_mode` | `"auto"` | Permission flag: `"auto"` → `--permission-mode auto`, `"skip"` → `--dangerously-skip-permissions` |
 | `auth_token` | `""` | Bearer token. Empty = gate off. |
 | `auth_password` | `""` | Optional companion for `/api/login`. |
 | `session_host_port` | `8446` | Loopback port the PTY session-host binds. Never network-reachable; must differ from `port`. |
@@ -382,7 +383,7 @@ UI prefs + secrets, authored from the web UI:
 | `webauthn_rp_name` | `"Launcher"` | Display name shown in the passkey prompt. |
 | `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |
 
-`--remote-control` and `--dangerously-skip-permissions` are **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
+`--remote-control` is **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The permission flag is set by the Coding-options **Permission** selector: `--permission-mode auto` (default) or `--dangerously-skip-permissions`. The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
 
 ### `config/apps.json`
 

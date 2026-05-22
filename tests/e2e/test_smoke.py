@@ -45,10 +45,13 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     authed_page.locator("#codingOptions > summary").click()
     authed_page.wait_for_selector("#claudeModel > button", timeout=5_000)
     authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
+    authed_page.wait_for_selector("#claudePermission > button", timeout=5_000)
     model_count = authed_page.locator("#claudeModel > button").count()
     effort_count = authed_page.locator("#claudeEffort > button").count()
+    perm_count = authed_page.locator("#claudePermission > button").count()
     assert model_count >= 1, f"#claudeModel rendered no buttons (got {model_count})"
     assert effort_count >= 1, f"#claudeEffort rendered no buttons (got {effort_count})"
+    assert perm_count == 2, f"#claudePermission expected 2 buttons (got {perm_count})"
 
 
 def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:
