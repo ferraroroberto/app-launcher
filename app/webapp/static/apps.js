@@ -27,7 +27,8 @@ export function renderApps() {
 // A Coding tile shows only the bare on-disk folder name plus one icon
 // button per coding agent (Claude Code, Antigravity, GitHub Copilot).
 // An agent's button is disabled with a hover hint when its CLI isn't
-// installed.
+// installed. Coding rows are disk-scanned, so they carry no rename/
+// remove controls — Settings → Edit mode does not apply here.
 function renderCodingList(host, items) {
   host.innerHTML = '';
   items.forEach(function (a) {
