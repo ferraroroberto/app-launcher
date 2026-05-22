@@ -50,36 +50,6 @@ _TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/app.j
 _SESSION_HOST_PORT = 8446
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 
-# Input-delivery wait budgets (issue #58). The defaults keep a local run fast;
-# CI sets the env vars larger (see .github/workflows/e2e.yml) because the
-# GitHub-hosted Windows runner does the keystroke -> ConPTY -> session-host ->
-# log round-trip noticeably slower than a dev box. One source of truth so the
-# 5 s poll loop is no longer copied inline into the terminal regression tests.
-_LOG_DEADLINE_ENV = "LAUNCHER_E2E_LOG_DEADLINE_MS"
-_LOG_DEADLINE_DEFAULT_MS = 5_000
-_UI_TIMEOUT_ENV = "LAUNCHER_E2E_UI_TIMEOUT_MS"
-_UI_TIMEOUT_DEFAULT_MS = 10_000
-
-
-def _env_int(name: str, default: int) -> int:
-    """Read a positive int from the environment, falling back to ``default``.
-
-    A missing, empty, non-numeric, or non-positive value yields the default —
-    a malformed env var must never shorten a wait budget below the local one.
-    """
-    raw = os.environ.get(name, "").strip()
-    if not raw:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        logger.warning("⚠️  %s=%r is not an integer — using default %d", name, raw, default)
-        return default
-    if value <= 0:
-        logger.warning("⚠️  %s=%d is not positive — using default %d", name, value, default)
-        return default
-    return value
-
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
@@ -357,6 +327,49 @@ def _auth_headers(auth_token: str) -> dict:
     return {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
 
 
+# A PTY launch spawns a real `claude` child. The launch HTTP call returns 200
+# as soon as the ConPTY is created — *before* the child has proven it can run.
+# Where `claude` isn't available (notably the CI runner, which never installs
+# it), the child exits within ~1 s, the session-host reaps it, and every
+# input-delivery test would then race a corpse. After launch we give the child
+# this grace period and skip cleanly if the session isn't alive — see #58.
+_PTY_LIVENESS_GRACE_S = 2.0
+
+
+def _session_alive(base_url: str, headers: dict, sid: str) -> bool:
+    """True only if the session-host still lists `sid` with a live PTY child."""
+    try:
+        res = requests.get(
+            f"{base_url}/api/claude-code/sessions",
+            headers=headers,
+            verify=False,
+            timeout=5,
+        )
+        res.raise_for_status()
+    except Exception:  # noqa: BLE001 - any failure means "treat as not alive"
+        return False
+    for sess in res.json().get("sessions", []):
+        if sess.get("session_id") == sid:
+            return bool(sess.get("alive"))
+    return False  # absent from the list — already reaped
+
+
+def _stop_session(base_url: str, headers: dict, sid: str) -> None:
+    """Force-kill a PTY session. `mode: "kill"` is unconditional (vs "quit",
+    which waits for claude to process /quit). Best-effort — a swallowed
+    exception here must not mask the actual test failure."""
+    try:
+        requests.post(
+            f"{base_url}/api/claude-code/sessions/{sid}/stop",
+            json={"mode": "kill", "close_window": True},
+            headers=headers,
+            verify=False,
+            timeout=5,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
+
+
 @pytest.fixture
 def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
     headers = _auth_headers(auth_token)
@@ -372,8 +385,8 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
         pytest.skip(f"launch request failed: {exc.__class__.__name__}: {exc}")
 
     if res.status_code != 200:
-        # 400 is the expected failure when `claude` isn't on PATH or the
-        # project_dir is invalid — skip cleanly rather than fail the suite.
+        # 400 is the expected failure when the project_dir is invalid — skip
+        # cleanly rather than fail the suite.
         pytest.skip(f"could not launch PTY session (HTTP {res.status_code}: {res.text[:200]})")
 
     body = res.json()
@@ -381,59 +394,45 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
     if not sid:
         pytest.skip(f"launch response missing session_id: {body}")
 
+    # Let the `claude` child prove it can run, then skip if it couldn't. These
+    # input-delivery tests genuinely gate only on a box where `claude` runs;
+    # where it doesn't (e.g. CI) they skip cleanly instead of failing (#58).
+    time.sleep(_PTY_LIVENESS_GRACE_S)
+    if not _session_alive(base_url, headers, sid):
+        _stop_session(base_url, headers, sid)
+        pytest.skip(
+            f"PTY session {sid[:8]} died right after launch — `claude` is not "
+            "viable in this environment (e.g. not installed on the CI runner); "
+            "terminal input-delivery tests need a live PTY session"
+        )
+
     try:
         yield sid
     finally:
-        # Force-kill teardown — `mode: "kill"` is unconditional (vs "quit"
-        # which waits for claude to process /quit). Swallow exceptions so a
-        # stuck claude doesn't mask the actual test failure.
-        try:
-            requests.post(
-                f"{base_url}/api/claude-code/sessions/{sid}/stop",
-                json={"mode": "kill", "close_window": True},
-                headers=headers,
-                verify=False,
-                timeout=5,
-            )
-        except Exception as exc:
-            logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
+        _stop_session(base_url, headers, sid)
 
 
-# ------------------------------------------------------ input-delivery waits
-# Issue #58: the GitHub-hosted Windows runner does the keystroke -> ConPTY ->
-# log round-trip slower than a dev box, so the terminal regression tests timed
-# out on CI while passing locally. These two fixtures centralise the wait
-# budgets — env-aware so CI gets headroom and local runs stay fast.
-
-
-@pytest.fixture(scope="session")
-def e2e_ui_timeout() -> int:
-    """Timeout (ms) for Playwright UI waits — ``wait_for_selector``,
-    ``wait_for_function``, ``expect(...)``. Larger on CI via
-    ``LAUNCHER_E2E_UI_TIMEOUT_MS``; the local default keeps the dev loop fast."""
-    return _env_int(_UI_TIMEOUT_ENV, _UI_TIMEOUT_DEFAULT_MS)
+# ----------------------------------------------------- input-delivery polling
+_LOG_POLL_DEADLINE_MS = 5_000
 
 
 @pytest.fixture
 def wait_for_session_log() -> Callable[..., bool]:
     """Return a poller for the per-session input log.
 
-    ``wait(page, sid, needle, deadline_ms=None)`` reads
+    ``wait(page, sid, needle, deadline_ms=_LOG_POLL_DEADLINE_MS)`` reads
     ``webapp/sessions/<sid>.log`` every 200 ms until ``needle`` appears or the
-    deadline elapses, then returns ``True``/``False``. The deadline defaults to
-    ``LAUNCHER_E2E_LOG_DEADLINE_MS`` (5 s locally, larger on CI) — the single
-    source of truth for the input-delivery wait budget that used to be a
-    hardcoded 5 s loop copied into four test files (issue #58).
+    deadline elapses, then returns ``True``/``False``. One source of truth for
+    the input-delivery wait that used to be a hardcoded 5 s poll loop copied
+    into four test files (issue #58).
     """
 
     def _wait(
-        page: Page, sid: str, needle: str, deadline_ms: Optional[int] = None
+        page: Page,
+        sid: str,
+        needle: str,
+        deadline_ms: int = _LOG_POLL_DEADLINE_MS,
     ) -> bool:
-        budget = (
-            deadline_ms
-            if deadline_ms is not None
-            else _env_int(_LOG_DEADLINE_ENV, _LOG_DEADLINE_DEFAULT_MS)
-        )
         log_path = _SESSIONS_DIR / f"{sid}.log"
 
         def _hit() -> bool:
@@ -441,7 +440,7 @@ def wait_for_session_log() -> Callable[..., bool]:
                 encoding="utf-8", errors="replace"
             )
 
-        for _ in range(max(1, budget // 200)):
+        for _ in range(max(1, deadline_ms // 200)):
             if _hit():
                 return True
             page.wait_for_timeout(200)

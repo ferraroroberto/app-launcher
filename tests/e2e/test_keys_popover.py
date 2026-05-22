@@ -24,17 +24,16 @@ def test_keys_popover_sends_escape_sequences(
     authed_page: Page,
     base_url: str,
     launched_pty_session: str,
-    e2e_ui_timeout: int,
     wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
 
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=e2e_ui_timeout)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
     authed_page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=e2e_ui_timeout,
+        timeout=10_000,
     )
 
     popover = authed_page.locator("#terminalKeysPopover")
@@ -47,9 +46,7 @@ def test_keys_popover_sends_escape_sequences(
     expect(popover).to_be_visible()
     assert wait_for_session_log(authed_page, sid, "\\x1b[B"), (
         "↓ key did not deliver the down-arrow escape sequence to "
-        f"webapp/sessions/{sid}.log within the input-delivery budget — the "
-        "key -> ConPTY -> log round-trip timed out (raise "
-        "LAUNCHER_E2E_LOG_DEADLINE_MS for a slow runner)"
+        f"webapp/sessions/{sid}.log — it never reached the live PTY session"
     )
 
     # Enter sends \r and closes the popover (Enter usually ends a prompt).

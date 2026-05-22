@@ -41,7 +41,6 @@ def test_paste_button_forwards_clipboard_to_pty(
     authed_page: Page,
     base_url: str,
     launched_pty_session: str,
-    e2e_ui_timeout: int,
     wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
@@ -54,11 +53,11 @@ def test_paste_button_forwards_clipboard_to_pty(
     # in ws.onopen (terminal.js:64); wait_for_function avoids the
     # wait_for_selector default "visible" check, which would never
     # resolve against a hidden-attribute element.
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=e2e_ui_timeout)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
     authed_page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=e2e_ui_timeout,
+        timeout=10_000,
     )
 
     authed_page.locator("#terminalPaste").click()
@@ -67,7 +66,5 @@ def test_paste_button_forwards_clipboard_to_pty(
     # newline so we search for the literal escaped form, not the raw byte.
     assert wait_for_session_log(authed_page, sid, "p4s7e-{regress}"), (
         f"paste button click did not deliver clipboard text to "
-        f"webapp/sessions/{sid}.log within the input-delivery budget — the "
-        "clipboard -> ConPTY -> log round-trip timed out (raise "
-        "LAUNCHER_E2E_LOG_DEADLINE_MS for a slow runner)"
+        f"webapp/sessions/{sid}.log — the text never reached the live PTY session"
     )

@@ -50,19 +50,12 @@ jobs:
           Copy-Item config/apps.sample.json config/apps.json
 
       - name: Run pre-ship gate
-        # The GitHub-hosted Windows runner does the keystroke -> ConPTY -> log
-        # round-trip slower than a dev box, so the terminal regression tests
-        # flaked on the local 5 s / 10 s defaults (issue #58). The defaults
-        # stay small for a fast local gate; CI gets headroom via these vars.
-        env:
-          LAUNCHER_E2E_LOG_DEADLINE_MS: "20000"
-          LAUNCHER_E2E_UI_TIMEOUT_MS: "30000"
         run: pwsh -File scripts/verify-before-ship.ps1
 
       - name: Upload e2e diagnostic logs
         # Runs even when the gate fails — the autoboot webapp/session-host
-        # output and the per-session input logs are what tell us *why* a PTY
-        # input-delivery test failed on the runner (issue #58 diagnosis).
+        # output and the per-session input logs make any future e2e failure
+        # diagnosable from the run page without a local repro (issue #58).
         if: always()
         uses: actions/upload-artifact@v4
         with:

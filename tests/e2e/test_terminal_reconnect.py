@@ -50,7 +50,6 @@ def test_terminal_reconnects_after_ws_drop(
     authed_page: Page,
     base_url: str,
     launched_pty_session: str,
-    e2e_ui_timeout: int,
     wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
@@ -62,7 +61,7 @@ def test_terminal_reconnects_after_ws_drop(
     authed_page.wait_for_function(
         "() => window.__wsInstances && window.__wsInstances.length >= 1 "
         "&& window.__wsInstances[0].readyState === 1",
-        timeout=e2e_ui_timeout,
+        timeout=10_000,
     )
 
     # Force-drop the live socket. close() with no args fires onclose with
@@ -87,11 +86,9 @@ def test_terminal_reconnects_after_ws_drop(
         marker,
     )
 
-    # Session log is buffered; poll within the input-delivery budget.
+    # Session log is buffered; poll for a couple of seconds.
     assert wait_for_session_log(authed_page, sid, "rec0nn3ct-marker-32"), (
         f"input sent on the reconnected ws did not appear in "
-        f"webapp/sessions/{sid}.log within the input-delivery budget — the "
-        "reconnect handshake succeeded but either the new ws isn't carrying "
-        "input or the log round-trip timed out (raise "
-        "LAUNCHER_E2E_LOG_DEADLINE_MS for a slow runner)"
+        f"webapp/sessions/{sid}.log — the reconnect handshake succeeded but "
+        "the new ws isn't carrying input"
     )

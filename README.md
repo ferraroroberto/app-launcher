@@ -505,12 +505,7 @@ Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/
 
 The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary.
 
-The GitHub-hosted Windows runner does the keystroke → ConPTY → session-host → log round-trip noticeably slower than a dev box, which used to flake the terminal regression tests on CI (issue #58). Two env vars tune the input-delivery wait budgets, both with small defaults that keep a local run fast — the `e2e.yml` workflow sets them larger so the runner gets headroom:
-
-| Env var | Local default | CI value | Covers |
-| --- | --- | --- | --- |
-| `LAUNCHER_E2E_LOG_DEADLINE_MS` | `5000` | `20000` | poll budget for input bytes to reach `webapp/sessions/<sid>.log` |
-| `LAUNCHER_E2E_UI_TIMEOUT_MS` | `10000` | `30000` | Playwright UI waits — terminal-overlay mount, image-upload round-trip |
+The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `test_keys_popover`, `test_terminal_reconnect`) need a **live `claude` PTY** to type into. The `launched_pty_session` fixture launches one, then checks it is still alive a moment later: where `claude` isn't available — notably the CI runner, which never installs it — the PTY child exits within ~1 s and the fixture **skips** those tests cleanly instead of failing them against a dead session (issue #58). They therefore gate on a dev box where `claude` runs; on CI they show as skipped. A failed run keeps the autoboot and per-session logs as a downloadable `e2e-logs` artifact on the run page, so any e2e failure can be diagnosed without a local repro.
 
 ---
 
