@@ -47,8 +47,9 @@ export const state = {
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
   status: null,     // /api/status payload (incl. terminal reachability)
-  // Edit mode (Settings toggle) reveals rename + remove on every row,
-  // so the lists stay icon-free in normal use. Persisted across reloads.
+  // Edit mode (Settings toggle) reveals rename + remove on Apps tab
+  // rows only — Coding tab rows are disk-scanned and never editable.
+  // Persisted across reloads.
   editMode: localStorage.getItem('launcher.editMode') === '1',
 };
 
