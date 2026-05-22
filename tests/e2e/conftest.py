@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -327,33 +328,6 @@ def _auth_headers(auth_token: str) -> dict:
     return {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
 
 
-# A PTY launch spawns a real `claude` child. The launch HTTP call returns 200
-# as soon as the ConPTY is created — *before* the child has proven it can run.
-# Where `claude` isn't available (notably the CI runner, which never installs
-# it), the child exits within ~1 s, the session-host reaps it, and every
-# input-delivery test would then race a corpse. After launch we give the child
-# this grace period and skip cleanly if the session isn't alive — see #58.
-_PTY_LIVENESS_GRACE_S = 2.0
-
-
-def _session_alive(base_url: str, headers: dict, sid: str) -> bool:
-    """True only if the session-host still lists `sid` with a live PTY child."""
-    try:
-        res = requests.get(
-            f"{base_url}/api/claude-code/sessions",
-            headers=headers,
-            verify=False,
-            timeout=5,
-        )
-        res.raise_for_status()
-    except Exception:  # noqa: BLE001 - any failure means "treat as not alive"
-        return False
-    for sess in res.json().get("sessions", []):
-        if sess.get("session_id") == sid:
-            return bool(sess.get("alive"))
-    return False  # absent from the list — already reaped
-
-
 def _stop_session(base_url: str, headers: dict, sid: str) -> None:
     """Force-kill a PTY session. `mode: "kill"` is unconditional (vs "quit",
     which waits for claude to process /quit). Best-effort — a swallowed
@@ -372,6 +346,21 @@ def _stop_session(base_url: str, headers: dict, sid: str) -> None:
 
 @pytest.fixture
 def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
+    # The PTY session runs a real `claude` process. Where `claude` isn't on
+    # PATH — notably the CI runner, which never installs it — the PTY child
+    # exits at once ("'claude' is not recognized…"), the session-host reaps
+    # it, and its WS endpoint then 403s the webapp's proxy, so every
+    # input-delivery test below would race a corpse. Skip cleanly instead:
+    # these tests genuinely gate on a dev box where `claude` runs. The test
+    # process shares the session-host's PATH (same machine), so `which` here
+    # faithfully predicts whether the session-host can spawn it. See #58.
+    if shutil.which("claude") is None:
+        pytest.skip(
+            "`claude` is not on PATH — terminal input-delivery tests need a "
+            "live claude PTY and skip cleanly where it isn't installed (e.g. "
+            "the CI runner)"
+        )
+
     headers = _auth_headers(auth_token)
     try:
         res = requests.post(
@@ -393,18 +382,6 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
     sid = body.get("session", {}).get("session_id")
     if not sid:
         pytest.skip(f"launch response missing session_id: {body}")
-
-    # Let the `claude` child prove it can run, then skip if it couldn't. These
-    # input-delivery tests genuinely gate only on a box where `claude` runs;
-    # where it doesn't (e.g. CI) they skip cleanly instead of failing (#58).
-    time.sleep(_PTY_LIVENESS_GRACE_S)
-    if not _session_alive(base_url, headers, sid):
-        _stop_session(base_url, headers, sid)
-        pytest.skip(
-            f"PTY session {sid[:8]} died right after launch — `claude` is not "
-            "viable in this environment (e.g. not installed on the CI runner); "
-            "terminal input-delivery tests need a live PTY session"
-        )
 
     try:
         yield sid

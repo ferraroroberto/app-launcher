@@ -6,38 +6,43 @@ terminal input-delivery tests never pass there.
 ## Diagnosis
 
 Issue #58 framed this as a slow-runner timing flake ("bump the wait budgets").
-That diagnosis was **wrong**. A first attempt that raised the wait budgets to
-20 s still failed all the same tests on CI — proving timing was not the cause.
+That diagnosis was **wrong**. A first attempt raising the wait budgets to 20 s
+still failed every same test on CI — proving timing was not the cause.
 
 An artifact-upload step was added to `e2e.yml` to capture the autoboot
 `webapp` / `session-host` output and the per-session logs from a CI run. They
-showed the real cause unambiguously:
+showed the real cause unambiguously — a per-session `.transcript`:
 
-- The session-host spawns `claude` in a ConPTY. On the GitHub-hosted Windows
-  runner `claude` is **not installed** (`e2e.yml` never installs it), so the
-  PTY child exits within ~1 s — `🚀 spawned` / `⏹️ ended` back to back for
-  every one of 18 sessions, then `🧹 Reaped N dead PTY session(s)`.
-- The per-session logs show only a 1 Hz `[ws_open]` / `[ws_close]` reconnect
-  storm — the terminal WS retrying against a dead session. None of the test
-  payloads ever appear.
-- The webapp log shows `proxy_session_ws` ASGI exceptions: the browser→
-  session-host WS proxy handshake fails because the session is already gone.
+```
+=== session a6e0002b… :: app-launcher :: 2026-05-22 17:56:38 ===
+'claude' is not recognized as an internal or external command,
+operable program or batch file.
+=== ended 2026-05-22 17:56:41 ===
+```
 
-The `launched_pty_session` fixture only checked the launch HTTP `200` — which
-the session-host returns the instant the ConPTY is created, before the child
-has proven it can run. So the tests ran against a corpse and failed, instead
+`claude` is **not installed on the GitHub-hosted runner** (`e2e.yml` never
+installs it). The session-host launches `claude` through `cmd`; `cmd` can't
+find it, so the PTY child exits within ~2-3 s and the session-host reaps it.
+Every input-delivery test then typed into a dead session — and once the
+session is reaped the session-host's WS endpoint answers the webapp's proxy
+with **HTTP 403**, so input never reaches the per-session log.
+
+`launched_pty_session` only checked the launch HTTP `200` (returned the instant
+the ConPTY is created), so the tests ran against a corpse and *failed* instead
 of skipping. (The `README` previously claimed they "skip cleanly" on CI; they
 did not — this change makes that claim true.)
 
 ## What was done
 
-- **`tests/e2e/conftest.py`** — `launched_pty_session` now waits a short grace
-  period after launch and queries `GET /api/claude-code/sessions`; if the
-  session is gone or its `alive` flag is false, it `pytest.skip`s with a clear
-  reason. The teardown stop call is factored into a `_stop_session` helper
-  (reused by the skip path). Added `wait_for_session_log` — one shared poller
-  for `webapp/sessions/<sid>.log`, replacing a 5 s poll loop that had been
-  copied inline into four test files.
+- **`tests/e2e/conftest.py`** — `launched_pty_session` now checks
+  `shutil.which("claude")` before launching and `pytest.skip`s with a clear
+  reason when `claude` isn't on `PATH`. The test process shares the
+  session-host's `PATH` (same machine), so this faithfully predicts whether
+  the session-host can spawn `claude` — deterministic, with zero added latency
+  on a dev box where `claude` is installed. Added `wait_for_session_log` — one
+  shared poller for `webapp/sessions/<sid>.log`, replacing a 5 s poll loop that
+  had been copied inline into four test files. The teardown stop call is
+  factored into a `_stop_session` helper.
 - **`tests/e2e/test_compose_bar.py`, `test_paste_button.py`,
   `test_keys_popover.py`, `test_terminal_reconnect.py`** — use the shared
   `wait_for_session_log` fixture; dropped the per-file `_read_session_log` /
@@ -46,12 +51,13 @@ did not — this change makes that claim true.)
   session.
 - **`.github/workflows/e2e.yml`** — added the `e2e-logs` artifact upload
   (`if: always()`) so any future e2e failure is diagnosable from the run page.
-- **`README.md`** — corrected the stale "skip cleanly" line to describe the
-  real fixture behaviour.
+- **`README.md`** — corrected the stale "skip cleanly on CI" line to describe
+  the real fixture behaviour.
 
-The first attempt's env-var wait budgets (`LAUNCHER_E2E_LOG_DEADLINE_MS` /
-`LAUNCHER_E2E_UI_TIMEOUT_MS`) were removed — they addressed a cause that did
-not exist.
+A first attempt's env-var wait budgets (`LAUNCHER_E2E_LOG_DEADLINE_MS` /
+`LAUNCHER_E2E_UI_TIMEOUT_MS`) and a launch-then-poll liveness check were
+discarded — they chased a cause (slow runner / a session that dies *after* a
+grace window) that the transcript disproved.
 
 ## Files modified
 
@@ -69,8 +75,16 @@ not exist.
 - `pwsh -File scripts/verify-before-ship.ps1` — full pre-ship gate, exit 0:
   the terminal tests run for real locally (where `claude` is installed) and
   pass.
-- On CI the four terminal input-delivery tests now skip cleanly, so a clean PR
-  gets a green gate without `--admin`.
+- On CI the four terminal input-delivery test files now skip cleanly, so a
+  clean PR gets a green gate without `--admin`.
+
+## Follow-ups noted (out of scope for #58)
+
+`proxy_session_ws` (`app/webapp/routers/sessions.py`) catches only
+`(OSError, WebSocketDisconnect)`, so a `websockets.InvalidStatus` from the
+session-host (e.g. the 403 for a reaped session) surfaces as an unhandled ASGI
+exception instead of a clean `4502` close to the browser. Worth a separate
+issue — #58 is scoped to not touch runtime WS code.
 
 ## Note on issue #58 acceptance criteria
 
