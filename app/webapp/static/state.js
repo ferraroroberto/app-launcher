@@ -34,11 +34,12 @@ export const state = {
   apps: [],
   // Coding agents — overwritten by /api/agents at boot. The fallback
   // keeps the Coding tab usable if that fetch fails: Claude Code is the
-  // launcher's core agent so it's assumed present; Antigravity stays
-  // disabled until detection confirms `agy` is on PATH.
+  // launcher's core agent so it's assumed present; the other agents
+  // stay disabled until detection confirms their CLI is on PATH.
   agents: [
     { id: 'claude', label: 'Claude Code', available: true },
     { id: 'antigravity', label: 'Antigravity CLI', available: false },
+    { id: 'copilot', label: 'GitHub Copilot CLI', available: false },
   ],
   runningApps: [],
   sessions: [],
@@ -69,6 +70,9 @@ export const els = {
   antigravitySkipPerms: document.getElementById('antigravitySkipPerms'),
   antigravitySandbox: document.getElementById('antigravitySandbox'),
   antigravityFlagsPreview: document.getElementById('antigravityFlagsPreview'),
+  copilotModel: document.getElementById('copilotModel'),
+  copilotSkipPerms: document.getElementById('copilotSkipPerms'),
+  copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
   sessionsList: document.getElementById('sessionsList'),

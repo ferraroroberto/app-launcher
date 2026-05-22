@@ -38,6 +38,29 @@ VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "high"
 
+# Models the GitHub Copilot CLI accepts for the `--model` flag (and the
+# in-session `/model` command). Source: `copilot help config`. An empty
+# `copilot_model` means "don't pass --model" — the CLI then uses its own
+# configured default. This list will drift as GitHub adds models; refresh
+# it from `copilot help config` when that happens.
+VALID_COPILOT_MODELS = (
+    "claude-sonnet-4.6",
+    "claude-sonnet-4.5",
+    "claude-haiku-4.5",
+    "claude-opus-4.7",
+    "claude-opus-4.6",
+    "claude-opus-4.6-fast",
+    "claude-opus-4.5",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.3-codex",
+    "gpt-5.2-codex",
+    "gpt-5.2",
+    "gpt-5.4-mini",
+    "gpt-5-mini",
+    "gpt-4.1",
+)
+
 # Two switches are *always* added to the generated claude command line.
 # Listing them in user config would be misleading because the UI can't
 # turn them off without breaking the remote-control workflow.
@@ -74,6 +97,11 @@ class WebappConfig:
     # with `/model` in-session — so these two switches are the whole story.
     antigravity_skip_permissions: bool = False
     antigravity_sandbox: bool = False
+    # GitHub Copilot CLI launch settings (issue #48). `copilot_model` is
+    # the `--model` value (empty = let the CLI use its own default);
+    # `copilot_skip_permissions` is the opt-in allow-all switch.
+    copilot_skip_permissions: bool = False
+    copilot_model: str = ""
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
@@ -131,6 +159,10 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
             raw.get("antigravity_skip_permissions", False)
         ),
         antigravity_sandbox=bool(raw.get("antigravity_sandbox", False)),
+        copilot_skip_permissions=bool(
+            raw.get("copilot_skip_permissions", False)
+        ),
+        copilot_model=str(raw.get("copilot_model", "")),
         auth_token=str(raw.get("auth_token", "")),
         auth_password=str(raw.get("auth_password", "")),
         session_host_port=int(
@@ -165,6 +197,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_debug": cfg.claude_debug,
         "antigravity_skip_permissions": cfg.antigravity_skip_permissions,
         "antigravity_sandbox": cfg.antigravity_sandbox,
+        "copilot_skip_permissions": cfg.copilot_skip_permissions,
+        "copilot_model": cfg.copilot_model,
         "auth_token": cfg.auth_token,
         "auth_password": cfg.auth_password,
         "session_host_port": cfg.session_host_port,
@@ -231,6 +265,22 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
+def build_copilot_flags(cfg: WebappConfig) -> str:
+    """Compose the `copilot` CLI flags from the persisted Copilot toggle.
+
+    The Copilot CLI chooses its model in-session, so the only
+    launch-relevant switch is ``--allow-all`` (enable every tool
+    permission without prompting). An all-default config yields an empty
+    string — the CLI is launched bare.
+    """
+    parts: list[str] = []
+    if cfg.copilot_skip_permissions:
+        parts.append("--allow-all")
+    if cfg.copilot_model in VALID_COPILOT_MODELS:
+        parts.extend(["--model", cfg.copilot_model])
+    return " ".join(parts)
+
+
 def _validate(cfg: WebappConfig) -> None:
     if not (1 <= cfg.port <= 65535):
         raise ValueError(f"port out of range: {cfg.port}")
@@ -247,4 +297,9 @@ def _validate(cfg: WebappConfig) -> None:
     if cfg.claude_effort not in VALID_CLAUDE_EFFORTS:
         raise ValueError(
             f"claude_effort must be one of {VALID_CLAUDE_EFFORTS}; got {cfg.claude_effort!r}"
+        )
+    if cfg.copilot_model and cfg.copilot_model not in VALID_COPILOT_MODELS:
+        raise ValueError(
+            f"copilot_model must be empty or one of {VALID_COPILOT_MODELS}; "
+            f"got {cfg.copilot_model!r}"
         )

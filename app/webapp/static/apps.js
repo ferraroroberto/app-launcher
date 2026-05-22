@@ -25,8 +25,9 @@ export function renderApps() {
 
 // ------------------------------------------------------ Coding tab tiles
 // A Coding tile shows only the bare on-disk folder name plus one icon
-// button per coding agent (Claude Code, Antigravity). An agent's button
-// is disabled with a hover hint when its CLI isn't installed.
+// button per coding agent (Claude Code, Antigravity, GitHub Copilot).
+// An agent's button is disabled with a hover hint when its CLI isn't
+// installed.
 function renderCodingList(host, items) {
   host.innerHTML = '';
   items.forEach(function (a) {
@@ -166,8 +167,8 @@ function renderList(host, items) {
 // Coding-tab launch mode is the ☁️ Detached toggle in the options
 // card: checked → 'remote' (detached console window, listed + killable
 // here but no phone terminal); unchecked → full-control PTY streamed to
-// the phone. `agentId` (claude | antigravity) is set by the Coding
-// tile's per-agent button; it's undefined for Apps-tab bat launches.
+// the phone. `agentId` (claude | antigravity | copilot) is set by the
+// Coding tile's per-agent button; undefined for Apps-tab bat launches.
 async function launchApp(a, agentId) {
   const mode = (a.kind === 'claude-code' && els.claudeDetached &&
     els.claudeDetached.checked) ? 'remote' : null;
@@ -183,8 +184,13 @@ async function launchApp(a, agentId) {
     const body = await jsonApi(
       '/api/apps/' + encodeURIComponent(a.id) + '/launch', opts
     );
-    const agentTag = (a.kind === 'claude-code' && body.agent === 'antigravity')
-      ? ' (Antigravity)' : '';
+    // Tag the toast with the agent's label for any non-default agent;
+    // resolved against the registry so a new agent needs no change here.
+    let agentTag = '';
+    if (a.kind === 'claude-code' && body.agent && body.agent !== 'claude') {
+      const known = state.agents.find(function (ag) { return ag.id === body.agent; });
+      agentTag = ' (' + (known ? known.label : body.agent) + ')';
+    }
     toast(
       '🚀 Launched ' + a.name + agentTag +
         (mode === 'remote' ? ' (detached)' : ''),

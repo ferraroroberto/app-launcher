@@ -104,7 +104,7 @@ class TestAgents:
         body = resp.json()
         assert isinstance(body["agents"], list) and body["agents"]
         ids = {a["id"] for a in body["agents"]}
-        assert {"claude", "antigravity"} <= ids
+        assert {"claude", "antigravity", "copilot"} <= ids
         for a in body["agents"]:
             assert set(a) == {"id", "label", "available"}
             assert isinstance(a["available"], bool)

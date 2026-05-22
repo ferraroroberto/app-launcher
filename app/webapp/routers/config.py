@@ -15,9 +15,11 @@ from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
+    VALID_COPILOT_MODELS,
     WebappConfig,
     build_antigravity_flags,
     build_claude_flags,
+    build_copilot_flags,
     update_webapp_config,
 )
 
@@ -51,6 +53,12 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "sandbox": cfg.antigravity_sandbox,
             "computed_flags": build_antigravity_flags(cfg),
         },
+        "copilot": {
+            "skip_permissions": cfg.copilot_skip_permissions,
+            "model": cfg.copilot_model,
+            "models_available": list(VALID_COPILOT_MODELS),
+            "computed_flags": build_copilot_flags(cfg),
+        },
         "auth_password_set": bool(cfg.auth_password),
     }
 
@@ -68,6 +76,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "claude_debug",
         "antigravity_skip_permissions",
         "antigravity_sandbox",
+        "copilot_skip_permissions",
+        "copilot_model",
     }
     patch = {k: v for k, v in body.items() if k in allowed}
     # projects_ignore is a list of patterns — coerce to a clean string

@@ -145,6 +145,7 @@ html, body {
   gap: 10px;
   margin-bottom: 10px;
 }
+.opt-row .select-native { flex: 1; }
 .opt-name {
   font-size: 13px;
   color: var(--muted);

@@ -28,7 +28,7 @@ from src.session_host import (
 )
 
 
-def _make_session(loop) -> PtySession:
+def _make_session(loop, agent: str = "claude") -> PtySession:
     pty = MagicMock(name="PtyProcess")
     return PtySession(
         session_id="sid-test",
@@ -38,6 +38,7 @@ def _make_session(loop) -> PtySession:
         started_at=time.time(),
         _loop=loop,
         _pty=pty,
+        agent=agent,
     )
 
 
@@ -84,6 +85,35 @@ async def test_stop_quit_writes_esc_then_slash_quit_to_pty():
     calls = [c.args for c in session._pty.write.call_args_list]
     assert ("\x1b",) in calls
     assert ("/quit\r",) in calls
+
+
+@pytest.mark.asyncio
+async def test_stop_quit_uses_per_agent_command():
+    """STOP_QUIT types the agent's *own* quit command — Copilot's /exit,
+    not Claude's /quit."""
+    loop = asyncio.get_running_loop()
+    session = _make_session(loop, agent="copilot")
+
+    session.stop(mode=STOP_QUIT, close_window=False)
+
+    calls = [c.args for c in session._pty.write.call_args_list]
+    assert ("\x1b",) in calls
+    assert ("/exit\r",) in calls
+    assert ("/quit\r",) not in calls
+
+
+@pytest.mark.asyncio
+async def test_stop_close_window_force_terminates_pty():
+    """Stop & Close force-kills the ConPTY outright — it must not rely on
+    a typed quit command landing (the bug behind a lingering session)."""
+    loop = asyncio.get_running_loop()
+    session = _make_session(loop, agent="copilot")
+
+    session.stop(mode=STOP_QUIT, close_window=True)
+
+    session._pty.terminate.assert_called_once_with(force=True)
+    # No quit command typed — termination is the guarantee.
+    session._pty.write.assert_not_called()
 
 
 @pytest.mark.asyncio

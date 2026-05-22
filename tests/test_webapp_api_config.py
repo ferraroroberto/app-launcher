@@ -49,6 +49,19 @@ class TestGetConfig:
         # All-default config → the CLI is launched bare.
         assert ag["computed_flags"] == ""
 
+    def test_copilot_block_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        body = client.get("/api/config").json()
+        cp = body["copilot"]
+        assert set(cp) == {
+            "skip_permissions", "model", "models_available", "computed_flags"
+        }
+        assert isinstance(cp["skip_permissions"], bool)
+        assert isinstance(cp["models_available"], list) and cp["models_available"]
+        # Default config → no model pinned, the CLI is launched bare.
+        assert cp["model"] == ""
+        assert cp["computed_flags"] == ""
+
 
 class TestPatchConfig:
     def test_patches_allowed_field(self, webapp_client):
@@ -98,6 +111,34 @@ class TestPatchConfig:
         assert ag["sandbox"] is True
         assert "--dangerously-skip-permissions" in ag["computed_flags"]
         assert "--sandbox" in ag["computed_flags"]
+
+    def test_copilot_toggle_round_trips(self, webapp_client):
+        """The Copilot launch toggle patches through and surfaces as the
+        composed `copilot` flag on the next GET."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"copilot_skip_permissions": True}
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.copilot_skip_permissions is True
+        cp = client.get("/api/config").json()["copilot"]
+        assert cp["skip_permissions"] is True
+        assert "--allow-all" in cp["computed_flags"]
+
+    def test_copilot_model_round_trips(self, webapp_client):
+        """A valid Copilot model patches through and surfaces as a
+        `--model` flag; an invalid one is rejected with 400."""
+        client, app, _ = webapp_client
+        model = client.get("/api/config").json()["copilot"]["models_available"][0]
+        resp = client.post("/api/config", json={"copilot_model": model})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.copilot_model == model
+        cp = client.get("/api/config").json()["copilot"]
+        assert cp["model"] == model
+        assert f"--model {model}" in cp["computed_flags"]
+        # An unknown model is rejected, not silently launched.
+        bad = client.post("/api/config", json={"copilot_model": "gpt-not-real"})
+        assert bad.status_code == 400
 
     def test_ignores_unknown_field_silently(self, webapp_client):
         """The endpoint filters by allow-list — unknown keys are dropped,

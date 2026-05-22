@@ -1,13 +1,14 @@
 """Coding-agent registry — the CLIs the Coding tab can launch.
 
-The Coding tab launches one of two interactive terminal agents in a
-project folder, both hosted by the same session-host PTY/remote
+The Coding tab launches one of several interactive terminal agents in
+a project folder, all hosted by the same session-host PTY/remote
 machinery:
 
 - ``claude`` — Claude Code (the launcher's original agent).
 - ``agy`` — Google's Antigravity CLI (the Go-based terminal agent that
-  replaced Gemini CLI; installed via ``winget install -e --id
-  Google.Antigravity``).
+  replaced Gemini CLI).
+- ``copilot`` — GitHub Copilot CLI (GitHub's terminal-native agentic
+  coding agent; authenticates in-session via ``/login``).
 
 This module is the single source of truth for the agent id → command
 mapping. It is imported by *both* long-lived processes — the webapp
@@ -28,20 +29,32 @@ class Agent:
 
     ``id`` is the stable key threaded through the launch API; ``label``
     is the display name; ``command`` is the executable resolved off
-    ``PATH`` when the agent is spawned.
+    ``PATH`` when the agent is spawned; ``quit_command`` is the
+    interactive slash command typed into the PTY for a graceful stop
+    (each agent uses its own — Claude's is ``/quit``, Copilot's is
+    ``/exit``).
     """
 
     id: str
     label: str
     command: str
+    quit_command: str
 
 
 # id → Agent. The order here is the order the Coding tab renders the
 # per-tile launch buttons in.
 AGENTS: Dict[str, Agent] = {
-    "claude": Agent(id="claude", label="Claude Code", command="claude"),
+    "claude": Agent(
+        id="claude", label="Claude Code", command="claude",
+        quit_command="/quit",
+    ),
     "antigravity": Agent(
-        id="antigravity", label="Antigravity CLI", command="agy"
+        id="antigravity", label="Antigravity CLI", command="agy",
+        quit_command="/quit",
+    ),
+    "copilot": Agent(
+        id="copilot", label="GitHub Copilot CLI", command="copilot",
+        quit_command="/exit",
     ),
 }
 
@@ -58,6 +71,18 @@ def command_for(agent_id: str) -> str:
     if agent is None:
         raise ValueError(f"unknown agent: {agent_id!r}")
     return agent.command
+
+
+def quit_command_for(agent_id: str) -> str:
+    """Return the interactive quit command for ``agent_id``.
+
+    Typed into the PTY for a graceful "Stop" (the terminal window stays
+    open while the agent exits cleanly). Falls back to the default
+    agent's command for an unknown id rather than raising — a bad id
+    must never block a stop.
+    """
+    agent = AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
+    return agent.quit_command
 
 
 def is_installed(agent_id: str) -> bool:

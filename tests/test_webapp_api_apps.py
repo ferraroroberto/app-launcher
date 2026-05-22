@@ -190,6 +190,60 @@ class TestClaudeCodeDiscovery:
         assert resp.status_code == 200
         assert "--sandbox" in captured["flags"]
 
+    def test_launch_with_copilot_agent(self, webapp_client, monkeypatch):
+        """The GitHub Copilot button posts agent=copilot — threaded to
+        spawn_claude_session, and its --allow-all toggle composes in."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        # Pretend the `copilot` CLI is installed so the launch isn't rejected.
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: True
+        )
+        captured: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
+            captured["flags"] = flags
+            captured["agent"] = agent
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        # All-default config → Copilot launches bare.
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "copilot"},
+        )
+        assert resp.status_code == 200
+        assert captured["agent"] == "copilot"
+        assert captured["flags"] == ""
+        assert resp.json()["agent"] == "copilot"
+        # Enabling the toggle surfaces --allow-all on the next launch.
+        client.post("/api/config", json={"copilot_skip_permissions": True})
+        client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "copilot"},
+        )
+        assert captured["flags"] == "--allow-all"
+
+    def test_launch_copilot_not_installed_rejected(
+        self, webapp_client, monkeypatch
+    ):
+        """When `copilot` isn't on PATH the launch is refused —
+        defence-in-depth behind the disabled UI button."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: False
+        )
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"agent": "copilot"}
+        )
+        assert resp.status_code == 400
+        assert "not installed" in resp.json()["detail"]
+
     def test_launch_unknown_agent_rejected(self, webapp_client):
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()

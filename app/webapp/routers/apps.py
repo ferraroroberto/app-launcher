@@ -44,6 +44,7 @@ from src.webapp_config import (
     WebappConfig,
     build_antigravity_flags,
     build_claude_flags,
+    build_copilot_flags,
 )
 
 from app.webapp.middleware import LOOPBACK_HOSTS
@@ -149,11 +150,12 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
 
     # claude-code (the Coding tab): two launch modes (chosen by the
-    # request body's `mode`) and two agents (`agent`). "pty" (default) =
-    # a launcher-owned PTY session streamed to and driven from the phone.
-    # "remote" = a detached console window on the PC the session-host
-    # only tracks (listed + killable but not streamed). `agent` is
-    # `claude` (Claude Code) or `antigravity` (the `agy` CLI).
+    # request body's `mode`) and one of the registered coding agents
+    # (`agent`). "pty" (default) = a launcher-owned PTY session streamed
+    # to and driven from the phone. "remote" = a detached console window
+    # on the PC the session-host only tracks (listed + killable but not
+    # streamed). `agent` is one of `claude` (Claude Code), `antigravity`
+    # (the `agy` CLI), or `copilot` (GitHub Copilot CLI).
     if entry.kind == KIND_CLAUDE_CODE:
         if not entry.project_dir:
             raise HTTPException(
@@ -169,22 +171,24 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             )
         # Claude Code is the launcher's core agent — its launch path is
         # unguarded, exactly as before issue #45. Other agents
-        # (Antigravity) are checked server-side too, as defence-in-depth
-        # behind the Coding tab's already-disabled button.
+        # (Antigravity, Copilot) are checked server-side too, as
+        # defence-in-depth behind the Coding tab's already-disabled button.
         if agent != agents.DEFAULT_AGENT and not agents.is_installed(agent):
             raise HTTPException(
                 status_code=400,
                 detail=f"{agents.AGENTS[agent].label} is not installed",
             )
         # Each agent has its own flag set: Claude's model / effort /
-        # always-on remote-control switches, Antigravity's two opt-in
-        # launch toggles (it has no model/effort flags — `/model` drives
-        # that in-TUI).
-        flags = (
-            build_claude_flags(cfg)
-            if agent == "claude"
-            else build_antigravity_flags(cfg)
-        )
+        # always-on remote-control switches; Antigravity's two opt-in
+        # launch toggles; Copilot's single allow-all toggle. The
+        # non-Claude agents have no model/effort flags — that's chosen
+        # in-TUI with `/model`.
+        flag_builders = {
+            "claude": build_claude_flags,
+            "antigravity": build_antigravity_flags,
+            "copilot": build_copilot_flags,
+        }
+        flags = flag_builders[agent](cfg)
 
         if mode == "remote":
             try:

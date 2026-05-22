@@ -1,6 +1,7 @@
 /* Coding options card: a collapsible panel (collapsed by default) with a
- * Claude Code subsection (model + effort + verbose/debug + flags preview)
- * and an Antigravity subsection (skip-permissions + sandbox toggles).
+ * Claude Code subsection (model + effort + verbose/debug + flags preview),
+ * an Antigravity subsection (skip-permissions + sandbox toggles), and a
+ * GitHub Copilot subsection (model picker + skip-permissions toggle).
  *
  * `patchConfig` round-trips through GET /api/config so the SPA's view of
  * config stays a single source of truth — server-computed flags + the
@@ -22,6 +23,7 @@ export async function fetchConfig() {
 export function renderClaudeOptions() {
   renderClaudeSubsection();
   renderAntigravitySubsection();
+  renderCopilotSubsection();
 }
 
 function renderClaudeSubsection() {
@@ -67,6 +69,29 @@ function renderAntigravitySubsection() {
     'agy' + (a.computed_flags ? ' ' + a.computed_flags : '');
 }
 
+function renderCopilotSubsection() {
+  const c = state.config && state.config.copilot;
+  if (!c) return;
+  // Model picker — a <select>: the Copilot CLI offers ~15 models, too
+  // many for a segmented control. The empty-value "Default" option
+  // launches without --model (the CLI uses its own configured model).
+  els.copilotModel.innerHTML = '';
+  const optDefault = document.createElement('option');
+  optDefault.value = '';
+  optDefault.textContent = 'Default';
+  els.copilotModel.appendChild(optDefault);
+  (c.models_available || []).forEach(function (m) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    els.copilotModel.appendChild(opt);
+  });
+  els.copilotModel.value = c.model || '';
+  els.copilotSkipPerms.checked = !!c.skip_permissions;
+  els.copilotFlagsPreview.textContent =
+    'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
+}
+
 export async function patchConfig(patch) {
   try {
     await jsonApi('/api/config', {
@@ -92,6 +117,12 @@ export function wireClaudeOptions() {
   });
   els.antigravitySandbox.addEventListener('change', function () {
     patchConfig({ antigravity_sandbox: els.antigravitySandbox.checked });
+  });
+  els.copilotSkipPerms.addEventListener('change', function () {
+    patchConfig({ copilot_skip_permissions: els.copilotSkipPerms.checked });
+  });
+  els.copilotModel.addEventListener('change', function () {
+    patchConfig({ copilot_model: els.copilotModel.value });
   });
   // The ☁️ Detached toggle lives in the card's <summary> so it stays
   // visible when the panel is collapsed — but a click there would also

@@ -14,9 +14,24 @@ class TestCommandFor:
     def test_antigravity_resolves(self):
         assert agents.command_for("antigravity") == "agy"
 
+    def test_copilot_resolves(self):
+        assert agents.command_for("copilot") == "copilot"
+
     def test_unknown_agent_raises(self):
         with pytest.raises(ValueError):
             agents.command_for("bogus")
+
+
+class TestQuitCommandFor:
+    def test_claude_quits_with_slash_quit(self):
+        assert agents.quit_command_for("claude") == "/quit"
+
+    def test_copilot_quits_with_slash_exit(self):
+        assert agents.quit_command_for("copilot") == "/exit"
+
+    def test_unknown_agent_falls_back_to_default(self):
+        # A bad id must never block a stop — fall back, don't raise.
+        assert agents.quit_command_for("bogus") == "/quit"
 
 
 class TestIsInstalled:

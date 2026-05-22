@@ -65,6 +65,19 @@
           <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
           <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
         </div>
+
+        <div class="opt-group">
+          <h3 class="opt-group-title">GitHub Copilot</h3>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <select id="copilotModel" class="select-native" aria-label="Copilot model"></select>
+          </div>
+          <div class="toggles">
+            <label class="toggle"><input type="checkbox" id="copilotSkipPerms"><span>Skip permission prompts</span></label>
+          </div>
+          <p class="opt-hint">Sign in with <code>/login</code> inside the session. <strong>Default</strong> leaves the model to the Copilot CLI's own setting.</p>
+          <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
+        </div>
       </details>
 
       <section class="card sessions-card">
