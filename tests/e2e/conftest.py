@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import signal
 import socket
 import subprocess
@@ -27,7 +28,7 @@ import sys
 import time
 import urllib3
 from pathlib import Path
-from typing import IO, Iterator, List, Optional
+from typing import Callable, IO, Iterator, List, Optional
 
 import pytest
 import requests
@@ -40,6 +41,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WEBAPP_CONFIG = _REPO_ROOT / "config" / "webapp_config.json"
+_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 _BASE_URL = "https://127.0.0.1:8445"
 _TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/app.js
 
@@ -326,8 +328,39 @@ def _auth_headers(auth_token: str) -> dict:
     return {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
 
 
+def _stop_session(base_url: str, headers: dict, sid: str) -> None:
+    """Force-kill a PTY session. `mode: "kill"` is unconditional (vs "quit",
+    which waits for claude to process /quit). Best-effort — a swallowed
+    exception here must not mask the actual test failure."""
+    try:
+        requests.post(
+            f"{base_url}/api/claude-code/sessions/{sid}/stop",
+            json={"mode": "kill", "close_window": True},
+            headers=headers,
+            verify=False,
+            timeout=5,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
+
+
 @pytest.fixture
 def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
+    # The PTY session runs a real `claude` process. Where `claude` isn't on
+    # PATH — notably the CI runner, which never installs it — the PTY child
+    # exits at once ("'claude' is not recognized…"), the session-host reaps
+    # it, and its WS endpoint then 403s the webapp's proxy, so every
+    # input-delivery test below would race a corpse. Skip cleanly instead:
+    # these tests genuinely gate on a dev box where `claude` runs. The test
+    # process shares the session-host's PATH (same machine), so `which` here
+    # faithfully predicts whether the session-host can spawn it. See #58.
+    if shutil.which("claude") is None:
+        pytest.skip(
+            "`claude` is not on PATH — terminal input-delivery tests need a "
+            "live claude PTY and skip cleanly where it isn't installed (e.g. "
+            "the CI runner)"
+        )
+
     headers = _auth_headers(auth_token)
     try:
         res = requests.post(
@@ -341,8 +374,8 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
         pytest.skip(f"launch request failed: {exc.__class__.__name__}: {exc}")
 
     if res.status_code != 200:
-        # 400 is the expected failure when `claude` isn't on PATH or the
-        # project_dir is invalid — skip cleanly rather than fail the suite.
+        # 400 is the expected failure when the project_dir is invalid — skip
+        # cleanly rather than fail the suite.
         pytest.skip(f"could not launch PTY session (HTTP {res.status_code}: {res.text[:200]})")
 
     body = res.json()
@@ -353,16 +386,42 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
     try:
         yield sid
     finally:
-        # Force-kill teardown — `mode: "kill"` is unconditional (vs "quit"
-        # which waits for claude to process /quit). Swallow exceptions so a
-        # stuck claude doesn't mask the actual test failure.
-        try:
-            requests.post(
-                f"{base_url}/api/claude-code/sessions/{sid}/stop",
-                json={"mode": "kill", "close_window": True},
-                headers=headers,
-                verify=False,
-                timeout=5,
+        _stop_session(base_url, headers, sid)
+
+
+# ----------------------------------------------------- input-delivery polling
+_LOG_POLL_DEADLINE_MS = 5_000
+
+
+@pytest.fixture
+def wait_for_session_log() -> Callable[..., bool]:
+    """Return a poller for the per-session input log.
+
+    ``wait(page, sid, needle, deadline_ms=_LOG_POLL_DEADLINE_MS)`` reads
+    ``webapp/sessions/<sid>.log`` every 200 ms until ``needle`` appears or the
+    deadline elapses, then returns ``True``/``False``. One source of truth for
+    the input-delivery wait that used to be a hardcoded 5 s poll loop copied
+    into four test files (issue #58).
+    """
+
+    def _wait(
+        page: Page,
+        sid: str,
+        needle: str,
+        deadline_ms: int = _LOG_POLL_DEADLINE_MS,
+    ) -> bool:
+        log_path = _SESSIONS_DIR / f"{sid}.log"
+
+        def _hit() -> bool:
+            return log_path.exists() and needle in log_path.read_text(
+                encoding="utf-8", errors="replace"
             )
-        except Exception as exc:
-            logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
+
+        for _ in range(max(1, deadline_ms // 200)):
+            if _hit():
+                return True
+            page.wait_for_timeout(200)
+        # Final read so a hit landing in the last 200 ms interval isn't missed.
+        return _hit()
+
+    return _wait

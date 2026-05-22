@@ -14,34 +14,17 @@ literal escaped form. Runs in both projections.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
-
-
-def _read_session_log(sid: str) -> str:
-    log_path = _SESSIONS_DIR / f"{sid}.log"
-    if not log_path.exists():
-        return ""
-    return log_path.read_text(encoding="utf-8", errors="replace")
-
-
-def _wait_for_log(page: Page, sid: str, needle: str, deadline_ms: int = 5_000) -> bool:
-    for _ in range(deadline_ms // 200):
-        if needle in _read_session_log(sid):
-            return True
-        page.wait_for_timeout(200)
-    return False
-
 
 def test_keys_popover_sends_escape_sequences(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
@@ -61,9 +44,9 @@ def test_keys_popover_sends_escape_sequences(
     expect(popover).to_be_visible()
     authed_page.locator('#terminalKeysPopover .key-btn[data-key="down"]').click()
     expect(popover).to_be_visible()
-    assert _wait_for_log(authed_page, sid, "\\x1b[B"), (
-        "↓ key did not deliver the down-arrow escape sequence to the "
-        f"session log ({_SESSIONS_DIR / (sid + '.log')}) — issue #36 regressed"
+    assert wait_for_session_log(authed_page, sid, "\\x1b[B"), (
+        "↓ key did not deliver the down-arrow escape sequence to "
+        f"webapp/sessions/{sid}.log — it never reached the live PTY session"
     )
 
     # Enter sends \r and closes the popover (Enter usually ends a prompt).

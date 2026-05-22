@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import base64
 import re
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -43,16 +42,6 @@ _PNG_1x1 = base64.b64decode(
 _PATH_RE = re.compile(r"\.launcher-tmp.*\.png$")
 
 pytestmark = pytest.mark.smoke
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
-
-
-def _read_session_log(sid: str) -> str:
-    log_path = _SESSIONS_DIR / f"{sid}.log"
-    if not log_path.exists():
-        return ""
-    return log_path.read_text(encoding="utf-8", errors="replace")
 
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
@@ -75,7 +64,10 @@ def test_compose_button_hidden_in_mirror(
 
 
 def test_compose_send_forwards_text_to_pty(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
 ) -> None:
     """➤ Send forwards the textarea contents + Enter to the PTY."""
     sid = launched_pty_session
@@ -98,16 +90,9 @@ def test_compose_send_forwards_text_to_pty(
     expect(authed_page.locator("#terminalComposeInput")).to_have_value("")
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
 
-    deadline_ms = 5_000
-    found = False
-    for _ in range(deadline_ms // 200):
-        if payload in _read_session_log(sid):
-            found = True
-            break
-        authed_page.wait_for_timeout(200)
-    assert found, (
-        f"➤ Send did not deliver the compose text to the session log "
-        f"({_SESSIONS_DIR / (sid + '.log')}) within 5s — issue #37 regressed"
+    assert wait_for_session_log(authed_page, sid, payload), (
+        f"➤ Send did not deliver the compose text to webapp/sessions/{sid}.log "
+        "— the text never reached the live PTY session"
     )
 
 

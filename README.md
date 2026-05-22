@@ -503,7 +503,9 @@ It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `test
 
 Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/session_host*.py` done. The same autoboot path is available to a plain pytest run with `--e2e-autoboot` (or `LAUNCHER_E2E_AUTOBOOT=1`).
 
-The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary. Note: `claude` is not on PATH on the runner, so the terminal-regression tests (reconnect, paste, mirror-close) launched via the `launched_pty_session` fixture skip cleanly there — expected, not a failure.
+The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary.
+
+The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `test_keys_popover`, `test_terminal_reconnect`) need a **live `claude` PTY** to type into. The `launched_pty_session` fixture checks `claude` is on `PATH` before launching: where it isn't — notably the CI runner, which never installs it — the fixture **skips** those tests cleanly instead of failing them against a PTY that dies the moment `cmd` can't find `claude` (issue #58). They therefore gate on a dev box where `claude` is installed; on CI they show as skipped. A failed run keeps the autoboot and per-session logs as a downloadable `e2e-logs` artifact on the run page, so any e2e failure can be diagnosed without a local repro.
 
 ---
 

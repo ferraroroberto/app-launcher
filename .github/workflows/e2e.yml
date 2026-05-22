@@ -51,3 +51,18 @@ jobs:
 
       - name: Run pre-ship gate
         run: pwsh -File scripts/verify-before-ship.ps1
+
+      - name: Upload e2e diagnostic logs
+        # Runs even when the gate fails — the autoboot webapp/session-host
+        # output and the per-session input logs make any future e2e failure
+        # diagnosable from the run page without a local repro (issue #58).
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            webapp/e2e-autoboot-webapp.log
+            webapp/e2e-autoboot-session-host.log
+            webapp/sessions/
+          if-no-files-found: warn
+          retention-days: 7

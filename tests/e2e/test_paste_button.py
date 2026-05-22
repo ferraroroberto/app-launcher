@@ -14,15 +14,10 @@ Chromium's pass confirms the click handler itself didn't regress.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from playwright.sync_api import Page
 
 pytestmark = pytest.mark.smoke
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 
 _PASTE_PAYLOAD = "p4s7e-{regress}\n"
 
@@ -42,15 +37,11 @@ _CLIPBOARD_MOCK = """
 """ % _PASTE_PAYLOAD
 
 
-def _read_session_log(sid: str) -> str:
-    log_path = _SESSIONS_DIR / f"{sid}.log"
-    if not log_path.exists():
-        return ""
-    return log_path.read_text(encoding="utf-8", errors="replace")
-
-
 def test_paste_button_forwards_clipboard_to_pty(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
     authed_page.add_init_script(_CLIPBOARD_MOCK)
@@ -73,15 +64,7 @@ def test_paste_button_forwards_clipboard_to_pty(
 
     # session_input writes one [input] line per chunk; repr() escapes the
     # newline so we search for the literal escaped form, not the raw byte.
-    deadline_ms = 5_000
-    found = False
-    for _ in range(deadline_ms // 200):
-        log = _read_session_log(sid)
-        if "p4s7e-{regress}" in log:
-            found = True
-            break
-        authed_page.wait_for_timeout(200)
-    assert found, (
-        f"paste button click did not deliver clipboard text to session log "
-        f"({_SESSIONS_DIR / (sid + '.log')}) within 5s — issue #29 regressed"
+    assert wait_for_session_log(authed_page, sid, "p4s7e-{regress}"), (
+        f"paste button click did not deliver clipboard text to "
+        f"webapp/sessions/{sid}.log — the text never reached the live PTY session"
     )
