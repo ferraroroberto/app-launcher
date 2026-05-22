@@ -39,6 +39,24 @@ def test_create_remote_uses_antigravity_command(tmp_path, monkeypatch):
     assert session.to_api()["agent"] == "antigravity"
 
 
+def test_create_remote_uses_copilot_command(tmp_path, monkeypatch):
+    captured: dict = {}
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        return _FakeProc()
+
+    from src import session_host
+    monkeypatch.setattr(session_host.subprocess, "Popen", fake_popen)
+
+    mgr = SessionManager()
+    session = mgr.create_remote(str(tmp_path), "proj", "", "copilot")
+
+    assert captured["command"].startswith("cmd /c copilot")
+    assert session.agent == "copilot"
+    assert session.to_api()["agent"] == "copilot"
+
+
 def test_create_remote_defaults_to_claude(tmp_path, monkeypatch):
     captured: dict = {}
 

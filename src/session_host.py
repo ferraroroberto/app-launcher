@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
-from src.agents import DEFAULT_AGENT, command_for
+from src.agents import DEFAULT_AGENT, command_for, quit_command_for
 from src.audit import transcript_path
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -245,20 +245,26 @@ class PtySession:
             logger.debug(f"PTY {self.session_id[:8]} resize failed: {exc}")
 
     def stop(self, mode: str = STOP_QUIT, close_window: bool = False) -> None:
-        """Stop the session — clean ``/quit`` by default, or interrupt / kill.
+        """Stop the session — graceful per-agent quit, or interrupt / kill.
 
-        If close_window is True, signal the mirror page to self-close via a shutdown WS frame.
+        ``close_window`` (the "Stop & Close" action) force-terminates the
+        ConPTY tree outright: it means "gone", and a typed quit command
+        can't be relied on — the agent may be mid-task, the prompt may
+        hold partial input, or the agent's quit command may differ. Plain
+        "Stop" keeps the window open and types the agent's *own* quit
+        command (Claude's ``/quit``, Copilot's ``/exit``, …) so the agent
+        exits cleanly.
         """
         try:
-            if mode == STOP_INTERRUPT:
-                self._pty.sendintr()
-            elif mode == STOP_KILL:
+            if close_window or mode == STOP_KILL:
                 self._pty.terminate(force=True)
-            else:  # STOP_QUIT
-                # Claude Code's clean exit. ESC clears any partial input
-                # first so "/quit" lands on an empty prompt.
+            elif mode == STOP_INTERRUPT:
+                self._pty.sendintr()
+            else:  # STOP_QUIT — graceful, agent-appropriate.
+                # ESC clears any partial input first so the quit command
+                # lands on an empty prompt.
                 self._pty.write("\x1b")
-                self._pty.write("/quit\r")
+                self._pty.write(quit_command_for(self.agent) + "\r")
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} stop({mode}) failed: {exc}")
 

@@ -12,7 +12,7 @@
 
 import { els, state } from './state.js';
 import { readToken, toast } from './api.js';
-import { fetchSessions } from './sessions.js';
+import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
   clearTerminalToken,
@@ -215,7 +215,7 @@ export async function openTerminal(session) {
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
     lockBodyScroll();
-    els.terminalTitle.textContent = (session.live_title && session.live_title.trim()) ? session.live_title : (session.name || 'session');
+    els.terminalTitle.textContent = sessionTitle(session);
     els.terminalHost.innerHTML = '';
     setTerminalStatus(
       '🔒 ' + (state.status.terminal.reason ||

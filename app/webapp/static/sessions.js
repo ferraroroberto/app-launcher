@@ -20,6 +20,17 @@ export function fmtAgo(epochSeconds) {
   return hrs + 'h ' + (mins % 60) + 'm';
 }
 
+// Display title for a session. Coding agents prefix their live terminal
+// title with a brand glyph (e.g. Claude's green ✳). The per-session
+// agent icon already identifies the agent, so that leading glyph is
+// redundant — strip any leading run of non-alphanumeric characters.
+export function sessionTitle(s) {
+  const live = String((s && s.live_title) || '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .trim();
+  return live || (s && s.name) || 'session';
+}
+
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
@@ -45,12 +56,16 @@ export function renderSessions() {
     const dot = document.createElement('span');
     dot.className = 'health-dot ' + (s.alive === false ? 'down' : 'up');
     head.appendChild(dot);
-    // Which coding agent this session is running (issue #45).
-    const agentId = s.agent === 'antigravity' ? 'antigravity' : 'claude';
+    // Which coding agent this session is running (issue #45). Resolved
+    // against the agent registry (state.agents) so a new agent's icon +
+    // label flow through without touching this file; falls back to
+    // Claude Code for an unrecognised id.
+    const known = state.agents.find(function (a) { return a.id === s.agent; });
+    const agentId = known ? known.id : 'claude';
     const agentIcon = document.createElement('img');
     agentIcon.className = 'session-agent-icon';
     agentIcon.src = '/static/icons/' + agentId + '.svg';
-    agentIcon.alt = agentId === 'antigravity' ? 'Antigravity CLI' : 'Claude Code';
+    agentIcon.alt = known ? known.label : 'Claude Code';
     agentIcon.title = agentIcon.alt;
     head.appendChild(agentIcon);
     const kindTag = document.createElement('span');
@@ -59,7 +74,7 @@ export function renderSessions() {
     head.appendChild(kindTag);
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = (s.live_title && s.live_title.trim()) ? s.live_title : s.name;
+    name.textContent = sessionTitle(s);
     head.appendChild(name);
     if (!remote) {
       const chev = document.createElement('span');
@@ -119,12 +134,12 @@ export async function stopSession(s, closeWindow) {
     msg = remote
       ? 'Stop and close the detached session "' + s.name + '"?\n\n' +
         'Its console window will be closed.'
-      : 'Stop and close the Claude Code session "' + s.name + '"?\n\n' +
+      : 'Stop and close the session "' + s.name + '"?\n\n' +
         'The terminal window will close.';
   } else {
     // Just Stop (PtySession only)
-    msg = 'Stop the Claude Code session "' + s.name + '"?\n\n' +
-      'The terminal window will stay open, and Claude will exit cleanly.';
+    msg = 'Stop the session "' + s.name + '"?\n\n' +
+      'The terminal window will stay open, and the agent will exit cleanly.';
   }
   if (!confirm(msg)) return;
   try {

@@ -2,7 +2,7 @@
 
 Phone-first launcher hub. One tap on your phone → a CMD window opens on the home PC and either:
 
-- runs a coding agent — **Claude Code** or **Antigravity CLI** — in a project folder (**Coding** tab), or
+- runs a coding agent — **Claude Code**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab), or
 - spawns any registered Streamlit / FastAPI launcher (**Apps** tab).
 
 Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](https://github.com/) — same FastAPI + SPA + PWA + Cloudflare-tunnel stack, but for kicking off other processes instead of doing work itself.
@@ -19,10 +19,10 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 The web UI has two tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
-  - **Claude Code** (`claude`) and **Antigravity CLI** (`agy`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) below.
+  - **Claude Code** (`claude`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
   - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart.
 
-  Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / verbose / debug) and an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles — the Antigravity CLI has no model flag, so its model is picked with `/model` in-session). See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
+  Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / verbose / debug), an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles), and a GitHub Copilot subsection (a `--model` picker plus the `--allow-all` toggle). Antigravity has no launch-time model flag — pick its model with `/model` in-session. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 
 The **Apps** tab is backed by a registry file (`config/apps.json`); the **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
@@ -63,6 +63,30 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445` webapp —
 > the `:8446` session-host, which actually spawns `agy`, needs a full tray
 > restart to inherit the new `PATH`).
+
+### Installing the GitHub Copilot CLI
+
+The Coding tab can also launch the **GitHub Copilot CLI** (`copilot`) — GitHub's
+terminal-native agentic coding agent. The tab's GitHub Copilot button stays
+disabled until `copilot` is on `PATH`. Install it with WinGet:
+
+```powershell
+winget install -e --id GitHub.Copilot
+```
+
+It is also available via npm (`npm install -g @github/copilot`, needs Node.js 22+)
+and a standalone installer — see the [official docs](https://docs.github.com/copilot/how-tos/set-up/install-copilot-cli)
+for the channel that suits you. Verify with `copilot --version`.
+
+> **Authentication is not the launcher's job.** The Copilot CLI signs in
+> *inside the session* — run `/login` at the `copilot` prompt and follow the
+> on-screen instructions; it needs an active GitHub Copilot subscription. The
+> launcher only resolves the `copilot` binary on `PATH` and spawns it.
+>
+> Like `agy`, `copilot` is detected on `PATH` at process start — after
+> installing it, **restart the tray** (`🔄 Restart webapp` refreshes only the
+> `:8445` webapp; the `:8446` session-host that spawns `copilot` needs a full
+> tray restart to inherit the new `PATH`).
 
 ---
 
@@ -160,7 +184,7 @@ After this you **must** re-install the trust profile on every device: delete the
 
 ## Interactive terminal from the phone
 
-Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for either coding agent (Claude Code or Antigravity CLI). Tap a `⚡ full control` session in the list to re-attach.
+Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for any coding agent (Claude Code, Antigravity CLI, or GitHub Copilot CLI). Tap a `⚡ full control` session in the list to re-attach.
 
 When the same session is also open on the PC (the mirror window), the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
 
@@ -274,7 +298,7 @@ app-launcher/
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
 │   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
-│   ├── agents.py              # coding-agent registry (claude / agy) + PATH detection
+│   ├── agents.py              # coding-agent registry (claude / agy / copilot) + PATH detection
 │   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py             # bat classifier + project-directory discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
@@ -358,7 +382,7 @@ UI prefs + secrets, authored from the web UI:
 | `webauthn_rp_name` | `"Launcher"` | Display name shown in the passkey prompt. |
 | `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |
 
-`--remote-control` and `--dangerously-skip-permissions` are **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The Antigravity CLI launches with no flags.
+`--remote-control` and `--dangerously-skip-permissions` are **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
 
 ### `config/apps.json`
 
@@ -494,7 +518,7 @@ The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on
 - `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
 - `src/scanner.py` — bat classifier + project-directory discovery
-- `src/agents.py` — coding-agent registry (Claude Code / Antigravity CLI) + PATH detection
+- `src/agents.py` — coding-agent registry (Claude Code / Antigravity CLI / GitHub Copilot CLI) + PATH detection
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored
