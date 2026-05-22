@@ -64,7 +64,7 @@
 
       <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
       <div id="claudeEmpty" class="empty" hidden>
-        No Claude Code projects found — drop a <code>.code-workspace</code> in your projects directory and tap 🔎 to rescan.
+        No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
       </div>
     </section>
 
@@ -102,8 +102,13 @@
         <span>✏️ Edit mode — show rename &amp; remove on every row</span>
       </label>
       <label class="stacked">
-        <span>Projects dir (Claude Code scan)</span>
+        <span>Projects dir (Claude Code)</span>
         <input id="projectsDir" type="text" class="input-native">
+      </label>
+      <label class="stacked">
+        <span>Ignored folders — one per line, names or <code>*</code> globs</span>
+        <textarea id="projectsIgnore" class="input-native" rows="3"
+                  placeholder="archive&#10;*-old&#10;scratch"></textarea>
       </label>
       <label class="stacked">
         <span>Apps scan root</span>
@@ -113,8 +118,7 @@
         <button id="saveSettings" type="button" class="big-btn">💾 Save</button>
       </div>
       <div class="row settings-actions">
-        <button id="rescanBtn" type="button" class="ghost-btn">🔎 Scan for new entries</button>
-        <button id="genBatBtn" type="button" class="ghost-btn">📜 Create BATs</button>
+        <button id="rescanBtn" type="button" class="ghost-btn">🔎 Scan for new apps</button>
       </div>
       <hr>
       <div class="webauthn-section">
@@ -144,15 +148,6 @@
       <div class="row dialog-actions">
         <button id="scanCancel" type="button" class="ghost-btn">Cancel</button>
         <button id="scanSave" type="button" class="big-btn">Add selected</button>
-      </div>
-    </dialog>
-
-    <dialog id="genDialog" class="scan-dialog">
-      <h2>📜 Generate BAT files</h2>
-      <div id="genResults" class="scan-results"></div>
-      <div class="row dialog-actions">
-        <button id="genCancel" type="button" class="ghost-btn">Cancel</button>
-        <button id="genRun" type="button" class="big-btn">Generate</button>
       </div>
     </dialog>
 

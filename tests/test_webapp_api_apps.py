@@ -26,6 +26,8 @@ class TestGetApps:
         assert body["apps"] == []
 
     def test_lists_seeded_entries(self, webapp_client):
+        """Bat rows come from the registry; claude-code rows are scanned
+        live from projects_dir — both surface in /api/apps."""
         client, _, overrides = webapp_client
         _seed_registry(
             overrides["tmp_registry_path"],
@@ -37,19 +39,95 @@ class TestGetApps:
                     bat_path="C:\\stub\\alpha.bat",
                     added_at=datetime.now().isoformat(),
                 ),
-                AppEntry(
-                    id="beta",
-                    name="Beta",
-                    kind="claude-code",
-                    project_dir="C:\\stub\\beta",
-                    added_at=datetime.now().isoformat(),
-                ),
             ],
         )
+        (overrides["tmp_projects_dir"] / "beta").mkdir()
         resp = client.get("/api/apps")
         assert resp.status_code == 200
         names = {a["name"] for a in resp.json()["apps"]}
         assert names == {"Alpha", "Beta"}
+
+
+class TestClaudeCodeDiscovery:
+    """The Claude Code tab lists projects_dir's child directories live —
+    no scan step, no persistence in apps.json (issue #44)."""
+
+    def test_child_dirs_appear_as_claude_code_rows(self, webapp_client):
+        client, _, overrides = webapp_client
+        for name in ("proj-one", "proj-two"):
+            (overrides["tmp_projects_dir"] / name).mkdir()
+        apps = client.get("/api/apps").json()["apps"]
+        cc = [a for a in apps if a["kind"] == "claude-code"]
+        assert {a["project_dir"] for a in cc} == {
+            str(overrides["tmp_projects_dir"] / "proj-one"),
+            str(overrides["tmp_projects_dir"] / "proj-two"),
+        }
+
+    def test_stale_claude_code_rows_in_registry_are_ignored(self, webapp_client):
+        """An older apps.json may still carry claude-code rows — the API
+        must not surface them; only the live directory scan counts."""
+        client, _, overrides = webapp_client
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [
+                AppEntry(
+                    id="ghost",
+                    name="Ghost",
+                    kind="claude-code",
+                    project_dir="C:\\nowhere\\ghost",
+                    added_at=datetime.now().isoformat(),
+                ),
+            ],
+        )
+        apps = client.get("/api/apps").json()["apps"]
+        assert all(a["name"] != "Ghost" for a in apps)
+
+    def test_projects_ignore_hides_matching_dirs(self, webapp_client):
+        client, _, overrides = webapp_client
+        for name in ("keep-me", "archive", "scratch-old"):
+            (overrides["tmp_projects_dir"] / name).mkdir()
+        client.post(
+            "/api/config", json={"projects_ignore": ["archive", "*-old"]}
+        )
+        apps = client.get("/api/apps").json()["apps"]
+        cc_names = {a["name"] for a in apps if a["kind"] == "claude-code"}
+        assert cc_names == {"Keep Me"}
+
+    def test_vcs_and_build_dirs_always_skipped(self, webapp_client):
+        client, _, overrides = webapp_client
+        for name in (".git", "node_modules", "__pycache__", "real-project"):
+            (overrides["tmp_projects_dir"] / name).mkdir()
+        apps = client.get("/api/apps").json()["apps"]
+        cc_names = {a["name"] for a in apps if a["kind"] == "claude-code"}
+        assert cc_names == {"Real Project"}
+
+    def test_launch_resolves_live_claude_code_dir(
+        self, webapp_client, monkeypatch
+    ):
+        """A claude-code row isn't in the registry — launch must resolve
+        it against the live projects_dir scan, by its slugified id."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        captured: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind="pty"):
+            captured["project_dir"] = str(project_dir)
+            captured["kind"] = kind
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        # slugify("live-proj") == "live-proj"; remote mode avoids the
+        # PC mirror window.
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"mode": "remote"}
+        )
+        assert resp.status_code == 200
+        assert captured["project_dir"] == str(
+            overrides["tmp_projects_dir"] / "live-proj"
+        )
+        assert captured["kind"] == "remote"
 
 
 class TestScanApps:

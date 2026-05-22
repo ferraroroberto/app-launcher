@@ -7,7 +7,6 @@
  *   state.runningApps  — array from /api/apps/running (launcher-spawned apps)
  *   state.sessions     — array from /api/claude-code/sessions
  *   state.pendingScan  — array from /api/apps/scan, surfaced in scan dialog
- *   state.genPreview   — { workspaces, orphans } for the generate dialog
  *   state.webauthn     — { configured, enrollment_open, devices[] }
  *   state.terminal     — null when overlay closed, else { sid, ws, term, fit, onWindowResize }
  *   state.status       — /api/status payload (incl. terminal reachability)
@@ -35,7 +34,6 @@ export const state = {
   runningApps: [],
   sessions: [],
   pendingScan: [],
-  genPreview: null,
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
   status: null,     // /api/status payload (incl. terminal reachability)
@@ -70,6 +68,7 @@ export const els = {
   settingsPanel: document.getElementById('settingsPanel'),
   editMode: document.getElementById('editMode'),
   projectsDir: document.getElementById('projectsDir'),
+  projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),
   saveSettings: document.getElementById('saveSettings'),
   listenersList: document.getElementById('listenersList'),
@@ -85,12 +84,6 @@ export const els = {
   scanResults: document.getElementById('scanResults'),
   scanCancel: document.getElementById('scanCancel'),
   scanSave: document.getElementById('scanSave'),
-
-  genBatBtn: document.getElementById('genBatBtn'),
-  genDialog: document.getElementById('genDialog'),
-  genResults: document.getElementById('genResults'),
-  genCancel: document.getElementById('genCancel'),
-  genRun: document.getElementById('genRun'),
 
   renameDialog: document.getElementById('renameDialog'),
   renameForm: document.getElementById('renameForm'),

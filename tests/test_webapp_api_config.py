@@ -14,6 +14,8 @@ class TestGetConfig:
         assert "host" in body
         assert "port" in body
         assert "projects_dir" in body
+        assert "projects_ignore" in body
+        assert isinstance(body["projects_ignore"], list)
         assert "apps_scan_root" in body
         assert "claude" in body
         # auth_password_set is what the SPA shows in the login overlay
@@ -55,6 +57,20 @@ class TestPatchConfig:
             "/api/config", json={"claude_model": "definitely-not-a-real-model"}
         )
         assert resp.status_code == 400
+
+    def test_projects_ignore_round_trips(self, webapp_client):
+        """projects_ignore is a list field — the endpoint accepts it,
+        strips blank entries, and persists it on the in-memory cfg."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config",
+            json={"projects_ignore": ["archive", "  ", "*-old"]},
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.projects_ignore == ["archive", "*-old"]
+        # And it survives a GET round-trip.
+        body = client.get("/api/config").json()
+        assert body["projects_ignore"] == ["archive", "*-old"]
 
     def test_ignores_unknown_field_silently(self, webapp_client):
         """The endpoint filters by allow-list — unknown keys are dropped,

@@ -33,6 +33,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "host": cfg.host,
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
+        "projects_ignore": cfg.projects_ignore,
         "apps_scan_root": cfg.apps_scan_root,
         "claude": {
             "model": cfg.claude_model,
@@ -53,6 +54,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     body = await request.json()
     allowed = {
         "projects_dir",
+        "projects_ignore",
         "apps_scan_root",
         "claude_model",
         "claude_effort",
@@ -60,6 +62,13 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "claude_debug",
     }
     patch = {k: v for k, v in body.items() if k in allowed}
+    # projects_ignore is a list of patterns — coerce to a clean string
+    # list so a stray scalar from the client can't corrupt the config.
+    if "projects_ignore" in patch:
+        raw = patch["projects_ignore"]
+        patch["projects_ignore"] = [
+            str(p).strip() for p in (raw or []) if str(p).strip()
+        ]
     try:
         new_cfg = update_webapp_config(**patch)
     except ValueError as exc:

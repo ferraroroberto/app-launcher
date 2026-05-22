@@ -84,7 +84,9 @@ function renderList(host, items) {
 
     // Rename + remove are gated behind Settings → Edit mode, so the
     // lists stay icon-free in normal use (no per-row icon inflation).
-    if (state.editMode) {
+    // claude-code rows are a live directory listing — there's nothing
+    // to rename or remove, so they never get the edit-mode actions.
+    if (state.editMode && a.kind !== 'claude-code') {
       const actions = document.createElement('div');
       actions.className = 'row-actions';
 
@@ -402,125 +404,6 @@ function wireScanDialog() {
   });
 }
 
-// ----------------------------------------------------------- generate-bat dialog
-async function openGenDialog() {
-  try {
-    const body = await jsonApi('/api/claude-code/generate');
-    state.genPreview = body;
-    renderGenPreview();
-    if (els.genDialog.showModal) els.genDialog.showModal();
-  } catch (exc) {
-    toast('Preview failed: ' + (exc.message || exc), 'error');
-  }
-}
-
-function renderGenPreview() {
-  els.genResults.innerHTML = '';
-  const g = state.genPreview;
-  if (!g) return;
-
-  const new_bats = g.workspaces.filter(function (w) { return !w.bat_exists; });
-  const existing = g.workspaces.filter(function (w) { return w.bat_exists; });
-
-  if (new_bats.length) {
-    const section = document.createElement('div');
-    section.className = 'scan-section';
-    const h = document.createElement('h3');
-    h.textContent = 'New BAT files (will be created)';
-    section.appendChild(h);
-    new_bats.forEach(function (w) {
-      const label = document.createElement('label');
-      label.innerHTML = '<input type="checkbox" checked disabled> <div><div>' + w.bat_name + '</div><div class="meta">' + w.project_dir + '</div></div>';
-      section.appendChild(label);
-    });
-    els.genResults.appendChild(section);
-  }
-
-  if (existing.length) {
-    const section = document.createElement('div');
-    section.className = 'scan-section';
-    const h = document.createElement('h3');
-    h.textContent = 'Existing BAT files (tick to overwrite)';
-    section.appendChild(h);
-    existing.forEach(function (w) {
-      const label = document.createElement('label');
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = w.name;
-      cb.dataset.kind = 'overwrite';
-      label.appendChild(cb);
-      const body = document.createElement('div');
-      body.innerHTML = '<div>' + w.bat_name + '</div><div class="meta">' + w.project_dir + '</div>';
-      label.appendChild(body);
-      section.appendChild(label);
-    });
-    els.genResults.appendChild(section);
-  }
-
-  if (g.orphans && g.orphans.length) {
-    const section = document.createElement('div');
-    section.className = 'scan-section';
-    const h = document.createElement('h3');
-    h.textContent = 'Orphan BATs (tick to create matching .code-workspace)';
-    section.appendChild(h);
-    g.orphans.forEach(function (o) {
-      const label = document.createElement('label');
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = o.name;
-      cb.dataset.kind = 'create_ws';
-      cb.checked = true;
-      label.appendChild(cb);
-      const body = document.createElement('div');
-      body.innerHTML = '<div>' + o.ws_name + '</div><div class="meta">→ ' + o.project_dir + '</div>';
-      label.appendChild(body);
-      section.appendChild(label);
-    });
-    els.genResults.appendChild(section);
-  }
-
-  if (!new_bats.length && !existing.length && !(g.orphans || []).length) {
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    p.textContent = 'No workspaces or orphan BATs found in ' + g.projects_dir;
-    els.genResults.appendChild(p);
-  }
-}
-
-function wireGenDialog() {
-  els.genBatBtn.addEventListener('click', openGenDialog);
-  els.genCancel.addEventListener('click', function () {
-    if (els.genDialog.close) els.genDialog.close();
-  });
-  els.genRun.addEventListener('click', async function () {
-    const overwrite = Array.from(
-      els.genResults.querySelectorAll('input[data-kind="overwrite"]:checked')
-    ).map(function (cb) { return cb.value; });
-    const create_ws = Array.from(
-      els.genResults.querySelectorAll('input[data-kind="create_ws"]:checked')
-    ).map(function (cb) { return cb.value; });
-    try {
-      const body = await jsonApi('/api/claude-code/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ overwrite, create_ws }),
-      });
-      const summary = [
-        body.created.length ? 'created ' + body.created.length : null,
-        body.overwritten.length ? 'overwrote ' + body.overwritten.length : null,
-        body.ws_created.length ? 'created workspace ' + body.ws_created.length : null,
-      ].filter(Boolean).join(' · ');
-      toast(summary || 'Nothing to do.', summary ? 'good' : 'error');
-      if (body.errors && body.errors.length) {
-        body.errors.forEach(function (e) { toast(e, 'error'); });
-      }
-      if (els.genDialog.close) els.genDialog.close();
-    } catch (exc) {
-      toast('Generate failed: ' + (exc.message || exc), 'error');
-    }
-  });
-}
-
 // ----------------------------------------------------------- listeners panel (Apps tab)
 export async function fetchListeners() {
   try {
@@ -581,5 +464,4 @@ export function wireApps() {
   });
   wireRenameDialog();
   wireScanDialog();
-  wireGenDialog();
 }

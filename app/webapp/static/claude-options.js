@@ -12,6 +12,7 @@ export async function fetchConfig() {
   const body = await jsonApi('/api/config');
   state.config = body;
   els.projectsDir.value = body.projects_dir || '';
+  els.projectsIgnore.value = (body.projects_ignore || []).join('\n');
   els.appsScanRoot.value = body.apps_scan_root || '';
   renderClaudeOptions();
 }
