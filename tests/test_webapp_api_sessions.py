@@ -5,6 +5,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
+from websockets.exceptions import InvalidHandshake
 
 
 class TestListSessions:
@@ -199,3 +201,81 @@ class TestStopSessionMirrorClose:
 
         assert resp.status_code == 200
         sess.stop.assert_called_once_with(8446, "abc-123", "kill", True)
+
+
+class TestProxySessionWS:
+    """Issue #61: an upstream WS handshake rejection must not escape.
+
+    When the session-host rejects the upstream WS upgrade at the HTTP
+    layer (e.g. 403 for a reaped/unknown session, raised by the
+    ``websockets`` client as ``InvalidStatus`` — a subclass of
+    ``InvalidHandshake``), the proxy must close the browser socket
+    cleanly with code 4502 rather than raising an unhandled ASGI
+    exception with a full traceback in the webapp log.
+    """
+
+    def _patch_loopback(self, sessions_router, monkeypatch):
+        """TestClient connects as host 'testclient'; treat it as loopback
+        so the Tailscale/passkey gate is skipped and the proxy reaches
+        the upstream ``ws_connect`` call under test."""
+        monkeypatch.setattr(
+            sessions_router,
+            "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+
+    def test_upstream_handshake_rejection_closes_4502(
+        self, webapp_client, monkeypatch
+    ):
+        client, _, _ = webapp_client
+        from app.webapp.routers import sessions as sessions_router
+        self._patch_loopback(sessions_router, monkeypatch)
+
+        class _RejectingConnect:
+            """Stand-in for ``ws_connect`` whose handshake is rejected."""
+
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                raise InvalidHandshake("simulated session-host 403")
+
+            async def __aexit__(self, *exc) -> bool:
+                return False
+
+        monkeypatch.setattr(sessions_router, "ws_connect", _RejectingConnect)
+
+        with pytest.raises(WebSocketDisconnect) as excinfo:
+            with client.websocket_connect(
+                "/api/claude-code/sessions/reaped-sid/ws"
+            ) as ws:
+                ws.receive_text()
+        assert excinfo.value.code == 4502
+
+    def test_upstream_unreachable_still_closes_4502(
+        self, webapp_client, monkeypatch
+    ):
+        """Regression guard: the existing OSError path (session-host not
+        listening at all) keeps mapping to the same 4502 close."""
+        client, _, _ = webapp_client
+        from app.webapp.routers import sessions as sessions_router
+        self._patch_loopback(sessions_router, monkeypatch)
+
+        class _UnreachableConnect:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def __aenter__(self):
+                raise OSError("connection refused")
+
+            async def __aexit__(self, *exc) -> bool:
+                return False
+
+        monkeypatch.setattr(sessions_router, "ws_connect", _UnreachableConnect)
+
+        with pytest.raises(WebSocketDisconnect) as excinfo:
+            with client.websocket_connect(
+                "/api/claude-code/sessions/no-host-sid/ws"
+            ) as ws:
+                ws.receive_text()
+        assert excinfo.value.code == 4502

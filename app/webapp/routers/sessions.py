@@ -16,6 +16,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
+from websockets.exceptions import InvalidHandshake
 
 from src import audit, launcher, session_client
 from src.webapp_config import WebappConfig
@@ -170,7 +171,12 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
             )
             audit.session_log(sid, "ws_open", client=client_ip_ws(websocket))
             await _proxy_websocket(websocket, upstream, sid)
-    except (OSError, WebSocketDisconnect) as exc:
+    except (OSError, WebSocketDisconnect, InvalidHandshake) as exc:
+        # InvalidHandshake covers an upstream WS upgrade rejected at the
+        # HTTP layer — e.g. the session-host answering 403 for a reaped
+        # or unknown session (InvalidStatus). Same "upstream not usable"
+        # condition as OSError; map it to the clean 4502 close instead of
+        # letting it escape as an unhandled ASGI traceback (issue #61).
         logger.debug(f"WS proxy {sid[:8]} ended: {exc}")
         try:
             await websocket.close(
