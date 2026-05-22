@@ -16,6 +16,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 
+from src.agents import detect_agents
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
@@ -100,6 +101,16 @@ async def version(request: Request) -> Dict[str, str]:
         "built_at": _BUILT_AT,
         "asset_hash": asset_hash_for(asset_hashes, "styles.css") or "",
     }
+
+
+@router.get("/api/agents")
+async def agents() -> Dict[str, Any]:
+    """Coding agents the launcher can spawn, each with a live PATH check.
+
+    The Coding tab uses ``available`` to disable an agent's per-tile
+    launch button (with a hover hint) when its CLI isn't installed.
+    """
+    return {"agents": detect_agents()}
 
 
 @router.get("/healthz")

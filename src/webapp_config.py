@@ -69,6 +69,11 @@ class WebappConfig:
     claude_effort: str = DEFAULT_CLAUDE_EFFORT
     claude_verbose: bool = True
     claude_debug: bool = False
+    # Antigravity CLI launch toggles (issue #45 follow-up). The Antigravity
+    # CLI exposes no model / effort / verbose flags — its model is chosen
+    # with `/model` in-session — so these two switches are the whole story.
+    antigravity_skip_permissions: bool = False
+    antigravity_sandbox: bool = False
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
@@ -122,6 +127,10 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
         claude_verbose=bool(raw.get("claude_verbose", True)),
         claude_debug=bool(raw.get("claude_debug", False)),
+        antigravity_skip_permissions=bool(
+            raw.get("antigravity_skip_permissions", False)
+        ),
+        antigravity_sandbox=bool(raw.get("antigravity_sandbox", False)),
         auth_token=str(raw.get("auth_token", "")),
         auth_password=str(raw.get("auth_password", "")),
         session_host_port=int(
@@ -154,6 +163,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_effort": cfg.claude_effort,
         "claude_verbose": cfg.claude_verbose,
         "claude_debug": cfg.claude_debug,
+        "antigravity_skip_permissions": cfg.antigravity_skip_permissions,
+        "antigravity_sandbox": cfg.antigravity_sandbox,
         "auth_token": cfg.auth_token,
         "auth_password": cfg.auth_password,
         "session_host_port": cfg.session_host_port,
@@ -202,6 +213,21 @@ def build_claude_flags(cfg: WebappConfig) -> str:
         parts.append("--verbose")
     if cfg.claude_debug:
         parts.append("--debug")
+    return " ".join(parts)
+
+
+def build_antigravity_flags(cfg: WebappConfig) -> str:
+    """Compose the `agy` CLI flags from the persisted Antigravity toggles.
+
+    The Antigravity CLI has no model / effort / verbose flags, so this is
+    just the two opt-in launch switches; an all-default config yields an
+    empty string (the CLI is launched bare).
+    """
+    parts: list[str] = []
+    if cfg.antigravity_skip_permissions:
+        parts.append("--dangerously-skip-permissions")
+    if cfg.antigravity_sandbox:
+        parts.append("--sandbox")
     return " ".join(parts)
 
 

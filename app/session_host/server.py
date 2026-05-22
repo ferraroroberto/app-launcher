@@ -45,6 +45,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from src.agents import AGENTS, DEFAULT_AGENT
 from src.session_host import _EOF, SessionManager
 
 logger = logging.getLogger(__name__)
@@ -97,13 +98,16 @@ def create_app() -> FastAPI:
         name = str(body.get("name") or "claude").strip() or "claude"
         flags = str(body.get("flags") or "").strip()
         kind = str(body.get("kind") or "pty").strip().lower()
+        agent = str(body.get("agent") or DEFAULT_AGENT).strip().lower()
         if not project_dir:
             raise HTTPException(status_code=400, detail="project_dir is required")
+        if agent not in AGENTS:
+            raise HTTPException(status_code=400, detail=f"unknown agent: {agent}")
         try:
             if kind == "remote":
-                session = manager.create_remote(project_dir, name, flags)
+                session = manager.create_remote(project_dir, name, flags, agent)
             else:
-                session = manager.create(project_dir, name, flags)
+                session = manager.create(project_dir, name, flags, agent)
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return session.to_api()

@@ -50,3 +50,11 @@ class TestScanProjectDirs:
         (tmp_path / "My Project").mkdir()
         found = scan_project_dirs(tmp_path)
         assert found[0].id == "my-project"
+
+    def test_name_is_raw_folder_name(self, tmp_path: Path):
+        """The Coding tab shows the bare on-disk name — no prettification
+        (issue #45). 'My Project' stays 'My Project', not 'My Project'
+        title-cased or slugified."""
+        (tmp_path / "weird_folder-Name").mkdir()
+        found = scan_project_dirs(tmp_path)
+        assert found[0].name == "weird_folder-Name"

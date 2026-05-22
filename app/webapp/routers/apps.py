@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 from fastapi import APIRouter, HTTPException, Request
 
-from src import app_runtime, audit, session_client
+from src import agents, app_runtime, audit, session_client
 from src.app_config import AppConfig
 from src.diagnostics import (
     detect_local_scheme,
@@ -40,7 +40,11 @@ from src.registry import (
     rename_by_id,
 )
 from src.scanner import KIND_CLAUDE_CODE, KIND_TUNNEL
-from src.webapp_config import WebappConfig, build_claude_flags
+from src.webapp_config import (
+    WebappConfig,
+    build_antigravity_flags,
+    build_claude_flags,
+)
 
 from app.webapp.middleware import LOOPBACK_HOSTS
 from app.webapp.routers._helpers import cert_present, client_ip, maybe_json
@@ -144,11 +148,12 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     if entry is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
 
-    # claude-code: two launch modes (chosen by the request body's
-    # `mode`). "pty" (default) = a launcher-owned PTY session streamed
-    # to and driven from the phone. "remote" = a detached console
-    # window on the PC the session-host only tracks (listed + killable
-    # but not streamed) — the Claude cloud app does the remote control.
+    # claude-code (the Coding tab): two launch modes (chosen by the
+    # request body's `mode`) and two agents (`agent`). "pty" (default) =
+    # a launcher-owned PTY session streamed to and driven from the phone.
+    # "remote" = a detached console window on the PC the session-host
+    # only tracks (listed + killable but not streamed). `agent` is
+    # `claude` (Claude Code) or `antigravity` (the `agy` CLI).
     if entry.kind == KIND_CLAUDE_CODE:
         if not entry.project_dir:
             raise HTTPException(
@@ -157,6 +162,29 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             )
         body = await maybe_json(request)
         mode = str(body.get("mode") or "pty").strip().lower()
+        agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
+        if agent not in agents.AGENTS:
+            raise HTTPException(
+                status_code=400, detail=f"unknown agent: {agent}"
+            )
+        # Claude Code is the launcher's core agent — its launch path is
+        # unguarded, exactly as before issue #45. Other agents
+        # (Antigravity) are checked server-side too, as defence-in-depth
+        # behind the Coding tab's already-disabled button.
+        if agent != agents.DEFAULT_AGENT and not agents.is_installed(agent):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{agents.AGENTS[agent].label} is not installed",
+            )
+        # Each agent has its own flag set: Claude's model / effort /
+        # always-on remote-control switches, Antigravity's two opt-in
+        # launch toggles (it has no model/effort flags — `/model` drives
+        # that in-TUI).
+        flags = (
+            build_claude_flags(cfg)
+            if agent == "claude"
+            else build_antigravity_flags(cfg)
+        )
 
         if mode == "remote":
             try:
@@ -164,9 +192,10 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                     spawn_claude_session,
                     Path(entry.project_dir),
                     entry.name,
-                    build_claude_flags(cfg),
+                    flags,
                     cfg.session_host_port,
                     "remote",
+                    agent,
                 )
             except session_client.SessionHostError as exc:
                 raise HTTPException(status_code=exc.status, detail=str(exc))
@@ -176,6 +205,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             audit.audit_event(
                 "remote_launch",
                 session=sid,
+                agent=agent,
                 name=entry.name,
                 project=entry.project_dir,
                 client=client_ip(request),
@@ -184,6 +214,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 "launched": entry.id,
                 "name": entry.name,
                 "kind": entry.kind,
+                "agent": agent,
                 "mode": "remote",
                 "session": session,
             }
@@ -193,8 +224,10 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 spawn_claude_session,
                 Path(entry.project_dir),
                 entry.name,
-                build_claude_flags(cfg),
+                flags,
                 cfg.session_host_port,
+                "pty",
+                agent,
             )
         except session_client.SessionHostError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc))
@@ -204,12 +237,13 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         audit.audit_event(
             "session_start",
             session=sid,
+            agent=agent,
             name=entry.name,
             project=entry.project_dir,
             client=client_ip(request),
         )
         audit.session_log(
-            sid, "start", name=entry.name, project=entry.project_dir
+            sid, "start", agent=agent, name=entry.name, project=entry.project_dir
         )
         # Mirror the session into an interactive terminal window on the
         # PC. Skipped when the launch came from the PC itself (the
@@ -231,6 +265,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "launched": entry.id,
             "name": entry.name,
             "kind": entry.kind,
+            "agent": agent,
             "mode": "pty",
             "session": session,
         }

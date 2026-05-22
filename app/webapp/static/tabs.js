@@ -1,4 +1,8 @@
-/* Two-tab switcher: Claude Code | Apps. */
+/* Two-tab switcher: Coding | Apps.
+ *
+ * The Coding tab's element ids keep the historical `claude` prefix
+ * (tabClaude / paneClaude / state.tab='claude') — only the visible
+ * label changed (issue #45). */
 
 import { els, state } from './state.js';
 

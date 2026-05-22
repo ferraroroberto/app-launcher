@@ -53,10 +53,12 @@ VALID_KINDS = frozenset({KIND_CLAUDE_CODE, KIND_STREAMLIT, KIND_WEBAPP, KIND_TUN
 
 @dataclass(frozen=True)
 class ProjectDir:
-    """A project directory the Claude Code tab can launch ``claude`` in.
+    """A project directory the Coding tab can launch a coding agent in.
 
-    ``project_dir`` is the directory ``claude`` will be cwd'd into; ``id``
-    is a stable slug of its name; ``name`` is a display label.
+    ``project_dir`` is the directory the agent will be cwd'd into; ``id``
+    is a stable slug of its name; ``name`` is the **bare on-disk folder
+    name**, shown verbatim on the tile (no prettification — that's the
+    Coding-tab tile design from issue #45).
     """
 
     id: str
@@ -126,7 +128,7 @@ def scan_project_dirs(
         results.append(
             ProjectDir(
                 id=slugify(child.name),
-                name=pretty_folder_name(child),
+                name=child.name,
                 project_dir=child,
             )
         )

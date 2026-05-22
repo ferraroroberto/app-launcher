@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Antigravity CLI">
+  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
+  <defs>
+    <linearGradient id="agLift" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#4285f4"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#agLift)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18,44 32,32 46,44"/>
+    <polyline points="20,32 32,22 44,32" opacity="0.7"/>
+    <polyline points="23,21 32,14 41,21" opacity="0.4"/>
+  </g>
+</svg>

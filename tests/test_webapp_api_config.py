@@ -39,6 +39,16 @@ class TestGetConfig:
         ):
             assert key in claude, f"missing key {key} in /api/config claude block"
 
+    def test_antigravity_block_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        body = client.get("/api/config").json()
+        ag = body["antigravity"]
+        assert set(ag) == {"skip_permissions", "sandbox", "computed_flags"}
+        assert isinstance(ag["skip_permissions"], bool)
+        assert isinstance(ag["sandbox"], bool)
+        # All-default config → the CLI is launched bare.
+        assert ag["computed_flags"] == ""
+
 
 class TestPatchConfig:
     def test_patches_allowed_field(self, webapp_client):
@@ -71,6 +81,23 @@ class TestPatchConfig:
         # And it survives a GET round-trip.
         body = client.get("/api/config").json()
         assert body["projects_ignore"] == ["archive", "*-old"]
+
+    def test_antigravity_toggles_round_trip(self, webapp_client):
+        """The two Antigravity launch toggles patch through and surface
+        as composed `agy` flags on the next GET."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config",
+            json={"antigravity_skip_permissions": True, "antigravity_sandbox": True},
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.antigravity_skip_permissions is True
+        assert app.state.webapp_config.antigravity_sandbox is True
+        ag = client.get("/api/config").json()["antigravity"]
+        assert ag["skip_permissions"] is True
+        assert ag["sandbox"] is True
+        assert "--dangerously-skip-permissions" in ag["computed_flags"]
+        assert "--sandbox" in ag["computed_flags"]
 
     def test_ignores_unknown_field_silently(self, webapp_client):
         """The endpoint filters by allow-list — unknown keys are dropped,

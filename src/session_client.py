@@ -76,7 +76,12 @@ def health(port: int) -> bool:
 
 
 def create_session(
-    port: int, project_dir: str, name: str, flags: str, kind: str = "pty"
+    port: int,
+    project_dir: str,
+    name: str,
+    flags: str,
+    kind: str = "pty",
+    agent: str = "claude",
 ) -> Dict[str, Any]:
     return _request(
         "POST",
@@ -88,6 +93,7 @@ def create_session(
             "name": name,
             "flags": flags,
             "kind": kind,
+            "agent": agent,
         },
     )
 
