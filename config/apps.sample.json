@@ -1,14 +1,7 @@
 {
-  "_comment": "Unified app registry. Real file is config/apps.json (gitignored). 'kind' is one of: claude-code | streamlit | webapp | tunnel.",
+  "_comment": "Apps-tab registry (bat-based launchers). Real file is config/apps.json (gitignored). 'kind' is one of: streamlit | webapp | tunnel. claude-code projects are NOT listed here — the Claude Code tab discovers them live by scanning projects_dir (see webapp_config.json).",
   "scan_root": "C:\\path\\to\\your\\projects-root",
   "apps": [
-    {
-      "id": "automation",
-      "name": "Automation",
-      "kind": "claude-code",
-      "project_dir": "C:\\path\\to\\your\\projects-root\\automation",
-      "added_at": "2026-01-01T00:00:00"
-    },
     {
       "id": "example-app-launch-app",
       "name": "Example App",

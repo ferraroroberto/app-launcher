@@ -1,20 +1,23 @@
 """Unified app registry — load, save, scan, mutate.
 
 The registry is one JSON file (``config/apps.json``, gitignored) that
-holds every launchable thing the hub knows about, across both tabs:
+holds the **Apps tab** rows — bat-based launchers:
 
     {
       "scan_root": "E:\\automation",
       "apps": [
-        {"id": "...", "name": "...", "kind": "claude-code", "project_dir": "..."},
-        {"id": "...", "name": "...", "kind": "streamlit",   "bat_path": "..."},
-        {"id": "...", "name": "...", "kind": "webapp",      "bat_path": "..."},
-        {"id": "...", "name": "...", "kind": "tunnel",      "bat_path": "..."}
+        {"id": "...", "name": "...", "kind": "streamlit", "bat_path": "..."},
+        {"id": "...", "name": "...", "kind": "webapp",    "bat_path": "..."},
+        {"id": "...", "name": "...", "kind": "tunnel",    "bat_path": "..."}
       ]
     }
 
-Rows with ``kind == "claude-code"`` carry ``project_dir`` (a folder the
-``claude`` CLI is cwd'd into). Every other kind carries ``bat_path``.
+``claude-code`` rows are **not** persisted here — they are computed live
+on every request by :func:`live_claude_code_entries`, which scans the
+configured ``projects_dir`` for project directories. Each carries a
+``project_dir`` (the folder ``claude`` is cwd'd into); the Apps-tab
+kinds each carry a ``bat_path``. Stale ``claude-code`` rows left in an
+older ``apps.json`` are ignored by the API.
 """
 
 from __future__ import annotations
@@ -34,7 +37,7 @@ from .scanner import (
     app_id_from_path,
     pretty_folder_name,
     scan_app_bats,
-    scan_claude_code_projects,
+    scan_project_dirs,
     tunnel_url_for,
 )
 
@@ -137,42 +140,42 @@ def decorate_for_api(entry: AppEntry) -> Dict:
     return payload
 
 
+# ------------------------------------------------------ claude-code (live)
+
+
+def live_claude_code_entries(
+    projects_dir: Path, ignore: Optional[List[str]] = None
+) -> List[AppEntry]:
+    """Build ``claude-code`` rows live from the directories under ``projects_dir``.
+
+    No persistence and no scan step — every direct child directory of
+    ``projects_dir`` that survives the ignore list (see
+    :func:`src.scanner.scan_project_dirs`) becomes a launchable row.
+    """
+    return [
+        AppEntry(
+            id=project.id,
+            name=project.name,
+            kind=KIND_CLAUDE_CODE,
+            project_dir=str(project.project_dir),
+        )
+        for project in scan_project_dirs(projects_dir, ignore)
+    ]
+
+
 # ----------------------------------------------------------- scan + diff
 
 
-def discover_new(
-    *, projects_dir: Path, scan_root: Path, existing: Registry
-) -> List[AppEntry]:
-    """Run both scanners and return entries not already in ``existing``.
+def discover_new(*, scan_root: Path, existing: Registry) -> List[AppEntry]:
+    """Scan ``scan_root`` for app bats not already in ``existing``.
 
     Each returned entry has ``added_at`` empty — the caller is expected
-    to stamp it when persisting.
+    to stamp it when persisting. ``claude-code`` rows are never returned
+    here; they come from :func:`live_claude_code_entries` instead.
     """
-    have_ids: set[str] = {a.id for a in existing.apps}
     have_paths: set[str] = {a.bat_path for a in existing.apps if a.bat_path}
-    have_project_dirs: set[str] = {
-        a.project_dir for a in existing.apps if a.project_dir
-    }
 
     new: List[AppEntry] = []
-
-    # Claude-Code projects (one row per project, no bat path on the entry).
-    for project in scan_claude_code_projects(projects_dir):
-        if project.id in have_ids:
-            continue
-        # Don't double-add when the user manually edited the file.
-        if str(project.project_dir) in have_project_dirs:
-            continue
-        new.append(
-            AppEntry(
-                id=project.id,
-                name=project.name,
-                kind=KIND_CLAUDE_CODE,
-                project_dir=str(project.project_dir),
-            )
-        )
-
-    # Apps (streamlit / webapp / tunnel).
     for bat, kind in scan_app_bats(scan_root):
         if str(bat) in have_paths:
             continue

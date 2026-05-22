@@ -2,9 +2,12 @@
 
 Two pieces of discovery share this module:
 
-- ``scan_claude_code_projects(projects_dir)`` — looks at the **direct
-  children** of ``projects_dir`` for ``*.code-workspace`` files and
-  orphan ``*-remote.bat`` files. Each becomes a ``claude-code`` row.
+- ``scan_project_dirs(projects_dir, ignore)`` — lists the **direct child
+  directories** of ``projects_dir``, dropping VCS / build noise and any
+  directory whose name matches a gitignore-style ignore pattern. Each
+  surviving directory becomes a ``claude-code`` row. There is no scan
+  step and no on-disk marker file — the directory listing is the source
+  of truth, recomputed live on every request.
 
 - ``scan_app_bats(scan_root)`` — walks ``scan_root`` recursively
   looking at every ``*.bat``, classifies via ``classify_bat``, and
@@ -13,17 +16,17 @@ Two pieces of discovery share this module:
 
 The two scans run independently — a Claude Code project never collides
 with an Apps row because Claude Code rows have no ``bat_path`` (the
-launcher generates the bat content on the fly).
+launcher launches ``claude`` in the directory directly).
 """
 
 from __future__ import annotations
 
-import json
+import fnmatch
 import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -31,6 +34,12 @@ logger = logging.getLogger(__name__)
 
 APPS_SCAN_SKIP_DIRS = frozenset(
     {".venv", "venv", "__pycache__", "node_modules", "certificates", ".git", "old"}
+)
+
+# Directories never offered as Claude Code projects, regardless of the
+# user's ignore list — VCS metadata, virtualenvs, build caches, IDE dirs.
+PROJECT_SCAN_SKIP_DIRS = frozenset(
+    {".git", ".venv", "venv", "__pycache__", "node_modules", ".idea", ".vscode"}
 )
 
 # kind constants — used as string literals everywhere else.
@@ -43,29 +52,19 @@ VALID_KINDS = frozenset({KIND_CLAUDE_CODE, KIND_STREAMLIT, KIND_WEBAPP, KIND_TUN
 
 
 @dataclass(frozen=True)
-class ClaudeCodeProject:
-    """A discovered project that the Claude Code tab can launch.
+class ProjectDir:
+    """A project directory the Claude Code tab can launch ``claude`` in.
 
-    ``project_dir`` is where ``claude`` will be cwd'd into. ``source``
-    is either ``"workspace"`` (a ``.code-workspace`` exists) or
-    ``"orphan_bat"`` (only a ``*-remote.bat`` exists).
+    ``project_dir`` is the directory ``claude`` will be cwd'd into; ``id``
+    is a stable slug of its name; ``name`` is a display label.
     """
 
     id: str
     name: str
     project_dir: Path
-    source: str  # "workspace" | "orphan_bat"
 
 
 # ----------------------------------------------------------- pretty names
-
-
-def pretty_name_from_stem(stem: str) -> str:
-    """Turn ``client_x-remote`` into ``Client X``."""
-    parts = [p for p in re.split(r"[_\-\s]+", stem) if p and p.lower() != "remote"]
-    if not parts:
-        parts = [stem]
-    return " ".join(p.capitalize() for p in parts)
 
 
 def pretty_folder_name(folder: Path) -> str:
@@ -83,69 +82,56 @@ def slugify(value: str) -> str:
 # ----------------------------------------------------------- claude code
 
 
-def scan_claude_code_projects(projects_dir: Path) -> List[ClaudeCodeProject]:
-    """Discover ``.code-workspace`` files and orphan ``*-remote.bat`` files."""
+def dir_ignored(name: str, patterns: Sequence[str]) -> bool:
+    """Return ``True`` when directory ``name`` matches any ignore pattern.
+
+    Patterns are gitignore-style and matched case-insensitively against
+    the bare directory name: a plain entry matches by name, ``*`` / ``?``
+    globs are honoured (e.g. ``*-old`` or ``tmp?``). Since the scan only
+    ever looks one level deep, slashes carry no extra meaning.
+    """
+    lowered = name.lower()
+    for pattern in patterns:
+        pat = str(pattern).strip().lower()
+        if pat and fnmatch.fnmatch(lowered, pat):
+            return True
+    return False
+
+
+def scan_project_dirs(
+    projects_dir: Path, ignore: Optional[Sequence[str]] = None
+) -> List[ProjectDir]:
+    """List direct child directories of ``projects_dir`` as launchable rows.
+
+    Always-skips :data:`PROJECT_SCAN_SKIP_DIRS`; additionally drops any
+    directory whose name matches an entry in ``ignore`` (see
+    :func:`dir_ignored`). Results are sorted by name, case-insensitively.
+    """
     if not projects_dir.is_dir():
         logger.warning(f"⚠️ Projects dir does not exist: {projects_dir}")
         return []
 
-    results: List[ClaudeCodeProject] = []
-    workspace_stems: set[str] = set()
-
-    for ws in sorted(projects_dir.glob("*.code-workspace")):
-        project_dir = _read_workspace_project_dir(ws, projects_dir)
-        if project_dir is None:
+    patterns = list(ignore or [])
+    results: List[ProjectDir] = []
+    for child in projects_dir.iterdir():
+        try:
+            if not child.is_dir():
+                continue
+        except OSError:  # broken junction / permission error
+            continue
+        if child.name in PROJECT_SCAN_SKIP_DIRS:
+            continue
+        if dir_ignored(child.name, patterns):
             continue
         results.append(
-            ClaudeCodeProject(
-                id=ws.stem,
-                name=pretty_name_from_stem(ws.stem),
-                project_dir=project_dir,
-                source="workspace",
+            ProjectDir(
+                id=slugify(child.name),
+                name=pretty_folder_name(child),
+                project_dir=child,
             )
         )
-        workspace_stems.add(ws.stem)
-
-    for bat in sorted(projects_dir.glob("*-remote.bat")):
-        stem = bat.stem[: -len("-remote")]
-        if stem in workspace_stems:
-            continue
-        project_dir = _read_remote_bat_project_dir(bat) or (projects_dir / stem)
-        results.append(
-            ClaudeCodeProject(
-                id=stem,
-                name=pretty_name_from_stem(stem),
-                project_dir=project_dir,
-                source="orphan_bat",
-            )
-        )
-
-    results.sort(key=lambda x: x.name.lower())
+    results.sort(key=lambda p: p.name.lower())
     return results
-
-
-def _read_workspace_project_dir(ws: Path, projects_dir: Path) -> Optional[Path]:
-    try:
-        data = json.loads(ws.read_text(encoding="utf-8"))
-        raw_path = data["folders"][0]["path"]
-    except (OSError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-        logger.debug(f"workspace parse failed for {ws}: {exc}")
-        return None
-    project_dir = Path(raw_path)
-    if not project_dir.is_absolute():
-        project_dir = (projects_dir / raw_path).resolve()
-    return project_dir
-
-
-def _read_remote_bat_project_dir(bat: Path) -> Optional[Path]:
-    try:
-        for line in bat.read_text(encoding="utf-8", errors="ignore").splitlines():
-            m = re.match(r'set\s+"PROJECT_DIR=(.+)"', line.strip())
-            if m:
-                return Path(m.group(1).strip())
-    except OSError as exc:
-        logger.debug(f"orphan-bat parse failed for {bat}: {exc}")
-    return None
 
 
 # ----------------------------------------------------------- apps (bats)

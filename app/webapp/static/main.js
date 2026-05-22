@@ -24,11 +24,17 @@ function wireSettings() {
     fetchApps().catch(function () {});
   });
   els.saveSettings.addEventListener('click', async function () {
+    const ignore = els.projectsIgnore.value
+      .split('\n')
+      .map(function (s) { return s.trim(); })
+      .filter(Boolean);
     const patch = {
       projects_dir: els.projectsDir.value.trim(),
+      projects_ignore: ignore,
       apps_scan_root: els.appsScanRoot.value.trim(),
     };
     await patchConfig(patch);
+    await fetchApps();
     toast('Settings saved.', 'good');
   });
 }

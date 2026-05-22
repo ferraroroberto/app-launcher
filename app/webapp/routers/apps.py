@@ -29,9 +29,11 @@ from src.launcher import (
     spawn_claude_session,
 )
 from src.registry import (
+    AppEntry,
     decorate_for_api,
     discover_new,
     get_by_id,
+    live_claude_code_entries,
     load_registry,
     persist_additions,
     remove_by_id,
@@ -47,10 +49,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _claude_code_entries(cfg: WebappConfig) -> List[AppEntry]:
+    """Live claude-code rows from the configured projects directory."""
+    return live_claude_code_entries(
+        Path(cfg.projects_dir), list(cfg.projects_ignore)
+    )
+
+
 @router.get("/api/apps")
 async def get_apps(request: Request) -> Dict[str, Any]:
+    cfg: WebappConfig = request.app.state.webapp_config
     registry = load_registry()
-    decorated = [decorate_for_api(a) for a in registry.apps]
+    # claude-code rows are computed live from `projects_dir`; the
+    # bat-based kinds come from the persisted registry. Any stale
+    # claude-code row left in an older apps.json is ignored.
+    bat_entries = [a for a in registry.apps if a.kind != KIND_CLAUDE_CODE]
+    decorated = [
+        decorate_for_api(a) for a in _claude_code_entries(cfg) + bat_entries
+    ]
     # Health for tunnel apps is probed here, server-side — the SPA
     # can't probe a sibling's /healthz from the browser (cross-origin,
     # no CORS headers, every probe would fail).
@@ -73,11 +89,7 @@ async def get_apps(request: Request) -> Dict[str, Any]:
 async def scan_apps(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     registry = load_registry()
-    new = discover_new(
-        projects_dir=Path(cfg.projects_dir),
-        scan_root=Path(cfg.apps_scan_root),
-        existing=registry,
-    )
+    new = discover_new(scan_root=Path(cfg.apps_scan_root), existing=registry)
     return {"new": [decorate_for_api(a) for a in new]}
 
 
@@ -91,9 +103,7 @@ async def save_apps(request: Request) -> Dict[str, Any]:
 
     registry = load_registry()
     candidates = discover_new(
-        projects_dir=Path(cfg.projects_dir),
-        scan_root=Path(cfg.apps_scan_root),
-        existing=registry,
+        scan_root=Path(cfg.apps_scan_root), existing=registry
     )
     keep = [c for c in candidates if c.id in selected_ids]
     added = persist_additions(registry, keep, Path(cfg.apps_scan_root))
@@ -124,11 +134,15 @@ async def delete_app(app_id: str) -> Dict[str, Any]:
 
 @router.post("/api/apps/{app_id}/launch")
 async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
+    cfg: WebappConfig = request.app.state.webapp_config
     registry = load_registry()
-    entry = get_by_id(registry, app_id)
+    # claude-code rows aren't persisted — resolve them against the live
+    # directory scan first; bat-based rows come from the registry.
+    entry = next(
+        (e for e in _claude_code_entries(cfg) if e.id == app_id), None
+    ) or get_by_id(registry, app_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
-    cfg: WebappConfig = request.app.state.webapp_config
 
     # claude-code: two launch modes (chosen by the request body's
     # `mode`). "pty" (default) = a launcher-owned PTY session streamed

@@ -55,8 +55,13 @@ class WebappConfig:
 
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
-    # Where the Claude Code tab scans for `.code-workspace` + `*-remote.bat`.
+    # Master folder whose direct child directories the Claude Code tab
+    # lists as launchable projects.
     projects_dir: str = field(default_factory=_default_projects_dir)
+    # gitignore-style patterns: directory names under `projects_dir` to
+    # exclude from the Claude Code tab (matched case-insensitively, `*`
+    # globs honoured). VCS / build dirs are always skipped regardless.
+    projects_ignore: list = field(default_factory=list)
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
     # Persisted Claude Code launch flag defaults.
@@ -111,6 +116,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         host=str(raw.get("host", DEFAULT_HOST)),
         port=int(raw.get("port", DEFAULT_PORT)),
         projects_dir=str(raw.get("projects_dir") or _default_projects_dir()),
+        projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
         apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
@@ -142,6 +148,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "host": cfg.host,
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
+        "projects_ignore": cfg.projects_ignore,
         "apps_scan_root": cfg.apps_scan_root,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,

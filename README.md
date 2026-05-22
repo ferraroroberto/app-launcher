@@ -18,14 +18,14 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 The web UI has two tabs:
 
-- **Claude Code** — every `.code-workspace` and orphan `*-remote.bat` in your projects directory becomes a button, with **two launch modes** chosen by the **☁️ Detached** toggle in the options card:
+- **Claude Code** — every project directory directly under your configured projects folder becomes a button (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings), with **two launch modes** chosen by the **☁️ Detached** toggle in the options card:
   - **Toggle off → full control.** `claude` starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, `/quit`, image paste.
   - **Toggle on → detached.** `claude` opens in its own console window on the PC. The launcher only *tracks* it — it shows in the running-sessions list (tagged `☁️ detached`) and you can kill it from the phone, but there's no streamed terminal; the Claude **cloud app** drives it. It survives a launcher restart.
 
   Running sessions are listed above the project buttons, each tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. Flags (model / effort / verbose / debug) are a one-tap panel above the list. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 
-Both tabs share **one** registry file: `config/apps.json`. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks both scan paths and shows what's new in a checklist; **📜 Create BATs** generates `*-remote.bat` files. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on every list — off by default, so the lists stay icon-free in normal use.
+The **Apps** tab is backed by a registry file (`config/apps.json`); the **Claude Code** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Claude Code projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
 
 Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 
@@ -252,9 +252,8 @@ app-launcher/
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
 │   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
-│   ├── registry.py            # unified app registry (load/save/scan/mutate)
-│   ├── scanner.py             # bat classifier + claude-code project discovery
-│   ├── bat_generator.py       # workspace ↔ remote.bat sync
+│   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
+│   ├── scanner.py             # bat classifier + project-directory discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py        # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
 │   ├── session_client.py      # webapp → session-host loopback HTTP client
@@ -320,7 +319,8 @@ UI prefs + secrets, authored from the web UI:
 |---|---|---|
 | `host` | `"0.0.0.0"` | uvicorn bind host |
 | `port` | `8445` | uvicorn bind port |
-| `projects_dir` | parent of this repo | Where the Claude Code tab scans for `.code-workspace` + `*-remote.bat` |
+| `projects_dir` | parent of this repo | Master folder whose direct child directories the Claude Code tab lists as projects |
+| `projects_ignore` | `[]` | gitignore-style folder-name patterns (case-insensitive, `*`/`?` globs) hidden from the Claude Code tab |
 | `apps_scan_root` | parent of this repo | Where the Apps tab scans recursively for `*.bat` |
 | `claude_model` | `"opus"` | Default `--model` for `claude` |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
@@ -339,16 +339,17 @@ UI prefs + secrets, authored from the web UI:
 
 ### `config/apps.json`
 
-Unified registry. Each row:
+Apps-tab registry — bat-based launchers only. Each row:
 
 ```json
-{ "id": "...", "name": "...", "kind": "claude-code | streamlit | webapp | tunnel",
-  "bat_path": "...",      // for non-claude-code kinds
-  "project_dir": "...",   // for claude-code kind
-  "added_at": "2026-..." }
+{ "id": "...", "name": "...", "kind": "streamlit | webapp | tunnel",
+  "bat_path": "...", "added_at": "2026-..." }
 ```
 
-Scan flow: tap **🔎** in the header → `/api/apps/scan` returns a diff → checklist dialog → submit selections → `/api/apps/save` persists.
+`claude-code` projects are **not** stored here — the Claude Code tab
+discovers them live by scanning `projects_dir` (minus `projects_ignore`).
+
+Scan flow: tap **🔎 Scan** in Settings → `/api/apps/scan` returns a diff → checklist dialog → submit selections → `/api/apps/save` persists.
 
 ---
 
@@ -387,7 +388,7 @@ curl http://127.0.0.1:8445/healthz
 
 ### Pytest API tests
 
-In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern). 37 tests across 6 files covering `/healthz`, `/api/config` (GET + POST allow-list), `/api/login` + bearer-token gate, `/api/apps` CRUD, `/api/claude-code/generate`, and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
+In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Claude Code directory discovery (`src/scanner.py` + the ignore list), and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
 
 ```powershell
 & .\.venv\Scripts\python.exe -m pytest tests -m "not smoke" -v
@@ -469,8 +470,7 @@ The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on
 - `src/webauthn_gate.py` — passkey enrollment / assertion + terminal tokens
 - `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
-- `src/scanner.py` — bat classifier + Claude-Code project discovery
-- `src/bat_generator.py` — workspace ↔ `*-remote.bat` sync
+- `src/scanner.py` — bat classifier + Claude Code project-directory discovery
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored
