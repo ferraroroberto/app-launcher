@@ -21,6 +21,7 @@ launcher launches ``claude`` in the directory directly).
 
 from __future__ import annotations
 
+import configparser
 import fnmatch
 import logging
 import re
@@ -134,6 +135,67 @@ def scan_project_dirs(
         )
     results.sort(key=lambda p: p.name.lower())
     return results
+
+
+# ----------------------------------------------------------- github repo
+
+
+def _normalise_github_url(url: str) -> Optional[str]:
+    """Turn a git remote URL into a browsable GitHub repo URL, or ``None``.
+
+    Handles the three common remote forms — SCP-style SSH
+    (``git@github.com:owner/repo.git``), HTTPS
+    (``https://github.com/owner/repo.git``), and the explicit
+    ``ssh://git@github.com/owner/repo`` form. Any non-GitHub host yields
+    ``None``. A trailing ``.git`` and surrounding slashes are stripped.
+    """
+    scp = re.match(r"git@github\.com:(.+)", url, re.IGNORECASE)
+    if scp:
+        path = scp.group(1)
+    else:
+        proto = re.match(
+            r"(?:https?|ssh|git)://(?:[^@/]+@)?github\.com/(.+)",
+            url,
+            re.IGNORECASE,
+        )
+        if not proto:
+            return None
+        path = proto.group(1)
+
+    path = path.strip("/")
+    if path.lower().endswith(".git"):
+        path = path[:-4]
+    path = path.strip("/")
+    return f"https://github.com/{path}" if path else None
+
+
+def github_repo_url(project_dir: Path) -> Optional[str]:
+    """Resolve the GitHub repo URL for a project from its ``origin`` remote.
+
+    Reads ``<project_dir>/.git/config`` directly — no ``git`` subprocess
+    — and normalises the ``origin`` remote URL via
+    :func:`_normalise_github_url`. Returns ``None`` when the folder has
+    no ``.git/config``, no ``origin`` remote, or a non-GitHub remote.
+    """
+    config_path = project_dir / ".git" / "config"
+    if not config_path.is_file():
+        return None
+
+    # strict=False: git's config format allows a key to repeat within a
+    # section (multivar), and tools like VS Code do write duplicates
+    # (e.g. vscode-merge-base) — configparser's default strict mode
+    # rejects those. We only read remote.origin.url, where last wins.
+    parser = configparser.ConfigParser(strict=False)
+    try:
+        parser.read(config_path, encoding="utf-8")
+    except (OSError, configparser.Error) as exc:
+        logger.warning(f"⚠️  Could not read {config_path} ({exc})")
+        return None
+
+    raw = parser.get('remote "origin"', "url", fallback=None)
+    if not raw:
+        return None
+    return _normalise_github_url(raw.strip())
 
 
 # ----------------------------------------------------------- apps (bats)

@@ -67,6 +67,31 @@ function renderCodingList(host, items) {
       }
       actions.appendChild(btn);
     });
+
+    // GitHub repo icon — opens the project's repo in a new browser tab.
+    // Spawns no process and creates no session. Disabled with a hover
+    // hint when the project has no GitHub remote (a.repo_url is unset).
+    const ghBtn = document.createElement('button');
+    ghBtn.type = 'button';
+    ghBtn.className = 'icon-btn agent-btn';
+    const ghIcon = document.createElement('img');
+    ghIcon.className = 'agent-icon';
+    ghIcon.src = '/static/icons/github.svg';
+    ghIcon.alt = 'GitHub';
+    ghBtn.appendChild(ghIcon);
+    if (a.repo_url) {
+      ghBtn.title = 'Open GitHub repo';
+      ghBtn.setAttribute('aria-label', 'Open GitHub repo');
+      ghBtn.addEventListener('click', function () {
+        window.open(a.repo_url, '_blank', 'noopener,noreferrer');
+      });
+    } else {
+      ghBtn.disabled = true;
+      ghBtn.title = 'No GitHub remote';
+      ghBtn.setAttribute('aria-label', 'No GitHub remote');
+    }
+    actions.appendChild(ghBtn);
+
     li.appendChild(actions);
     host.appendChild(li);
   });

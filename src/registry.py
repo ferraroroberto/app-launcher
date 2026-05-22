@@ -35,6 +35,7 @@ from .scanner import (
     KIND_STREAMLIT,
     VALID_KINDS,
     app_id_from_path,
+    github_repo_url,
     pretty_folder_name,
     scan_app_bats,
     scan_project_dirs,
@@ -54,6 +55,7 @@ class AppEntry:
     kind: str
     bat_path: Optional[str] = None
     project_dir: Optional[str] = None
+    repo_url: Optional[str] = None
     added_at: str = ""
 
     def to_dict(self) -> Dict:
@@ -67,6 +69,8 @@ class AppEntry:
             payload["bat_path"] = self.bat_path
         if self.project_dir is not None:
             payload["project_dir"] = self.project_dir
+        if self.repo_url is not None:
+            payload["repo_url"] = self.repo_url
         return payload
 
 
@@ -132,7 +136,7 @@ def decorate_for_api(entry: AppEntry) -> Dict:
     For ``tunnel`` rows, attaches the current public URL read from
     ``<bat.parent>/webapp/last_tunnel_url.txt``. Returns the API shape:
 
-        {id, name, kind, bat_path?, project_dir?, added_at, tunnel_url?}
+        {id, name, kind, bat_path?, project_dir?, repo_url?, added_at, tunnel_url?}
     """
     payload = entry.to_dict()
     if entry.kind == "tunnel" and entry.bat_path:
@@ -158,6 +162,7 @@ def live_claude_code_entries(
             name=project.name,
             kind=KIND_CLAUDE_CODE,
             project_dir=str(project.project_dir),
+            repo_url=github_repo_url(project.project_dir),
         )
         for project in scan_project_dirs(projects_dir, ignore)
     ]
