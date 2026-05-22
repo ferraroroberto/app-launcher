@@ -4,7 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.scanner import dir_ignored, scan_project_dirs
+from src.scanner import dir_ignored, github_repo_url, scan_project_dirs
+
+
+def _make_git_repo(project_dir: Path, origin_url: str | None) -> None:
+    """Create a minimal ``.git/config`` under ``project_dir``."""
+    git_dir = project_dir / ".git"
+    git_dir.mkdir(parents=True, exist_ok=True)
+    lines = ['[core]', '\trepositoryformatversion = 0']
+    if origin_url is not None:
+        lines += ['[remote "origin"]', f'\turl = {origin_url}']
+    (git_dir / "config").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 class TestDirIgnored:
@@ -58,3 +68,48 @@ class TestScanProjectDirs:
         (tmp_path / "weird_folder-Name").mkdir()
         found = scan_project_dirs(tmp_path)
         assert found[0].name == "weird_folder-Name"
+
+
+class TestGithubRepoUrl:
+    def test_https_remote_strips_dot_git(self, tmp_path: Path):
+        _make_git_repo(tmp_path, "https://github.com/owner/repo.git")
+        assert github_repo_url(tmp_path) == "https://github.com/owner/repo"
+
+    def test_https_remote_without_dot_git(self, tmp_path: Path):
+        _make_git_repo(tmp_path, "https://github.com/owner/repo")
+        assert github_repo_url(tmp_path) == "https://github.com/owner/repo"
+
+    def test_scp_ssh_remote(self, tmp_path: Path):
+        _make_git_repo(tmp_path, "git@github.com:owner/repo.git")
+        assert github_repo_url(tmp_path) == "https://github.com/owner/repo"
+
+    def test_ssh_protocol_remote(self, tmp_path: Path):
+        _make_git_repo(tmp_path, "ssh://git@github.com/owner/repo.git")
+        assert github_repo_url(tmp_path) == "https://github.com/owner/repo"
+
+    def test_non_github_host_returns_none(self, tmp_path: Path):
+        _make_git_repo(tmp_path, "git@gitlab.com:owner/repo.git")
+        assert github_repo_url(tmp_path) is None
+
+    def test_no_origin_remote_returns_none(self, tmp_path: Path):
+        _make_git_repo(tmp_path, None)
+        assert github_repo_url(tmp_path) is None
+
+    def test_no_git_dir_returns_none(self, tmp_path: Path):
+        assert github_repo_url(tmp_path) is None
+
+    def test_tolerates_duplicate_keys(self, tmp_path: Path):
+        """Git config allows a key to repeat within a section (multivar);
+        VS Code writes duplicate `vscode-merge-base` entries. The parser
+        must not choke on those — configparser's strict mode would."""
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(
+            '[branch "main"]\n'
+            "\tvscode-merge-base = origin/main\n"
+            "\tvscode-merge-base = origin/main\n"
+            '[remote "origin"]\n'
+            "\turl = https://github.com/owner/repo.git\n",
+            encoding="utf-8",
+        )
+        assert github_repo_url(tmp_path) == "https://github.com/owner/repo"
