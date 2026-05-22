@@ -64,6 +64,7 @@ export const els = {
   codingOptions: document.getElementById('codingOptions'),
   claudeModel: document.getElementById('claudeModel'),
   claudeEffort: document.getElementById('claudeEffort'),
+  claudePermission: document.getElementById('claudePermission'),
   claudeVerbose: document.getElementById('claudeVerbose'),
   claudeDebug: document.getElementById('claudeDebug'),
   claudeDetached: document.getElementById('claudeDetached'),
