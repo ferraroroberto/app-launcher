@@ -45,6 +45,14 @@ export function renderSessions() {
     const dot = document.createElement('span');
     dot.className = 'health-dot ' + (s.alive === false ? 'down' : 'up');
     head.appendChild(dot);
+    // Which coding agent this session is running (issue #45).
+    const agentId = s.agent === 'antigravity' ? 'antigravity' : 'claude';
+    const agentIcon = document.createElement('img');
+    agentIcon.className = 'session-agent-icon';
+    agentIcon.src = '/static/icons/' + agentId + '.svg';
+    agentIcon.alt = agentId === 'antigravity' ? 'Antigravity CLI' : 'Claude Code';
+    agentIcon.title = agentIcon.alt;
+    head.appendChild(agentIcon);
     const kindTag = document.createElement('span');
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
     kindTag.textContent = remote ? '☁️ detached' : '⚡ full control';

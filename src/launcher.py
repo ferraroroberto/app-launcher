@@ -95,23 +95,25 @@ def spawn_claude_session(
     flags: str,
     session_host_port: int,
     kind: str = "pty",
+    agent: str = "claude",
 ) -> Dict[str, Any]:
-    """Ask the session-host to run ``claude <flags>`` for ``project_dir``.
+    """Ask the session-host to run ``<agent> <flags>`` for ``project_dir``.
 
+    ``agent`` selects the coding CLI (``claude`` | ``antigravity``).
     ``kind="pty"`` (default) spawns a launcher-owned ConPTY streamed to the
     phone; ``kind="remote"`` spawns a detached console window the host only
     tracks. Returns the new session's API dict (``session_id``, ``kind``,
-    ``name``, …). Raises :class:`session_client.SessionHostError` when the
-    session-host is down or rejects the request — the caller surfaces that
-    to the UI.
+    ``agent``, ``name``, …). Raises :class:`session_client.SessionHostError`
+    when the session-host is down or rejects the request — the caller
+    surfaces that to the UI.
     """
     if not project_dir.is_dir():
         raise OSError(f"Project directory not found: {project_dir}")
     session = session_client.create_session(
-        session_host_port, str(project_dir), name, flags, kind=kind
+        session_host_port, str(project_dir), name, flags, kind=kind, agent=agent
     )
     logger.info(
-        f"🚀 spawned claude {kind} session "
+        f"🚀 spawned {agent} {kind} session "
         f"{str(session.get('session_id'))[:8]} in {project_dir}"
     )
     return session

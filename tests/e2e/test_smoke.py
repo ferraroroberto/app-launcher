@@ -36,10 +36,13 @@ def test_page_loads_without_console_errors(authed_page: Page, base_url: str) -> 
     assert errors == [], f"JS errors during boot:\n  - " + "\n  - ".join(errors)
 
 
-def test_claude_options_populated(authed_page: Page, base_url: str) -> None:
+def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     _navigate_collecting_errors(authed_page, base_url)
-    # renderClaudeOptions() runs after /api/config resolves; wait for the
-    # first button under each segmented control to attach.
+    # The Coding options card is a <details> collapsed by default — expand
+    # it so the segmented controls become visible. renderClaudeOptions()
+    # runs after /api/config resolves regardless, but the buttons are only
+    # *visible* once the panel is open.
+    authed_page.locator("#codingOptions > summary").click()
     authed_page.wait_for_selector("#claudeModel > button", timeout=5_000)
     authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
     model_count = authed_page.locator("#claudeModel > button").count()

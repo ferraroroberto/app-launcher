@@ -4,6 +4,7 @@
  *   state.tab          — 'claude' | 'apps'
  *   state.config       — /api/config payload (claude flags + scan paths)
  *   state.apps         — array from /api/apps (each entry carries its own .health)
+ *   state.agents       — array from /api/agents ({id,label,available} per agent)
  *   state.runningApps  — array from /api/apps/running (launcher-spawned apps)
  *   state.sessions     — array from /api/claude-code/sessions
  *   state.pendingScan  — array from /api/apps/scan, surfaced in scan dialog
@@ -31,6 +32,14 @@ export const state = {
   tab: 'claude',
   config: null,
   apps: [],
+  // Coding agents — overwritten by /api/agents at boot. The fallback
+  // keeps the Coding tab usable if that fetch fails: Claude Code is the
+  // launcher's core agent so it's assumed present; Antigravity stays
+  // disabled until detection confirms `agy` is on PATH.
+  agents: [
+    { id: 'claude', label: 'Claude Code', available: true },
+    { id: 'antigravity', label: 'Antigravity CLI', available: false },
+  ],
   runningApps: [],
   sessions: [],
   pendingScan: [],
@@ -50,12 +59,16 @@ export const els = {
   paneClaude: document.getElementById('paneClaude'),
   paneApps: document.getElementById('paneApps'),
 
+  codingOptions: document.getElementById('codingOptions'),
   claudeModel: document.getElementById('claudeModel'),
   claudeEffort: document.getElementById('claudeEffort'),
   claudeVerbose: document.getElementById('claudeVerbose'),
   claudeDebug: document.getElementById('claudeDebug'),
   claudeDetached: document.getElementById('claudeDetached'),
   claudeFlagsPreview: document.getElementById('claudeFlagsPreview'),
+  antigravitySkipPerms: document.getElementById('antigravitySkipPerms'),
+  antigravitySandbox: document.getElementById('antigravitySandbox'),
+  antigravityFlagsPreview: document.getElementById('antigravityFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
   sessionsList: document.getElementById('sessionsList'),

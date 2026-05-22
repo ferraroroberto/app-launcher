@@ -96,6 +96,20 @@ class TestStatus:
         assert "tunnel_url" in body or "tunnel" in body or "scan_roots" in body or "terminal_reachability" in body
 
 
+class TestAgents:
+    def test_agents_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.get("/api/agents")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body["agents"], list) and body["agents"]
+        ids = {a["id"] for a in body["agents"]}
+        assert {"claude", "antigravity"} <= ids
+        for a in body["agents"]:
+            assert set(a) == {"id", "label", "available"}
+            assert isinstance(a["available"], bool)
+
+
 class TestClaudeFlags:
     def test_flags_returns_defaults(self, webapp_client):
         client, _, _ = webapp_client

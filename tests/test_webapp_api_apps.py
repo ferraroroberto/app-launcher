@@ -27,7 +27,8 @@ class TestGetApps:
 
     def test_lists_seeded_entries(self, webapp_client):
         """Bat rows come from the registry; claude-code rows are scanned
-        live from projects_dir — both surface in /api/apps."""
+        live from projects_dir — both surface in /api/apps. Claude-code
+        rows carry the bare on-disk folder name (issue #45)."""
         client, _, overrides = webapp_client
         _seed_registry(
             overrides["tmp_registry_path"],
@@ -45,7 +46,8 @@ class TestGetApps:
         resp = client.get("/api/apps")
         assert resp.status_code == 200
         names = {a["name"] for a in resp.json()["apps"]}
-        assert names == {"Alpha", "Beta"}
+        # "beta" stays "beta" — no prettification for claude-code rows.
+        assert names == {"Alpha", "beta"}
 
 
 class TestClaudeCodeDiscovery:
@@ -91,7 +93,7 @@ class TestClaudeCodeDiscovery:
         )
         apps = client.get("/api/apps").json()["apps"]
         cc_names = {a["name"] for a in apps if a["kind"] == "claude-code"}
-        assert cc_names == {"Keep Me"}
+        assert cc_names == {"keep-me"}
 
     def test_vcs_and_build_dirs_always_skipped(self, webapp_client):
         client, _, overrides = webapp_client
@@ -99,7 +101,7 @@ class TestClaudeCodeDiscovery:
             (overrides["tmp_projects_dir"] / name).mkdir()
         apps = client.get("/api/apps").json()["apps"]
         cc_names = {a["name"] for a in apps if a["kind"] == "claude-code"}
-        assert cc_names == {"Real Project"}
+        assert cc_names == {"real-project"}
 
     def test_launch_resolves_live_claude_code_dir(
         self, webapp_client, monkeypatch
@@ -112,10 +114,11 @@ class TestClaudeCodeDiscovery:
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
         captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty"):
+        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
             captured["project_dir"] = str(project_dir)
             captured["kind"] = kind
-            return {"session_id": "s1", "kind": kind}
+            captured["agent"] = agent
+            return {"session_id": "s1", "kind": kind, "agent": agent}
 
         monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         # slugify("live-proj") == "live-proj"; remote mode avoids the
@@ -128,6 +131,90 @@ class TestClaudeCodeDiscovery:
             overrides["tmp_projects_dir"] / "live-proj"
         )
         assert captured["kind"] == "remote"
+        # No `agent` in the body → defaults to Claude Code.
+        assert captured["agent"] == "claude"
+
+    def test_launch_with_antigravity_agent(self, webapp_client, monkeypatch):
+        """The Antigravity button posts agent=antigravity — it must be
+        threaded to spawn_claude_session with empty (non-Claude) flags."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        # Pretend the `agy` CLI is installed so the launch isn't rejected.
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: True
+        )
+        captured: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
+            captured["flags"] = flags
+            captured["agent"] = agent
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "antigravity"},
+        )
+        assert resp.status_code == 200
+        assert captured["agent"] == "antigravity"
+        # All-default config → Antigravity launches bare.
+        assert captured["flags"] == ""
+        assert resp.json()["agent"] == "antigravity"
+
+    def test_launch_antigravity_honours_config_toggles(
+        self, webapp_client, monkeypatch
+    ):
+        """Antigravity launch flags come from the persisted Coding-options
+        toggles — enabling sandbox surfaces --sandbox on the spawn."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: True
+        )
+        client.post("/api/config", json={"antigravity_sandbox": True})
+        captured: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "antigravity"},
+        )
+        assert resp.status_code == 200
+        assert "--sandbox" in captured["flags"]
+
+    def test_launch_unknown_agent_rejected(self, webapp_client):
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"agent": "bogus"}
+        )
+        assert resp.status_code == 400
+
+    def test_launch_antigravity_not_installed_rejected(
+        self, webapp_client, monkeypatch
+    ):
+        """When `agy` isn't on PATH the Antigravity launch is refused —
+        defence-in-depth behind the disabled UI button."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: False
+        )
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"agent": "antigravity"}
+        )
+        assert resp.status_code == 400
+        assert "not installed" in resp.json()["detail"]
 
 
 class TestScanApps:

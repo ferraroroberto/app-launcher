@@ -10,7 +10,7 @@ import { jsonApi, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToke
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchSessions, wireSessions } from './sessions.js';
-import { fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
+import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
 
@@ -84,6 +84,7 @@ async function boot() {
     }
     return;
   }
+  await fetchAgents();
   await fetchApps();
   await fetchSessions();
   await fetchListeners();

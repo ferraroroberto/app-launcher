@@ -2,7 +2,7 @@
 
 Phone-first launcher hub. One tap on your phone → a CMD window opens on the home PC and either:
 
-- runs `claude --remote-control …` in a project folder (**Claude Code** tab), or
+- runs a coding agent — **Claude Code** or **Antigravity CLI** — in a project folder (**Coding** tab), or
 - spawns any registered Streamlit / FastAPI launcher (**Apps** tab).
 
 Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](https://github.com/) — same FastAPI + SPA + PWA + Cloudflare-tunnel stack, but for kicking off other processes instead of doing work itself.
@@ -18,14 +18,14 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 The web UI has two tabs:
 
-- **Claude Code** — every project directory directly under your configured projects folder becomes a button (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings), with **two launch modes** chosen by the **☁️ Detached** toggle in the options card:
-  - **Toggle off → full control.** `claude` starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, `/quit`, image paste.
-  - **Toggle on → detached.** `claude` opens in its own console window on the PC. The launcher only *tracks* it — it shows in the running-sessions list (tagged `☁️ detached`) and you can kill it from the phone, but there's no streamed terminal; the Claude **cloud app** drives it. It survives a launcher restart.
+- **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
+  - **Claude Code** (`claude`) and **Antigravity CLI** (`agy`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) below.
+  - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart.
 
-  Running sessions are listed above the project buttons, each tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. Flags (model / effort / verbose / debug) are a one-tap panel above the list. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
+  Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / verbose / debug) and an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles — the Antigravity CLI has no model flag, so its model is picked with `/model` in-session). See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 
-The **Apps** tab is backed by a registry file (`config/apps.json`); the **Claude Code** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Claude Code projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
+The **Apps** tab is backed by a registry file (`config/apps.json`); the **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
 
 Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 
@@ -41,6 +41,28 @@ cd app-launcher
 That creates `.venv`, installs deps, and generates the PWA icons. After this runs once, `tray.bat` is enough for day-to-day use.
 
 If you came from the old `automation\launcher\` Flask version, your apps list and Claude flags survive — copy `automation\launcher\apps_config.json` → `app-launcher\config\apps.json` and `automation\launcher\config.json`'s contents into `app-launcher\config\webapp_config.json` under the matching `claude_*` keys.
+
+### Installing the Antigravity CLI
+
+The Coding tab can launch the **Antigravity CLI** (`agy`) — Google's Go-based
+terminal coding agent — as well as Claude Code. The tab's Antigravity button
+stays disabled until `agy` is on `PATH`. To install it:
+
+```powershell
+irm https://antigravity.google/cli/install.ps1 | iex
+```
+
+The official installer downloads `agy.exe` (checksum-verified) to
+`%LOCALAPPDATA%\agy\bin\`, adds that folder to your **User PATH**, and the CLI
+self-updates in the background thereafter. Verify with `agy --version`.
+
+> **Not** `winget install Google.Antigravity` — that package is the Antigravity
+> *IDE* (a desktop app), not the `agy` terminal CLI.
+>
+> The launcher detects `agy` on `PATH` at process start. After installing it,
+> **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445` webapp —
+> the `:8446` session-host, which actually spawns `agy`, needs a full tray
+> restart to inherit the new `PATH`).
 
 ---
 
@@ -138,7 +160,7 @@ After this you **must** re-install the trust profile on every device: delete the
 
 ## Interactive terminal from the phone
 
-Launching a Claude Code project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. Tap a `⚡ full control` session in the list to re-attach.
+Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for either coding agent (Claude Code or Antigravity CLI). Tap a `⚡ full control` session in the list to re-attach.
 
 When the same session is also open on the PC (the mirror window), the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
 
@@ -252,6 +274,7 @@ app-launcher/
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
 │   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
+│   ├── agents.py              # coding-agent registry (claude / agy) + PATH detection
 │   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py             # bat classifier + project-directory discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
@@ -319,10 +342,10 @@ UI prefs + secrets, authored from the web UI:
 |---|---|---|
 | `host` | `"0.0.0.0"` | uvicorn bind host |
 | `port` | `8445` | uvicorn bind port |
-| `projects_dir` | parent of this repo | Master folder whose direct child directories the Claude Code tab lists as projects |
-| `projects_ignore` | `[]` | gitignore-style folder-name patterns (case-insensitive, `*`/`?` globs) hidden from the Claude Code tab |
+| `projects_dir` | parent of this repo | Master folder whose direct child directories the Coding tab lists as projects |
+| `projects_ignore` | `[]` | gitignore-style folder-name patterns (case-insensitive, `*`/`?` globs) hidden from the Coding tab |
 | `apps_scan_root` | parent of this repo | Where the Apps tab scans recursively for `*.bat` |
-| `claude_model` | `"opus"` | Default `--model` for `claude` |
+| `claude_model` | `"opus"` | Default `--model` for `claude` (Claude Code button only) |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
 | `claude_verbose` | `true` | Pass `--verbose` |
 | `claude_debug` | `false` | Pass `--debug` |
@@ -335,7 +358,7 @@ UI prefs + secrets, authored from the web UI:
 | `webauthn_rp_name` | `"Launcher"` | Display name shown in the passkey prompt. |
 | `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |
 
-`--remote-control` and `--dangerously-skip-permissions` are **always** added — that's the whole point of the remote tab.
+`--remote-control` and `--dangerously-skip-permissions` are **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The Antigravity CLI launches with no flags.
 
 ### `config/apps.json`
 
@@ -346,7 +369,7 @@ Apps-tab registry — bat-based launchers only. Each row:
   "bat_path": "...", "added_at": "2026-..." }
 ```
 
-`claude-code` projects are **not** stored here — the Claude Code tab
+`claude-code` projects are **not** stored here — the Coding tab
 discovers them live by scanning `projects_dir` (minus `projects_ignore`).
 
 Scan flow: tap **🔎 Scan** in Settings → `/api/apps/scan` returns a diff → checklist dialog → submit selections → `/api/apps/save` persists.
@@ -388,7 +411,7 @@ curl http://127.0.0.1:8445/healthz
 
 ### Pytest API tests
 
-In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Claude Code directory discovery (`src/scanner.py` + the ignore list), and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
+In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Coding-tab directory discovery (`src/scanner.py` + the ignore list), coding-agent detection + dual launch (`src/agents.py`, `/api/agents`), and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
 
 ```powershell
 & .\.venv\Scripts\python.exe -m pytest tests -m "not smoke" -v
@@ -470,7 +493,8 @@ The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on
 - `src/webauthn_gate.py` — passkey enrollment / assertion + terminal tokens
 - `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
-- `src/scanner.py` — bat classifier + Claude Code project-directory discovery
+- `src/scanner.py` — bat classifier + project-directory discovery
+- `src/agents.py` — coding-agent registry (Claude Code / Antigravity CLI) + PATH detection
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored

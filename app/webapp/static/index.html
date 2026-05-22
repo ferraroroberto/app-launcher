@@ -22,35 +22,50 @@
     </header>
 
     <nav class="tabs">
-      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Claude Code</button>
+      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Coding</button>
       <button id="tabApps" type="button" class="tab" data-tab="apps">Apps</button>
     </nav>
 
     <section id="paneClaude" class="pane">
-      <section class="card claude-card">
-        <div class="card-header">
-          <h2>⚙️ Claude options</h2>
-          <label class="toggle detached-toggle"
-                 title="Launch detached: a console window on the PC, listed and killable here but no phone terminal — the Claude cloud app drives it">
-            <input type="checkbox" id="claudeDetached">
-            <span>☁️ Detached</span>
-          </label>
+      <details id="codingOptions" class="card coding-card">
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">⚙️ Coding options</span>
+            <label class="toggle detached-toggle"
+                   title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
+              <input type="checkbox" id="claudeDetached">
+              <span>☁️ Detached</span>
+            </label>
+          </div>
+        </summary>
+
+        <div class="opt-group">
+          <h3 class="opt-group-title">Claude Code</h3>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <div id="claudeModel" class="segmented" role="radiogroup" aria-label="Claude model"></div>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Effort</span>
+            <div id="claudeEffort" class="segmented" role="radiogroup" aria-label="Effort"></div>
+          </div>
+          <div class="toggles">
+            <label class="toggle"><input type="checkbox" id="claudeVerbose"><span>Verbose</span></label>
+            <label class="toggle"><input type="checkbox" id="claudeDebug"><span>Debug</span></label>
+          </div>
+          <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
         </div>
 
-        <div class="opt-row">
-          <span class="opt-name">Model</span>
-          <div id="claudeModel" class="segmented" role="radiogroup" aria-label="Model"></div>
+        <div class="opt-group">
+          <h3 class="opt-group-title">Antigravity</h3>
+          <div class="toggles">
+            <label class="toggle"><input type="checkbox" id="antigravitySkipPerms"><span>Skip permission prompts</span></label>
+            <label class="toggle"><input type="checkbox" id="antigravitySandbox"><span>Sandbox</span></label>
+          </div>
+          <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
+          <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
         </div>
-        <div class="opt-row">
-          <span class="opt-name">Effort</span>
-          <div id="claudeEffort" class="segmented" role="radiogroup" aria-label="Effort"></div>
-        </div>
-        <div class="toggles">
-          <label class="toggle"><input type="checkbox" id="claudeVerbose"><span>Verbose</span></label>
-          <label class="toggle"><input type="checkbox" id="claudeDebug"><span>Debug</span></label>
-        </div>
-        <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
-      </section>
+      </details>
 
       <section class="card sessions-card">
         <div class="card-header">

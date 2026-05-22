@@ -86,7 +86,59 @@ html, body {
 .detached-toggle { font-size: 13px; white-space: nowrap; }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
-/* ---------- claude options ---------- */
+/* ---------- coding options (collapsible card) ---------- */
+.coding-card { padding: 0; }
+.coding-summary {
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+.coding-summary::-webkit-details-marker { display: none; }
+/* Flex an inner wrapper, not the <summary> itself — iOS Safari ignores
+   `display` on <summary>, which would stack the Detached toggle below
+   the title instead of beside it. */
+.coding-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.coding-summary-title { font-size: 15px; font-weight: 600; }
+.coding-summary-title::before {
+  content: "\203A";          /* › — rotates to ⌄ when the panel is open */
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+.coding-card[open] .coding-summary-title::before { transform: rotate(90deg); }
+.opt-group {
+  padding: 6px 16px 14px;
+  border-top: 1px solid #2a2f42;
+}
+.opt-group-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 12px 0 10px;
+}
+.opt-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 2px;
+  line-height: 1.45;
+}
+.opt-hint code {
+  background: var(--bg);
+  border: 1px solid #2a2f42;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
+
+/* ---------- claude / antigravity option rows ---------- */
 .opt-row {
   display: flex;
   align-items: center;
@@ -267,6 +319,43 @@ html, body {
 }
 .app-item .health-dot.up { background: var(--good); }
 .app-item .health-dot.down { background: var(--danger); }
+
+/* ---------- Coding tab tiles (issue #45) ---------- */
+/* Bare folder name on the left, one icon button per coding agent on
+   the right — sat side by side, not stacked. */
+.coding-item .app-main { justify-content: center; }
+.coding-name {
+  padding: 16px 18px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg);
+  word-break: break-all;   /* raw on-disk name — shown verbatim */
+}
+.row-actions.agent-actions { flex-direction: row; }
+.app-item .row-actions.agent-actions .icon-btn {
+  width: 60px;
+  min-height: 60px;
+  padding: 8px;
+}
+.app-item .row-actions.agent-actions .icon-btn + .icon-btn {
+  border-top: 0;
+  border-left: 1px solid #2a2f42;
+}
+.agent-icon {
+  width: 30px;
+  height: 30px;
+  display: block;
+  pointer-events: none;   /* clicks land on the button, not the img */
+}
+.app-item .row-actions.agent-actions .icon-btn:disabled .agent-icon {
+  filter: grayscale(1);
+}
+.session-agent-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
 
 /* ---------- running sessions ---------- */
 .sessions-card .card-list { margin-top: 4px; }

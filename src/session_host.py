@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
+from src.agents import DEFAULT_AGENT, command_for
 from src.audit import transcript_path
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -124,6 +125,7 @@ class PtySession:
     started_at: float
     _loop: asyncio.AbstractEventLoop
     _pty: "PtyProcess"  # type: ignore[name-defined]
+    agent: str = DEFAULT_AGENT
     rows: int = 40
     cols: int = 120
     _ring: str = ""
@@ -295,6 +297,7 @@ class PtySession:
         return {
             "session_id": self.session_id,
             "kind": self.kind,
+            "agent": self.agent,
             "project_dir": self.project_dir,
             "name": self.name,
             "flags": self.flags,
@@ -326,6 +329,7 @@ class RemoteSession:
         flags: str,
         started_at: float,
         proc: "subprocess.Popen",
+        agent: str = DEFAULT_AGENT,
     ) -> None:
         self.session_id = session_id
         self.project_dir = project_dir
@@ -333,6 +337,7 @@ class RemoteSession:
         self.flags = flags
         self.started_at = started_at
         self._proc = proc
+        self.agent = agent
 
     @property
     def alive(self) -> bool:
@@ -368,6 +373,7 @@ class RemoteSession:
         return {
             "session_id": self.session_id,
             "kind": self.kind,
+            "agent": self.agent,
             "project_dir": self.project_dir,
             "name": self.name,
             "flags": self.flags,
@@ -389,8 +395,14 @@ class SessionManager:
         """Capture the event loop the HTTP surface runs on (called at startup)."""
         self._loop = loop
 
-    def create(self, project_dir: str, name: str, flags: str) -> PtySession:
-        """Spawn ``claude <flags>`` inside a fresh ConPTY in ``project_dir``."""
+    def create(
+        self, project_dir: str, name: str, flags: str, agent: str = DEFAULT_AGENT
+    ) -> PtySession:
+        """Spawn ``<agent> <flags>`` inside a fresh ConPTY in ``project_dir``.
+
+        ``agent`` selects which coding CLI to run (``claude`` |
+        ``antigravity``); see :mod:`src.agents`.
+        """
         if PtyProcess is None:
             raise RuntimeError("pywinpty is not available — cannot spawn a PTY")
         if self._loop is None:
@@ -400,10 +412,11 @@ class SessionManager:
             raise OSError(f"Project directory not found: {project_dir}")
 
         session_id = uuid.uuid4().hex
-        # `cmd /c` resolves `claude` (claude.cmd / node shim) off PATH the
-        # way a normal shell would; when claude exits, cmd exits, the PTY
-        # closes, and the reader thread sees EOF.
-        command = f"cmd /c claude {flags}".strip()
+        # `cmd /c` resolves the agent command (e.g. claude.cmd / agy.cmd)
+        # off PATH the way a normal shell would; when the agent exits, cmd
+        # exits, the PTY closes, and the reader thread sees EOF.
+        exe = command_for(agent)
+        command = f"cmd /c {exe} {flags}".strip()
         pty = PtyProcess.spawn(
             command, cwd=str(directory), dimensions=(40, 120)
         )
@@ -415,20 +428,21 @@ class SessionManager:
             started_at=time.time(),
             _loop=self._loop,
             _pty=pty,
+            agent=agent,
         )
         session.start_reader()
         with self._lock:
             self._sessions[session_id] = session
         logger.info(
-            f"🚀 PTY session {session_id[:8]} spawned: claude in {directory} "
+            f"🚀 PTY session {session_id[:8]} spawned: {exe} in {directory} "
             f"({flags})"
         )
         return session
 
     def create_remote(
-        self, project_dir: str, name: str, flags: str
+        self, project_dir: str, name: str, flags: str, agent: str = DEFAULT_AGENT
     ) -> RemoteSession:
-        """Spawn ``claude <flags>`` in a detached console window.
+        """Spawn ``<agent> <flags>`` in a detached console window.
 
         Tracked for listing and kill only — see :class:`RemoteSession`.
         """
@@ -436,10 +450,11 @@ class SessionManager:
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
         session_id = uuid.uuid4().hex
-        # `cmd /c` resolves `claude` off PATH; CREATE_NEW_CONSOLE gives the
-        # window its own console so it stays visible on the PC and outlives
-        # this host process. We keep the handle purely to list / kill it.
-        command = f"cmd /c claude {flags}".strip()
+        # `cmd /c` resolves the agent command off PATH; CREATE_NEW_CONSOLE
+        # gives the window its own console so it stays visible on the PC and
+        # outlives this host process. We keep the handle purely to list/kill.
+        exe = command_for(agent)
+        command = f"cmd /c {exe} {flags}".strip()
         proc = subprocess.Popen(
             command,
             cwd=str(directory),
@@ -453,11 +468,12 @@ class SessionManager:
             flags=flags,
             started_at=time.time(),
             proc=proc,
+            agent=agent,
         )
         with self._lock:
             self._sessions[session_id] = session
         logger.info(
-            f"🚀 remote session {session_id[:8]} spawned: claude in "
+            f"🚀 remote session {session_id[:8]} spawned: {exe} in "
             f"{directory} ({flags})"
         )
         return session

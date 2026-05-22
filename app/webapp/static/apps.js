@@ -1,8 +1,9 @@
-/* Apps tab: registry list, launch, scan dialog, generate-bats dialog,
- * rename dialog, running-listeners panel.
+/* Apps tab: registry list, launch, scan dialog, rename dialog,
+ * running-listeners panel.
  *
  * All of this is on the Apps tab — except renderApps also feeds the
- * Claude Code projects list on the Claude tab (split by `kind`).
+ * Coding tab's project list (the `claude-code` rows), which renders as
+ * bare folder-name tiles with one launch button per coding agent.
  */
 
 import { els, state } from './state.js';
@@ -12,14 +13,61 @@ import { openTerminal } from './terminal.js';
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
-  const claudeApps = state.apps.filter(function (a) { return a.kind === 'claude-code'; });
+  const codingApps = state.apps.filter(function (a) { return a.kind === 'claude-code'; });
   const otherApps = state.apps.filter(function (a) { return a.kind !== 'claude-code'; });
 
-  renderList(els.claudeList, claudeApps);
+  renderCodingList(els.claudeList, codingApps);
   renderList(els.appsList, otherApps);
 
-  els.claudeEmpty.hidden = claudeApps.length !== 0;
+  els.claudeEmpty.hidden = codingApps.length !== 0;
   els.appsEmpty.hidden = otherApps.length !== 0;
+}
+
+// ------------------------------------------------------ Coding tab tiles
+// A Coding tile shows only the bare on-disk folder name plus one icon
+// button per coding agent (Claude Code, Antigravity). An agent's button
+// is disabled with a hover hint when its CLI isn't installed.
+function renderCodingList(host, items) {
+  host.innerHTML = '';
+  items.forEach(function (a) {
+    const li = document.createElement('li');
+    li.className = 'app-item coding-item';
+    li.dataset.id = a.id;
+
+    const main = document.createElement('div');
+    main.className = 'app-main';
+    const name = document.createElement('div');
+    name.className = 'coding-name';
+    name.textContent = a.name;   // raw folder name, exactly as on disk
+    main.appendChild(name);
+    li.appendChild(main);
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions agent-actions';
+    state.agents.forEach(function (agent) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'icon-btn agent-btn';
+      btn.dataset.agent = agent.id;
+      const icon = document.createElement('img');
+      icon.className = 'agent-icon';
+      icon.src = '/static/icons/' + agent.id + '.svg';
+      icon.alt = agent.label;
+      btn.appendChild(icon);
+      if (agent.available) {
+        btn.title = 'Launch ' + agent.label;
+        btn.setAttribute('aria-label', 'Launch ' + agent.label);
+        btn.addEventListener('click', function () { launchApp(a, agent.id); });
+      } else {
+        btn.disabled = true;
+        btn.title = agent.label + ' is not installed';
+        btn.setAttribute('aria-label', agent.label + ' is not installed');
+      }
+      actions.appendChild(btn);
+    });
+    li.appendChild(actions);
+    host.appendChild(li);
+  });
 }
 
 function renderList(host, items) {
@@ -84,9 +132,9 @@ function renderList(host, items) {
 
     // Rename + remove are gated behind Settings → Edit mode, so the
     // lists stay icon-free in normal use (no per-row icon inflation).
-    // claude-code rows are a live directory listing — there's nothing
-    // to rename or remove, so they never get the edit-mode actions.
-    if (state.editMode && a.kind !== 'claude-code') {
+    // Only the Apps tab's bat-based rows reach renderList — Coding-tab
+    // rows render via renderCodingList instead.
+    if (state.editMode) {
       const actions = document.createElement('div');
       actions.className = 'row-actions';
 
@@ -115,24 +163,31 @@ function renderList(host, items) {
   });
 }
 
-// Claude Code launch mode is the ☁️ Detached toggle in the options
-// card: checked → 'remote' (detached console window, cloud-driven,
-// listed + killable here but no phone terminal); unchecked →
-// full-control PTY streamed to the phone.
-async function launchApp(a) {
+// Coding-tab launch mode is the ☁️ Detached toggle in the options
+// card: checked → 'remote' (detached console window, listed + killable
+// here but no phone terminal); unchecked → full-control PTY streamed to
+// the phone. `agentId` (claude | antigravity) is set by the Coding
+// tile's per-agent button; it's undefined for Apps-tab bat launches.
+async function launchApp(a, agentId) {
   const mode = (a.kind === 'claude-code' && els.claudeDetached &&
     els.claudeDetached.checked) ? 'remote' : null;
   try {
     const opts = { method: 'POST' };
-    if (mode) {
+    const payload = {};
+    if (mode) payload.mode = mode;
+    if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
+    if (Object.keys(payload).length) {
       opts.headers = { 'Content-Type': 'application/json' };
-      opts.body = JSON.stringify({ mode: mode });
+      opts.body = JSON.stringify(payload);
     }
     const body = await jsonApi(
       '/api/apps/' + encodeURIComponent(a.id) + '/launch', opts
     );
+    const agentTag = (a.kind === 'claude-code' && body.agent === 'antigravity')
+      ? ' (Antigravity)' : '';
     toast(
-      '🚀 Launched ' + a.name + (mode === 'remote' ? ' (detached)' : ''),
+      '🚀 Launched ' + a.name + agentTag +
+        (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );
     if (a.kind === 'claude-code' && body.session) {
@@ -172,6 +227,22 @@ export async function fetchApps() {
   const body = await jsonApi('/api/apps');
   state.apps = body.apps || [];
   renderApps();
+}
+
+// Coding-agent detection — which CLIs are installed. Drives the
+// enabled/disabled state of the Coding tab's per-tile launch buttons.
+// Best-effort: on failure state.agents keeps its conservative fallback.
+export async function fetchAgents() {
+  try {
+    const body = await jsonApi('/api/agents');
+    if (Array.isArray(body.agents) && body.agents.length) {
+      state.agents = body.agents;
+    }
+  } catch (exc) {
+    if (String(exc.message) !== 'auth required') {
+      console.warn('agents fetch failed', exc);
+    }
+  }
 }
 
 // -------------------------------------------------- running apps panel
