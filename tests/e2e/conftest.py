@@ -27,7 +27,7 @@ import sys
 import time
 import urllib3
 from pathlib import Path
-from typing import IO, Iterator, List, Optional
+from typing import Callable, IO, Iterator, List, Optional
 
 import pytest
 import requests
@@ -40,6 +40,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WEBAPP_CONFIG = _REPO_ROOT / "config" / "webapp_config.json"
+_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 _BASE_URL = "https://127.0.0.1:8445"
 _TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/app.js
 
@@ -48,6 +49,36 @@ _TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/app.j
 # fixed port (adopt-or-spawn) rather than a free one — no config injection.
 _SESSION_HOST_PORT = 8446
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
+
+# Input-delivery wait budgets (issue #58). The defaults keep a local run fast;
+# CI sets the env vars larger (see .github/workflows/e2e.yml) because the
+# GitHub-hosted Windows runner does the keystroke -> ConPTY -> session-host ->
+# log round-trip noticeably slower than a dev box. One source of truth so the
+# 5 s poll loop is no longer copied inline into the terminal regression tests.
+_LOG_DEADLINE_ENV = "LAUNCHER_E2E_LOG_DEADLINE_MS"
+_LOG_DEADLINE_DEFAULT_MS = 5_000
+_UI_TIMEOUT_ENV = "LAUNCHER_E2E_UI_TIMEOUT_MS"
+_UI_TIMEOUT_DEFAULT_MS = 10_000
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive int from the environment, falling back to ``default``.
+
+    A missing, empty, non-numeric, or non-positive value yields the default —
+    a malformed env var must never shorten a wait budget below the local one.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning("⚠️  %s=%r is not an integer — using default %d", name, raw, default)
+        return default
+    if value <= 0:
+        logger.warning("⚠️  %s=%d is not positive — using default %d", name, value, default)
+        return default
+    return value
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -366,3 +397,55 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
             )
         except Exception as exc:
             logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
+
+
+# ------------------------------------------------------ input-delivery waits
+# Issue #58: the GitHub-hosted Windows runner does the keystroke -> ConPTY ->
+# log round-trip slower than a dev box, so the terminal regression tests timed
+# out on CI while passing locally. These two fixtures centralise the wait
+# budgets — env-aware so CI gets headroom and local runs stay fast.
+
+
+@pytest.fixture(scope="session")
+def e2e_ui_timeout() -> int:
+    """Timeout (ms) for Playwright UI waits — ``wait_for_selector``,
+    ``wait_for_function``, ``expect(...)``. Larger on CI via
+    ``LAUNCHER_E2E_UI_TIMEOUT_MS``; the local default keeps the dev loop fast."""
+    return _env_int(_UI_TIMEOUT_ENV, _UI_TIMEOUT_DEFAULT_MS)
+
+
+@pytest.fixture
+def wait_for_session_log() -> Callable[..., bool]:
+    """Return a poller for the per-session input log.
+
+    ``wait(page, sid, needle, deadline_ms=None)`` reads
+    ``webapp/sessions/<sid>.log`` every 200 ms until ``needle`` appears or the
+    deadline elapses, then returns ``True``/``False``. The deadline defaults to
+    ``LAUNCHER_E2E_LOG_DEADLINE_MS`` (5 s locally, larger on CI) — the single
+    source of truth for the input-delivery wait budget that used to be a
+    hardcoded 5 s loop copied into four test files (issue #58).
+    """
+
+    def _wait(
+        page: Page, sid: str, needle: str, deadline_ms: Optional[int] = None
+    ) -> bool:
+        budget = (
+            deadline_ms
+            if deadline_ms is not None
+            else _env_int(_LOG_DEADLINE_ENV, _LOG_DEADLINE_DEFAULT_MS)
+        )
+        log_path = _SESSIONS_DIR / f"{sid}.log"
+
+        def _hit() -> bool:
+            return log_path.exists() and needle in log_path.read_text(
+                encoding="utf-8", errors="replace"
+            )
+
+        for _ in range(max(1, budget // 200)):
+            if _hit():
+                return True
+            page.wait_for_timeout(200)
+        # Final read so a hit landing in the last 200 ms interval isn't missed.
+        return _hit()
+
+    return _wait

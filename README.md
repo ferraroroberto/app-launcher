@@ -503,7 +503,14 @@ It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `test
 
 Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/session_host*.py` done. The same autoboot path is available to a plain pytest run with `--e2e-autoboot` (or `LAUNCHER_E2E_AUTOBOOT=1`).
 
-The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary. Note: `claude` is not on PATH on the runner, so the terminal-regression tests (reconnect, paste, mirror-close) launched via the `launched_pty_session` fixture skip cleanly there — expected, not a failure.
+The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary.
+
+The GitHub-hosted Windows runner does the keystroke → ConPTY → session-host → log round-trip noticeably slower than a dev box, which used to flake the terminal regression tests on CI (issue #58). Two env vars tune the input-delivery wait budgets, both with small defaults that keep a local run fast — the `e2e.yml` workflow sets them larger so the runner gets headroom:
+
+| Env var | Local default | CI value | Covers |
+| --- | --- | --- | --- |
+| `LAUNCHER_E2E_LOG_DEADLINE_MS` | `5000` | `20000` | poll budget for input bytes to reach `webapp/sessions/<sid>.log` |
+| `LAUNCHER_E2E_UI_TIMEOUT_MS` | `10000` | `30000` | Playwright UI waits — terminal-overlay mount, image-upload round-trip |
 
 ---
 

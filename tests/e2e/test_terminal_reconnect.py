@@ -19,15 +19,10 @@ This test exercises the JS half of the fix by:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from playwright.sync_api import Page
 
 pytestmark = pytest.mark.smoke
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 
 # Wrap WebSocket so we can see every instance the SPA constructs. Runs
 # before any page script, so connectWs() in terminal.js uses the wrapped
@@ -51,15 +46,12 @@ _WS_PROBE = """
 """
 
 
-def _read_session_log(sid: str) -> str:
-    log_path = _SESSIONS_DIR / f"{sid}.log"
-    if not log_path.exists():
-        return ""
-    return log_path.read_text(encoding="utf-8", errors="replace")
-
-
 def test_terminal_reconnects_after_ws_drop(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    e2e_ui_timeout: int,
+    wait_for_session_log,
 ) -> None:
     sid = launched_pty_session
     authed_page.add_init_script(_WS_PROBE)
@@ -70,7 +62,7 @@ def test_terminal_reconnects_after_ws_drop(
     authed_page.wait_for_function(
         "() => window.__wsInstances && window.__wsInstances.length >= 1 "
         "&& window.__wsInstances[0].readyState === 1",
-        timeout=10_000,
+        timeout=e2e_ui_timeout,
     )
 
     # Force-drop the live socket. close() with no args fires onclose with
@@ -95,15 +87,11 @@ def test_terminal_reconnects_after_ws_drop(
         marker,
     )
 
-    # Session log is buffered; poll for a couple of seconds.
-    deadline_ms = 5_000
-    found = False
-    for _ in range(deadline_ms // 200):
-        if "rec0nn3ct-marker-32" in _read_session_log(sid):
-            found = True
-            break
-        authed_page.wait_for_timeout(200)
-    assert found, (
-        f"input sent on reconnected ws did not appear in {_SESSIONS_DIR / (sid + '.log')} "
-        "within 5s — reconnect handshake succeeded but the new ws isn't carrying input"
+    # Session log is buffered; poll within the input-delivery budget.
+    assert wait_for_session_log(authed_page, sid, "rec0nn3ct-marker-32"), (
+        f"input sent on the reconnected ws did not appear in "
+        f"webapp/sessions/{sid}.log within the input-delivery budget — the "
+        "reconnect handshake succeeded but either the new ws isn't carrying "
+        "input or the log round-trip timed out (raise "
+        "LAUNCHER_E2E_LOG_DEADLINE_MS for a slow runner)"
     )

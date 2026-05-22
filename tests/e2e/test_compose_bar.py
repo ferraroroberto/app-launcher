@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import base64
 import re
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -44,42 +43,36 @@ _PATH_RE = re.compile(r"\.launcher-tmp.*\.png$")
 
 pytestmark = pytest.mark.smoke
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 
-
-def _read_session_log(sid: str) -> str:
-    log_path = _SESSIONS_DIR / f"{sid}.log"
-    if not log_path.exists():
-        return ""
-    return log_path.read_text(encoding="utf-8", errors="replace")
-
-
-def _open_terminal(page: Page, base_url: str, sid: str) -> None:
+def _open_terminal(page: Page, base_url: str, sid: str, ui_timeout: int) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=ui_timeout)
     page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=10_000,
+        timeout=ui_timeout,
     )
 
 
 def test_compose_button_hidden_in_mirror(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, e2e_ui_timeout: int
 ) -> None:
     """Loopback open is the PC mirror — the ✏️ button must stay hidden."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _open_terminal(authed_page, base_url, launched_pty_session, e2e_ui_timeout)
     expect(authed_page.locator("#terminalCompose")).to_be_hidden()
     expect(authed_page.locator("#terminalComposeBar")).to_be_hidden()
 
 
 def test_compose_send_forwards_text_to_pty(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    e2e_ui_timeout: int,
+    wait_for_session_log,
 ) -> None:
     """➤ Send forwards the textarea contents + Enter to the PTY."""
     sid = launched_pty_session
-    _open_terminal(authed_page, base_url, sid)
+    _open_terminal(authed_page, base_url, sid, e2e_ui_timeout)
 
     # The button is hidden under loopback (mirror) — un-hide it so the
     # real toggle handler / setComposeOpen() runs. Send itself is not
@@ -98,25 +91,19 @@ def test_compose_send_forwards_text_to_pty(
     expect(authed_page.locator("#terminalComposeInput")).to_have_value("")
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
 
-    deadline_ms = 5_000
-    found = False
-    for _ in range(deadline_ms // 200):
-        if payload in _read_session_log(sid):
-            found = True
-            break
-        authed_page.wait_for_timeout(200)
-    assert found, (
-        f"➤ Send did not deliver the compose text to the session log "
-        f"({_SESSIONS_DIR / (sid + '.log')}) within 5s — issue #37 regressed"
+    assert wait_for_session_log(authed_page, sid, payload), (
+        f"➤ Send did not deliver the compose text to webapp/sessions/{sid}.log "
+        "within the input-delivery budget — the text -> ConPTY -> log round-trip "
+        "timed out (raise LAUNCHER_E2E_LOG_DEADLINE_MS for a slow runner)"
     )
 
 
 def test_compose_image_inserts_path_into_bar(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, e2e_ui_timeout: int
 ) -> None:
     """🖼 with the bar open drops the uploaded path into the textarea (#41)."""
     sid = launched_pty_session
-    _open_terminal(authed_page, base_url, sid)
+    _open_terminal(authed_page, base_url, sid, e2e_ui_timeout)
 
     # Un-hide + open the compose bar (mirror trick — see module docstring).
     authed_page.evaluate(
@@ -132,5 +119,5 @@ def test_compose_image_inserts_path_into_bar(
 
     # The uploaded image path lands in the textarea, not the PTY.
     compose = authed_page.locator("#terminalComposeInput")
-    expect(compose).to_have_value(_PATH_RE, timeout=10_000)
+    expect(compose).to_have_value(_PATH_RE, timeout=e2e_ui_timeout)
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
