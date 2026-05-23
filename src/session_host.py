@@ -41,6 +41,17 @@ _READ_CHUNK = 4096
 # Sentinel pushed to subscribers when the session ends.
 _EOF = object()
 
+# Chunk-and-pace thresholds for writes into the ConPTY input pipe (#64).
+# pywinpty 3.0.3's PtyProcess.write() wraps an asynchronous ConPTY pipe
+# whose return value isn't a reliable bytes-accepted count — long single
+# writes can silently drop the tail, but interpreting 0 as "nothing sent,
+# retry" causes massive byte amplification (#13 revert). The safe path is
+# to keep small writes one-shot and split larger payloads into ~512 B
+# chunks with a small pause so the pipe drains between writes.
+_WRITE_CHUNK_THRESHOLD = 512
+_WRITE_CHUNK_SIZE = 512
+_WRITE_CHUNK_PAUSE = 0.003
+
 # Stop modes accepted by SessionManager.stop / PtySession.stop.
 STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
 STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
@@ -227,10 +238,27 @@ class PtySession:
 
     # --------------------------------------------------------------- io
     def write(self, data: str) -> None:
-        if self._exited:
+        if self._exited or not data:
             return
         try:
-            self._pty.write(data)
+            if len(data) <= _WRITE_CHUNK_THRESHOLD:
+                self._pty.write(data)
+                return
+            # Long write (paste / large input): chunk-and-pace so the
+            # ConPTY input pipe drains between writes rather than
+            # backpressuring and dropping the tail. pywinpty's return
+            # value is deliberately ignored — see #13 revert.
+            logger.debug(
+                f"PTY {self.session_id[:8]} chunked write "
+                f"({len(data)} chars / "
+                f"{(len(data) + _WRITE_CHUNK_SIZE - 1) // _WRITE_CHUNK_SIZE} chunks)"
+            )
+            first = True
+            for i in range(0, len(data), _WRITE_CHUNK_SIZE):
+                if not first:
+                    time.sleep(_WRITE_CHUNK_PAUSE)
+                self._pty.write(data[i : i + _WRITE_CHUNK_SIZE])
+                first = False
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
 
