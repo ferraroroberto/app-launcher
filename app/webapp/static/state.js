@@ -26,6 +26,7 @@ export const TUNNEL_POLL_MS = 4000;       // refresh tunnel-kind URLs + health
 export const SESSIONS_POLL_MS = 5000;     // refresh running Claude Code sessions
 export const LISTENERS_POLL_MS = 5000;    // refresh port listeners
 export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
+export const JOBS_POLL_MS = 4000;         // refresh Jobs tab while it's visible
 export const WEBAUTHN_POLL_MS = 15000;
 
 export const state = {
@@ -42,6 +43,10 @@ export const state = {
     { id: 'copilot', label: 'GitHub Copilot CLI', available: false },
   ],
   runningApps: [],
+  jobs: [],
+  jobRuns: {},      // job_id → array of recent runs (lazy)
+  expandedJob: null, // job_id currently expanded inline (history visible)
+  selectedRun: null, // { jobId, runId } — which run's log is in the panel
   sessions: [],
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
@@ -58,8 +63,32 @@ export const state = {
 export const els = {
   tabClaude: document.getElementById('tabClaude'),
   tabApps: document.getElementById('tabApps'),
+  tabJobs: document.getElementById('tabJobs'),
   paneClaude: document.getElementById('paneClaude'),
   paneApps: document.getElementById('paneApps'),
+  paneJobs: document.getElementById('paneJobs'),
+
+  jobsList: document.getElementById('jobsList'),
+  jobsEmpty: document.getElementById('jobsEmpty'),
+  jobsAddBtn: document.getElementById('jobsAddBtn'),
+  refreshJobs: document.getElementById('refreshJobs'),
+  jobDialog: document.getElementById('jobDialog'),
+  jobForm: document.getElementById('jobForm'),
+  jobDialogTitle: document.getElementById('jobDialogTitle'),
+  jobIdField: document.getElementById('jobIdField'),
+  jobNameInput: document.getElementById('jobNameInput'),
+  jobScriptInput: document.getElementById('jobScriptInput'),
+  jobArgsInput: document.getElementById('jobArgsInput'),
+  jobScheduleType: document.getElementById('jobScheduleType'),
+  jobScheduleEveryRow: document.getElementById('jobScheduleEveryRow'),
+  jobScheduleEvery: document.getElementById('jobScheduleEvery'),
+  jobScheduleAtRow: document.getElementById('jobScheduleAtRow'),
+  jobScheduleAt: document.getElementById('jobScheduleAt'),
+  jobScheduleTimesRow: document.getElementById('jobScheduleTimesRow'),
+  jobScheduleTimes: document.getElementById('jobScheduleTimes'),
+  jobScheduleDayRow: document.getElementById('jobScheduleDayRow'),
+  jobScheduleDay: document.getElementById('jobScheduleDay'),
+  jobCancel: document.getElementById('jobCancel'),
 
   codingOptions: document.getElementById('codingOptions'),
   claudeModel: document.getElementById('claudeModel'),

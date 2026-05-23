@@ -235,7 +235,10 @@ export async function openTerminal(session) {
   els.terminalOverlay.hidden = false;
   document.body.classList.add('terminal-open');
   lockBodyScroll();
-  els.terminalTitle.textContent = (session.live_title && session.live_title.trim()) ? session.live_title : (session.name || 'session');
+  // Use the same stripping sessionTitle() applies elsewhere so Claude's
+  // leading ✻/☁️/emoji prefix doesn't show up on first paint — the
+  // agent icon next to the title is the redundancy.
+  els.terminalTitle.textContent = sessionTitle(session);
   setTerminalStatus('Connecting…');
 
   // The PC mirror window connects over loopback. It renders whatever

@@ -29,6 +29,7 @@ Thumbs.db
 config/config.json
 config/webapp_config.json
 config/apps.json
+config/jobs.json
 config/webauthn_devices.json
 
 # --- Webapp runtime data --------------------------------------------------
@@ -36,6 +37,7 @@ webapp/last_tunnel_url.txt
 webapp/certificates/
 webapp/cloudflared.yml
 webapp/sessions/
+webapp/jobs/
 app/webapp/static/launcher-ca.mobileconfig
 app/webapp/static/ca.crt
 
