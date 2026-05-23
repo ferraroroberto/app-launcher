@@ -88,6 +88,16 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from src import registry as registry_mod
     monkeypatch.setattr(registry_mod, "DEFAULT_REGISTRY_PATH", tmp_registry)
 
+    # jobs.json + webapp/jobs/ — same isolation as apps.json. Both
+    # belong to the Jobs tab (issue #47); the API router reads
+    # DEFAULT_JOBS_PATH and writes run records under JOBS_RUNS_DIR.
+    tmp_jobs_cfg = tmp_path / "jobs.json"
+    tmp_jobs_runs = tmp_path / "jobs_runs"
+    from src import jobs as jobs_mod
+    from src import jobs_config as jobs_cfg_mod
+    monkeypatch.setattr(jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_jobs_cfg)
+    monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_jobs_runs)
+
     # app_config.json — also redirect to tmp so create_app's load_app_config
     # doesn't read the real one. The launcher's app_config has very little
     # surface, so an empty file is fine; load_app_config defaults the rest.
@@ -159,5 +169,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "tmp_apps_scan_root": tmp_apps_root,
         "tmp_projects_dir": tmp_projects_dir,
         "tmp_webapp_cfg_path": tmp_webapp_cfg,
+        "tmp_jobs_path": tmp_jobs_cfg,
+        "tmp_jobs_runs_dir": tmp_jobs_runs,
     }
     yield client, app, overrides

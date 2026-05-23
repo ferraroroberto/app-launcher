@@ -1,6 +1,7 @@
 """CLI subcommand registry."""
 
 from .base import BaseCommand
+from .run_job_cmd import RunJobCommand
 from .scan_cmd import ScanCommand
 from .session_host_cmd import SessionHostCommand
 from .tray_cmd import TrayCommand
@@ -11,6 +12,7 @@ COMMANDS = {
     "webapp": WebappCommand,
     "scan": ScanCommand,
     "session-host": SessionHostCommand,
+    "run-job": RunJobCommand,
 }
 
 

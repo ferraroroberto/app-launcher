@@ -17,13 +17,10 @@
 </head>
 <body>
   <main class="app">
-    <header class="header">
-      <h1>🚀 Launcher</h1>
-    </header>
-
     <nav class="tabs">
-      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Coding</button>
-      <button id="tabApps" type="button" class="tab" data-tab="apps">Apps</button>
+      <button id="tabClaude" type="button" class="tab active" data-tab="claude">💻 Coding</button>
+      <button id="tabApps" type="button" class="tab" data-tab="apps">🚀 Apps</button>
+      <button id="tabJobs" type="button" class="tab" data-tab="jobs">📋 Jobs</button>
     </nav>
 
     <section id="paneClaude" class="pane">
@@ -31,9 +28,9 @@
         <summary class="coding-summary">
           <div class="coding-summary-row">
             <span class="coding-summary-title">⚙️ Coding options</span>
-            <label class="toggle detached-toggle"
+            <label class="detached-toggle"
                    title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-              <input type="checkbox" id="claudeDetached">
+              <input type="checkbox" id="claudeDetached" hidden>
               <span>☁️ Detached</span>
             </label>
           </div>
@@ -127,12 +124,90 @@
       </div>
     </section>
 
+    <section id="paneJobs" class="pane" hidden>
+      <section class="card sessions-card">
+        <div class="card-header">
+          <h2>📋 Registered jobs</h2>
+          <button id="refreshJobs" type="button" class="ghost-btn" title="Refresh">🔄</button>
+        </div>
+        <button id="jobsAddBtn" type="button" class="big-btn jobs-add-btn" hidden>➕ Add job</button>
+        <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
+        <p id="jobsEmpty" class="muted small" hidden>
+          No jobs registered yet — turn on <strong>Edit mode</strong> in Settings, then tap <strong>➕ Add job</strong>.
+        </p>
+      </section>
+    </section>
+
+    <dialog id="jobDialog" class="rename-dialog">
+      <form id="jobForm">
+        <h2 id="jobDialogTitle">Add job</h2>
+        <input type="hidden" id="jobIdField">
+        <label class="stacked">
+          <span>Name</span>
+          <input id="jobNameInput" type="text" class="input-native" required>
+        </label>
+        <label class="stacked">
+          <span>Script path (<code>.py</code> or <code>.bat</code>)</span>
+          <input id="jobScriptInput" type="text" class="input-native" required
+                 placeholder="E:\automation\reporting\launch_reporting.bat">
+        </label>
+        <label class="stacked">
+          <span>Arguments (optional)</span>
+          <input id="jobArgsInput" type="text" class="input-native" placeholder="auto">
+        </label>
+        <label class="stacked">
+          <span>Schedule</span>
+          <select id="jobScheduleType" class="input-native">
+            <option value="none">None (manual only)</option>
+            <option value="minutes">Every N minutes</option>
+            <option value="hourly">Every N hours</option>
+            <option value="daily">Daily at HH:MM</option>
+            <option value="daily_times">Daily at multiple times</option>
+            <option value="weekly">Weekly</option>
+          </select>
+        </label>
+        <label class="stacked" id="jobScheduleEveryRow" hidden>
+          <span>Every</span>
+          <input id="jobScheduleEvery" type="number" class="input-native" min="1" value="1">
+        </label>
+        <label class="stacked" id="jobScheduleAtRow" hidden>
+          <span>At (HH:MM)</span>
+          <input id="jobScheduleAt" type="text" class="input-native" placeholder="06:00" pattern="[0-2][0-9]:[0-5][0-9]">
+        </label>
+        <label class="stacked" id="jobScheduleTimesRow" hidden>
+          <span>Times — comma-separated HH:MM list</span>
+          <input id="jobScheduleTimes" type="text" class="input-native" placeholder="06:00, 12:00, 18:00">
+        </label>
+        <label class="stacked" id="jobScheduleDayRow" hidden>
+          <span>Day</span>
+          <select id="jobScheduleDay" class="input-native">
+            <option value="MON">Monday</option>
+            <option value="TUE">Tuesday</option>
+            <option value="WED">Wednesday</option>
+            <option value="THU">Thursday</option>
+            <option value="FRI">Friday</option>
+            <option value="SAT">Saturday</option>
+            <option value="SUN">Sunday</option>
+          </select>
+        </label>
+        <div class="row dialog-actions">
+          <button type="button" id="jobCancel" class="ghost-btn">Cancel</button>
+          <button type="submit" class="big-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
     <details id="settingsPanel" class="card settings-card">
-      <summary>⚙️ Settings</summary>
-      <label class="toggle">
-        <input type="checkbox" id="editMode">
-        <span>✏️ Edit mode — show rename &amp; remove on Apps tab rows</span>
-      </label>
+      <summary class="settings-summary">
+        <div class="settings-summary-row">
+          <span class="settings-summary-title">⚙️ Settings</span>
+          <label class="edit-toggle"
+                 title="Edit mode — reveal rename + remove on Apps tab rows, ➕ Add on Jobs tab">
+            <input type="checkbox" id="editMode" hidden>
+            <span>✏️ Edit mode</span>
+          </label>
+        </div>
+      </summary>
       <label class="stacked">
         <span>Projects dir (Claude Code)</span>
         <input id="projectsDir" type="text" class="input-native">

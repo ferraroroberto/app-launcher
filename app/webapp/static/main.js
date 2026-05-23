@@ -5,12 +5,13 @@
  * each fetchX() refreshes its slice of state and re-renders.
  */
 
-import { els, state, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
+import { els, state, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { jsonApi, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchSessions, wireSessions } from './sessions.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
+import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
 
@@ -22,7 +23,18 @@ function wireSettings() {
     localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
     // Re-render apps lists to show/hide rename + remove buttons.
     fetchApps().catch(function () {});
+    // Same toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
+    renderJobs();
   });
+  // ✏️ Edit mode now lives inside the Settings <summary> (issue #47
+  // follow-up). Without stopPropagation, clicking the toggle would
+  // also bubble to <summary> and expand/collapse the whole panel.
+  const editLabel = els.editMode.closest('.edit-toggle');
+  if (editLabel) {
+    editLabel.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+    });
+  }
   els.saveSettings.addEventListener('click', async function () {
     const ignore = els.projectsIgnore.value
       .split('\n')
@@ -116,6 +128,10 @@ async function boot() {
     fetchRunningApps().catch(function () {});
   }, RUNNING_APPS_POLL_MS);
   setInterval(function () {
+    // fetchJobs() self-gates: only polls while the Jobs tab is visible.
+    fetchJobs().catch(function () {});
+  }, JOBS_POLL_MS);
+  setInterval(function () {
     fetchWebauthnStatus().catch(function () {});
   }, WEBAUTHN_POLL_MS);
 }
@@ -126,6 +142,7 @@ wireTabs();
 wireClaudeOptions();
 wireSessions();
 wireApps();
+wireJobs();
 wireTerminal();
 wireWebauthn();
 wireSettings();

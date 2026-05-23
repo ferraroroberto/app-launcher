@@ -1,9 +1,10 @@
 # 🚀 Launcher
 
-Phone-first launcher hub. One tap on your phone → a CMD window opens on the home PC and either:
+Phone-first launcher hub. One tap on your phone → the home PC either:
 
-- runs a coding agent — **Claude Code**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab), or
-- spawns any registered Streamlit / FastAPI launcher (**Apps** tab).
+- runs a coding agent — **Claude Code**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab),
+- spawns any registered Streamlit / FastAPI launcher (**Apps** tab), or
+- fires a one-shot Python script or scheduled job (**Jobs** tab — same trigger surface the Stream Deck and Task Scheduler use).
 
 Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](https://github.com/) — same FastAPI + SPA + PWA + Cloudflare-tunnel stack, but for kicking off other processes instead of doing work itself.
 
@@ -16,7 +17,7 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 ## What it does, in one screen
 
-The web UI has two tabs:
+The web UI has three tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
   - **Claude Code** (`claude`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
@@ -25,8 +26,9 @@ The web UI has two tabs:
 
   Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`; tap a full-control one to re-attach, tap *‹ Sessions* to come back. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / permission mode / verbose / debug), an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles), and a GitHub Copilot subsection (a `--model` picker plus the `--allow-all` toggle). Antigravity has no launch-time model flag — pick its model with `/model` in-session. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
+- **Jobs** — one-shot Python scripts and scheduled jobs (`.py` or `.bat` targets). Each row shows the schedule chip, last-run status, and a ▶ button. Tap the row to expand recent run history and the most recent output tail. Schedules materialise as Windows Task Scheduler entries under the `\AppLauncher\` folder — same executor whether the run came from the phone, the Stream Deck, or the schedule. See [Jobs tab](docs/jobs-tab.md) for the full reference.
 
-The **Apps** tab is backed by a registry file (`config/apps.json`); the **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows — off by default, so the lists stay icon-free in normal use.
+The **Apps** tab is backed by a registry file (`config/apps.json`); the **Jobs** tab by `config/jobs.json`. The **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows plus the **➕ Add job** button + ✏️ / 🗑️ controls on Jobs rows — off by default, so the lists stay icon-free in normal use.
 
 Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 

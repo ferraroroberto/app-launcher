@@ -28,6 +28,11 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: contain;
+  /* Reserve the scrollbar gutter so the centred .app container doesn't
+     shift ~8 px sideways when one tab needs a vertical scrollbar and
+     another doesn't — visible as a "tabs aren't aligned" jitter on
+     desktop when switching Coding ↔ Apps ↔ Jobs. */
+  scrollbar-gutter: stable;
 }
 
 .app {
@@ -83,7 +88,32 @@ html, body {
   margin-bottom: 10px;
 }
 .card-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
-.detached-toggle { font-size: 13px; white-space: nowrap; }
+/* Detached toggle — modelled on voice-transcriber's `.incognito-btn`:
+   the checkbox is hidden, the <label> itself is the button. Opacity +
+   accent border flip on `:has(input:checked)` so it reads as on/off
+   instead of a tick that everyone misses on a phone. */
+.detached-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  padding: 6px 12px;
+  min-height: 36px;
+  border: 1px solid #333;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+.detached-toggle:active { background: var(--bg-elev-2); }
+.detached-toggle:has(input:checked) {
+  opacity: 1;
+  border-color: var(--accent);
+  background: rgba(74, 138, 243, 0.18);
+}
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
 /* ---------- coding options (collapsible card) ---------- */
@@ -385,6 +415,116 @@ html, body {
   word-break: break-all;
 }
 
+/* ---------- jobs tab ---------- */
+/* The list now lives inside a `.sessions-card` so the title + refresh
+   share one header, mirroring the Apps tab's Running/Listeners cards
+   (issue #47 follow-up). No separate toolbar. */
+.jobs-add-btn {
+  width: 100%;
+  margin: 4px 0 10px;
+}
+
+/* The history sits in its OWN <li> right under the job row — previously
+   it was nested inside the row's <li> and the row's display:flex squeezed
+   the row's contents into a vertical strip while the panel took the rest.
+   As a sibling <li> it gets the full UL width without fighting the row's
+   flex context. */
+.jobs-history-li {
+  list-style: none;
+  background: var(--bg-elev);
+  border: 1px solid #2a2f42;
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  margin-top: -1px;
+  padding: 0;
+  display: block;
+  overflow: hidden;
+}
+.jobs-history-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-elev-2);
+  border-bottom: 1px solid #2a2f42;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.jobs-history-bar .jobs-history-title {
+  font-size: 13px;
+  color: var(--muted);
+  /* Long job names shouldn't push ✕ Close off the right edge. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jobs-history-bar .jobs-history-close {
+  background: transparent;
+  border: 1px solid #2a2f42;
+  color: var(--fg);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 14px;
+  min-height: 36px;
+  flex-shrink: 0;
+}
+.jobs-history-body { padding: 8px 12px 12px; }
+
+.jobs-runs-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jobs-run-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  color: var(--fg);
+  font: 13px/1.3 inherit;
+  text-align: left;
+  min-height: 40px;
+}
+.jobs-run-btn .jobs-run-icon { font-size: 14px; }
+.jobs-run-btn .jobs-run-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.jobs-run-btn.selected {
+  border-color: var(--accent);
+  background: rgba(74, 138, 243, 0.12);
+}
+.jobs-run-btn.selected .jobs-run-meta { color: var(--fg); }
+
+.jobs-output-label {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.jobs-output-tail {
+  margin: 0;
+  padding: 8px;
+  background: #0d0d0d;
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  color: #d4d4d4;
+  font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 /* ---------- empty / toast ---------- */
 .empty {
   padding: 24px;
@@ -416,11 +556,60 @@ html, body {
 
 /* ---------- settings ---------- */
 .settings-card { margin-top: 12px; }
-.settings-card summary {
+.settings-card summary.settings-summary {
   cursor: pointer;
-  font-weight: 600;
-  font-size: 14px;
   user-select: none;
+  /* Same 15 px as .card-header h2 / .coding-summary-title — Settings used
+     to read smaller than the other card titles and looked downgraded. */
+  font-size: 15px;
+  font-weight: 600;
+  list-style: none;
+}
+.settings-card summary.settings-summary::-webkit-details-marker { display: none; }
+/* Flex an inner wrapper, not <summary> itself — iOS Safari ignores
+   display on <summary>, which would stack the toggle below the title. */
+.settings-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.settings-summary-title::before {
+  content: "\203A";          /* › — rotates to ⌄ when the panel is open */
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.15s ease;
+}
+.settings-card[open] .settings-summary-title::before {
+  transform: rotate(90deg);
+}
+
+/* Edit-mode toggle in the Settings summary — same button-style toggle
+   as .detached-toggle. Right-aligned, button-like, no visible
+   checkbox. Click is intercepted so flipping Edit mode doesn't also
+   expand/collapse the Settings panel. */
+.edit-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 6px 12px;
+  min-height: 36px;
+  border: 1px solid #333;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+}
+.edit-toggle:active { background: var(--bg-elev-2); }
+.edit-toggle:has(input:checked) {
+  opacity: 1;
+  border-color: var(--accent);
+  background: rgba(74, 138, 243, 0.18);
 }
 .settings-card .stacked {
   display: flex;

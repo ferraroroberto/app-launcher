@@ -81,19 +81,32 @@ def test_tabs_switch(authed_page: Page, base_url: str) -> None:
     _navigate_collecting_errors(authed_page, base_url)
     pane_claude = authed_page.locator("#paneClaude")
     pane_apps = authed_page.locator("#paneApps")
+    pane_jobs = authed_page.locator("#paneJobs")
 
     expect(pane_claude).to_be_visible()
     expect(pane_apps).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
 
     authed_page.locator("#tabApps").click()
     expect(pane_apps).to_be_visible()
     expect(pane_claude).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
     # Substring match on className so future class reorders don't false-fail.
     expect(authed_page.locator("#tabApps")).to_have_class(re.compile(r"\bactive\b"))
+
+    # Issue #47 — third tab. Switching to Jobs must hide both other panes
+    # and surface the Jobs pane; the empty-state message renders when no
+    # jobs are registered (which is the case in CI / a fresh install).
+    authed_page.locator("#tabJobs").click()
+    expect(pane_jobs).to_be_visible()
+    expect(pane_claude).to_be_hidden()
+    expect(pane_apps).to_be_hidden()
+    expect(authed_page.locator("#tabJobs")).to_have_class(re.compile(r"\bactive\b"))
 
     authed_page.locator("#tabClaude").click()
     expect(pane_claude).to_be_visible()
     expect(pane_apps).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
 
 
 def test_pty_session_renders_with_both_stop_buttons(
