@@ -36,7 +36,7 @@ Not noticed on the PC (Chrome/Edge against the user trust store don't enforce th
 
 - `scripts/gen_ssl_cert.py`
 - `README.md`
-- `docs/2026-05-16-tls-cert-rotation.md` (this file)
+- `docs/tls-cert-rotation.md` (this file)
 
 ## Related
 

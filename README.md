@@ -146,7 +146,7 @@ On Android, Chrome shows an "Install app" prompt the second visit; the icon goes
 
 After that the launcher behaves like a native app — full-screen, no Safari chrome.
 
-> **Debugging the phone:** when the [pre-ship gate](#verifying-changes-before-ship) is green but the iPhone still misbehaves, [`docs/2026-05-20-iphone-debugging.md`](docs/2026-05-20-iphone-debugging.md) walks through attaching PC DevTools to the live phone via `ios-webkit-debug-proxy`.
+> **Debugging the phone:** when the [pre-ship gate](#verifying-changes-before-ship) is green but the iPhone still misbehaves, [`docs/iphone-debugging.md`](docs/iphone-debugging.md) walks through attaching PC DevTools to the live phone via `ios-webkit-debug-proxy`.
 
 ---
 

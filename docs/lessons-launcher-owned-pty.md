@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-14
 **Issue:** #1 — *Rearchitect Claude Code sessions around a launcher-owned PTY*
-**Companion:** [`2026-05-14-launcher-owned-pty.md`](2026-05-14-launcher-owned-pty.md) (the what; this is the why)
+**The "what" lives in PR #2 + issue #1; this doc is the "why".**
 
 A didactic retrospective — the reasoning, the dead ends, and the
 practices that held up. Read this before extending the terminal feature.

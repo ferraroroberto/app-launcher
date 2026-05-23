@@ -160,7 +160,7 @@ conveniences — which is exactly why it is worth having.
 - `.github/workflows/e2e.yml` (new) — the CI workflow.
 - `README.md` — note on the CI gate and the expected `claude`-not-on-PATH
   test skip.
-- `docs/2026-05-21-ci-github-actions.md` (new) — this document.
+- `docs/ci-github-actions.md` (new) — this document.
 
 ## Validation run
 
