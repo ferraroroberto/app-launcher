@@ -32,7 +32,7 @@ Gitignored. Committed template at `config/jobs.sample.json`. Separate file from 
     {
       "id": "reporting-daily",
       "name": "Daily Reporting",
-      "script_path": "E:\\automation\\reporting\\launch_reporting.bat",
+      "script_path": "E:\\automation\\content-management\\launch_reporting.bat",
       "args": "auto",
       "schedule": { "type": "daily", "at": "06:00" },
       "added_at": "2026-05-23T07:00:00"
@@ -40,7 +40,7 @@ Gitignored. Committed template at `config/jobs.sample.json`. Separate file from 
     {
       "id": "linkedin-scrape",
       "name": "LinkedIn Scrape",
-      "script_path": "E:\\automation\\reporting\\engagement\\linkedin\\scrape_comments.py",
+      "script_path": "E:\\automation\\content-management\\engagement\\linkedin\\scrape_comments.py",
       "args": "",
       "schedule": { "type": "daily_times", "at": ["06:00", "12:00", "18:00"] },
       "added_at": "2026-05-23T07:00:00"
