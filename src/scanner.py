@@ -24,6 +24,7 @@ from __future__ import annotations
 import configparser
 import fnmatch
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -238,19 +239,25 @@ def classify_bat(bat_path: Path) -> Optional[str]:
 def scan_app_bats(scan_root: Path) -> List[Tuple[Path, str]]:
     """Recursively scan ``scan_root``, returning ``(path, kind)`` pairs.
 
-    Skips ``APPS_SCAN_SKIP_DIRS`` and unclassifiable bats.
+    Skips ``APPS_SCAN_SKIP_DIRS`` and unclassifiable bats. The skip is
+    applied by pruning ``dirnames`` during the walk — ``.venv`` /
+    ``node_modules`` / ``__pycache__`` are never descended into, which is
+    the whole reason this scan is fast on a tree of sibling repos.
     """
     if not scan_root.is_dir():
         logger.warning(f"⚠️ Apps scan root does not exist: {scan_root}")
         return []
 
     found: List[Tuple[Path, str]] = []
-    for bat in scan_root.rglob("*.bat"):
-        if any(part in APPS_SCAN_SKIP_DIRS for part in bat.parts):
-            continue
-        kind = classify_bat(bat)
-        if kind is not None:
-            found.append((bat, kind))
+    for dirpath, dirnames, filenames in os.walk(scan_root, topdown=True):
+        dirnames[:] = [d for d in dirnames if d not in APPS_SCAN_SKIP_DIRS]
+        for filename in filenames:
+            if not filename.lower().endswith(".bat"):
+                continue
+            bat = Path(dirpath) / filename
+            kind = classify_bat(bat)
+            if kind is not None:
+                found.append((bat, kind))
     found.sort(key=lambda pair: pair[0])
     return found
 

@@ -649,6 +649,13 @@ html, body {
   cursor: pointer;
 }
 .ghost-btn:active { color: var(--fg); }
+.ghost-btn.accent-btn {
+  background: var(--accent);
+  color: white;
+  border-color: transparent;
+  font-weight: 600;
+}
+.ghost-btn.accent-btn:active { color: white; filter: brightness(0.9); }
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }

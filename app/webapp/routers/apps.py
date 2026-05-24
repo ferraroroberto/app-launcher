@@ -94,7 +94,12 @@ async def get_apps(request: Request) -> Dict[str, Any]:
 async def scan_apps(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     registry = load_registry()
-    new = discover_new(scan_root=Path(cfg.apps_scan_root), existing=registry)
+    # Walking the apps_scan_root tree is blocking I/O — keep it off the
+    # event loop so the /api/apps 4 s poll and any concurrent request
+    # stays responsive while a scan runs.
+    new = await asyncio.to_thread(
+        discover_new, scan_root=Path(cfg.apps_scan_root), existing=registry
+    )
     return {"new": [decorate_for_api(a) for a in new]}
 
 
