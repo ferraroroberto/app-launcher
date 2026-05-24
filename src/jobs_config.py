@@ -15,7 +15,7 @@ The file is one JSON document, gitignored, with a committed
         {
           "id": "reporting-daily",
           "name": "Daily Reporting",
-          "script_path": "E:\\\\automation\\\\reporting\\\\launch_reporting.bat",
+          "script_path": "E:\\\\automation\\\\content-management\\\\launch_reporting.bat",
           "args": "auto",
           "schedule": {"type": "daily", "at": "06:00"},
           "added_at": "2026-05-23T..."
