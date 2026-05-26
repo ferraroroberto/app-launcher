@@ -36,6 +36,19 @@ def mocked_jobs_side_effects(monkeypatch):
         "delete_schtasks": MagicMock(return_value=[]),
         "query_next_run": MagicMock(return_value=None),
         "spawn_run_job_detached": MagicMock(return_value=1234),
+        # Issue #66 — decorate_job now calls run_stats + is_stuck for
+        # every row; default to "no data" so existing assertions remain
+        # untouched and new behaviour is opt-in per test.
+        "run_stats": MagicMock(
+            return_value={
+                "p50": None,
+                "p95": None,
+                "success_rate_30d": None,
+                "completed_count": 0,
+                "last7": [],
+            }
+        ),
+        "is_stuck": MagicMock(return_value=False),
     }
     for name, m in mocks.items():
         monkeypatch.setattr(jobs_router.jobs_mod, name, m)
@@ -224,3 +237,191 @@ class TestRunHistory:
         created = _seed_one_job(client, name="Demo").json()["job"]
         resp = client.get("/api/jobs/" + created["id"] + "/runs/nope")
         assert resp.status_code == 404
+
+
+# ====================================================== bulk-cache schtasks
+
+
+class TestBulkCacheNextRun:
+    """`GET /api/jobs` must make at most one schtasks call per cache window
+    regardless of job count — the issue-#66 perf prerequisite. The whole
+    Jobs tab v1 was N+1 fork+exec on Windows.
+    """
+
+    def test_one_schtasks_call_per_window_for_n_jobs(
+        self, webapp_client, monkeypatch
+    ):
+        # We don't want the router-level query_next_run mock here — we
+        # want to exercise the real src.jobs query_next_run via the
+        # cache. The fixture above mocks `query_next_run` directly on
+        # jobs_mod, so re-import the *un*-mocked routine.
+        from unittest.mock import MagicMock
+
+        from app.webapp.routers import jobs as jobs_router
+        from src import jobs as jobs_mod
+
+        client, _, _ = webapp_client
+
+        # Stub only the schtasks side-effects (sync/delete/spawn) and
+        # the stats helpers. Leave query_next_run pointing at the real
+        # cached implementation.
+        monkeypatch.setattr(jobs_router.jobs_mod, "sync_schtasks", MagicMock(return_value=[]))
+        monkeypatch.setattr(jobs_router.jobs_mod, "delete_schtasks", MagicMock(return_value=[]))
+        monkeypatch.setattr(
+            jobs_router.jobs_mod,
+            "run_stats",
+            MagicMock(
+                return_value={
+                    "p50": None, "p95": None, "success_rate_30d": None,
+                    "completed_count": 0, "last7": [],
+                }
+            ),
+        )
+        monkeypatch.setattr(jobs_router.jobs_mod, "is_stuck", MagicMock(return_value=False))
+
+        # Reset the module-level cache so this test starts fresh.
+        jobs_mod.invalidate_next_run_cache()
+
+        # Count schtasks invocations.
+        calls: List[List[str]] = []
+
+        def fake_run(argv):
+            import subprocess
+            calls.append(list(argv))
+            # Return one fake task per registered job so the cache
+            # actually has entries to look up.
+            stdout = (
+                "TaskName: \\AppLauncher\\demo-0\nNext Run Time: 2026-06-01 06:00:00\n\n"
+                "TaskName: \\AppLauncher\\demo-1\nNext Run Time: 2026-06-01 06:00:00\n\n"
+                "TaskName: \\AppLauncher\\demo-2\nNext Run Time: 2026-06-01 06:00:00\n\n"
+                "TaskName: \\AppLauncher\\demo-3\nNext Run Time: 2026-06-01 06:00:00\n\n"
+                "TaskName: \\AppLauncher\\demo-4\nNext Run Time: 2026-06-01 06:00:00\n\n"
+            )
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout, stderr="")
+
+        monkeypatch.setattr(jobs_mod, "_run_schtasks", fake_run)
+
+        # Seed N=5 jobs.
+        for i in range(5):
+            client.post(
+                "/api/jobs",
+                json={"name": f"demo-{i}", "script_path": f"C:\\stub\\d{i}.bat"},
+            )
+        # Drop any schtasks calls made by create (those go through
+        # sync_schtasks which is mocked).
+        calls.clear()
+        # Cache might have been populated/dirtied by a sync; reset.
+        jobs_mod.invalidate_next_run_cache()
+
+        resp = client.get("/api/jobs")
+        assert resp.status_code == 200
+        assert len(resp.json()["jobs"]) == 5
+        # First call populates the cache → exactly one schtasks shell-out
+        # for all five jobs.
+        first_window = list(calls)
+        assert len(first_window) == 1
+        # A second call within the TTL must not hit schtasks again.
+        client.get("/api/jobs")
+        assert calls == first_window
+
+    def test_invalidation_after_sync(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from src import jobs as jobs_mod
+        from src.jobs_config import Job, Schedule
+
+        # Set up a fake runner that records calls.
+        calls = []
+
+        def fake_run(argv):
+            import subprocess
+            calls.append(list(argv))
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(jobs_mod, "_run_schtasks", fake_run)
+        jobs_mod.invalidate_next_run_cache()
+
+        # Warm the cache.
+        jobs_mod.query_next_run("demo")
+        assert len(calls) == 1
+        # Second call within TTL → still 1.
+        jobs_mod.query_next_run("demo")
+        assert len(calls) == 1
+        # Invalidate (what sync_schtasks does) → next call re-shells.
+        jobs_mod.invalidate_next_run_cache()
+        jobs_mod.query_next_run("demo")
+        assert len(calls) == 2
+
+
+# ============================================================= kill route
+
+
+class TestKillRun:
+    def test_404_on_unknown_job(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        resp = client.post("/api/jobs/nope/runs/some-rid/kill")
+        assert resp.status_code == 404
+
+    def test_404_on_unknown_run(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/runs/no-such-run/kill"
+        )
+        assert resp.status_code == 404
+
+    def test_409_when_run_already_final(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        # Pre-create a run dir with status=success — not killable.
+        from src import jobs as jobs_mod
+        run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
+        jobs_mod.write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            status="success",
+            started_at="2026-05-24T08:00:00",
+            finished_at="2026-05-24T08:00:05",
+        )
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/runs/" + run_dir.name + "/kill"
+        )
+        assert resp.status_code == 409
+
+    def test_kills_running_and_finalises(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    ):
+        from unittest.mock import MagicMock
+
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        from src import jobs as jobs_mod
+        run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
+        jobs_mod.write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            status="running",
+            started_at="2026-05-24T08:00:00",
+            pid=4242,
+        )
+
+        kill_spy = MagicMock(return_value=[4242, 4243])
+        from app.webapp.routers import jobs as jobs_router
+        monkeypatch.setattr(jobs_router, "_kill_process_tree", kill_spy)
+
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/runs/" + run_dir.name + "/kill"
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["signalled"] == [4242, 4243]
+        kill_spy.assert_called_once_with(4242)
+
+        # The run record was finalised with the kill markers.
+        record = jobs_mod.read_run(run_dir)
+        assert record["status"] == "failed"
+        assert record["exit_code"] == -9
+        assert record["killed"] is True
+        assert record.get("finished_at")

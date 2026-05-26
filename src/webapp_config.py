@@ -136,6 +136,22 @@ class WebappConfig:
     webauthn_rp_id: str = ""
     webauthn_rp_name: str = "Launcher"
     webauthn_origin: str = ""
+    # --- Jobs-tab failure notifications (issue #66) ---------------------
+    # Pushover credentials — both empty means no-op notifier (executor
+    # still finalises runs identically). The master switch
+    # `notify_on_failure` defaults off so the feature ships dormant.
+    pushover_api_token: str = ""
+    pushover_user_key: str = ""
+    notify_on_failure: bool = False
+    # Also fire when the consecutive-failure streak hits this count
+    # (useful when single-failure pushes are muted via Pushover quiet
+    # hours). 0 disables the streak fire.
+    notify_failure_streak: int = 0
+    # Pipe the run's output tail through the local LLM hub
+    # (http://127.0.0.1:8000, claude-haiku-4-5) for a one-line
+    # "what went wrong" summary prepended to the push body. Default off
+    # so the issue lands without a hard dependency on the hub.
+    notify_failure_summary: bool = False
 
 
 def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
@@ -189,6 +205,11 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         webauthn_rp_id=str(raw.get("webauthn_rp_id", "")),
         webauthn_rp_name=str(raw.get("webauthn_rp_name", "Launcher")),
         webauthn_origin=str(raw.get("webauthn_origin", "")),
+        pushover_api_token=str(raw.get("pushover_api_token", "")),
+        pushover_user_key=str(raw.get("pushover_user_key", "")),
+        notify_on_failure=bool(raw.get("notify_on_failure", False)),
+        notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
+        notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
     )
     _validate(cfg)
     return cfg
@@ -222,6 +243,11 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "webauthn_rp_id": cfg.webauthn_rp_id,
         "webauthn_rp_name": cfg.webauthn_rp_name,
         "webauthn_origin": cfg.webauthn_origin,
+        "pushover_api_token": cfg.pushover_api_token,
+        "pushover_user_key": cfg.pushover_user_key,
+        "notify_on_failure": cfg.notify_on_failure,
+        "notify_failure_streak": cfg.notify_failure_streak,
+        "notify_failure_summary": cfg.notify_failure_summary,
     }
 
     tmp = target.with_suffix(target.suffix + ".tmp")
@@ -326,4 +352,8 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"copilot_model must be empty or one of {VALID_COPILOT_MODELS}; "
             f"got {cfg.copilot_model!r}"
+        )
+    if cfg.notify_failure_streak < 0:
+        raise ValueError(
+            f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"
         )

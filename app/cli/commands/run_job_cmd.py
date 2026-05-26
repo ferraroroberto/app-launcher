@@ -34,23 +34,38 @@ import logging
 import os
 import subprocess
 import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from src.jobs import (
     MAX_RUNS_PER_JOB,
+    consecutive_failed_runs,
+    invalidate_stats_cache,
     new_run_dir,
     new_run_id,
     prune_runs,
+    read_output_tail,
     runs_dir,
     write_run_json,
 )
 from src.jobs_config import Job, get_by_id, load_jobs
+from src.notifications import (
+    Notifier,
+    NoopNotifier,
+    build_notifier_from_config,
+    summarise_failure,
+)
+from src.webapp_config import WebappConfig, load_webapp_config
 
 from .base import BaseCommand
 
 logger = logging.getLogger(__name__)
+
+# How often the resource sampler thread walks the process tree.
+_RESOURCE_SAMPLE_INTERVAL_SECONDS = 1.0
 
 
 def resolve_venv_python(script_path: Path) -> Optional[Path]:
@@ -106,6 +121,135 @@ def build_invocation(job: Job) -> Tuple[List[str], Path, Dict[str, str]]:
         return argv, cwd, {"PYTHONPATH": str(cwd)}
 
     raise ValueError(f"unsupported script_path suffix: {suffix!r}")
+
+
+class _ResourceSampler:
+    """Background thread tracking peak RSS + accumulated CPU for a tree.
+
+    Runs once per second while the child process is alive. Every tick
+    walks the parent + ``parent.children(recursive=True)``, summing
+    ``memory_info().rss`` across the live tree (keeping the running max)
+    and recording each PID's max-observed ``cpu_times().user + .system``.
+    PIDs are tracked individually because children come and go inside a
+    job run; summing across vanished children would otherwise undercount.
+
+    All ``psutil`` errors are swallowed silently — sampling is
+    best-effort and must never crash the executor.
+    """
+
+    def __init__(self, pid: int) -> None:
+        import psutil  # local — keeps psutil out of cold start
+
+        self._psutil = psutil
+        self._pid = pid
+        self._peak_rss = 0
+        self._cpu_per_pid: Dict[int, float] = {}
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._loop, name=f"run-job-sampler-{pid}", daemon=True
+        )
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def stop(self, *, timeout: float = 2.0) -> None:
+        self._stop.set()
+        self._thread.join(timeout=timeout)
+
+    @property
+    def peak_rss_bytes(self) -> int:
+        return self._peak_rss
+
+    @property
+    def cpu_seconds(self) -> float:
+        # Sum the per-pid maximums — gives an upper bound on total CPU
+        # spent across the lifetime of the tree, even when some children
+        # exited before the next tick.
+        return sum(self._cpu_per_pid.values())
+
+    def _loop(self) -> None:
+        try:
+            parent = self._psutil.Process(self._pid)
+        except (self._psutil.NoSuchProcess, self._psutil.AccessDenied):
+            return
+        while not self._stop.is_set():
+            try:
+                procs = [parent] + parent.children(recursive=True)
+            except (self._psutil.NoSuchProcess, self._psutil.AccessDenied):
+                return
+            tree_rss = 0
+            for p in procs:
+                try:
+                    mem = p.memory_info().rss
+                    tree_rss += mem
+                except (self._psutil.NoSuchProcess, self._psutil.AccessDenied):
+                    continue
+                try:
+                    cpu_times = p.cpu_times()
+                    total = (cpu_times.user or 0.0) + (cpu_times.system or 0.0)
+                    prior = self._cpu_per_pid.get(p.pid, 0.0)
+                    if total > prior:
+                        self._cpu_per_pid[p.pid] = total
+                except (self._psutil.NoSuchProcess, self._psutil.AccessDenied):
+                    continue
+            if tree_rss > self._peak_rss:
+                self._peak_rss = tree_rss
+            # Use the stop-event's wait so stop() returns promptly when
+            # the child exits — no spinning, no 1 s tail latency.
+            if self._stop.wait(_RESOURCE_SAMPLE_INTERVAL_SECONDS):
+                return
+
+
+def _maybe_notify_failure(
+    cfg: WebappConfig,
+    job: Job,
+    run_dir: Path,
+    *,
+    status: str,
+    exit_code: int,
+    notifier: Optional[Notifier] = None,
+) -> None:
+    """Push a Pushover notification for a ``failed`` finalisation.
+
+    No-op when ``notify_on_failure`` is off, when the notifier resolves
+    to :class:`NoopNotifier` (no creds), or when the run succeeded. The
+    optional LLM summary is best-effort; hub down → raw tail only. Any
+    error inside this path is logged and swallowed — finalisation must
+    keep going.
+    """
+    try:
+        if status != "failed" or not cfg.notify_on_failure:
+            return
+        notifier = notifier or build_notifier_from_config(cfg)
+        if isinstance(notifier, NoopNotifier):
+            return
+        tail = read_output_tail(run_dir, max_bytes=8 * 1024)
+        body_parts: List[str] = []
+        if cfg.notify_failure_summary:
+            summary = summarise_failure(tail)
+            if summary:
+                body_parts.append(summary)
+        # The raw tail is what an operator wants when the summary is
+        # missing or wrong — always include the last 500 chars.
+        body_parts.append(tail[-500:] if tail else "(no output captured)")
+        body_parts.append(
+            f"— job={job.id} run={run_dir.name} exit={exit_code}"
+        )
+        title = f"❌ {job.name}"
+        notifier.notify(title, "\n\n".join(body_parts), severity="error")
+
+        streak = cfg.notify_failure_streak
+        if streak and streak > 1:
+            count = consecutive_failed_runs(job.id)
+            if count == streak:
+                notifier.notify(
+                    f"🔁 {job.name} — {count} consecutive failures",
+                    f"Failure streak reached {count} runs.\n"
+                    f"Most recent: {run_dir.name} (exit {exit_code}).",
+                    severity="error",
+                )
+    except Exception as exc:  # noqa: BLE001 — never block finalisation
+        logger.warning(f"⚠️  notification path raised: {exc}")
 
 
 class RunJobCommand(BaseCommand):
@@ -176,6 +320,8 @@ class RunJobCommand(BaseCommand):
         output_log = run_dir / "output.log"
         exit_code: int
         status: str
+        sampler: Optional[_ResourceSampler] = None
+        spawn_started = time.monotonic()
         try:
             with output_log.open("wb") as fh:
                 proc = subprocess.Popen(
@@ -186,6 +332,15 @@ class RunJobCommand(BaseCommand):
                     stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL,
                 )
+                # Persist the pid so the kill endpoint can find the tree
+                # even if the executor itself crashes before wait() returns.
+                write_run_json(run_dir, pid=proc.pid)
+                try:
+                    sampler = _ResourceSampler(proc.pid)
+                    sampler.start()
+                except Exception as exc:  # noqa: BLE001 — sampling optional
+                    logger.warning(f"⚠️  resource sampler init failed: {exc}")
+                    sampler = None
                 exit_code = proc.wait()
             status = "success" if exit_code == 0 else "failed"
         except OSError as exc:
@@ -197,15 +352,38 @@ class RunJobCommand(BaseCommand):
                     fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
             except OSError:
                 pass
+        finally:
+            if sampler is not None:
+                sampler.stop()
 
-        finished_at = datetime.now().isoformat(timespec="seconds")
-        write_run_json(
-            run_dir,
-            finished_at=finished_at,
-            exit_code=exit_code,
-            status=status,
-        )
+        finished_at_dt = datetime.now()
+        finished_at = finished_at_dt.isoformat(timespec="seconds")
+        duration_seconds = round(time.monotonic() - spawn_started, 3)
+        fields: Dict[str, object] = {
+            "finished_at": finished_at,
+            "exit_code": exit_code,
+            "status": status,
+            "duration_seconds": duration_seconds,
+        }
+        if sampler is not None:
+            fields["peak_rss_bytes"] = sampler.peak_rss_bytes
+            fields["cpu_seconds"] = round(sampler.cpu_seconds, 3)
+        write_run_json(run_dir, **fields)
         prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+        invalidate_stats_cache(job.id)
+
+        # Failure notification — load the live webapp config so a user
+        # change between spawn and finalisation takes effect on the next
+        # run without needing a webapp restart.
+        try:
+            cfg = load_webapp_config()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"⚠️  notify: could not load webapp config: {exc}")
+        else:
+            _maybe_notify_failure(
+                cfg, job, run_dir, status=status, exit_code=exit_code
+            )
+
         logger.info(
             f"🏁 run-job {job.id} {status} (exit={exit_code}, run={run_dir.name})"
         )

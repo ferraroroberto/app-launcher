@@ -12,6 +12,7 @@
   "_comment_tailnet_allowlist": "Extra IPs / CIDRs allowed to reach the interactive terminal endpoints, on top of loopback + the Tailscale CGNAT range 100.64.0.0/10. Leave empty unless you need LAN access.",
   "_comment_claude_show_local_window": "When true (default), launching a session from the phone also opens an interactive terminal window for it on the PC. It connects over loopback so input works from both the phone and the PC.",
   "_comment_webauthn": "Passkey gate for the interactive terminal. webauthn_rp_id is the bare tailnet hostname (e.g. 'pc.tailnet.ts.net'); webauthn_origin is the full https origin the phone connects to (e.g. 'https://pc.tailnet.ts.net:8445'). Leave both empty to disable the passkey gate.",
+  "_comment_notifications": "Jobs-tab failure notifications (issue #66). Set both pushover_api_token + pushover_user_key and flip notify_on_failure: true to start receiving a push per failed run. notify_failure_streak: N also fires when N consecutive failures stack up (0 = disabled). notify_failure_summary: true pipes the output tail through the local LLM hub (http://127.0.0.1:8000, claude-haiku-4-5) for a one-line root-cause line prepended to the push body.",
   "host": "0.0.0.0",
   "port": 8445,
   "projects_dir": "",
@@ -33,5 +34,10 @@
   "claude_show_local_window": true,
   "webauthn_rp_id": "",
   "webauthn_rp_name": "Launcher",
-  "webauthn_origin": ""
+  "webauthn_origin": "",
+  "pushover_api_token": "",
+  "pushover_user_key": "",
+  "notify_on_failure": false,
+  "notify_failure_streak": 0,
+  "notify_failure_summary": false
 }

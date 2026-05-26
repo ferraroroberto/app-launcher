@@ -34,7 +34,7 @@ export function renderJobs() {
 
 function renderJobRow(job) {
   const li = document.createElement('li');
-  li.className = 'app-item';
+  li.className = 'app-item job-item';
   li.dataset.id = job.id;
 
   const main = document.createElement('div');
@@ -44,25 +44,15 @@ function renderJobRow(job) {
   info.type = 'button';
   info.className = 'launch-btn session-open';
 
+  // Row 1: dot + name. The job name is short and belongs above the
+  // chips so a narrow phone never forces it to letter-stack vertically.
   const head = document.createElement('div');
-  head.className = 'session-head';
+  head.className = 'session-head job-row-head';
 
   const dot = document.createElement('span');
   dot.className = 'health-dot ' + statusClass(job);
   dot.dataset.role = 'status-dot';
   head.appendChild(dot);
-
-  const pill = document.createElement('span');
-  pill.className = 'kind-pill';
-  pill.textContent = job.target_kind || '?';
-  head.appendChild(pill);
-
-  if (job.schedule_chip) {
-    const chip = document.createElement('span');
-    chip.className = 'kind-pill';
-    chip.textContent = job.schedule_chip;
-    head.appendChild(chip);
-  }
 
   const name = document.createElement('span');
   name.className = 'name';
@@ -70,6 +60,47 @@ function renderJobRow(job) {
   head.appendChild(name);
 
   info.appendChild(head);
+
+  // Row 2: type + schedule. Always its own row — pinned ordering so
+  // the eye lands in the same place across every job.
+  const pills = document.createElement('div');
+  pills.className = 'job-row-pills';
+  pills.dataset.role = 'job-pills';
+
+  const pill = document.createElement('span');
+  pill.className = 'kind-pill';
+  pill.textContent = job.target_kind || '?';
+  pills.appendChild(pill);
+
+  if (job.schedule_chip) {
+    const chip = document.createElement('span');
+    chip.className = 'kind-pill';
+    chip.textContent = job.schedule_chip;
+    pills.appendChild(chip);
+  }
+
+  info.appendChild(pills);
+
+  // Row 3: load (duration percentiles) + sparkline. Same idea — its own
+  // row regardless of available width, so this is always *where* you
+  // look for "how heavy is this job + how have the last few runs gone".
+  const load = document.createElement('div');
+  load.className = 'job-row-load';
+  load.dataset.role = 'job-load';
+
+  const durationChip = renderDurationChip(job);
+  if (durationChip) {
+    durationChip.dataset.role = 'duration-chip';
+    load.appendChild(durationChip);
+  }
+
+  const sparkline = renderSparkline(job);
+  if (sparkline) {
+    sparkline.dataset.role = 'sparkline';
+    load.appendChild(sparkline);
+  }
+
+  info.appendChild(load);
 
   const meta = document.createElement('span');
   meta.className = 'meta';
@@ -124,6 +155,7 @@ function setRunBtnState(btn, job) {
 }
 
 function statusClass(job) {
+  if (job.stuck) return 'stuck';
   if (job.running || (job.last_run && job.last_run.status === 'running')) return 'up';
   if (job.last_run && job.last_run.status === 'success') return 'up';
   if (job.last_run && job.last_run.status === 'failed') return 'down';
@@ -137,15 +169,91 @@ function statusIcon(status) {
   return '•';
 }
 
+function formatDuration(seconds) {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
+  if (seconds < 10) return seconds.toFixed(1) + 's';
+  if (seconds < 60) return Math.round(seconds) + 's';
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = Math.round(seconds - m * 60);
+    return m + 'm' + (s ? ' ' + s + 's' : '');
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds - h * 3600) / 60);
+  return h + 'h' + (m ? ' ' + m + 'm' : '');
+}
+
+function formatBytes(bytes) {
+  if (bytes == null || !Number.isFinite(bytes) || bytes < 0) return null;
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let idx = 0;
+  while (value >= 1024 && idx < units.length - 1) {
+    value /= 1024;
+    idx += 1;
+  }
+  const fixed = value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1);
+  return fixed + ' ' + units[idx];
+}
+
+function renderDurationChip(job) {
+  const stats = job.stats || {};
+  const p50 = formatDuration(stats.p50);
+  const p95 = formatDuration(stats.p95);
+  if (!p50 && !p95) return null;
+  const chip = document.createElement('span');
+  chip.className = 'kind-pill job-duration-chip';
+  if (p50 && p95) {
+    chip.textContent = 'p50 ' + p50 + ' · p95 ' + p95;
+  } else {
+    chip.textContent = 'p50 ' + (p50 || p95);
+  }
+  chip.title = 'Duration percentiles across the last ' +
+    (stats.completed_count || 0) + ' completed run(s)';
+  return chip;
+}
+
+function renderSparkline(job) {
+  const last7 = (job.stats && Array.isArray(job.stats.last7)) ? job.stats.last7 : [];
+  if (!last7.length) return null;
+  const span = document.createElement('span');
+  span.className = 'job-sparkline';
+  span.setAttribute('aria-label', 'Last ' + last7.length + ' runs');
+  last7.forEach(function (entry) {
+    const dot = document.createElement('span');
+    const status = (entry && entry.status) || '';
+    const cls = sparkClass(status);
+    dot.className = 'job-spark-dot' + (cls ? ' ' + cls : '');
+    dot.textContent = '●';
+    dot.title = (entry && entry.run_id ? entry.run_id + ' · ' : '') + (status || 'unknown');
+    span.appendChild(dot);
+  });
+  return span;
+}
+
+function sparkClass(status) {
+  if (status === 'success') return 'up';
+  if (status === 'failed') return 'down';
+  if (status === 'running' || status === 'pending') return 'live';
+  return 'unknown';
+}
+
 function describeLastRun(job) {
   const bits = [];
   if (job.last_run) {
     const ago = fmtAgo(toEpoch(job.last_run.started_at));
-    const tail = (job.last_run.status || '?') + (ago ? ' · ' + ago + ' ago' : '');
+    const status = job.last_run.status || '?';
+    const duration = formatDuration(job.last_run.duration_seconds);
+    const tail = status +
+      (ago ? ' · ' + ago + ' ago' : '') +
+      (duration && status !== 'running' && status !== 'pending' ? ' · ' + duration : '');
     bits.push('last: ' + tail);
   } else {
     bits.push('never run');
   }
+  if (job.stuck) bits.push('⚠️ stuck');
+  const sr = job.stats && job.stats.success_rate_30d;
+  if (sr != null && Number.isFinite(sr)) bits.push(Math.round(sr * 100) + '% / 30d');
   if (job.next_run) bits.push('next: ' + job.next_run);
   return bits.join(' · ');
 }
@@ -254,17 +362,27 @@ function redrawRunsList(jobId, runs) {
   });
 }
 
-function writeOutput(jobId, runId, text, status) {
+function writeOutput(jobId, runId, text, status, extras) {
   const panel = panelEl(jobId);
   if (!panel) return;
   const label = panel.querySelector('[data-role="output-label"]');
   const tail = panel.querySelector('[data-role="output-tail"]');
   if (!tail) return;
   if (label) {
-    label.textContent = 'Output · ' + runId +
-      (status ? ' · ' + status : '') +
-      (status === 'running' || status === 'pending' ? ' (live)' : '');
+    const bits = ['Output · ' + runId];
+    if (status) bits.push(status + (status === 'running' || status === 'pending' ? ' (live)' : ''));
+    const cpu = extras && Number.isFinite(extras.cpu_seconds)
+      ? Math.round(extras.cpu_seconds) + ' s CPU' : null;
+    const rss = extras && Number.isFinite(extras.peak_rss_bytes)
+      ? 'peak ' + formatBytes(extras.peak_rss_bytes) : null;
+    const dur = extras && Number.isFinite(extras.duration_seconds)
+      ? formatDuration(extras.duration_seconds) : null;
+    if (dur && status !== 'running' && status !== 'pending') bits.push(dur);
+    if (cpu) bits.push(cpu);
+    if (rss) bits.push(rss);
+    label.textContent = bits.join(' · ');
   }
+  renderKillButton(jobId, runId, status, extras);
   const isSameRun = tail.dataset.runId === runId;
   const wasAtBottom = !isSameRun ||
     (tail.scrollTop + tail.clientHeight >= tail.scrollHeight - 4);
@@ -358,7 +476,55 @@ async function refreshOutputForRun(jobId, runId) {
     return;
   }
   const record = detail.run || {};
-  writeOutput(jobId, runId, record.output_tail || '', record.status);
+  writeOutput(jobId, runId, record.output_tail || '', record.status, {
+    cpu_seconds: record.cpu_seconds,
+    peak_rss_bytes: record.peak_rss_bytes,
+    duration_seconds: record.duration_seconds,
+  });
+}
+
+function renderKillButton(jobId, runId, status, extras) {
+  const panel = panelEl(jobId);
+  if (!panel) return;
+  const body = panel.querySelector('[data-role="history-body"]');
+  if (!body) return;
+  let killBtn = body.querySelector('[data-role="kill-btn"]');
+  const job = state.jobs.find(function (j) { return j.id === jobId; });
+  const isLive = status === 'running' || status === 'pending';
+  // Only show kill on the *latest* run of a stuck job — older runs
+  // can't be running (status would already be final by definition).
+  const showKill = !!(job && job.stuck && isLive);
+  if (!showKill) {
+    if (killBtn) killBtn.remove();
+    return;
+  }
+  if (!killBtn) {
+    killBtn = document.createElement('button');
+    killBtn.type = 'button';
+    killBtn.className = 'icon-btn danger jobs-kill-btn';
+    killBtn.dataset.role = 'kill-btn';
+    killBtn.textContent = '🛑 Kill stuck run';
+    killBtn.addEventListener('click', function () { killRun(jobId, runId); });
+    body.insertBefore(killBtn, body.querySelector('[data-role="output-label"]'));
+  } else {
+    // Re-bind in case runId has changed since the last render.
+    killBtn.onclick = function () { killRun(jobId, runId); };
+  }
+}
+
+async function killRun(jobId, runId) {
+  if (!confirm('Kill the running process tree for this run?')) return;
+  try {
+    await jsonApi(
+      '/api/jobs/' + encodeURIComponent(jobId) + '/runs/' + encodeURIComponent(runId) + '/kill',
+      { method: 'POST' }
+    );
+    toast('🛑 Kill signal sent.', 'good');
+    await refreshExpandedContent(jobId, { fetchOutput: true });
+    await fetchJobs();
+  } catch (exc) {
+    toast('Kill failed: ' + (exc.message || exc), 'error');
+  }
 }
 
 async function runJobNow(job) {
@@ -508,6 +674,28 @@ function patchRowsInPlace() {
     if (meta) meta.textContent = describeLastRun(job);
     const runBtn = li.querySelector('[data-role="run-btn"]');
     if (runBtn) setRunBtnState(runBtn, job);
+    // Sparkline + duration chip can change between polls (new run
+    // finished, stats recomputed) — swap them in place so the rest of
+    // the row doesn't flash. Both live on the "load" sub-row.
+    const loadRow = li.querySelector('[data-role="job-load"]');
+    if (loadRow) {
+      const oldChip = loadRow.querySelector('[data-role="duration-chip"]');
+      const freshChip = renderDurationChip(job);
+      if (freshChip) freshChip.dataset.role = 'duration-chip';
+      if (oldChip && freshChip) loadRow.replaceChild(freshChip, oldChip);
+      else if (oldChip && !freshChip) oldChip.remove();
+      else if (!oldChip && freshChip) {
+        const ref = loadRow.querySelector('[data-role="sparkline"]');
+        if (ref) loadRow.insertBefore(freshChip, ref);
+        else loadRow.appendChild(freshChip);
+      }
+      const oldSpark = loadRow.querySelector('[data-role="sparkline"]');
+      const freshSpark = renderSparkline(job);
+      if (freshSpark) freshSpark.dataset.role = 'sparkline';
+      if (oldSpark && freshSpark) loadRow.replaceChild(freshSpark, oldSpark);
+      else if (oldSpark && !freshSpark) oldSpark.remove();
+      else if (!oldSpark && freshSpark) loadRow.appendChild(freshSpark);
+    }
   }
 }
 
