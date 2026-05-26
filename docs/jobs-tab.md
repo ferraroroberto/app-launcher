@@ -105,12 +105,32 @@ Every run produces a directory with two files:
 
 | File | Content |
 | --- | --- |
-| `run.json` | `{run_id, job_id, name, trigger, script_path, args, started_at, status, finished_at, exit_code}` |
+| `run.json` | One run's full metadata (schema below) |
 | `output.log` | Combined stdout+stderr, raw bytes |
 
 `run_id` is a sortable timestamp (`YYYYmmddTHHMMSS`); collisions within the same second append `-2`, `-3`, … Pruned to the most recent **20 runs per job** by the executor at the end of each run, so the directory never grows unbounded.
 
 `status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`. The UI shows the live status by polling `/api/jobs` every 4 s while the tab is visible.
+
+### `run.json` schema
+
+| Field | Type | Written by | Purpose |
+| --- | --- | --- | --- |
+| `run_id` | str | webapp + executor | Sortable timestamp; matches the dir name |
+| `job_id` | str | both | FK to `config/jobs.json` |
+| `name` | str | both | Job name at the time of the run (denormalised on purpose — survives renames) |
+| `trigger` | `"manual"` \| `"scheduled"` | both | Where the run was fired from |
+| `script_path` | str | both | Resolved at spawn time |
+| `args` | str | both | Whitespace-split into argv |
+| `started_at` | ISO 8601 | both | `pending` write or `running` re-write |
+| `status` | `"pending"` \| `"running"` \| `"success"` \| `"failed"` | both | Final value lands at executor exit |
+| `finished_at` | ISO 8601 | executor | Only on final write |
+| `exit_code` | int | executor | `-9` is reserved for `/kill` (`SIGKILL` analogue) |
+| `pid` | int | executor | The child PID, persisted at spawn so the kill endpoint works even if the executor itself crashes between spawn and `wait()` |
+| `duration_seconds` | float | executor | Wall-clock seconds the child ran for; rounded to 3 d.p. |
+| `peak_rss_bytes` | int | executor | Peak resident-set size summed across the process tree (parent + recursive children) — sampled at ~1 Hz |
+| `cpu_seconds` | float | executor | Accumulated user + system CPU across the tree — sum of per-PID maxima |
+| `killed` | bool | kill endpoint | `True` only when finalised via `/kill` |
 
 Plain files were a deliberate choice over a DB — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling.
 
@@ -125,6 +145,84 @@ Plain files were a deliberate choice over a DB — same pattern as session trans
 | `POST /api/jobs/<id>/run` | bearer-token | Trigger now (returns `run_id`, spawns executor detached) |
 | `GET /api/jobs/<id>/runs` | bearer-token | Newest-first run history |
 | `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) |
+| `POST /api/jobs/<id>/runs/<run_id>/kill` | bearer-token | Terminate a stuck run's process tree, finalise `run.json` (`status: failed`, `exit_code: -9`, `killed: true`) |
+
+## Operational signal (issue #66)
+
+The row carries five lightweight signals on top of the schedule chip and last-run line, recomputed on every `/api/jobs` poll:
+
+- **Duration chip** — `p50 4.2s · p95 11s` over completed runs of this job. Hidden when there are no completed runs yet.
+- **Sparkline** — `●●●○●●●` over the last 7 runs, oldest-left. Green = success, red = failed, amber = running/pending, grey = unknown.
+- **Success rate / 30 d** — appears in the meta line when there has been at least one completed run in the last 30 days (`72% / 30d`).
+- **⚠️ stuck marker** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The marker is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act.
+- **CPU / peak RSS** — surfaced on the selected run's output label inside the expanded panel (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
+
+### `run_stats` shape
+
+`src/jobs.py::run_stats(job_id)` is the single helper feeding all of the above:
+
+```python
+{
+  "p50": 4.2,                            # seconds, completed runs only
+  "p95": 11.7,
+  "success_rate_30d": 0.72,              # None when zero completed in 30 d
+  "completed_count": 18,
+  "last7": [{"status": "success", "run_id": "20260524T080000"}, ...]
+}
+```
+
+Process-local 30 s TTL cache per job id; invalidated explicitly when a run finalises (`invalidate_stats_cache(job_id)`).
+
+### Stuck-run kill
+
+```
+POST /api/jobs/<id>/runs/<rid>/kill
+```
+
+- 404 when job or run is unknown.
+- 409 when the run's status is not `running` or `pending`.
+- Loads the persisted `pid` from `run.json` and uses `psutil` to:
+  1. `terminate()` the parent + every recursive child,
+  2. `wait_procs` with a 5 s grace,
+  3. `kill()` whatever survived.
+- Finalises `run.json` to `status: failed`, `exit_code: -9`, `killed: true`, `finished_at: now`, with `duration_seconds` derived from `started_at`.
+
+If the executor has already exited (orphan pid), the route still finalises the record — the UI is the authoritative "is this run done?" surface, and a stale `running` row that nothing is actually executing is the bug the kill button fixes.
+
+### `next_run` cache
+
+The original v1 issued one `schtasks /Query` per job per `/api/jobs` poll — N+1 fork+exec on Windows. The decoration layer now reads `next_run` out of a single process-local snapshot:
+
+- One bulk `schtasks /Query /FO LIST /V` populates `{task_name: next_run_iso_or_none}` for every entry under `\AppLauncher\`.
+- The snapshot is cached for **30 s** (`_NEXT_RUN_TTL_SECONDS` in `src/jobs.py`).
+- `sync_schtasks` and `delete_schtasks` call `invalidate_next_run_cache()` at the end so user edits show up on the next poll without waiting out the TTL.
+
+Net effect: `GET /api/jobs` performs at most one `schtasks` invocation per cache window regardless of job count.
+
+## Failure notifications
+
+Set the Pushover keys in `config/webapp_config.json` and flip `notify_on_failure: true` — the executor will fire a single push per failed run (master switch defaults off, so the feature ships dormant).
+
+```json
+{
+  "pushover_api_token": "azGDORePK8gMaC0QOYAMyEEuzJnyUi",
+  "pushover_user_key":  "uQiRzpo4DXghDmr9QzzfQu27cmVRsG",
+  "notify_on_failure":     true,
+  "notify_failure_streak": 3,
+  "notify_failure_summary": false
+}
+```
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `pushover_api_token` / `pushover_user_key` | `""` | Both must be set for any push to fire; otherwise the notifier short-circuits as a no-op |
+| `notify_on_failure` | `false` | Master switch — even with creds present, nothing is sent until this flips on |
+| `notify_failure_streak` | `0` | When > 0, also fires a separate "🔁 N consecutive failures" push when the streak ticks to exactly this count. Useful when individual-failure pushes are muted via Pushover quiet hours |
+| `notify_failure_summary` | `false` | When `true`, pipe the last ~500 chars of `output.log` through the local LLM hub (`http://127.0.0.1:8000`, `claude-haiku-4-5`) and prepend the model's one-line root-cause summary to the push body. Hub down → silently falls back to raw tail |
+
+The push body always includes: optional LLM summary, the raw output tail (last 500 chars), then a footer `— job=<id> run=<rid> exit=<code>`. Pushover caps individual messages at ~1024 chars; longer bodies are truncated server-side, so the tail is what the executor budgets toward.
+
+The notifier path is wrapped in a single `try`/`except` — credentials misconfigured, Pushover 5xx, hub unreachable: none of those can block the executor's normal exit. Errors land in the launcher log at `WARNING`.
 
 ## Security boundary
 

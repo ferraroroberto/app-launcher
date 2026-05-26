@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -45,7 +45,9 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
 
     ``next_run`` is queried from schtasks (best-effort, ``None`` on
     error or N/A); ``last_run`` is the most recent on-disk run record;
-    ``running`` is a quick "is the latest run still in progress" flag.
+    ``running`` is a quick "is the latest run still in progress" flag;
+    ``stats`` carries the p50/p95/success-rate aggregates plus the
+    ``last7`` sparkline payload; ``stuck`` flags an over-long running run.
     """
     payload = job.to_dict()
     payload["schedule_chip"] = job.schedule.chip()
@@ -60,10 +62,13 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
             "finished_at": latest.get("finished_at"),
             "exit_code": latest.get("exit_code"),
             "trigger": latest.get("trigger"),
+            "duration_seconds": latest.get("duration_seconds"),
         }
     else:
         payload["last_run"] = None
     payload["running"] = jobs_mod.is_running(job.id)
+    payload["stats"] = jobs_mod.run_stats(job.id)
+    payload["stuck"] = jobs_mod.is_stuck(job.id)
     return payload
 
 
@@ -202,6 +207,95 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         )
         raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
     return {"run_id": run_dir.name, "job_id": job.id}
+
+
+# ----------------------------------------------------------- kill stuck run
+
+
+def _kill_process_tree(pid: int, grace_seconds: float = 5.0) -> List[int]:
+    """Terminate ``pid`` and its children; SIGKILL survivors after grace.
+
+    Returns the PIDs that were signalled (best-effort; missing process
+    is not an error). All ``psutil`` exceptions are swallowed so the
+    route can finalise the run record regardless of how messy the
+    process tree turned out to be.
+    """
+    import psutil  # local — keeps import out of cold start
+
+    signalled: List[int] = []
+    try:
+        parent = psutil.Process(pid)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        return signalled
+    try:
+        children = parent.children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        children = []
+    procs = [parent] + children
+    for p in procs:
+        try:
+            p.terminate()
+            signalled.append(p.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    try:
+        _, alive = psutil.wait_procs(procs, timeout=grace_seconds)
+    except psutil.Error:
+        alive = procs
+    for p in alive:
+        try:
+            p.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return signalled
+
+
+@router.post("/api/jobs/{job_id}/runs/{run_id}/kill")
+async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
+    cfg = load_jobs()
+    job = get_by_id(cfg, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    run_dir = jobs_mod.runs_dir(job_id) / run_id
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
+    record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
+    status = record.get("status")
+    if status not in {"running", "pending"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"run is {status!r}, not killable",
+        )
+    pid = record.get("pid")
+    signalled: List[int] = []
+    if isinstance(pid, int) and pid > 0:
+        signalled = await asyncio.to_thread(_kill_process_tree, pid)
+    finished_at = datetime.now().isoformat(timespec="seconds")
+    started_at = record.get("started_at")
+    duration: Optional[float] = None
+    if isinstance(started_at, str):
+        try:
+            d = datetime.fromisoformat(finished_at) - datetime.fromisoformat(
+                started_at
+            )
+            duration = d.total_seconds()
+        except ValueError:
+            duration = None
+    await asyncio.to_thread(
+        jobs_mod.write_run_json,
+        run_dir,
+        status="failed",
+        exit_code=-9,
+        finished_at=finished_at,
+        duration_seconds=duration,
+        killed=True,
+    )
+    jobs_mod.invalidate_stats_cache(job_id)
+    logger.info(
+        f"🛑 killed stuck run {job_id}/{run_id} "
+        f"pid={pid!r} signalled={signalled}"
+    )
+    return {"run_id": run_id, "job_id": job_id, "signalled": signalled}
 
 
 # ----------------------------------------------------------- run history

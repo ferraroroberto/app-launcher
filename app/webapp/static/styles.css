@@ -350,6 +350,75 @@ html, body {
 }
 .app-item .health-dot.up { background: var(--good); }
 .app-item .health-dot.down { background: var(--danger); }
+.app-item .health-dot.stuck { background: var(--warn, #d6a043); }
+
+/* ---------- Jobs tab: two-line row layout (issue #66) ---------- */
+/* The row is two stacked lines: dot + name on top, then a compact
+   chip bar (kind, schedule, duration, sparkline) underneath. We let
+   the chip bar flex-wrap when the phone is too narrow for one line,
+   but pin every chip to nowrap so the contents never word-break into
+   a single-letter vertical stack — that was the v1 bug. */
+.job-item .job-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.job-item .job-row-head .name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+/* Two sibling rows under the name, always rendered separately so the
+   eye lands in the same place across every job:
+     row 2 — type pill + schedule chip
+     row 3 — duration (load) chip + sparkline (recent dots) */
+.job-item .job-row-pills,
+.job-item .job-row-load {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 2px;
+}
+.job-item .job-row-pills .kind-pill,
+.job-item .job-row-load .kind-pill {
+  white-space: nowrap;
+  margin-right: 0;
+}
+/* Keep the load row visually distinct (slightly tighter) — its
+   contents are quantitative, not categorical. */
+.job-item .job-row-load { gap: 4px 8px; }
+.job-sparkline {
+  display: inline-flex;
+  gap: 1px;
+  letter-spacing: 0;
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.job-spark-dot {
+  color: #555;
+}
+.job-spark-dot.up { color: var(--good); }
+.job-spark-dot.down { color: var(--danger); }
+.job-spark-dot.live { color: var(--warn, #d6a043); }
+.job-spark-dot.unknown { color: #555; }
+
+.job-duration-chip {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.jobs-kill-btn {
+  margin: 0 0 8px;
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 4px 10px;
+}
 
 /* ---------- Coding tab tiles (issue #45) ---------- */
 /* Bare folder name on the left, one icon button per coding agent on

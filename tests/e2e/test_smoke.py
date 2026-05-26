@@ -155,6 +155,75 @@ def test_pty_session_renders_with_both_stop_buttons(
     assert saw_pty, "launched PTY session did not surface as a 'full control' row"
 
 
+def test_jobs_row_renders_sparkline_and_duration_chip(
+    authed_page: Page, base_url: str
+) -> None:
+    """Issue #66 — the Jobs row must render the sparkline + duration chip
+    when stats are present, and the ⚠️ stuck marker when ``job.stuck``.
+
+    We route-mock ``/api/jobs`` to return one synthetic stuck job so the
+    live polling renders it through the production code path — the
+    dynamic-import alternative would land on a different ES-module URL
+    than the rewriter-hashed one main.js loaded, so its render would
+    fight the OG polling and lose.
+    """
+    fake_job = {
+        "id": "demo",
+        "name": "Demo",
+        "target_kind": "py",
+        "schedule_chip": "daily 06:00",
+        "next_run": None,
+        "running": False,
+        "stuck": True,
+        "last_run": {
+            "run_id": "20260524T080000", "status": "running",
+            "started_at": "2026-05-24T08:00:00", "duration_seconds": None,
+        },
+        "stats": {
+            "p50": 4.2, "p95": 11.7,
+            "success_rate_30d": 0.75, "completed_count": 6,
+            "last7": [
+                {"status": "success", "run_id": "a"},
+                {"status": "failed",  "run_id": "b"},
+                {"status": "success", "run_id": "c"},
+                {"status": "success", "run_id": "d"},
+                {"status": "running", "run_id": "e"},
+            ],
+        },
+    }
+    import json as _json
+    body = _json.dumps({"jobs": [fake_job]})
+    authed_page.route(
+        re.compile(r".*/api/jobs(\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=body,
+        ),
+    )
+
+    _navigate_collecting_errors(authed_page, base_url)
+    authed_page.locator("#tabJobs").click()
+
+    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    expect(row).to_be_visible()
+    # Sparkline: 5 dots, the failed one carries .down, running carries .live.
+    spark = row.locator("[data-role='sparkline']")
+    expect(spark).to_be_visible()
+    dot_count = spark.locator(".job-spark-dot").count()
+    assert dot_count == 5, f"expected 5 sparkline dots, got {dot_count}"
+    assert spark.locator(".job-spark-dot.down").count() == 1
+    assert spark.locator(".job-spark-dot.live").count() == 1
+    # Duration chip text contains both percentiles.
+    chip = row.locator("[data-role='duration-chip']")
+    expect(chip).to_contain_text("p50")
+    expect(chip).to_contain_text("p95")
+    # Stuck marker shows up in the meta text.
+    expect(row.locator(".meta")).to_contain_text("stuck")
+    # Health dot inherits the stuck class.
+    expect(row.locator("[data-role='status-dot']")).to_have_class(
+        re.compile(r"\bstuck\b")
+    )
+
+
 def test_login_overlay_dom_present(authed_page: Page, base_url: str) -> None:
     """The login overlay markup is wired so showLogin() can reveal it.
 

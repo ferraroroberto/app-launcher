@@ -27,10 +27,13 @@ import json
 import logging
 import os
 import re
+import statistics
 import subprocess
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from threading import Lock
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.jobs_config import Job, Schedule
 
@@ -43,6 +46,19 @@ TASK_FOLDER_PREFIX = f"\\{TASK_NAMESPACE}\\"
 
 JOBS_RUNS_DIR = PROJECT_ROOT / "webapp" / "jobs"
 MAX_RUNS_PER_JOB = 20
+
+# Process-local TTL caches. The original Jobs-tab v1 shelled out to
+# schtasks once per job, per /api/jobs poll (every 3 s while the tab
+# was open) — N+1 fork+exec on Windows for what is effectively a static
+# schedule. Both caches live inside the webapp process and are reset by
+# `invalidate_next_run_cache` whenever sync/delete writes change Task
+# Scheduler state.
+_NEXT_RUN_TTL_SECONDS = 30.0
+_STATS_TTL_SECONDS = 30.0
+_next_run_cache: Optional[Tuple[float, Dict[str, Optional[str]]]] = None
+_next_run_lock = Lock()
+_stats_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_stats_lock = Lock()
 
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
@@ -213,6 +229,7 @@ def delete_schtasks(
         proc = runner(["schtasks", "/Delete", "/F", "/TN", name])
         if proc.returncode == 0:
             deleted.append(name)
+    invalidate_next_run_cache()
     return deleted
 
 
@@ -260,12 +277,99 @@ def sync_schtasks(
                 f"⚠️  schtasks create failed for {name}: "
                 f"rc={proc.returncode} stderr={proc.stderr!r}"
             )
+    invalidate_next_run_cache()
     return created
 
 
 _NEXT_RUN_RE = re.compile(
     r"^Next Run Time:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
 )
+_TASK_NAME_RE = re.compile(
+    r"^TaskName:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
+)
+
+
+def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
+    """Parse ``schtasks /Query /FO LIST /V`` into ``{task_name: next_run}``.
+
+    Each task record is a block of ``Key: Value`` lines separated from
+    the next by blank line(s). We walk records, pluck the first
+    ``TaskName:`` and ``Next Run Time:`` we find, and keep only entries
+    under ``\\AppLauncher\\`` so foreign tasks never leak into the cache.
+    """
+    out: Dict[str, Optional[str]] = {}
+    block: Dict[str, str] = {}
+
+    def commit(b: Dict[str, str]) -> None:
+        name = b.get("TaskName", "").strip()
+        if not name.startswith(TASK_FOLDER_PREFIX):
+            return
+        next_run = b.get("Next Run Time", "").strip()
+        # schtasks renders missing / disabled as "N/A" or "Disabled" —
+        # both collapse to None at the UI layer.
+        if not next_run or next_run.upper() in {"N/A", "DISABLED"}:
+            out[name] = None
+        else:
+            out[name] = next_run
+
+    for raw in stdout.splitlines():
+        line = raw.rstrip()
+        if not line:
+            if block:
+                commit(block)
+                block = {}
+            continue
+        # New TaskName line ends the previous record (schtasks LIST output
+        # has no consistent blank-line separator on all locales).
+        m = _TASK_NAME_RE.match(line)
+        if m and block.get("TaskName"):
+            commit(block)
+            block = {}
+        if ":" in line:
+            key, _, value = line.partition(":")
+            block[key.strip()] = value.strip()
+    if block:
+        commit(block)
+    return out
+
+
+def _bulk_next_runs(
+    runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+) -> Dict[str, Optional[str]]:
+    """One ``schtasks /Query /FO LIST /V`` covering every AppLauncher task."""
+    runner = runner or _run_schtasks
+    proc = runner(["schtasks", "/Query", "/FO", "LIST", "/V"])
+    if proc.returncode != 0 or not proc.stdout:
+        return {}
+    return _parse_bulk_query(proc.stdout)
+
+
+def _cached_bulk_next_runs(
+    runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+) -> Dict[str, Optional[str]]:
+    """Return the bulk map, refreshing the process-local cache on TTL miss."""
+    global _next_run_cache
+    now = time.monotonic()
+    with _next_run_lock:
+        if _next_run_cache is not None:
+            ts, snapshot = _next_run_cache
+            if now - ts < _NEXT_RUN_TTL_SECONDS:
+                return snapshot
+        fresh = _bulk_next_runs(runner=runner)
+        _next_run_cache = (now, fresh)
+        return fresh
+
+
+def invalidate_next_run_cache() -> None:
+    """Drop the cached schtasks snapshot.
+
+    Called after ``sync_schtasks`` / ``delete_schtasks`` so a Task
+    Scheduler edit shows up on the next ``/api/jobs`` poll instead of
+    waiting out the TTL.
+    """
+    global _next_run_cache
+    with _next_run_lock:
+        _next_run_cache = None
 
 
 def query_next_run(
@@ -274,25 +378,25 @@ def query_next_run(
 ) -> Optional[str]:
     """Best-effort: the earliest 'Next Run Time' across this job's tasks.
 
-    Returns ``None`` when no task exists, the field is ``"N/A"``, or the
-    query fails. The string is the raw schtasks rendering — the UI is
-    responsible for any localisation tidying.
+    Backed by a 30 s process-local cache of one bulk ``schtasks /Query``
+    call (see :func:`_cached_bulk_next_runs`). Returns ``None`` when no
+    task exists, the field is ``N/A``, or the query failed entirely. The
+    string is the raw schtasks rendering — the UI is responsible for
+    localisation tidying.
     """
-    runner = runner or _run_schtasks
-    known = list_known_tasks(runner=runner)
+    snapshot = _cached_bulk_next_runs(runner=runner)
     base = TASK_FOLDER_PREFIX + job_id
-    matches = [n for n in known if n == base or n.startswith(base + "-")]
-    if not matches:
-        return None
     candidates: List[str] = []
-    for name in matches:
-        proc = runner(["schtasks", "/Query", "/TN", name, "/FO", "LIST", "/V"])
-        if proc.returncode != 0 or not proc.stdout:
+    for name, next_run in snapshot.items():
+        if name != base and not name.startswith(base + "-"):
             continue
-        for hit in _NEXT_RUN_RE.findall(proc.stdout):
-            value = hit.strip()
-            if value and value.upper() != "N/A":
-                candidates.append(value)
+        if next_run:
+            candidates.append(next_run)
+    # Sort lexicographically — schtasks renders the locale-default
+    # date/time string, so this is a best-effort "earliest"; the legacy
+    # code's first-hit behaviour was no better. UI shows the picked
+    # string verbatim either way.
+    candidates.sort()
     return candidates[0] if candidates else None
 
 
@@ -401,6 +505,157 @@ def prune_runs(job_id: str, keep: int = MAX_RUNS_PER_JOB) -> int:
         except OSError as exc:
             logger.debug(f"prune_runs: could not remove {child}: {exc}")
     return removed
+
+
+# ----------------------------------------------------------- stats / health
+
+
+def _parse_iso(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _duration_for(record: Dict[str, Any]) -> Optional[float]:
+    """Pick up persisted ``duration_seconds`` or derive from started/finished."""
+    persisted = record.get("duration_seconds")
+    if isinstance(persisted, (int, float)) and persisted >= 0:
+        return float(persisted)
+    started = _parse_iso(record.get("started_at"))
+    finished = _parse_iso(record.get("finished_at"))
+    if started and finished and finished >= started:
+        return (finished - started).total_seconds()
+    return None
+
+
+def _percentile(values: List[float], pct: float) -> Optional[float]:
+    """Plain nearest-rank percentile — no SciPy. ``pct`` is in [0, 1]."""
+    if not values:
+        return None
+    s = sorted(values)
+    if len(s) == 1:
+        return s[0]
+    idx = max(0, min(len(s) - 1, int(round(pct * (len(s) - 1)))))
+    return s[idx]
+
+
+def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Read-only computation of ``run_stats`` — see :func:`run_stats`."""
+    runs = list_runs(job_id)  # newest first
+    now = now or datetime.now()
+    completed_durations: List[float] = []
+    success_recent = 0
+    failed_recent = 0
+    cutoff = now - timedelta(days=30)
+    for r in runs:
+        status = r.get("status")
+        started = _parse_iso(r.get("started_at"))
+        if status in {"success", "failed"}:
+            d = _duration_for(r)
+            if d is not None:
+                completed_durations.append(d)
+            if started and started >= cutoff:
+                if status == "success":
+                    success_recent += 1
+                else:
+                    failed_recent += 1
+    # last7 oldest-left so the sparkline reads left→right chronologically.
+    last7 = [
+        {"status": r.get("status"), "run_id": r.get("run_id")}
+        for r in list(reversed(runs[:7]))
+    ]
+    p50 = _percentile(completed_durations, 0.5)
+    p95 = _percentile(completed_durations, 0.95)
+    total_recent = success_recent + failed_recent
+    return {
+        "p50": p50,
+        "p95": p95,
+        "success_rate_30d": (success_recent / total_recent) if total_recent else None,
+        "completed_count": len(completed_durations),
+        "last7": last7,
+    }
+
+
+def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
+    """Return aggregated stats for ``job_id`` (process-local 30 s cache).
+
+    Shape::
+
+        {
+          "p50": Optional[float],          # seconds, completed runs only
+          "p95": Optional[float],
+          "success_rate_30d": Optional[float],  # None when zero recent runs
+          "completed_count": int,
+          "last7": [{"status": str, "run_id": str}, ...]  # oldest-left
+        }
+
+    ``fresh=True`` skips the cache — used by the stuck-run check, which
+    pays the cost rarely (only when the latest run is still running).
+    """
+    now = time.monotonic()
+    if not fresh:
+        with _stats_lock:
+            hit = _stats_cache.get(job_id)
+            if hit is not None and now - hit[0] < _STATS_TTL_SECONDS:
+                return hit[1]
+    stats = _compute_stats(job_id)
+    with _stats_lock:
+        _stats_cache[job_id] = (now, stats)
+    return stats
+
+
+def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
+    """Drop one job's cached stats (or all of them when ``job_id`` is None).
+
+    Called after a run finalises so the row updates promptly without
+    waiting out the 30 s TTL.
+    """
+    with _stats_lock:
+        if job_id is None:
+            _stats_cache.clear()
+        else:
+            _stats_cache.pop(job_id, None)
+
+
+def is_stuck(
+    job_id: str, *, p95_factor: float = 3.0, floor_seconds: float = 300.0
+) -> bool:
+    """``True`` when the latest run is ``running`` past a sane threshold.
+
+    Threshold = ``max(p95 × factor, floor_seconds)``. Surface-only — the
+    UI shows ⚠️ and exposes a manual kill button; no auto-kill.
+    """
+    latest = latest_run(job_id)
+    if not latest or latest.get("status") != "running":
+        return False
+    started = _parse_iso(latest.get("started_at"))
+    if not started:
+        return False
+    stats = run_stats(job_id, fresh=True)
+    p95 = stats.get("p95") or 0.0
+    threshold = max(p95 * p95_factor, floor_seconds)
+    elapsed = (datetime.now() - started).total_seconds()
+    return elapsed > threshold
+
+
+def consecutive_failed_runs(job_id: str) -> int:
+    """Count the contiguous ``failed`` runs at the top of the history.
+
+    Stops at the first non-failed (success / running / pending / unknown).
+    Used by the notification streak gate.
+    """
+    n = 0
+    for r in list_runs(job_id):
+        if r.get("status") != "failed":
+            break
+        n += 1
+    return n
+
+
+# ----------------------------------------------------------- output tail
 
 
 def read_output_tail(run_dir: Path, max_bytes: int = 64 * 1024) -> str:
