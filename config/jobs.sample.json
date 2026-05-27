@@ -1,3 +1,22 @@
 {
-  "jobs": []
+  "jobs": [
+    {
+      "id": "linkedin-scrape",
+      "name": "LinkedIn Scrape (sample)",
+      "script_path": "E:\\automation\\content-management\\engagement\\linkedin\\scrape_comments.py",
+      "args": "",
+      "schedule": { "type": "none" },
+      "params": [
+        { "name": "since", "kind": "date", "flag": "--since" },
+        {
+          "name": "tier",
+          "kind": "enum",
+          "options": ["smb", "mid", "enterprise"],
+          "default": "smb",
+          "flag": "--tier"
+        },
+        { "name": "verbose", "kind": "bool", "flag": "--verbose", "default": false }
+      ]
+    }
+  ]
 }

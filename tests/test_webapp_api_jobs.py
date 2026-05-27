@@ -199,6 +199,132 @@ class TestRunJob:
         assert spawn.call_args.args[1] == run_id
 
 
+# ================================================================== params
+
+
+class TestParamsCRUD:
+    """Params (issue #67) round-trip through create + edit."""
+
+    def test_create_accepts_params(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Scrape",
+                "script_path": "C:\\stub\\scrape.py",
+                "params": [
+                    {"name": "since", "kind": "date", "flag": "--since"},
+                    {"name": "verbose", "kind": "bool", "flag": "--verbose",
+                     "default": False},
+                ],
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        params = resp.json()["job"]["params"]
+        assert [p["name"] for p in params] == ["since", "verbose"]
+
+    def test_create_rejects_bad_param_shape(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "X", "script_path": "C:\\stub\\x.py",
+                "params": [{"name": "x", "kind": "bogus"}],
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_edit_replaces_params(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={"params": [{"name": "n", "kind": "int", "flag": "--n"}]},
+        )
+        assert resp.status_code == 200
+        params = resp.json()["job"]["params"]
+        assert params and params[0]["name"] == "n"
+
+
+class TestRunJobWithParams:
+    def _seed_param_job(self, client):
+        return client.post(
+            "/api/jobs",
+            json={
+                "name": "Scrape",
+                "script_path": "C:\\stub\\scrape.py",
+                "params": [
+                    {"name": "since", "kind": "date", "flag": "--since"},
+                    {"name": "tier", "kind": "enum",
+                     "options": ["a", "b"], "default": "a", "flag": "--tier"},
+                ],
+            },
+        ).json()["job"]
+
+    def test_run_with_valid_params(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_param_job(client)
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run",
+            json={"params": {"since": "2026-06-01", "tier": "b"}},
+        )
+        assert resp.status_code == 200, resp.text
+        spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
+        # spawn was passed the validated params payload (4th positional arg).
+        assert spawn.call_args.args[3] == {"since": "2026-06-01", "tier": "b"}
+
+    def test_missing_required_returns_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_param_job(client)
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run",
+            json={"params": {"tier": "a"}},
+        )
+        assert resp.status_code == 400
+        assert "since" in resp.json()["detail"]
+
+    def test_unknown_param_returns_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_param_job(client)
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run",
+            json={"params": {"since": "2026-06-01", "bogus": 1}},
+        )
+        assert resp.status_code == 400
+        assert "bogus" in resp.json()["detail"]
+
+    def test_enum_not_in_options_returns_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_param_job(client)
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run",
+            json={"params": {"since": "2026-06-01", "tier": "c"}},
+        )
+        assert resp.status_code == 400
+
+    def test_empty_body_still_works_for_parameterless_job(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        # Regression: parameter-less jobs must keep their one-tap fire.
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.post("/api/jobs/" + created["id"] + "/run")
+        assert resp.status_code == 200
+        spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
+        # 4th positional arg is None (no params payload).
+        assert spawn.call_args.args[3] is None
+
+
 # ============================================================= run history
 
 

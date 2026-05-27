@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
+from src.jobs_argv import compose_argv
 from src.jobs_config import (
     Job,
     Schedule,
@@ -29,6 +30,7 @@ from src.jobs_config import (
     job_from_dict,
     load_jobs,
     make_job_id,
+    params_from_dict,
     remove_by_id,
     schedule_from_dict,
     update_job,
@@ -101,6 +103,14 @@ async def create_job(request: Request) -> Dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # Validate params (issue #67) at the boundary so a bad shape fails
+    # fast with a 400 instead of being caught downstream by job_from_dict.
+    params_raw = body.get("params")
+    try:
+        params_from_dict(params_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     cfg = load_jobs()
     job_id = str(body.get("id") or "").strip() or make_job_id(
         name, existing_ids=[j.id for j in cfg.jobs]
@@ -114,6 +124,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "args": args,
                 "schedule": schedule.to_dict(),
                 "added_at": datetime.now().isoformat(timespec="seconds"),
+                "params": params_raw or [],
             }
         )
     except ValueError as exc:
@@ -145,6 +156,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["args"] = body["args"]
     if "schedule" in body:
         patch["schedule"] = body["schedule"]
+    if "params" in body:
+        patch["params"] = body["params"]
     try:
         job = update_job(cfg, job_id, **patch)
     except ValueError as exc:
@@ -174,6 +187,23 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     job = get_by_id(cfg, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+
+    # Typed parameter payload (issue #67). Empty body keeps today's
+    # one-tap fire path for parameter-less jobs. Validation happens up
+    # front via compose_argv so bad values never get a run directory.
+    body = await maybe_json(request)
+    raw_params = body.get("params") if isinstance(body, dict) else None
+    if raw_params is None:
+        raw_params = {}
+    if not isinstance(raw_params, dict):
+        raise HTTPException(
+            status_code=400, detail="params must be an object"
+        )
+    try:
+        compose_argv(job, raw_params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     # Pre-create the run dir so the caller knows the run id before the
     # detached executor has a chance to write its first byte. The
     # executor reuses this dir via --run-id.
@@ -181,8 +211,7 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     started_at = datetime.now().isoformat(timespec="seconds")
-    jobs_mod.write_run_json(
-        run_dir,
+    meta: Dict[str, Any] = dict(
         run_id=run_dir.name,
         job_id=job.id,
         name=job.name,
@@ -192,9 +221,16 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         started_at=started_at,
         status="pending",
     )
+    if raw_params:
+        meta["params"] = raw_params
+    jobs_mod.write_run_json(run_dir, **meta)
     try:
         await asyncio.to_thread(
-            jobs_mod.spawn_run_job_detached, job.id, run_dir.name, "manual"
+            jobs_mod.spawn_run_job_detached,
+            job.id,
+            run_dir.name,
+            "manual",
+            raw_params or None,
         )
     except OSError as exc:
         # Spawn failed → record the failure on the run we just created

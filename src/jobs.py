@@ -103,13 +103,22 @@ def task_run_command(job_id: str) -> str:
 
 
 def spawn_run_job_detached(
-    job_id: str, run_id: str, trigger: str = "manual"
+    job_id: str,
+    run_id: str,
+    trigger: str = "manual",
+    params: Optional[Dict[str, Any]] = None,
 ) -> int:
     """Spawn ``launcher.py run-job <id> --run-id <rid> --trigger <t>`` detached.
 
     Used by the webapp's ``POST /api/jobs/<id>/run`` route to fire a job
     without blocking the request. Returns the spawned PID — kept only
     for diagnostics; the run record is tracked via the filesystem.
+
+    ``params`` (issue #67) is the validated ``{name: value}`` payload from
+    the run-now dialog. When present, it is JSON-encoded onto argv as
+    ``--params <json>`` so the executor (which re-validates) sees an
+    exact byte-for-byte copy. Schedule + Stream-Deck callers omit the
+    arg entirely.
     """
     argv = [
         _pythonw_path(),
@@ -121,6 +130,8 @@ def spawn_run_job_detached(
         "--trigger",
         trigger,
     ]
+    if params:
+        argv.extend(["--params", json.dumps(params)])
     creationflags = _CREATE_NO_WINDOW
     detached = getattr(subprocess, "DETACHED_PROCESS", 0)
     if detached:
