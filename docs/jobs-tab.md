@@ -99,6 +99,28 @@ A job can declare a per-job `cooldown_seconds`: a debounce window that prevents 
   - The UI surfaces a toast: *"⏭ Skipped — cooled down for N more s."*
 - **Scheduled fires inside the window** (Task Scheduler firing the executor directly) cannot be intercepted at the route, so the executor itself performs the same admission check. It writes a `skipped` run record (no spawn, no `output.log`) and exits 0. The record carries `status="skipped"`, `note="cooldown"`, `cooldown_seconds`, `cooldown_remaining_seconds`, and `cooldown_anchor_run_id` for audit clarity. Skipped records do **not** contribute to p50/p95/success-rate stats and do **not** count toward the failure-streak notification gate.
 
+### DAG chaining (issue #68)
+
+A job can declare downstream consequences:
+
+```json
+{
+  "id": "scrape",
+  "name": "Scrape",
+  "script_path": "...",
+  "on_success": ["transform"],
+  "on_failure": ["alert-failure"]
+}
+```
+
+After the executor finalises a run, it loads the current registry (so a user edit between spawn and finalise takes effect on the next chain hop without a webapp restart), picks `on_success` if `status == "success"` or `on_failure` if `status == "failed"`, and dispatches each downstream via the same mutex-aware admission path the route uses. The downstream run carries `trigger="chain:<upstream_id>"` and `chained_from=<upstream_id>` on its `run.json`.
+
+- **Cycle guard.** Both `add_job` and `update_job` run a DFS over the union of `on_success ∪ on_failure` and reject any change that introduces a cycle. The error message names the cycle path (e.g. `chain cycle detected: a → b → a`). Self-chains are rejected with a separate, clearer error.
+- **Reference guard.** Every entry must point at an existing job id. A typo'd downstream is rejected at save time, so the dialog catches it instead of letting the chain silently no-op forever.
+- **Cascade strip on delete.** Deleting a job strips its id from every other job's `on_success` / `on_failure` so the registry stays referentially clean (no dangling ids).
+- **Interaction with mutex groups.** Chain fires go through `dispatch_chain_run`, which runs the same `mutex_collision` check as the route. A chained downstream that hits a busy mutex group lands in the queue with `status="queued"` and waits for drain like any other queued entry.
+- **Interaction with cooldown.** Chain fires are intentionally exempt from cooldown — they're an explicit downstream consequence, not a user click. (Mirrors the executor's `scheduled`-only cooldown check from the other side.)
+
 ### Mutex groups (issue #68)
 
 A job can declare a `mutex_group` — a free-form lowercase identifier (alnum + `_`/`-`, must start with a letter, ≤32 chars). Two jobs sharing a `mutex_group` are not allowed to have overlapping in-flight runs: when one is already `running` or `pending`, a fresh fire of any other member is **queued** rather than rejected, and the head run's finalisation pops the next queued entry and spawns it detached.

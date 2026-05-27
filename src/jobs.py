@@ -588,6 +588,102 @@ def remove_queue_entry(group: str, run_id: str) -> bool:
         return True
 
 
+def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
+    """Return the *other* job in ``job.mutex_group`` that currently holds
+    the group (latest run is ``running`` or ``pending``), or ``None``.
+
+    Shared by the route's admission gate and the chain dispatcher so a
+    chain-fired downstream gets the same queue-if-busy treatment as a
+    manual fire.
+    """
+    if not job.mutex_group:
+        return None
+    for other in jobs:
+        if other.id == job.id:
+            continue
+        if other.mutex_group != job.mutex_group:
+            continue
+        latest = latest_run(other.id)
+        if latest is None:
+            continue
+        if latest.get("status") in ("running", "pending"):
+            return other
+    return None
+
+
+def dispatch_chain_run(
+    jobs: List[Job], downstream: Job, upstream_id: str
+) -> Dict[str, Any]:
+    """Fire ``downstream`` as a chain consequence of ``upstream_id``.
+
+    Pre-creates the run dir, runs the same mutex admission as the
+    route's POST /api/jobs/<id>/run, and either spawns detached or
+    enqueues. Returns the metadata that ended up in ``run.json`` so the
+    caller can log or surface it.
+
+    Cooldown is intentionally NOT checked — chain fires are an explicit
+    downstream consequence, not a user click. (The executor only
+    cooldown-skips ``scheduled`` triggers, mirroring this policy from
+    the other side: a chain trigger ``chain:<id>`` reaches the executor
+    and runs straight through.)
+    """
+    holder = mutex_collision(jobs, downstream)
+    run_dir = new_run_dir(downstream.id, new_run_id())
+    started_at = datetime.now().isoformat(timespec="seconds")
+    trigger = f"chain:{upstream_id}"
+    meta: Dict[str, Any] = dict(
+        run_id=run_dir.name,
+        job_id=downstream.id,
+        name=downstream.name,
+        trigger=trigger,
+        script_path=downstream.script_path,
+        args=downstream.args,
+        started_at=started_at,
+        chained_from=upstream_id,
+    )
+    if holder is not None:
+        meta["status"] = "queued"
+        meta["mutex_group"] = downstream.mutex_group
+        meta["mutex_blocked_by"] = holder.id
+        write_run_json(run_dir, **meta)
+        enqueue_mutex(
+            downstream.mutex_group,
+            {
+                "job_id": downstream.id,
+                "run_id": run_dir.name,
+                "trigger": trigger,
+                "params": None,
+            },
+        )
+        logger.info(
+            f"🪢🪡 chain queued {downstream.id}/{run_dir.name} behind "
+            f"{holder.id} (mutex_group={downstream.mutex_group!r}, "
+            f"upstream={upstream_id})"
+        )
+        return meta
+    meta["status"] = "pending"
+    write_run_json(run_dir, **meta)
+    try:
+        spawn_run_job_detached(downstream.id, run_dir.name, trigger, None)
+    except OSError as exc:
+        write_run_json(
+            run_dir,
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+            exit_code=-1,
+            status="failed",
+            chain_spawn_error=str(exc),
+        )
+        logger.warning(
+            f"⚠️  chain spawn failed {downstream.id}/{run_dir.name}: {exc}"
+        )
+        return meta
+    logger.info(
+        f"🪡 chain fired {downstream.id}/{run_dir.name} "
+        f"(upstream={upstream_id})"
+    )
+    return meta
+
+
 def drain_mutex_queue(
     group: str,
     *,

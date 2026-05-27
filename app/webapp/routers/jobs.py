@@ -79,27 +79,6 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     return payload
 
 
-def _mutex_collision(cfg, job: Job) -> Optional[Job]:
-    """Return the *other* job in ``job.mutex_group`` that currently holds
-    the group (status running or pending on its latest run), or ``None``.
-
-    A job is its own collision only if it has overlapping queued and
-    in-flight runs of itself — we ignore that case because pending/running
-    are per-job-latest and the route is about to write a new run for it.
-    """
-    if not job.mutex_group:
-        return None
-    for other in cfg.jobs:
-        if other.id == job.id:
-            continue
-        if other.mutex_group != job.mutex_group:
-            continue
-        latest = jobs_mod.latest_run(other.id)
-        if latest is None:
-            continue
-        if latest.get("status") in ("running", "pending"):
-            return other
-    return None
 
 
 # ----------------------------------------------------------- CRUD
@@ -155,6 +134,8 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "params": params_raw or [],
                 "cooldown_seconds": body.get("cooldown_seconds"),
                 "mutex_group": body.get("mutex_group"),
+                "on_success": body.get("on_success"),
+                "on_failure": body.get("on_failure"),
             }
         )
     except ValueError as exc:
@@ -192,6 +173,10 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["cooldown_seconds"] = body["cooldown_seconds"]
     if "mutex_group" in body:
         patch["mutex_group"] = body["mutex_group"]
+    if "on_success" in body:
+        patch["on_success"] = body["on_success"]
+    if "on_failure" in body:
+        patch["on_failure"] = body["on_failure"]
     try:
         job = update_job(cfg, job_id, **patch)
     except ValueError as exc:
@@ -261,7 +246,9 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     # run_id back; the executor that finalises the in-flight head will
     # pop this entry from the queue and spawn it detached. See
     # src.jobs.drain_mutex_queue for the spawn-time guard.
-    holder = await asyncio.to_thread(_mutex_collision, cfg, job)
+    holder = await asyncio.to_thread(
+        jobs_mod.mutex_collision, cfg.jobs, job
+    )
 
     run_dir = await asyncio.to_thread(
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()

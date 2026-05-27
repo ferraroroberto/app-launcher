@@ -45,6 +45,7 @@ from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
     cooldown_check,
+    dispatch_chain_run,
     drain_mutex_queue,
     invalidate_stats_cache,
     new_run_dir,
@@ -471,9 +472,40 @@ class RunJobCommand(BaseCommand):
                 cfg, job, run_dir, status=status, exit_code=exit_code
             )
 
+        # DAG chain — fire configured downstream jobs (on_success /
+        # on_failure). Runs BEFORE mutex drain so a chained downstream
+        # that shares the same mutex group as a queued sibling lands in
+        # the same queue, in fire order. Re-load the registry so a user
+        # edit between spawn and finalisation takes effect on the next
+        # chain hop without a webapp restart.
+        downstream_ids: List[str] = []
+        if status == "success":
+            downstream_ids = list(job.on_success or [])
+        elif status == "failed":
+            downstream_ids = list(job.on_failure or [])
+        if downstream_ids:
+            try:
+                chain_cfg = load_jobs()
+                for did in downstream_ids:
+                    downstream = get_by_id(chain_cfg, did)
+                    if downstream is None:
+                        logger.warning(
+                            f"⚠️  chain: unknown downstream {did!r} from "
+                            f"{job.id} (skipping)"
+                        )
+                        continue
+                    try:
+                        dispatch_chain_run(chain_cfg.jobs, downstream, job.id)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            f"⚠️  chain: dispatch {did!r} failed: {exc}"
+                        )
+            except Exception as exc:  # noqa: BLE001 — chain must not block finalise
+                logger.warning(f"⚠️  chain: outer dispatch raised: {exc}")
+
         # Drain any queued sibling fire in this mutex group. Runs after
         # the head's status has finalised on disk so a parallel route
-        # call doing _mutex_collision sees this job as done.
+        # call doing mutex_collision sees this job as done.
         if job.mutex_group:
             try:
                 drain_mutex_queue(job.mutex_group)
