@@ -224,6 +224,99 @@ def test_jobs_row_renders_sparkline_and_duration_chip(
     )
 
 
+def test_parameterised_job_run_dialog_posts_values(
+    authed_page: Page, base_url: str
+) -> None:
+    """Issue #67 — tapping ▶ on a job with declared params must open the
+    run-parameters dialog (not fire immediately); submitting it must POST
+    ``{params: {...}}`` to ``/api/jobs/<id>/run``.
+
+    Hermetic: we route-mock ``/api/jobs`` to return one synthetic
+    parameterised job, intercept the run endpoint, and assert the
+    captured request body.
+    """
+    import json as _json
+
+    fake_job = {
+        "id": "scrape",
+        "name": "Scrape",
+        "target_kind": "py",
+        "schedule_chip": "",
+        "next_run": None,
+        "running": False,
+        "stuck": False,
+        "args": "",
+        "schedule": {"type": "none"},
+        "params": [
+            {"name": "since", "kind": "date", "flag": "--since",
+             "required": True},
+            {"name": "tier", "kind": "enum", "options": ["a", "b"],
+             "default": "a", "required": False, "flag": "--tier"},
+        ],
+        "last_run": None,
+        "stats": {
+            "p50": None, "p95": None, "success_rate_30d": None,
+            "completed_count": 0, "last7": [],
+        },
+    }
+    authed_page.route(
+        re.compile(r".*/api/jobs(\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"jobs": [fake_job]}),
+        ),
+    )
+
+    captured: dict = {}
+
+    def _capture_run(route):
+        req = route.request
+        captured["body"] = req.post_data or ""
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"run_id": "20260601T120000", "job_id": "scrape"}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/jobs/scrape/run$"),
+        _capture_run,
+    )
+
+    _navigate_collecting_errors(authed_page, base_url)
+    authed_page.locator("#tabJobs").click()
+
+    row = authed_page.locator("#jobsList li.app-item[data-id='scrape']")
+    expect(row).to_be_visible()
+    # Tap ▶ — for a parameterised job this must open the run dialog,
+    # NOT fire the API directly.
+    row.locator("[data-role='run-btn']").click()
+
+    dialog = authed_page.locator("#jobRunDialog")
+    expect(dialog).to_be_visible()
+    # One input per declared param. Date input → input[type=date]; enum →
+    # select.
+    since = dialog.locator("input[data-param-name='since']")
+    expect(since).to_be_visible()
+    since.fill("2026-06-01")
+    tier = dialog.locator("select[data-param-name='tier']")
+    expect(tier).to_be_visible()
+    # Default 'a' should already be selected; flip to 'b' to prove the
+    # value lands in the POST body.
+    tier.select_option("b")
+
+    dialog.locator("button[type='submit']").click()
+
+    # The dialog closes and the POST fires. Give the route a moment to
+    # capture the body.
+    authed_page.wait_for_function(
+        "() => !document.getElementById('jobRunDialog').open",
+        timeout=3_000,
+    )
+    assert "body" in captured, "POST /api/jobs/scrape/run was never intercepted"
+    payload = _json.loads(captured["body"])
+    assert payload == {"params": {"since": "2026-06-01", "tier": "b"}}, payload
+
+
 def test_login_overlay_dom_present(authed_page: Page, base_url: str) -> None:
     """The login overlay markup is wired so showLogin() can reveal it.
 

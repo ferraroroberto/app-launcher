@@ -818,6 +818,52 @@ html, body {
 }
 .dialog-actions { justify-content: flex-end; gap: 8px; }
 
+/* Job parameters editor (issue #67) — embedded inside #jobDialog. The
+ * Run-now dialog uses the same stacked label pattern as the rest of
+ * the form, so no extra styling is needed there. */
+.job-params-fieldset {
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+.job-params-fieldset legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.job-params-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.job-param-row {
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  padding: 8px;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.job-param-row-head {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.job-param-row-head .input-native { flex: 1; }
+.job-param-row-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.job-param-row .danger { color: var(--danger, #f55); }
+
 /* ---------- login ---------- */
 .login-overlay {
   position: fixed;

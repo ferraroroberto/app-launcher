@@ -23,12 +23,15 @@ from src import jobs as jobs_mod
 from src.jobs_config import (
     Job,
     JobsConfig,
+    Param,
     Schedule,
     add_job,
     get_by_id,
     job_from_dict,
     load_jobs,
     make_job_id,
+    param_from_dict,
+    params_from_dict,
     remove_by_id,
     save_jobs,
     schedule_from_dict,
@@ -132,6 +135,126 @@ class TestJobFromDict:
             job_from_dict({"id": "x", "name": "X"})
         with pytest.raises(ValueError, match="name"):
             job_from_dict({"id": "x", "script_path": "C:\\x.py"})
+
+
+class TestParamValidation:
+    """``param_from_dict`` / ``params_from_dict`` — typed-parameter validation (issue #67)."""
+
+    def test_string_param_minimum(self):
+        p = param_from_dict({"name": "since", "kind": "string"})
+        assert p.name == "since"
+        assert p.kind == "string"
+        assert p.required is True  # no default → required by default
+        assert p.flag is None and p.env is None
+
+    def test_default_makes_required_false(self):
+        p = param_from_dict({"name": "tier", "kind": "string", "default": "a"})
+        assert p.required is False
+        assert p.default == "a"
+
+    def test_explicit_required_overrides(self):
+        p = param_from_dict(
+            {"name": "tier", "kind": "string", "default": "a", "required": True}
+        )
+        assert p.required is True
+
+    def test_bad_name(self):
+        with pytest.raises(ValueError, match="snake_case"):
+            param_from_dict({"name": "Foo Bar", "kind": "string"})
+        with pytest.raises(ValueError, match="snake_case"):
+            param_from_dict({"name": "2nd", "kind": "string"})
+
+    def test_unknown_kind(self):
+        with pytest.raises(ValueError, match="kind must be"):
+            param_from_dict({"name": "foo", "kind": "float"})
+
+    def test_enum_requires_options(self):
+        with pytest.raises(ValueError, match="options"):
+            param_from_dict({"name": "tier", "kind": "enum"})
+        with pytest.raises(ValueError, match="options"):
+            param_from_dict({"name": "tier", "kind": "enum", "options": []})
+
+    def test_enum_default_must_be_in_options(self):
+        with pytest.raises(ValueError, match="must be one of"):
+            param_from_dict({
+                "name": "tier", "kind": "enum",
+                "options": ["a", "b"], "default": "c",
+            })
+
+    def test_enum_options_rejected_for_non_enum(self):
+        with pytest.raises(ValueError, match="kind=enum"):
+            param_from_dict({
+                "name": "x", "kind": "string", "options": ["a"],
+            })
+
+    def test_duplicate_enum_options_rejected(self):
+        with pytest.raises(ValueError, match="duplicate option"):
+            param_from_dict({
+                "name": "x", "kind": "enum", "options": ["a", "a"],
+            })
+
+    def test_flag_must_look_like_long(self):
+        with pytest.raises(ValueError, match="--foo"):
+            param_from_dict({"name": "x", "kind": "string", "flag": "-x"})
+        ok = param_from_dict({"name": "x", "kind": "string", "flag": "--since"})
+        assert ok.flag == "--since"
+
+    def test_env_must_be_upper_snake(self):
+        with pytest.raises(ValueError, match="UPPER_SNAKE_CASE"):
+            param_from_dict({"name": "x", "kind": "string", "env": "lowercase"})
+        ok = param_from_dict({"name": "x", "kind": "string", "env": "API_KEY"})
+        assert ok.env == "API_KEY"
+
+    def test_flag_and_env_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            param_from_dict({
+                "name": "x", "kind": "string", "flag": "--x", "env": "X",
+            })
+
+    def test_bool_requires_flag_or_env(self):
+        with pytest.raises(ValueError, match="requires either"):
+            param_from_dict({"name": "verbose", "kind": "bool"})
+        ok = param_from_dict({
+            "name": "verbose", "kind": "bool", "flag": "--verbose",
+        })
+        assert ok.flag == "--verbose"
+
+    def test_int_default_typed(self):
+        with pytest.raises(ValueError, match="default must be an int"):
+            param_from_dict({"name": "n", "kind": "int", "default": "5"})
+        # bool is a subclass of int — reject explicitly.
+        with pytest.raises(ValueError, match="default must be an int"):
+            param_from_dict({"name": "n", "kind": "int", "default": True})
+
+    def test_date_default_iso(self):
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            param_from_dict({"name": "d", "kind": "date", "default": "06/01/2026"})
+        ok = param_from_dict({"name": "d", "kind": "date", "default": "2026-06-01"})
+        assert ok.default == "2026-06-01"
+
+    def test_params_list_rejects_duplicates(self):
+        with pytest.raises(ValueError, match="duplicate param name"):
+            params_from_dict([
+                {"name": "x", "kind": "string"},
+                {"name": "x", "kind": "int"},
+            ])
+
+    def test_params_round_trip_via_job_from_dict(self):
+        job = job_from_dict({
+            "id": "demo", "name": "Demo", "script_path": "C:\\stub\\d.py",
+            "params": [
+                {"name": "since", "kind": "date", "flag": "--since"},
+                {"name": "verbose", "kind": "bool", "flag": "--verbose", "default": False},
+            ],
+        })
+        assert [p.name for p in job.params] == ["since", "verbose"]
+        # to_dict round-trips back into a shape param_from_dict accepts.
+        roundtrip = [param_from_dict(p) for p in job.to_dict()["params"]]
+        assert [p.name for p in roundtrip] == ["since", "verbose"]
+
+    def test_to_dict_omits_params_when_empty(self):
+        job = Job(id="d", name="D", script_path="C:\\d.py")
+        assert "params" not in job.to_dict()
 
 
 class TestMakeJobId:

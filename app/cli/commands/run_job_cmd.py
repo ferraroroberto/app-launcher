@@ -30,6 +30,7 @@ need arguments containing spaces should put the argument inside the
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import subprocess
@@ -38,7 +39,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.jobs import (
     MAX_RUNS_PER_JOB,
@@ -51,6 +52,7 @@ from src.jobs import (
     runs_dir,
     write_run_json,
 )
+from src.jobs_argv import compose_argv
 from src.jobs_config import Job, get_by_id, load_jobs
 from src.notifications import (
     Notifier,
@@ -85,26 +87,38 @@ def resolve_venv_python(script_path: Path) -> Optional[Path]:
     return None
 
 
-def build_invocation(job: Job) -> Tuple[List[str], Path, Dict[str, str]]:
+def build_invocation(
+    job: Job, values: Optional[Dict[str, Any]] = None
+) -> Tuple[List[str], Path, Dict[str, str]]:
     """Resolve how to spawn ``job``.
 
     Returns ``(argv, cwd, extra_env)``:
 
     * ``argv`` — list passed to :func:`subprocess.Popen`.
     * ``cwd`` — working directory for the spawn.
-    * ``extra_env`` — env-var overlay merged onto ``os.environ`` (only
-      meaningful for ``.py`` targets, where ``PYTHONPATH`` is set to the
-      resolved project root).
+    * ``extra_env`` — env-var overlay merged onto ``os.environ``. For
+      ``.py`` targets includes ``PYTHONPATH = <project root>``; both
+      target kinds also carry any ``env``-mapped typed params (issue #67).
+
+    ``values`` is the typed-parameter payload (issue #67). When empty,
+    composition collapses to today's behaviour: argv = [script] +
+    job.args.split() with no extra env.
     """
+    # Typed parameters compose first; the legacy free-form ``args`` field
+    # is whitespace-split and appended as a tail, so parameter-less jobs
+    # land at exactly the same argv as before this feature shipped.
+    param_argv, param_env = compose_argv(job, values or {})
+    legacy_args = job.args.split() if job.args else []
+    tail = param_argv + legacy_args
+
     script = Path(job.script_path)
     suffix = script.suffix.lower()
-    args_split = job.args.split() if job.args else []
 
     if suffix == ".bat":
         if not script.is_file():
             raise OSError(f"BAT file not found: {script}")
-        argv = ["cmd.exe", "/c", str(script)] + args_split
-        return argv, script.parent, {}
+        argv = ["cmd.exe", "/c", str(script)] + tail
+        return argv, script.parent, dict(param_env)
 
     if suffix == ".py":
         if not script.is_file():
@@ -117,8 +131,12 @@ def build_invocation(job: Job) -> Tuple[List[str], Path, Dict[str, str]]:
         else:
             python_exe = sys.executable
             cwd = script.parent
-        argv = [python_exe, str(script)] + args_split
-        return argv, cwd, {"PYTHONPATH": str(cwd)}
+        argv = [python_exe, str(script)] + tail
+        extra_env: Dict[str, str] = {"PYTHONPATH": str(cwd)}
+        # User-declared env-mapped params override PYTHONPATH only if the
+        # user explicitly named the collision — that is their call.
+        extra_env.update(param_env)
+        return argv, cwd, extra_env
 
     raise ValueError(f"unsupported script_path suffix: {suffix!r}")
 
@@ -277,6 +295,15 @@ class RunJobCommand(BaseCommand):
                 "a fresh timestamped run id is generated."
             ),
         )
+        p.add_argument(
+            "--params",
+            default=None,
+            help=(
+                "JSON-encoded {name: value} payload from the run-now "
+                "dialog (issue #67). Composed into argv/env via "
+                "src.jobs_argv.compose_argv. Omit for parameter-less runs."
+            ),
+        )
 
     def execute(self, args: argparse.Namespace) -> int:
         cfg = load_jobs()
@@ -285,8 +312,25 @@ class RunJobCommand(BaseCommand):
             logger.error(f"❌ unknown job id: {args.job_id!r}")
             return 2
 
+        # Older test scaffolding builds the args namespace by hand and may
+        # not set --params; getattr keeps that path working without forcing
+        # every caller to fake the new field.
+        values: Dict[str, Any] = {}
+        params_raw = getattr(args, "params", None)
+        if params_raw:
+            try:
+                values = json.loads(params_raw)
+            except json.JSONDecodeError as exc:
+                logger.error(f"❌ run-job {job.id}: --params is not JSON ({exc})")
+                return 2
+            if not isinstance(values, dict):
+                logger.error(
+                    f"❌ run-job {job.id}: --params must encode a JSON object"
+                )
+                return 2
+
         try:
-            argv, cwd, extra_env = build_invocation(job)
+            argv, cwd, extra_env = build_invocation(job, values)
         except (OSError, ValueError) as exc:
             logger.error(f"❌ cannot run job {job.id}: {exc}")
             return 2
@@ -300,8 +344,7 @@ class RunJobCommand(BaseCommand):
         else:
             run_dir = new_run_dir(job.id, new_run_id())
         started_at = datetime.now().isoformat(timespec="seconds")
-        write_run_json(
-            run_dir,
+        run_meta: Dict[str, Any] = dict(
             run_id=run_dir.name,
             job_id=job.id,
             name=job.name,
@@ -311,6 +354,11 @@ class RunJobCommand(BaseCommand):
             started_at=started_at,
             status="running",
         )
+        # Persist the typed-parameter payload (issue #67) so the history
+        # row can replay it and the meta line can show the values back.
+        if values:
+            run_meta["params"] = values
+        write_run_json(run_dir, **run_meta)
         logger.info(
             f"🚀 run-job {job.id} → {run_dir.name} (trigger={args.trigger})"
         )

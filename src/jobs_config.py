@@ -65,6 +65,15 @@ WEEKLY_DAYS = frozenset({"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"})
 
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
+# Bounded set of typed-parameter kinds (issue #67). Anything else fails
+# validation. Mirrors the same closed-set discipline as SCHEDULE_TYPES.
+PARAM_KINDS = frozenset({"string", "int", "enum", "bool", "date"})
+
+_PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+_PARAM_FLAG_RE = re.compile(r"^--[a-zA-Z][a-zA-Z0-9_-]*$")
+_PARAM_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_PARAM_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
 
 # ---------------------------------------------------------------- Schedule
 
@@ -156,6 +165,198 @@ def schedule_from_dict(raw: Any) -> Schedule:
     return sched
 
 
+# ------------------------------------------------------------------ Param
+
+
+@dataclass
+class Param:
+    """One typed input declaration for a job (issue #67).
+
+    Used by ``src.jobs_argv.compose_argv`` at run-time to validate user
+    input and project it into argv/env. Kind is closed (see
+    :data:`PARAM_KINDS`); the editor / run-now dialog renders inputs
+    from these declarations.
+    """
+
+    name: str
+    kind: str
+    default: Any = None
+    required: bool = True
+    options: Optional[List[str]] = None
+    flag: Optional[str] = None
+    env: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {"name": self.name, "kind": self.kind}
+        # Required is the common case; only emit it explicitly when False
+        # so historical configs round-trip cleanly.
+        if not self.required:
+            payload["required"] = False
+        if self.default is not None:
+            payload["default"] = self.default
+        if self.options is not None:
+            payload["options"] = list(self.options)
+        if self.flag:
+            payload["flag"] = self.flag
+        if self.env:
+            payload["env"] = self.env
+        return payload
+
+
+def _validate_default(name: str, kind: str, default: Any,
+                      options: Optional[List[str]]) -> Any:
+    """Type-check ``default`` against ``kind`` and return it (coerced)."""
+    if kind == "string":
+        if not isinstance(default, str):
+            raise ValueError(
+                f"param {name!r}: default must be a string, got {type(default).__name__}"
+            )
+        return default
+    if kind == "int":
+        # bool is a subclass of int — reject explicitly to avoid accidents.
+        if isinstance(default, bool) or not isinstance(default, int):
+            raise ValueError(
+                f"param {name!r}: default must be an int, got {type(default).__name__}"
+            )
+        return default
+    if kind == "bool":
+        if not isinstance(default, bool):
+            raise ValueError(
+                f"param {name!r}: default must be true/false, got {default!r}"
+            )
+        return default
+    if kind == "enum":
+        if not isinstance(default, str) or default not in (options or []):
+            raise ValueError(
+                f"param {name!r}: default {default!r} must be one of {options!r}"
+            )
+        return default
+    if kind == "date":
+        if not isinstance(default, str) or not _PARAM_DATE_RE.match(default):
+            raise ValueError(
+                f"param {name!r}: default must be YYYY-MM-DD, got {default!r}"
+            )
+        return default
+    raise ValueError(f"param {name!r}: unsupported kind {kind!r}")
+
+
+def param_from_dict(raw: Any) -> Param:
+    """Parse + validate one ``Param`` row. Raises ``ValueError`` on bad input.
+
+    Validation is the only place these rules live; ``compose_argv`` trusts
+    the resulting :class:`Param` and the router translates ``ValueError``
+    into HTTP 400.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError(f"param row must be an object, got {type(raw).__name__}")
+
+    name = str(raw.get("name") or "").strip()
+    if not _PARAM_NAME_RE.match(name):
+        raise ValueError(
+            f"param name {name!r} must be snake_case (start with a letter)"
+        )
+
+    kind = str(raw.get("kind") or "").strip()
+    if kind not in PARAM_KINDS:
+        raise ValueError(
+            f"param {name!r}: kind must be one of {sorted(PARAM_KINDS)}, got {kind!r}"
+        )
+
+    # options: required for enum, rejected for other kinds.
+    raw_options = raw.get("options")
+    options: Optional[List[str]] = None
+    if kind == "enum":
+        if not isinstance(raw_options, list) or not raw_options:
+            raise ValueError(
+                f"param {name!r}: kind=enum requires a non-empty options list"
+            )
+        if not all(isinstance(o, str) and o for o in raw_options):
+            raise ValueError(
+                f"param {name!r}: options must be non-empty strings"
+            )
+        # Defensive de-dup while preserving order — a duplicate enum slot
+        # is almost certainly a user typo and confuses the UI dropdown.
+        seen: set = set()
+        deduped: List[str] = []
+        for o in raw_options:
+            if o in seen:
+                raise ValueError(
+                    f"param {name!r}: duplicate option {o!r}"
+                )
+            seen.add(o)
+            deduped.append(o)
+        options = deduped
+    elif raw_options not in (None, []):
+        raise ValueError(
+            f"param {name!r}: options only valid for kind=enum"
+        )
+
+    flag = raw.get("flag")
+    if flag is not None:
+        if not isinstance(flag, str) or not _PARAM_FLAG_RE.match(flag):
+            raise ValueError(
+                f"param {name!r}: flag {flag!r} must look like --foo"
+            )
+
+    env = raw.get("env")
+    if env is not None:
+        if not isinstance(env, str) or not _PARAM_ENV_RE.match(env):
+            raise ValueError(
+                f"param {name!r}: env {env!r} must be UPPER_SNAKE_CASE"
+            )
+
+    if flag and env:
+        raise ValueError(
+            f"param {name!r}: flag and env are mutually exclusive"
+        )
+
+    # bool without a flag or env has no useful representation — emit-as-
+    # positional would produce a literal "true"/"false" argv entry, which
+    # is footgun-y and not used anywhere in this repo.
+    if kind == "bool" and not flag and not env:
+        raise ValueError(
+            f"param {name!r}: kind=bool requires either a flag or an env mapping"
+        )
+
+    default = raw.get("default")
+    if default is not None:
+        default = _validate_default(name, kind, default, options)
+
+    # required defaults to True unless a default is present, in which case
+    # absence is fine. Explicit "required" in raw wins over the heuristic.
+    if "required" in raw:
+        required = bool(raw["required"])
+    else:
+        required = default is None
+
+    return Param(
+        name=name,
+        kind=kind,
+        default=default,
+        required=required,
+        options=options,
+        flag=(flag or None),
+        env=(env or None),
+    )
+
+
+def params_from_dict(raw: Any) -> List[Param]:
+    """Parse a list of param rows. Empty / missing → ``[]``."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"params must be a list, got {type(raw).__name__}")
+    result: List[Param] = []
+    names: set = set()
+    for row in raw:
+        param = param_from_dict(row)
+        if param.name in names:
+            raise ValueError(f"duplicate param name: {param.name!r}")
+        names.add(param.name)
+        result.append(param)
+    return result
+
+
 # -------------------------------------------------------------------- Job
 
 
@@ -167,9 +368,10 @@ class Job:
     args: str = ""
     schedule: Schedule = field(default_factory=Schedule)
     added_at: str = ""
+    params: List[Param] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload: Dict[str, Any] = {
             "id": self.id,
             "name": self.name,
             "script_path": self.script_path,
@@ -177,6 +379,11 @@ class Job:
             "schedule": self.schedule.to_dict(),
             "added_at": self.added_at,
         }
+        # Only emit params when non-empty so legacy jobs.json rows survive
+        # a load → save round-trip without sprouting empty arrays.
+        if self.params:
+            payload["params"] = [p.to_dict() for p in self.params]
+        return payload
 
     @property
     def target_kind(self) -> str:
@@ -206,6 +413,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         args=str(raw.get("args") or ""),
         schedule=schedule_from_dict(raw.get("schedule")),
         added_at=str(raw.get("added_at") or ""),
+        params=params_from_dict(raw.get("params")),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -297,7 +505,7 @@ def add_job(cfg: JobsConfig, job: Job) -> Job:
 
 
 def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
-    """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``."""
+    """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``, ``params``."""
     job = get_by_id(cfg, job_id)
     if job is None:
         return None
@@ -312,6 +520,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.args = str(fields["args"] or "")
     if "schedule" in fields:
         job.schedule = schedule_from_dict(fields["schedule"])
+    if "params" in fields:
+        job.params = params_from_dict(fields["params"])
     cfg.jobs.sort(key=lambda j: j.name.lower())
     save_jobs(cfg)
     return job

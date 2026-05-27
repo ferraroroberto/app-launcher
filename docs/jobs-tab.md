@@ -75,6 +75,59 @@ A deliberately bounded set — no raw cron expressions, no Quartz-style strings.
 
 `daily_times` is the one schedule type that fans out into multiple Task Scheduler entries. It exists because "every 6 hours at 06:00 / 12:00 / 18:00 (skip midnight)" doesn't fit any single preset cleanly — `hourly /MO 6` would also fire at 00:00, and three separate jobs would clutter the Jobs tab. The fan-out is invisible to the user: one row in `jobs.json` → one row in the Jobs tab → three wake-ups per day under the hood.
 
+### Parameters (issue #67)
+
+A job can declare typed inputs collected at run-time. With no `params`, a tap on ▶ fires immediately (today's behaviour). With one or more `params`, ▶ opens a small dialog so the user supplies values; the executor composes them into argv (and env) safely.
+
+```json
+{
+  "id": "linkedin-scrape",
+  "name": "LinkedIn Scrape",
+  "script_path": "E:\\automation\\content-management\\engagement\\linkedin\\scrape_comments.py",
+  "args": "",
+  "schedule": { "type": "none" },
+  "params": [
+    { "name": "since", "kind": "date", "flag": "--since" },
+    { "name": "tier", "kind": "enum",
+      "options": ["smb", "mid", "enterprise"],
+      "default": "smb", "flag": "--tier" },
+    { "name": "verbose", "kind": "bool", "flag": "--verbose",
+      "default": false }
+  ]
+}
+```
+
+Submitting the dialog with `since = 2026-06-01`, `tier = mid`, `verbose = true` runs:
+
+```
+python scrape_comments.py --since 2026-06-01 --tier mid --verbose
+```
+
+#### Param schema
+
+| Field      | Type                                                   | Notes                                                                                 |
+|------------|--------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `name`     | snake_case string, unique within the job               | identifier used to key user input and to label the dialog field                       |
+| `kind`     | one of `string` \| `int` \| `enum` \| `bool` \| `date` | bounded; anything else fails validation                                               |
+| `default`  | kind-typed, optional                                   | pre-fills the dialog; presence makes the param non-required unless `required: true`   |
+| `required` | bool, optional                                         | defaults to `false` when `default` is set, else `true`                                |
+| `options`  | non-empty list of strings, required iff `kind: enum`   | renders as a `<select>`                                                               |
+| `flag`     | string (`--…`), optional                               | when set, emits `<flag> <value>` (or just `<flag>` for truthy bool); absent → positional |
+| `env`      | UPPER_SNAKE_CASE string, optional                      | when set, value lands in the executor's env overlay instead of argv (mutually exclusive with `flag`) |
+
+Bool params require either `flag` or `env` — they have no useful positional encoding.
+
+#### Composition rules
+
+- Params iterate in declaration order; positional + flag args interleave in that order, so the list controls argv layout.
+- `kind: bool` with `flag` emits just `<flag>` when truthy and is omitted when falsy.
+- `env`-mapped params contribute to the env overlay, never argv.
+- The legacy free-form `args` field is composed **after** the param-driven argv as a whitespace-split tail. Existing jobs continue to work unchanged.
+
+#### Re-run from history
+
+A run record persists the typed payload as `params: {name: value}`. Each row in the runs list grows a small ↻ button that opens the run dialog **pre-filled** with that record's values. If the job's schema has changed since the run (a param was removed or renamed), the dialog drops the unknown keys and surfaces a yellow note before letting the user submit.
+
 ## Task Scheduler — `\AppLauncher\` namespace
 
 All Jobs-tab schtasks entries live under the `\AppLauncher\` Task Scheduler folder. The naming rule:
@@ -122,6 +175,7 @@ Every run produces a directory with two files:
 | `trigger` | `"manual"` \| `"scheduled"` | both | Where the run was fired from |
 | `script_path` | str | both | Resolved at spawn time |
 | `args` | str | both | Whitespace-split into argv |
+| `params` | object | webapp + executor | Typed-parameter payload (issue #67); only written when non-empty |
 | `started_at` | ISO 8601 | both | `pending` write or `running` re-write |
 | `status` | `"pending"` \| `"running"` \| `"success"` \| `"failed"` | both | Final value lands at executor exit |
 | `finished_at` | ISO 8601 | executor | Only on final write |
@@ -249,7 +303,6 @@ The token bakes into the URL the same way the tray menu's "Copy Cloudflare URL" 
 - **A custom scheduler daemon / APScheduler.** Windows already has a scheduler; running a second one inside the launcher process couples job firing to the launcher's lifecycle. With Task Scheduler the schedules survive a tray restart, a reboot, and a launcher uninstall (until the user cleans up `\AppLauncher\` themselves).
 - **A live PTY per job.** One-shot scripts don't need a live terminal — captured output + tail is enough. The interactive-terminal infrastructure (session-host, WebSocket proxy, passkey gate, audit log) is reserved for the Coding tab where it earns its complexity.
 - **Raw cron expressions.** The five presets cover real use without inviting the standard "did I get the day-of-week field right?" pitfall.
-- **Parameterised-run prompts.** `args` is fixed per job. If a job needs to behave differently across triggers, register two jobs.
 
 ## Verification
 

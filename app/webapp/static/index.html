@@ -190,9 +190,30 @@
             <option value="SUN">Sunday</option>
           </select>
         </label>
+        <fieldset class="job-params-fieldset">
+          <legend>Parameters (optional)</legend>
+          <p class="muted small">
+            Typed inputs collected on Run-now. Add a row per parameter;
+            empty list → one-tap fire as today.
+          </p>
+          <ol id="jobParamsList" class="job-params-list"></ol>
+          <button type="button" id="jobParamsAdd" class="ghost-btn">➕ Add parameter</button>
+        </fieldset>
         <div class="row dialog-actions">
           <button type="button" id="jobCancel" class="ghost-btn">Cancel</button>
           <button type="submit" class="big-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="jobRunDialog" class="rename-dialog">
+      <form id="jobRunForm">
+        <h2 id="jobRunDialogTitle">Run job</h2>
+        <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
+        <div id="jobRunDialogFields"></div>
+        <div class="row dialog-actions">
+          <button type="button" id="jobRunCancel" class="ghost-btn">Cancel</button>
+          <button type="submit" class="big-btn">▶ Run</button>
         </div>
       </form>
     </dialog>

@@ -334,6 +334,11 @@ function redrawRunsList(jobId, runs) {
     list.appendChild(empty);
     return;
   }
+  // Look up the job's current params declaration to spot keys that have
+  // since been removed (used by the Re-run pre-fill flow, issue #67).
+  const job = state.jobs.find(function (j) { return j.id === jobId; });
+  const declaredNames = new Set(((job && job.params) || []).map(function (p) { return p.name; }));
+
   runs.slice(0, 5).forEach(function (r) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
@@ -352,14 +357,49 @@ function redrawRunsList(jobId, runs) {
     const ago = fmtAgo(toEpoch(r.started_at));
     const exitText = (r.exit_code === undefined || r.exit_code === null)
       ? '' : ' · exit ' + r.exit_code;
+    const paramsChip = formatRunParams(r.params);
     meta.textContent = (r.status || '?') +
       (ago ? ' · ' + ago + ' ago' : '') +
-      ' · ' + (r.trigger || '?') + exitText;
+      ' · ' + (r.trigger || '?') + exitText +
+      (paramsChip ? ' · ' + paramsChip : '');
     btn.appendChild(meta);
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
     li.appendChild(btn);
+
+    // Re-run button (issue #67) — only meaningful when the job declares
+    // params now. Opens the run dialog pre-filled with this run's values.
+    if (job && declaredNames.size && r.params && typeof r.params === 'object') {
+      const rerun = document.createElement('button');
+      rerun.type = 'button';
+      rerun.className = 'icon-btn';
+      rerun.textContent = '↻';
+      rerun.title = 'Re-run with these parameters';
+      rerun.setAttribute('aria-label', 'Re-run with these parameters');
+      rerun.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        const prefill = {};
+        const stale = [];
+        Object.keys(r.params).forEach(function (k) {
+          if (declaredNames.has(k)) prefill[k] = r.params[k];
+          else stale.push(k);
+        });
+        runJobNow(job, { prefill: prefill, staleKeys: stale });
+      });
+      li.appendChild(rerun);
+    }
+
     list.appendChild(li);
   });
+}
+
+function formatRunParams(params) {
+  if (!params || typeof params !== 'object') return '';
+  const keys = Object.keys(params);
+  if (!keys.length) return '';
+  return keys.map(function (k) {
+    const v = params[k];
+    return k + '=' + (typeof v === 'string' ? v : JSON.stringify(v));
+  }).join(' ');
 }
 
 function writeOutput(jobId, runId, text, status, extras) {
@@ -527,9 +567,22 @@ async function killRun(jobId, runId) {
   }
 }
 
-async function runJobNow(job) {
+async function runJobNow(job, options) {
+  // Issue #67: jobs with declared params open a small typed form so the
+  // user supplies values. Parameter-less jobs keep their one-tap fire.
+  const params = (job && job.params) || [];
+  const opts = options || {};
+  if (params.length > 0 && !opts.skipDialog) {
+    openRunDialog(job, opts.prefill || null, opts.staleKeys || null);
+    return;
+  }
+  const body = opts.params ? { params: opts.params } : null;
   try {
-    await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', { method: 'POST' });
+    await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', {
+      method: 'POST',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
     toast('🚀 Started ' + job.name + '.', 'good');
     job.running = true;
     renderJobs();
@@ -539,6 +592,246 @@ async function runJobNow(job) {
   } catch (exc) {
     toast('Run failed: ' + (exc.message || exc), 'error');
   }
+}
+
+// -------------------------------------------------- params editor (dialog)
+
+const PARAM_KINDS = ['string', 'int', 'enum', 'bool', 'date'];
+
+function renderParamRow(param) {
+  const li = document.createElement('li');
+  li.className = 'job-param-row';
+  li.dataset.role = 'job-param-row';
+
+  const head = document.createElement('div');
+  head.className = 'job-param-row-head';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'input-native';
+  nameInput.placeholder = 'name (snake_case)';
+  nameInput.dataset.role = 'param-name';
+  nameInput.value = (param && param.name) || '';
+  head.appendChild(nameInput);
+
+  const kindSel = document.createElement('select');
+  kindSel.className = 'input-native';
+  kindSel.dataset.role = 'param-kind';
+  PARAM_KINDS.forEach(function (k) {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = k;
+    kindSel.appendChild(opt);
+  });
+  kindSel.value = (param && param.kind) || 'string';
+  head.appendChild(kindSel);
+
+  const rmBtn = document.createElement('button');
+  rmBtn.type = 'button';
+  rmBtn.className = 'icon-btn danger';
+  rmBtn.textContent = '✕';
+  rmBtn.title = 'Remove parameter';
+  rmBtn.setAttribute('aria-label', 'Remove parameter');
+  rmBtn.addEventListener('click', function () { li.remove(); });
+  head.appendChild(rmBtn);
+
+  li.appendChild(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'job-param-row-grid';
+
+  function makeField(role, placeholder, value) {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'input-native';
+    inp.placeholder = placeholder;
+    inp.dataset.role = role;
+    inp.value = value == null ? '' : String(value);
+    return inp;
+  }
+
+  grid.appendChild(makeField('param-flag', '--flag (optional)',
+    param && param.flag));
+  grid.appendChild(makeField('param-env', 'ENV_VAR (optional)',
+    param && param.env));
+  grid.appendChild(makeField('param-default', 'default (optional)',
+    param && (param.default == null ? '' : param.default)));
+  grid.appendChild(makeField('param-options',
+    'enum options, comma-separated',
+    param && param.options ? param.options.join(', ') : ''));
+
+  li.appendChild(grid);
+  return li;
+}
+
+function setParamsEditor(params) {
+  if (!els.jobParamsList) return;
+  els.jobParamsList.innerHTML = '';
+  (params || []).forEach(function (p) {
+    els.jobParamsList.appendChild(renderParamRow(p));
+  });
+}
+
+function readParamsEditor() {
+  if (!els.jobParamsList) return [];
+  const rows = Array.from(els.jobParamsList.querySelectorAll('[data-role="job-param-row"]'));
+  const seen = new Set();
+  return rows.map(function (row) {
+    const name = (row.querySelector('[data-role="param-name"]').value || '').trim();
+    if (!name) throw new Error('Parameter name is required');
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+      throw new Error('Parameter name ' + JSON.stringify(name) + ' must be snake_case');
+    }
+    if (seen.has(name)) throw new Error('Duplicate parameter name: ' + name);
+    seen.add(name);
+    const kind = row.querySelector('[data-role="param-kind"]').value;
+    const flag = (row.querySelector('[data-role="param-flag"]').value || '').trim();
+    const env = (row.querySelector('[data-role="param-env"]').value || '').trim();
+    const defaultRaw = (row.querySelector('[data-role="param-default"]').value || '').trim();
+    const optionsRaw = (row.querySelector('[data-role="param-options"]').value || '').trim();
+    if (flag && env) {
+      throw new Error('Parameter ' + name + ': flag and env are mutually exclusive');
+    }
+    const out = { name: name, kind: kind };
+    if (flag) out.flag = flag;
+    if (env) out.env = env;
+    if (kind === 'enum') {
+      const options = optionsRaw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!options.length) {
+        throw new Error('Parameter ' + name + ': enum needs at least one option');
+      }
+      out.options = options;
+    }
+    if (defaultRaw !== '') {
+      if (kind === 'int') {
+        const n = parseInt(defaultRaw, 10);
+        if (!Number.isFinite(n) || String(n) !== defaultRaw) {
+          throw new Error('Parameter ' + name + ': default must be an integer');
+        }
+        out.default = n;
+      } else if (kind === 'bool') {
+        if (defaultRaw !== 'true' && defaultRaw !== 'false') {
+          throw new Error('Parameter ' + name + ': default must be true or false');
+        }
+        out.default = defaultRaw === 'true';
+      } else {
+        out.default = defaultRaw;
+      }
+    }
+    return out;
+  });
+}
+
+// ------------------------------------------------ run-now dialog (#67)
+
+let runDialogJob = null;
+
+function openRunDialog(job, prefill, staleKeys) {
+  runDialogJob = job;
+  els.jobRunDialogTitle.textContent = '▶ ' + job.name;
+  if (staleKeys && staleKeys.length) {
+    els.jobRunDialogStaleNote.hidden = false;
+    els.jobRunDialogStaleNote.textContent =
+      'Note: ' + staleKeys.join(', ') + ' from the previous run ' +
+      (staleKeys.length === 1 ? 'was' : 'were') +
+      ' dropped (no longer declared on this job).';
+  } else {
+    els.jobRunDialogStaleNote.hidden = true;
+    els.jobRunDialogStaleNote.textContent = '';
+  }
+
+  const host = els.jobRunDialogFields;
+  host.innerHTML = '';
+  (job.params || []).forEach(function (p) {
+    host.appendChild(renderRunDialogField(p, prefill));
+  });
+
+  if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
+}
+
+function renderRunDialogField(param, prefill) {
+  const label = document.createElement('label');
+  label.className = 'stacked';
+
+  const span = document.createElement('span');
+  let title = param.name;
+  if (param.flag) title += ' (' + param.flag + ')';
+  else if (param.env) title += ' ($' + param.env + ')';
+  if (param.required && (param.default === undefined || param.default === null)) {
+    title += ' *';
+  }
+  span.textContent = title;
+  label.appendChild(span);
+
+  const initial = (prefill && Object.prototype.hasOwnProperty.call(prefill, param.name))
+    ? prefill[param.name]
+    : (param.default !== undefined && param.default !== null ? param.default : null);
+
+  let input;
+  if (param.kind === 'enum') {
+    input = document.createElement('select');
+    input.className = 'input-native';
+    (param.options || []).forEach(function (opt) {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = opt;
+      input.appendChild(o);
+    });
+    if (initial != null) input.value = String(initial);
+  } else if (param.kind === 'bool') {
+    input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = initial === true || initial === 'true';
+  } else {
+    input = document.createElement('input');
+    input.type = param.kind === 'date' ? 'date'
+      : param.kind === 'int' ? 'number'
+      : 'text';
+    input.className = 'input-native';
+    if (initial != null) input.value = String(initial);
+    if (param.required) input.required = true;
+  }
+  input.dataset.paramName = param.name;
+  input.dataset.paramKind = param.kind;
+  label.appendChild(input);
+  return label;
+}
+
+function readRunDialogValues() {
+  const out = {};
+  const inputs = els.jobRunDialogFields.querySelectorAll('[data-param-name]');
+  inputs.forEach(function (el) {
+    const name = el.dataset.paramName;
+    const kind = el.dataset.paramKind;
+    if (kind === 'bool') {
+      out[name] = !!el.checked;
+      return;
+    }
+    const raw = (el.value || '').trim();
+    if (raw === '') return;  // server applies defaults / enforces required
+    if (kind === 'int') {
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n)) throw new Error(name + ' must be an integer');
+      out[name] = n;
+    } else {
+      out[name] = raw;
+    }
+  });
+  return out;
+}
+
+async function submitRunDialog(ev) {
+  ev.preventDefault();
+  if (!runDialogJob) return;
+  let values;
+  try { values = readRunDialogValues(); } catch (exc) {
+    toast(String(exc.message || exc), 'error');
+    return;
+  }
+  const job = runDialogJob;
+  if (els.jobRunDialog.close) els.jobRunDialog.close();
+  runDialogJob = null;
+  await runJobNow(job, { params: values, skipDialog: true });
 }
 
 async function removeJob(job) {
@@ -583,6 +876,8 @@ function openJobDialog(job) {
   }
   els.jobScheduleDay.value = sched.day || 'MON';
   syncScheduleFields();
+
+  setParamsEditor(job ? job.params : []);
 
   if (els.jobDialog.showModal) els.jobDialog.showModal();
 }
@@ -634,11 +929,17 @@ async function submitJobDialog(ev) {
     toast('Schedule: ' + exc.message, 'error');
     return;
   }
+  let params;
+  try { params = readParamsEditor(); } catch (exc) {
+    toast(String(exc.message || exc), 'error');
+    return;
+  }
   const payload = {
     name: els.jobNameInput.value.trim(),
     script_path: els.jobScriptInput.value.trim(),
     args: els.jobArgsInput.value,
     schedule: schedule,
+    params: params,
   };
   try {
     const opts = {
@@ -741,5 +1042,21 @@ export function wireJobs() {
   }
   if (els.jobScheduleType) {
     els.jobScheduleType.addEventListener('change', syncScheduleFields);
+  }
+  if (els.jobParamsAdd) {
+    els.jobParamsAdd.addEventListener('click', function () {
+      if (els.jobParamsList) {
+        els.jobParamsList.appendChild(renderParamRow(null));
+      }
+    });
+  }
+  if (els.jobRunForm) {
+    els.jobRunForm.addEventListener('submit', submitRunDialog);
+  }
+  if (els.jobRunCancel) {
+    els.jobRunCancel.addEventListener('click', function () {
+      if (els.jobRunDialog && els.jobRunDialog.close) els.jobRunDialog.close();
+      runDialogJob = null;
+    });
   }
 }
