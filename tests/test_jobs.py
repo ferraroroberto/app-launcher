@@ -137,6 +137,64 @@ class TestJobFromDict:
             job_from_dict({"id": "x", "script_path": "C:\\x.py"})
 
 
+class TestCooldownValidation:
+    """``cooldown_seconds`` round-trip + bounds (issue #68 PR #1)."""
+
+    def test_default_is_none(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py"}
+        )
+        assert job.cooldown_seconds is None
+        # Empty payload survives a round-trip without sprouting the field.
+        assert "cooldown_seconds" not in job.to_dict()
+
+    def test_zero_collapses_to_none(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py",
+             "cooldown_seconds": 0}
+        )
+        assert job.cooldown_seconds is None
+        assert "cooldown_seconds" not in job.to_dict()
+
+    def test_positive_round_trips(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py",
+             "cooldown_seconds": 30}
+        )
+        assert job.cooldown_seconds == 30
+        assert job.to_dict()["cooldown_seconds"] == 30
+
+    def test_negative_rejected(self):
+        with pytest.raises(ValueError, match=">= 0"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "cooldown_seconds": -1}
+            )
+
+    def test_above_cap_rejected(self):
+        with pytest.raises(ValueError, match="<= 86400"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "cooldown_seconds": 86_401}
+            )
+
+    def test_bool_rejected(self):
+        # bool is a subclass of int in Python — must be excluded explicitly
+        # so True doesn't slip through as cooldown=1.
+        with pytest.raises(ValueError, match="non-negative int"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "cooldown_seconds": True}
+            )
+
+    def test_string_rejected(self):
+        with pytest.raises(ValueError, match="non-negative int"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "cooldown_seconds": "10"}
+            )
+
+
 class TestParamValidation:
     """``param_from_dict`` / ``params_from_dict`` — typed-parameter validation (issue #67)."""
 

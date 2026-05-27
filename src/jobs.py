@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import statistics
@@ -493,6 +494,54 @@ def is_running(job_id: str) -> bool:
     """Cheap check — is the most recent run still in ``running`` state?"""
     latest = latest_run(job_id)
     return bool(latest and latest.get("status") == "running")
+
+
+def cooldown_check(
+    job: Job, *, now: Optional[datetime] = None
+) -> Optional[Tuple[int, int, str]]:
+    """Return cooldown state for ``job``, or ``None`` when allowed to run.
+
+    Returns ``(remaining_seconds, cooldown_seconds, anchor_run_id)`` when
+    ``job`` is inside its cooldown window. ``remaining_seconds`` is the
+    ceiling — i.e. always ``>= 1`` when returned — suitable for a
+    ``Retry-After`` header.
+
+    The anchor is the most recent **non-skipped** run. Measuring against
+    skipped records too would turn a fixed cooldown into a sliding
+    debounce: every rejected mash-fire would push the next allowed fire
+    further away. So skipped records are explicitly ignored when picking
+    the anchor.
+
+    Returns ``None`` when:
+      * the job has no cooldown configured (``None`` or ``0``),
+      * the job has never produced a non-skipped run,
+      * the anchor's ``started_at`` is missing or unparseable, or
+      * the most recent non-skipped run started long enough ago.
+    """
+    cooldown = job.cooldown_seconds
+    if not cooldown:
+        return None
+    anchor: Optional[Dict[str, Any]] = None
+    for run in list_runs(job.id):
+        if run.get("status") == "skipped":
+            continue
+        anchor = run
+        break
+    if anchor is None:
+        return None
+    started_raw = anchor.get("started_at")
+    if not isinstance(started_raw, str) or not started_raw:
+        return None
+    try:
+        started = datetime.fromisoformat(started_raw)
+    except ValueError:
+        return None
+    reference = now or datetime.now()
+    elapsed = (reference - started).total_seconds()
+    remaining = cooldown - elapsed
+    if remaining <= 0:
+        return None
+    return int(math.ceil(remaining)), cooldown, str(anchor.get("run_id") or "")
 
 
 def prune_runs(job_id: str, keep: int = MAX_RUNS_PER_JOB) -> int:

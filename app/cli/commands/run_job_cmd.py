@@ -44,6 +44,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
+    cooldown_check,
     invalidate_stats_cache,
     new_run_dir,
     new_run_id,
@@ -328,6 +329,43 @@ class RunJobCommand(BaseCommand):
                     f"❌ run-job {job.id}: --params must encode a JSON object"
                 )
                 return 2
+
+        # Scheduled fires that land inside the cooldown window finalise
+        # as a no-op `skipped` record. Manual fires are already 429'd at
+        # the route — by the time we get here on the manual path either
+        # there was no overlap or the caller deliberately bypassed the
+        # gate, so we let those through.
+        if args.trigger == "scheduled":
+            cooldown_state = cooldown_check(job)
+            if cooldown_state is not None:
+                remaining, cooldown_seconds, anchor_id = cooldown_state
+                skip_run_id = args.run_id or new_run_id()
+                skip_dir = runs_dir(job.id) / skip_run_id
+                skip_dir.mkdir(parents=True, exist_ok=True)
+                stamped = datetime.now().isoformat(timespec="seconds")
+                write_run_json(
+                    skip_dir,
+                    run_id=skip_dir.name,
+                    job_id=job.id,
+                    name=job.name,
+                    trigger=args.trigger,
+                    script_path=job.script_path,
+                    args=job.args,
+                    started_at=stamped,
+                    finished_at=stamped,
+                    status="skipped",
+                    note="cooldown",
+                    cooldown_seconds=cooldown_seconds,
+                    cooldown_remaining_seconds=remaining,
+                    cooldown_anchor_run_id=anchor_id or None,
+                )
+                prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+                invalidate_stats_cache(job.id)
+                logger.info(
+                    f"⏭ run-job {job.id} skipped (cooldown: {remaining}s "
+                    f"remaining of {cooldown_seconds}s; anchor={anchor_id!r})"
+                )
+                return 0
 
         try:
             argv, cwd, extra_env = build_invocation(job, values)

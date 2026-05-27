@@ -6,7 +6,8 @@ level so no real `schtasks.exe` runs and no subprocess is left behind.
 
 from __future__ import annotations
 
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -323,6 +324,134 @@ class TestRunJobWithParams:
         spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
         # 4th positional arg is None (no params payload).
         assert spawn.call_args.args[3] is None
+
+
+# ================================================================ cooldown
+
+
+class TestCooldown:
+    """``cooldown_seconds`` admission gate on POST /api/jobs/<id>/run.
+
+    Cooldown is measured from the most recent non-skipped run's
+    ``started_at``. We seed a real run.json under the job's runs dir
+    (the fixture redirects ``JOBS_RUNS_DIR`` to ``tmp_path``) and then
+    fire ``/run`` — no executor actually spawns (it's mocked).
+    """
+
+    def _seed_run_record(
+        self, runs_root, job_id, run_id, *, started_at, status="success"
+    ):
+        run_dir = runs_root / job_id / run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "run.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "job_id": job_id,
+                    "status": status,
+                    "started_at": started_at,
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_no_cooldown_allows_back_to_back(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        assert client.post(f"/api/jobs/{created['id']}/run").status_code == 200
+        assert client.post(f"/api/jobs/{created['id']}/run").status_code == 200
+
+    def test_inside_window_returns_429(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, overrides = webapp_client
+        created = client.post(
+            "/api/jobs",
+            json={
+                "name": "Cool",
+                "script_path": "C:\\stub\\x.py",
+                "cooldown_seconds": 30,
+            },
+        ).json()["job"]
+        # Anchor — 5 seconds ago, well inside the 30 s window.
+        now = datetime.now().replace(microsecond=0)
+        anchor_started = (now - timedelta(seconds=5)).isoformat(timespec="seconds")
+        self._seed_run_record(
+            overrides["tmp_jobs_runs_dir"],
+            created["id"],
+            "20260101T000000",
+            started_at=anchor_started,
+        )
+        resp = client.post(f"/api/jobs/{created['id']}/run")
+        assert resp.status_code == 429
+        assert "Retry-After" in resp.headers
+        retry = int(resp.headers["Retry-After"])
+        assert 1 <= retry <= 30
+        body = resp.json()
+        # FastAPI wraps the structured detail under "detail".
+        detail = body["detail"]
+        assert detail["detail"] == "cooldown"
+        assert detail["cooldown_seconds"] == 30
+        assert 1 <= detail["retry_after_seconds"] <= 30
+        # Executor must not have been spawned for the rejected fire.
+        spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
+        assert not spawn.called
+
+    def test_anchor_ignores_skipped_records(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """A `skipped` record sitting on top of an older real run must NOT
+        become the cooldown anchor — otherwise rapid mash-fires would keep
+        extending the window, turning cooldown into sliding debounce."""
+        client, _, overrides = webapp_client
+        created = client.post(
+            "/api/jobs",
+            json={
+                "name": "Cool",
+                "script_path": "C:\\stub\\x.py",
+                "cooldown_seconds": 30,
+            },
+        ).json()["job"]
+        now = datetime.now().replace(microsecond=0)
+        # Real run started 60 s ago — outside the 30 s window.
+        self._seed_run_record(
+            overrides["tmp_jobs_runs_dir"],
+            created["id"],
+            "20260101T000000",
+            started_at=(now - timedelta(seconds=60)).isoformat(timespec="seconds"),
+            status="success",
+        )
+        # A skipped record from 5 s ago — must be ignored by the anchor.
+        self._seed_run_record(
+            overrides["tmp_jobs_runs_dir"],
+            created["id"],
+            "20260101T000060",
+            started_at=(now - timedelta(seconds=5)).isoformat(timespec="seconds"),
+            status="skipped",
+        )
+        resp = client.post(f"/api/jobs/{created['id']}/run")
+        assert resp.status_code == 200, resp.text
+
+    def test_cooldown_round_trips_through_put(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={"cooldown_seconds": 45},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["job"]["cooldown_seconds"] == 45
+        # PUT cooldown_seconds=0 clears it.
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={"cooldown_seconds": 0},
+        )
+        assert resp.status_code == 200
+        assert "cooldown_seconds" not in resp.json()["job"]
 
 
 # ============================================================= run history

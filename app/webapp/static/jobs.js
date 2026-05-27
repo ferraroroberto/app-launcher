@@ -166,6 +166,7 @@ function statusIcon(status) {
   if (status === 'running' || status === 'pending') return '⏳';
   if (status === 'success') return '✅';
   if (status === 'failed') return '❌';
+  if (status === 'skipped') return '⏭';
   return '•';
 }
 
@@ -235,6 +236,7 @@ function sparkClass(status) {
   if (status === 'success') return 'up';
   if (status === 'failed') return 'down';
   if (status === 'running' || status === 'pending') return 'live';
+  if (status === 'skipped') return 'unknown';
   return 'unknown';
 }
 
@@ -590,6 +592,19 @@ async function runJobNow(job, options) {
     // waiting for the next poll tick.
     setTimeout(function () { fetchJobs().catch(function () {}); }, 1500);
   } catch (exc) {
+    if (exc && exc.status === 429) {
+      // The server returns a structured body with retry_after_seconds.
+      // Fall back to the Retry-After-derived remaining if the body is
+      // unexpectedly absent so the toast still says something useful.
+      const detail = exc.body && exc.body.detail;
+      const remaining = exc.body && Number(exc.body.retry_after_seconds);
+      const cd = exc.body && Number(exc.body.cooldown_seconds);
+      if (detail === 'cooldown' && Number.isFinite(remaining)) {
+        const suffix = (Number.isFinite(cd) && cd > 0) ? ' (cooldown ' + cd + 's)' : '';
+        toast('⏭ Skipped — cooled down for ' + remaining + ' more s' + suffix + '.');
+        return;
+      }
+    }
     toast('Run failed: ' + (exc.message || exc), 'error');
   }
 }
@@ -877,6 +892,11 @@ function openJobDialog(job) {
   els.jobScheduleDay.value = sched.day || 'MON';
   syncScheduleFields();
 
+  if (els.jobCooldownInput) {
+    const cd = job && Number.isFinite(job.cooldown_seconds) ? job.cooldown_seconds : 0;
+    els.jobCooldownInput.value = cd > 0 ? String(cd) : '';
+  }
+
   setParamsEditor(job ? job.params : []);
 
   if (els.jobDialog.showModal) els.jobDialog.showModal();
@@ -941,6 +961,18 @@ async function submitJobDialog(ev) {
     schedule: schedule,
     params: params,
   };
+  // Empty → omit (server stores null). "0" → omit too (treated as off).
+  // Negative or non-numeric → tell the user; the server cap (>86400)
+  // we let the server reject so the limit lives in one place.
+  const cdRaw = els.jobCooldownInput ? els.jobCooldownInput.value.trim() : '';
+  if (cdRaw) {
+    const cd = parseInt(cdRaw, 10);
+    if (!Number.isFinite(cd) || cd < 0) {
+      toast('Cooldown must be a non-negative integer', 'error');
+      return;
+    }
+    if (cd > 0) payload.cooldown_seconds = cd;
+  }
   try {
     const opts = {
       method: dialogTargetId ? 'PUT' : 'POST',

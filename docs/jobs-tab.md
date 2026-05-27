@@ -75,6 +75,30 @@ A deliberately bounded set — no raw cron expressions, no Quartz-style strings.
 
 `daily_times` is the one schedule type that fans out into multiple Task Scheduler entries. It exists because "every 6 hours at 06:00 / 12:00 / 18:00 (skip midnight)" doesn't fit any single preset cleanly — `hourly /MO 6` would also fire at 00:00, and three separate jobs would clutter the Jobs tab. The fan-out is invisible to the user: one row in `jobs.json` → one row in the Jobs tab → three wake-ups per day under the hood.
 
+### Cooldown (issue #68)
+
+A job can declare a per-job `cooldown_seconds`: a debounce window that prevents rapid manual fires (phone double-tap, Stream Deck button mash) from spawning overlapping runs of the same script.
+
+```json
+{
+  "id": "reporting-daily",
+  "name": "Daily Reporting",
+  "script_path": "E:\\automation\\content-management\\launch_reporting.bat",
+  "args": "auto",
+  "schedule": { "type": "daily", "at": "06:00" },
+  "cooldown_seconds": 120
+}
+```
+
+- **Range.** `null` (or omitted) and `0` both mean "no cooldown". Otherwise the value must be an `int` in `[1, 86400]` — the upper bound (one day) catches obvious typos like millisecond values; bools are rejected explicitly because `bool` is a subclass of `int` in Python.
+- **Anchor.** The window is measured from the **most recent non-skipped run's** `started_at`. Skipped records are deliberately ignored: anchoring on them would turn the fixed cooldown into a sliding debounce, where every rejected mash-fire pushed the next allowed fire further away.
+- **Manual fires inside the window** (phone tap, Stream Deck, any `POST /api/jobs/<id>/run`) are rejected at the route with `HTTP 429`. Response:
+  - `Retry-After: <seconds>` header (HTTP-standard, for unsophisticated clients).
+  - JSON body: `{"detail": {"detail": "cooldown", "retry_after_seconds": <int>, "cooldown_seconds": <int>}}`.
+  - No run dir is created — a rejected manual fire leaves zero on-disk footprint.
+  - The UI surfaces a toast: *"⏭ Skipped — cooled down for N more s."*
+- **Scheduled fires inside the window** (Task Scheduler firing the executor directly) cannot be intercepted at the route, so the executor itself performs the same admission check. It writes a `skipped` run record (no spawn, no `output.log`) and exits 0. The record carries `status="skipped"`, `note="cooldown"`, `cooldown_seconds`, `cooldown_remaining_seconds`, and `cooldown_anchor_run_id` for audit clarity. Skipped records do **not** contribute to p50/p95/success-rate stats and do **not** count toward the failure-streak notification gate.
+
 ### Parameters (issue #67)
 
 A job can declare typed inputs collected at run-time. With no `params`, a tap on ▶ fires immediately (today's behaviour). With one or more `params`, ▶ opens a small dialog so the user supplies values; the executor composes them into argv (and env) safely.
