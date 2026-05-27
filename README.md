@@ -65,7 +65,10 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > The launcher detects `agy` on `PATH` at process start. After installing it,
 > **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445` webapp —
 > the `:8446` session-host, which actually spawns `agy`, needs a full tray
-> restart to inherit the new `PATH`).
+> restart to inherit the new `PATH`). A bare `tray.bat` re-run is a no-op when a
+> tray is already alive — use `tray.bat --restart` to stop the running tray and
+> its tree (webapp, session-host, cloudflared, **any open Coding sessions**)
+> and start a fresh one.
 
 ### Installing the GitHub Copilot CLI
 
@@ -89,7 +92,8 @@ for the channel that suits you. Verify with `copilot --version`.
 > Like `agy`, `copilot` is detected on `PATH` at process start — after
 > installing it, **restart the tray** (`🔄 Restart webapp` refreshes only the
 > `:8445` webapp; the `:8446` session-host that spawns `copilot` needs a full
-> tray restart to inherit the new `PATH`).
+> tray restart to inherit the new `PATH`). Use `tray.bat --restart` for that;
+> a bare `tray.bat` is a no-op when a tray is already running.
 
 ---
 
@@ -160,7 +164,7 @@ The leaf cert in `webapp/certificates/cert.pem` is capped at **396 days** becaus
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\gen_ssl_cert.py --skip-install
-# then: tray menu → 🔄 Restart webapp   (or restart tray.bat / webapp.bat)
+# then: tray menu → 🔄 Restart webapp   (or `tray.bat --restart` / `webapp.bat`)
 ```
 
 The script reuses the existing `ca.pem` + `ca.key` if they exist, so the iPhone trust profile installed once stays valid. Only the leaf cert rotates. On the iPhone, force-quit Safari to clear its TLS cache and the next refresh is clean.
