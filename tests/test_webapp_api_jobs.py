@@ -454,6 +454,79 @@ class TestCooldown:
         assert "cooldown_seconds" not in resp.json()["job"]
 
 
+# =========================================================== pause / resume
+
+
+class TestPauseResume:
+    """``POST /api/jobs/<id>/pause`` and ``/resume`` (issue #68 PR #4)."""
+
+    def test_pause_then_resume(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(
+            client, name="Daily",
+            schedule={"type": "daily", "at": "06:00"},
+        ).json()["job"]
+        resp = client.post(f"/api/jobs/{created['id']}/pause")
+        assert resp.status_code == 200
+        body = resp.json()["job"]
+        assert body["paused"] is True
+        assert body["schedule"]["type"] == "none"
+        assert body["paused_schedule"]["type"] == "daily"
+        assert body["paused_schedule"]["at"] == "06:00"
+        # The chip on the API response reflects the parked schedule.
+        assert "paused" in body["schedule_chip"]
+        # The router resynced schtasks (which deletes the entries for a
+        # job whose live schedule is now 'none').
+        assert mocked_jobs_side_effects["sync_schtasks"].called
+
+        resp = client.post(f"/api/jobs/{created['id']}/resume")
+        assert resp.status_code == 200
+        body = resp.json()["job"]
+        assert body["paused"] is False
+        assert body["schedule"]["type"] == "daily"
+        assert body["schedule"]["at"] == "06:00"
+        assert "paused_schedule" not in body
+        assert body["schedule_chip"] == "daily 06:00"
+
+    def test_pause_manual_only_rejected_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(
+            client, name="Manual",
+            schedule={"type": "none"},
+        ).json()["job"]
+        resp = client.post(f"/api/jobs/{created['id']}/pause")
+        assert resp.status_code == 400
+
+    def test_pause_unknown_404(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post("/api/jobs/nope/pause")
+        assert resp.status_code == 404
+
+
+class TestOnceSchedule:
+    """``once`` schedule end-to-end (admission + decorated response)."""
+
+    def test_once_round_trips(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post("/api/jobs", json={
+            "name": "Once",
+            "script_path": "C:\\stub\\once.py",
+            "schedule": {"type": "once", "at": "2026-06-01T14:30"},
+        })
+        assert resp.status_code == 200, resp.text
+        job = resp.json()["job"]
+        assert job["schedule"]["type"] == "once"
+        assert job["schedule_chip"] == "once 2026-06-01 14:30"
+
+
 # ============================================================ mutex groups
 
 

@@ -166,11 +166,27 @@ def task_names_for(job: Job) -> List[str]:
     return [base]
 
 
+def _once_schtasks_parts(at: str) -> List[str]:
+    """Split ``YYYY-MM-DDTHH:MM`` into the schtasks ``/SC ONCE /SD … /ST …``
+    pieces. Uses the ``YYYY/MM/DD`` slash form for ``/SD`` because it is
+    accepted across Windows locales (the dotted / dashed forms are
+    locale-dependent and silently fail on non-en-US systems).
+    """
+    date_part, _, time_part = at.partition("T")
+    yyyy, mm, dd = date_part.split("-", 2)
+    return [
+        "/SC", "ONCE",
+        "/SD", f"{yyyy}/{mm}/{dd}",
+        "/ST", time_part,
+    ]
+
+
 def schedule_argv_parts(sched: Schedule) -> List[List[str]]:
     """The ``/SC …`` portion(s) of ``schtasks /Create`` — one per task.
 
     Returns an empty list for ``none``; one inner list for everything but
-    ``daily_times``, which returns N (one per HH:MM).
+    ``daily_times``, which returns N (one per HH:MM). ``once`` returns a
+    single inner list with ``/SC ONCE /SD <YYYY/MM/DD> /ST <HH:MM>``.
     """
     if sched.type == "none":
         return []
@@ -184,6 +200,8 @@ def schedule_argv_parts(sched: Schedule) -> List[List[str]]:
         return [["/SC", "DAILY", "/ST", str(t)] for t in sched.at]
     if sched.type == "weekly":
         return [["/SC", "WEEKLY", "/D", str(sched.day), "/ST", str(sched.at)]]
+    if sched.type == "once" and isinstance(sched.at, str):
+        return [_once_schtasks_parts(sched.at)]
     return []
 
 

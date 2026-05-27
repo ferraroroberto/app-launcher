@@ -134,6 +134,28 @@ function renderJobRow(job) {
   runBtn.addEventListener('click', function (ev) { ev.stopPropagation(); runJobNow(job); });
   actions.appendChild(runBtn);
 
+  // Pause / resume — only meaningful for scheduled jobs. A job whose
+  // current AND parked schedule are both none has nothing to toggle.
+  const hasSchedule = job.paused
+    ? true
+    : (job.schedule && job.schedule.type && job.schedule.type !== 'none');
+  if (hasSchedule) {
+    const pauseBtn = document.createElement('button');
+    pauseBtn.type = 'button';
+    pauseBtn.className = 'icon-btn';
+    pauseBtn.dataset.role = 'pause-btn';
+    pauseBtn.textContent = job.paused ? '▶' : '⏸';
+    pauseBtn.title = job.paused
+      ? 'Resume schedule for ' + job.name
+      : 'Pause schedule for ' + job.name;
+    pauseBtn.setAttribute('aria-label', job.paused ? 'Resume' : 'Pause');
+    pauseBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      togglePause(job);
+    });
+    actions.appendChild(pauseBtn);
+  }
+
   if (state.editMode) {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
@@ -582,6 +604,21 @@ async function killRun(jobId, runId) {
   }
 }
 
+async function togglePause(job) {
+  const action = job.paused ? 'resume' : 'pause';
+  try {
+    await jsonApi(
+      '/api/jobs/' + encodeURIComponent(job.id) + '/' + action,
+      { method: 'POST' }
+    );
+    toast(job.paused ? '▶ Resumed ' + job.name : '⏸ Paused ' + job.name, 'good');
+    await fetchJobs();
+  } catch (exc) {
+    toast(action.charAt(0).toUpperCase() + action.slice(1) +
+          ' failed: ' + (exc.message || exc), 'error');
+  }
+}
+
 async function runJobNow(job, options) {
   // Issue #67: jobs with declared params open a small typed form so the
   // user supplies values. Parameter-less jobs keep their one-tap fire.
@@ -958,6 +995,10 @@ function openJobDialog(job) {
     els.jobScheduleTimes.value = '';
   }
   els.jobScheduleDay.value = sched.day || 'MON';
+  if (els.jobScheduleOnceAt) {
+    els.jobScheduleOnceAt.value =
+      (sched.type === 'once' && typeof sched.at === 'string') ? sched.at : '';
+  }
   syncScheduleFields();
 
   if (els.jobCooldownInput) {
@@ -991,6 +1032,7 @@ function syncScheduleFields() {
   els.jobScheduleAtRow.hidden = !(t === 'daily' || t === 'weekly');
   els.jobScheduleTimesRow.hidden = t !== 'daily_times';
   els.jobScheduleDayRow.hidden = t !== 'weekly';
+  if (els.jobScheduleOnceRow) els.jobScheduleOnceRow.hidden = t !== 'once';
 }
 
 function buildSchedule() {
@@ -1021,6 +1063,13 @@ function buildSchedule() {
     const at = els.jobScheduleAt.value.trim();
     if (!/^[0-2]\d:[0-5]\d$/.test(at)) throw new Error('At must be HH:MM');
     return { type: 'weekly', day: els.jobScheduleDay.value, at: at };
+  }
+  if (t === 'once') {
+    const at = (els.jobScheduleOnceAt && els.jobScheduleOnceAt.value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}T[0-2]\d:[0-5]\d$/.test(at)) {
+      throw new Error('Once: pick a date and time');
+    }
+    return { type: 'once', at: at };
   }
   return { type: 'none' };
 }

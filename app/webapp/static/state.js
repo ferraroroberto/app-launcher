@@ -88,6 +88,8 @@ export const els = {
   jobScheduleTimes: document.getElementById('jobScheduleTimes'),
   jobScheduleDayRow: document.getElementById('jobScheduleDayRow'),
   jobScheduleDay: document.getElementById('jobScheduleDay'),
+  jobScheduleOnceRow: document.getElementById('jobScheduleOnceRow'),
+  jobScheduleOnceAt: document.getElementById('jobScheduleOnceAt'),
   jobCooldownInput: document.getElementById('jobCooldownInput'),
   jobMutexGroupInput: document.getElementById('jobMutexGroupInput'),
   jobOnSuccessList: document.getElementById('jobOnSuccessList'),
