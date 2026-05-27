@@ -49,7 +49,9 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     error or N/A); ``last_run`` is the most recent on-disk run record;
     ``running`` is a quick "is the latest run still in progress" flag;
     ``stats`` carries the p50/p95/success-rate aggregates plus the
-    ``last7`` sparkline payload; ``stuck`` flags an over-long running run.
+    ``last7`` sparkline payload; ``stuck`` flags an over-long running run;
+    ``queue_depth`` is the count of pending entries in this job's mutex
+    queue (0 when no group).
     """
     payload = job.to_dict()
     payload["schedule_chip"] = job.schedule.chip()
@@ -71,7 +73,33 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     payload["running"] = jobs_mod.is_running(job.id)
     payload["stats"] = jobs_mod.run_stats(job.id)
     payload["stuck"] = jobs_mod.is_stuck(job.id)
+    payload["queue_depth"] = (
+        len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
+    )
     return payload
+
+
+def _mutex_collision(cfg, job: Job) -> Optional[Job]:
+    """Return the *other* job in ``job.mutex_group`` that currently holds
+    the group (status running or pending on its latest run), or ``None``.
+
+    A job is its own collision only if it has overlapping queued and
+    in-flight runs of itself — we ignore that case because pending/running
+    are per-job-latest and the route is about to write a new run for it.
+    """
+    if not job.mutex_group:
+        return None
+    for other in cfg.jobs:
+        if other.id == job.id:
+            continue
+        if other.mutex_group != job.mutex_group:
+            continue
+        latest = jobs_mod.latest_run(other.id)
+        if latest is None:
+            continue
+        if latest.get("status") in ("running", "pending"):
+            return other
+    return None
 
 
 # ----------------------------------------------------------- CRUD
@@ -126,6 +154,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "added_at": datetime.now().isoformat(timespec="seconds"),
                 "params": params_raw or [],
                 "cooldown_seconds": body.get("cooldown_seconds"),
+                "mutex_group": body.get("mutex_group"),
             }
         )
     except ValueError as exc:
@@ -161,6 +190,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["params"] = body["params"]
     if "cooldown_seconds" in body:
         patch["cooldown_seconds"] = body["cooldown_seconds"]
+    if "mutex_group" in body:
+        patch["mutex_group"] = body["mutex_group"]
     try:
         job = update_job(cfg, job_id, **patch)
     except ValueError as exc:
@@ -224,14 +255,19 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
             headers={"Retry-After": str(remaining)},
         )
 
-    # Pre-create the run dir so the caller knows the run id before the
-    # detached executor has a chance to write its first byte. The
-    # executor reuses this dir via --run-id.
+    # Mutex-group admission. If another job in the same group is running
+    # or pending, this fire is QUEUED (not rejected — that's cooldown's
+    # job). We still pre-create the run dir so the caller gets a real
+    # run_id back; the executor that finalises the in-flight head will
+    # pop this entry from the queue and spawn it detached. See
+    # src.jobs.drain_mutex_queue for the spawn-time guard.
+    holder = await asyncio.to_thread(_mutex_collision, cfg, job)
+
     run_dir = await asyncio.to_thread(
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     started_at = datetime.now().isoformat(timespec="seconds")
-    meta: Dict[str, Any] = dict(
+    base_meta: Dict[str, Any] = dict(
         run_id=run_dir.name,
         job_id=job.id,
         name=job.name,
@@ -239,11 +275,41 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         script_path=job.script_path,
         args=job.args,
         started_at=started_at,
-        status="pending",
     )
     if raw_params:
-        meta["params"] = raw_params
-    jobs_mod.write_run_json(run_dir, **meta)
+        base_meta["params"] = raw_params
+
+    if holder is not None:
+        # Queue it. status=queued does not feed stats / streaks; the
+        # finalising executor of the holder job will flip it to running.
+        base_meta["status"] = "queued"
+        base_meta["mutex_group"] = job.mutex_group
+        base_meta["mutex_blocked_by"] = holder.id
+        jobs_mod.write_run_json(run_dir, **base_meta)
+        await asyncio.to_thread(
+            jobs_mod.enqueue_mutex,
+            job.mutex_group,
+            {
+                "job_id": job.id,
+                "run_id": run_dir.name,
+                "trigger": "manual",
+                "params": raw_params or None,
+            },
+        )
+        logger.info(
+            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
+            f"(mutex_group={job.mutex_group!r})"
+        )
+        return {
+            "run_id": run_dir.name,
+            "job_id": job.id,
+            "status": "queued",
+            "mutex_group": job.mutex_group,
+            "mutex_blocked_by": holder.id,
+        }
+
+    base_meta["status"] = "pending"
+    jobs_mod.write_run_json(run_dir, **base_meta)
     try:
         await asyncio.to_thread(
             jobs_mod.spawn_run_job_detached,
@@ -347,6 +413,12 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
         killed=True,
     )
     jobs_mod.invalidate_stats_cache(job_id)
+    # If the killed run was the head of a mutex group, drain so the
+    # queue doesn't wedge waiting for a finalisation that already
+    # happened (the executor we just killed will not run its own
+    # finalisation block).
+    if job.mutex_group:
+        await asyncio.to_thread(jobs_mod.drain_mutex_queue, job.mutex_group)
     logger.info(
         f"🛑 killed stuck run {job_id}/{run_id} "
         f"pid={pid!r} signalled={signalled}"

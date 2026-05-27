@@ -79,6 +79,14 @@ _PARAM_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # stack would render it confusingly.
 MAX_COOLDOWN_SECONDS = 86_400
 
+# Mutex group identifier — lowercase, alnum + hyphen/underscore, 1..32
+# chars. Same conservative shape as the job id slug; intentionally not a
+# free-form string so the UI can show it back as a pill without escaping
+# and the queue-file key stays filesystem-safe (even though the queue is
+# one file with the group as a JSON key, not a dir name).
+MAX_MUTEX_GROUP_LEN = 32
+_MUTEX_GROUP_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
+
 
 # ---------------------------------------------------------------- Schedule
 
@@ -375,6 +383,7 @@ class Job:
     added_at: str = ""
     params: List[Param] = field(default_factory=list)
     cooldown_seconds: Optional[int] = None
+    mutex_group: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -393,6 +402,8 @@ class Job:
         # byte-for-byte after a load → save round-trip.
         if self.cooldown_seconds:
             payload["cooldown_seconds"] = self.cooldown_seconds
+        if self.mutex_group:
+            payload["mutex_group"] = self.mutex_group
         return payload
 
     @property
@@ -432,6 +443,31 @@ def _validate_cooldown(raw: Any) -> Optional[int]:
     return raw
 
 
+def _validate_mutex_group(raw: Any) -> Optional[str]:
+    """Parse + validate ``mutex_group``. Empty / missing → ``None``.
+
+    Shape mirrors a slug — lowercase, alnum + ``_`` or ``-``, must start
+    with a letter, max 32 chars. Conservative on purpose: the value
+    appears verbatim in UI pills and is used as a JSON key in the queue
+    file, so we keep it boring and predictable.
+    """
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise ValueError(
+            f"mutex_group must be a string, got {type(raw).__name__}"
+        )
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    if not _MUTEX_GROUP_RE.match(stripped):
+        raise ValueError(
+            f"mutex_group {stripped!r} must be lowercase alnum + _/- "
+            f"starting with a letter, up to {MAX_MUTEX_GROUP_LEN} chars"
+        )
+    return stripped
+
+
 def job_from_dict(raw: Dict[str, Any]) -> Job:
     """Build a :class:`Job` from one JSON row. Raises on invalid input."""
     script_path = str(raw.get("script_path") or "").strip()
@@ -451,6 +487,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         added_at=str(raw.get("added_at") or ""),
         params=params_from_dict(raw.get("params")),
         cooldown_seconds=_validate_cooldown(raw.get("cooldown_seconds")),
+        mutex_group=_validate_mutex_group(raw.get("mutex_group")),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -561,6 +598,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.params = params_from_dict(fields["params"])
     if "cooldown_seconds" in fields:
         job.cooldown_seconds = _validate_cooldown(fields["cooldown_seconds"])
+    if "mutex_group" in fields:
+        job.mutex_group = _validate_mutex_group(fields["mutex_group"])
     cfg.jobs.sort(key=lambda j: j.name.lower())
     save_jobs(cfg)
     return job

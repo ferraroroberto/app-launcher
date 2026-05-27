@@ -454,6 +454,137 @@ class TestCooldown:
         assert "cooldown_seconds" not in resp.json()["job"]
 
 
+# ============================================================ mutex groups
+
+
+class TestMutexGroups:
+    """Cross-job admission control (issue #68 PR #2).
+
+    Two jobs in the same mutex_group must not have overlapping running
+    runs. The route detects the collision and queues the fresh fire;
+    the executor's finalisation drains the queue.
+    """
+
+    def _seed_run_record(
+        self, runs_root, job_id, run_id, *, started_at, status
+    ):
+        rd = runs_root / job_id / run_id
+        rd.mkdir(parents=True, exist_ok=True)
+        (rd / "run.json").write_text(
+            json.dumps({
+                "run_id": run_id,
+                "job_id": job_id,
+                "status": status,
+                "started_at": started_at,
+            }),
+            encoding="utf-8",
+        )
+
+    def _isolate_queue(self, overrides, monkeypatch):
+        """Point the queue file at the fixture's tmp jobs root."""
+        from src import jobs as jm
+        monkeypatch.setattr(
+            jm, "JOBS_QUEUE_PATH",
+            overrides["tmp_jobs_runs_dir"] / "_queue.json",
+        )
+
+    def test_collision_queues_instead_of_spawning(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    ):
+        client, _, overrides = webapp_client
+        self._isolate_queue(overrides, monkeypatch)
+        # Two jobs sharing one mutex group.
+        a = client.post("/api/jobs", json={
+            "name": "A", "script_path": "C:\\stub\\a.py",
+            "mutex_group": "chrome",
+        }).json()["job"]
+        b = client.post("/api/jobs", json={
+            "name": "B", "script_path": "C:\\stub\\b.py",
+            "mutex_group": "chrome",
+        }).json()["job"]
+        # A is "running" right now.
+        self._seed_run_record(
+            overrides["tmp_jobs_runs_dir"], a["id"], "20260101T000000",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            status="running",
+        )
+        resp = client.post(f"/api/jobs/{b['id']}/run")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "queued"
+        assert body["mutex_blocked_by"] == a["id"]
+        # The executor was NOT spawned (B is queued, not started).
+        spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
+        assert not spawn.called
+        # The on-disk run record is also queued, with the blocker name.
+        run_dir = (
+            overrides["tmp_jobs_runs_dir"] / b["id"] / body["run_id"]
+        )
+        record = json.loads(
+            (run_dir / "run.json").read_text(encoding="utf-8")
+        )
+        assert record["status"] == "queued"
+        assert record["mutex_group"] == "chrome"
+        assert record["mutex_blocked_by"] == a["id"]
+
+    def test_no_collision_when_other_is_done(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    ):
+        client, _, overrides = webapp_client
+        self._isolate_queue(overrides, monkeypatch)
+        a = client.post("/api/jobs", json={
+            "name": "A", "script_path": "C:\\stub\\a.py",
+            "mutex_group": "db",
+        }).json()["job"]
+        b = client.post("/api/jobs", json={
+            "name": "B", "script_path": "C:\\stub\\b.py",
+            "mutex_group": "db",
+        }).json()["job"]
+        # A's most recent run is completed → not a collision.
+        self._seed_run_record(
+            overrides["tmp_jobs_runs_dir"], a["id"], "20260101T000000",
+            started_at=(datetime.now() - timedelta(minutes=2))
+                .isoformat(timespec="seconds"),
+            status="success",
+        )
+        resp = client.post(f"/api/jobs/{b['id']}/run")
+        assert resp.status_code == 200
+        body = resp.json()
+        # No status=queued field on the happy path; executor spawned.
+        assert "status" not in body
+        assert mocked_jobs_side_effects["spawn_run_job_detached"].called
+
+    def test_mutex_group_round_trips_through_put(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        # Set it.
+        r = client.put(
+            "/api/jobs/" + created["id"],
+            json={"mutex_group": "my-group"},
+        )
+        assert r.status_code == 200
+        assert r.json()["job"]["mutex_group"] == "my-group"
+        # Clear it (null).
+        r = client.put(
+            "/api/jobs/" + created["id"],
+            json={"mutex_group": None},
+        )
+        assert r.status_code == 200
+        assert "mutex_group" not in r.json()["job"]
+
+    def test_invalid_mutex_group_rejected(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post("/api/jobs", json={
+            "name": "X", "script_path": "C:\\stub\\x.py",
+            "mutex_group": "BAD CAPS",
+        })
+        assert resp.status_code == 400
+
+
 # ============================================================= run history
 
 

@@ -99,6 +99,25 @@ A job can declare a per-job `cooldown_seconds`: a debounce window that prevents 
   - The UI surfaces a toast: *"⏭ Skipped — cooled down for N more s."*
 - **Scheduled fires inside the window** (Task Scheduler firing the executor directly) cannot be intercepted at the route, so the executor itself performs the same admission check. It writes a `skipped` run record (no spawn, no `output.log`) and exits 0. The record carries `status="skipped"`, `note="cooldown"`, `cooldown_seconds`, `cooldown_remaining_seconds`, and `cooldown_anchor_run_id` for audit clarity. Skipped records do **not** contribute to p50/p95/success-rate stats and do **not** count toward the failure-streak notification gate.
 
+### Mutex groups (issue #68)
+
+A job can declare a `mutex_group` — a free-form lowercase identifier (alnum + `_`/`-`, must start with a letter, ≤32 chars). Two jobs sharing a `mutex_group` are not allowed to have overlapping in-flight runs: when one is already `running` or `pending`, a fresh fire of any other member is **queued** rather than rejected, and the head run's finalisation pops the next queued entry and spawns it detached.
+
+```json
+{
+  "id": "linkedin-scrape",
+  "name": "LinkedIn Scrape",
+  "script_path": "...",
+  "mutex_group": "chrome-profile"
+}
+```
+
+- **Queue file.** `webapp/jobs/_queue.json` — one JSON document, keyed by group → FIFO list of `{job_id, run_id, trigger, params}`. Mutations go through `os.replace` so the file is always a complete document. Empty groups are pruned out so the file stays tidy.
+- **`status: "queued"`.** Queued runs land in history with `status="queued"`, `mutex_group`, and `mutex_blocked_by` (the id of the job currently holding the group). Queued runs do **not** contribute to p50/p95/success-rate stats and do **not** count toward the failure-streak gate. The route returns `{run_id, job_id, status: "queued", mutex_group, mutex_blocked_by}` so the UI can render a queue toast.
+- **Drain triggers.** The mutex queue drains in two places: (1) the executor's finalisation block, after the head's `run.json` flips to `success`/`failed`; (2) the kill endpoint, after a stuck head is signalled (otherwise killing the head would wedge the queue with no finaliser to drain it).
+- **Double-spawn guard.** Just before spawning the drained head, `drain_mutex_queue` re-reads the head's `run.json` and refuses to spawn if its `status` is not `queued`. A concurrent finaliser racing us advances the queue forward (the head is popped) but does not double-fire the executor.
+- **Cross-host coordination.** Single-host only. Multi-host coordination is explicitly out of scope (see the umbrella issue).
+
 ### Parameters (issue #67)
 
 A job can declare typed inputs collected at run-time. With no `params`, a tap on ▶ fires immediately (today's behaviour). With one or more `params`, ▶ opens a small dialog so the user supplies values; the executor composes them into argv (and env) safely.

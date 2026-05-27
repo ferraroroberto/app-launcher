@@ -48,6 +48,11 @@ TASK_FOLDER_PREFIX = f"\\{TASK_NAMESPACE}\\"
 JOBS_RUNS_DIR = PROJECT_ROOT / "webapp" / "jobs"
 MAX_RUNS_PER_JOB = 20
 
+# Per-mutex-group FIFO queue (issue #68 PR #2). One JSON file keyed by
+# group → list-of-entries. Atomic via `os.replace` for each mutation.
+JOBS_QUEUE_PATH = JOBS_RUNS_DIR / "_queue.json"
+_queue_lock = Lock()
+
 # Process-local TTL caches. The original Jobs-tab v1 shelled out to
 # schtasks once per job, per /api/jobs poll (every 3 s while the tab
 # was open) — N+1 fork+exec on Windows for what is effectively a static
@@ -494,6 +499,150 @@ def is_running(job_id: str) -> bool:
     """Cheap check — is the most recent run still in ``running`` state?"""
     latest = latest_run(job_id)
     return bool(latest and latest.get("status") == "running")
+
+
+# ----------------------------------------------------------- mutex queue
+#
+# Cross-job admission control (issue #68 PR #2). When a job carries a
+# ``mutex_group`` and another job in the same group is ``running`` or
+# ``pending``, the fresh fire is queued rather than rejected. The
+# finalising executor pops the next entry on its way out and spawns it
+# detached. Queue file lives at ``JOBS_QUEUE_PATH`` (one JSON document,
+# keyed by group → FIFO list of pending entries).
+
+
+def _read_queue_file() -> Dict[str, List[Dict[str, Any]]]:
+    """Read the on-disk queue. Missing file → empty queue."""
+    if not JOBS_QUEUE_PATH.is_file():
+        return {}
+    try:
+        data = json.loads(JOBS_QUEUE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning(
+            f"⚠️  mutex queue file unreadable ({exc}); treating as empty"
+        )
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for group, entries in data.items():
+        if not isinstance(group, str) or not isinstance(entries, list):
+            continue
+        out[group] = [e for e in entries if isinstance(e, dict)]
+    return out
+
+
+def _write_queue_file(state: Dict[str, List[Dict[str, Any]]]) -> None:
+    """Persist the queue atomically. Drops groups whose list is empty."""
+    JOBS_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    pruned = {g: e for g, e in state.items() if e}
+    tmp = JOBS_QUEUE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(pruned, indent=2), encoding="utf-8")
+    os.replace(tmp, JOBS_QUEUE_PATH)
+
+
+def enqueue_mutex(group: str, entry: Dict[str, Any]) -> None:
+    """Append ``entry`` to the FIFO under ``group``. Holds a process lock
+    around the read-modify-write so two route handlers in the same
+    process can't race; the lock is process-local but ``os.replace`` is
+    OS-atomic, so cross-process races at worst dedupe via the spawn-time
+    ``is_running``/``status`` guards (see :func:`drain_mutex_queue`).
+    """
+    with _queue_lock:
+        state = _read_queue_file()
+        state.setdefault(group, []).append(entry)
+        _write_queue_file(state)
+
+
+def pop_mutex_entry(group: str) -> Optional[Dict[str, Any]]:
+    """Atomically pop and return the head of ``group``'s queue, or
+    ``None`` when the queue is empty / missing.
+    """
+    with _queue_lock:
+        state = _read_queue_file()
+        entries = state.get(group) or []
+        if not entries:
+            return None
+        head = entries[0]
+        state[group] = entries[1:]
+        _write_queue_file(state)
+        return head
+
+
+def peek_mutex_queue(group: str) -> List[Dict[str, Any]]:
+    """Read-only snapshot of ``group``'s queue. Defensive copy."""
+    with _queue_lock:
+        return list(_read_queue_file().get(group) or [])
+
+
+def remove_queue_entry(group: str, run_id: str) -> bool:
+    """Remove a queued entry by ``run_id``. Returns ``True`` when removed."""
+    with _queue_lock:
+        state = _read_queue_file()
+        entries = state.get(group) or []
+        keep = [e for e in entries if e.get("run_id") != run_id]
+        if len(keep) == len(entries):
+            return False
+        state[group] = keep
+        _write_queue_file(state)
+        return True
+
+
+def drain_mutex_queue(
+    group: str,
+    *,
+    spawn: Optional[
+        Callable[[str, str, str, Optional[Dict[str, Any]]], int]
+    ] = None,
+) -> Optional[Dict[str, Any]]:
+    """Pop one queued entry for ``group`` and spawn it detached.
+
+    Designed to be called by the finalising executor (and the kill
+    endpoint) so a mutex group never wedges with a still-queued entry
+    after the head run completes. Returns the entry that was spawned, or
+    ``None`` when the queue was empty.
+
+    Defensive double-spawn guard: the picked entry's run-dir must still
+    have ``status == "queued"``. If it's already running/success/failed
+    a concurrent finaliser raced us — we skip the spawn but log and
+    leave the queue otherwise untouched (the head was already popped).
+    """
+    entry = pop_mutex_entry(group)
+    if entry is None:
+        return None
+    job_id = entry.get("job_id")
+    run_id = entry.get("run_id")
+    if not isinstance(job_id, str) or not isinstance(run_id, str):
+        logger.warning(
+            f"⚠️  mutex queue {group!r}: dropping malformed entry {entry!r}"
+        )
+        return None
+    run_dir = runs_dir(job_id) / run_id
+    record = read_run(run_dir)
+    if record.get("status") != "queued":
+        logger.warning(
+            f"⚠️  mutex queue {group!r}: head {job_id}/{run_id} status "
+            f"{record.get('status')!r} (expected 'queued'); skipping spawn"
+        )
+        return None
+    trigger = str(entry.get("trigger") or "manual")
+    params = entry.get("params") if isinstance(entry.get("params"), dict) else None
+    fn = spawn or spawn_run_job_detached
+    try:
+        fn(job_id, run_id, trigger, params)
+    except OSError as exc:
+        logger.error(
+            f"❌ mutex queue {group!r}: spawn failed for {job_id}/{run_id}: {exc}"
+        )
+        # Don't re-enqueue — the run dir already exists with status=queued
+        # and the operator can re-fire manually. Refusing to retry blindly
+        # keeps a misconfigured job from spinning forever.
+        return None
+    logger.info(
+        f"🪢 mutex queue {group!r}: spawned next run {job_id}/{run_id} "
+        f"(trigger={trigger})"
+    )
+    return entry
 
 
 def cooldown_check(
