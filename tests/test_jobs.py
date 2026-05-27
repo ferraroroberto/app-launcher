@@ -297,6 +297,119 @@ class TestMutexQueueFile:
         assert jobs_mod.peek_mutex_queue("anything") == []
 
 
+class TestChainValidation:
+    """``on_success`` / ``on_failure`` shape + cycle detection (#68 PR #3)."""
+
+    def _two_jobs(self, **j2_extras):
+        j1 = job_from_dict(
+            {"id": "j1", "name": "J1", "script_path": "C:\\a.py"}
+        )
+        j2 = job_from_dict(
+            {"id": "j2", "name": "J2", "script_path": "C:\\b.py", **j2_extras}
+        )
+        return JobsConfig(jobs=[j1, j2])
+
+    def test_default_lists_are_empty(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py"}
+        )
+        assert job.on_success == [] and job.on_failure == []
+        # Round-trip stays clean (no empty arrays sprouting).
+        assert "on_success" not in job.to_dict()
+        assert "on_failure" not in job.to_dict()
+
+    def test_round_trip(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py",
+             "on_success": ["a"], "on_failure": ["b", "c"]}
+        )
+        assert job.on_success == ["a"]
+        assert job.on_failure == ["b", "c"]
+        d = job.to_dict()
+        assert d["on_success"] == ["a"]
+        assert d["on_failure"] == ["b", "c"]
+
+    def test_duplicate_entries_rejected(self):
+        with pytest.raises(ValueError, match="duplicate"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "on_success": ["a", "a"]}
+            )
+
+    def test_unknown_downstream_rejected_on_add(self, tmp_path, monkeypatch):
+        from src import jobs_config as jc
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+        cfg = JobsConfig(jobs=[])
+        good = job_from_dict(
+            {"id": "j1", "name": "J1", "script_path": "C:\\a.py",
+             "on_success": ["does-not-exist"]}
+        )
+        with pytest.raises(ValueError, match="unknown downstream"):
+            add_job(cfg, good)
+        # The bad add is rolled back — registry stays empty.
+        assert cfg.jobs == []
+
+    def test_self_chain_rejected(self, tmp_path, monkeypatch):
+        from src import jobs_config as jc
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+        cfg = JobsConfig(jobs=[])
+        bad = job_from_dict(
+            {"id": "loop", "name": "Loop", "script_path": "C:\\a.py",
+             "on_success": ["loop"]}
+        )
+        with pytest.raises(ValueError, match="cannot chain to itself"):
+            add_job(cfg, bad)
+
+    def test_two_node_cycle_rejected_on_update(self, tmp_path, monkeypatch):
+        from src import jobs_config as jc
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+        cfg = JobsConfig(jobs=[])
+        a = job_from_dict({"id": "a", "name": "A", "script_path": "C:\\a.py"})
+        b = job_from_dict({"id": "b", "name": "B", "script_path": "C:\\b.py"})
+        add_job(cfg, a)
+        add_job(cfg, b)
+        # A → B is fine.
+        update_job(cfg, "a", on_success=["b"])
+        # B → A closes the loop and must be rejected.
+        with pytest.raises(ValueError, match="cycle detected"):
+            update_job(cfg, "b", on_success=["a"])
+        # And B's chain stayed empty after the failed update.
+        b_final = next(j for j in cfg.jobs if j.id == "b")
+        assert b_final.on_success == []
+
+    def test_detect_chain_cycle_returns_cycle_path(self):
+        cfg = JobsConfig(jobs=[
+            job_from_dict({"id": "a", "name": "A", "script_path": "C:\\a.py",
+                           "on_success": ["b"]}),
+            job_from_dict({"id": "b", "name": "B", "script_path": "C:\\b.py",
+                           "on_failure": ["c"]}),
+            job_from_dict({"id": "c", "name": "C", "script_path": "C:\\c.py",
+                           "on_success": ["a"]}),
+        ])
+        from src.jobs_config import detect_chain_cycle
+        cycle = detect_chain_cycle(cfg)
+        assert cycle is not None
+        # Cycle must form a closed walk.
+        assert cycle[0] == cycle[-1]
+        assert set(cycle).issubset({"a", "b", "c"})
+
+    def test_cascade_remove_strips_dangling_chains(
+        self, tmp_path, monkeypatch
+    ):
+        from src import jobs_config as jc
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+        cfg = JobsConfig(jobs=[])
+        add_job(cfg, job_from_dict({"id": "a", "name": "A",
+                                     "script_path": "C:\\a.py"}))
+        add_job(cfg, job_from_dict({"id": "b", "name": "B",
+                                     "script_path": "C:\\b.py",
+                                     "on_success": ["a"]}))
+        # Removing A must strip A from B's on_success.
+        remove_by_id(cfg, "a")
+        b = next(j for j in cfg.jobs if j.id == "b")
+        assert b.on_success == []
+
+
 class TestParamValidation:
     """``param_from_dict`` / ``params_from_dict`` — typed-parameter validation (issue #67)."""
 

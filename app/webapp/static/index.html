@@ -200,6 +200,16 @@
           <input id="jobMutexGroupInput" type="text" class="input-native"
                  maxlength="32" placeholder="e.g. chrome-profile">
         </label>
+        <fieldset class="job-chain-fieldset">
+          <legend>Run on success (chain)</legend>
+          <p class="muted small">Pick jobs to fire after a successful run.</p>
+          <ul id="jobOnSuccessList" class="job-chain-list"></ul>
+        </fieldset>
+        <fieldset class="job-chain-fieldset">
+          <legend>Run on failure (chain)</legend>
+          <p class="muted small">Pick jobs to fire after a failed run.</p>
+          <ul id="jobOnFailureList" class="job-chain-list"></ul>
+        </fieldset>
         <fieldset class="job-params-fieldset">
           <legend>Parameters (optional)</legend>
           <p class="muted small">

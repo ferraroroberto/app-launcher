@@ -627,6 +627,56 @@ async function runJobNow(job, options) {
   }
 }
 
+// --------------------------------------------------- chain checklist (dialog)
+//
+// Two <ul>s in the job dialog, one for on_success and one for on_failure.
+// Each list is populated from state.jobs minus the currently-edited job
+// (a job can't chain to itself — the server validates this too, but the UI
+// just hides the row so the user can't even try). The cycle check is
+// strictly server-side; the toast surfaces the server's precise error.
+
+function populateChainList(host, selected, currentId, kind) {
+  if (!host) return;
+  host.innerHTML = '';
+  const want = new Set(selected || []);
+  const all = (state.jobs || []).slice().sort(function (a, b) {
+    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+  });
+  let rendered = 0;
+  all.forEach(function (j) {
+    if (currentId && j.id === currentId) return;
+    const li = document.createElement('li');
+    li.className = 'job-chain-row';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = j.id;
+    cb.checked = want.has(j.id);
+    cb.dataset.role = 'chain-' + kind;
+    const label = document.createElement('label');
+    label.className = 'job-chain-row-label';
+    label.appendChild(cb);
+    const text = document.createElement('span');
+    text.textContent = j.name + '  ·  ' + j.id;
+    label.appendChild(text);
+    li.appendChild(label);
+    host.appendChild(li);
+    rendered += 1;
+  });
+  if (rendered === 0) {
+    const li = document.createElement('li');
+    li.className = 'job-chain-row muted small';
+    li.textContent = '(no other jobs to choose from)';
+    host.appendChild(li);
+  }
+}
+
+function readChainList(host, kind) {
+  if (!host) return [];
+  const selector = 'input[type="checkbox"][data-role="chain-' + kind + '"]:checked';
+  const checked = Array.from(host.querySelectorAll(selector));
+  return checked.map(function (cb) { return cb.value; });
+}
+
 // -------------------------------------------------- params editor (dialog)
 
 const PARAM_KINDS = ['string', 'int', 'enum', 'bool', 'date'];
@@ -917,6 +967,18 @@ function openJobDialog(job) {
   if (els.jobMutexGroupInput) {
     els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
   }
+  populateChainList(
+    els.jobOnSuccessList,
+    job ? (job.on_success || []) : [],
+    job ? job.id : null,
+    'on_success',
+  );
+  populateChainList(
+    els.jobOnFailureList,
+    job ? (job.on_failure || []) : [],
+    job ? job.id : null,
+    'on_failure',
+  );
 
   setParamsEditor(job ? job.params : []);
 
@@ -1000,6 +1062,10 @@ async function submitJobDialog(ev) {
   const mg = els.jobMutexGroupInput ? els.jobMutexGroupInput.value.trim() : '';
   if (mg) payload.mutex_group = mg;
   else if (dialogTargetId) payload.mutex_group = null;  // clear on edit
+  // Chain edges (issue #68 PR #3). Always send both keys on submit so a
+  // user un-checking the last entry actually clears it server-side.
+  payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
+  payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
   try {
     const opts = {
       method: dialogTargetId ? 'PUT' : 'POST',

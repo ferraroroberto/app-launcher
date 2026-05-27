@@ -90,6 +90,8 @@ export const els = {
   jobScheduleDay: document.getElementById('jobScheduleDay'),
   jobCooldownInput: document.getElementById('jobCooldownInput'),
   jobMutexGroupInput: document.getElementById('jobMutexGroupInput'),
+  jobOnSuccessList: document.getElementById('jobOnSuccessList'),
+  jobOnFailureList: document.getElementById('jobOnFailureList'),
   jobParamsList: document.getElementById('jobParamsList'),
   jobParamsAdd: document.getElementById('jobParamsAdd'),
   jobCancel: document.getElementById('jobCancel'),

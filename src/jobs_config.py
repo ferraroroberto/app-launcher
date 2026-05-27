@@ -384,6 +384,8 @@ class Job:
     params: List[Param] = field(default_factory=list)
     cooldown_seconds: Optional[int] = None
     mutex_group: Optional[str] = None
+    on_success: List[str] = field(default_factory=list)
+    on_failure: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -404,6 +406,10 @@ class Job:
             payload["cooldown_seconds"] = self.cooldown_seconds
         if self.mutex_group:
             payload["mutex_group"] = self.mutex_group
+        if self.on_success:
+            payload["on_success"] = list(self.on_success)
+        if self.on_failure:
+            payload["on_failure"] = list(self.on_failure)
         return payload
 
     @property
@@ -441,6 +447,37 @@ def _validate_cooldown(raw: Any) -> Optional[int]:
             f"cooldown_seconds must be <= {MAX_COOLDOWN_SECONDS}, got {raw}"
         )
     return raw
+
+
+def _validate_chain_list(field_name: str, raw: Any) -> List[str]:
+    """Parse + shape-check an ``on_success`` / ``on_failure`` list.
+
+    Returns a defensively-copied list of strings. Missing / ``None`` /
+    empty → ``[]``. Each entry must be a non-empty string; the
+    cross-config cycle + reference checks live in
+    :func:`_validate_chain_consistency` because they need the full
+    registry to evaluate.
+    """
+    if raw is None or raw == []:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(
+            f"{field_name} must be a list, got {type(raw).__name__}"
+        )
+    out: List[str] = []
+    seen: set = set()
+    for entry in raw:
+        if not isinstance(entry, str) or not entry.strip():
+            raise ValueError(
+                f"{field_name}: every entry must be a non-empty job id, "
+                f"got {entry!r}"
+            )
+        ident = entry.strip()
+        if ident in seen:
+            raise ValueError(f"{field_name}: duplicate entry {ident!r}")
+        seen.add(ident)
+        out.append(ident)
+    return out
 
 
 def _validate_mutex_group(raw: Any) -> Optional[str]:
@@ -488,6 +525,8 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         params=params_from_dict(raw.get("params")),
         cooldown_seconds=_validate_cooldown(raw.get("cooldown_seconds")),
         mutex_group=_validate_mutex_group(raw.get("mutex_group")),
+        on_success=_validate_chain_list("on_success", raw.get("on_success")),
+        on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -519,6 +558,84 @@ class JobsConfig:
 
     def to_dict(self) -> Dict[str, Any]:
         return {"jobs": [j.to_dict() for j in self.jobs]}
+
+
+def detect_chain_cycle(cfg: "JobsConfig") -> Optional[List[str]]:
+    """Return a sample cycle (list of job ids ending where it began),
+    or ``None`` when the chain graph is acyclic.
+
+    Edges = ``on_success ∪ on_failure``. A job's downstream consequences
+    on either branch are equivalent for cycle purposes: if A→B is on
+    success and B→A is on failure, A and B still form a cycle.
+    """
+    graph: Dict[str, List[str]] = {
+        j.id: list(dict.fromkeys((j.on_success or []) + (j.on_failure or [])))
+        for j in cfg.jobs
+    }
+    WHITE, GRAY, BLACK = 0, 1, 2
+    color: Dict[str, int] = {n: WHITE for n in graph}
+    stack: List[str] = []
+
+    def visit(u: str) -> Optional[List[str]]:
+        color[u] = GRAY
+        stack.append(u)
+        for v in graph.get(u, ()):
+            if v not in color:
+                # Unknown downstream — reference error, surfaced separately.
+                continue
+            if color[v] == GRAY:
+                return stack[stack.index(v):] + [v]
+            if color[v] == WHITE:
+                sub = visit(v)
+                if sub is not None:
+                    return sub
+        color[u] = BLACK
+        stack.pop()
+        return None
+
+    for node in graph:
+        if color[node] == WHITE:
+            sub = visit(node)
+            if sub is not None:
+                return sub
+    return None
+
+
+def _check_chain_references(cfg: "JobsConfig") -> None:
+    """Raise ``ValueError`` if any ``on_success`` / ``on_failure`` entry
+    points at a job id that does not exist in the registry.
+
+    Catching this at save time stops a typo'd downstream from silently
+    being a no-op for years; the user gets the error in the dialog.
+    """
+    known = {j.id for j in cfg.jobs}
+    for j in cfg.jobs:
+        for field_name, edges in (
+            ("on_success", j.on_success),
+            ("on_failure", j.on_failure),
+        ):
+            for did in edges or ():
+                if did == j.id:
+                    raise ValueError(
+                        f"{j.id}.{field_name}: a job cannot chain to itself"
+                    )
+                if did not in known:
+                    raise ValueError(
+                        f"{j.id}.{field_name}: unknown downstream job id "
+                        f"{did!r}"
+                    )
+
+
+def _validate_chain_consistency(cfg: "JobsConfig") -> None:
+    """Combined references + cycle check, called from ``add_job`` /
+    ``update_job`` so the on-disk state is always acyclic and complete.
+    """
+    _check_chain_references(cfg)
+    cycle = detect_chain_cycle(cfg)
+    if cycle is not None:
+        raise ValueError(
+            "chain cycle detected: " + " → ".join(cycle)
+        )
 
 
 def load_jobs(path: Optional[Path] = None) -> JobsConfig:
@@ -567,12 +684,21 @@ def get_by_id(cfg: JobsConfig, job_id: str) -> Optional[Job]:
 
 
 def add_job(cfg: JobsConfig, job: Job) -> Job:
-    """Append ``job`` and persist. Raises ``ValueError`` on duplicate id."""
+    """Append ``job`` and persist. Raises ``ValueError`` on duplicate id
+    or on chain inconsistency (unknown downstream / cycle) — the cycle
+    check sees the post-add registry, so adding the last edge of a cycle
+    is rejected before the file is touched.
+    """
     if any(j.id == job.id for j in cfg.jobs):
         raise ValueError(f"job id already exists: {job.id}")
     if not job.added_at:
         job.added_at = datetime.now().isoformat(timespec="seconds")
     cfg.jobs.append(job)
+    try:
+        _validate_chain_consistency(cfg)
+    except ValueError:
+        cfg.jobs.pop()
+        raise
     cfg.jobs.sort(key=lambda j: j.name.lower())
     save_jobs(cfg)
     return job
@@ -600,15 +726,40 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.cooldown_seconds = _validate_cooldown(fields["cooldown_seconds"])
     if "mutex_group" in fields:
         job.mutex_group = _validate_mutex_group(fields["mutex_group"])
+    # Snapshot the chain edges so we can revert atomically on cycle.
+    prev_success, prev_failure = job.on_success, job.on_failure
+    if "on_success" in fields:
+        job.on_success = _validate_chain_list("on_success", fields["on_success"])
+    if "on_failure" in fields:
+        job.on_failure = _validate_chain_list("on_failure", fields["on_failure"])
+    if ("on_success" in fields) or ("on_failure" in fields):
+        try:
+            _validate_chain_consistency(cfg)
+        except ValueError:
+            job.on_success, job.on_failure = prev_success, prev_failure
+            raise
     cfg.jobs.sort(key=lambda j: j.name.lower())
     save_jobs(cfg)
     return job
 
 
 def remove_by_id(cfg: JobsConfig, job_id: str) -> Optional[Job]:
+    """Remove the job with ``job_id`` and strip any leftover chain
+    references to it from every other job's ``on_success`` /
+    ``on_failure``. Cascade-strip is preferred over reject-if-referenced
+    because reject would force users into a multi-step delete dance.
+    """
+    removed: Optional[Job] = None
     for i, job in enumerate(cfg.jobs):
         if job.id == job_id:
             removed = cfg.jobs.pop(i)
-            save_jobs(cfg)
-            return removed
-    return None
+            break
+    if removed is None:
+        return None
+    for j in cfg.jobs:
+        if job_id in (j.on_success or ()):
+            j.on_success = [x for x in j.on_success if x != job_id]
+        if job_id in (j.on_failure or ()):
+            j.on_failure = [x for x in j.on_failure if x != job_id]
+    save_jobs(cfg)
+    return removed
