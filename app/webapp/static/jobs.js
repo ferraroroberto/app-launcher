@@ -79,6 +79,17 @@ function renderJobRow(job) {
     pills.appendChild(chip);
   }
 
+  if (job.mutex_group) {
+    const mg = document.createElement('span');
+    mg.className = 'kind-pill job-mutex-pill';
+    const depth = Number.isFinite(job.queue_depth) ? job.queue_depth : 0;
+    mg.textContent = depth > 0 ? '🪢 ' + job.mutex_group + ' (' + depth + ')'
+                               : '🪢 ' + job.mutex_group;
+    mg.title = 'Mutex group: ' + job.mutex_group +
+      (depth > 0 ? ' — ' + depth + ' queued' : '');
+    pills.appendChild(mg);
+  }
+
   info.appendChild(pills);
 
   // Row 3: load (duration percentiles) + sparkline. Same idea — its own
@@ -167,6 +178,7 @@ function statusIcon(status) {
   if (status === 'success') return '✅';
   if (status === 'failed') return '❌';
   if (status === 'skipped') return '⏭';
+  if (status === 'queued') return '🪢';
   return '•';
 }
 
@@ -236,6 +248,7 @@ function sparkClass(status) {
   if (status === 'success') return 'up';
   if (status === 'failed') return 'down';
   if (status === 'running' || status === 'pending') return 'live';
+  if (status === 'queued') return 'live';
   if (status === 'skipped') return 'unknown';
   return 'unknown';
 }
@@ -580,13 +593,18 @@ async function runJobNow(job, options) {
   }
   const body = opts.params ? { params: opts.params } : null;
   try {
-    await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', {
+    const res = await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', {
       method: 'POST',
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined,
     });
-    toast('🚀 Started ' + job.name + '.', 'good');
-    job.running = true;
+    if (res && res.status === 'queued') {
+      const blocker = res.mutex_blocked_by ? ' (behind ' + res.mutex_blocked_by + ')' : '';
+      toast('🪢 Queued ' + job.name + blocker + '.', 'good');
+    } else {
+      toast('🚀 Started ' + job.name + '.', 'good');
+      job.running = true;
+    }
     renderJobs();
     // Brief delayed nudge so the new run shows up promptly without
     // waiting for the next poll tick.
@@ -896,6 +914,9 @@ function openJobDialog(job) {
     const cd = job && Number.isFinite(job.cooldown_seconds) ? job.cooldown_seconds : 0;
     els.jobCooldownInput.value = cd > 0 ? String(cd) : '';
   }
+  if (els.jobMutexGroupInput) {
+    els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
+  }
 
   setParamsEditor(job ? job.params : []);
 
@@ -973,6 +994,12 @@ async function submitJobDialog(ev) {
     }
     if (cd > 0) payload.cooldown_seconds = cd;
   }
+  // Empty → omit (server treats as null); the server validates the shape
+  // (lowercase alnum + _/-, starts with letter, <=32 chars) so the
+  // 400 surfaces here as a normal toast.
+  const mg = els.jobMutexGroupInput ? els.jobMutexGroupInput.value.trim() : '';
+  if (mg) payload.mutex_group = mg;
+  else if (dialogTargetId) payload.mutex_group = null;  // clear on edit
   try {
     const opts = {
       method: dialogTargetId ? 'PUT' : 'POST',

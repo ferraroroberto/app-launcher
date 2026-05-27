@@ -195,6 +195,108 @@ class TestCooldownValidation:
             )
 
 
+class TestMutexGroupValidation:
+    """``mutex_group`` shape — see :func:`src.jobs_config._validate_mutex_group`."""
+
+    def test_default_is_none(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py"}
+        )
+        assert job.mutex_group is None
+        assert "mutex_group" not in job.to_dict()
+
+    def test_empty_string_collapses_to_none(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py",
+             "mutex_group": "   "}
+        )
+        assert job.mutex_group is None
+
+    def test_valid_round_trips(self):
+        job = job_from_dict(
+            {"id": "x", "name": "X", "script_path": "C:\\x.py",
+             "mutex_group": "chrome-profile"}
+        )
+        assert job.mutex_group == "chrome-profile"
+        assert job.to_dict()["mutex_group"] == "chrome-profile"
+
+    def test_must_start_with_letter(self):
+        with pytest.raises(ValueError, match="starting with a letter"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "mutex_group": "1bad"}
+            )
+
+    def test_no_caps_or_spaces(self):
+        with pytest.raises(ValueError, match="lowercase"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "mutex_group": "Chrome Profile"}
+            )
+
+    def test_max_length(self):
+        long = "a" * 33
+        with pytest.raises(ValueError, match="32 chars"):
+            job_from_dict(
+                {"id": "x", "name": "X", "script_path": "C:\\x.py",
+                 "mutex_group": long}
+            )
+
+
+class TestMutexQueueFile:
+    """``src.jobs.enqueue_mutex`` / ``pop_mutex_entry`` / ``peek_mutex_queue``."""
+
+    def test_enqueue_and_pop_fifo(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(
+            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+        )
+        jobs_mod.enqueue_mutex("chrome", {"job_id": "a", "run_id": "r1"})
+        jobs_mod.enqueue_mutex("chrome", {"job_id": "b", "run_id": "r2"})
+        jobs_mod.enqueue_mutex("db", {"job_id": "c", "run_id": "r3"})
+        assert len(jobs_mod.peek_mutex_queue("chrome")) == 2
+        head = jobs_mod.pop_mutex_entry("chrome")
+        assert head["run_id"] == "r1"
+        # The "db" group is unaffected.
+        assert jobs_mod.peek_mutex_queue("db")[0]["run_id"] == "r3"
+        # Pop the last "chrome" entry → group prunes from the file.
+        jobs_mod.pop_mutex_entry("chrome")
+        assert jobs_mod.peek_mutex_queue("chrome") == []
+        # Empty group disappears from the on-disk JSON to keep it tidy.
+        on_disk = json.loads(
+            (tmp_path / "_queue.json").read_text(encoding="utf-8")
+        )
+        assert "chrome" not in on_disk
+        assert "db" in on_disk
+
+    def test_pop_empty_returns_none(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(
+            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+        )
+        assert jobs_mod.pop_mutex_entry("nothing") is None
+
+    def test_remove_by_run_id(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(
+            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+        )
+        jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r1"})
+        jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r2"})
+        assert jobs_mod.remove_queue_entry("g", "r2") is True
+        assert [e["run_id"] for e in jobs_mod.peek_mutex_queue("g")] == ["r1"]
+        assert jobs_mod.remove_queue_entry("g", "missing") is False
+
+    def test_malformed_file_treated_as_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        qpath = tmp_path / "_queue.json"
+        monkeypatch.setattr(jobs_mod, "JOBS_QUEUE_PATH", qpath)
+        qpath.parent.mkdir(parents=True, exist_ok=True)
+        qpath.write_text("{not json}", encoding="utf-8")
+        # peek must not raise — defensive read.
+        assert jobs_mod.peek_mutex_queue("anything") == []
+
+
 class TestParamValidation:
     """``param_from_dict`` / ``params_from_dict`` — typed-parameter validation (issue #67)."""
 

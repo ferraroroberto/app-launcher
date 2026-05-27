@@ -45,6 +45,7 @@ from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
     cooldown_check,
+    drain_mutex_queue,
     invalidate_stats_cache,
     new_run_dir,
     new_run_id,
@@ -469,6 +470,17 @@ class RunJobCommand(BaseCommand):
             _maybe_notify_failure(
                 cfg, job, run_dir, status=status, exit_code=exit_code
             )
+
+        # Drain any queued sibling fire in this mutex group. Runs after
+        # the head's status has finalised on disk so a parallel route
+        # call doing _mutex_collision sees this job as done.
+        if job.mutex_group:
+            try:
+                drain_mutex_queue(job.mutex_group)
+            except Exception as exc:  # noqa: BLE001 — never block finalisation
+                logger.warning(
+                    f"⚠️  mutex drain {job.mutex_group!r} raised: {exc}"
+                )
 
         logger.info(
             f"🏁 run-job {job.id} {status} (exit={exit_code}, run={run_dir.name})"
