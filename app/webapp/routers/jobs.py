@@ -125,6 +125,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "schedule": schedule.to_dict(),
                 "added_at": datetime.now().isoformat(timespec="seconds"),
                 "params": params_raw or [],
+                "cooldown_seconds": body.get("cooldown_seconds"),
             }
         )
     except ValueError as exc:
@@ -158,6 +159,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["schedule"] = body["schedule"]
     if "params" in body:
         patch["params"] = body["params"]
+    if "cooldown_seconds" in body:
+        patch["cooldown_seconds"] = body["cooldown_seconds"]
     try:
         job = update_job(cfg, job_id, **patch)
     except ValueError as exc:
@@ -203,6 +206,23 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         compose_argv(job, raw_params)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Cooldown admission gate. Runs before we pre-create the run dir so a
+    # cooled-down mash-fire produces no on-disk record (the dir would
+    # otherwise be orphaned with status=pending). See jobs.cooldown_check
+    # for the anchor semantics — skipped records do not extend the window.
+    cooldown_state = await asyncio.to_thread(jobs_mod.cooldown_check, job)
+    if cooldown_state is not None:
+        remaining, cooldown_seconds, _anchor_id = cooldown_state
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "detail": "cooldown",
+                "retry_after_seconds": remaining,
+                "cooldown_seconds": cooldown_seconds,
+            },
+            headers={"Retry-After": str(remaining)},
+        )
 
     # Pre-create the run dir so the caller knows the run id before the
     # detached executor has a chance to write its first byte. The

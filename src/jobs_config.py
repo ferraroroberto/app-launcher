@@ -74,6 +74,11 @@ _PARAM_FLAG_RE = re.compile(r"^--[a-zA-Z][a-zA-Z0-9_-]*$")
 _PARAM_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _PARAM_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# Upper bound on cooldown — a full day. Anything past this is almost
+# certainly a typo (e.g. ms thought of as seconds) and the rest of the
+# stack would render it confusingly.
+MAX_COOLDOWN_SECONDS = 86_400
+
 
 # ---------------------------------------------------------------- Schedule
 
@@ -369,6 +374,7 @@ class Job:
     schedule: Schedule = field(default_factory=Schedule)
     added_at: str = ""
     params: List[Param] = field(default_factory=list)
+    cooldown_seconds: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -383,6 +389,10 @@ class Job:
         # a load → save round-trip without sprouting empty arrays.
         if self.params:
             payload["params"] = [p.to_dict() for p in self.params]
+        # cooldown_seconds: omit when unset / zero so legacy rows stay
+        # byte-for-byte after a load → save round-trip.
+        if self.cooldown_seconds:
+            payload["cooldown_seconds"] = self.cooldown_seconds
         return payload
 
     @property
@@ -394,6 +404,32 @@ class Job:
         if suffix == ".bat":
             return "bat"
         return "unknown"
+
+
+def _validate_cooldown(raw: Any) -> Optional[int]:
+    """Parse + validate ``cooldown_seconds`` for a job row.
+
+    Accepts ``None`` / missing / explicit ``0`` (all collapse to "no
+    cooldown" → ``None``). Otherwise must be an ``int`` in ``[1,
+    MAX_COOLDOWN_SECONDS]``. Bool is rejected explicitly because
+    ``bool`` is a subclass of ``int`` in Python.
+    """
+    if raw is None or raw == 0:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(
+            f"cooldown_seconds must be a non-negative int, got "
+            f"{type(raw).__name__}"
+        )
+    if raw < 0:
+        raise ValueError(
+            f"cooldown_seconds must be >= 0, got {raw}"
+        )
+    if raw > MAX_COOLDOWN_SECONDS:
+        raise ValueError(
+            f"cooldown_seconds must be <= {MAX_COOLDOWN_SECONDS}, got {raw}"
+        )
+    return raw
 
 
 def job_from_dict(raw: Dict[str, Any]) -> Job:
@@ -414,6 +450,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         schedule=schedule_from_dict(raw.get("schedule")),
         added_at=str(raw.get("added_at") or ""),
         params=params_from_dict(raw.get("params")),
+        cooldown_seconds=_validate_cooldown(raw.get("cooldown_seconds")),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -522,6 +559,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.schedule = schedule_from_dict(fields["schedule"])
     if "params" in fields:
         job.params = params_from_dict(fields["params"])
+    if "cooldown_seconds" in fields:
+        job.cooldown_seconds = _validate_cooldown(fields["cooldown_seconds"])
     cfg.jobs.sort(key=lambda j: j.name.lower())
     save_jobs(cfg)
     return job
