@@ -31,7 +31,9 @@ from src.jobs_config import (
     load_jobs,
     make_job_id,
     params_from_dict,
+    pause_job,
     remove_by_id,
+    resume_job,
     schedule_from_dict,
     update_job,
 )
@@ -54,7 +56,14 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     queue (0 when no group).
     """
     payload = job.to_dict()
-    payload["schedule_chip"] = job.schedule.chip()
+    # Paused jobs render with a "paused — was X" chip so the user sees
+    # both that the schedule isn't ticking AND what it will restore to.
+    if job.is_paused and job.paused_schedule is not None:
+        was = job.paused_schedule.chip()
+        payload["schedule_chip"] = "paused" + (" — was " + was if was else "")
+    else:
+        payload["schedule_chip"] = job.schedule.chip()
+    payload["paused"] = job.is_paused
     payload["target_kind"] = job.target_kind
     payload["next_run"] = jobs_mod.query_next_run(job.id)
     latest = jobs_mod.latest_run(job.id)
@@ -195,6 +204,37 @@ async def delete_job(job_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     await asyncio.to_thread(jobs_mod.delete_schtasks, job_id)
     return {"removed": removed.id}
+
+
+# ----------------------------------------------------------- pause / resume
+
+
+@router.post("/api/jobs/{job_id}/pause")
+async def pause(job_id: str) -> Dict[str, Any]:
+    """Park the live schedule under ``paused_schedule`` and resync
+    schtasks (which removes the entries for this job).
+    """
+    cfg = load_jobs()
+    try:
+        job = pause_job(cfg, job_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    # Schedule is now ``none`` → sync_schtasks deletes the entries.
+    await asyncio.to_thread(jobs_mod.sync_schtasks, job)
+    return {"job": _decorate_job(job)}
+
+
+@router.post("/api/jobs/{job_id}/resume")
+async def resume(job_id: str) -> Dict[str, Any]:
+    """Restore the parked schedule and resync schtasks."""
+    cfg = load_jobs()
+    job = resume_job(cfg, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    await asyncio.to_thread(jobs_mod.sync_schtasks, job)
+    return {"job": _decorate_job(job)}
 
 
 # ----------------------------------------------------------- run

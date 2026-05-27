@@ -57,13 +57,21 @@ DEFAULT_JOBS_PATH = PROJECT_ROOT / "config" / "jobs.json"
 
 # Bounded set of schedule types. Anything else fails validation.
 SCHEDULE_TYPES = frozenset(
-    {"none", "minutes", "hourly", "daily", "daily_times", "weekly"}
+    {"none", "minutes", "hourly", "daily", "daily_times", "weekly", "once"}
 )
 
 # schtasks accepts MON|TUE|WED|THU|FRI|SAT|SUN (uppercase, three-letter).
 WEEKLY_DAYS = frozenset({"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"})
 
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+# Once-shot schedule input: ISO-style ``YYYY-MM-DDTHH:MM`` (no seconds,
+# no timezone). The dialog uses ``<input type="datetime-local">`` which
+# emits exactly this format. Validated tighter than the schedule.at
+# field because schtasks /SD /ST treats malformed dates as silent
+# nothing-scheduled.
+_ONCE_AT_RE = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$"
+)
 
 # Bounded set of typed-parameter kinds (issue #67). Anything else fails
 # validation. Mirrors the same closed-set discipline as SCHEDULE_TYPES.
@@ -124,6 +132,10 @@ class Schedule:
             return "daily " + " ".join(self.at)
         if self.type == "weekly":
             return f"{self.day} {self.at}"
+        if self.type == "once" and isinstance(self.at, str):
+            # "2026-06-01T14:30" → "once 2026-06-01 14:30" (one-off
+            # readability beats the ISO-T separator)
+            return "once " + self.at.replace("T", " ")
         return self.type
 
 
@@ -160,6 +172,12 @@ def _validate_schedule(sched: Schedule) -> None:
             )
         if not isinstance(sched.at, str) or not _HHMM_RE.match(sched.at):
             raise ValueError(f"weekly schedule needs at=HH:MM, got {sched.at!r}")
+        return
+    if sched.type == "once":
+        if not isinstance(sched.at, str) or not _ONCE_AT_RE.match(sched.at):
+            raise ValueError(
+                f"once schedule needs at=YYYY-MM-DDTHH:MM, got {sched.at!r}"
+            )
 
 
 def schedule_from_dict(raw: Any) -> Schedule:
@@ -386,6 +404,10 @@ class Job:
     mutex_group: Optional[str] = None
     on_success: List[str] = field(default_factory=list)
     on_failure: List[str] = field(default_factory=list)
+    # When non-None, ``schedule`` is the placeholder ``Schedule(type="none")``
+    # and ``paused_schedule`` carries the *real* shape so resume can
+    # restore it untouched. See pause_job/resume_job.
+    paused_schedule: Optional[Schedule] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -410,7 +432,13 @@ class Job:
             payload["on_success"] = list(self.on_success)
         if self.on_failure:
             payload["on_failure"] = list(self.on_failure)
+        if self.paused_schedule is not None:
+            payload["paused_schedule"] = self.paused_schedule.to_dict()
         return payload
+
+    @property
+    def is_paused(self) -> bool:
+        return self.paused_schedule is not None
 
     @property
     def target_kind(self) -> str:
@@ -527,6 +555,11 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         mutex_group=_validate_mutex_group(raw.get("mutex_group")),
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
+        paused_schedule=(
+            schedule_from_dict(raw["paused_schedule"])
+            if raw.get("paused_schedule") is not None
+            else None
+        ),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -739,6 +772,42 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
             job.on_success, job.on_failure = prev_success, prev_failure
             raise
     cfg.jobs.sort(key=lambda j: j.name.lower())
+    save_jobs(cfg)
+    return job
+
+
+def pause_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
+    """Park the live schedule under ``paused_schedule`` and replace the
+    active ``schedule`` with ``none`` so the schtasks resync layer
+    removes the entries on the next sync. Idempotent — pausing an
+    already-paused job is a no-op (the original payload is preserved).
+    """
+    job = get_by_id(cfg, job_id)
+    if job is None:
+        return None
+    if job.is_paused:
+        return job
+    if job.schedule.type == "none":
+        # Nothing to park — pausing a manual-only job would be a confusing
+        # no-op, so reject explicitly so the UI can surface it.
+        raise ValueError("cannot pause a job whose schedule is 'none'")
+    job.paused_schedule = job.schedule
+    job.schedule = Schedule(type="none")
+    save_jobs(cfg)
+    return job
+
+
+def resume_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
+    """Restore the parked ``paused_schedule`` onto ``schedule`` and clear
+    the parked field. Resuming a job that was never paused is a no-op.
+    """
+    job = get_by_id(cfg, job_id)
+    if job is None:
+        return None
+    if not job.is_paused or job.paused_schedule is None:
+        return job
+    job.schedule = job.paused_schedule
+    job.paused_schedule = None
     save_jobs(cfg)
     return job
 

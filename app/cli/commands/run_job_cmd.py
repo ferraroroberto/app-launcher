@@ -45,6 +45,7 @@ from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
     cooldown_check,
+    delete_schtasks,
     dispatch_chain_run,
     drain_mutex_queue,
     invalidate_stats_cache,
@@ -502,6 +503,41 @@ class RunJobCommand(BaseCommand):
                         )
             except Exception as exc:  # noqa: BLE001 — chain must not block finalise
                 logger.warning(f"⚠️  chain: outer dispatch raised: {exc}")
+
+        # One-shot schedules clean themselves up: a `once` job that has
+        # just been fired by Task Scheduler removes its schtasks entry
+        # (and the in-memory schedule on the registry — leaving it as
+        # type=once with an at in the past would let the user re-fire by
+        # editing the dialog, but the operational expectation is "fired,
+        # done"). Only on scheduled triggers; manual runs of a `once`
+        # job leave the schedule alone so a deferred future fire still
+        # works. Skip if already paused (defensive — schedule.type is
+        # none then anyway).
+        if (
+            args.trigger == "scheduled"
+            and job.schedule.type == "once"
+            and not job.is_paused
+        ):
+            try:
+                delete_schtasks(job.id)
+                # Mutate the registry so the row stops showing "once …"
+                # and surfaces as a plain manual job.
+                from src.jobs_config import (  # local import to avoid cycles
+                    JobsConfig,
+                    Schedule,
+                    save_jobs,
+                )
+                fresh_cfg = load_jobs()
+                fresh_job = next(
+                    (j for j in fresh_cfg.jobs if j.id == job.id), None
+                )
+                if fresh_job is not None and fresh_job.schedule.type == "once":
+                    fresh_job.schedule = Schedule(type="none")
+                    save_jobs(fresh_cfg)
+            except Exception as exc:  # noqa: BLE001 — never block finalise
+                logger.warning(
+                    f"⚠️  once cleanup for {job.id} raised: {exc}"
+                )
 
         # Drain any queued sibling fire in this mutex group. Runs after
         # the head's status has finalised on disk so a parallel route

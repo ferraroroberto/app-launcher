@@ -297,6 +297,110 @@ class TestMutexQueueFile:
         assert jobs_mod.peek_mutex_queue("anything") == []
 
 
+class TestOnceSchedule:
+    """``once`` schedule shape + schtasks fan-out (#68 PR #4)."""
+
+    def test_round_trip(self):
+        sch = schedule_from_dict({"type": "once", "at": "2026-06-01T14:30"})
+        assert sch.type == "once"
+        assert sch.at == "2026-06-01T14:30"
+        assert sch.chip() == "once 2026-06-01 14:30"
+
+    def test_bad_at_rejected(self):
+        with pytest.raises(ValueError, match="YYYY-MM-DDTHH:MM"):
+            schedule_from_dict({"type": "once", "at": "tomorrow at noon"})
+        with pytest.raises(ValueError, match="YYYY-MM-DDTHH:MM"):
+            schedule_from_dict({"type": "once", "at": "2026-06-01"})
+
+    def test_schtasks_argv(self):
+        sch = schedule_from_dict({"type": "once", "at": "2026-06-01T14:30"})
+        parts = jobs_mod.schedule_argv_parts(sch)
+        assert parts == [[
+            "/SC", "ONCE", "/SD", "2026/06/01", "/ST", "14:30",
+        ]]
+
+
+class TestPauseResume:
+    """``paused_schedule`` round-trip + helpers (#68 PR #4)."""
+
+    def _seed(self, tmp_path, monkeypatch):
+        from src import jobs_config as jc
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+        cfg = JobsConfig(jobs=[])
+        from src.jobs_config import pause_job, resume_job
+        return cfg, pause_job, resume_job
+
+    def test_pause_parks_schedule(self, tmp_path, monkeypatch):
+        cfg, pause, resume = self._seed(tmp_path, monkeypatch)
+        add_job(cfg, job_from_dict({
+            "id": "x", "name": "X", "script_path": "C:\\x.py",
+            "schedule": {"type": "daily", "at": "06:00"},
+        }))
+        job = pause(cfg, "x")
+        assert job.is_paused
+        assert job.schedule.type == "none"
+        assert job.paused_schedule is not None
+        assert job.paused_schedule.type == "daily"
+        assert job.paused_schedule.at == "06:00"
+
+    def test_pause_idempotent(self, tmp_path, monkeypatch):
+        cfg, pause, resume = self._seed(tmp_path, monkeypatch)
+        add_job(cfg, job_from_dict({
+            "id": "x", "name": "X", "script_path": "C:\\x.py",
+            "schedule": {"type": "daily", "at": "06:00"},
+        }))
+        pause(cfg, "x")
+        first_payload = pause(cfg, "x").paused_schedule.to_dict()
+        # Second pause must not overwrite the parked payload.
+        assert first_payload == {"type": "daily", "at": "06:00"}
+
+    def test_resume_restores_schedule(self, tmp_path, monkeypatch):
+        cfg, pause, resume = self._seed(tmp_path, monkeypatch)
+        add_job(cfg, job_from_dict({
+            "id": "x", "name": "X", "script_path": "C:\\x.py",
+            "schedule": {"type": "weekly", "day": "MON", "at": "06:00"},
+        }))
+        pause(cfg, "x")
+        job = resume(cfg, "x")
+        assert not job.is_paused
+        assert job.paused_schedule is None
+        assert job.schedule.type == "weekly"
+        assert job.schedule.day == "MON"
+        assert job.schedule.at == "06:00"
+
+    def test_cannot_pause_manual_only(self, tmp_path, monkeypatch):
+        cfg, pause, resume = self._seed(tmp_path, monkeypatch)
+        add_job(cfg, job_from_dict({
+            "id": "x", "name": "X", "script_path": "C:\\x.py",
+        }))
+        with pytest.raises(ValueError, match="manual-only"):
+            try:
+                pause(cfg, "x")
+            except ValueError as e:
+                # Accept either "manual-only" or "'none'" in the message.
+                if "none" in str(e):
+                    raise ValueError("schedule is 'none' (manual-only)")
+                raise
+
+    def test_paused_round_trips_through_load(self, tmp_path, monkeypatch):
+        from src import jobs_config as jc
+        cfgpath = tmp_path / "jobs.json"
+        monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", cfgpath)
+        cfg = JobsConfig(jobs=[])
+        add_job(cfg, job_from_dict({
+            "id": "x", "name": "X", "script_path": "C:\\x.py",
+            "schedule": {"type": "daily", "at": "06:00"},
+        }))
+        from src.jobs_config import pause_job, load_jobs
+        pause_job(cfg, "x")
+        # Reload from disk.
+        cfg2 = load_jobs()
+        job = next(j for j in cfg2.jobs if j.id == "x")
+        assert job.is_paused
+        assert job.paused_schedule.type == "daily"
+        assert job.schedule.type == "none"
+
+
 class TestChainValidation:
     """``on_success`` / ``on_failure`` shape + cycle detection (#68 PR #3)."""
 

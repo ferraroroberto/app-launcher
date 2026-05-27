@@ -164,7 +164,12 @@
             <option value="daily">Daily at HH:MM</option>
             <option value="daily_times">Daily at multiple times</option>
             <option value="weekly">Weekly</option>
+            <option value="once">Once (specific date + time)</option>
           </select>
+        </label>
+        <label class="stacked" id="jobScheduleOnceRow" hidden>
+          <span>At (date + time, fires once)</span>
+          <input id="jobScheduleOnceAt" type="datetime-local" class="input-native">
         </label>
         <label class="stacked" id="jobScheduleEveryRow" hidden>
           <span>Every</span>
