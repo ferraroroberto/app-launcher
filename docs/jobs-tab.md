@@ -319,6 +319,16 @@ Once a job is saved, dry-run lets you verify it without committing to a full-eff
 
 Both modes **bypass cooldown and the mutex queue** — a dry run is an explicit verification action, so pressing 🧪 should never be answered with "cooled down" or "queued". Dry-run records (`dry_run_success` / `dry_run_failed`, and any record stamped `dry_run`) are **excluded from the cooldown anchor** so a verification never resets a job's cooldown window. The history list marks dry runs with a `🧪 dry` chip.
 
+## Confirm-on-fire (issue #69)
+
+A job can carry an optional `confirm: true` flag (the **⚠️ Require confirmation before running** checkbox in the editor). When set, a manual fire must be explicit:
+
+- `POST /api/jobs/<id>/run` returns `403 {"detail": "confirmation required"}` unless the request carries `?confirmed=1`. This keeps the gate honest against a direct curl or a stray Stream Deck press — a Stream Deck button targeting a `confirm` job has to bake `?confirmed=1` in deliberately.
+- The UI's run-now path (`▶` and the run-now dialog's Run button) shows a confirm prompt and then sends `?confirmed=1`.
+- A dry-run **`"check"`** is **exempt** (it has no side effects); a dry-run **`"execute"`** is **not** (it spawns the child), so it is gated like any other real fire.
+
+The flag round-trips through `POST` / `PUT` and is omitted from the stored row when false (like the other optional fields).
+
 ## API surface
 
 | Route | Auth | Purpose |

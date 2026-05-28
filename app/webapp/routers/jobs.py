@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _truthy(value: Optional[str]) -> bool:
+    """Interpret a query-string flag as a boolean (``1``/``true``/``yes``)."""
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _decorate_job(job: Job) -> Dict[str, Any]:
     """API shape for one job — base fields plus runtime decoration.
 
@@ -179,6 +184,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "mutex_group": body.get("mutex_group"),
                 "on_success": body.get("on_success"),
                 "on_failure": body.get("on_failure"),
+                "confirm": body.get("confirm"),
             }
         )
     except ValueError as exc:
@@ -230,6 +236,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["on_success"] = body["on_success"]
     if "on_failure" in body:
         patch["on_failure"] = body["on_failure"]
+    if "confirm" in body:
+        patch["confirm"] = body["confirm"]
 
     # Save-time pre-flight (issue #69) on the *effective* post-edit job.
     # Pre-flight only inspects script_path + args, so synthesize a
@@ -433,6 +441,16 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="dry_run must be 'execute' or 'check'"
         )
+
+    # Confirm-on-fire gate (issue #69). A job flagged ``confirm`` must
+    # carry ``?confirmed=1`` to actually execute — this keeps the gate
+    # honest against a direct curl / Stream Deck hit, not just the UI.
+    # A dry-run "check" has no side effects, so it is exempt.
+    if job.confirm and dry_mode != "check" and not _truthy(
+        request.query_params.get("confirmed")
+    ):
+        raise HTTPException(status_code=403, detail="confirmation required")
+
     if dry_mode == "check":
         return await _dry_run_check(job, raw_params)
 

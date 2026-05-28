@@ -841,8 +841,10 @@ html, body {
 .dialog-actions { justify-content: flex-end; gap: 8px; }
 .big-btn.warn { background: var(--warn); color: #181818; }
 
-/* Dry-run toggle in the run-now dialog (issue #69). */
-.job-run-dryrow {
+/* Dry-run toggle in the run-now dialog + confirm-on-fire toggle in the
+   job editor (issue #69) — same compact checkbox-row treatment. */
+.job-run-dryrow,
+.job-confirm-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;

@@ -1148,3 +1148,95 @@ class TestDryRun:
         )
         assert resp.status_code == 200
         assert resp.json()["dry_run"] is True
+
+
+# ========================================================= confirm-on-fire (#69)
+
+
+class TestConfirmOnFire:
+    """``confirm`` flag gates manual fires (issue #69 PR #3)."""
+
+    def _seed_confirm_job(self, client):
+        return client.post(
+            "/api/jobs",
+            json={
+                "name": "Destructive",
+                "script_path": _stub_path("danger.bat"),
+                "confirm": True,
+            },
+        ).json()["job"]
+
+    def test_create_round_trips_confirm(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_confirm_job(client)
+        assert job["confirm"] is True
+
+    def test_confirm_round_trips_through_put(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        r = client.put("/api/jobs/" + created["id"], json={"confirm": True})
+        assert r.status_code == 200
+        assert r.json()["job"]["confirm"] is True
+        # Clearing it drops the key (omitted when False).
+        r = client.put("/api/jobs/" + created["id"], json={"confirm": False})
+        assert r.status_code == 200
+        assert "confirm" not in r.json()["job"]
+
+    def test_unconfirmed_fire_is_403(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_confirm_job(client)
+        resp = client.post("/api/jobs/" + job["id"] + "/run")
+        assert resp.status_code == 403
+        assert resp.json()["detail"] == "confirmation required"
+        assert not mocked_jobs_side_effects["spawn_run_job_detached"].called
+
+    def test_confirmed_fire_runs(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_confirm_job(client)
+        resp = client.post("/api/jobs/" + job["id"] + "/run?confirmed=1")
+        assert resp.status_code == 200, resp.text
+        assert mocked_jobs_side_effects["spawn_run_job_detached"].called
+
+    def test_dry_check_is_exempt_from_confirm(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_confirm_job(client)
+        # A check has no side effects → no confirmation needed.
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run", json={"dry_run": "check"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True
+
+    def test_dry_execute_still_needs_confirm(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = self._seed_confirm_job(client)
+        # 'execute' actually spawns → gated like a normal fire.
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run", json={"dry_run": "execute"}
+        )
+        assert resp.status_code == 403
+        resp = client.post(
+            "/api/jobs/" + job["id"] + "/run?confirmed=1",
+            json={"dry_run": "execute"},
+        )
+        assert resp.status_code == 200
+
+    def test_unflagged_job_needs_no_confirmation(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.post("/api/jobs/" + created["id"] + "/run")
+        assert resp.status_code == 200
