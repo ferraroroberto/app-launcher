@@ -409,6 +409,14 @@ class Job:
     # so a fat-fingered tap or stray Stream Deck press can't execute a
     # destructive job by accident (issue #69).
     confirm: bool = False
+    # When True, the job's scheduled Task Scheduler entry runs under
+    # ``python.exe`` (a real console window in the logged-on session)
+    # instead of the silent ``pythonw.exe``, and the executor tees the
+    # child's output to that console as well as ``output.log``. Opt-in:
+    # for a job the user wants to *watch* run on the PC (e.g. the weekly
+    # fleet codebase-audit) while still capturing output for remote
+    # run-history. See ``src.jobs.task_run_command`` and the executor tee.
+    visible: bool = False
     # When non-None, ``schedule`` is the placeholder ``Schedule(type="none")``
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
@@ -439,6 +447,8 @@ class Job:
             payload["on_failure"] = list(self.on_failure)
         if self.confirm:
             payload["confirm"] = True
+        if self.visible:
+            payload["visible"] = True
         if self.paused_schedule is not None:
             payload["paused_schedule"] = self.paused_schedule.to_dict()
         return payload
@@ -563,6 +573,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
+        visible=bool(raw.get("visible", False)),
         paused_schedule=(
             schedule_from_dict(raw["paused_schedule"])
             if raw.get("paused_schedule") is not None
@@ -769,6 +780,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.mutex_group = _validate_mutex_group(fields["mutex_group"])
     if "confirm" in fields:
         job.confirm = bool(fields["confirm"])
+    if "visible" in fields:
+        job.visible = bool(fields["visible"])
     # Snapshot the chain edges so we can revert atomically on cycle.
     prev_success, prev_failure = job.on_success, job.on_failure
     if "on_success" in fields:

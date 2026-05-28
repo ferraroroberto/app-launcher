@@ -114,17 +114,33 @@ def _pythonw_path() -> str:
     return "pythonw.exe"
 
 
+def _python_path() -> str:
+    """The launcher's own venv ``python.exe`` (console subsystem), PATH fallback.
+
+    Used by ``visible`` jobs so the scheduled task fires under a
+    console-subsystem interpreter — a window appears in the logged-on
+    session — instead of the windowless ``pythonw.exe``.
+    """
+    candidate = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    if candidate.is_file():
+        return str(candidate)
+    return "python.exe"
+
+
 def _launcher_py() -> str:
     return str(PROJECT_ROOT / "launcher.py")
 
 
-def task_run_command(job_id: str) -> str:
+def task_run_command(job_id: str, *, visible: bool = False) -> str:
     """The /TR string Task Scheduler stores for ``job_id``.
 
     Quoted so paths-with-spaces survive Task Scheduler's tokenisation
-    when it splits the command into argv to run.
+    when it splits the command into argv to run. A ``visible`` job runs
+    under ``python.exe`` (console window in the logged-on session); every
+    other job stays on the silent ``pythonw.exe``.
     """
-    return f'"{_pythonw_path()}" "{_launcher_py()}" run-job {job_id}'
+    interpreter = _python_path() if visible else _pythonw_path()
+    return f'"{interpreter}" "{_launcher_py()}" run-job {job_id}'
 
 
 def spawn_run_job_detached(
@@ -318,7 +334,7 @@ def sync_schtasks(
             f"names={names!r} parts={parts!r}"
         )
         return []
-    tr = task_run_command(job.id)
+    tr = task_run_command(job.id, visible=job.visible)
     created: List[str] = []
     for name, schedule_part in zip(names, parts):
         argv = [

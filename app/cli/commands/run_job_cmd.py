@@ -129,6 +129,30 @@ def build_invocation(
     raise ValueError(f"unsupported script_path suffix: {suffix!r}")
 
 
+def _tee_pipe_to_file_and_console(pipe: Any, fh: Any) -> None:
+    """Stream a child's output ``pipe`` to both ``fh`` and this process's console.
+
+    Used for ``visible`` jobs: ``output.log`` (``fh``) is the remote
+    run-history record, and the launcher's own console is what the user
+    watches on the PC. A scheduled visible job runs under ``python.exe``
+    (see ``src.jobs.task_run_command``) so ``sys.stdout.buffer`` is a real
+    console; a pythonw / detached run has no console, so the console half
+    is silently dropped while the file half always works. Blocks until the
+    child closes the pipe (EOF at child exit); the caller then ``wait()``s.
+    """
+    console = getattr(sys.stdout, "buffer", None)
+    for chunk in iter(lambda: pipe.read(4096), b""):
+        fh.write(chunk)
+        fh.flush()
+        if console is not None:
+            try:
+                console.write(chunk)
+                console.flush()
+            except (OSError, ValueError):
+                # Broken / closed console — stop teeing, keep filling the log.
+                console = None
+
+
 class _ResourceSampler:
     """Background thread tracking peak RSS + accumulated CPU for a tree.
 
@@ -414,11 +438,17 @@ class RunJobCommand(BaseCommand):
         spawn_started = time.monotonic()
         try:
             with output_log.open("wb") as fh:
+                # A ``visible`` job streams the child's combined output to
+                # BOTH output.log (remote run-history) and the launcher's
+                # own console (the user watching on the PC). Non-visible
+                # jobs write straight to the file as before — no pipe, no
+                # reader, byte-for-byte unchanged behaviour.
+                stdout_target = subprocess.PIPE if job.visible else fh
                 proc = subprocess.Popen(
                     argv,
                     cwd=str(cwd),
                     env=env,
-                    stdout=fh,
+                    stdout=stdout_target,
                     stderr=subprocess.STDOUT,
                     stdin=subprocess.DEVNULL,
                 )
@@ -431,6 +461,8 @@ class RunJobCommand(BaseCommand):
                 except Exception as exc:  # noqa: BLE001 — sampling optional
                     logger.warning(f"⚠️  resource sampler init failed: {exc}")
                     sampler = None
+                if job.visible and proc.stdout is not None:
+                    _tee_pipe_to_file_and_console(proc.stdout, fh)
                 exit_code = proc.wait()
             status = "success" if exit_code == 0 else "failed"
         except OSError as exc:

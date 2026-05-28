@@ -76,6 +76,25 @@ A deliberately bounded set — no raw cron expressions, no Quartz-style strings.
 
 `daily_times` is the one schedule type that fans out into multiple Task Scheduler entries. It exists because "every 6 hours at 06:00 / 12:00 / 18:00 (skip midnight)" doesn't fit any single preset cleanly — `hourly /MO 6` would also fire at 00:00, and three separate jobs would clutter the Jobs tab. The fan-out is invisible to the user: one row in `jobs.json` → one row in the Jobs tab → three wake-ups per day under the hood.
 
+### Visible console (issue #91)
+
+A job can carry `"visible": true` (omitted / `false` is the default). It changes two things, both aimed at a job you want to *watch* run on the PC while still capturing output for remote run-history:
+
+```json
+{
+  "id": "codebase-audit-fleet",
+  "name": "Weekly Codebase Audit (fleet)",
+  "script_path": "E:\\automation\\claude-config\\audit-fleet.bat",
+  "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
+  "visible": true
+}
+```
+
+- **Interpreter.** The scheduled task's `/TR` runs under `python.exe` (console subsystem) instead of the default silent `pythonw.exe`, so a console window appears when the task fires in the logged-on session. `src.jobs.task_run_command(job_id, visible=…)` picks the interpreter; `src.jobs._python_path()` resolves the launcher venv's `python.exe` with a PATH fallback that mirrors `_pythonw_path()`.
+- **Output tee.** The executor spawns the child with `stdout=PIPE` and streams its combined output to **both** `output.log` (the remote run-history record, unchanged) and the launcher's own console (`sys.stdout.buffer`, guarded). A pythonw / detached fire has no console, so the console half is silently dropped while the file half always works. A non-visible job keeps the original direct-to-file spawn — no pipe, no reader, byte-for-byte unchanged.
+
+`visible` round-trips through `POST`/`PUT` like `confirm` and is omitted from the stored row when false. It only affects **scheduled** fires meaningfully — a webapp/Stream-Deck fire spawns the executor detached with no console regardless, so the tee's console half no-ops there (the log half still works).
+
 ### Cooldown (issue #68)
 
 A job can declare a per-job `cooldown_seconds`: a debounce window that prevents rapid manual fires (phone double-tap, Stream Deck button mash) from spawning overlapping runs of the same script.
@@ -237,7 +256,7 @@ The `/TR` (task run) command stored in Task Scheduler is quoted so paths contain
 "E:\automation\app-launcher\.venv\Scripts\pythonw.exe" "E:\automation\app-launcher\launcher.py" run-job <job_id>
 ```
 
-Scheduled runs use `pythonw.exe` (silent — no console window appears on schedule fire). The repo's own `.venv` is preferred; a missing `.venv` falls back to `pythonw.exe` on PATH.
+Scheduled runs use `pythonw.exe` (silent — no console window appears on schedule fire). The repo's own `.venv` is preferred; a missing `.venv` falls back to `pythonw.exe` on PATH. A job with `"visible": true` (see "Visible console") instead runs under `python.exe` so a window appears on fire.
 
 To inspect what's actually scheduled:
 
