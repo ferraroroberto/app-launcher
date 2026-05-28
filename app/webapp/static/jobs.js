@@ -157,6 +157,20 @@ function renderJobRow(job) {
   }
 
   if (state.editMode) {
+    // Dry-run check (issue #69) — "would this even start?" without
+    // spawning the target. Authoring/test control, so edit-mode only.
+    const dryBtn = document.createElement('button');
+    dryBtn.type = 'button';
+    dryBtn.className = 'icon-btn';
+    dryBtn.textContent = '🧪';
+    dryBtn.title = 'Dry-run check ' + job.name + ' (resolve only, no spawn)';
+    dryBtn.setAttribute('aria-label', 'Dry-run check');
+    dryBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      runJobNow(job, { dryRun: 'check', skipDialog: true });
+    });
+    actions.appendChild(dryBtn);
+
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'icon-btn';
@@ -201,6 +215,7 @@ function statusIcon(status) {
   if (status === 'failed') return '❌';
   if (status === 'skipped') return '⏭';
   if (status === 'queued') return '🪢';
+  if (status === 'dry_run_success' || status === 'dry_run_failed') return '🧪';
   return '•';
 }
 
@@ -271,7 +286,7 @@ function sparkClass(status) {
   if (status === 'failed') return 'down';
   if (status === 'running' || status === 'pending') return 'live';
   if (status === 'queued') return 'live';
-  if (status === 'skipped') return 'unknown';
+  // skipped + dry-run records are neutral — they aren't real outcomes.
   return 'unknown';
 }
 
@@ -398,6 +413,7 @@ function redrawRunsList(jobId, runs) {
     meta.textContent = (r.status || '?') +
       (ago ? ' · ' + ago + ' ago' : '') +
       ' · ' + (r.trigger || '?') + exitText +
+      (r.dry_run ? ' · 🧪 dry' : '') +
       (paramsChip ? ' · ' + paramsChip : '');
     btn.appendChild(meta);
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
@@ -628,14 +644,28 @@ async function runJobNow(job, options) {
     openRunDialog(job, opts.prefill || null, opts.staleKeys || null);
     return;
   }
-  const body = opts.params ? { params: opts.params } : null;
+  // Body carries params (issue #67) and/or a dry_run mode (issue #69:
+  // "check" = resolve only, "execute" = spawn with JOB_DRY_RUN=1).
+  const body = {};
+  if (opts.params) body.params = opts.params;
+  if (opts.dryRun) body.dry_run = opts.dryRun;
+  const hasBody = Object.keys(body).length > 0;
   try {
     const res = await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', {
       method: 'POST',
-      headers: body ? { 'Content-Type': 'application/json' } : undefined,
-      body: body ? JSON.stringify(body) : undefined,
+      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+      body: hasBody ? JSON.stringify(body) : undefined,
     });
-    if (res && res.status === 'queued') {
+    if (res && res.dry_run) {
+      if (res.status === 'dry_run_failed') {
+        toast('🧪 Dry-run check failed for ' + job.name + ' — see history.', 'error');
+      } else if (res.status === 'dry_run_success') {
+        toast('🧪 Dry-run check passed for ' + job.name + '.', 'good');
+      } else {
+        toast('🧪 Dry-run started for ' + job.name + '.', 'good');
+        job.running = true;
+      }
+    } else if (res && res.status === 'queued') {
       const blocker = res.mutex_blocked_by ? ' (behind ' + res.mutex_blocked_by + ')' : '';
       toast('🪢 Queued ' + job.name + blocker + '.', 'good');
     } else {
@@ -866,6 +896,7 @@ function openRunDialog(job, prefill, staleKeys) {
     host.appendChild(renderRunDialogField(p, prefill));
   });
 
+  if (els.jobRunDialogDryRun) els.jobRunDialogDryRun.checked = false;
   if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
 }
 
@@ -949,9 +980,14 @@ async function submitRunDialog(ev) {
     return;
   }
   const job = runDialogJob;
+  const dry = !!(els.jobRunDialogDryRun && els.jobRunDialogDryRun.checked);
   if (els.jobRunDialog.close) els.jobRunDialog.close();
   runDialogJob = null;
-  await runJobNow(job, { params: values, skipDialog: true });
+  await runJobNow(job, {
+    params: values,
+    skipDialog: true,
+    dryRun: dry ? 'execute' : undefined,
+  });
 }
 
 async function removeJob(job) {

@@ -105,6 +105,7 @@ export const els = {
   jobRunDialogTitle: document.getElementById('jobRunDialogTitle'),
   jobRunDialogStaleNote: document.getElementById('jobRunDialogStaleNote'),
   jobRunDialogFields: document.getElementById('jobRunDialogFields'),
+  jobRunDialogDryRun: document.getElementById('jobRunDialogDryRun'),
   jobRunCancel: document.getElementById('jobRunCancel'),
 
   codingOptions: document.getElementById('codingOptions'),

@@ -238,6 +238,10 @@
         <h2 id="jobRunDialogTitle">Run job</h2>
         <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
         <div id="jobRunDialogFields"></div>
+        <label class="job-run-dryrow">
+          <input type="checkbox" id="jobRunDialogDryRun">
+          <span>🧪 Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
+        </label>
         <div class="row dialog-actions">
           <button type="button" id="jobRunCancel" class="ghost-btn">Cancel</button>
           <button type="submit" class="big-btn">▶ Run</button>

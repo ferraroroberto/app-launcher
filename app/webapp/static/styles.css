@@ -352,6 +352,28 @@ html, body {
 .app-item .health-dot.down { background: var(--danger); }
 .app-item .health-dot.stuck { background: var(--warn, #d6a043); }
 
+/* Jobs tab action bar (issue #69): stack the tile vertically and lay the
+   action buttons out as a horizontal strip across the bottom. The
+   default right-side vertical column got uncomfortably tall on a phone
+   once edit mode adds 🧪 / ✏️ / 🗑️ next to ▶ / ⏸. */
+.app-item.job-item {
+  flex-direction: column;
+  align-items: stretch;
+}
+.app-item.job-item .row-actions.session-actions {
+  flex-direction: row;
+  border-left: 0;
+  border-top: 1px solid #2a2f42;
+}
+.app-item.job-item .row-actions.session-actions .icon-btn {
+  flex: 1 1 0;
+  width: auto;
+}
+.app-item.job-item .row-actions.session-actions .icon-btn + .icon-btn {
+  border-top: 0;
+  border-left: 1px solid #2a2f42;
+}
+
 /* ---------- Jobs tab: two-line row layout (issue #66) ---------- */
 /* The row is two stacked lines: dot + name on top, then a compact
    chip bar (kind, schedule, duration, sparkline) underneath. We let
@@ -818,6 +840,21 @@ html, body {
 }
 .dialog-actions { justify-content: flex-end; gap: 8px; }
 .big-btn.warn { background: var(--warn); color: #181818; }
+
+/* Dry-run toggle in the run-now dialog (issue #69). */
+.job-run-dryrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.job-run-dryrow code {
+  background: var(--bg);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
 
 /* Save-time pre-flight problems (issue #69) — rendered inline in the job
  * dialog above the actions row. Errors block the save (red); warnings

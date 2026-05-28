@@ -310,6 +310,15 @@ Each `Problem` is `{level, field, message}` — `field` (`script_path` / `args`)
 
 **Deferred** (issue #69, not implemented): the schtasks `/TR` round-trip check and the schtasks id-collision query. Both would require shelling out to `schtasks.exe` from the request path; the `/TR` string carries only launcher-internal paths (never user input), so the value is low and the cost — forcing schtasks mocking into every create test — is high.
 
+## Dry-run (issue #69)
+
+Once a job is saved, dry-run lets you verify it without committing to a full-effect fire. `POST /api/jobs/<id>/run` accepts an optional `dry_run` field with two modes:
+
+- **`"check"`** (mode 2 — the 🧪 row button, edit-mode only): resolves the full invocation (`script_path` exists, venv walk-up, param composition) **without spawning the child**. Writes a synthetic record with `status: dry_run_success` (or `dry_run_failed` carrying the resolution error in `note`) and no `exit_code`. This is the "would this even start?" check; it deliberately bypasses the executor funnel because nothing is ever spawned.
+- **`"execute"`** (mode 1 — the **Dry-run** checkbox in the run-now dialog): spawns the child through the real executor but with `JOB_DRY_RUN=1` in its environment. Scripts that opt in (`if os.environ.get("JOB_DRY_RUN"): …`) suppress their side effects. The run record is stamped `dry_run: true` so history shows the distinction.
+
+Both modes **bypass cooldown and the mutex queue** — a dry run is an explicit verification action, so pressing 🧪 should never be answered with "cooled down" or "queued". Dry-run records (`dry_run_success` / `dry_run_failed`, and any record stamped `dry_run`) are **excluded from the cooldown anchor** so a verification never resets a job's cooldown window. The history list marks dry runs with a `🧪 dry` chip.
+
 ## API surface
 
 | Route | Auth | Purpose |
