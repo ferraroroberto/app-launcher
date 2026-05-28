@@ -185,6 +185,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "on_success": body.get("on_success"),
                 "on_failure": body.get("on_failure"),
                 "confirm": body.get("confirm"),
+                "visible": body.get("visible"),
             }
         )
     except ValueError as exc:
@@ -238,6 +239,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["on_failure"] = body["on_failure"]
     if "confirm" in body:
         patch["confirm"] = body["confirm"]
+    if "visible" in body:
+        patch["visible"] = body["visible"]
 
     # Save-time pre-flight (issue #69) on the *effective* post-edit job.
     # Pre-flight only inspects script_path + args, so synthesize a
