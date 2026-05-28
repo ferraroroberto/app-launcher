@@ -73,6 +73,25 @@ _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _MAX_DAILY_TIMES_VARIANTS = 24
 
 
+def resolve_venv_python(script_path: Path) -> Optional[Path]:
+    """Walk up from ``script_path.parent`` looking for ``.venv\\Scripts\\python.exe``.
+
+    Returns the resolved interpreter path, or ``None`` when no ancestor
+    directory contains a ``.venv``. The walk stops at the filesystem root.
+    Shared by the executor (``build_invocation``) and the save-time
+    pre-flight (``src.jobs_preflight``).
+    """
+    try:
+        cur = script_path.parent.resolve()
+    except OSError:
+        return None
+    for parent in (cur, *cur.parents):
+        candidate = parent / ".venv" / "Scripts" / "python.exe"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 # ----------------------------------------------------------- schtasks I/O
 
 

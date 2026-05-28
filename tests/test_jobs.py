@@ -18,8 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.cli.commands.run_job_cmd import build_invocation, resolve_venv_python
+from app.cli.commands.run_job_cmd import build_invocation
 from src import jobs as jobs_mod
+from src.jobs import resolve_venv_python
 from src.jobs_config import (
     Job,
     JobsConfig,

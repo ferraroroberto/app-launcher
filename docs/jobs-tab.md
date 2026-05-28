@@ -282,6 +282,34 @@ Every run produces a directory with two files:
 
 Plain files were a deliberate choice over a DB — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling.
 
+## Authoring safety — pre-flight on save (issue #69)
+
+Adding a job used to be a leap of faith: the first scheduled fire was when you found out the path was wrong or the venv didn't walk up. `src/jobs_preflight.py::preflight(job)` front-loads those checks at save time so the dialog can surface problems *before* the schedule starts ticking. It is a **pure function** (no subprocess, no globals) — both so it is trivially unit-testable and so a request handler never shells out to `schtasks.exe`.
+
+Two severities:
+
+- **error** — the job cannot run as configured; the save is **blocked** with HTTP 400.
+- **warning** — the job will run, but probably not the way the author expects; it **saves once acknowledged**.
+
+Checks performed:
+
+1. **`script_path` exists** → *error* if the file is missing (the single most common authoring mistake).
+2. **`.py` venv walk-up** → *warning* when no ancestor `.venv\Scripts\python.exe` is found; the executor will fall back to `sys.executable`. Mirrors the executor's own `resolve_venv_python` (now living in `src/jobs.py`) so the check matches runtime behaviour exactly.
+3. **`.bat` embedded `.venv` reference** → *warning* when the wrapper names a `.venv` interpreter / `activate` path that doesn't resolve (best-effort text scan).
+4. **`args` lex** → *error* when `shlex.split(args, posix=False)` raises (e.g. an unbalanced quote), rather than letting the executor mangle a value silently.
+
+### Two-phase flow (errors block, warnings confirm)
+
+`POST /api/jobs` and `PUT /api/jobs/<id>` both run pre-flight on the effective job:
+
+- **Error present** → `400 {"detail": {"reason": "preflight", "problems": [...]}}`. Nothing is persisted.
+- **Warnings only, not acknowledged** → `200 {"saved": false, "warnings": [...]}`. Nothing is persisted; the dialog stays open showing the warnings with a **Save anyway** button.
+- **Warnings acknowledged** (`"acknowledge_warnings": true` in the body) **or no problems** → the row is saved and the response is `{"job": ..., "saved": true, "warnings": [...]}` (the warnings are echoed back so the UI can still note them).
+
+Each `Problem` is `{level, field, message}` — `field` (`script_path` / `args`) lets the dialog place the message next to the offending input.
+
+**Deferred** (issue #69, not implemented): the schtasks `/TR` round-trip check and the schtasks id-collision query. Both would require shelling out to `schtasks.exe` from the request path; the `/TR` string carries only launcher-internal paths (never user input), so the value is low and the cost — forcing schtasks mocking into every create test — is high.
+
 ## API surface
 
 | Route | Auth | Purpose |

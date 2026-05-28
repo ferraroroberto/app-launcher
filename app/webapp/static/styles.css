@@ -817,6 +817,37 @@ html, body {
   word-break: break-all;
 }
 .dialog-actions { justify-content: flex-end; gap: 8px; }
+.big-btn.warn { background: var(--warn); color: #181818; }
+
+/* Save-time pre-flight problems (issue #69) — rendered inline in the job
+ * dialog above the actions row. Errors block the save (red); warnings
+ * save once acknowledged via "Save anyway" (amber). */
+.job-preflight-problems {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.job-preflight-problem {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.job-preflight-problem.error {
+  background: rgba(204, 51, 68, 0.12);
+  border: 1px solid var(--danger);
+}
+.job-preflight-problem.warning {
+  background: rgba(240, 161, 0, 0.12);
+  border: 1px solid var(--warn);
+}
+.job-preflight-tag { flex: 0 0 auto; }
 
 /* Job parameters editor (issue #67) — embedded inside #jobDialog. The
  * Run-now dialog uses the same stacked label pattern as the rest of

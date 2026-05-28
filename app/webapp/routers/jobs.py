@@ -15,13 +15,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
 from src.jobs_argv import compose_argv
+from src.jobs_preflight import has_errors, preflight
 from src.jobs_config import (
     Job,
     Schedule,
@@ -88,6 +91,37 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     return payload
 
 
+def _preflight_gate(job: Job, *, acknowledged: bool) -> List[Dict[str, str]]:
+    """Run save-time pre-flight (issue #69) and enforce the two-phase flow.
+
+    * Any **error** raises ``HTTPException`` 400 carrying a structured
+      ``problems`` list — the save is blocked regardless of acknowledgement.
+    * **Warnings** without ``acknowledged`` raise ``_PreflightWarnings`` so
+      the route can short-circuit with a ``saved: false`` body, keeping the
+      dialog open with a "Save anyway" button.
+    * **Warnings** *with* ``acknowledged`` (or no problems) return the
+      warning dicts so the route can surface them in the success response.
+    """
+    problems = preflight(job)
+    dicts = [p.to_dict() for p in problems]
+    if has_errors(problems):
+        raise HTTPException(
+            status_code=400,
+            detail={"reason": "preflight", "problems": dicts},
+        )
+    if dicts and not acknowledged:
+        raise _PreflightWarnings(dicts)
+    return dicts
+
+
+class _PreflightWarnings(Exception):
+    """Internal signal: warnings-only pre-flight that wasn't acknowledged."""
+
+    def __init__(self, warnings: List[Dict[str, str]]) -> None:
+        super().__init__("preflight warnings")
+        self.warnings = warnings
+
+
 
 
 # ----------------------------------------------------------- CRUD
@@ -149,6 +183,16 @@ async def create_job(request: Request) -> Dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    # Save-time pre-flight (issue #69). Errors 400 with a structured
+    # problems list; warnings short-circuit to a saved:false body unless
+    # the caller already acknowledged them.
+    acknowledged = bool(body.get("acknowledge_warnings"))
+    try:
+        warnings = _preflight_gate(job, acknowledged=acknowledged)
+    except _PreflightWarnings as warn:
+        return {"saved": False, "warnings": warn.warnings}
+
     try:
         add_job(cfg, job)
     except ValueError as exc:
@@ -157,7 +201,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
     # Re-sync the Task Scheduler entries for this job. Best-effort —
     # schtasks failures log a warning but don't undo the registry write.
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job)}
+    return {"job": _decorate_job(job), "saved": True, "warnings": warnings}
 
 
 @router.put("/api/jobs/{job_id}")
@@ -186,6 +230,34 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["on_success"] = body["on_success"]
     if "on_failure" in body:
         patch["on_failure"] = body["on_failure"]
+
+    # Save-time pre-flight (issue #69) on the *effective* post-edit job.
+    # Pre-flight only inspects script_path + args, so synthesize a
+    # candidate from the existing job overlaid with this patch and gate on
+    # it before update_job persists. Suffix is validated here (mirroring
+    # update_job) so a .txt edit fails with its own clear message rather
+    # than a misleading "script not found" from pre-flight.
+    eff_script = (
+        str(patch["script_path"]).strip()
+        if patch.get("script_path")
+        else existing.script_path
+    )
+    if "args" in patch:
+        eff_args = str(patch["args"] or "")
+    else:
+        eff_args = existing.args
+    if Path(eff_script).suffix.lower() not in (".py", ".bat"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"script_path must end .py or .bat, got {eff_script!r}",
+        )
+    candidate = replace(existing, script_path=eff_script, args=eff_args)
+    acknowledged = bool(body.get("acknowledge_warnings"))
+    try:
+        warnings = _preflight_gate(candidate, acknowledged=acknowledged)
+    except _PreflightWarnings as warn:
+        return {"saved": False, "warnings": warn.warnings}
+
     try:
         job = update_job(cfg, job_id, **patch)
     except ValueError as exc:
@@ -193,7 +265,7 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job)}
+    return {"job": _decorate_job(job), "saved": True, "warnings": warnings}
 
 
 @router.delete("/api/jobs/{job_id}")
