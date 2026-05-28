@@ -1023,6 +1023,7 @@ function openJobDialog(job) {
 
   setParamsEditor(job ? job.params : []);
 
+  clearPreflightProblems();
   if (els.jobDialog.showModal) els.jobDialog.showModal();
 }
 
@@ -1074,18 +1075,44 @@ function buildSchedule() {
   return { type: 'none' };
 }
 
-async function submitJobDialog(ev) {
-  ev.preventDefault();
-  let schedule;
-  try { schedule = buildSchedule(); } catch (exc) {
-    toast('Schedule: ' + exc.message, 'error');
-    return;
+// Pre-flight problems (issue #69). The last-submitted payload is held so
+// "Save anyway" can re-POST it with acknowledge_warnings:true once the
+// user has seen the warnings.
+let lastJobPayload = null;
+
+function clearPreflightProblems() {
+  if (els.jobPreflightProblems) {
+    els.jobPreflightProblems.innerHTML = '';
+    els.jobPreflightProblems.hidden = true;
   }
-  let params;
-  try { params = readParamsEditor(); } catch (exc) {
-    toast(String(exc.message || exc), 'error');
-    return;
+  if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
+  if (els.jobSaveBtn) {
+    els.jobSaveBtn.textContent = dialogTargetId ? 'Save and verify' : 'Add and verify';
   }
+}
+
+function renderPreflightProblems(problems) {
+  const host = els.jobPreflightProblems;
+  if (!host) return;
+  host.innerHTML = '';
+  (problems || []).forEach(function (p) {
+    const li = document.createElement('li');
+    li.className = 'job-preflight-problem ' + (p.level === 'error' ? 'error' : 'warning');
+    const tag = document.createElement('span');
+    tag.className = 'job-preflight-tag';
+    tag.textContent = p.level === 'error' ? '❌' : '⚠️';
+    li.appendChild(tag);
+    const text = document.createElement('span');
+    text.textContent = (p.field ? p.field + ': ' : '') + p.message;
+    li.appendChild(text);
+    host.appendChild(li);
+  });
+  host.hidden = (problems || []).length === 0;
+}
+
+function buildJobPayload() {
+  const schedule = buildSchedule();      // may throw
+  const params = readParamsEditor();     // may throw
   const payload = {
     name: els.jobNameInput.value.trim(),
     script_path: els.jobScriptInput.value.trim(),
@@ -1100,8 +1127,7 @@ async function submitJobDialog(ev) {
   if (cdRaw) {
     const cd = parseInt(cdRaw, 10);
     if (!Number.isFinite(cd) || cd < 0) {
-      toast('Cooldown must be a non-negative integer', 'error');
-      return;
+      throw new Error('Cooldown must be a non-negative integer');
     }
     if (cd > 0) payload.cooldown_seconds = cd;
   }
@@ -1115,6 +1141,10 @@ async function submitJobDialog(ev) {
   // user un-checking the last entry actually clears it server-side.
   payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
   payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
+  return payload;
+}
+
+async function postJobPayload(payload) {
   try {
     const opts = {
       method: dialogTargetId ? 'PUT' : 'POST',
@@ -1124,13 +1154,52 @@ async function submitJobDialog(ev) {
     const path = dialogTargetId
       ? '/api/jobs/' + encodeURIComponent(dialogTargetId)
       : '/api/jobs';
-    await jsonApi(path, opts);
+    const res = await jsonApi(path, opts);
+    // Warnings-only, not acknowledged: the server didn't save. Keep the
+    // dialog open, show the warnings, and offer "Save anyway".
+    if (res && res.saved === false) {
+      renderPreflightProblems(res.warnings || []);
+      if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = false;
+      return;
+    }
     if (els.jobDialog.close) els.jobDialog.close();
-    toast(dialogTargetId ? 'Job updated.' : 'Job added.', 'good');
+    clearPreflightProblems();
+    const warned = res && Array.isArray(res.warnings) && res.warnings.length;
+    toast(
+      (dialogTargetId ? 'Job updated.' : 'Job added.') +
+        (warned ? ' (saved with warnings)' : ''),
+      'good',
+    );
     await fetchJobs();
   } catch (exc) {
+    // Pre-flight errors come back as a 400 with a structured problems
+    // list — render them inline (red) and keep the dialog open.
+    const detail = exc && exc.body && exc.body.detail;
+    if (exc && exc.status === 400 && detail && detail.reason === 'preflight') {
+      renderPreflightProblems(detail.problems || []);
+      if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
+      return;
+    }
     toast('Save failed: ' + (exc.message || exc), 'error');
   }
+}
+
+async function submitJobDialog(ev) {
+  ev.preventDefault();
+  let payload;
+  try { payload = buildJobPayload(); } catch (exc) {
+    toast(String(exc.message || exc), 'error');
+    return;
+  }
+  clearPreflightProblems();
+  lastJobPayload = payload;
+  await postJobPayload(payload);
+}
+
+async function saveJobAnyway() {
+  if (!lastJobPayload) return;
+  const payload = Object.assign({}, lastJobPayload, { acknowledge_warnings: true });
+  await postJobPayload(payload);
 }
 
 // ------------------------------------------------------ in-place row patch
@@ -1208,6 +1277,11 @@ export function wireJobs() {
   }
   if (els.jobForm) {
     els.jobForm.addEventListener('submit', submitJobDialog);
+  }
+  if (els.jobSaveAnyway) {
+    els.jobSaveAnyway.addEventListener('click', function () {
+      saveJobAnyway().catch(function () {});
+    });
   }
   if (els.jobCancel) {
     els.jobCancel.addEventListener('click', function () {

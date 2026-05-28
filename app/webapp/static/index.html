@@ -224,9 +224,11 @@
           <ol id="jobParamsList" class="job-params-list"></ol>
           <button type="button" id="jobParamsAdd" class="ghost-btn">➕ Add parameter</button>
         </fieldset>
+        <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
         <div class="row dialog-actions">
           <button type="button" id="jobCancel" class="ghost-btn">Cancel</button>
-          <button type="submit" class="big-btn">Save</button>
+          <button type="button" id="jobSaveAnyway" class="big-btn warn" hidden>Save anyway</button>
+          <button type="submit" id="jobSaveBtn" class="big-btn">Add and verify</button>
         </div>
       </form>
     </dialog>

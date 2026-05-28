@@ -7,16 +7,65 @@ level so no real `schtasks.exe` runs and no subprocess is left behind.
 from __future__ import annotations
 
 import json
+import shutil
+import tempfile
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
+# Save-time pre-flight (issue #69) rejects a non-existent script_path with
+# a 400 before the row is ever persisted, so the happy-path tests need
+# *real* files on disk. A single session temp dir holds throwaway stubs;
+# _stub_path(name) lazily creates one and returns its absolute path.
+_STUB_DIR: Path | None = None
 
-def _seed_one_job(client, name="Demo", script="C:\\stub\\demo.bat",
+
+def _stub_path(name: str = "demo.bat") -> str:
+    """A real stub script under a venv-complete temp dir.
+
+    The dir carries a ``.venv\\Scripts\\python.exe`` marker so a ``.py``
+    stub resolves its interpreter cleanly (no venv-fallback warning) —
+    the happy-path tests want a clean save. The dedicated venv-warning
+    test uses :func:`_stub_path_no_venv` instead.
+    """
+    global _STUB_DIR
+    if _STUB_DIR is None:
+        _STUB_DIR = Path(tempfile.mkdtemp(prefix="al-jobs-stub-"))
+        venv_py = _STUB_DIR / ".venv" / "Scripts" / "python.exe"
+        venv_py.parent.mkdir(parents=True, exist_ok=True)
+        venv_py.write_text("", encoding="utf-8")
+    p = _STUB_DIR / name
+    if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
+        body = "@echo off\n" if name.lower().endswith(".bat") else "print('ok')\n"
+        p.write_text(body, encoding="utf-8")
+    return str(p)
+
+
+def _stub_path_no_venv(name: str = "novenv.py") -> str:
+    """A real ``.py`` stub in a fresh temp dir with NO ``.venv`` ancestor.
+
+    Used to exercise the pre-flight venv-fallback warning (issue #69).
+    """
+    root = Path(tempfile.mkdtemp(prefix="al-jobs-novenv-"))
+    p = root / name
+    p.write_text("print('ok')\n", encoding="utf-8")
+    return str(p)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_stub_dir():
+    yield
+    if _STUB_DIR is not None and _STUB_DIR.is_dir():
+        shutil.rmtree(_STUB_DIR, ignore_errors=True)
+
+
+def _seed_one_job(client, name="Demo", script=None,
                   schedule=None, args=""):
     payload = {
         "name": name,
-        "script_path": script,
+        "script_path": script or _stub_path("demo.bat"),
         "args": args,
         "schedule": schedule or {"type": "none"},
     }
@@ -113,7 +162,7 @@ class TestCreateJob:
             json={
                 "id": first.json()["job"]["id"],
                 "name": "Demo",
-                "script_path": "C:\\stub\\demo.bat",
+                "script_path": _stub_path("demo.bat"),
             },
         )
         assert second.status_code == 409
@@ -212,7 +261,7 @@ class TestParamsCRUD:
             "/api/jobs",
             json={
                 "name": "Scrape",
-                "script_path": "C:\\stub\\scrape.py",
+                "script_path": _stub_path("scrape.py"),
                 "params": [
                     {"name": "since", "kind": "date", "flag": "--since"},
                     {"name": "verbose", "kind": "bool", "flag": "--verbose",
@@ -255,7 +304,7 @@ class TestRunJobWithParams:
             "/api/jobs",
             json={
                 "name": "Scrape",
-                "script_path": "C:\\stub\\scrape.py",
+                "script_path": _stub_path("scrape.py"),
                 "params": [
                     {"name": "since", "kind": "date", "flag": "--since"},
                     {"name": "tier", "kind": "enum",
@@ -371,7 +420,7 @@ class TestCooldown:
             "/api/jobs",
             json={
                 "name": "Cool",
-                "script_path": "C:\\stub\\x.py",
+                "script_path": _stub_path("x.py"),
                 "cooldown_seconds": 30,
             },
         ).json()["job"]
@@ -410,7 +459,7 @@ class TestCooldown:
             "/api/jobs",
             json={
                 "name": "Cool",
-                "script_path": "C:\\stub\\x.py",
+                "script_path": _stub_path("x.py"),
                 "cooldown_seconds": 30,
             },
         ).json()["job"]
@@ -518,7 +567,7 @@ class TestOnceSchedule:
         client, _, _ = webapp_client
         resp = client.post("/api/jobs", json={
             "name": "Once",
-            "script_path": "C:\\stub\\once.py",
+            "script_path": _stub_path("once.py"),
             "schedule": {"type": "once", "at": "2026-06-01T14:30"},
         })
         assert resp.status_code == 200, resp.text
@@ -568,11 +617,11 @@ class TestMutexGroups:
         self._isolate_queue(overrides, monkeypatch)
         # Two jobs sharing one mutex group.
         a = client.post("/api/jobs", json={
-            "name": "A", "script_path": "C:\\stub\\a.py",
+            "name": "A", "script_path": _stub_path("a.py"),
             "mutex_group": "chrome",
         }).json()["job"]
         b = client.post("/api/jobs", json={
-            "name": "B", "script_path": "C:\\stub\\b.py",
+            "name": "B", "script_path": _stub_path("b.py"),
             "mutex_group": "chrome",
         }).json()["job"]
         # A is "running" right now.
@@ -606,11 +655,11 @@ class TestMutexGroups:
         client, _, overrides = webapp_client
         self._isolate_queue(overrides, monkeypatch)
         a = client.post("/api/jobs", json={
-            "name": "A", "script_path": "C:\\stub\\a.py",
+            "name": "A", "script_path": _stub_path("a.py"),
             "mutex_group": "db",
         }).json()["job"]
         b = client.post("/api/jobs", json={
-            "name": "B", "script_path": "C:\\stub\\b.py",
+            "name": "B", "script_path": _stub_path("b.py"),
             "mutex_group": "db",
         }).json()["job"]
         # A's most recent run is completed → not a collision.
@@ -764,7 +813,7 @@ class TestBulkCacheNextRun:
         for i in range(5):
             client.post(
                 "/api/jobs",
-                json={"name": f"demo-{i}", "script_path": f"C:\\stub\\d{i}.bat"},
+                json={"name": f"demo-{i}", "script_path": _stub_path(f"d{i}.bat")},
             )
         # Drop any schtasks calls made by create (those go through
         # sync_schtasks which is mocked).
@@ -884,3 +933,106 @@ class TestKillRun:
         assert record["exit_code"] == -9
         assert record["killed"] is True
         assert record.get("finished_at")
+
+
+# ============================================================ pre-flight (#69)
+
+
+class TestPreflightOnSave:
+    """Save-time pre-flight gate on POST / PUT (issue #69 PR #1)."""
+
+    def test_post_nonexistent_script_blocks_with_problems(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={"name": "Ghost", "script_path": "C:\\does\\not\\exist.py"},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["reason"] == "preflight"
+        problems = detail["problems"]
+        assert any(
+            p["level"] == "error" and p["field"] == "script_path"
+            for p in problems
+        )
+        # Nothing was persisted — the row never reached the registry.
+        assert client.get("/api/jobs").json()["jobs"] == []
+
+    def test_post_py_without_venv_warns_and_holds_save(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={"name": "NoVenv", "script_path": _stub_path_no_venv("nv.py")},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # Warnings-only, not acknowledged → not saved yet.
+        assert body["saved"] is False
+        assert any(
+            p["level"] == "warning" and p["field"] == "script_path"
+            for p in body["warnings"]
+        )
+        assert client.get("/api/jobs").json()["jobs"] == []
+
+    def test_post_with_acknowledge_saves_with_warnings(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "NoVenv",
+                "script_path": _stub_path_no_venv("nv2.py"),
+                "acknowledge_warnings": True,
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["saved"] is True
+        assert body["job"]["name"] == "NoVenv"
+        assert body["warnings"]  # the warning is echoed back
+        assert len(client.get("/api/jobs").json()["jobs"]) == 1
+
+    def test_post_bad_args_quote_blocks(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "BadArgs",
+                "script_path": _stub_path("demo.bat"),
+                "args": 'foo "unbalanced',
+            },
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["reason"] == "preflight"
+        assert any(p["field"] == "args" for p in detail["problems"])
+
+    def test_clean_save_reports_no_warnings(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = _seed_one_job(client, name="Clean")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["saved"] is True
+        assert body["warnings"] == []
+
+    def test_put_to_nonexistent_script_blocks(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={"script_path": "C:\\nope\\gone.py"},
+        )
+        assert resp.status_code == 400
+        detail = resp.json()["detail"]
+        assert detail["reason"] == "preflight"

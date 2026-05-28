@@ -53,6 +53,7 @@ from src.jobs import (
     new_run_id,
     prune_runs,
     read_output_tail,
+    resolve_venv_python,
     runs_dir,
     write_run_json,
 )
@@ -72,23 +73,6 @@ logger = logging.getLogger(__name__)
 
 # How often the resource sampler thread walks the process tree.
 _RESOURCE_SAMPLE_INTERVAL_SECONDS = 1.0
-
-
-def resolve_venv_python(script_path: Path) -> Optional[Path]:
-    """Walk up from ``script_path.parent`` looking for ``.venv\\Scripts\\python.exe``.
-
-    Returns the resolved interpreter path, or ``None`` when no ancestor
-    directory contains a ``.venv``. The walk stops at the filesystem root.
-    """
-    try:
-        cur = script_path.parent.resolve()
-    except OSError:
-        return None
-    for parent in (cur, *cur.parents):
-        candidate = parent / ".venv" / "Scripts" / "python.exe"
-        if candidate.is_file():
-            return candidate
-    return None
 
 
 def build_invocation(
