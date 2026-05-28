@@ -404,6 +404,11 @@ class Job:
     mutex_group: Optional[str] = None
     on_success: List[str] = field(default_factory=list)
     on_failure: List[str] = field(default_factory=list)
+    # When True, a manual fire must carry explicit confirmation
+    # (``?confirmed=1`` on the run route / a confirm dialog in the UI)
+    # so a fat-fingered tap or stray Stream Deck press can't execute a
+    # destructive job by accident (issue #69).
+    confirm: bool = False
     # When non-None, ``schedule`` is the placeholder ``Schedule(type="none")``
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
@@ -432,6 +437,8 @@ class Job:
             payload["on_success"] = list(self.on_success)
         if self.on_failure:
             payload["on_failure"] = list(self.on_failure)
+        if self.confirm:
+            payload["confirm"] = True
         if self.paused_schedule is not None:
             payload["paused_schedule"] = self.paused_schedule.to_dict()
         return payload
@@ -555,6 +562,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         mutex_group=_validate_mutex_group(raw.get("mutex_group")),
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
+        confirm=bool(raw.get("confirm", False)),
         paused_schedule=(
             schedule_from_dict(raw["paused_schedule"])
             if raw.get("paused_schedule") is not None
@@ -759,6 +767,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.cooldown_seconds = _validate_cooldown(fields["cooldown_seconds"])
     if "mutex_group" in fields:
         job.mutex_group = _validate_mutex_group(fields["mutex_group"])
+    if "confirm" in fields:
+        job.confirm = bool(fields["confirm"])
     # Snapshot the chain edges so we can revert atomically on cycle.
     prev_success, prev_failure = job.on_success, job.on_failure
     if "on_success" in fields:

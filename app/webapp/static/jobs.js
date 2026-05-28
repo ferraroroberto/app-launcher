@@ -650,12 +650,24 @@ async function runJobNow(job, options) {
   if (opts.params) body.params = opts.params;
   if (opts.dryRun) body.dry_run = opts.dryRun;
   const hasBody = Object.keys(body).length > 0;
+  // Confirm-on-fire (issue #69). A flagged job needs explicit
+  // confirmation before a real fire; a dry-run "check" is exempt
+  // (no side effects). The ?confirmed=1 keeps the server gate honest.
+  const isCheck = opts.dryRun === 'check';
+  const needConfirm = !!(job && job.confirm) && !isCheck;
+  if (needConfirm &&
+      !confirm('Run ' + job.name + '? This job requires confirmation before running.')) {
+    return;
+  }
   try {
-    const res = await jsonApi('/api/jobs/' + encodeURIComponent(job.id) + '/run', {
-      method: 'POST',
-      headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
-      body: hasBody ? JSON.stringify(body) : undefined,
-    });
+    const res = await jsonApi(
+      '/api/jobs/' + encodeURIComponent(job.id) + '/run' +
+        (needConfirm ? '?confirmed=1' : ''),
+      {
+        method: 'POST',
+        headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+        body: hasBody ? JSON.stringify(body) : undefined,
+      });
     if (res && res.dry_run) {
       if (res.status === 'dry_run_failed') {
         toast('🧪 Dry-run check failed for ' + job.name + ' — see history.', 'error');
@@ -1044,6 +1056,9 @@ function openJobDialog(job) {
   if (els.jobMutexGroupInput) {
     els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
   }
+  if (els.jobConfirmInput) {
+    els.jobConfirmInput.checked = !!(job && job.confirm);
+  }
   populateChainList(
     els.jobOnSuccessList,
     job ? (job.on_success || []) : [],
@@ -1177,6 +1192,8 @@ function buildJobPayload() {
   // user un-checking the last entry actually clears it server-side.
   payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
   payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
+  // Confirm-on-fire (issue #69). Always send so unchecking clears it.
+  payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.checked);
   return payload;
 }
 
