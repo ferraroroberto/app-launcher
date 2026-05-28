@@ -171,6 +171,30 @@ class TestScheduledSkip:
         )
         assert record["status"] == "success"
 
+    def test_dry_run_records_are_not_the_cooldown_anchor(
+        self, isolated_runs_dir, monkeypatch
+    ):
+        """A dry-run record sitting on top of an older real run must NOT
+        become the cooldown anchor — a verification fire shouldn't reset
+        the window (issue #69, mirrors the `skipped` rule)."""
+        now = datetime.now().replace(microsecond=0)
+        # Real run 90 s ago — outside a 60 s window.
+        _seed_run(
+            isolated_runs_dir, "demo", "20260101T000000",
+            started_at=(now - timedelta(seconds=90)).isoformat(timespec="seconds"),
+            status="success",
+        )
+        # Dry-run check 5 s ago — must be ignored by the anchor.
+        _seed_run(
+            isolated_runs_dir, "demo", "20260101T000090",
+            started_at=(now - timedelta(seconds=5)).isoformat(timespec="seconds"),
+            status="dry_run_success",
+        )
+        job = Job(id="demo", name="Demo", script_path="x.py",
+                  cooldown_seconds=60)
+        # Outside the window relative to the real run → allowed (None).
+        assert jobs_mod.cooldown_check(job, now=now) is None
+
     def test_manual_fire_does_not_skip_at_executor(
         self, isolated_runs_dir, tmp_path, monkeypatch
     ):

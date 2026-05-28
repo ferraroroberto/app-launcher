@@ -292,6 +292,15 @@ class RunJobCommand(BaseCommand):
                 "src.jobs_argv.compose_argv. Omit for parameter-less runs."
             ),
         )
+        p.add_argument(
+            "--dry-run",
+            action="store_true",
+            help=(
+                "Dry-run 'execute' mode (issue #69): spawn the target with "
+                "JOB_DRY_RUN=1 in its env so opted-in scripts suppress "
+                "side effects, and stamp dry_run:true on the run record."
+            ),
+        )
 
     def execute(self, args: argparse.Namespace) -> int:
         cfg = load_jobs()
@@ -369,6 +378,7 @@ class RunJobCommand(BaseCommand):
         else:
             run_dir = new_run_dir(job.id, new_run_id())
         started_at = datetime.now().isoformat(timespec="seconds")
+        dry_run = bool(getattr(args, "dry_run", False))
         run_meta: Dict[str, Any] = dict(
             run_id=run_dir.name,
             job_id=job.id,
@@ -383,6 +393,11 @@ class RunJobCommand(BaseCommand):
         # row can replay it and the meta line can show the values back.
         if values:
             run_meta["params"] = values
+        # Dry-run 'execute' mode (issue #69): the child still spawns, but
+        # JOB_DRY_RUN=1 lets an opted-in script no-op its side effects.
+        # The flag is stamped so history shows the 🧪 chip.
+        if dry_run:
+            run_meta["dry_run"] = True
         write_run_json(run_dir, **run_meta)
         logger.info(
             f"🚀 run-job {job.id} → {run_dir.name} (trigger={args.trigger})"
@@ -390,6 +405,8 @@ class RunJobCommand(BaseCommand):
 
         env = os.environ.copy()
         env.update(extra_env)
+        if dry_run:
+            env["JOB_DRY_RUN"] = "1"
         output_log = run_dir / "output.log"
         exit_code: int
         status: str

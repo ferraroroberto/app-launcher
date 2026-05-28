@@ -132,6 +132,7 @@ def spawn_run_job_detached(
     run_id: str,
     trigger: str = "manual",
     params: Optional[Dict[str, Any]] = None,
+    dry_run: bool = False,
 ) -> int:
     """Spawn ``launcher.py run-job <id> --run-id <rid> --trigger <t>`` detached.
 
@@ -144,6 +145,10 @@ def spawn_run_job_detached(
     ``--params <json>`` so the executor (which re-validates) sees an
     exact byte-for-byte copy. Schedule + Stream-Deck callers omit the
     arg entirely.
+
+    ``dry_run`` (issue #69 'execute' mode) appends ``--dry-run`` so the
+    executor spawns the child with ``JOB_DRY_RUN=1`` and stamps the run
+    record. Mutex queue / chain callers never set it.
     """
     argv = [
         _pythonw_path(),
@@ -157,6 +162,8 @@ def spawn_run_job_detached(
     ]
     if params:
         argv.extend(["--params", json.dumps(params)])
+    if dry_run:
+        argv.append("--dry-run")
     creationflags = _CREATE_NO_WINDOW
     detached = getattr(subprocess, "DETACHED_PROCESS", 0)
     if detached:
@@ -805,7 +812,14 @@ def cooldown_check(
         return None
     anchor: Optional[Dict[str, Any]] = None
     for run in list_runs(job.id):
-        if run.get("status") == "skipped":
+        # skipped (cooldown no-ops) and dry-run records (issue #69) are
+        # not real fires — counting them as the anchor would let a dry
+        # verification reset the cooldown window.
+        if run.get("status") in (
+            "skipped",
+            "dry_run_success",
+            "dry_run_failed",
+        ):
             continue
         anchor = run
         break

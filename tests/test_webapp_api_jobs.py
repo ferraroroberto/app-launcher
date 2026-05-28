@@ -1036,3 +1036,115 @@ class TestPreflightOnSave:
         assert resp.status_code == 400
         detail = resp.json()["detail"]
         assert detail["reason"] == "preflight"
+
+
+# ============================================================ dry-run (#69)
+
+
+class TestDryRun:
+    """Dry-run modes on POST /api/jobs/<id>/run (issue #69 PR #2)."""
+
+    def test_check_writes_synthetic_record_without_spawning(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    ):
+        client, _, overrides = webapp_client
+        # A real script so build_invocation resolves cleanly.
+        created = _seed_one_job(
+            client, name="Demo", script=_stub_path("dry_ok.py")
+        ).json()["job"]
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/run",
+            json={"dry_run": "check"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["dry_run"] is True
+        assert body["status"] == "dry_run_success"
+        # No child was spawned for a check.
+        assert not mocked_jobs_side_effects["spawn_run_job_detached"].called
+        # The record is stamped dry_run + carries the synthetic status.
+        run_dir = overrides["tmp_jobs_runs_dir"] / created["id"] / body["run_id"]
+        record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert record["status"] == "dry_run_success"
+        assert record["dry_run"] is True
+        assert "exit_code" not in record  # null → not written
+
+    def test_check_on_missing_script_reports_failed(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, overrides = webapp_client
+        # Seed with a real script, then delete it so build_invocation fails.
+        path = _stub_path("vanishing.py")
+        created = _seed_one_job(client, name="Demo", script=path).json()["job"]
+        Path(path).unlink()
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/run",
+            json={"dry_run": "check"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["status"] == "dry_run_failed"
+
+    def test_execute_spawns_with_dry_flag(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(
+            client, name="Demo", script=_stub_path("dry_exec.py")
+        ).json()["job"]
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/run",
+            json={"dry_run": "execute"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["dry_run"] is True
+        spawn = mocked_jobs_side_effects["spawn_run_job_detached"]
+        assert spawn.called
+        # 5th positional arg is the dry_run flag.
+        assert spawn.call_args.args[4] is True
+
+    def test_invalid_dry_run_value_rejected(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.post(
+            "/api/jobs/" + created["id"] + "/run",
+            json={"dry_run": "bogus"},
+        )
+        assert resp.status_code == 400
+
+    def test_dry_check_bypasses_cooldown(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, overrides = webapp_client
+        created = client.post(
+            "/api/jobs",
+            json={
+                "name": "Cool",
+                "script_path": _stub_path("x.py"),
+                "cooldown_seconds": 30,
+            },
+        ).json()["job"]
+        # Anchor a real run 5 s ago — a normal fire would 429.
+        now = datetime.now().replace(microsecond=0)
+        run_dir = overrides["tmp_jobs_runs_dir"] / created["id"] / "20260101T000000"
+        run_dir.mkdir(parents=True, exist_ok=True)
+        (run_dir / "run.json").write_text(
+            json.dumps({
+                "run_id": "20260101T000000",
+                "job_id": created["id"],
+                "status": "success",
+                "started_at": (now - timedelta(seconds=5)).isoformat(
+                    timespec="seconds"
+                ),
+            }),
+            encoding="utf-8",
+        )
+        # A normal fire is cooled down...
+        assert client.post(f"/api/jobs/{created['id']}/run").status_code == 429
+        # ...but a dry-run check sails through.
+        resp = client.post(
+            f"/api/jobs/{created['id']}/run", json={"dry_run": "check"}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["dry_run"] is True

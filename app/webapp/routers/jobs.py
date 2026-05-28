@@ -309,7 +309,99 @@ async def resume(job_id: str) -> Dict[str, Any]:
     return {"job": _decorate_job(job)}
 
 
-# ----------------------------------------------------------- run
+# ----------------------------------------------------------- run / dry-run
+
+
+async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Dry-run mode 2: resolve the invocation without spawning the child.
+
+    Writes a synthetic ``dry_run_success`` / ``dry_run_failed`` record
+    (no ``exit_code``) so history shows "would this even start?" without
+    side effects. Deliberately bypasses the executor funnel — nothing is
+    ever spawned, so there is no child to track.
+    """
+    from app.cli.commands.run_job_cmd import build_invocation  # local: avoids cycle
+
+    run_dir = await asyncio.to_thread(
+        jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
+    )
+    stamped = datetime.now().isoformat(timespec="seconds")
+    meta: Dict[str, Any] = dict(
+        run_id=run_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger="manual",
+        script_path=job.script_path,
+        args=job.args,
+        started_at=stamped,
+        finished_at=stamped,
+        dry_run=True,
+    )
+    if raw_params:
+        meta["params"] = raw_params
+    try:
+        argv, _cwd, _env = await asyncio.to_thread(
+            build_invocation, job, raw_params
+        )
+        meta["status"] = "dry_run_success"
+        meta["note"] = "resolved: " + " ".join(argv)
+    except (OSError, ValueError) as exc:
+        meta["status"] = "dry_run_failed"
+        meta["note"] = str(exc)
+    jobs_mod.write_run_json(run_dir, **meta)
+    jobs_mod.invalidate_stats_cache(job.id)
+    logger.info(f"🧪 dry-run check {job.id}/{run_dir.name} → {meta['status']}")
+    return {
+        "run_id": run_dir.name,
+        "job_id": job.id,
+        "status": meta["status"],
+        "dry_run": True,
+    }
+
+
+async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]:
+    """Dry-run mode 1: spawn the child with ``JOB_DRY_RUN=1`` set.
+
+    Goes through the real executor (so opted-in scripts see the env var
+    and suppress side effects) but skips cooldown + mutex — it is an
+    explicit verification fire, not a scheduled/queued run.
+    """
+    run_dir = await asyncio.to_thread(
+        jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
+    )
+    started_at = datetime.now().isoformat(timespec="seconds")
+    base_meta: Dict[str, Any] = dict(
+        run_id=run_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger="manual",
+        script_path=job.script_path,
+        args=job.args,
+        started_at=started_at,
+        status="pending",
+        dry_run=True,
+    )
+    if raw_params:
+        base_meta["params"] = raw_params
+    jobs_mod.write_run_json(run_dir, **base_meta)
+    try:
+        await asyncio.to_thread(
+            jobs_mod.spawn_run_job_detached,
+            job.id,
+            run_dir.name,
+            "manual",
+            raw_params or None,
+            True,
+        )
+    except OSError as exc:
+        jobs_mod.write_run_json(
+            run_dir,
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+            exit_code=-1,
+            status="failed",
+        )
+        raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
+    return {"run_id": run_dir.name, "job_id": job.id, "dry_run": True}
 
 
 @router.post("/api/jobs/{job_id}/run")
@@ -330,10 +422,27 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(
             status_code=400, detail="params must be an object"
         )
+
+    # Dry-run modes (issue #69). "check" verifies the job would *start*
+    # (path/venv/param resolution) without spawning the child; "execute"
+    # spawns with JOB_DRY_RUN=1 so opted-in scripts suppress side effects.
+    # Both are explicit verification fires, so they bypass cooldown +
+    # mutex (pressing 🧪 should never be answered with "cooled down").
+    dry_mode = body.get("dry_run") if isinstance(body, dict) else None
+    if dry_mode not in (None, "execute", "check"):
+        raise HTTPException(
+            status_code=400, detail="dry_run must be 'execute' or 'check'"
+        )
+    if dry_mode == "check":
+        return await _dry_run_check(job, raw_params)
+
     try:
         compose_argv(job, raw_params)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+    if dry_mode == "execute":
+        return await _dry_run_execute(job, raw_params)
 
     # Cooldown admission gate. Runs before we pre-create the run dir so a
     # cooled-down mash-fire produces no on-disk record (the dir would
