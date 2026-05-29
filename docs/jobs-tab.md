@@ -370,6 +370,7 @@ The row carries five lightweight signals on top of the schedule chip and last-ru
 - **Success rate / 30 d** — appears in the meta line when there has been at least one completed run in the last 30 days (`72% / 30d`).
 - **⚠️ stuck marker** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The marker is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act.
 - **CPU / peak RSS** — surfaced on the selected run's output label inside the expanded panel (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
+- **Tap-to-copy log (issue #97)** — tapping the selected run's output pane copies the whole log to the clipboard (toast `📋 Copied log`), so an error trace is one tap away from pasting into a report / chat. A manual text selection inside the pane is left alone (auto-copy is suppressed while a selection exists), and the empty placeholder is a no-op.
 
 ### `run_stats` shape
 

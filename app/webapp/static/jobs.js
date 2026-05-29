@@ -356,6 +356,9 @@ function renderHistoryLi(job) {
   tail.className = 'jobs-output-tail';
   tail.dataset.role = 'output-tail';
   tail.textContent = '';
+  tail.title = 'Tap to copy log';
+  tail.setAttribute('aria-label', 'Tap to copy log');
+  tail.addEventListener('click', function () { copyOutputTail(tail); });
   body.appendChild(tail);
 
   li.appendChild(body);
@@ -489,6 +492,28 @@ function writeOutput(jobId, runId, text, status, extras) {
     tail.scrollTop = tail.scrollHeight;
   } else {
     tail.scrollTop = prevScrollTop;
+  }
+}
+
+// Tap-to-copy (issue #97). One tap on the run's output pane drops the whole
+// log on the clipboard so it can be pasted into an error report / chat. We
+// read textContent live, so the same handler always copies the currently
+// selected run. Guards: a non-empty manual selection inside the pane is left
+// alone (the user is copying a sub-range by hand), and the empty placeholder
+// is a no-op — there's nothing to copy.
+async function copyOutputTail(tail) {
+  const selection = window.getSelection && window.getSelection();
+  if (selection && String(selection).length &&
+      tail.contains(selection.anchorNode)) {
+    return;
+  }
+  const text = tail.textContent || '';
+  if (!text || text === '(no output)') return;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('📋 Copied log', 'good');
+  } catch (exc) {
+    toast('Clipboard unavailable — copy manually', 'error');
   }
 }
 

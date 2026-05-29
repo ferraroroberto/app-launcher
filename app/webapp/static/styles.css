@@ -614,6 +614,7 @@ html, body {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  cursor: pointer;
 }
 
 /* ---------- empty / toast ---------- */
