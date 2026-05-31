@@ -67,13 +67,14 @@ def test_bat_without_venv_reference_is_clean(tmp_path: Path):
     assert preflight(_job(str(bat))) == []
 
 
-def test_unbalanced_args_quote_is_error(tmp_path: Path):
-    # .bat so the venv check stays out of the way; bad quote on args.
+def test_unbalanced_args_quote_is_not_an_error(tmp_path: Path):
+    # The executor uses plain str.split() (whitespace), so an unbalanced quote
+    # is not a problem — it is kept literal. Pre-flight must not block the save.
     bat = tmp_path / "x.bat"
     bat.write_text("@echo off\r\n", encoding="utf-8")
     problems = preflight(_job(str(bat), args='ok "dangling'))
-    assert has_errors(problems)
-    assert any(p.field == "args" for p in problems)
+    assert not has_errors(problems)
+    assert not any(p.field == "args" for p in problems)
 
 
 def test_well_formed_quoted_args_pass(tmp_path: Path):

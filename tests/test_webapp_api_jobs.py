@@ -997,22 +997,24 @@ class TestPreflightOnSave:
         assert body["warnings"]  # the warning is echoed back
         assert len(client.get("/api/jobs").json()["jobs"]) == 1
 
-    def test_post_bad_args_quote_blocks(
+    def test_post_unbalanced_args_quote_saves(
         self, webapp_client, mocked_jobs_side_effects
     ):
+        # The executor uses plain str.split() (whitespace), so an unbalanced
+        # quote is not a parse error — the save must succeed (200), not 400.
         client, _, _ = webapp_client
         resp = client.post(
             "/api/jobs",
             json={
-                "name": "BadArgs",
+                "name": "UnbalancedArgs",
                 "script_path": _stub_path("demo.bat"),
                 "args": 'foo "unbalanced',
             },
         )
-        assert resp.status_code == 400
-        detail = resp.json()["detail"]
-        assert detail["reason"] == "preflight"
-        assert any(p["field"] == "args" for p in detail["problems"])
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["saved"] is True
+        assert not any(p["field"] == "args" for p in body.get("problems", []))
 
     def test_clean_save_reports_no_warnings(
         self, webapp_client, mocked_jobs_side_effects
