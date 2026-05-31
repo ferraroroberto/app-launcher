@@ -917,7 +917,7 @@ class TestKillRun:
 
         kill_spy = MagicMock(return_value=[4242, 4243])
         from app.webapp.routers import jobs as jobs_router
-        monkeypatch.setattr(jobs_router, "_kill_process_tree", kill_spy)
+        monkeypatch.setattr(jobs_router, "kill_process_tree", kill_spy)
 
         resp = client.post(
             "/api/jobs/" + created["id"] + "/runs/" + run_dir.name + "/kill"
@@ -925,7 +925,7 @@ class TestKillRun:
         assert resp.status_code == 200
         body = resp.json()
         assert body["signalled"] == [4242, 4243]
-        kill_spy.assert_called_once_with(4242)
+        kill_spy.assert_called_once_with(4242, 5.0)
 
         # The run record was finalised with the kill markers.
         record = jobs_mod.read_run(run_dir)
