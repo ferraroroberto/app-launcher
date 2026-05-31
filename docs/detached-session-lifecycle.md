@@ -39,7 +39,7 @@ The AttachConsole approach (#2 above) would buy a marginal UX win — the cmd.ex
 
 ## Code Changes
 
-- **app/webapp/static/app.js**: Conditionally render Stop button only for attached sessions.
+- **app/webapp/static/sessions.js**: Conditionally render Stop button only for attached sessions (see `renderSessions`, lines 101–112).
 - **src/session_host.py**: Simplify `RemoteSession.stop()` to always close the window (ignore `close_window` param).
 
 ## Validation Checklist
