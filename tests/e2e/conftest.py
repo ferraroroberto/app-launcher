@@ -43,7 +43,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WEBAPP_CONFIG = _REPO_ROOT / "config" / "webapp_config.json"
 _SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 _BASE_URL = "https://127.0.0.1:8445"
-_TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/app.js
+_TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/state.js:21
 
 # The loopback PTY session-host port. Default in webapp_config; the webapp
 # subprocess reads it from there, so autoboot keeps the session-host on this
