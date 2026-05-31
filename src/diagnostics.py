@@ -300,40 +300,47 @@ def list_app_listeners() -> List[PortOwner]:
     return [found[p] for p in sorted(found)]
 
 
-def kill_process_tree(pid: int) -> List[int]:
-    """Kill ``pid`` and every descendant; return the PIDs that were killed.
+def kill_process_tree(pid: int, grace_seconds: float = 3.0) -> List[int]:
+    """Kill ``pid`` and every descendant; return the PIDs that were signalled.
 
-    Sends ``terminate()`` to the whole tree, waits up to 3 s for a clean
-    exit, then ``kill()``s whatever is still alive. A missing process
-    counts as already-killed. Used by the per-instance Stop endpoint.
+    Sends ``terminate()`` to the whole tree, waits up to ``grace_seconds``
+    for a clean exit, then ``kill()``s whatever is still alive.  All
+    ``psutil`` exceptions are swallowed so callers can finalise their own
+    state regardless of how messy the process tree turned out to be.
+    A missing root process is treated as already-gone (returns ``[]``).
     """
     if psutil is None:
         return []
     try:
         root = psutil.Process(pid)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        return [pid]
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        return []
 
-    procs = [root]
+    procs: List = [root]
     try:
         procs.extend(root.children(recursive=True))
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         pass
 
+    signalled: List[int] = []
     for proc in procs:
         try:
             proc.terminate()
+            signalled.append(proc.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            pass
 
-    gone, alive = psutil.wait_procs(procs, timeout=3)
+    try:
+        _, alive = psutil.wait_procs(procs, timeout=grace_seconds)
+    except psutil.Error:
+        alive = procs
     for proc in alive:
         try:
             proc.kill()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            pass
 
-    return [p.pid for p in procs]
+    return signalled
 
 
 def kill_pids(pids: List[int]) -> tuple[List[int], List[str]]:

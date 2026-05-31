@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
+from src.diagnostics import kill_process_tree
 from src.jobs_argv import compose_argv
 from src.jobs_preflight import has_errors, preflight
 from src.jobs_config import (
@@ -563,44 +564,6 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
 # ----------------------------------------------------------- kill stuck run
 
 
-def _kill_process_tree(pid: int, grace_seconds: float = 5.0) -> List[int]:
-    """Terminate ``pid`` and its children; SIGKILL survivors after grace.
-
-    Returns the PIDs that were signalled (best-effort; missing process
-    is not an error). All ``psutil`` exceptions are swallowed so the
-    route can finalise the run record regardless of how messy the
-    process tree turned out to be.
-    """
-    import psutil  # local — keeps import out of cold start
-
-    signalled: List[int] = []
-    try:
-        parent = psutil.Process(pid)
-    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
-        return signalled
-    try:
-        children = parent.children(recursive=True)
-    except (psutil.NoSuchProcess, psutil.AccessDenied):
-        children = []
-    procs = [parent] + children
-    for p in procs:
-        try:
-            p.terminate()
-            signalled.append(p.pid)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-    try:
-        _, alive = psutil.wait_procs(procs, timeout=grace_seconds)
-    except psutil.Error:
-        alive = procs
-    for p in alive:
-        try:
-            p.kill()
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
-    return signalled
-
-
 @router.post("/api/jobs/{job_id}/runs/{run_id}/kill")
 async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     cfg = load_jobs()
@@ -620,7 +583,7 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     pid = record.get("pid")
     signalled: List[int] = []
     if isinstance(pid, int) and pid > 0:
-        signalled = await asyncio.to_thread(_kill_process_tree, pid)
+        signalled = await asyncio.to_thread(kill_process_tree, pid, 5.0)
     finished_at = datetime.now().isoformat(timespec="seconds")
     started_at = record.get("started_at")
     duration: Optional[float] = None
