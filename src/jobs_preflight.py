@@ -28,7 +28,6 @@ cost — forcing schtasks mocking into every create test — is high.
 from __future__ import annotations
 
 import re
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
@@ -134,20 +133,11 @@ def preflight(job: Job) -> List[Problem]:
                 )
                 break  # one warning is enough; don't spam per reference
 
-    # 4. args must lex cleanly. The executor splits args on whitespace
-    #    (shlex, posix=False on Windows); an unbalanced quote would mangle
-    #    a value silently. Surface the parse error instead.
-    if job.args:
-        try:
-            shlex.split(job.args, posix=False)
-        except ValueError as exc:
-            problems.append(
-                Problem(
-                    level="error",
-                    field="args",
-                    message=f"args do not parse: {exc}",
-                )
-            )
+    # 4. args splitting contract: the executor uses plain str.split() (whitespace
+    #    only, no shell quoting). Any non-empty string splits cleanly under that
+    #    contract, so there is nothing to validate here. Jobs that need arguments
+    #    containing spaces should embed them in the .bat / .py wrapper instead —
+    #    see build_invocation docstring in app/cli/commands/run_job_cmd.py.
 
     return problems
 
