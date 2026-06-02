@@ -210,6 +210,38 @@ async function deleteFile(f) {
   }
 }
 
+// Lower-case, spaces (and any other punctuation) → single dashes, trimmed —
+// the same shape the capture hook's slugs already have.
+function slugify(s) {
+  return String(s).trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function renameFile(f) {
+  const proposed = window.prompt(
+    'Rename this conversation log.\n\n' +
+    'The date keeps unchanged — type the new name (spaces become dashes, ' +
+    'lower-cased):',
+    ''
+  );
+  if (proposed === null) return;            // cancelled
+  const slug = slugify(proposed);
+  if (!slug) { toast('Name cannot be empty', 'error'); return; }
+  try {
+    const body = await jsonApi('/api/life-os/file/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: f.path, slug: slug }),
+    });
+    toast('✏️ Renamed to ' + (body.name || slug), 'good');
+    closeDoc();             // name (and path) changed — back to the list
+    await loadFileList();
+  } catch (exc) {
+    toast('Rename failed: ' + (exc.message || exc), 'error');
+  }
+}
+
 async function loadFile(f) {
   // The file view is a full-screen layer over the list; the ✕ close-doc
   // button in the bar appears only while it's open.
@@ -237,15 +269,25 @@ async function loadFile(f) {
   }
 }
 
+// A conversation log the toolbar may act on — any file under a skill's
+// conversations/ EXCEPT the .gitkeep placeholder that keeps the (otherwise
+// empty) dir tracked in git. Deleting/renaming that would untrack the dir,
+// so it stays off-limits (the server refuses it too — defence in depth).
+function isEditableLog(f) {
+  return !!f && f.category === 'conversations' &&
+    !/(^|\/)\.gitkeep$/.test(f.name || '');
+}
+
 // Reveal the full-screen file view (overlaying the list) + the ✕ button.
-// The 🗑️ shows only for a conversation log — disposable run transcripts,
-// deletable while you read them. Every other category keeps it hidden.
+// The 🗑️ delete and ✏️ rename show only for a conversation log — disposable
+// run transcripts, editable while you read them. Every other category (and
+// the .gitkeep placeholder) keeps both hidden.
 function openDoc(f) {
   els.lifeOsFileContent.hidden = false;
   if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = false;
-  if (els.lifeOsDocDelete) {
-    els.lifeOsDocDelete.hidden = !(f && f.category === 'conversations');
-  }
+  const editable = isEditableLog(f);
+  if (els.lifeOsDocDelete) els.lifeOsDocDelete.hidden = !editable;
+  if (els.lifeOsDocRename) els.lifeOsDocRename.hidden = !editable;
 }
 
 // Close the open file → back to the full-screen file list.
@@ -255,6 +297,7 @@ function closeDoc() {
   els.lifeOsFileContent.innerHTML = '';
   if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = true;
   if (els.lifeOsDocDelete) els.lifeOsDocDelete.hidden = true;
+  if (els.lifeOsDocRename) els.lifeOsDocRename.hidden = true;
   Array.prototype.forEach.call(
     els.lifeOsFileList.querySelectorAll('.lifeos-file-btn.active'),
     function (b) { b.classList.remove('active'); }
@@ -351,6 +394,12 @@ export function wireLifeOs() {
     // (deleteFile closeDoc()s, exactly like ✕).
     els.lifeOsDocDelete.addEventListener('click', function () {
       if (openDocFile) deleteFile(openDocFile);
+    });
+  }
+  if (els.lifeOsDocRename) {
+    // Rename the open conversation log → prompt, POST, back to the list.
+    els.lifeOsDocRename.addEventListener('click', function () {
+      if (openDocFile) renameFile(openDocFile);
     });
   }
   if (els.lifeOsBrowserRefresh) {

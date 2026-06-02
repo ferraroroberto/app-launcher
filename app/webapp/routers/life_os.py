@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -325,12 +326,98 @@ async def delete_file(request: Request) -> Dict[str, Any]:
     return {"deleted": rel}
 
 
-def _is_conversation_file(life_os_dir: Path, resolved: Path) -> bool:
-    """True only for a file under ``.claude/skills/<skill>/conversations/``.
+# Date-stamped prefix (YYYY-MM-DD-HHMM-) a rename preserves — only the slug
+# after it changes (mirrors claude-config's conversation_capture.py naming).
+_DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}-\d{4}-)")
 
-    The deletion guard — anything else (source files, other private dirs,
-    files outside any skill) is rejected.
+
+def _sanitize_slug(raw: str) -> str:
+    """Lower-case, collapse non-alphanumeric runs to single dashes, trim.
+
+    Server-side mirror of the client slugify — the real guard: even a
+    crafted ``slug`` can only ever become ``[a-z0-9-]`` chars, so it can't
+    carry a path separator or ``..`` into the new filename.
     """
+    return re.sub(r"[^a-z0-9]+", "-", str(raw).strip().lower()).strip("-")
+
+
+def _renamed(old_name: str, slug: str) -> str:
+    """New filename: keep the date prefix + extension, swap in ``slug``."""
+    stem = Path(old_name).stem
+    ext = Path(old_name).suffix
+    match = _DATE_PREFIX_RE.match(stem)
+    prefix = match.group(1) if match else ""
+    return f"{prefix}{slug}{ext}"
+
+
+def _rel_to_root(life_os_dir: Path, path: Path) -> str:
+    """Path relative to ``life_os_dir`` (the shape the file endpoints use)."""
+    try:
+        return str(path.resolve().relative_to(life_os_dir.resolve()))
+    except (OSError, ValueError):
+        return path.name
+
+
+@router.post("/api/life-os/file/rename")
+async def rename_file(request: Request) -> Dict[str, Any]:
+    """Rename a single **conversation log**, keeping its date prefix.
+
+    Body: ``{"path": <rel>, "slug": <new words>}`` (Tailscale + passkey,
+    path-jailed). Same narrow guard as delete — only files under a skill's
+    ``conversations/`` (never source files or the ``.gitkeep`` placeholder).
+    The new name keeps the existing ``YYYY-MM-DD-HHMM-`` prefix and
+    extension; only the slug after it is replaced (sanitised server-side, so
+    a crafted slug can't traverse out). Refuses to clobber an existing file.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await request.json() if (
+        request.headers.get("content-type", "").startswith("application/json")
+    ) else {}
+    body = body if isinstance(body, dict) else {}
+    rel = str(body.get("path") or "")
+    slug = _sanitize_slug(body.get("slug") or "")
+
+    resolved = resolve_within(Path(cfg.life_os_dir), rel)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="path escapes life_os_dir")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    if not _is_conversation_file(Path(cfg.life_os_dir), resolved):
+        raise HTTPException(
+            status_code=403, detail="only conversation logs can be renamed"
+        )
+    if not slug:
+        raise HTTPException(status_code=400, detail="name cannot be empty")
+
+    target = resolved.with_name(_renamed(resolved.name, slug))
+    new_rel = _rel_to_root(Path(cfg.life_os_dir), target)
+    if target == resolved:
+        # Same slug — a no-op; report success without touching disk.
+        return {"renamed": rel, "to": new_rel, "name": target.name}
+    if target.exists():
+        raise HTTPException(
+            status_code=409, detail="a file with that name already exists"
+        )
+    try:
+        resolved.rename(target)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit.audit_event(
+        "lifeos_rename", path=rel, to=new_rel, client=client_ip(request)
+    )
+    return {"renamed": rel, "to": new_rel, "name": target.name}
+
+
+def _is_conversation_file(life_os_dir: Path, resolved: Path) -> bool:
+    """True only for a real log under ``.claude/skills/<skill>/conversations/``.
+
+    The delete/rename guard — anything else (source files, other private
+    dirs, files outside any skill) is rejected. The ``.gitkeep`` placeholder
+    that keeps an empty ``conversations/`` tracked in git is explicitly
+    excluded: deleting or renaming it would untrack the directory.
+    """
+    if resolved.name == ".gitkeep":
+        return False
     try:
         skills_root = skills_dir_for(life_os_dir).resolve()
         parts = resolved.relative_to(skills_root).parts

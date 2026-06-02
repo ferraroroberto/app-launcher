@@ -51,6 +51,9 @@ def _make_life_os(root: Path) -> Path:
     (skill / "conversations" / "2026-06-01-1917-trial.md").write_text(
         "trial log", encoding="utf-8"
     )
+    # The placeholder that keeps an empty conversations/ tracked — must stay
+    # un-deletable / un-renameable.
+    (skill / "conversations" / ".gitkeep").write_text("", encoding="utf-8")
     identity = root / "identity"
     identity.mkdir()
     (identity / "who-i-am.md").write_text("# who\n\nme", encoding="utf-8")
@@ -245,3 +248,83 @@ class TestContentBrowser:
             "DELETE", "/api/life-os/file?path=../../../../etc/hosts"
         )
         assert resp.status_code == 400
+
+    def test_delete_gitkeep_refused(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = ".claude/skills/journal-daily/conversations/.gitkeep"
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 403
+        assert (life_os / rel).is_file()  # untouched
+
+    # --- rename: keep the date prefix, swap the slug --------------------
+    def test_rename_keeps_date_prefix(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["name"] == "2026-06-01-1917-use-personal-journal.md"
+        old = life_os / rel
+        new = old.with_name("2026-06-01-1917-use-personal-journal.md")
+        assert not old.exists()
+        assert new.is_file()
+
+    def test_rename_sanitizes_slug(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "  Foo / Bar!! "},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["name"] == "2026-06-01-1917-foo-bar.md"
+
+    def test_rename_empty_slug_refused(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename", json={"path": rel, "slug": "!!!"}
+        )
+        assert resp.status_code == 400
+        assert (life_os / rel).is_file()  # untouched
+
+    def test_rename_collision_refused(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        conv = (
+            life_os / ".claude" / "skills" / "journal-daily" / "conversations"
+        )
+        (conv / "2026-06-01-1917-taken.md").write_text("x", encoding="utf-8")
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename", json={"path": rel, "slug": "taken"}
+        )
+        assert resp.status_code == 409
+        assert (life_os / rel).is_file()  # original untouched
+
+    def test_rename_source_file_refused(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = ".claude/skills/journal-daily/SKILL.md"
+        resp = client.post(
+            "/api/life-os/file/rename", json={"path": rel, "slug": "evil"}
+        )
+        assert resp.status_code == 403
+        assert (life_os / rel).is_file()
+
+    def test_rename_gitkeep_refused(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = ".claude/skills/journal-daily/conversations/.gitkeep"
+        resp = client.post(
+            "/api/life-os/file/rename", json={"path": rel, "slug": "nope"}
+        )
+        assert resp.status_code == 403
+        assert (life_os / rel).is_file()
