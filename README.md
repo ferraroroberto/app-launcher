@@ -3,8 +3,9 @@
 Phone-first launcher hub. One tap on your phone → the home PC either:
 
 - runs a coding agent — **Claude Code**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab),
-- spawns any registered Streamlit / FastAPI launcher (**Apps** tab), or
-- fires a one-shot Python script or scheduled job (**Jobs** tab — same trigger surface the Stream Deck and Task Scheduler use).
+- spawns any registered Streamlit / FastAPI launcher (**Apps** tab),
+- fires a one-shot Python script or scheduled job (**Jobs** tab — same trigger surface the Stream Deck and Task Scheduler use), or
+- invokes a [`life-os`](https://github.com/ferraroroberto/life-os) productivity skill and browses what it knows about you (**Life OS** tab).
 
 Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](https://github.com/) — same FastAPI + SPA + PWA + Cloudflare-tunnel stack, but for kicking off other processes instead of doing work itself.
 
@@ -17,7 +18,7 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 ## What it does, in one screen
 
-The web UI has three tabs:
+The web UI has four tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
   - **Claude Code** (`claude`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
@@ -28,7 +29,9 @@ The web UI has three tabs:
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 - **Jobs** — one-shot Python scripts and scheduled jobs (`.py` or `.bat` targets). Every row reads as four fixed lines (name / type+schedule / duration percentiles + last-7 sparkline / last-run meta) so the same information lands in the same place across jobs. Tap the row to expand recent run history and the most recent output tail; CPU and peak RSS surface on the selected run's output label. Tap the output pane itself to copy the whole log to the clipboard (issue #97) — one tap to grab an error trace for pasting elsewhere. Stuck runs (running > `max(p95 × 3, 300 s)`) get a ⚠️ marker and a "Kill stuck run" button. Failures can fire a Pushover push — optionally with an LLM-generated root-cause line — via `notify_on_failure` in `config/webapp_config.json`. Schedules materialise as Windows Task Scheduler entries under the `\AppLauncher\` folder — same executor whether the run came from the phone, the Stream Deck, or the schedule. **Authoring safety** (issue #69): saving a job runs a pre-flight (missing script blocks the save; a `.py` with no `.venv` warns), edit mode adds a 🧪 dry-run check that resolves the invocation without spawning (plus a *Dry-run* checkbox in the run dialog that runs with `JOB_DRY_RUN=1`), and a job can be flagged to require confirmation before firing. A job can also be flagged **`visible`** (issue #91) so its scheduled fire runs in a real console window (under `python.exe` instead of the silent `pythonw.exe`) with the child's output teed to that console as well as `output.log` — for jobs you want to watch run on the PC while still capturing output for remote run-history. See [Jobs tab](docs/jobs-tab.md) for the full reference.
 
-The **Apps** tab is backed by a registry file (`config/apps.json`); the **Jobs** tab by `config/jobs.json`. The **Coding** tab needs no registry — it lists project directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows plus the **➕ Add job** button + 🧪 dry-run / ✏️ / 🗑️ controls on Jobs rows (▶ run and ⏸ pause stay in the normal view) — off by default, so the lists stay icon-free in normal use.
+- **Life OS** — one tile per skill in your [`life-os`](https://github.com/ferraroroberto/life-os) checkout (the directories under `<life_os_dir>/.claude/skills` whose name doesn't start with `_`, listed live and alphabetically — a new skill folder appears with no restart). Where the Coding tab answers *"run a coding agent in project X"*, this answers *"invoke productivity skill Y, ready for me."* Each tile shows just the skill name and carries two buttons: **🚀 Launch** fires a fresh Claude session cwd'd in `life-os` that auto-invokes the bare `/skill-name` (no free text is injected — you type your input into the live terminal once the skill reports ready), and **📖 Browse** opens a read-only viewer of what that skill knows about you (a full-screen file list; tapping a file opens it full-screen, with a **✕** in the bar to close it back to the list). Two switches sit in the **🌱 Life OS options** card (same UX as the Coding-options Detached toggle): **☁️ Detached** (identical semantics to the Coding tab) and **opus** (off → Sonnet default, on → Opus); every other Claude flag (effort, permission, verbose, debug) comes from the shared **⚙️ Coding options** card. Launched sessions appear in the Coding tab's running-sessions list, re-attachable and killable like any other. **The 📖 Browse viewer is gated harder than the rest of the app** — it surfaces the skill's private, gitignored knowledge (`context/`, `memory/`, `examples/`, `conversations/`, plus the shared `identity/`), so its content endpoints are **Tailscale-only, refused over the Cloudflare tunnel, and passkey-gated** (the same gate as the live terminal), and the file-content endpoint is path-jailed to `life_os_dir`. Read-only in v1. See [Interactive terminal](#interactive-terminal-from-the-phone) for the gate.
+
+The **Apps** tab is backed by a registry file (`config/apps.json`); the **Jobs** tab by `config/jobs.json`. The **Coding** and **Life OS** tabs need no registry — they list directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows plus the **➕ Add job** button + 🧪 dry-run / ✏️ / 🗑️ controls on Jobs rows (▶ run and ⏸ pause stay in the normal view) — off by default, so the lists stay icon-free in normal use.
 
 Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 
@@ -307,7 +310,7 @@ app-launcher/
 │   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
 │   ├── agents.py              # coding-agent registry (claude / agy / copilot) + PATH detection
 │   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
-│   ├── scanner.py             # bat classifier + project-directory discovery
+│   ├── scanner.py             # bat classifier + project-dir + life-os skill discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py        # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
 │   ├── session_client.py      # webapp → session-host loopback HTTP client
@@ -376,6 +379,7 @@ UI prefs + secrets, authored from the web UI:
 | `projects_dir` | parent of this repo | Master folder whose direct child directories the Coding tab lists as projects |
 | `projects_ignore` | `[]` | gitignore-style folder-name patterns (case-insensitive, `*`/`?` globs) hidden from the Coding tab |
 | `apps_scan_root` | parent of this repo | Where the Apps tab scans recursively for `*.bat` |
+| `life_os_dir` | sibling `../life-os` | Root of the `life-os` checkout the Life OS tab surfaces (skills at `<life_os_dir>/.claude/skills`, identity at `<life_os_dir>/identity`). When the skills dir doesn't exist the tab shows disabled, the same way the Coding tab handles a missing `projects_dir`. |
 | `claude_model` | `"opus"` | Default `--model` for `claude` (Claude Code button only) |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
 | `claude_verbose` | `true` | Pass `--verbose` |
@@ -447,7 +451,7 @@ curl http://127.0.0.1:8445/healthz
 
 ### Pytest API tests
 
-In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Coding-tab directory discovery (`src/scanner.py` + the ignore list), coding-agent detection + dual launch (`src/agents.py`, `/api/agents`), and `/api/claude-code/sessions` (list + stop). Session-host loopback client is mocked — no live tray, no port :8446 needed.
+In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Coding-tab directory discovery (`src/scanner.py` + the ignore list), coding-agent detection + dual launch (`src/agents.py`, `/api/agents`), `/api/claude-code/sessions` (list + stop), and the **Life OS** tab (`src/scanner.py:scan_skills`, `/api/life-os/*` — skill discovery, the bare `/skill-name` launch wiring + opus model override, the content browser's path-jail, and the Tailscale/Cloudflare gate on the content endpoints). Session-host loopback client is mocked — no live tray, no port :8446 needed.
 
 ```powershell
 & .\.venv\Scripts\python.exe -m pytest tests -m "not smoke" -v

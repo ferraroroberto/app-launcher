@@ -80,6 +80,11 @@ def _default_projects_dir() -> str:
     return str(PROJECT_ROOT.parent)
 
 
+def _default_life_os_dir() -> str:
+    """Default to the sibling ``life-os`` checkout next to this repo."""
+    return str(PROJECT_ROOT.parent / "life-os")
+
+
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
@@ -95,6 +100,12 @@ class WebappConfig:
     projects_ignore: list = field(default_factory=list)
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
+    # Root of the life-os checkout the Life OS tab surfaces (issue #102).
+    # Skills live at `<life_os_dir>/.claude/skills`, identity at
+    # `<life_os_dir>/identity`. When the skills dir doesn't exist the tab
+    # shows disabled, the same way the Coding tab handles a missing
+    # `projects_dir`.
+    life_os_dir: str = field(default_factory=_default_life_os_dir)
     # Persisted Claude Code launch flag defaults.
     claude_model: str = DEFAULT_CLAUDE_MODEL
     claude_effort: str = DEFAULT_CLAUDE_EFFORT
@@ -178,6 +189,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         projects_dir=str(raw.get("projects_dir") or _default_projects_dir()),
         projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
         apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
+        life_os_dir=str(raw.get("life_os_dir") or _default_life_os_dir()),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
         claude_verbose=bool(raw.get("claude_verbose", True)),
@@ -226,6 +238,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
         "apps_scan_root": cfg.apps_scan_root,
+        "life_os_dir": cfg.life_os_dir,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,
         "claude_verbose": cfg.claude_verbose,
@@ -277,15 +290,26 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-def build_claude_flags(cfg: WebappConfig) -> str:
-    """Compose the `claude` CLI flags from the persisted defaults."""
+def build_claude_flags(
+    cfg: WebappConfig, model_override: Optional[str] = None
+) -> str:
+    """Compose the `claude` CLI flags from the persisted defaults.
+
+    ``model_override`` forces a specific ``--model`` regardless of the
+    persisted ``claude_model`` — used by the Life OS tab (issue #102),
+    whose ``opus`` toggle picks ``opus``/``sonnet`` per launch while the
+    rest of the flags (effort, permission, verbose, debug) still come
+    from the shared Coding options. Other callers pass nothing and keep
+    the persisted model.
+    """
     parts: list[str] = list(ALWAYS_ON_CLAUDE_FLAGS)
     if cfg.claude_permission_mode == "skip":
         parts.append("--dangerously-skip-permissions")
     else:
         parts.extend(["--permission-mode", "auto"])
-    if cfg.claude_model in VALID_CLAUDE_MODELS:
-        parts.extend(["--model", cfg.claude_model])
+    model = model_override if model_override is not None else cfg.claude_model
+    if model in VALID_CLAUDE_MODELS:
+        parts.extend(["--model", model])
     if cfg.claude_effort in VALID_CLAUDE_EFFORTS and cfg.claude_effort != "off":
         parts.extend(["--effort", cfg.claude_effort])
     if cfg.claude_verbose:

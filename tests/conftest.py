@@ -112,6 +112,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # module-level references inside each router that talks to them).
     from app.webapp import server as server_mod
     from app.webapp.routers import apps as apps_router
+    from app.webapp.routers import life_os as life_os_router
     from app.webapp.routers import sessions as sessions_router
 
     # Mock the session-host loopback client. Every route that talks to
@@ -130,6 +131,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     session_mock.SessionHostError = real_session_client.SessionHostError
     monkeypatch.setattr(apps_router, "session_client", session_mock)
     monkeypatch.setattr(sessions_router, "session_client", session_mock)
+    monkeypatch.setattr(life_os_router, "session_client", session_mock)
 
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. After the split
@@ -140,6 +142,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(apps_router, "audit", audit_mock)
     monkeypatch.setattr(sessions_router, "audit", audit_mock)
     monkeypatch.setattr(webauthn_router, "audit", audit_mock)
+    monkeypatch.setattr(life_os_router, "audit", audit_mock)
 
     # WebAuthnGate doesn't touch disk until configured (rp_id + origin set)
     # so default tests are safe. We still stub it for the few endpoints that

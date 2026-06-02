@@ -138,6 +138,142 @@ def scan_project_dirs(
     return results
 
 
+# ------------------------------------------------------------- life-os skills
+
+# A skill's slash-command / folder name must be a safe slug — it is
+# interpolated into the launch command line (`claude … /<name>`), so any
+# value that isn't a bare kebab token is rejected outright rather than
+# quoted. Directory names are inherently filesystem-safe; this also vets
+# the SKILL.md frontmatter `name` before it can reach a shell.
+_SKILL_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$", re.IGNORECASE)
+
+# Skill folders whose name starts with these are scaffolding, never real
+# skills (`_template`, `_recap`); plus the usual VCS / cache noise.
+_SKILLS_SKIP_PREFIX = "_"
+
+
+@dataclass(frozen=True)
+class Skill:
+    """One life-os skill the Life OS tab can launch and browse.
+
+    ``id`` is the on-disk folder name — the stable key threaded through
+    the API path (``/api/life-os/skills/<id>/…``). ``command`` is the
+    slash-command base used at launch (``/journal-daily``); it is the
+    frontmatter ``name`` when that is a valid slug, else the folder name,
+    and is always validated against :data:`_SKILL_SLUG_RE`. ``name`` is
+    the display label; ``description`` the one-paragraph blurb.
+    """
+
+    id: str
+    name: str
+    command: str
+    description: str
+    skill_dir: Path
+
+
+def _read_frontmatter(skill_md: Path) -> dict:
+    """Parse the leading ``---`` YAML frontmatter block of a SKILL.md.
+
+    Returns ``{}`` for a missing file, no frontmatter, or unparseable
+    YAML — the skill still lists, just with folder-name fallbacks.
+    """
+    try:
+        text = skill_md.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return {}
+    if not text.lstrip().startswith("---"):
+        return {}
+    # Strip a leading blank line / BOM, then split on the fence markers.
+    body = text.lstrip()
+    parts = body.split("---", 2)
+    if len(parts) < 3:
+        return {}
+    try:
+        data = yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError as exc:
+        logger.debug(f"SKILL.md frontmatter parse failed for {skill_md}: {exc}")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _first_paragraph(path: Path) -> str:
+    """First non-empty, non-heading line of a markdown file, or ``""``."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return stripped
+    return ""
+
+
+def skills_dir_for(life_os_dir: Path) -> Path:
+    """The skills root inside a life-os checkout (``.claude/skills``)."""
+    return life_os_dir / ".claude" / "skills"
+
+
+def scan_skills(life_os_dir: Path) -> List[Skill]:
+    """List the life-os skills under ``<life_os_dir>/.claude/skills``.
+
+    Modelled on :func:`scan_project_dirs`: every direct child directory
+    whose name does **not** start with ``_`` (scaffolding) and isn't VCS
+    noise becomes a :class:`Skill`. ``SKILL.md`` frontmatter supplies the
+    slash-command ``name`` and the ``description``; both fall back
+    gracefully (folder name, then ``description.md`` first paragraph).
+    Results are sorted alphabetically by display name. A skill whose
+    folder name and frontmatter name are both invalid slugs is dropped —
+    it could not be launched safely anyway.
+    """
+    skills_root = skills_dir_for(life_os_dir)
+    if not skills_root.is_dir():
+        logger.warning(f"⚠️ life-os skills dir does not exist: {skills_root}")
+        return []
+
+    results: List[Skill] = []
+    for child in skills_root.iterdir():
+        try:
+            if not child.is_dir():
+                continue
+        except OSError:  # broken junction / permission error
+            continue
+        folder = child.name
+        if folder.startswith(_SKILLS_SKIP_PREFIX):
+            continue
+        if folder in PROJECT_SCAN_SKIP_DIRS:
+            continue
+
+        fm = _read_frontmatter(child / "SKILL.md")
+        fm_name = str(fm.get("name") or "").strip()
+        # The slash-command: prefer a valid frontmatter name, else the
+        # folder name. If neither is a safe slug, skip the skill.
+        command = fm_name if _SKILL_SLUG_RE.match(fm_name) else ""
+        if not command and _SKILL_SLUG_RE.match(folder):
+            command = folder
+        if not command:
+            logger.warning(
+                f"⚠️ skipping life-os skill with unsafe name: {folder!r}"
+            )
+            continue
+
+        description = str(fm.get("description") or "").strip()
+        if not description:
+            description = _first_paragraph(child / "description.md")
+
+        results.append(
+            Skill(
+                id=folder,
+                name=fm_name or folder,
+                command=command,
+                description=description,
+                skill_dir=child,
+            )
+        )
+    results.sort(key=lambda s: s.name.lower())
+    return results
+
+
 # ----------------------------------------------------------- github repo
 
 

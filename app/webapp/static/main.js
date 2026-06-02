@@ -12,6 +12,7 @@ import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js
 import { fetchSessions, wireSessions } from './sessions.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
+import { fetchSkills, wireLifeOs } from './life-os.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
 
@@ -44,9 +45,11 @@ function wireSettings() {
       projects_dir: els.projectsDir.value.trim(),
       projects_ignore: ignore,
       apps_scan_root: els.appsScanRoot.value.trim(),
+      life_os_dir: els.lifeOsDir.value.trim(),
     };
     await patchConfig(patch);
     await fetchApps();
+    await fetchSkills();
     toast('Settings saved.', 'good');
   });
 }
@@ -98,6 +101,7 @@ async function boot() {
   }
   await fetchAgents();
   await fetchApps();
+  await fetchSkills();
   await fetchSessions();
   await fetchListeners();
   await fetchRunningApps();
@@ -143,6 +147,7 @@ wireClaudeOptions();
 wireSessions();
 wireApps();
 wireJobs();
+wireLifeOs();
 wireTerminal();
 wireWebauthn();
 wireSettings();

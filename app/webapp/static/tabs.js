@@ -11,9 +11,11 @@ export function setTab(tab) {
   els.tabClaude.classList.toggle('active', tab === 'claude');
   els.tabApps.classList.toggle('active', tab === 'apps');
   if (els.tabJobs) els.tabJobs.classList.toggle('active', tab === 'jobs');
+  if (els.tabLifeOS) els.tabLifeOS.classList.toggle('active', tab === 'lifeos');
   els.paneClaude.hidden = tab !== 'claude';
   els.paneApps.hidden = tab !== 'apps';
   if (els.paneJobs) els.paneJobs.hidden = tab !== 'jobs';
+  if (els.paneLifeOS) els.paneLifeOS.hidden = tab !== 'lifeos';
 }
 
 export function wireTabs() {
@@ -21,5 +23,8 @@ export function wireTabs() {
   els.tabApps.addEventListener('click', function () { setTab('apps'); });
   if (els.tabJobs) {
     els.tabJobs.addEventListener('click', function () { setTab('jobs'); });
+  }
+  if (els.tabLifeOS) {
+    els.tabLifeOS.addEventListener('click', function () { setTab('lifeos'); });
   }
 }

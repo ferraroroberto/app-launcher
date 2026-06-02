@@ -18,9 +18,10 @@
 <body>
   <main class="app">
     <nav class="tabs">
-      <button id="tabClaude" type="button" class="tab active" data-tab="claude">💻 Coding</button>
-      <button id="tabApps" type="button" class="tab" data-tab="apps">🚀 Apps</button>
-      <button id="tabJobs" type="button" class="tab" data-tab="jobs">📋 Jobs</button>
+      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Code</button>
+      <button id="tabApps" type="button" class="tab" data-tab="apps">Apps</button>
+      <button id="tabJobs" type="button" class="tab" data-tab="jobs">Jobs</button>
+      <button id="tabLifeOS" type="button" class="tab" data-tab="lifeos">Life</button>
     </nav>
 
     <section id="paneClaude" class="pane">
@@ -137,6 +138,48 @@
         </p>
       </section>
     </section>
+
+    <section id="paneLifeOS" class="pane" hidden>
+      <section id="lifeOsOptions" class="card lifeos-options-card">
+        <div class="coding-summary-row">
+          <span class="lifeos-options-title">🌱 Life OS options</span>
+          <div class="lifeos-toggles">
+            <label class="detached-toggle"
+                   title="opus model: off = Sonnet (default), on = Opus">
+              <input type="checkbox" id="lifeOsOpus" hidden>
+              <span>opus</span>
+            </label>
+            <label class="detached-toggle"
+                   title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
+              <input type="checkbox" id="lifeOsDetached" hidden>
+              <span>☁️ Detached</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <ul id="lifeOsList" class="card-list" aria-label="Life OS skills"></ul>
+      <div id="lifeOsEmpty" class="empty" hidden>
+        No life-os skills found — point <strong>Life OS dir</strong> in Settings
+        at a life-os checkout (skills live under <code>.claude/skills</code>).
+      </div>
+    </section>
+
+    <div id="lifeOsBrowser" class="terminal-overlay" hidden>
+      <div class="terminal-bar">
+        <button id="lifeOsBrowserBack" type="button" class="term-btn">‹ Skills</button>
+        <span id="lifeOsBrowserTitle" class="terminal-title">skill</span>
+        <div class="terminal-bar-actions">
+          <button id="lifeOsBrowserRefresh" type="button" class="term-btn" title="Refresh file list">🔄</button>
+          <button id="lifeOsDocClose" type="button" class="term-btn" title="Close file" hidden>❌</button>
+        </div>
+      </div>
+      <div class="lifeos-browser-body">
+        <ul id="lifeOsFileList" class="lifeos-file-list" aria-label="Skill files"></ul>
+        <div id="lifeOsFileContent" class="lifeos-file-content" hidden></div>
+      </div>
+      <div id="lifeOsBrowserStatus" class="terminal-status" hidden></div>
+    </div>
 
     <dialog id="jobDialog" class="rename-dialog">
       <form id="jobForm">
@@ -276,6 +319,10 @@
       <label class="stacked">
         <span>Apps scan root</span>
         <input id="appsScanRoot" type="text" class="input-native">
+      </label>
+      <label class="stacked">
+        <span>Life OS dir (life-os checkout)</span>
+        <input id="lifeOsDir" type="text" class="input-native">
       </label>
       <div class="row settings-actions">
         <button id="saveSettings" type="button" class="ghost-btn accent-btn">💾 Save</button>
