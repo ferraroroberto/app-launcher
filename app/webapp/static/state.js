@@ -86,6 +86,7 @@ export const els = {
   lifeOsBrowserTitle: document.getElementById('lifeOsBrowserTitle'),
   lifeOsBrowserRefresh: document.getElementById('lifeOsBrowserRefresh'),
   lifeOsDocClose: document.getElementById('lifeOsDocClose'),
+  lifeOsDocDelete: document.getElementById('lifeOsDocDelete'),
   lifeOsBrowserStatus: document.getElementById('lifeOsBrowserStatus'),
   lifeOsFileList: document.getElementById('lifeOsFileList'),
   lifeOsFileContent: document.getElementById('lifeOsFileContent'),

@@ -1248,16 +1248,6 @@ body.terminal-open {
   min-height: 40px;
   cursor: pointer;
 }
-.lifeos-file-del {
-  flex-shrink: 0;
-  min-width: 48px;
-  background: var(--bg-elev);
-  border: 1px solid #2a2f42;
-  border-radius: 9px;
-  font-size: 16px;
-  cursor: pointer;
-}
-.lifeos-file-del:active { background: var(--bg-elev-2); }
 .lifeos-file-btn.active {
   border-color: var(--accent);
   background: rgba(74, 138, 243, 0.18);
