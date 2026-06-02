@@ -109,6 +109,10 @@ async function launchSkill(s) {
 }
 
 // --------------------------------------------------- content browser
+// The file currently shown in the doc view — drives the toolbar 🗑️ (which
+// deletes conversation logs only). Null while we're on the file list.
+let openDocFile = null;
+
 async function openBrowser(s) {
   state.lifeOsBrowser = { skillId: s.id, name: s.name, files: [] };
   els.lifeOsBrowserTitle.textContent = s.name;
@@ -181,23 +185,9 @@ function renderFileList(files) {
       loadFile(f);
     });
     li.appendChild(btn);
-    // A 🗑️ shows on conversation logs *only* — those are disposable run
-    // transcripts, not source files. No edit-mode gate (deleting a log is
-    // low-stakes and confirmed). The server enforces the same restriction
-    // (only files under a skill's conversations/).
-    if (f.category === 'conversations') {
-      const del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'lifeos-file-del';
-      del.textContent = '🗑️';
-      del.title = 'Delete this conversation log';
-      del.setAttribute('aria-label', 'Delete ' + f.name);
-      del.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        deleteFile(f);
-      });
-      li.appendChild(del);
-    }
+    // No delete control in the list — the list is navigation only. The 🗑️
+    // for a disposable conversation log lives in the document toolbar and
+    // appears once the log is open (see openDoc / loadFile below).
     host.appendChild(li);
   });
 }
@@ -223,7 +213,8 @@ async function deleteFile(f) {
 async function loadFile(f) {
   // The file view is a full-screen layer over the list; the ✕ close-doc
   // button in the bar appears only while it's open.
-  openDoc();
+  openDocFile = f;
+  openDoc(f);
   els.lifeOsFileContent.innerHTML = '<p class="muted small">Loading…</p>';
   try {
     const body = await jsonApi(
@@ -247,16 +238,23 @@ async function loadFile(f) {
 }
 
 // Reveal the full-screen file view (overlaying the list) + the ✕ button.
-function openDoc() {
+// The 🗑️ shows only for a conversation log — disposable run transcripts,
+// deletable while you read them. Every other category keeps it hidden.
+function openDoc(f) {
   els.lifeOsFileContent.hidden = false;
   if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = false;
+  if (els.lifeOsDocDelete) {
+    els.lifeOsDocDelete.hidden = !(f && f.category === 'conversations');
+  }
 }
 
 // Close the open file → back to the full-screen file list.
 function closeDoc() {
+  openDocFile = null;
   els.lifeOsFileContent.hidden = true;
   els.lifeOsFileContent.innerHTML = '';
   if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = true;
+  if (els.lifeOsDocDelete) els.lifeOsDocDelete.hidden = true;
   Array.prototype.forEach.call(
     els.lifeOsFileList.querySelectorAll('.lifeos-file-btn.active'),
     function (b) { b.classList.remove('active'); }
@@ -347,6 +345,13 @@ export function wireLifeOs() {
   }
   if (els.lifeOsDocClose) {
     els.lifeOsDocClose.addEventListener('click', closeDoc);
+  }
+  if (els.lifeOsDocDelete) {
+    // Delete the open conversation log → confirm, DELETE, back to the list
+    // (deleteFile closeDoc()s, exactly like ✕).
+    els.lifeOsDocDelete.addEventListener('click', function () {
+      if (openDocFile) deleteFile(openDocFile);
+    });
   }
   if (els.lifeOsBrowserRefresh) {
     els.lifeOsBrowserRefresh.addEventListener('click', function () {

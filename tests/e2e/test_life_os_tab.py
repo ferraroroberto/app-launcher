@@ -181,12 +181,13 @@ def test_life_os_browser_full_screen_doc_toggle(
     expect(authed_page.locator("#lifeOsDocClose")).to_be_hidden()
 
 
-def test_life_os_delete_conversation_log_only(
+def test_life_os_delete_conversation_log_from_doc_toolbar(
     authed_page: Page, base_url: str
 ) -> None:
-    """🗑️ shows on conversation logs only (no edit mode needed); confirming
-    DELETEs and the list reloads without it. Hermetic — /files reload drops
-    the log on the 2nd call, DELETE is mocked."""
+    """🗑️ never appears in the browse list; it shows in the document toolbar
+    only when the open file is a conversation log. Confirming DELETEs and
+    returns to the list, which reloads without the log. Hermetic — /files
+    reload drops the log on the 2nd call, DELETE is mocked."""
     _mock_skills(authed_page)
 
     calls = {"n": 0}
@@ -209,16 +210,23 @@ def test_life_os_delete_conversation_log_only(
 
     deleted = {"hit": False}
 
-    def _del(route):
-        deleted["hit"] = True
-        route.fulfill(status=200, content_type="application/json",
-                      body=_json.dumps({"deleted": "x"}))
+    def _file(route):
+        # GET returns content; DELETE records the hit. Same path, two verbs.
+        if route.request.method == "DELETE":
+            deleted["hit"] = True
+            route.fulfill(status=200, content_type="application/json",
+                          body=_json.dumps({"deleted": "x"}))
+        else:
+            route.fulfill(status=200, content_type="application/json",
+                          body=_json.dumps({"path": "x", "name": "trial.md",
+                                            "content": "log body",
+                                            "truncated": False}))
 
     authed_page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/files$"), _files
     )
     authed_page.route(
-        re.compile(r".*/api/life-os/file\?.*$"), _del
+        re.compile(r".*/api/life-os/file\?.*$"), _file
     )
     authed_page.on("dialog", lambda d: d.accept())
 
@@ -228,11 +236,34 @@ def test_life_os_delete_conversation_log_only(
         "#lifeOsList li.lifeos-item[data-id='journal-daily'] button:has-text('📖')"
     ).click()
 
-    # Exactly one 🗑️ — on the conversation row, not the memory row.
-    expect(authed_page.locator(".lifeos-file-del")).to_have_count(1)
-    authed_page.locator(".lifeos-file-del").click()
+    # No delete control anywhere in the list, and the toolbar 🗑️ stays hidden.
+    expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(
+        timeout=5_000
+    )
+    expect(authed_page.locator(".lifeos-file-del")).to_have_count(0)
+    expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
 
-    # DELETE fired and the reloaded list (2nd /files call) has no log.
+    # Open the memory file → 🗑️ stays hidden (not a conversation log).
+    authed_page.locator(
+        ".lifeos-file-btn:has-text('memory/observations.md')"
+    ).click()
+    expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
+    expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
+    authed_page.locator("#lifeOsDocClose").click()
+
+    # Open the conversation log → 🗑️ appears in the bar.
+    authed_page.locator(
+        ".lifeos-file-btn:has-text('conversations/trial.md')"
+    ).click()
+    expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
+    expect(authed_page.locator("#lifeOsDocDelete")).to_be_visible()
+
+    # Confirm delete → DELETE fires, doc closes back to the list, log gone.
+    authed_page.locator("#lifeOsDocDelete").click()
     authed_page.wait_for_timeout(400)
     assert deleted["hit"], "DELETE /api/life-os/file was never called"
-    expect(authed_page.locator(".lifeos-file-del")).to_have_count(0)
+    expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
+    expect(
+        authed_page.locator(".lifeos-file-btn:has-text('conversations/trial.md')")
+    ).to_have_count(0)
