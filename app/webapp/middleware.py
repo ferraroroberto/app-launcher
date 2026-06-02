@@ -75,10 +75,11 @@ def _terminal_guard_level(path: str) -> Optional[str]:
     if path.startswith("/api/claude-code/sessions/") and path.endswith("/image"):
         return "passkey"
     # Life OS private-content browser (issue #102): the file-content
-    # endpoint and per-skill file tree surface gitignored private
-    # knowledge, so they get the terminal's gate. The skills *list* and
-    # *launch* stay public (token-gated), like the Coding tab.
-    if path == "/api/life-os/file":
+    # endpoint (read/delete/rename, all under /api/life-os/file*) and the
+    # per-skill file tree surface gitignored private knowledge, so they get
+    # the terminal's gate. The skills *list* and *launch* stay public
+    # (token-gated), like the Coding tab.
+    if path == "/api/life-os/file" or path.startswith("/api/life-os/file/"):
         return "passkey"
     if path.startswith("/api/life-os/skills/") and path.endswith("/files"):
         return "passkey"
