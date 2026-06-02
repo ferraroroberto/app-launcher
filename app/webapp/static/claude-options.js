@@ -17,6 +17,7 @@ export async function fetchConfig() {
   els.projectsDir.value = body.projects_dir || '';
   els.projectsIgnore.value = (body.projects_ignore || []).join('\n');
   els.appsScanRoot.value = body.apps_scan_root || '';
+  if (els.lifeOsDir) els.lifeOsDir.value = body.life_os_dir || '';
   renderClaudeOptions();
 }
 

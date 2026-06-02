@@ -63,6 +63,7 @@ from app.webapp.routers import (
     claude_code,
     config,
     jobs,
+    life_os,
     misc,
     sessions,
     webauthn,
@@ -176,6 +177,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(sessions.router)
     app.include_router(claude_code.router)
+    app.include_router(life_os.router)
     app.include_router(webauthn.router)
 
     return app

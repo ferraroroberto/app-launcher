@@ -48,6 +48,11 @@ export const state = {
   expandedJob: null, // job_id currently expanded inline (history visible)
   selectedRun: null, // { jobId, runId } — which run's log is in the panel
   sessions: [],
+  // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
+  // read-only content browser's current skill + loaded files.
+  lifeOsSkills: [],
+  lifeOsAvailable: false,
+  lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
@@ -64,9 +69,26 @@ export const els = {
   tabClaude: document.getElementById('tabClaude'),
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),
+  tabLifeOS: document.getElementById('tabLifeOS'),
   paneClaude: document.getElementById('paneClaude'),
   paneApps: document.getElementById('paneApps'),
   paneJobs: document.getElementById('paneJobs'),
+  paneLifeOS: document.getElementById('paneLifeOS'),
+
+  lifeOsOptions: document.getElementById('lifeOsOptions'),
+  lifeOsOpus: document.getElementById('lifeOsOpus'),
+  lifeOsDetached: document.getElementById('lifeOsDetached'),
+  lifeOsList: document.getElementById('lifeOsList'),
+  lifeOsEmpty: document.getElementById('lifeOsEmpty'),
+  lifeOsDir: document.getElementById('lifeOsDir'),
+  lifeOsBrowser: document.getElementById('lifeOsBrowser'),
+  lifeOsBrowserBack: document.getElementById('lifeOsBrowserBack'),
+  lifeOsBrowserTitle: document.getElementById('lifeOsBrowserTitle'),
+  lifeOsBrowserRefresh: document.getElementById('lifeOsBrowserRefresh'),
+  lifeOsDocClose: document.getElementById('lifeOsDocClose'),
+  lifeOsBrowserStatus: document.getElementById('lifeOsBrowserStatus'),
+  lifeOsFileList: document.getElementById('lifeOsFileList'),
+  lifeOsFileContent: document.getElementById('lifeOsFileContent'),
 
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),

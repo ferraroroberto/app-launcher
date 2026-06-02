@@ -1,0 +1,382 @@
+"""Life OS tab — one-tap skill launch + read-only private-content browser.
+
+The Life OS tab (issue #102) is ~80% a clone of the Coding tab,
+specialised to the skills in the sibling ``life-os`` repo:
+
+    GET  /api/life-os/skills                  → list skills (public, token-gated)
+    POST /api/life-os/skills/{id}/launch      → spawn a claude session that
+                                                 auto-invokes /<skill> (public)
+    GET  /api/life-os/skills/{id}/files        → file tree   (Tailscale + passkey)
+    GET  /api/life-os/file?path=…              → file content (Tailscale + passkey)
+
+Launch reuses the Coding tab's session-host / ConPTY machinery wholesale
+(:func:`src.launcher.spawn_claude_session`); only three things differ:
+the cwd is always ``life_os_dir`` (so the project skills resolve), the
+model is forced by the tab's ``opus`` toggle, and a bare ``/<skill>``
+slash-command is passed as the positional prompt. **No** free text is
+ever interpolated into the launch — the user types their input into the
+live terminal once the skill reports ready.
+
+The two content endpoints surface private, gitignored knowledge
+(``context/`` ``memory/`` ``examples/`` ``conversations/`` + the shared
+``identity/``). They are gated like the live terminal — refused over the
+Cloudflare tunnel, Tailscale-only, passkey-required (see
+``app/webapp/middleware.py``) — and the file-content endpoint is
+**path-jailed** to ``life_os_dir`` (the jail is the whole security story
+for an endpoint that reads arbitrary files under a root).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, HTTPException, Request
+
+from src import audit, session_client
+from src.launcher import open_local_terminal_window, spawn_claude_session
+from src.scanner import Skill, scan_skills, skills_dir_for
+from src.webapp_config import WebappConfig, build_claude_flags
+
+from app.webapp.middleware import LOOPBACK_HOSTS
+from app.webapp.routers._helpers import cert_present, client_ip
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+# Files surfaced by the content browser — text-ish only; everything else
+# (images, binaries) is skipped. No suffix is treated as text too (some
+# notes files carry none).
+_TEXT_SUFFIXES = frozenset(
+    {"", ".md", ".markdown", ".txt", ".json", ".yaml", ".yml", ".csv", ".log"}
+)
+# Cap a single file read so a stray huge file can't blow up the phone.
+_MAX_FILE_BYTES = 256 * 1024
+# Directory names never walked for the browser (VCS / caches).
+_BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+
+
+# ------------------------------------------------------------- path jail
+
+
+def resolve_within(root: Path, rel: str) -> Optional[Path]:
+    """Resolve ``rel`` under ``root``, or ``None`` if it escapes the root.
+
+    The whole security story for the file-content endpoint: reject any
+    absolute path, drive-letter, or ``..`` traversal that would resolve
+    outside ``root``. Returns the resolved, existing file path on success.
+    """
+    if not rel:
+        return None
+    try:
+        root_resolved = root.resolve()
+        candidate = (root_resolved / rel).resolve()
+    except (OSError, ValueError):
+        return None
+    try:
+        candidate.relative_to(root_resolved)
+    except ValueError:
+        return None
+    return candidate
+
+
+# --------------------------------------------------------------- helpers
+
+
+def _skill_to_api(skill: Skill, life_os_root: Path) -> Dict[str, Any]:
+    """API shape for one skill tile."""
+    skill_md = skill.skill_dir / "SKILL.md"
+    skill_md_rel = None
+    if skill_md.is_file():
+        try:
+            skill_md_rel = str(skill_md.resolve().relative_to(life_os_root))
+        except (OSError, ValueError):
+            skill_md_rel = None
+    return {
+        "id": skill.id,
+        "name": skill.name,
+        "command": skill.command,
+        "description": skill.description,
+        "skill_md": skill_md_rel,
+    }
+
+
+def _resolve_skill(cfg: WebappConfig, skill_id: str) -> Skill:
+    """Find a skill by folder id from the live scan, or 404.
+
+    The launch slash-command is re-derived here from the validated scan
+    (``skill.command``) — never taken from the URL — so a crafted path
+    param can't reach the command line.
+    """
+    life_os_dir = Path(cfg.life_os_dir)
+    skill = next(
+        (s for s in scan_skills(life_os_dir) if s.id == skill_id), None
+    )
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"unknown skill: {skill_id}")
+    return skill
+
+
+# ----------------------------------------------------------------- routes
+
+
+@router.get("/api/life-os/skills")
+async def list_skills(request: Request) -> Dict[str, Any]:
+    """List the life-os skills, live and alphabetical (public, token-gated).
+
+    ``available`` is ``False`` when the skills dir doesn't exist (life-os
+    not checked out, or ``life_os_dir`` mis-set) — the tab then shows
+    disabled, the same way the Coding tab handles a missing projects_dir.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    available = skills_dir_for(life_os_dir).is_dir()
+    try:
+        life_os_root = life_os_dir.resolve()
+    except (OSError, ValueError):
+        life_os_root = life_os_dir
+    skills = [
+        _skill_to_api(s, life_os_root) for s in scan_skills(life_os_dir)
+    ] if available else []
+    return {
+        "skills": skills,
+        "life_os_dir": cfg.life_os_dir,
+        "available": available,
+    }
+
+
+@router.post("/api/life-os/skills/{skill_id}/launch")
+async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
+    """Launch a claude session that auto-invokes ``/<skill>`` in life-os.
+
+    Body: ``{"mode": "pty"|"remote", "opus": bool}``. The cwd is fixed to
+    ``life_os_dir``; the model is ``opus`` when the toggle is on, else
+    ``sonnet``; the positional prompt is a bare ``/<skill>`` (no free
+    text). Mirrors the Coding tab's claude-code launch (PTY streamed to
+    the phone vs. detached console window, + PC mirror window + audit).
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    if not life_os_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
+        )
+    skill = _resolve_skill(cfg, skill_id)
+
+    body = await request.json() if (
+        request.headers.get("content-type", "").startswith("application/json")
+    ) else {}
+    body = body if isinstance(body, dict) else {}
+    mode = str(body.get("mode") or "pty").strip().lower()
+    opus = bool(body.get("opus", False))
+
+    # Model override is per-launch (opus toggle); the rest of the flags
+    # (effort / permission / verbose / debug) come from the shared Coding
+    # options. The bare /<skill> is appended as claude's positional prompt
+    # — skill.command is a validated slug, so no shell-quoting is needed.
+    model = "opus" if opus else "sonnet"
+    flags = f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
+    name = skill.name
+
+    kind = "remote" if mode == "remote" else "pty"
+    try:
+        session = await asyncio.to_thread(
+            spawn_claude_session,
+            life_os_dir,
+            name,
+            flags,
+            cfg.session_host_port,
+            kind,
+            "claude",
+        )
+    except session_client.SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    sid = str(session.get("session_id") or "")
+    event = "remote_launch" if kind == "remote" else "session_start"
+    audit.audit_event(
+        event,
+        session=sid,
+        agent="claude",
+        skill=skill.id,
+        name=name,
+        project=str(life_os_dir),
+        client=client_ip(request),
+    )
+    audit.session_log(
+        sid, "start", agent="claude", skill=skill.id, name=name,
+        project=str(life_os_dir),
+    )
+
+    # Mirror full-control sessions into a PC terminal window (skipped when
+    # the launch came from the PC itself) — identical to the Coding tab.
+    if (
+        kind == "pty"
+        and cfg.claude_show_local_window
+        and client_ip(request) not in LOOPBACK_HOSTS
+    ):
+        scheme = "https" if cert_present() else "http"
+        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+        asyncio.create_task(
+            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
+        )
+
+    return {
+        "launched": skill.id,
+        "name": name,
+        "agent": "claude",
+        "mode": kind,
+        "opus": opus,
+        "session": session,
+    }
+
+
+@router.get("/api/life-os/skills/{skill_id}/files")
+async def list_skill_files(skill_id: str, request: Request) -> Dict[str, Any]:
+    """File tree for a skill's content (Tailscale + passkey, gated upstream).
+
+    Returns the skill's own files (public ``SKILL.md`` / ``description.md``
+    / ``maintenance.md`` and the private ``context`` / ``memory`` /
+    ``examples`` / ``conversations`` subtrees) plus the shared
+    ``identity/``. Each entry's ``path`` is relative to ``life_os_dir`` —
+    the only thing the file-content endpoint accepts.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    try:
+        life_os_root = life_os_dir.resolve()
+    except (OSError, ValueError):
+        raise HTTPException(status_code=400, detail="life_os_dir invalid")
+    skill = _resolve_skill(cfg, skill_id)
+
+    files: List[Dict[str, str]] = []
+    files.extend(_walk_files(skill.skill_dir, life_os_root, category=None))
+    files.extend(
+        _walk_files(life_os_dir / "identity", life_os_root, category="identity")
+    )
+    return {
+        "skill": _skill_to_api(skill, life_os_root),
+        "files": files,
+    }
+
+
+@router.get("/api/life-os/file")
+async def get_file(request: Request) -> Dict[str, Any]:
+    """Return a single file's text content (Tailscale + passkey, path-jailed).
+
+    ``path`` is relative to ``life_os_dir``; anything escaping that root
+    (absolute paths, ``..`` traversal) is rejected — the jail is the whole
+    security story here. Non-text / oversized files are refused.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    rel = request.query_params.get("path", "")
+    resolved = resolve_within(Path(cfg.life_os_dir), rel)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="path escapes life_os_dir")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    if resolved.suffix.lower() not in _TEXT_SUFFIXES:
+        raise HTTPException(status_code=415, detail="not a text file")
+    try:
+        raw = resolved.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    truncated = len(raw) > _MAX_FILE_BYTES
+    content = raw[:_MAX_FILE_BYTES].decode("utf-8", errors="replace")
+    audit.audit_event(
+        "lifeos_read", path=rel, bytes=len(raw), client=client_ip(request)
+    )
+    return {"path": rel, "name": resolved.name, "content": content, "truncated": truncated}
+
+
+@router.delete("/api/life-os/file")
+async def delete_file(request: Request) -> Dict[str, Any]:
+    """Delete a single **conversation log** (Tailscale + passkey, path-jailed).
+
+    Deliberately narrow: only files under a skill's ``conversations/``
+    directory can be deleted — never source files (``SKILL.md``,
+    ``description.md``, …) or any other private dir. The path is jailed to
+    ``life_os_dir`` first, then required to live under
+    ``.claude/skills/<skill>/conversations/``. Used by the browser's
+    edit-mode 🗑️ to declutter trial-run logs.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    rel = request.query_params.get("path", "")
+    resolved = resolve_within(Path(cfg.life_os_dir), rel)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="path escapes life_os_dir")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    if not _is_conversation_file(Path(cfg.life_os_dir), resolved):
+        raise HTTPException(
+            status_code=403,
+            detail="only conversation logs can be deleted",
+        )
+    try:
+        resolved.unlink()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    audit.audit_event("lifeos_delete", path=rel, client=client_ip(request))
+    return {"deleted": rel}
+
+
+def _is_conversation_file(life_os_dir: Path, resolved: Path) -> bool:
+    """True only for a file under ``.claude/skills/<skill>/conversations/``.
+
+    The deletion guard — anything else (source files, other private dirs,
+    files outside any skill) is rejected.
+    """
+    try:
+        skills_root = skills_dir_for(life_os_dir).resolve()
+        parts = resolved.relative_to(skills_root).parts
+    except (OSError, ValueError):
+        return False
+    # parts == (<skill>, "conversations", <file…>)
+    return len(parts) >= 3 and parts[1] == "conversations"
+
+
+# --------------------------------------------------------------- walk
+
+
+def _walk_files(
+    root: Path, life_os_root: Path, category: Optional[str]
+) -> List[Dict[str, str]]:
+    """List text files under ``root`` as ``{path, name, category}`` dicts.
+
+    ``path`` is relative to ``life_os_root`` (what the file endpoint
+    accepts); ``name`` is relative to ``root`` (a readable label);
+    ``category`` is the caller's label, or — when ``None`` — the first
+    path component under ``root`` (so a skill's ``memory/observations.md``
+    lands under category ``memory`` and a top-level ``SKILL.md`` under
+    ``skill``). Sorted by category then path.
+    """
+    if not root.is_dir():
+        return []
+    out: List[Dict[str, str]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        if any(part in _BROWSE_SKIP_DIRS for part in path.parts):
+            continue
+        if path.suffix.lower() not in _TEXT_SUFFIXES:
+            continue
+        try:
+            rel_root = path.resolve().relative_to(life_os_root)
+            rel_name = path.relative_to(root)
+        except (OSError, ValueError):
+            continue
+        if category is not None:
+            cat = category
+        else:
+            parts = rel_name.parts
+            cat = parts[0] if len(parts) > 1 else "skill"
+        out.append(
+            {"path": str(rel_root), "name": str(rel_name), "category": cat}
+        )
+    out.sort(key=lambda f: (f["category"], f["path"]))
+    return out
