@@ -42,12 +42,17 @@ _READ_CHUNK = 4096
 _EOF = object()
 
 # Chunk-and-pace thresholds for writes into the ConPTY input pipe (#64).
-# pywinpty 3.0.3's PtyProcess.write() wraps an asynchronous ConPTY pipe
-# whose return value isn't a reliable bytes-accepted count — long single
-# writes can silently drop the tail, but interpreting 0 as "nothing sent,
-# retry" causes massive byte amplification (#13 revert). The safe path is
-# to keep small writes one-shot and split larger payloads into ~512 B
-# chunks with a small pause so the pipe drains between writes.
+# A real-PTY readback harness (test_session_host_pty_realpty.py) showed the
+# write boundary itself delivers multi-KB payloads losslessly — pywinpty's
+# write into the input pipe is effectively blocking and does NOT drop the
+# tail. So chunking is not a truncation fix (the original #64 framing was
+# wrong); it is pacing, which keeps a multi-KB burst from overrunning the
+# Windows console input queue that a busy TUI drains slowly. The agent-side
+# atomic-paste fix (bracketed-paste framing) lives client-side in
+# terminal.js (framePaste). We keep small writes one-shot and split larger
+# payloads into ~512 B chunks with a small pause; pywinpty's return value is
+# never interpreted as a bytes-accepted count — doing so amplified a single
+# keystroke into thousands (#13 revert).
 _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
@@ -244,10 +249,11 @@ class PtySession:
             if len(data) <= _WRITE_CHUNK_THRESHOLD:
                 self._pty.write(data)
                 return
-            # Long write (paste / large input): chunk-and-pace so the
-            # ConPTY input pipe drains between writes rather than
-            # backpressuring and dropping the tail. pywinpty's return
-            # value is deliberately ignored — see #13 revert.
+            # Long write (paste / large input): pace it in ~512 B chunks so
+            # the burst doesn't overrun the console input queue a busy TUI
+            # drains slowly (#64). pywinpty's return value is deliberately
+            # ignored — interpreting it as a bytes-accepted count amplified a
+            # single keystroke into thousands (#13 revert).
             logger.debug(
                 f"PTY {self.session_id[:8]} chunked write "
                 f"({len(data)} chars / "

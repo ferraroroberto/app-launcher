@@ -472,6 +472,7 @@ A `pytest-playwright` suite under `tests/e2e/` covers two things:
   | `test_iphone_revalidate.py` | `696b723` | iOS Safari serves stale `index.html` and references a `?v=<old>` script that no longer exists → empty Model/Effort controls |
   | `test_terminal_reconnect.py` | `142e2b4` (#28) | Live terminal WS drops on iOS suspend, overlay sticks on "Disconnected." until manual re-open |
   | `test_paste_button.py` | (#29) | 📋 paste button in iOS PWA reaches `navigator.clipboard.readText()` but bytes never arrive at the session-host |
+  | `test_paste_framing.py` | (#64, #111) | 📋 / compose ➤ Send stop wrapping a paste in bracketed-paste markers (DECSET 2004) — so a multi-KB block reaches the agent as a raw keystroke burst the Windows console input queue drops spans of, instead of one atomic paste |
   | `test_ports_probe.py` | `d564114` | Pywinpty's loopback ephemerals leak into the Running-apps panel under bogus high ports |
   | `test_edge_mirror_close.py` | `b946bc8` (#20) | `terminal.js` stops marking the mirror page with `document.title = 'app-launcher-mirror-<sid>'`, EnumWindows can't find the HWND, Stop & Close leaves the Edge `--app` window hanging |
   | `test_viewport.py` | (#31) | WebKit projection silently loses the iPhone 15 Pro Max descriptor — the whole projection becomes desktop-shaped and the table above stops catching iOS bugs |
@@ -500,6 +501,8 @@ One-time setup:
 The suite runs against the live tray on `https://127.0.0.1:8445` — it does not boot anything itself. If the tray isn't up, every test is skipped with a clear message instead of hanging. Loopback access auto-bypasses the bearer-token middleware and the passkey gate, so no credentials are needed.
 
 The terminal-related regression tests (reconnect, paste, mirror-close) launch a real `claude` PTY via the `launched_pty_session` fixture and force-kill it in teardown — they don't require any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var). The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
+
+Byte-loss at the PTY write boundary itself has a dedicated **non-browser** guard, `tests/test_session_host_pty_realpty.py` (in the `pytest tests -m "not smoke"` suite, Windows/pywinpty-gated): it pushes multi-KB payloads through `PtySession.write` into a *real* ConPTY and asserts a byte-for-byte lossless readback. A `MagicMock` PtyProcess can never drop bytes, so this real-PTY readback is what proves the write path is clean — the unit tests in `test_session_host_pty_write.py` only pin the chunk-and-pace shape and the #13 no-retry contract.
 
 ### Verifying changes before ship
 
