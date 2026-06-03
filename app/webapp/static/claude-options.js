@@ -23,6 +23,7 @@ export async function fetchConfig() {
 
 export function renderClaudeOptions() {
   renderClaudeSubsection();
+  renderCodexSubsection();
   renderAntigravitySubsection();
   renderCopilotSubsection();
 }
@@ -69,6 +70,41 @@ function renderClaudeSubsection() {
   els.claudeVerbose.checked = !!c.verbose;
   els.claudeDebug.checked = !!c.debug;
   els.claudeFlagsPreview.textContent = 'claude ' + (c.computed_flags || '');
+}
+
+function renderCodexSubsection() {
+  const c = state.config && state.config.codex;
+  if (!c) return;
+  // Reasoning tier — a segmented control mirroring Claude's Effort.
+  // Codex has no model tiers, so this is the quality knob (mapped to
+  // `model_reasoning_effort` server-side).
+  els.codexEffort.innerHTML = '';
+  (c.efforts_available || []).forEach(function (e) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e.charAt(0).toUpperCase() + e.slice(1);
+    b.dataset.value = e;
+    if (e === c.effort) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ codex_effort: e });
+    });
+    els.codexEffort.appendChild(b);
+  });
+  // Permission mode — auto (no prompts, still sandboxed) vs skip (the
+  // all-bypass switch). Same two-state segmented control as Claude.
+  els.codexPermission.innerHTML = '';
+  (c.permission_modes_available || []).forEach(function (p) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p === 'skip' ? 'Skip permissions' : 'Auto mode';
+    b.dataset.value = p;
+    if (p === c.permission_mode) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ codex_permission_mode: p });
+    });
+    els.codexPermission.appendChild(b);
+  });
+  els.codexFlagsPreview.textContent = 'codex ' + (c.computed_flags || '');
 }
 
 function renderAntigravitySubsection() {

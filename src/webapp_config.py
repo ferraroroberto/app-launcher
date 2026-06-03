@@ -45,6 +45,23 @@ DEFAULT_CLAUDE_EFFORT = "high"
 VALID_CLAUDE_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
 
+# Codex CLI launch knobs (issue #120). Codex has no Claude-style model
+# tiers — its quality knob is reasoning effort, set via the config
+# override `-c model_reasoning_effort=<low|medium|high>`. The model
+# itself stays the account default (gpt-5-codex via the ChatGPT-plan
+# login), so there is no model picker. "off" is not offered: Codex's
+# reasoning is always on.
+VALID_CODEX_EFFORTS = ("low", "medium", "high")
+DEFAULT_CODEX_EFFORT = "high"
+
+# Permission mode for the `codex` launch, mirroring Claude's auto/skip.
+# "auto" → `--ask-for-approval never --sandbox workspace-write` (no
+# prompts, but still sandboxed — the safe autopilot); "skip" → the
+# legacy `--dangerously-bypass-approvals-and-sandbox` (no prompts, no
+# sandbox).
+VALID_CODEX_PERMISSION_MODES = ("auto", "skip")
+DEFAULT_CODEX_PERMISSION_MODE = "auto"
+
 # Models the GitHub Copilot CLI accepts for the `--model` flag (and the
 # in-session `/model` command). Source: `copilot help config`. An empty
 # `copilot_model` means "don't pass --model" — the CLI then uses its own
@@ -119,6 +136,11 @@ class WebappConfig:
     # with `/model` in-session — so these two switches are the whole story.
     antigravity_skip_permissions: bool = False
     antigravity_sandbox: bool = False
+    # Codex CLI launch settings (issue #120). `codex_effort` is the
+    # reasoning tier (low/medium/high); `codex_permission_mode` mirrors
+    # Claude's auto/skip. The model stays the account default — no picker.
+    codex_effort: str = DEFAULT_CODEX_EFFORT
+    codex_permission_mode: str = DEFAULT_CODEX_PERMISSION_MODE
     # GitHub Copilot CLI launch settings (issue #48). `copilot_model` is
     # the `--model` value (empty = let the CLI use its own default);
     # `copilot_skip_permissions` is the opt-in allow-all switch.
@@ -201,6 +223,10 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
             raw.get("antigravity_skip_permissions", False)
         ),
         antigravity_sandbox=bool(raw.get("antigravity_sandbox", False)),
+        codex_effort=str(raw.get("codex_effort", DEFAULT_CODEX_EFFORT)),
+        codex_permission_mode=str(
+            raw.get("codex_permission_mode", DEFAULT_CODEX_PERMISSION_MODE)
+        ),
         copilot_skip_permissions=bool(
             raw.get("copilot_skip_permissions", False)
         ),
@@ -246,6 +272,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_permission_mode": cfg.claude_permission_mode,
         "antigravity_skip_permissions": cfg.antigravity_skip_permissions,
         "antigravity_sandbox": cfg.antigravity_sandbox,
+        "codex_effort": cfg.codex_effort,
+        "codex_permission_mode": cfg.codex_permission_mode,
         "copilot_skip_permissions": cfg.copilot_skip_permissions,
         "copilot_model": cfg.copilot_model,
         "auth_token": cfg.auth_token,
@@ -334,6 +362,29 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
+def build_codex_flags(cfg: WebappConfig) -> str:
+    """Compose the `codex` CLI flags from the persisted Codex knobs.
+
+    Two pieces: a permission mode (auto = no prompts but sandboxed; skip =
+    the all-bypass switch) and a reasoning tier passed through Codex's
+    config override. The model is left unset so Codex uses the account
+    default (gpt-5-codex on the ChatGPT-plan login). The reasoning value
+    is sent bare (``model_reasoning_effort=high``): it isn't valid TOML, so
+    Codex's `-c` parser falls back to the raw string — which also dodges
+    Windows ``cmd`` quote-stripping that a quoted value would suffer.
+    """
+    parts: list[str] = []
+    if cfg.codex_permission_mode == "skip":
+        parts.append("--dangerously-bypass-approvals-and-sandbox")
+    else:
+        parts.extend(
+            ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
+        )
+    if cfg.codex_effort in VALID_CODEX_EFFORTS:
+        parts.extend(["-c", f"model_reasoning_effort={cfg.codex_effort}"])
+    return " ".join(parts)
+
+
 def build_copilot_flags(cfg: WebappConfig) -> str:
     """Compose the `copilot` CLI flags from the persisted Copilot toggle.
 
@@ -371,6 +422,15 @@ def _validate(cfg: WebappConfig) -> None:
     if cfg.claude_effort not in VALID_CLAUDE_EFFORTS:
         raise ValueError(
             f"claude_effort must be one of {VALID_CLAUDE_EFFORTS}; got {cfg.claude_effort!r}"
+        )
+    if cfg.codex_effort not in VALID_CODEX_EFFORTS:
+        raise ValueError(
+            f"codex_effort must be one of {VALID_CODEX_EFFORTS}; got {cfg.codex_effort!r}"
+        )
+    if cfg.codex_permission_mode not in VALID_CODEX_PERMISSION_MODES:
+        raise ValueError(
+            f"codex_permission_mode must be one of {VALID_CODEX_PERMISSION_MODES}; "
+            f"got {cfg.codex_permission_mode!r}"
         )
     if cfg.copilot_model and cfg.copilot_model not in VALID_COPILOT_MODELS:
         raise ValueError(

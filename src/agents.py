@@ -5,6 +5,8 @@ a project folder, all hosted by the same session-host PTY/remote
 machinery:
 
 - ``claude`` — Claude Code (the launcher's original agent).
+- ``codex`` — OpenAI's Codex CLI (the Rust terminal agent; runs on the
+  user's ChatGPT-plan login, not API-key billing).
 - ``agy`` — Google's Antigravity CLI (the Go-based terminal agent that
   replaced Gemini CLI).
 - ``copilot`` — GitHub Copilot CLI (GitHub's terminal-native agentic
@@ -46,6 +48,10 @@ class Agent:
 AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
+        quit_command="/quit",
+    ),
+    "codex": Agent(
+        id="codex", label="Codex CLI", command="codex",
         quit_command="/quit",
     ),
     "antigravity": Agent(

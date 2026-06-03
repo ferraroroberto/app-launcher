@@ -2,7 +2,7 @@
 
 Phone-first launcher hub. One tap on your phone → the home PC either:
 
-- runs a coding agent — **Claude Code**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab),
+- runs a coding agent — **Claude Code**, **Codex CLI**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab),
 - spawns any registered Streamlit / FastAPI launcher (**Apps** tab),
 - fires a one-shot Python script or scheduled job (**Jobs** tab — same trigger surface the Stream Deck and Task Scheduler use), or
 - invokes a [`life-os`](https://github.com/ferraroroberto/life-os) productivity skill and browses what it knows about you (**Life OS** tab).
@@ -21,7 +21,7 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 The web UI has four tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
-  - **Claude Code** (`claude`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Antigravity CLI](#installing-the-antigravity-cli) and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
+  - **Claude Code** (`claude`), **Codex CLI** (`codex`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Codex CLI](#installing-the-codex-cli), [Installing the Antigravity CLI](#installing-the-antigravity-cli), and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
   - A trailing **GitHub icon** opens the project's repo in a new browser tab — no process spawned, no session created. The repo URL is derived from the project's `origin` git remote; the icon is disabled with a hover hint when the folder has no GitHub remote.
   - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart.
 
@@ -49,6 +49,37 @@ cd app-launcher
 That creates `.venv`, installs deps, and generates the PWA icons. After this runs once, `tray.bat` is enough for day-to-day use.
 
 If you came from the old `automation\launcher\` Flask version, your apps list and Claude flags survive — copy `automation\launcher\apps_config.json` → `app-launcher\config\apps.json` and `automation\launcher\config.json`'s contents into `app-launcher\config\webapp_config.json` under the matching `claude_*` keys.
+
+### Installing the Codex CLI
+
+The Coding tab can launch the **Codex CLI** (`codex`) — OpenAI's Rust terminal
+coding agent — as well as Claude Code. The tab's Codex button stays disabled
+until `codex` is on `PATH`. Install it with npm (needs Node.js 22+):
+
+```powershell
+npm install -g @openai/codex
+```
+
+A standalone installer and Homebrew tap are also offered — see the
+[official docs](https://developers.openai.com/codex/cli) for the channel that
+suits you. Verify with `codex --version`.
+
+> **Authentication is not the launcher's job, and no API key is needed.** Sign
+> in *inside the session* — run `codex login` (or the in-session login flow) and
+> pick **Sign in with ChatGPT** so launches draw on your ChatGPT-plan quota
+> rather than API-key billing. The launcher only resolves the `codex` binary on
+> `PATH` and spawns it.
+>
+> Codex has no Claude-style model tiers — the Coding-options **Reasoning**
+> selector (Low / Medium / High) maps to its reasoning effort, and the model
+> stays the account default (`gpt-5-codex`). The **Permission** selector mirrors
+> Claude's: *Auto mode* runs with no prompts but keeps the sandbox; *Skip
+> permissions* is the all-bypass switch.
+>
+> Like `agy`, `codex` is detected on `PATH` at process start — after installing
+> it, **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445`
+> webapp; the `:8446` session-host that spawns `codex` needs a full tray restart
+> to inherit the new `PATH`).
 
 ### Installing the Antigravity CLI
 
@@ -196,7 +227,7 @@ After this you **must** re-install the trust profile on every device: delete the
 
 ## Interactive terminal from the phone
 
-Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for any coding agent (Claude Code, Antigravity CLI, or GitHub Copilot CLI). Tap a `⚡ full control` session in the list to re-attach.
+Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for any coding agent (Claude Code, Codex CLI, Antigravity CLI, or GitHub Copilot CLI). Tap a `⚡ full control` session in the list to re-attach.
 
 When the same session is also open on the PC (the mirror window), the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
 
@@ -310,7 +341,7 @@ app-launcher/
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
 │   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
-│   ├── agents.py              # coding-agent registry (claude / agy / copilot) + PATH detection
+│   ├── agents.py              # coding-agent registry (claude / codex / agy / copilot) + PATH detection
 │   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py             # bat classifier + project-dir + life-os skill discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
@@ -400,7 +431,7 @@ UI prefs + secrets, authored from the web UI:
 | `notify_failure_streak` | `0` | When > 0, also fire a separate "N consecutive failures" push when the failure streak ticks to exactly this count. |
 | `notify_failure_summary` | `false` | When `true`, pipe the output tail through the local LLM hub (`http://127.0.0.1:8000`, `claude-haiku-4-5`) for a one-line root-cause line prepended to the push body. |
 
-`--remote-control` is **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The permission flag is set by the Coding-options **Permission** selector: `--permission-mode auto` (default) or `--dangerously-skip-permissions`. The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
+`--remote-control` is **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The permission flag is set by the Coding-options **Permission** selector: `--permission-mode auto` (default) or `--dangerously-skip-permissions`. The **Codex CLI** launches with its **Reasoning** tier (`-c model_reasoning_effort=<low|medium|high>`) plus a **Permission** pair — `--ask-for-approval never --sandbox workspace-write` (Auto mode) or `--dangerously-bypass-approvals-and-sandbox` (Skip permissions). The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
 
 ### `config/apps.json`
 
@@ -542,7 +573,7 @@ The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `tes
 - `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
 - `src/scanner.py` — bat classifier + project-directory discovery
-- `src/agents.py` — coding-agent registry (Claude Code / Antigravity CLI / GitHub Copilot CLI) + PATH detection
+- `src/agents.py` — coding-agent registry (Claude Code / Codex CLI / Antigravity CLI / GitHub Copilot CLI) + PATH detection
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored

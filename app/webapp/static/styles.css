@@ -496,14 +496,34 @@ html, body {
 .git-swatch.dirty { background: var(--danger); }
 
 .row-actions.agent-actions { flex-direction: row; }
+/* Five agent icons (Claude · Codex · Antigravity · Copilot · GitHub) now
+   share the row with the folder name (issue #120). Buttons are tightened
+   to 52px — still a comfortable ≥44px tap target — so the set fits one
+   row on PC and wider phones. On narrow phones the tile stacks (see the
+   media query below) and the icon strip wraps as the final fallback. */
 .app-item .row-actions.agent-actions .icon-btn {
-  width: 60px;
+  width: 52px;
   min-height: 60px;
   padding: 8px;
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
   border-top: 0;
   border-left: 1px solid #2a2f42;
+}
+@media (max-width: 520px) {
+  /* Stack: folder name on its own full-width line, agent icons on a
+     row beneath it. flex-wrap lets the icons spill to a second line on
+     the very narrowest phones rather than clipping. */
+  .coding-item { flex-direction: column; align-items: stretch; }
+  .coding-item .row-actions.agent-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    border-left: 0;
+    border-top: 1px solid #2a2f42;
+  }
+  .coding-item .row-actions.agent-actions .icon-btn + .icon-btn {
+    border-left: 1px solid #2a2f42;
+  }
 }
 .agent-icon {
   width: 30px;
@@ -1027,12 +1047,19 @@ html, body {
   align-items: center;
   gap: 8px;
 }
-/* title on its own full-width line above the badges (issue #113) */
+/* Title on its own full-width line above the badges (issue #113), but
+   clamped to a single line with an ellipsis (issue #120): a long title
+   no longer wraps to a second line and eats vertical space — the
+   `up <ago> · <folder>` meta line below already disambiguates. */
 .session-item .session-open .name {
+  display: block;
+  max-width: 100%;
   font-size: 15px;
   font-weight: 600;
   line-height: 1.25;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .session-chevron {
   margin-left: auto;
