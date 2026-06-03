@@ -11,6 +11,9 @@ class TestCommandFor:
     def test_claude_resolves(self):
         assert agents.command_for("claude") == "claude"
 
+    def test_codex_resolves(self):
+        assert agents.command_for("codex") == "codex"
+
     def test_antigravity_resolves(self):
         assert agents.command_for("antigravity") == "agy"
 

@@ -44,6 +44,7 @@ from src.webapp_config import (
     WebappConfig,
     build_antigravity_flags,
     build_claude_flags,
+    build_codex_flags,
     build_copilot_flags,
 )
 
@@ -190,6 +191,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         # in-TUI with `/model`.
         flag_builders = {
             "claude": build_claude_flags,
+            "codex": build_codex_flags,
             "antigravity": build_antigravity_flags,
             "copilot": build_copilot_flags,
         }

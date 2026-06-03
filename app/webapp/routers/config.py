@@ -16,10 +16,13 @@ from src.webapp_config import (
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
     VALID_CLAUDE_PERMISSION_MODES,
+    VALID_CODEX_EFFORTS,
+    VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
     WebappConfig,
     build_antigravity_flags,
     build_claude_flags,
+    build_codex_flags,
     build_copilot_flags,
     update_webapp_config,
 )
@@ -52,6 +55,13 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "always_on_flags": list(ALWAYS_ON_CLAUDE_FLAGS),
             "computed_flags": build_claude_flags(cfg),
         },
+        "codex": {
+            "effort": cfg.codex_effort,
+            "permission_mode": cfg.codex_permission_mode,
+            "efforts_available": list(VALID_CODEX_EFFORTS),
+            "permission_modes_available": list(VALID_CODEX_PERMISSION_MODES),
+            "computed_flags": build_codex_flags(cfg),
+        },
         "antigravity": {
             "skip_permissions": cfg.antigravity_skip_permissions,
             "sandbox": cfg.antigravity_sandbox,
@@ -82,6 +92,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "claude_permission_mode",
         "antigravity_skip_permissions",
         "antigravity_sandbox",
+        "codex_effort",
+        "codex_permission_mode",
         "copilot_skip_permissions",
         "copilot_model",
     }

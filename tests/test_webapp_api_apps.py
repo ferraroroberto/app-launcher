@@ -226,6 +226,63 @@ class TestClaudeCodeDiscovery:
         )
         assert captured["flags"] == "--allow-all"
 
+    def test_launch_with_codex_agent(self, webapp_client, monkeypatch):
+        """The Codex button posts agent=codex — threaded to
+        spawn_claude_session with the composed reasoning + permission
+        flags, and the skip toggle swaps in the all-bypass switch."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        # Pretend the `codex` CLI is installed so the launch isn't rejected.
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: True
+        )
+        captured: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
+            captured["flags"] = flags
+            captured["agent"] = agent
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        # All-default config → high reasoning + sandboxed auto.
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "codex"},
+        )
+        assert resp.status_code == 200
+        assert captured["agent"] == "codex"
+        assert "--ask-for-approval never --sandbox workspace-write" in captured["flags"]
+        assert "model_reasoning_effort=high" in captured["flags"]
+        assert resp.json()["agent"] == "codex"
+        # Skip permissions swaps the sandboxed-auto pair for the bypass.
+        client.post("/api/config", json={"codex_permission_mode": "skip"})
+        client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "agent": "codex"},
+        )
+        assert "--dangerously-bypass-approvals-and-sandbox" in captured["flags"]
+        assert "--ask-for-approval" not in captured["flags"]
+
+    def test_launch_codex_not_installed_rejected(
+        self, webapp_client, monkeypatch
+    ):
+        """When `codex` isn't on PATH the launch is refused —
+        defence-in-depth behind the disabled UI button."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(
+            apps_router.agents, "is_installed", lambda agent_id: False
+        )
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"agent": "codex"}
+        )
+        assert resp.status_code == 400
+        assert "not installed" in resp.json()["detail"]
+
     def test_launch_copilot_not_installed_rejected(
         self, webapp_client, monkeypatch
     ):

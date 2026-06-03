@@ -51,6 +51,26 @@ class TestGetConfig:
         # All-default config → the CLI is launched bare.
         assert ag["computed_flags"] == ""
 
+    def test_codex_block_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        body = client.get("/api/config").json()
+        cx = body["codex"]
+        assert set(cx) == {
+            "effort",
+            "permission_mode",
+            "efforts_available",
+            "permission_modes_available",
+            "computed_flags",
+        }
+        assert isinstance(cx["efforts_available"], list) and cx["efforts_available"]
+        # Default config → high reasoning + auto permission (sandboxed,
+        # no prompts): the safe autopilot, not the all-bypass switch.
+        assert cx["effort"] == "high"
+        assert cx["permission_mode"] == "auto"
+        assert "--ask-for-approval never" in cx["computed_flags"]
+        assert "--sandbox workspace-write" in cx["computed_flags"]
+        assert "model_reasoning_effort=high" in cx["computed_flags"]
+
     def test_copilot_block_shape(self, webapp_client):
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
@@ -136,6 +156,28 @@ class TestPatchConfig:
         assert ag["sandbox"] is True
         assert "--dangerously-skip-permissions" in ag["computed_flags"]
         assert "--sandbox" in ag["computed_flags"]
+
+    def test_codex_knobs_round_trip(self, webapp_client):
+        """Codex reasoning tier + permission mode patch through and surface
+        as composed `codex` flags. 'skip' swaps the sandboxed auto pair for
+        the all-bypass switch; an invalid tier is rejected with 400."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config",
+            json={"codex_effort": "low", "codex_permission_mode": "skip"},
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.codex_effort == "low"
+        assert app.state.webapp_config.codex_permission_mode == "skip"
+        cx = client.get("/api/config").json()["codex"]
+        assert cx["effort"] == "low"
+        assert cx["permission_mode"] == "skip"
+        assert "--dangerously-bypass-approvals-and-sandbox" in cx["computed_flags"]
+        assert "--ask-for-approval" not in cx["computed_flags"]
+        assert "model_reasoning_effort=low" in cx["computed_flags"]
+        # An unknown reasoning tier is rejected, not silently launched.
+        bad = client.post("/api/config", json={"codex_effort": "ultra"})
+        assert bad.status_code == 400
 
     def test_copilot_toggle_round_trips(self, webapp_client):
         """The Copilot launch toggle patches through and surfaces as the
