@@ -135,7 +135,7 @@ def test_life_os_browser_full_screen_doc_toggle(
                     {"path": ".claude/skills/journal-daily/SKILL.md",
                      "name": "SKILL.md", "category": "skill"},
                     {"path": ".claude/skills/journal-daily/memory/observations.md",
-                     "name": "memory/observations.md", "category": "memory"},
+                     "name": "observations.md", "category": "memory"},
                 ],
             }),
         ),
@@ -196,11 +196,11 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
         calls["n"] += 1
         convs = [] if calls["n"] > 1 else [{
             "path": ".claude/skills/journal-daily/conversations/trial.md",
-            "name": "conversations/trial.md", "category": "conversations",
+            "name": "trial.md", "category": "conversations",
         }]
         files = convs + [{
             "path": ".claude/skills/journal-daily/memory/observations.md",
-            "name": "memory/observations.md", "category": "memory",
+            "name": "observations.md", "category": "memory",
         }]
         route.fulfill(
             status=200, content_type="application/json",
@@ -245,7 +245,7 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
 
     # Open the memory file → 🗑️ stays hidden (not a conversation log).
     authed_page.locator(
-        ".lifeos-file-btn:has-text('memory/observations.md')"
+        ".lifeos-file-btn:has-text('observations.md')"
     ).click()
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
@@ -253,7 +253,7 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
 
     # Open the conversation log → 🗑️ appears in the bar.
     authed_page.locator(
-        ".lifeos-file-btn:has-text('conversations/trial.md')"
+        ".lifeos-file-btn:has-text('trial.md')"
     ).click()
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_visible()
@@ -265,5 +265,5 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
     expect(
-        authed_page.locator(".lifeos-file-btn:has-text('conversations/trial.md')")
+        authed_page.locator(".lifeos-file-btn:has-text('trial.md')")
     ).to_have_count(0)

@@ -192,6 +192,19 @@ class TestContentBrowser:
         assert "identity" in cats
         paths = {f["path"] for f in files}
         assert any(p.endswith("observations.md") for p in paths)
+        # Row labels drop the leading directory once it's the category —
+        # the section header already shows it (#118). The full path is
+        # untouched (the file endpoints rely on it).
+        by_cat = {f["category"]: f for f in files if f["category"] == "memory"}
+        mem = by_cat["memory"]
+        assert mem["name"] == "observations.md"
+        assert mem["path"].replace("\\", "/").endswith("memory/observations.md")
+        conv = next(f for f in files if f["category"] == "conversations"
+                    and f["name"] != ".gitkeep")
+        assert "/" not in conv["name"] and "\\" not in conv["name"]
+        # Top-level skill files keep their bare name (no prefix to drop).
+        skill_names = {f["name"] for f in files if f["category"] == "skill"}
+        assert "SKILL.md" in skill_names
 
     def test_file_content_returned(self, life_os_client):
         client, _, _ = life_os_client
