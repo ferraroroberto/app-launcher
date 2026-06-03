@@ -565,6 +565,26 @@ function setComposeOpen(open) {
   }
 }
 
+// Wrap a clipboard / compose payload in bracketed-paste markers (DECSET
+// 2004) when the agent's TUI has them enabled, so it buffers the whole
+// block as one atomic paste instead of absorbing a per-keystroke burst —
+// which the Windows console input queue silently drops spans of under a
+// multi-KB load (#64). This is exactly what xterm already does for its own
+// native paste (term.onData); the 📋 button and compose ➤ Send bypass
+// xterm, so they have to replicate it. Only bracket when the app actually
+// asked for it (`term.modes.bracketedPasteMode`) — otherwise the literal
+// `\x1b[200~` would land as garbage in an agent that doesn't grok it.
+//
+// `submit` appends a carriage return OUTSIDE the end marker so the agent
+// still runs the prompt; a CR *inside* the markers is treated as literal
+// pasted text (the whole point of bracketed paste) and would never submit.
+export function framePaste(t, text, submit) {
+  const cr = submit ? '\r' : '';
+  const bracketed = !!(t.term && t.term.modes && t.term.modes.bracketedPasteMode);
+  if (!bracketed) return text + cr;
+  return '\x1b[200~' + text + '\x1b[201~' + cr;
+}
+
 function wireCompose() {
   els.terminalCompose.addEventListener('click', function () {
     const t = state.terminal;
@@ -576,7 +596,7 @@ function wireCompose() {
     if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
     const text = els.terminalComposeInput.value;
     if (!text) return;
-    t.ws.send(JSON.stringify({ type: 'input', data: text + '\r' }));
+    t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text, true) }));
     els.terminalComposeInput.value = '';
     els.terminalComposeInput.style.height = '';
     els.terminalComposeInput.focus();
@@ -613,7 +633,7 @@ export function wireTerminal() {
         return;
       }
       if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-      t.ws.send(JSON.stringify({ type: 'input', data: text }));
+      t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text, false) }));
       if (t.term) t.term.focus();
     } catch (exc) {
       toast('Clipboard unavailable — paste manually', 'error');
