@@ -4,7 +4,7 @@
 # checks run without relying on the developer remembering. The local gate stays
 # the contract — this workflow is supplementary.
 #
-# windows-latest is mandatory: pywinpty is Windows-only and the e2e suite spawns
+# windows-2025 is mandatory: pywinpty is Windows-only and the e2e suite spawns
 # real PTYs. `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`,
 # so the workflow creates `.venv` and installs into it — the script is untouched.
 name: e2e
@@ -21,11 +21,11 @@ concurrency:
 
 jobs:
   verify-before-ship:
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -57,7 +57,7 @@ jobs:
         # output and the per-session input logs make any future e2e failure
         # diagnosable from the run page without a local repro (issue #58).
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-logs
           path: |
