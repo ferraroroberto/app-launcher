@@ -51,6 +51,14 @@ export function renderSessions() {
     open.className = 'launch-btn session-open' + (remote ? ' inert' : '');
     if (!remote) open.type = 'button';
 
+    // Title on its own full-width line at the top of the card, so a long
+    // project title wraps across the whole card instead of being squeezed
+    // into the narrow space beside the badges (issue #113).
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = sessionTitle(s);
+    open.appendChild(name);
+
     const head = document.createElement('div');
     head.className = 'session-head';
     const dot = document.createElement('span');
@@ -72,10 +80,6 @@ export function renderSessions() {
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
     kindTag.textContent = remote ? '☁️ detached' : '⚡ full control';
     head.appendChild(kindTag);
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = sessionTitle(s);
-    head.appendChild(name);
     if (!remote) {
       const chev = document.createElement('span');
       chev.className = 'session-chevron';
