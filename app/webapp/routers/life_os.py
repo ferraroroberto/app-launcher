@@ -436,11 +436,13 @@ def _walk_files(
     """List text files under ``root`` as ``{path, name, category}`` dicts.
 
     ``path`` is relative to ``life_os_root`` (what the file endpoint
-    accepts); ``name`` is relative to ``root`` (a readable label);
-    ``category`` is the caller's label, or — when ``None`` — the first
-    path component under ``root`` (so a skill's ``memory/observations.md``
-    lands under category ``memory`` and a top-level ``SKILL.md`` under
-    ``skill``). Sorted by category then path.
+    accepts); ``name`` is a readable row label; ``category`` is the
+    caller's label, or — when ``None`` — the first path component under
+    ``root`` (so a skill's ``memory/observations.md`` lands under category
+    ``memory`` and a top-level ``SKILL.md`` under ``skill``). When the
+    category is derived from that leading directory, ``name`` drops it —
+    the section header already shows it, so repeating it in the row just
+    wastes horizontal space (#118). Sorted by category then path.
     """
     if not root.is_dir():
         return []
@@ -459,11 +461,19 @@ def _walk_files(
             continue
         if category is not None:
             cat = category
+            name = str(rel_name)
         else:
             parts = rel_name.parts
-            cat = parts[0] if len(parts) > 1 else "skill"
+            if len(parts) > 1:
+                # Leading dir becomes the category — drop it from the label
+                # so the row doesn't echo its own section header (#118).
+                cat = parts[0]
+                name = str(Path(*parts[1:]))
+            else:
+                cat = "skill"
+                name = str(rel_name)
         out.append(
-            {"path": str(rel_root), "name": str(rel_name), "category": cat}
+            {"path": str(rel_root), "name": name, "category": cat}
         )
     out.sort(key=lambda f: (f["category"], f["path"]))
     return out
