@@ -41,6 +41,7 @@ function renderCodingList(host, items) {
     const name = document.createElement('div');
     name.className = 'coding-name';
     name.textContent = a.name;   // raw folder name, exactly as on disk
+    annotateGitStatus(name, a.id);
     main.appendChild(name);
     li.appendChild(main);
 
@@ -95,6 +96,51 @@ function renderCodingList(host, items) {
     li.appendChild(actions);
     host.appendChild(li);
   });
+}
+
+// Colour a Coding tile's folder name from the cached git-status map
+// (issue #115): red when the working tree is dirty (needs cleaning),
+// yellow when parked on a non-default branch (not a fresh start). Red
+// wins the colour when both apply, but the branch tag still shows so the
+// "why" behind a yellow stays visible. No-op until the user has tapped
+// the git-status button (state.gitStatus is null before that).
+function annotateGitStatus(nameEl, id) {
+  const gs = state.gitStatus && state.gitStatus[id];
+  if (!gs || !gs.is_git) return;
+  const offMain = !!gs.branch && !gs.on_default_branch;
+  if (gs.dirty) nameEl.classList.add('git-dirty');
+  else if (offMain) nameEl.classList.add('git-off-main');
+  if (offMain) {
+    const tag = document.createElement('span');
+    tag.className = 'git-branch-tag';
+    tag.textContent = gs.branch;
+    tag.title = 'on ' + gs.branch +
+      (gs.default_branch ? ' (default: ' + gs.default_branch + ')' : '');
+    nameEl.appendChild(tag);
+  }
+}
+
+// On-demand git-status check (issue #115). Runs git per project on the
+// server, fanned out across threads; caches the result in state and
+// re-renders. Triggered only by the Coding tab's status button — never
+// on render or poll.
+export async function fetchGitStatus() {
+  const btn = els.gitStatusBtn;
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+  try {
+    const body = await jsonApi('/api/claude-code/git-status');
+    const map = {};
+    (body.projects || []).forEach(function (p) { map[p.id] = p; });
+    state.gitStatus = map;
+    if (els.gitStatusLegend) els.gitStatusLegend.hidden = false;
+    renderApps();
+  } catch (exc) {
+    if (String(exc.message) !== 'auth required') {
+      toast('Git status check failed: ' + (exc.message || exc), 'error');
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+  }
 }
 
 function renderList(host, items) {
@@ -560,6 +606,11 @@ function renderListeners(items) {
 export function wireApps() {
   els.refreshListeners.addEventListener('click', fetchListeners);
   els.refreshRunningApps.addEventListener('click', fetchRunningApps);
+  if (els.gitStatusBtn) {
+    els.gitStatusBtn.addEventListener('click', function () {
+      fetchGitStatus().catch(function () {});
+    });
+  }
   // Refresh the running-apps panel the moment the Apps tab is opened —
   // the background poll pauses while the tab is hidden.
   els.tabApps.addEventListener('click', function () {

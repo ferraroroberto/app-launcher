@@ -43,6 +43,11 @@ export const state = {
     { id: 'copilot', label: 'GitHub Copilot CLI', available: false },
   ],
   runningApps: [],
+  // Coding tab git flags (issue #115). null until the user taps the
+  // git-status button; then a map of project id → { is_git, branch,
+  // default_branch, on_default_branch, dirty }. Cached: the 4 s apps
+  // poll re-renders tiles from this map but never re-runs the check.
+  gitStatus: null,
   jobs: [],
   jobRuns: {},      // job_id → array of recent runs (lazy)
   expandedJob: null, // job_id currently expanded inline (history visible)
@@ -149,6 +154,8 @@ export const els = {
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
+  gitStatusBtn: document.getElementById('gitStatusBtn'),
+  gitStatusLegend: document.getElementById('gitStatusLegend'),
   sessionsList: document.getElementById('sessionsList'),
   sessionsEmpty: document.getElementById('sessionsEmpty'),
   refreshSessions: document.getElementById('refreshSessions'),

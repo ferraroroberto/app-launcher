@@ -92,10 +92,19 @@
         <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
       </section>
 
+      <div class="coding-list-header">
+        <button id="gitStatusBtn" type="button" class="ghost-btn git-status-btn"
+                title="Check each project's git branch + uncommitted changes"
+                aria-label="Check git status of all projects">⎇ status</button>
+      </div>
       <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
       <div id="claudeEmpty" class="empty" hidden>
         No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
       </div>
+      <p id="gitStatusLegend" class="muted small git-legend" hidden>
+        <span class="git-swatch off-main"></span> not on main ·
+        <span class="git-swatch dirty"></span> uncommitted changes
+      </p>
     </section>
 
     <section id="paneApps" class="pane" hidden>

@@ -26,9 +26,11 @@ import fnmatch
 import logging
 import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
@@ -333,6 +335,132 @@ def github_repo_url(project_dir: Path) -> Optional[str]:
     if not raw:
         return None
     return _normalise_github_url(raw.strip())
+
+
+# ------------------------------------------------------------- git status
+
+# CREATE_NO_WINDOW keeps the short-lived `git` children from flashing a
+# console window when the webapp runs under the tray's pythonw.exe.
+_GIT_NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+
+@dataclass(frozen=True)
+class GitStatus:
+    """The git state of one project, for the Coding tab's on-demand flags.
+
+    ``is_git`` is ``False`` for a folder with no usable git repo (or when
+    ``git`` isn't on PATH). ``branch`` is the current branch name, or
+    ``None`` when detached / unborn. ``default_branch`` is the repo's
+    resolved default (``origin/HEAD`` → ``main`` → ``master``), or
+    ``None`` when it can't be determined. ``dirty`` is ``True`` when the
+    working tree has any uncommitted or untracked changes.
+    """
+
+    is_git: bool
+    branch: Optional[str]
+    default_branch: Optional[str]
+    dirty: bool
+
+    @property
+    def on_default_branch(self) -> bool:
+        """``True`` on the default branch — and whenever the branch or the
+        default can't be pinned down, so the "off main" (yellow) cue only
+        fires on a *known* non-default branch, never on an ambiguous one."""
+        if self.branch is None or self.default_branch is None:
+            return True
+        return self.branch == self.default_branch
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "is_git": self.is_git,
+            "branch": self.branch,
+            "default_branch": self.default_branch,
+            "on_default_branch": self.on_default_branch,
+            "dirty": self.dirty,
+        }
+
+
+_NOT_GIT = GitStatus(is_git=False, branch=None, default_branch=None, dirty=False)
+
+
+def _run_git(project_dir: Path, args: Sequence[str]) -> Optional[str]:
+    """Run ``git -C <project_dir> <args>`` and return stripped stdout.
+
+    Returns ``None`` on any non-zero exit, missing ``git`` binary, or
+    timeout — callers treat ``None`` as "couldn't determine".
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(project_dir), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+            creationflags=_GIT_NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.debug(f"git {' '.join(args)} failed in {project_dir}: {exc}")
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+def _default_branch(project_dir: Path) -> Optional[str]:
+    """Resolve the repo's default branch: ``origin/HEAD`` → ``main`` → ``master``.
+
+    Prefers the symbolic ``origin/HEAD`` ref (set on clone); falls back to
+    whichever of ``main`` / ``master`` exists as a local branch. ``None``
+    when none of these resolve.
+    """
+    head = _run_git(
+        project_dir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]
+    )
+    if head:
+        # "origin/main" → "main"
+        return head.split("/", 1)[1] if "/" in head else head
+    for candidate in ("main", "master"):
+        if _run_git(
+            project_dir, ["rev-parse", "--verify", "--quiet", f"refs/heads/{candidate}"]
+        ):
+            return candidate
+    return None
+
+
+def git_status(project_dir: Path) -> GitStatus:
+    """Branch + clean/dirty for one project directory.
+
+    Unlike :func:`github_repo_url` (a plain ``.git/config`` read), this
+    shells out to ``git`` — ``status --porcelain=v2 --branch`` for the
+    current branch and dirty flag in one call, then a default-branch
+    resolve. That subprocess cost is why the Coding tab runs this only
+    on demand, never on render or poll. Non-git folders and any git
+    failure return :data:`_NOT_GIT`.
+    """
+    if not (project_dir / ".git").exists():
+        return _NOT_GIT
+
+    out = _run_git(project_dir, ["status", "--porcelain=v2", "--branch"])
+    if out is None:
+        return _NOT_GIT
+
+    branch: Optional[str] = None
+    dirty = False
+    for line in out.splitlines():
+        if line.startswith("# branch.head "):
+            head = line[len("# branch.head ") :].strip()
+            branch = None if head == "(detached)" else head
+        elif line and not line.startswith("#"):
+            # Any non-header line is a changed / untracked entry.
+            dirty = True
+
+    return GitStatus(
+        is_git=True,
+        branch=branch,
+        default_branch=_default_branch(project_dir),
+        dirty=dirty,
+    )
 
 
 # ----------------------------------------------------------- apps (bats)
