@@ -453,6 +453,48 @@ html, body {
   color: var(--fg);
   word-break: break-all;   /* raw on-disk name — shown verbatim */
 }
+/* ---------- Coding tab git-status flags (issue #115) ---------- */
+/* On-demand only: tap the header button to annotate tiles. Yellow name
+   = parked on a non-default branch; red name = uncommitted changes. */
+.coding-list-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.git-status-btn { font-size: 12px; padding: 6px 10px; }
+.git-status-btn.loading { opacity: 0.5; pointer-events: none; }
+.coding-name.git-off-main { color: var(--warn); }
+.coding-name.git-dirty { color: var(--danger); }
+.git-branch-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--warn);
+  background: rgba(240, 161, 0, 0.12);
+  vertical-align: middle;
+  word-break: break-all;
+}
+.git-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin: 8px 2px 0;
+}
+.git-swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 2px;
+  vertical-align: middle;
+}
+.git-swatch.off-main { background: var(--warn); }
+.git-swatch.dirty { background: var(--danger); }
+
 .row-actions.agent-actions { flex-direction: row; }
 .app-item .row-actions.agent-actions .icon-btn {
   width: 60px;

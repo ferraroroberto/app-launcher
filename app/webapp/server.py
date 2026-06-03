@@ -23,6 +23,7 @@ Routes (split across `app/webapp/routers/`):
     POST   /api/ports/{port}/kill             → kill PID owning that port (misc)
 
     GET    /api/claude-code/flags             → persisted claude flags    (claude_code)
+    GET    /api/claude-code/git-status        → per-project branch+dirty  (claude_code)
     GET    /api/claude-code/generate          → preview workspace↔bat     (claude_code)
     POST   /api/claude-code/generate          → workspace↔bat sync        (claude_code)
     GET    /api/claude-code/sessions          → running sessions          (sessions)
