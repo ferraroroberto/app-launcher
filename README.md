@@ -513,6 +513,7 @@ A `pytest-playwright` suite under `tests/e2e/` covers two things:
   | `test_keys_popover.py` | (#36) | `⌨️` popover stops sending arrow/Esc/Tab/Enter escape sequences over the WS, so iPhone keyboards without those keys can't drive Claude's TUI prompts |
   | `test_compose_bar.py` | (#37, #41) | `✏️` compose bar's `➤` Send stops forwarding `<text>\r` to the PTY, the bar leaks into the PC mirror window, or `🖼` stops dropping the uploaded image path into the bar when it's open |
   | `test_git_status_flags.py` | (#115) | The Coding tab's **⎇ status** button stops colouring tiles from `/api/claude-code/git-status` (red dirty / yellow off-main, red winning when both) or stops revealing the legend |
+  | `test_life_os_tab.py` (`…_keeps_name_and_buttons_on_one_row`) | (#124) | Life tiles inherit the Coding tab's narrow-phone stack rule (#120) via the shared `.coding-item` class and break the name + 📖 + 🚀 onto separate stacked lines, wasting vertical space when the two buttons fit inline beside the name |
 
 Every test runs in **two projections** — Chromium-desktop and WebKit on an iPhone 15 Pro Max viewport — so engine-specific iOS bugs get caught on Windows before they reach a real phone. A few tests skip on the duplicate projection where the check is browser-agnostic (server-side header inspection, etc.). Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.
 

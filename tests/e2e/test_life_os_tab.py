@@ -118,6 +118,50 @@ def test_life_os_launch_posts_mode_and_opus(
     assert payload == {"mode": "remote", "opus": True}, payload
 
 
+def test_life_os_tile_keeps_name_and_buttons_on_one_row(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression for #124: a Life tile carries only two actions (📖 + 🚀),
+    so the name and both buttons stay on a single inline row even on a
+    narrow phone — they must NOT inherit the Coding tab's stack-on-narrow
+    rule (#120) via the shared ``.coding-item`` class. On the WebKit
+    projection this runs at the iPhone width (430px < the 520px breakpoint),
+    so it exercises the media query directly.
+
+    Asserted via geometry: when inline, the name and the action strip both
+    span the tile's full height and so overlap vertically; when wrongly
+    stacked, the name sits in the top band and the actions in a bottom strip
+    with no vertical overlap.
+    """
+    _mock_skills(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+
+    tile = authed_page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
+    )
+    expect(tile).to_be_visible(timeout=5_000)
+
+    name_box = tile.locator(".coding-name").bounding_box()
+    actions_box = tile.locator(".row-actions.agent-actions").bounding_box()
+    assert name_box and actions_box, "tile parts not laid out"
+
+    # Vertical overlap → same row (inline). No overlap → stacked (the bug).
+    overlap = (
+        name_box["y"] < actions_box["y"] + actions_box["height"]
+        and actions_box["y"] < name_box["y"] + name_box["height"]
+    )
+    assert overlap, (
+        f"Life tile is stacked, not inline: name={name_box}, "
+        f"actions={actions_box} — #124 regression"
+    )
+    # Actions sit to the right of the name, not beneath it.
+    assert actions_box["x"] >= name_box["x"] + name_box["width"] - 2, (
+        f"action strip is not right of the name: name={name_box}, "
+        f"actions={actions_box}"
+    )
+
+
 def test_life_os_browser_full_screen_doc_toggle(
     authed_page: Page, base_url: str
 ) -> None:

@@ -524,6 +524,17 @@ html, body {
   .coding-item .row-actions.agent-actions .icon-btn + .icon-btn {
     border-left: 1px solid #2a2f42;
   }
+  /* Life OS tiles share the .coding-item class but only ever carry two
+     actions (📖 + 🚀), which fit beside the name even on the narrowest
+     phone. Opt them back out of the stack-on-narrow rule above (issue
+     #124): the higher-specificity .coding-item.lifeos-item selectors win
+     over the bare .coding-item ones, restoring the default inline row +
+     side border. The Code tab's five-icon stack is untouched. */
+  .coding-item.lifeos-item { flex-direction: row; align-items: stretch; }
+  .coding-item.lifeos-item .row-actions.agent-actions {
+    border-left: 1px solid #2a2f42;
+    border-top: 0;
+  }
 }
 .agent-icon {
   width: 30px;
