@@ -45,13 +45,24 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from src.agents import AGENTS, DEFAULT_AGENT
+from src.agents import AGENTS, DEFAULT_AGENT, is_fullscreen
 from src.session_host import _EOF, SessionManager
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8446
+
+# Background repaint-nudge tasks, kept referenced so the event loop doesn't
+# GC them before they run (issue #128).
+_repaint_tasks: "set[asyncio.Task]" = set()
+
+# Repaint-nudge timing (issue #128). The initial delay lets the client's
+# real-size resize land first (so we toggle around the right dimensions);
+# the gap between the two setwinsize calls stops ConPTY coalescing them
+# into a net-zero change that would fire no SIGWINCH.
+_REPAINT_SETTLE = 0.15
+_REPAINT_TOGGLE_GAP = 0.05
 
 # Where uploaded images land inside the project so `claude` can read them.
 _IMAGE_DIR_NAME = ".launcher-tmp"
@@ -188,7 +199,18 @@ def create_app() -> FastAPI:
         await websocket.accept()
         snapshot, queue = session.subscribe()
         try:
-            if snapshot:
+            if is_fullscreen(getattr(session, "agent", DEFAULT_AGENT)):
+                # Full-screen differential TUI (Codex/ratatui): do NOT replay
+                # the raw scrollback ring. Replaying its stale move-cursor /
+                # clear deltas garbles a fresh xterm, and replaying the
+                # agent's startup terminal queries makes xterm re-answer them
+                # as input — the `[?1;2c` DA leak (issue #128). Force a clean
+                # repaint at the current size instead. Role-independent: the
+                # leak hits the PC mirror too.
+                task = asyncio.create_task(_force_repaint(session))
+                _repaint_tasks.add(task)
+                task.add_done_callback(_repaint_tasks.discard)
+            elif snapshot:
                 await websocket.send_text(snapshot)
             await asyncio.gather(
                 _pump_to_client(websocket, queue),
@@ -213,6 +235,30 @@ async def _json(request: Request) -> Dict[str, Any]:
         return data if isinstance(data, dict) else {}
     except Exception:  # noqa: BLE001
         return {}
+
+
+async def _force_repaint(session) -> None:
+    """Nudge a full-screen TUI into repainting a clean frame after a
+    (re)connect (issue #128).
+
+    We skip the raw differential-ring replay for these agents, so the
+    viewport is blank until the agent next draws. Toggle the PTY width by
+    one column and back: each ``setwinsize`` fires a SIGWINCH-equivalent,
+    so ratatui clears and redraws the *current* frame at the real size.
+    The toggle guarantees a change even on a same-size reconnect (where a
+    single ``setwinsize`` to the unchanged size is a no-op). Best-effort —
+    a dead PTY's ``resize`` already swallows its own errors.
+    """
+    try:
+        await asyncio.sleep(_REPAINT_SETTLE)
+        rows, cols = session.rows, session.cols
+        session.resize(rows, max(1, cols - 1))
+        await asyncio.sleep(_REPAINT_TOGGLE_GAP)
+        session.resize(rows, cols)
+    except asyncio.CancelledError:  # pragma: no cover
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"force_repaint failed: {exc}")
 
 
 async def _pump_to_client(websocket: WebSocket, queue: "asyncio.Queue") -> None:

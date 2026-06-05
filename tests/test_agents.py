@@ -50,6 +50,22 @@ class TestIsInstalled:
         assert agents.is_installed("bogus") is False
 
 
+class TestIsFullscreen:
+    def test_claude_is_inline(self):
+        # Claude Code scrolls inline — keeps the raw-ring replay path.
+        assert agents.is_fullscreen("claude") is False
+
+    def test_codex_antigravity_copilot_are_fullscreen(self):
+        # The differential-TUI agents skip replay + get a forced repaint.
+        assert agents.is_fullscreen("codex") is True
+        assert agents.is_fullscreen("antigravity") is True
+        assert agents.is_fullscreen("copilot") is True
+
+    def test_unknown_agent_defaults_to_inline(self):
+        # Unknown id → safe inline default (matches Claude), never raises.
+        assert agents.is_fullscreen("bogus") is False
+
+
 class TestDetectAgents:
     def test_shape_and_keys(self, monkeypatch):
         monkeypatch.setattr(agents.shutil, "which", lambda cmd: None)
