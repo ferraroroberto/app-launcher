@@ -134,6 +134,40 @@ class TestClaudeCodeDiscovery:
         # No `agent` in the body → defaults to Claude Code.
         assert captured["agent"] == "claude"
 
+    def test_launch_pty_forwards_phone_dimensions(
+        self, webapp_client, monkeypatch
+    ):
+        """A streamed (pty) launch threads the phone's rows/cols through to
+        spawn_claude_session so the PTY spawns at the right size (issue
+        #126). Remote launches carry no PTY, so they stay on the default."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        # No PC mirror window in the test.
+        monkeypatch.setattr(
+            apps_router, "open_local_terminal_window", lambda *a, **k: None
+        )
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120,
+        ):
+            captured["kind"] = kind
+            captured["rows"] = rows
+            captured["cols"] = cols
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"rows": 50, "cols": 42}
+        )
+        assert resp.status_code == 200
+        assert captured["kind"] == "pty"
+        assert captured["rows"] == 50
+        assert captured["cols"] == 42
+
     def test_launch_with_antigravity_agent(self, webapp_client, monkeypatch):
         """The Antigravity button posts agent=antigravity — it must be
         threaded to spawn_claude_session with empty (non-Claude) flags."""

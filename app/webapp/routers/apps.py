@@ -171,6 +171,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         body = await maybe_json(request)
         mode = str(body.get("mode") or "pty").strip().lower()
         agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
+        # Phone's real terminal size (issue #126): a pty session spawns at
+        # these dimensions so a ratatui TUI's first frame isn't cut. Absent
+        # (older client, or remote mode) → the legacy 40×120 default.
+        rows = int(body.get("rows") or 40)
+        cols = int(body.get("cols") or 120)
         if agent not in agents.AGENTS:
             raise HTTPException(
                 status_code=400, detail=f"unknown agent: {agent}"
@@ -239,6 +244,8 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 cfg.session_host_port,
                 "pty",
                 agent,
+                rows,
+                cols,
             )
         except session_client.SessionHostError as exc:
             raise HTTPException(status_code=exc.status, detail=str(exc))

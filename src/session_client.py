@@ -82,6 +82,8 @@ def create_session(
     flags: str,
     kind: str = "pty",
     agent: str = "claude",
+    rows: int = 40,
+    cols: int = 120,
 ) -> Dict[str, Any]:
     return _request(
         "POST",
@@ -94,6 +96,10 @@ def create_session(
             "flags": flags,
             "kind": kind,
             "agent": agent,
+            # Phone's real terminal size, so the PTY's first frame is the
+            # right width for a ratatui TUI (issue #126).
+            "rows": rows,
+            "cols": cols,
         },
     )
 

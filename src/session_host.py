@@ -436,12 +436,26 @@ class SessionManager:
         self._loop = loop
 
     def create(
-        self, project_dir: str, name: str, flags: str, agent: str = DEFAULT_AGENT
+        self,
+        project_dir: str,
+        name: str,
+        flags: str,
+        agent: str = DEFAULT_AGENT,
+        rows: int = 40,
+        cols: int = 120,
     ) -> PtySession:
         """Spawn ``<agent> <flags>`` inside a fresh ConPTY in ``project_dir``.
 
         ``agent`` selects which coding CLI to run (``claude`` |
         ``antigravity``); see :mod:`src.agents`.
+
+        ``rows``/``cols`` size the ConPTY at spawn time. The phone passes
+        its real terminal dimensions through the launch request so a
+        full-screen differential TUI (Codex's ratatui) paints its *first*
+        frame at the correct width instead of the legacy ``40×120`` — which
+        wrapped/cut on a portrait phone (issue #126). They are clamped to
+        the same bounds as :meth:`PtySession.resize`; an omitted value
+        falls back to the legacy default.
         """
         if PtyProcess is None:
             raise RuntimeError("pywinpty is not available — cannot spawn a PTY")
@@ -451,6 +465,8 @@ class SessionManager:
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
 
+        rows = max(1, min(int(rows), 1000))
+        cols = max(1, min(int(cols), 1000))
         session_id = uuid.uuid4().hex
         # `cmd /c` resolves the agent command (e.g. claude.cmd / agy.cmd)
         # off PATH the way a normal shell would; when the agent exits, cmd
@@ -458,7 +474,7 @@ class SessionManager:
         exe = command_for(agent)
         command = f"cmd /c {exe} {flags}".strip()
         pty = PtyProcess.spawn(
-            command, cwd=str(directory), dimensions=(40, 120)
+            command, cwd=str(directory), dimensions=(rows, cols)
         )
         session = PtySession(
             session_id=session_id,
@@ -469,6 +485,8 @@ class SessionManager:
             _loop=self._loop,
             _pty=pty,
             agent=agent,
+            rows=rows,
+            cols=cols,
         )
         session.start_reader()
         with self._lock:
