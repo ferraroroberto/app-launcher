@@ -35,12 +35,21 @@ class Agent:
     interactive slash command typed into the PTY for a graceful stop
     (each agent uses its own — Claude's is ``/quit``, Copilot's is
     ``/exit``).
+
+    ``fullscreen`` marks a full-screen *differential* TUI (Codex's
+    ratatui, and the other terminal agents) that repaints in place rather
+    than scrolling inline like Claude Code. The session-host streams these
+    differently: it must **not** replay the raw scrollback ring on
+    (re)connect — doing so dumps stale move-cursor/clear deltas into a
+    fresh xterm and re-answers the agent's startup terminal queries (the
+    ``[?1;2c`` DA leak, issue #128) — and instead forces a clean repaint.
     """
 
     id: str
     label: str
     command: str
     quit_command: str
+    fullscreen: bool = False
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -48,19 +57,19 @@ class Agent:
 AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
-        quit_command="/quit",
+        quit_command="/quit", fullscreen=False,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
-        quit_command="/quit",
+        quit_command="/quit", fullscreen=True,
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",
-        quit_command="/quit",
+        quit_command="/quit", fullscreen=True,
     ),
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
-        quit_command="/exit",
+        quit_command="/exit", fullscreen=True,
     ),
 }
 
@@ -89,6 +98,18 @@ def quit_command_for(agent_id: str) -> str:
     """
     agent = AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
     return agent.quit_command
+
+
+def is_fullscreen(agent_id: str) -> bool:
+    """Whether ``agent_id`` is a full-screen differential TUI.
+
+    Drives the session-host's (re)connect handling: full-screen agents
+    skip the raw scrollback-ring replay and get a forced repaint instead
+    (issue #128). An unknown id is treated as non-fullscreen — the safe
+    inline default, matching Claude Code.
+    """
+    agent = AGENTS.get(agent_id)
+    return bool(agent and agent.fullscreen)
 
 
 def is_installed(agent_id: str) -> bool:
