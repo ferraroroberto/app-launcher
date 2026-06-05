@@ -9,7 +9,7 @@
 import { els, state } from './state.js';
 import { jsonApi, toast } from './api.js';
 import { fetchSessions, fmtAgo } from './sessions.js';
-import { openTerminal } from './terminal.js';
+import { openTerminal, estimateTermSize } from './terminal.js';
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -249,6 +249,14 @@ async function launchApp(a, agentId) {
     const payload = {};
     if (mode) payload.mode = mode;
     if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
+    // Streamed (pty) coding launches carry the phone's real terminal size
+    // so the PTY's first frame is the right width for a ratatui TUI
+    // (issue #126). Detached (remote) launches have no PTY, so skip it.
+    if (a.kind === 'claude-code' && !mode) {
+      const sz = estimateTermSize();
+      payload.rows = sz.rows;
+      payload.cols = sz.cols;
+    }
     if (Object.keys(payload).length) {
       opts.headers = { 'Content-Type': 'application/json' };
       opts.body = JSON.stringify(payload);

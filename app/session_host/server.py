@@ -99,6 +99,11 @@ def create_app() -> FastAPI:
         flags = str(body.get("flags") or "").strip()
         kind = str(body.get("kind") or "pty").strip().lower()
         agent = str(body.get("agent") or DEFAULT_AGENT).strip().lower()
+        # Phone-supplied spawn dimensions (issue #126): size the PTY to the
+        # real viewport before first paint so a ratatui TUI isn't cut.
+        # Omitted → the manager's legacy 40×120 default.
+        rows = int(body.get("rows") or 40)
+        cols = int(body.get("cols") or 120)
         if not project_dir:
             raise HTTPException(status_code=400, detail="project_dir is required")
         if agent not in AGENTS:
@@ -107,7 +112,9 @@ def create_app() -> FastAPI:
             if kind == "remote":
                 session = manager.create_remote(project_dir, name, flags, agent)
             else:
-                session = manager.create(project_dir, name, flags, agent)
+                session = manager.create(
+                    project_dir, name, flags, agent, rows=rows, cols=cols
+                )
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return session.to_api()

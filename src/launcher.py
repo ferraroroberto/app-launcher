@@ -96,21 +96,26 @@ def spawn_claude_session(
     session_host_port: int,
     kind: str = "pty",
     agent: str = "claude",
+    rows: int = 40,
+    cols: int = 120,
 ) -> Dict[str, Any]:
     """Ask the session-host to run ``<agent> <flags>`` for ``project_dir``.
 
     ``agent`` selects the coding CLI (``claude`` | ``antigravity``).
     ``kind="pty"`` (default) spawns a launcher-owned ConPTY streamed to the
     phone; ``kind="remote"`` spawns a detached console window the host only
-    tracks. Returns the new session's API dict (``session_id``, ``kind``,
-    ``agent``, ``name``, …). Raises :class:`session_client.SessionHostError`
-    when the session-host is down or rejects the request — the caller
-    surfaces that to the UI.
+    tracks. ``rows``/``cols`` are the phone's real terminal dimensions, so a
+    ``pty`` session paints its first frame at the right width (issue #126);
+    they are ignored for ``remote`` (no PTY). Returns the new session's API
+    dict (``session_id``, ``kind``, ``agent``, ``name``, …). Raises
+    :class:`session_client.SessionHostError` when the session-host is down or
+    rejects the request — the caller surfaces that to the UI.
     """
     if not project_dir.is_dir():
         raise OSError(f"Project directory not found: {project_dir}")
     session = session_client.create_session(
-        session_host_port, str(project_dir), name, flags, kind=kind, agent=agent
+        session_host_port, str(project_dir), name, flags,
+        kind=kind, agent=agent, rows=rows, cols=cols,
     )
     logger.info(
         f"🚀 spawned {agent} {kind} session "
