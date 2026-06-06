@@ -23,7 +23,7 @@ The web UI has four tabs:
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
   - **Claude Code** (`claude`), **Codex CLI** (`codex`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Codex CLI](#installing-the-codex-cli), [Installing the Antigravity CLI](#installing-the-antigravity-cli), and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
   - A trailing **GitHub icon** opens the project's repo in a new browser tab — no process spawned, no session created. The repo URL is derived from the project's `origin` git remote; the icon is disabled with a hover hint when the folder has no GitHub remote.
-  - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart.
+  - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart — including a full `tray.bat --restart` (issue #130).
 
   - A small **⎇ status** button above the project list runs an **on-demand git check** across every project (it is *not* run on load or poll — git is a per-repo subprocess, so it stays opt-in). One tap colours each tile by its git state so you can see at a glance where to start and where to clean: **yellow** name = parked on a non-default branch (not a fresh start, with the branch name shown as a tag), **red** name = uncommitted changes (red wins when a project is both). A tiny legend under the list explains the colours. The result is cached until you tap again.
 
@@ -103,8 +103,10 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > the `:8446` session-host, which actually spawns `agy`, needs a full tray
 > restart to inherit the new `PATH`). A bare `tray.bat` re-run is a no-op when a
 > tray is already alive — use `tray.bat --restart` to stop the running tray and
-> its tree (webapp, session-host, cloudflared, **any open Coding sessions**)
-> and start a fresh one.
+> its tree (webapp, session-host, cloudflared, **any full-control Coding
+> sessions**) and start a fresh one. **Detached (☁️) sessions survive** the
+> restart — they are deliberately orphaned out of the tray's process tree so
+> the `taskkill /T` teardown can't reach them (issue #130).
 
 ### Installing the GitHub Copilot CLI
 

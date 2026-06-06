@@ -15,6 +15,7 @@ is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import logging
 import subprocess
 import threading
@@ -67,6 +68,58 @@ STOP_KILL = "kill"            # force-terminate the ConPTY
 # no scrollback, no WebSocket — the Claude cloud app drives it).
 KIND_PTY = "pty"
 KIND_REMOTE = "remote"
+
+# Spawn a short-lived child without flashing a console window.
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+# Absolute Windows PowerShell 5.1 — never the bare `pwsh` execution-alias stub
+# (a 0-byte reparse point that fails when spawned non-interactively).
+_POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+
+def _ps_quote(value: str) -> str:
+    """Escape ``value`` for embedding inside a PowerShell single-quoted string."""
+    return value.replace("'", "''")
+
+
+def _parse_started_pid(stdout: Optional[str]) -> Optional[int]:
+    """Pull the PID ``Start-Process -PassThru`` printed (last numeric line)."""
+    for line in reversed((stdout or "").splitlines()):
+        text = line.strip()
+        if text.isdigit():
+            return int(text)
+    return None
+
+
+def _pid_alive(pid: int) -> bool:
+    """True if ``pid`` names a live process (Windows, via ctypes).
+
+    Detached consoles are orphaned out of the host's process tree (issue
+    #130) so we no longer hold a ``Popen`` handle for them — liveness is a
+    bare PID probe. ``ctypes.windll`` is touched only at call time, keeping
+    the module importable on non-Windows for ``py_compile``.
+    """
+    if not pid:
+        return False
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        kernel32.GetExitCodeProcess.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_ulong),
+        ]
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle(handle)
 
 
 def _parse_osc_title(buffer: str) -> Tuple[str, str]:
@@ -352,11 +405,14 @@ class PtySession:
 class RemoteSession:
     """A detached ``claude`` window the launcher tracks but does not stream.
 
-    Spawned in its own console (``CREATE_NEW_CONSOLE``) so it has a visible
-    window on the PC and survives a session-host restart. The launcher keeps
-    the process handle only so the session shows up in the running-sessions
-    list and can be killed from the phone — there is no PTY, no scrollback,
-    and no WebSocket. Remote control comes from the Claude cloud app.
+    Spawned in its own console window and deliberately **orphaned out of the
+    session-host's process tree** (see :meth:`SessionManager.create_remote`),
+    so it stays visible on the PC and survives a session-host *or* a
+    ``tray.bat --restart`` tear-down (issue #130) — that survival is the whole
+    point of the detached mode. The launcher keeps only the console PID, so the
+    session shows up in the running-sessions list and can be killed from the
+    phone — there is no PTY, no scrollback, and no WebSocket. Remote control
+    comes from the Claude cloud app.
     """
 
     kind = KIND_REMOTE
@@ -368,7 +424,7 @@ class RemoteSession:
         name: str,
         flags: str,
         started_at: float,
-        proc: "subprocess.Popen",
+        pid: int,
         agent: str = DEFAULT_AGENT,
     ) -> None:
         self.session_id = session_id
@@ -376,31 +432,33 @@ class RemoteSession:
         self.name = name
         self.flags = flags
         self.started_at = started_at
-        self._proc = proc
+        self._pid = pid
         self.agent = agent
 
     @property
     def alive(self) -> bool:
-        return self._proc.poll() is None
+        return _pid_alive(self._pid)
 
     def stop(self, mode: str = STOP_KILL, close_window: bool = False) -> None:
         """Stop and close the detached console session.
 
         Detached processes (RemoteSession) cannot be gracefully stopped without
         closing the window, since they have no stdin/PTY. We use taskkill /T /F
-        to terminate the entire process tree (cmd.exe + claude + children).
+        to terminate the console's whole subtree (cmd.exe + agent + children).
+        The console is orphaned from the host tree, but it is still reachable by
+        its own PID, so an explicit Stop from the phone still works.
 
         ``close_window`` is accepted for interface parity with :class:`PtySession`
         but is always treated as True. ``mode`` is ignored — no PTY to send /quit.
         """
-        if self._proc.poll() is not None:
+        if not _pid_alive(self._pid):
             return
 
         try:
             subprocess.run(
-                ["taskkill", "/PID", str(self._proc.pid), "/T", "/F"],
+                ["taskkill", "/PID", str(self._pid), "/T", "/F"],
                 capture_output=True,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=_CREATE_NO_WINDOW,
                 timeout=10,
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -502,37 +560,57 @@ class SessionManager:
     ) -> RemoteSession:
         """Spawn ``<agent> <flags>`` in a detached console window.
 
+        The window is **orphaned out of the session-host's process tree** so a
+        ``tray.bat --restart`` — which tears the tray subtree down with
+        ``taskkill /T`` — cannot cascade into it (issue #130); detached
+        sessions are meant to outlive a launcher / session-host restart, which
+        is the entire point of the mode. We launch through a transient
+        PowerShell ``Start-Process`` that exits the moment the console is up:
+        the console's parent is that PowerShell, so once it exits the console
+        is reparented away from the host subtree and ``taskkill /T`` on the
+        tray can no longer enumerate it. ``-PassThru`` hands back the real
+        console PID, which we keep purely to list/kill it.
+
         Tracked for listing and kill only — see :class:`RemoteSession`.
         """
         directory = Path(project_dir)
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
         session_id = uuid.uuid4().hex
-        # `cmd /c` resolves the agent command off PATH; CREATE_NEW_CONSOLE
-        # gives the window its own console so it stays visible on the PC and
-        # outlives this host process. We keep the handle purely to list/kill.
+        # `cmd /c` resolves the agent command (e.g. claude.cmd) off PATH and
+        # closes the window when the agent exits — same shape as the PTY spawn.
         exe = command_for(agent)
-        command = f"cmd /c {exe} {flags}".strip()
-        proc = subprocess.Popen(
-            command,
-            cwd=str(directory),
-            creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
-            close_fds=True,
+        inner = f"{exe} {flags}".strip()
+        ps_command = (
+            "(Start-Process -FilePath 'cmd' "
+            f"-ArgumentList '/c {_ps_quote(inner)}' "
+            f"-WorkingDirectory '{_ps_quote(str(directory))}' -PassThru).Id"
         )
+        result = subprocess.run(
+            [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", ps_command],
+            capture_output=True,
+            text=True,
+            creationflags=_CREATE_NO_WINDOW,
+            timeout=30,
+        )
+        pid = _parse_started_pid(result.stdout)
+        if pid is None:
+            detail = (result.stderr or result.stdout or "").strip()[:200]
+            raise RuntimeError(f"Failed to launch detached session: {detail}")
         session = RemoteSession(
             session_id=session_id,
             project_dir=str(directory),
             name=name,
             flags=flags,
             started_at=time.time(),
-            proc=proc,
+            pid=pid,
             agent=agent,
         )
         with self._lock:
             self._sessions[session_id] = session
         logger.info(
-            f"🚀 remote session {session_id[:8]} spawned: {exe} in "
-            f"{directory} ({flags})"
+            f"🚀 remote session {session_id[:8]} spawned (orphaned, pid={pid}): "
+            f"{exe} in {directory} ({flags})"
         )
         return session
 
