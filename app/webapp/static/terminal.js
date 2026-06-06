@@ -69,6 +69,27 @@ export function estimateTermSize() {
   }
 }
 
+// Given the layout-viewport height and the current visual-viewport
+// height, return the pixel height to pin the terminal overlay to so its
+// bottom edge sits at the top of the on-screen keyboard — or null to
+// release the override and let the overlay fill the screen via the CSS
+// (100dvh). iOS shrinks `visualViewport.height` when the software
+// keyboard slides up but does NOT shrink the layout viewport, so a
+// `position:fixed; inset:0` overlay keeps covering the whole screen
+// *behind* the keyboard and the active prompt row renders hidden under
+// it (issue #135). Only a substantial shrink counts as the keyboard;
+// smaller URL-bar / home-indicator chrome changes (<~120px) are left to
+// the existing 100dvh + fit() path so this doesn't fight that behaviour.
+const _KEYBOARD_SHRINK_PX = 120;
+
+export function keyboardOverlayHeight(layoutHeight, visualHeight) {
+  if (!(layoutHeight > 0) || !(visualHeight > 0)) return null;
+  if (layoutHeight - visualHeight > _KEYBOARD_SHRINK_PX) {
+    return Math.round(visualHeight);
+  }
+  return null;
+}
+
 function setTerminalStatus(msg) {
   if (!els.terminalStatus) return;
   if (msg) {
@@ -364,7 +385,29 @@ export async function openTerminal(session) {
       try { term.resize(cols, rows); } catch (_) {}
       return;
     }
+    // Pin the overlay to the visual viewport when the keyboard is up so
+    // its bottom edge lands at the top of the keyboard and the prompt
+    // stays visible — then fit() reflows xterm to the smaller box
+    // (issue #135). Released (back to CSS 100dvh) when the keyboard
+    // hides. Must run *before* fit() so it measures the new host size.
+    const vp = window.visualViewport;
+    if (vp && els.terminalOverlay) {
+      const h = keyboardOverlayHeight(window.innerHeight, vp.height);
+      if (h != null) {
+        els.terminalOverlay.style.height = h + 'px';
+        els.terminalOverlay.style.bottom = 'auto';
+      } else {
+        els.terminalOverlay.style.height = '';
+        els.terminalOverlay.style.bottom = '';
+      }
+    }
     try { if (fit) fit.fit(); } catch (_) {}
+    // Keep the prompt (bottom row) in view after a keyboard-driven
+    // reflow, but only if the user hadn't scrolled up to read history.
+    try {
+      const b = term.buffer.active;
+      if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
+    } catch (_) {}
     if (t.ws && t.ws.readyState === WebSocket.OPEN) {
       t.ws.send(JSON.stringify({
         type: 'resize', rows: term.rows, cols: term.cols,
@@ -414,6 +457,12 @@ export function closeTerminal() {
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
+  }
+  // Release any keyboard-driven height override (issue #135) so the next
+  // open starts from the CSS-driven full height.
+  if (els.terminalOverlay) {
+    els.terminalOverlay.style.height = '';
+    els.terminalOverlay.style.bottom = '';
   }
   try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
   try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
