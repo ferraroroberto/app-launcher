@@ -39,9 +39,9 @@ if /i "%~1"=="--restart" set "WANT_RESTART=1"
 if /i "%~1"=="-r"        set "WANT_RESTART=1"
 
 set "PS=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-set "TRAY_VENV=%VENV_DIR%"
+set "TRAY_VENV=%SCRIPT_DIR%.venv"
 set "TRAY_PIDS="
-for /f "usebackq delims=" %%P in (`%PS% -NoProfile -NonInteractive -Command "$v=$env:TRAY_VENV; Get-CimInstance Win32_Process -Filter 'Name = ''pythonw.exe'' OR Name = ''python.exe''' | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($v, [System.StringComparison]::OrdinalIgnoreCase) -and $_.CommandLine -match 'launcher\.py\s+tray' } | Select-Object -ExpandProperty ProcessId"`) do (
+for /f "usebackq delims=" %%P in (`%PS% -NoProfile -NonInteractive -Command "$v=$env:TRAY_VENV; Get-CimInstance Win32_Process -Filter 'Name = ''pythonw.exe'' OR Name = ''python.exe''' | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($v, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -and $_.CommandLine -match 'launcher\.py\s+tray' } | Select-Object -ExpandProperty ProcessId"`) do (
     if defined TRAY_PIDS (set "TRAY_PIDS=!TRAY_PIDS! %%P") else (set "TRAY_PIDS=%%P")
 )
 
