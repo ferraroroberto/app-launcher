@@ -456,22 +456,20 @@ html, body {
 /* ---------- Coding tab git-status flags (issue #115) ---------- */
 /* On-demand only: tap the header button to annotate tiles. Yellow name
    = parked on a non-default branch; red name = uncommitted changes. */
-.coding-list-header {
+.sessions-header-actions {
   position: relative;   /* anchors the off-main summary popover (issue #139) */
   display: flex;
-  justify-content: flex-start;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 6px;
 }
 .git-status-btn { font-size: 12px; padding: 6px 10px; }
 .git-status-btn.loading { opacity: 0.5; pointer-events: none; }
 /* Compact off-main summary popover (issue #139): anchored below the
-   status button, left-aligned, overlays the project list so the user
-   sees which projects are off their default branch without scrolling. */
+   status button, right-aligned with the card edge. */
 .git-summary {
   position: absolute;
   top: calc(100% + 4px);
-  left: 0;
+  right: 0;
   z-index: 30;
   min-width: 200px;
   max-width: min(92vw, 460px);
