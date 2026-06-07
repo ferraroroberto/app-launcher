@@ -110,6 +110,8 @@
         <button id="gitStatusBtn" type="button" class="ghost-btn git-status-btn"
                 title="Check each project's git branch + uncommitted changes"
                 aria-label="Check git status of all projects">⎇ status</button>
+        <div id="gitStatusSummary" class="git-summary" hidden
+             role="list" aria-label="Projects not on their default branch"></div>
       </div>
       <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
       <div id="claudeEmpty" class="empty" hidden>
