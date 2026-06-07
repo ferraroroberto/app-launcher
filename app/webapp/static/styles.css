@@ -1210,7 +1210,14 @@ body.terminal-open {
   cursor: pointer;
 }
 .key-btn:active { background: var(--bg-elev-2); }
-/* Empty grid cells flanking the down-arrow keep it centered in row 3. */
+/* Sticky-Shift engaged (issue #137): ⇧ stays lit until tapped off so the
+   user can see Shift is being held for the next key. */
+.key-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+/* Empty grid cell to the right of ⇧ keeps the down-arrow centered in row 3. */
 .key-spacer { display: block; }
 .terminal-host {
   flex: 1;
