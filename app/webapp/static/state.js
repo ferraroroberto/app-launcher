@@ -158,6 +158,7 @@ export const els = {
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
   gitStatusBtn: document.getElementById('gitStatusBtn'),
+  gitStatusSummary: document.getElementById('gitStatusSummary'),
   gitStatusLegend: document.getElementById('gitStatusLegend'),
   sessionsList: document.getElementById('sessionsList'),
   sessionsEmpty: document.getElementById('sessionsEmpty'),

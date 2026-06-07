@@ -134,12 +134,80 @@ export async function fetchGitStatus() {
     state.gitStatus = map;
     if (els.gitStatusLegend) els.gitStatusLegend.hidden = false;
     renderApps();
+    openGitSummary();
   } catch (exc) {
     if (String(exc.message) !== 'auth required') {
       toast('Git status check failed: ' + (exc.message || exc), 'error');
     }
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+  }
+}
+
+// Compact "what am I working on" popover (issue #139). Reads the same
+// cached git-status the tiles use and lists one line per project parked
+// off its default branch, colour-matched to the list (red = dirty,
+// yellow = off-main). Anchored below the status button; closes on a
+// second tap or any tap outside, mirroring the terminal keys popover.
+let _gitSummaryOutsideHandler = null;
+
+function closeGitSummary() {
+  if (els.gitStatusSummary) els.gitStatusSummary.hidden = true;
+  if (_gitSummaryOutsideHandler) {
+    document.removeEventListener('pointerdown', _gitSummaryOutsideHandler);
+    _gitSummaryOutsideHandler = null;
+  }
+}
+
+function buildGitSummary() {
+  const box = els.gitStatusSummary;
+  if (!box) return;
+  box.innerHTML = '';
+  // Off-default-branch coding projects, in the list's own order.
+  const offMain = state.apps.filter(function (a) {
+    if (a.kind !== 'claude-code') return false;
+    const gs = state.gitStatus && state.gitStatus[a.id];
+    return gs && gs.is_git && gs.branch && !gs.on_default_branch;
+  });
+  if (!offMain.length) {
+    const note = document.createElement('div');
+    note.className = 'git-summary-empty';
+    note.textContent = 'All projects on their default branch ✓';
+    box.appendChild(note);
+    return;
+  }
+  offMain.forEach(function (a) {
+    const gs = state.gitStatus[a.id];
+    const row = document.createElement('div');
+    row.className = 'git-summary-row';
+    row.setAttribute('role', 'listitem');
+    const name = document.createElement('span');
+    // Same precedence as annotateGitStatus: red wins when also dirty.
+    name.className = 'git-summary-name ' + (gs.dirty ? 'git-dirty' : 'git-off-main');
+    name.textContent = a.name;
+    const tag = document.createElement('span');
+    tag.className = 'git-branch-tag';
+    tag.textContent = gs.branch;
+    row.appendChild(name);
+    row.appendChild(tag);
+    box.appendChild(row);
+  });
+}
+
+function openGitSummary() {
+  const box = els.gitStatusSummary;
+  if (!box) return;
+  buildGitSummary();
+  box.hidden = false;
+  // The opening tap's pointerdown has already fired by now, so binding
+  // here won't catch it; the contains() guards cover a tap on the button.
+  if (!_gitSummaryOutsideHandler) {
+    _gitSummaryOutsideHandler = function (ev) {
+      if (box.contains(ev.target) ||
+          (els.gitStatusBtn && els.gitStatusBtn.contains(ev.target))) return;
+      closeGitSummary();
+    };
+    document.addEventListener('pointerdown', _gitSummaryOutsideHandler);
   }
 }
 
@@ -616,6 +684,12 @@ export function wireApps() {
   els.refreshRunningApps.addEventListener('click', fetchRunningApps);
   if (els.gitStatusBtn) {
     els.gitStatusBtn.addEventListener('click', function () {
+      // Toggle: a second tap closes the summary; otherwise re-fetch fresh
+      // git status and open it (fetchGitStatus opens on success).
+      if (els.gitStatusSummary && !els.gitStatusSummary.hidden) {
+        closeGitSummary();
+        return;
+      }
       fetchGitStatus().catch(function () {});
     });
   }
