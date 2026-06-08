@@ -7,9 +7,12 @@ REM  Launch this on login (Startup folder) for always-on phone-first launcher.
 REM
 REM  Idempotent:
 REM    tray.bat              -> no-op if an AppLauncher tray is already running
-REM    tray.bat --restart    -> stop the running tray (and its tree: webapp on
-REM                             :8445, session-host on :8446, cloudflared) and
-REM                             start a fresh one
+REM    tray.bat --restart    -> stop the running tray + its owned-and-cycled
+REM                             children (webapp :8445, cloudflared) and start a
+REM                             fresh one. The :8446 session-host is linked-but-
+REM                             independent: it is spawned DETACHED, survives the
+REM                             restart, and the fresh tray re-adopts it, so open
+REM                             Coding / PTY sessions are NOT killed.
 REM
 REM  Detection matches the tray process by command line + this project's .venv
 REM  path via CIM, then kills BY PID with /T. We never blanket-kill pythonw,
@@ -17,13 +20,15 @@ REM  so sister-app trays (PhotoOCR, VoiceTranscriber, local-llm-hub, ...) and
 REM  any other unrelated python processes are untouched.
 REM
 REM  --restart is orphan-proof: in addition to killing the tray subtree, it
-REM  reclaims this app's service ports :8445 (webapp) and :8446 (session-host)
-REM  by their owning PID, regardless of process parentage. A webapp/session-host
-REM  that got detached from its tray (stale process from an earlier run) would
-REM  otherwise survive a subtree kill, block the fresh tray from binding, and
-REM  keep serving the old build while the restart reports success. The reclaim
-REM  is scoped to processes under THIS repo's .venv, so sister apps' ports and
-REM  their cloudflared tunnels are never touched. See project-scaffolding#29.
+REM  reclaims this app's OWNED-AND-CYCLED port :8445 (webapp) by its owning PID,
+REM  regardless of process parentage -- a stale webapp detached from an earlier
+REM  run would otherwise block the fresh tray from binding and keep serving the
+REM  old build while the restart reports success. The reclaim is scoped to
+REM  processes under THIS repo's .venv, so sister apps are never touched.
+REM  :8446 (the session-host) is deliberately NOT reclaimed: it is linked-but-
+REM  independent (it hosts the user's PTY / Coding sessions), spawned detached so
+REM  taskkill /T cannot reach it, and re-adopted by the fresh tray on start.
+REM  See project-scaffolding#29 (reclaim) and #35 (detach + re-adopt).
 REM ============================================================================
 
 setlocal EnableDelayedExpansion
@@ -66,8 +71,8 @@ if defined WANT_RESTART (
     REM Matching the image path would miss the real webapp/session-host; the
     REM CommandLine scope keeps the sweep on THIS repo's children only.
     set "RECLAIM_VENV=%SCRIPT_DIR%.venv"
-    %PS% -NoProfile -NonInteractive -Command "$v=$env:RECLAIM_VENV; foreach ($port in 8445,8446) { Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $opid = $_.OwningProcess; $cim = Get-CimInstance Win32_Process -Filter ('ProcessId = {0}' -f $opid) -ErrorAction SilentlyContinue; if ($cim -and $cim.CommandLine -and $cim.CommandLine.IndexOf($v, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { Write-Host ('Reclaiming :{0} from PID {1}' -f $port, $opid); Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue } } }"
-    REM Give Windows a moment to release :8445 / :8446 before rebinding.
+    %PS% -NoProfile -NonInteractive -Command "$v=$env:RECLAIM_VENV; foreach ($port in 8445) { Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object { $opid = $_.OwningProcess; $cim = Get-CimInstance Win32_Process -Filter ('ProcessId = {0}' -f $opid) -ErrorAction SilentlyContinue; if ($cim -and $cim.CommandLine -and $cim.CommandLine.IndexOf($v, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) { Write-Host ('Reclaiming :{0} from PID {1}' -f $port, $opid); Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue } } }"
+    REM Give Windows a moment to release :8445 before rebinding.
     ping 127.0.0.1 -n 3 >nul
 )
 
