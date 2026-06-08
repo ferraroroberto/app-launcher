@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +112,7 @@ class SingleInstance:
         _close_handle(self._handle)
         self._handle = None
 
-    def __enter__(self) -> "SingleInstance":
+    def __enter__(self) -> SingleInstance:
         return self
 
     def __exit__(self, *_exc: object) -> None:
