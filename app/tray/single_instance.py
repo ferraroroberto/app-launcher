@@ -32,8 +32,9 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ _WAIT_ABANDONED = 0x00000080
 _ERROR_ALREADY_EXISTS = 183
 
 
-def _create_named_mutex(name: str, initial_owner: bool):
+def _create_named_mutex(name: str, initial_owner: bool) -> tuple[Any, bool]:
     """Create/open a Windows named mutex. Returns ``(handle, already_existed)``.
 
     ``handle`` is None on failure (caller should fail open — never block startup
@@ -68,7 +69,7 @@ def _create_named_mutex(name: str, initial_owner: bool):
     return handle, last_error == _ERROR_ALREADY_EXISTS
 
 
-def _close_handle(handle) -> None:
+def _close_handle(handle: Any) -> None:
     import ctypes
 
     if handle:
@@ -112,7 +113,7 @@ class SingleInstance:
         _close_handle(self._handle)
         self._handle = None
 
-    def __enter__(self) -> "SingleInstance":
+    def __enter__(self) -> SingleInstance:
         return self
 
     def __exit__(self, *_exc: object) -> None:
