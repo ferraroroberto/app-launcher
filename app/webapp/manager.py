@@ -23,6 +23,8 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from app.tray.single_instance import cross_process_lock
+
 logger = logging.getLogger(__name__)
 
 OWNERSHIP_NONE = "none"
@@ -148,41 +150,49 @@ class WebappManager:
             logger.info("ℹ️  Webapp is disabled in config (webapp.enabled=false)")
             return self.status()
 
-        current = self.status()
-        if current.running and current.ownership == OWNERSHIP_OURS:
-            logger.info(f"ℹ️  Webapp already {current.detail}")
-            return current
-        if current.running:
-            logger.info(f"🔗 Adopting external webapp at {current.base_url}")
-            return current
+        # Race-safe adopt-or-spawn (project-scaffolding#39): serialize the
+        # status()-then-Popen critical section across processes so two trays
+        # starting at once cannot both spawn uvicorn. The loser blocks, then
+        # re-checks below and adopts the now-listening webapp. The lock is held
+        # through _wait_until_ready so a serialized caller sees a bound port.
+        # cross_process_lock fails open (Windows mutex glitch / non-Windows), so
+        # it never blocks startup. Vendored byte-identical from the scaffold.
+        with cross_process_lock(rf"Global\app-launcher-webapp-start-{self.config.port}"):
+            current = self.status()
+            if current.running and current.ownership == OWNERSHIP_OURS:
+                logger.info(f"ℹ️  Webapp already {current.detail}")
+                return current
+            if current.running:
+                logger.info(f"🔗 Adopting external webapp at {current.base_url}")
+                return current
 
-        cmd = self._build_command()
-        logger.info(f"🚀 Starting webapp: {' '.join(cmd)}")
+            cmd = self._build_command()
+            logger.info(f"🚀 Starting webapp: {' '.join(cmd)}")
 
-        env = os.environ.copy()
-        env["PYTHONIOENCODING"] = "utf-8"
-        env["PYTHONUTF8"] = "1"
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            env["PYTHONUTF8"] = "1"
 
-        try:
-            popen_kwargs: Dict[str, Any] = dict(
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env,
-            )
-            if sys.platform == "win32":
-                popen_kwargs["creationflags"] = (
-                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+            try:
+                popen_kwargs: Dict[str, Any] = dict(
+                    cwd=str(PROJECT_ROOT),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    env=env,
                 )
-            self._proc = subprocess.Popen(cmd, **popen_kwargs)
-        except FileNotFoundError as exc:
-            raise RuntimeError(f"❌ python launcher not found: {exc}") from exc
-        except Exception as exc:
-            raise RuntimeError(f"❌ failed to launch webapp: {exc}") from exc
+                if sys.platform == "win32":
+                    popen_kwargs["creationflags"] = (
+                        subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                    )
+                self._proc = subprocess.Popen(cmd, **popen_kwargs)
+            except FileNotFoundError as exc:
+                raise RuntimeError(f"❌ python launcher not found: {exc}") from exc
+            except Exception as exc:
+                raise RuntimeError(f"❌ failed to launch webapp: {exc}") from exc
 
-        if wait:
-            self._wait_until_ready()
-        return self.status()
+            if wait:
+                self._wait_until_ready()
+            return self.status()
 
     def restart(self, wait: bool = True) -> WebappStatus:
         status = self.status()

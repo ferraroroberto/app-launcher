@@ -23,6 +23,7 @@ import logging
 import os
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -35,6 +36,7 @@ import yaml
 from src import AppConfig
 from src.webapp_config import append_auth_token, load_webapp_config
 
+from app.tray.single_instance import SingleInstance
 from app.webapp.manager import (
     WebappManager,
     cert_paths,
@@ -49,6 +51,20 @@ TUNNEL_CONFIG_PATH = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 # The tray runs windowless (pythonw) with no console to log to, so the
 # Tailscale lookup leaves a breadcrumb here when it can't resolve a host.
 TS_DEBUG_LOG = PROJECT_ROOT / "webapp" / "tailscale_debug.log"
+
+# The loopback PTY session-host. It is a *linked-but-independent* child
+# (project-scaffolding#35): it hosts the user's Coding PTYs and MUST survive a
+# `tray.bat --restart`. So it is spawned detached (re-parented out of the tray
+# subtree) and adopted on start by this port, and :8446 is excluded from
+# tray.bat's reclaim sweep.
+SESSION_HOST_PORT = 8446
+
+
+def _port_listening(port: int) -> bool:
+    """True if something is listening on 127.0.0.1:<port> (loopback)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 
 def _read_tunnel_hostname(config_path: Path) -> Optional[str]:
@@ -236,57 +252,88 @@ def run_tray(app_config: AppConfig) -> int:
         )
         return 1
 
+    # In-process single-instance guard (project-scaffolding#39): the tray.bat CIM
+    # pre-check can let two near-simultaneous launches through, so the guarantee
+    # must live in the process. Held for the tray's lifetime; the OS frees the
+    # named mutex on exit. `instance` is intentionally kept referenced (quit).
+    instance = SingleInstance(r"Global\app-launcher-tray")
+    if not instance.acquired:
+        logger.info("ℹ️  Another app-launcher tray is already running; exiting.")
+        return 0
+
     mgr_cfg = load_config(app_config.webapp)
     manager = WebappManager(mgr_cfg)
 
     tunnel_hostname = _read_tunnel_hostname(TUNNEL_CONFIG_PATH)
     tunnel_state: dict = {"proc": None}
-    session_host_state: dict = {"proc": None}
 
     starter_error: dict = {"exc": None}
 
     def _start_session_host():
-        """Spawn the loopback PTY session-host and keep a handle on it.
+        """Bring up the loopback PTY session-host, ADOPTING one that already
+        survived a tray restart instead of spawning a duplicate.
 
-        Owned by the tray exactly like cloudflared — it must outlive webapp
-        restarts so running Claude sessions survive a `Restart webapp`.
+        Linked-but-independent (project-scaffolding#35): it hosts the user's
+        Coding PTYs, which MUST survive `tray.bat --restart`. So it is spawned
+        DETACHED via `cmd /c start` — re-parented out of this tray's process
+        subtree so `taskkill /T` cannot reach it. (DETACHED_PROCESS /
+        CREATE_NEW_PROCESS_GROUP do NOT escape /T — it walks the parent-child PID
+        tree; only re-parenting does. Verified empirically.) :8446 is also
+        excluded from tray.bat's reclaim sweep. We keep no Popen handle — the
+        session-host is managed by port identity (adopt on start, reclaim on
+        Quit), not by parentage.
         """
-        cmd = [sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host"]
+        if _port_listening(SESSION_HOST_PORT):
+            logger.info(f"🔗 Adopting running session-host on :{SESSION_HOST_PORT}")
+            return
+        # `start` launches the child and cmd exits, orphaning it out of this
+        # tray's subtree; /b keeps it windowless (the pythonw child is windowless
+        # anyway). CREATE_NO_WINDOW hides the transient cmd.
+        cmd = [
+            "cmd", "/c", "start", "", "/b",
+            sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host",
+        ]
         kw: dict = dict(
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         if sys.platform == "win32":
-            kw["creationflags"] = (
-                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            )
+            kw["creationflags"] = subprocess.CREATE_NO_WINDOW
         try:
-            proc = subprocess.Popen(cmd, **kw)
+            subprocess.Popen(cmd, **kw)
         except OSError as exc:
             logger.warning(f"⚠️  session-host failed to launch: {exc}")
             _notify("Session host", f"Failed to start: {exc}")
             return
-        session_host_state["proc"] = proc
-        logger.info(f"🧩 session-host started (pid={proc.pid})")
+        logger.info(f"🧩 session-host spawned detached on :{SESSION_HOST_PORT}")
 
     def _stop_session_host():
-        proc = session_host_state.get("proc")
-        session_host_state["proc"] = None
-        if proc is None:
+        """Stop the session-host on an explicit Quit. It is detached (no Popen
+        handle), so reclaim it by its owned port, scoped to this repo's .venv so
+        a sibling app's process is never touched.
+        """
+        if not _port_listening(SESSION_HOST_PORT):
             return
+        ps_cmd = (
+            "$v=$env:SH_VENV; "
+            f"Get-NetTCPConnection -LocalPort {SESSION_HOST_PORT} -State Listen "
+            "-ErrorAction SilentlyContinue | ForEach-Object { $opid=$_.OwningProcess; "
+            "$c=Get-CimInstance Win32_Process -Filter ('ProcessId = {0}' -f $opid) "
+            "-ErrorAction SilentlyContinue; if ($c -and $c.CommandLine -and "
+            "$c.CommandLine.IndexOf($v,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) "
+            "{ Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue } }"
+        )
         try:
-            logger.info(f"🛑 Stopping session-host (pid={proc.pid})")
-            if sys.platform == "win32":
-                try:
-                    proc.send_signal(signal.CTRL_BREAK_EVENT)
-                except Exception:
-                    pass
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            logger.info(f"🛑 Stopping session-host on :{SESSION_HOST_PORT}")
+            subprocess.run(
+                [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                 "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                env={**os.environ, "SH_VENV": str(PROJECT_ROOT / ".venv")},
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=10,
+                check=False,
+            )
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"session-host stop failed: {exc}")
 
@@ -494,6 +541,7 @@ def run_tray(app_config: AppConfig) -> int:
             manager.stop()
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"⚠️  stop failed: {exc}")
+        instance.release()
         icon.stop()
 
     def on_left_click(icon, item):  # noqa: ARG001
