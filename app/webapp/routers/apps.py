@@ -46,6 +46,7 @@ from src.webapp_config import (
     build_claude_flags,
     build_codex_flags,
     build_copilot_flags,
+    build_resume_flags,
 )
 
 from app.webapp.middleware import LOOPBACK_HOSTS
@@ -171,6 +172,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         body = await maybe_json(request)
         mode = str(body.get("mode") or "pty").strip().lower()
         agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
+        # Resume (issue #151): reopen the agent's own native session picker
+        # in a streamed PTY. It forces `kind="pty"` regardless of `mode` —
+        # the picker is interactive and must be visible on the phone — so
+        # Resume wins over Detached when both are set.
+        resume = bool(body.get("resume"))
         # Phone's real terminal size (issue #126): a pty session spawns at
         # these dimensions so a ratatui TUI's first frame isn't cut. Absent
         # (older client, or remote mode) → the legacy 40×120 default.
@@ -200,7 +206,13 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "antigravity": build_antigravity_flags,
             "copilot": build_copilot_flags,
         }
-        flags = flag_builders[agent](cfg)
+        if resume:
+            # Resume forces a streamed PTY (the picker must be visible) and
+            # swaps the normal flags for the agent's resume invocation.
+            flags = build_resume_flags(cfg, agent)
+            mode = "pty"
+        else:
+            flags = flag_builders[agent](cfg)
 
         if mode == "remote":
             try:
@@ -258,6 +270,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             agent=agent,
             name=entry.name,
             project=entry.project_dir,
+            resume=resume,
             client=client_ip(request),
         )
         audit.session_log(

@@ -43,6 +43,15 @@ class Agent:
     (re)connect — doing so dumps stale move-cursor/clear deltas into a
     fresh xterm and re-answers the agent's startup terminal queries (the
     ``[?1;2c`` DA leak, issue #128) — and instead forces a clean repaint.
+
+    ``resume_token`` is the agent's *native* resume invocation, spliced
+    between the command and the flags for a Resume launch (issue #151) so
+    the agent renders its own session picker over the PTY — the launcher
+    never builds a session list of its own. It is a flag for the
+    flag-shaped agents (Claude/Copilot ``--resume``) and a subcommand for
+    Codex (``resume``). Antigravity has no picker flag, so it maps to
+    ``--continue`` (reopen the most recent conversation — the closest
+    native behaviour). Empty means the agent has no resume path.
     """
 
     id: str
@@ -50,6 +59,7 @@ class Agent:
     command: str
     quit_command: str
     fullscreen: bool = False
+    resume_token: str = ""
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -57,19 +67,19 @@ class Agent:
 AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
-        quit_command="/quit", fullscreen=False,
+        quit_command="/quit", fullscreen=False, resume_token="--resume",
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
-        quit_command="/quit", fullscreen=True,
+        quit_command="/quit", fullscreen=True, resume_token="resume",
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",
-        quit_command="/quit", fullscreen=True,
+        quit_command="/quit", fullscreen=True, resume_token="--continue",
     ),
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
-        quit_command="/exit", fullscreen=True,
+        quit_command="/exit", fullscreen=True, resume_token="--resume",
     ),
 }
 
@@ -98,6 +108,21 @@ def quit_command_for(agent_id: str) -> str:
     """
     agent = AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
     return agent.quit_command
+
+
+def resume_command_for(agent_id: str) -> str:
+    """Return the agent's native resume token (issue #151).
+
+    Spliced between the command and the flags for a Resume launch so the
+    agent shows its own session picker (Claude/Copilot ``--resume``, Codex
+    ``resume`` subcommand) or — for Antigravity, which has no picker flag —
+    continues the most recent conversation (``--continue``). Returns an
+    empty string for an unknown id or an agent with no resume path; the
+    caller treats that as "not resumable" rather than raising, so a bad id
+    can never break a launch.
+    """
+    agent = AGENTS.get(agent_id)
+    return agent.resume_token if agent else ""
 
 
 def is_fullscreen(agent_id: str) -> bool:

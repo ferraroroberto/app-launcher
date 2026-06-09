@@ -39,7 +39,7 @@ from fastapi import APIRouter, HTTPException, Request
 from src import audit, session_client
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import WebappConfig, build_claude_flags
+from src.webapp_config import WebappConfig, build_claude_flags, build_resume_flags
 
 from app.webapp.middleware import LOOPBACK_HOSTS
 from app.webapp.routers._helpers import cert_present, client_ip
@@ -152,11 +152,18 @@ async def list_skills(request: Request) -> Dict[str, Any]:
 async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     """Launch a claude session that auto-invokes ``/<skill>`` in life-os.
 
-    Body: ``{"mode": "pty"|"remote", "opus": bool}``. The cwd is fixed to
-    ``life_os_dir``; the model is ``opus`` when the toggle is on, else
-    ``sonnet``; the positional prompt is a bare ``/<skill>`` (no free
-    text). Mirrors the Coding tab's claude-code launch (PTY streamed to
-    the phone vs. detached console window, + PC mirror window + audit).
+    Body: ``{"mode": "pty"|"remote", "opus": bool, "resume": bool}``. The
+    cwd is fixed to ``life_os_dir``; the model is ``opus`` when the toggle
+    is on, else ``sonnet``; the positional prompt is a bare ``/<skill>``
+    (no free text). Mirrors the Coding tab's claude-code launch (PTY
+    streamed to the phone vs. detached console window, + PC mirror window
+    + audit).
+
+    Resume (issue #151) reopens Claude's own native session picker in a
+    streamed PTY instead of invoking the skill: it forces ``kind="pty"``
+    (the picker must be visible — Resume wins over Detached) and **drops
+    the ``/<skill>`` prompt** so the user lands on the picker to pick up a
+    prior conversation rather than starting the skill afresh.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     life_os_dir = Path(cfg.life_os_dir)
@@ -173,16 +180,26 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     body = body if isinstance(body, dict) else {}
     mode = str(body.get("mode") or "pty").strip().lower()
     opus = bool(body.get("opus", False))
+    resume = bool(body.get("resume", False))
 
     # Model override is per-launch (opus toggle); the rest of the flags
     # (effort / permission / verbose / debug) come from the shared Coding
     # options. The bare /<skill> is appended as claude's positional prompt
     # — skill.command is a validated slug, so no shell-quoting is needed.
+    # On Resume we drop the /<skill> prompt and swap in `claude --resume`
+    # so the native picker shows instead of re-invoking the skill.
     model = "opus" if opus else "sonnet"
-    flags = f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
+    if resume:
+        flags = build_resume_flags(cfg, "claude", model_override=model)
+    else:
+        flags = (
+            f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
+        )
     name = skill.name
 
-    kind = "remote" if mode == "remote" else "pty"
+    # Resume forces a streamed PTY (the picker must be visible) — it wins
+    # over Detached.
+    kind = "pty" if resume else ("remote" if mode == "remote" else "pty")
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
@@ -207,6 +224,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         skill=skill.id,
         name=name,
         project=str(life_os_dir),
+        resume=resume,
         client=client_ip(request),
     )
     audit.session_log(
@@ -233,6 +251,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         "agent": "claude",
         "mode": kind,
         "opus": opus,
+        "resume": resume,
         "session": session,
     }
 

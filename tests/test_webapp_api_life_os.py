@@ -140,6 +140,35 @@ class TestLaunchSkill:
         assert resp.status_code == 200, resp.text
         assert "--model opus" in captured["flags"]
 
+    def test_launch_resume_drops_skill_prompt_and_forces_pty(
+        self, life_os_client, monkeypatch
+    ):
+        """Resume (issue #151) reopens Claude's picker: it swaps in
+        `--resume`, drops the /<skill> positional prompt, and forces a
+        streamed pty even when mode=remote is also sent (Resume wins)."""
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent):
+            captured.update(flags=flags, kind=kind, agent=agent)
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"mode": "remote", "resume": True, "opus": True},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["kind"] == "pty"
+        assert captured["agent"] == "claude"
+        assert "--resume" in captured["flags"]
+        assert "/journal-daily" not in captured["flags"]
+        # The opus override still applies to the resumed session's model.
+        assert "--model opus" in captured["flags"]
+        assert resp.json()["resume"] is True
+
     def test_launch_unknown_skill_404(self, life_os_client):
         client, _, _ = life_os_client
         resp = client.post("/api/life-os/skills/does-not-exist/launch", json={})
