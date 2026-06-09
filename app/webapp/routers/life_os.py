@@ -41,8 +41,11 @@ from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, build_claude_flags, build_resume_flags
 
-from app.webapp.middleware import LOOPBACK_HOSTS
-from app.webapp.routers._helpers import cert_present, client_ip
+from app.webapp.routers._helpers import (
+    cert_present,
+    client_ip,
+    should_mirror_to_pc,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -233,11 +236,11 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     )
 
     # Mirror full-control sessions into a PC terminal window (skipped when
-    # the launch came from the PC itself) — identical to the Coding tab.
-    if (
-        kind == "pty"
-        and cfg.claude_show_local_window
-        and client_ip(request) not in LOOPBACK_HOSTS
+    # the launch came from the PC itself — loopback IP or a desktop browser
+    # that already shows the terminal, issue #159) — identical to the
+    # Coding tab.
+    if kind == "pty" and should_mirror_to_pc(
+        cfg.claude_show_local_window, request, body
     ):
         scheme = "https" if cert_present() else "http"
         pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"

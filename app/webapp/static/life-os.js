@@ -13,7 +13,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { jsonApi, toast, isDesktopClient } from './api.js';
 import { fetchSessions } from './sessions.js';
 import { openTerminal } from './terminal.js';
 
@@ -86,13 +86,18 @@ async function launchSkill(s) {
   const mode = (!resume && els.lifeOsDetached && els.lifeOsDetached.checked)
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
+  const payload = { mode: mode, opus: opus, resume: resume };
+  // A desktop browser already shows a streamed (pty) terminal in-page, so
+  // the server should skip the redundant PC mirror window (issue #159).
+  // Remote launches have no terminal/mirror, so the flag only matters here.
+  if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
   try {
     const body = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: mode, opus: opus, resume: resume }),
+        body: JSON.stringify(payload),
       }
     );
     toast(
