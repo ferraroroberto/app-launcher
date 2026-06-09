@@ -299,17 +299,17 @@ class TestClaudeCodeDiscovery:
         assert "--dangerously-bypass-approvals-and-sandbox" in captured["flags"]
         assert "--ask-for-approval" not in captured["flags"]
 
-    def test_launch_resume_forces_pty_with_token(
+    def test_launch_resume_only_streams_pty_with_token(
         self, webapp_client, monkeypatch
     ):
-        """Resume (issue #151) reopens the agent's picker: it forces a
-        streamed pty even when mode=remote is also sent, and the spawn's
-        flags begin with the agent's resume token (`--resume` for Claude)."""
+        """Resume without Detached (issue #151) reopens the agent's picker in
+        a streamed pty, and the spawn's flags begin with the agent's resume
+        token (`--resume` for Claude)."""
         client, _, overrides = webapp_client
         from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        # Resume forces pty, which would otherwise open the PC mirror window.
+        # A pty launch would otherwise open the PC mirror window.
         monkeypatch.setattr(
             apps_router, "open_local_terminal_window", lambda *a, **k: None
         )
@@ -325,16 +325,46 @@ class TestClaudeCodeDiscovery:
             return {"session_id": "s1", "kind": kind, "agent": agent}
 
         monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
-        # mode=remote is ignored when resume is set — Resume wins.
         resp = client.post(
-            "/api/apps/live-proj/launch",
-            json={"mode": "remote", "resume": True},
+            "/api/apps/live-proj/launch", json={"resume": True}
         )
         assert resp.status_code == 200
         assert captured["kind"] == "pty"
         assert captured["agent"] == "claude"
         assert captured["flags"].startswith("--resume ")
         assert resp.json()["mode"] == "pty"
+
+    def test_launch_resume_with_detached_opens_remote_console(
+        self, webapp_client, monkeypatch
+    ):
+        """Detached + Resume (issue #157) honours mode=remote: the picker
+        renders in a detached console window rather than forcing a pty. The
+        spawn is kind="remote" with the agent's resume token in its flags."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120,
+        ):
+            captured["flags"] = flags
+            captured["kind"] = kind
+            captured["agent"] = agent
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"mode": "remote", "resume": True},
+        )
+        assert resp.status_code == 200
+        assert captured["kind"] == "remote"
+        assert captured["agent"] == "claude"
+        assert captured["flags"].startswith("--resume ")
+        assert resp.json()["mode"] == "remote"
 
     def test_launch_resume_codex_drops_incompatible_flags(
         self, webapp_client, monkeypatch
