@@ -80,7 +80,10 @@ export function renderSkills() {
 }
 
 async function launchSkill(s) {
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.checked)
+  // Resume (issue #151) reopens Claude's session picker (dropping the
+  // /<skill> prompt) in a streamed PTY — it wins over Detached.
+  const resume = !!(els.lifeOsResume && els.lifeOsResume.checked);
+  const mode = (!resume && els.lifeOsDetached && els.lifeOsDetached.checked)
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
   try {
@@ -89,11 +92,11 @@ async function launchSkill(s) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: mode, opus: opus }),
+        body: JSON.stringify({ mode: mode, opus: opus, resume: resume }),
       }
     );
     toast(
-      '🌱 Launched ' + s.name +
+      (resume ? '↺ Resumed ' : '🌱 Launched ') + s.name +
         (opus ? ' (Opus)' : '') + (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );

@@ -115,7 +115,8 @@ def test_life_os_launch_posts_mode_and_opus(
     authed_page.wait_for_timeout(400)
     assert "body" in captured, "launch POST was never intercepted"
     payload = _json.loads(captured["body"])
-    assert payload == {"mode": "remote", "opus": True}, payload
+    # resume defaults to False on a normal (non-resume) launch (issue #151).
+    assert payload == {"mode": "remote", "opus": True, "resume": False}, payload
 
 
 def test_life_os_tile_keeps_name_and_buttons_on_one_row(

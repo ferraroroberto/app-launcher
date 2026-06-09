@@ -401,6 +401,47 @@ def build_copilot_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
+def build_resume_flags(
+    cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None
+) -> str:
+    """Compose the full flags string for a *Resume* launch (issue #151).
+
+    Splices the agent's native resume token (see
+    :func:`src.agents.resume_command_for`) ahead of the flags its resume
+    path actually accepts, so the launch line becomes
+    ``<command> <resume-token> <flags>`` and the agent renders its own
+    session picker over the PTY.
+
+    Most agents accept their normal launch flags after the resume token,
+    so this is ``<token> <normal builder output>``. The one exception is
+    **Codex**: its ``resume`` subcommand rejects the top-level
+    ``--ask-for-approval`` / ``--sandbox`` switches, accepting only the
+    config override — so a Codex resume carries just
+    ``resume -c model_reasoning_effort=<effort>``.
+
+    ``model_override`` forces a specific Claude ``--model`` (used by the
+    Life OS tab's opus toggle); it is ignored for non-Claude agents, which
+    have no launch-time model flag.
+    """
+    from src.agents import resume_command_for
+
+    token = resume_command_for(agent_id)
+    if agent_id == "codex":
+        parts = [token]
+        if cfg.codex_effort in VALID_CODEX_EFFORTS:
+            parts.extend(["-c", f"model_reasoning_effort={cfg.codex_effort}"])
+        return " ".join(parts).strip()
+    if agent_id == "claude":
+        base = build_claude_flags(cfg, model_override=model_override)
+    elif agent_id == "antigravity":
+        base = build_antigravity_flags(cfg)
+    elif agent_id == "copilot":
+        base = build_copilot_flags(cfg)
+    else:
+        base = ""
+    return f"{token} {base}".strip()
+
+
 def _validate(cfg: WebappConfig) -> None:
     if not (1 <= cfg.port <= 65535):
         raise ValueError(f"port out of range: {cfg.port}")

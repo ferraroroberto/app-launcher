@@ -41,8 +41,10 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     # The Coding options card is a <details> collapsed by default — expand
     # it so the segmented controls become visible. renderClaudeOptions()
     # runs after /api/config resolves regardless, but the buttons are only
-    # *visible* once the panel is open.
-    authed_page.locator("#codingOptions > summary").click()
+    # *visible* once the panel is open. Click the title (not the summary's
+    # geometric centre, which can land on a stopPropagation toggle now that
+    # the row carries both ☁️ Detached and ↺ Resume — issue #151).
+    authed_page.locator(".coding-summary-title").click()
     authed_page.wait_for_selector("#claudeModel > button", timeout=5_000)
     authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
     authed_page.wait_for_selector("#claudePermission > button", timeout=5_000)

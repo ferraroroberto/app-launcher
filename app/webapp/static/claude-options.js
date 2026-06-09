@@ -173,14 +173,14 @@ export function wireClaudeOptions() {
   els.copilotModel.addEventListener('change', function () {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
-  // The ☁️ Detached toggle lives in the card's <summary> so it stays
-  // visible when the panel is collapsed — but a click there would also
-  // expand/collapse the <details>. Stop the click at the toggle so it
-  // only flips the checkbox.
-  const detachedLabel = els.claudeDetached.closest('.detached-toggle');
-  if (detachedLabel) {
-    detachedLabel.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-    });
-  }
+  // The ☁️ Detached and ↺ Resume toggles live in the card's <summary> so
+  // they stay visible when the panel is collapsed — but a click there
+  // would also expand/collapse the <details>. Stop the click at each
+  // toggle so it only flips the checkbox.
+  [els.claudeDetached, els.claudeResume].forEach(function (input) {
+    const label = input && input.closest('.detached-toggle');
+    if (label) {
+      label.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    }
+  });
 }

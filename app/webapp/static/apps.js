@@ -307,15 +307,22 @@ function renderList(host, items) {
 // Coding-tab launch mode is the ☁️ Detached toggle in the options
 // card: checked → 'remote' (detached console window, listed + killable
 // here but no phone terminal); unchecked → full-control PTY streamed to
-// the phone. `agentId` (claude | antigravity | copilot) is set by the
-// Coding tile's per-agent button; undefined for Apps-tab bat launches.
+// the phone. The ↺ Resume toggle (issue #151) reopens the agent's own
+// session picker in a streamed PTY — it wins over Detached (the picker
+// must be visible), so it forces a pty launch. `agentId` (claude | codex
+// | antigravity | copilot) is set by the Coding tile's per-agent button;
+// undefined for Apps-tab bat launches.
 async function launchApp(a, agentId) {
-  const mode = (a.kind === 'claude-code' && els.claudeDetached &&
+  const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
+    els.claudeResume.checked);
+  // Resume forces streamed (pty); only honour Detached when not resuming.
+  const mode = (!resume && a.kind === 'claude-code' && els.claudeDetached &&
     els.claudeDetached.checked) ? 'remote' : null;
   try {
     const opts = { method: 'POST' };
     const payload = {};
     if (mode) payload.mode = mode;
+    if (resume) payload.resume = true;
     if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
     // Streamed (pty) coding launches carry the phone's real terminal size
     // so the PTY's first frame is the right width for a ratatui TUI
@@ -340,7 +347,7 @@ async function launchApp(a, agentId) {
       agentTag = ' (' + (known ? known.label : body.agent) + ')';
     }
     toast(
-      '🚀 Launched ' + a.name + agentTag +
+      (resume ? '↺ Resumed ' : '🚀 Launched ') + a.name + agentTag +
         (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );

@@ -37,6 +37,28 @@ class TestQuitCommandFor:
         assert agents.quit_command_for("bogus") == "/quit"
 
 
+class TestResumeCommandFor:
+    def test_claude_resumes_with_flag(self):
+        # Claude's --resume opens its native interactive session picker.
+        assert agents.resume_command_for("claude") == "--resume"
+
+    def test_copilot_resumes_with_flag(self):
+        assert agents.resume_command_for("copilot") == "--resume"
+
+    def test_codex_resumes_with_subcommand(self):
+        # Codex's resume is a subcommand, not a flag — it must sit right
+        # after `codex` and before any flags.
+        assert agents.resume_command_for("codex") == "resume"
+
+    def test_antigravity_continues_most_recent(self):
+        # agy has no picker flag; --continue reopens the most recent.
+        assert agents.resume_command_for("antigravity") == "--continue"
+
+    def test_unknown_agent_returns_empty(self):
+        # A bad id is "not resumable", never a raise.
+        assert agents.resume_command_for("bogus") == ""
+
+
 class TestIsInstalled:
     def test_true_when_command_on_path(self, monkeypatch):
         monkeypatch.setattr(agents.shutil, "which", lambda cmd: f"C:\\bin\\{cmd}")
