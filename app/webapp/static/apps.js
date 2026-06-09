@@ -308,15 +308,17 @@ function renderList(host, items) {
 // card: checked → 'remote' (detached console window, listed + killable
 // here but no phone terminal); unchecked → full-control PTY streamed to
 // the phone. The ↺ Resume toggle (issue #151) reopens the agent's own
-// session picker in a streamed PTY — it wins over Detached (the picker
-// must be visible), so it forces a pty launch. `agentId` (claude | codex
-// | antigravity | copilot) is set by the Coding tile's per-agent button;
-// undefined for Apps-tab bat launches.
+// session picker; it is orthogonal to Detached (issue #157) — Detached +
+// Resume opens the picker in the detached console, Resume alone streams it
+// to the phone over a PTY. `agentId` (claude | codex | antigravity |
+// copilot) is set by the Coding tile's per-agent button; undefined for
+// Apps-tab bat launches.
 async function launchApp(a, agentId) {
   const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
     els.claudeResume.checked);
-  // Resume forces streamed (pty); only honour Detached when not resuming.
-  const mode = (!resume && a.kind === 'claude-code' && els.claudeDetached &&
+  // Detached → 'remote', independent of Resume. The two combine: a
+  // Detached+Resume launch renders the agent's picker in the console.
+  const mode = (a.kind === 'claude-code' && els.claudeDetached &&
     els.claudeDetached.checked) ? 'remote' : null;
   try {
     const opts = { method: 'POST' };

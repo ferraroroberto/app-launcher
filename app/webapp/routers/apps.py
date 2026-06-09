@@ -172,10 +172,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         body = await maybe_json(request)
         mode = str(body.get("mode") or "pty").strip().lower()
         agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
-        # Resume (issue #151): reopen the agent's own native session picker
-        # in a streamed PTY. It forces `kind="pty"` regardless of `mode` —
-        # the picker is interactive and must be visible on the phone — so
-        # Resume wins over Detached when both are set.
+        # Resume (issue #151): reopen the agent's own native session picker.
+        # It swaps the normal flags for the agent's resume invocation but
+        # honours the requested `mode` (issue #157): with Detached on, the
+        # picker renders in the detached console window; with Detached off it
+        # streams to the phone over a PTY. Resume no longer forces a PTY.
         resume = bool(body.get("resume"))
         # Phone's real terminal size (issue #126): a pty session spawns at
         # these dimensions so a ratatui TUI's first frame isn't cut. Absent
@@ -207,10 +208,10 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "copilot": build_copilot_flags,
         }
         if resume:
-            # Resume forces a streamed PTY (the picker must be visible) and
-            # swaps the normal flags for the agent's resume invocation.
+            # Swap the normal flags for the agent's resume invocation; the
+            # requested `mode` decides where its picker renders — a detached
+            # console (mode="remote") or a streamed PTY (issue #157).
             flags = build_resume_flags(cfg, agent)
-            mode = "pty"
         else:
             flags = flag_builders[agent](cfg)
 

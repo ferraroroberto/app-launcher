@@ -1,11 +1,12 @@
-"""Resume toggle regression (issue #151).
+"""Resume toggle regression (issues #151, #157).
 
 The ↺ Resume toggle on the Coding options card must, when checked, make
-the next agent-icon tap POST ``resume: true`` and force a streamed pty —
-overriding Detached (the native picker has to be visible). This is the
-client-side contract; the server-side splice (resume token, codex
-flag-dropping, agy --continue, Life OS skill-prompt drop) is covered by
-the non-browser suites.
+the next agent-icon tap POST ``resume: true``. Resume is orthogonal to
+Detached (issue #157): Resume alone streams a pty (no ``mode``); Detached
++ Resume sends ``mode: remote`` so the native picker renders in the
+detached console. This is the client-side contract; the server-side splice
+(resume token, codex flag-dropping, agy --continue, Life OS skill-prompt
+drop) is covered by the non-browser suites.
 
 Hermetic: ``/api/agents``, ``/api/apps`` and the launch endpoint are
 route-mocked so the test needs no installed agent and spawns no process.
@@ -89,13 +90,35 @@ def test_resume_toggle_present(authed_page: Page, base_url: str) -> None:
     expect(authed_page.locator("#claudeResume")).not_to_be_checked()
 
 
-def test_resume_launch_forces_pty_and_wins_over_detached(
+def test_resume_only_launch_streams_pty(
     authed_page: Page, base_url: str
 ) -> None:
     _install_mocks(authed_page)
     _open_coding(authed_page, base_url)
 
-    # Turn on BOTH Detached and Resume — Resume must win (no remote mode).
+    # Resume alone (Detached off) → streamed pty: resume=true, no remote mode.
+    authed_page.locator("label.detached-toggle:has(#claudeResume)").click()
+    expect(authed_page.locator("#claudeResume")).to_be_checked()
+
+    with authed_page.expect_request("**/api/apps/*/launch") as req_info:
+        authed_page.locator(
+            '#claudeList .coding-item[data-id="demo"] '
+            'button.agent-btn[data-agent="claude"]'
+        ).click()
+
+    payload = req_info.value.post_data_json
+    assert payload.get("resume") is True
+    assert payload.get("mode") != "remote"
+    assert payload.get("agent") == "claude"
+
+
+def test_resume_with_detached_launches_remote_console(
+    authed_page: Page, base_url: str
+) -> None:
+    _install_mocks(authed_page)
+    _open_coding(authed_page, base_url)
+
+    # Detached + Resume → remote console: resume=true AND mode=remote (#157).
     authed_page.locator("label.detached-toggle:has(#claudeDetached)").click()
     authed_page.locator("label.detached-toggle:has(#claudeResume)").click()
     expect(authed_page.locator("#claudeResume")).to_be_checked()
@@ -107,7 +130,6 @@ def test_resume_launch_forces_pty_and_wins_over_detached(
         ).click()
 
     payload = req_info.value.post_data_json
-    # The launch POST carries resume=true and no detached (remote) mode.
     assert payload.get("resume") is True
-    assert payload.get("mode") != "remote"
+    assert payload.get("mode") == "remote"
     assert payload.get("agent") == "claude"
