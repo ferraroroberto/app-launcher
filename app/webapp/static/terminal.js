@@ -388,17 +388,26 @@ export async function openTerminal(session) {
     // Pin the overlay to the visual viewport when the keyboard is up so
     // its bottom edge lands at the top of the keyboard and the prompt
     // stays visible — then fit() reflows xterm to the smaller box
-    // (issue #135). Released (back to CSS 100dvh) when the keyboard
-    // hides. Must run *before* fit() so it measures the new host size.
+    // (issue #135). iOS doesn't just shrink the visual viewport for the
+    // keyboard, it also shifts it *down* (visualViewport.offsetTop > 0)
+    // to sweep the focused line into view; a position:fixed; inset:0
+    // overlay is anchored to the layout-viewport top, so unless we match
+    // that offset it slides up off-screen — clipping the top rows and
+    // exposing a band of the page behind it just above the keyboard.
+    // Track both the height and the offset. Released (back to CSS 100dvh)
+    // when the keyboard hides. Must run *before* fit() so it measures the
+    // new host size.
     const vp = window.visualViewport;
     if (vp && els.terminalOverlay) {
       const h = keyboardOverlayHeight(window.innerHeight, vp.height);
       if (h != null) {
         els.terminalOverlay.style.height = h + 'px';
         els.terminalOverlay.style.bottom = 'auto';
+        els.terminalOverlay.style.top = Math.round(vp.offsetTop || 0) + 'px';
       } else {
         els.terminalOverlay.style.height = '';
         els.terminalOverlay.style.bottom = '';
+        els.terminalOverlay.style.top = '';
       }
     }
     try { if (fit) fit.fit(); } catch (_) {}
@@ -433,6 +442,11 @@ export async function openTerminal(session) {
     if (window.visualViewport) {
       t.onVisualViewport = applySize;
       window.visualViewport.addEventListener('resize', applySize);
+      // Keyboard-driven shifts of visualViewport.offsetTop (iOS sweeping
+      // the focused line into view) ride on 'scroll', not 'resize' — wire
+      // it too so the overlay re-tracks the offset mid-sweep instead of
+      // leaving a band of the page behind it above the keyboard (#135).
+      window.visualViewport.addEventListener('scroll', applySize);
     }
   }
 
@@ -457,12 +471,14 @@ export function closeTerminal() {
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
+    window.visualViewport.removeEventListener('scroll', t.onVisualViewport);
   }
-  // Release any keyboard-driven height override (issue #135) so the next
-  // open starts from the CSS-driven full height.
+  // Release any keyboard-driven override (issue #135) so the next open
+  // starts from the CSS-driven full height and inset:0 origin.
   if (els.terminalOverlay) {
     els.terminalOverlay.style.height = '';
     els.terminalOverlay.style.bottom = '';
+    els.terminalOverlay.style.top = '';
   }
   try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
   try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
