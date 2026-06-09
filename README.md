@@ -269,7 +269,7 @@ Launching, listing, and stopping sessions stay public (bearer-token gated, reach
 
 After that, opening any session prompts Face ID once per 12 h.
 
-**Terminal on the PC too.** With `claude_show_local_window: true` (the default), launching a session from the phone also opens an **interactive** terminal window for it on the PC. That window connects over loopback — so it bypasses the Tailscale + passkey gate — and because the session-host fans output to every connected client and accepts input from all of them, **you can type from the phone and the PC interchangeably**. Set it to `false` to launch silently.
+**Terminal on the PC too.** With `claude_show_local_window: true` (the default), launching a session from the phone also opens an **interactive** terminal window for it on the PC. That window connects over loopback — so it bypasses the Tailscale + passkey gate — and because the session-host fans output to every connected client and accepts input from all of them, **you can type from the phone and the PC interchangeably**. Set it to `false` to launch silently. Launching from a **desktop browser** (even over the tunnel) skips this window — that browser already shows the terminal in-page, so a separate window would be redundant (issue #159); the mirror is recognized as superfluous by a fine/mouse pointer and suppressed.
 
 ---
 

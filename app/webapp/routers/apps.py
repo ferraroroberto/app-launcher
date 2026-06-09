@@ -49,8 +49,12 @@ from src.webapp_config import (
     build_resume_flags,
 )
 
-from app.webapp.middleware import LOOPBACK_HOSTS
-from app.webapp.routers._helpers import cert_present, client_ip, maybe_json
+from app.webapp.routers._helpers import (
+    cert_present,
+    client_ip,
+    maybe_json,
+    should_mirror_to_pc,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -277,15 +281,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         audit.session_log(
             sid, "start", agent=agent, name=entry.name, project=entry.project_dir
         )
-        # Mirror the session into an interactive terminal window on the
-        # PC. Skipped when the launch came from the PC itself (the
-        # browser that launched it already shows the terminal). The PC
-        # window connects over loopback, so it bypasses the Tailscale +
-        # passkey gate — input works from both the phone and the PC.
-        if (
-            cfg.claude_show_local_window
-            and client_ip(request) not in LOOPBACK_HOSTS
-        ):
+        # Mirror the session into an interactive terminal window on the PC,
+        # unless the launch came from the PC itself (loopback or a desktop
+        # browser, issue #159 — see should_mirror_to_pc). The PC window
+        # connects over loopback, bypassing the Tailscale + passkey gate.
+        if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
             scheme = "https" if cert_present() else "http"
             pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
             # Pass sid so launcher tracks the mirror window's HWND for

@@ -40,6 +40,21 @@ export function terminalFromUrl() {
   return sid;
 }
 
+// True when this browser is a desktop (a fine/mouse pointer), as opposed
+// to a phone (a coarse/touch pointer). A coding launch carries this so the
+// server can skip the PC mirror window (issue #159): a desktop browser
+// already renders the streamed terminal in-page, so spawning a separate
+// Edge --app window is redundant — the redundancy only surfaced when the
+// desktop reached the app over the tunnel (non-loopback), where the server
+// can't tell it's the PC by IP alone. A phone keeps the mirror.
+export function isDesktopClient() {
+  try {
+    return window.matchMedia('(pointer: fine)').matches;
+  } catch (exc) {
+    return false;
+  }
+}
+
 // --------------------------------------------------------------- fetch
 export async function api(path, opts) {
   opts = opts || {};

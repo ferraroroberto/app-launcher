@@ -7,7 +7,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { jsonApi, toast, isDesktopClient } from './api.js';
 import { fetchSessions, fmtAgo } from './sessions.js';
 import { openTerminal, estimateTermSize } from './terminal.js';
 
@@ -333,6 +333,9 @@ async function launchApp(a, agentId) {
       const sz = estimateTermSize();
       payload.rows = sz.rows;
       payload.cols = sz.cols;
+      // A desktop browser already shows this terminal in-page, so the
+      // server should skip the redundant PC mirror window (issue #159).
+      if (isDesktopClient()) payload.desktop = true;
     }
     if (Object.keys(payload).length) {
       opts.headers = { 'Content-Type': 'application/json' };
