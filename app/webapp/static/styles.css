@@ -1329,6 +1329,11 @@ body.terminal-open {
    (opus + ☁️ Detached) on one row, reusing .detached-toggle styling. */
 .lifeos-options-card { padding: 12px 16px; }
 .lifeos-options-title { font-size: 15px; font-weight: 600; }
+/* Right-aligned toggle group: keeps a summary row's switches packed together
+   as a single flex child so the row stays title-left / toggles-right. Without
+   this the Coding row's three children space-between and Detached floats in the
+   center (issue #155). Shared by the Coding + Life OS option rows. */
+.coding-toggles,
 .lifeos-toggles { display: flex; gap: 8px; }
 .lifeos-launch { font-size: 18px; }
 
