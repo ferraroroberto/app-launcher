@@ -321,6 +321,12 @@ export async function openTerminal(session) {
     !!window.MediaRecorder;
   els.terminalRecord.hidden = !voiceOn;
 
+  // The 📷 screenshot-OCR button (issue #171) needs photo-ocr configured;
+  // hide it otherwise. A plain file input, so no capability check beyond
+  // the server flag. Pixel counterpart to the 🎤 dictation button.
+  const ocrOn = !!(state.status && state.status.screenshot_ocr);
+  els.terminalScreenshot.hidden = !ocrOn;
+
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
@@ -702,6 +708,7 @@ function resetComposeBar() {
   els.terminalComposeBar.hidden = true;
   els.terminalComposeInput.value = '';
   els.terminalComposeInput.style.height = '';
+  clearOcrStaging();
 }
 
 function setComposeOpen(open) {
@@ -711,8 +718,9 @@ function setComposeOpen(open) {
   els.terminalComposeBar.hidden = !open;
   if (!open) {
     // Closing the bar abandons any in-flight recording so the mic isn't
-    // left live behind a hidden bar.
+    // left live behind a hidden bar, and drops any staged OCR images.
     stopRecording();
+    clearOcrStaging();
   }
   if (open) {
     // Focusing the textarea pops the phone keyboard with predictive on.
@@ -973,6 +981,7 @@ async function finishStreaming() {
   const sid = _voiceSession;
   _recorder = null;
   els.terminalRecord.disabled = true;
+  const stopTimer = startWorkTimer(els.terminalRecord, '🎤');
   try {
     await drainChunks();
     const res = await fetch(
@@ -1000,6 +1009,7 @@ async function finishStreaming() {
     closeVoiceEvents();
     _voiceSession = null;
     _streaming = false;
+    stopTimer();
     els.terminalRecord.disabled = false;
   }
 }
@@ -1010,6 +1020,7 @@ async function sendBufferedRecording(blob) {
   const fd = new FormData();
   fd.append('file', blob, 'recording.' + ext);
   els.terminalRecord.disabled = true;
+  const stopTimer = startWorkTimer(els.terminalRecord, '🎤');
   try {
     const res = await fetch('/api/transcribe', {
       method: 'POST', headers: voiceHeaders(), body: fd,
@@ -1040,7 +1051,146 @@ async function sendBufferedRecording(blob) {
   } catch (exc) {
     toast('Transcription failed: ' + (exc.message || exc), 'error');
   } finally {
+    stopTimer();
     els.terminalRecord.disabled = false;
+  }
+}
+
+// Tiny "working" indicator: swap a button's label for a ticking
+// elapsed-seconds timer so a blind background wait — OCR, single-shot
+// transcribe, streamed finish — visibly shows progress instead of looking
+// stuck. ``workingLabel`` defaults to the hourglass glyph; pass a richer
+// label for wide buttons. Returns a stop() that restores ``restoreText``.
+function startWorkTimer(btn, restoreText, workingLabel) {
+  const lbl = workingLabel || '⏳';
+  const t0 = Date.now();
+  btn.classList.add('working');
+  function tick() {
+    const s = Math.floor((Date.now() - t0) / 1000);
+    btn.textContent = lbl + s + 's';
+  }
+  tick();
+  const id = setInterval(tick, 500);
+  return function stop() {
+    clearInterval(id);
+    btn.classList.remove('working');
+    btn.textContent = restoreText;
+  };
+}
+
+// Screenshot OCR (issue #171). The 📷 button *stages* one or more
+// screenshots into a tray; nothing is sent yet. Each tap accumulates more
+// images. When the user taps **Extract**, ALL staged images go to photo-ocr
+// in a SINGLE /api/ocr call, so photo-ocr collates them into one
+// deduplicated text (overlapping shots of one document are merged, duplicate
+// boundary lines removed) — instead of one isolated OCR per image. The text
+// drops into the compose textarea for review before ➤ Send. Model/prompt are
+// left to photo-ocr's own config.
+let _ocrStaged = [];        // File objects awaiting a collated extraction
+let _ocrThumbUrls = [];     // object URLs to revoke when the tray clears
+
+function clearOcrStaging() {
+  _ocrStaged = [];
+  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+  _ocrThumbUrls = [];
+  renderOcrTray();
+}
+
+function renderOcrTray() {
+  const strip = els.terminalOcrThumbs;
+  strip.innerHTML = '';
+  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+  _ocrThumbUrls = [];
+  if (!_ocrStaged.length) {
+    els.terminalOcrTray.hidden = true;
+    return;
+  }
+  els.terminalOcrTray.hidden = false;
+  _ocrStaged.forEach(function (file, idx) {
+    const cell = document.createElement('div');
+    cell.className = 'ocr-thumb';
+    const img = document.createElement('img');
+    const url = URL.createObjectURL(file);
+    _ocrThumbUrls.push(url);
+    img.src = url;
+    img.alt = 'staged screenshot ' + (idx + 1);
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'ocr-thumb-x';
+    rm.textContent = '✕';
+    rm.title = 'Remove';
+    rm.addEventListener('click', function () {
+      _ocrStaged.splice(idx, 1);
+      renderOcrTray();
+    });
+    cell.appendChild(img);
+    cell.appendChild(rm);
+    strip.appendChild(cell);
+  });
+  els.terminalOcrExtract.textContent =
+    '📷 Extract text (' + _ocrStaged.length + ')';
+}
+
+function stageOcrImages(files) {
+  const list = files ? Array.prototype.slice.call(files) : [];
+  if (!list.length) return;
+  _ocrStaged = _ocrStaged.concat(list);
+  renderOcrTray();
+}
+
+// Run OCR over EVERY staged image in one call so photo-ocr deduplicates the
+// overlap. Headers mirror sendImage (bearer + passkey terminal token).
+async function runOcrExtraction() {
+  const list = _ocrStaged.slice();
+  if (!list.length) return;
+  const fd = new FormData();
+  list.forEach(function (f, i) {
+    fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
+  });
+  const btn = els.terminalOcrExtract;
+  btn.disabled = true;
+  els.terminalScreenshot.disabled = true;
+  const stopTimer = startWorkTimer(btn, '📷 Extract text', '⏳ Reading ');
+  try {
+    const headers = new Headers();
+    const bt = readToken();
+    if (bt) headers.set('Authorization', 'Bearer ' + bt);
+    const tt = readTerminalToken();
+    if (tt) headers.set('X-Terminal-Token', tt);
+    const res = await fetch('/api/ocr', {
+      method: 'POST', headers: headers, body: fd,
+    });
+    if (!res.ok) {
+      const b = await res.json().catch(function () { return null; });
+      throw new Error((b && b.detail) || ('HTTP ' + res.status));
+    }
+    const body = await res.json().catch(function () { return null; });
+    const text = body && body.text;
+    const plural = list.length > 1;
+    if (!text) {
+      toast('📷 No text found in the image' + (plural ? 's' : ''));
+      return;
+    }
+    // Insert at the caret with a leading space when the textarea already
+    // has trailing content, so the OCR appends cleanly to typed text.
+    const ta = els.terminalComposeInput;
+    const before = ta.value.slice(0, ta.selectionStart);
+    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
+    ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
+    growComposeInput();
+    ta.focus();
+    clearOcrStaging();
+    toast(
+      '📷 Text extracted from ' + list.length + ' image' +
+        (plural ? 's' : '') + ' — review, then ➤ Send.',
+      'good'
+    );
+  } catch (exc) {
+    toast('OCR failed: ' + (exc.message || exc), 'error');
+  } finally {
+    stopTimer();
+    btn.disabled = false;
+    els.terminalScreenshot.disabled = false;
   }
 }
 
@@ -1054,6 +1204,18 @@ function wireCompose() {
     if (_recorder && _recorder.state === 'recording') stopRecording();
     else startRecording();
   });
+  els.terminalScreenshot.addEventListener('click', function () {
+    els.terminalScreenshotInput.click();
+  });
+  els.terminalScreenshotInput.addEventListener('change', function () {
+    const picked = els.terminalScreenshotInput.files;
+    const list = picked && picked.length
+      ? Array.prototype.slice.call(picked) : [];
+    els.terminalScreenshotInput.value = '';
+    // Stage, don't send — accumulate across taps; Extract collates them all.
+    if (list.length) stageOcrImages(list);
+  });
+  els.terminalOcrExtract.addEventListener('click', runOcrExtraction);
   els.terminalComposeSend.addEventListener('click', function () {
     const t = state.terminal;
     if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;

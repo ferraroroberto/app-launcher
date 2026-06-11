@@ -80,6 +80,11 @@ def _terminal_guard_level(path: str) -> Optional[str]:
     # events stream) all get the terminal's gate.
     if path == "/api/transcribe" or path.startswith("/api/transcribe/"):
         return "passkey"
+    # Screenshot OCR (issue #171): the extracted text drops straight into
+    # the terminal compose bar, so /api/ocr is as sensitive as terminal
+    # input and gets the same gate as voice dictation.
+    if path == "/api/ocr":
+        return "passkey"
     # Life OS private-content browser (issue #102): the file-content
     # endpoint (read/delete/rename, all under /api/life-os/file*) and the
     # per-skill file tree surface gitignored private knowledge, so they get
