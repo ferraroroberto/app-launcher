@@ -13,7 +13,9 @@ import json
 import logging
 from typing import Any, Dict
 
+import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
+from starlette.responses import StreamingResponse
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
@@ -113,18 +115,8 @@ async def session_image(
     return result
 
 
-@router.post("/api/transcribe")
-async def transcribe_audio(
-    request: Request, file: UploadFile = File(...)
-) -> Dict[str, Any]:
-    """Transcribe a recording dictated from the compose bar (Tailscale-only + passkey).
-
-    The phone records audio and POSTs it here; the webapp proxies the blob
-    to the sibling voice-transcriber's session API over loopback (issue
-    #165) and returns the transcript for review in the compose textarea —
-    nothing is streamed into the PTY. ``?language=`` overrides the
-    voice-transcriber's configured default.
-    """
+def _voice_base(request: Request) -> str:
+    """Return the configured voice-transcriber base URL or 503."""
     cfg: WebappConfig = request.app.state.webapp_config
     base = (cfg.voice_transcriber_url or "").strip()
     if not base:
@@ -132,6 +124,106 @@ async def transcribe_audio(
             status_code=503,
             detail="voice dictation is disabled (voice_transcriber_url unset)",
         )
+    return base
+
+
+@router.post("/api/transcribe/sessions")
+async def transcribe_create(request: Request) -> Dict[str, Any]:
+    """Create a streamed dictation session (Tailscale-only + passkey, #168)."""
+    base = _voice_base(request)
+    language = (request.query_params.get("language") or "").strip() or None
+    try:
+        result = await asyncio.to_thread(voice_client.create_session, base, language)
+    except voice_client.VoiceTranscriberError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event("transcribe_create", client=client_ip(request))
+    return result
+
+
+@router.post("/api/transcribe/sessions/{vid}/chunk")
+async def transcribe_chunk(vid: str, request: Request) -> Dict[str, Any]:
+    """Forward one raw audio chunk to a streamed session (#168)."""
+    base = _voice_base(request)
+    content = await request.body()
+    if not content:
+        return {"session_id": vid, "raw_bytes": 0}
+    content_type = request.headers.get("content-type") or "audio/webm"
+    try:
+        result = await asyncio.to_thread(
+            voice_client.send_chunk, base, vid, content, content_type
+        )
+    except voice_client.VoiceTranscriberError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    return result
+
+
+@router.post("/api/transcribe/sessions/{vid}/finish")
+async def transcribe_finish(vid: str, request: Request) -> Dict[str, Any]:
+    """Close a streamed session and return the canonical transcript (#168)."""
+    base = _voice_base(request)
+    language = (request.query_params.get("language") or "").strip() or None
+    try:
+        result = await asyncio.to_thread(voice_client.finish, base, vid, language)
+    except voice_client.VoiceTranscriberError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event(
+        "transcribe_finish", silent=bool(result.get("silent")), client=client_ip(request)
+    )
+    return result
+
+
+@router.get("/api/transcribe/sessions/{vid}/events")
+async def transcribe_events(vid: str, request: Request) -> StreamingResponse:
+    """Proxy the voice-transcriber's rolling-partial SSE stream (#168).
+
+    ``EventSource`` can't set headers, so the bearer + passkey ``tt`` ride
+    the query string (both gates read query params). The upstream stream is
+    forwarded chunk-for-chunk so partials reach the phone live; buffering is
+    disabled so a proxy can't hold events back.
+    """
+    base = _voice_base(request)
+    url = voice_client.events_url(base, vid)
+
+    async def _pump():
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=None) as client:
+                async with client.stream("GET", url) as upstream:
+                    if upstream.status_code >= 400:
+                        yield (
+                            f"event: error\ndata: upstream HTTP "
+                            f"{upstream.status_code}\n\n"
+                        ).encode()
+                        return
+                    async for chunk in upstream.aiter_raw():
+                        if chunk:
+                            yield chunk
+        except httpx.HTTPError as exc:
+            logger.debug(f"transcribe SSE proxy {vid} ended: {exc}")
+            yield b"event: error\ndata: voice-transcriber unreachable\n\n"
+
+    return StreamingResponse(
+        _pump(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/api/transcribe")
+async def transcribe_single_shot(
+    request: Request, file: UploadFile = File(...)
+) -> Dict[str, Any]:
+    """Single-shot transcription fallback for the compose bar (#165).
+
+    The streamed path (#168) is preferred for live partials; this remains
+    the no-streaming fallback. The phone records audio and POSTs it here;
+    the webapp proxies the blob to the voice-transcriber over loopback and
+    returns the transcript for review in the compose textarea.
+    """
+    base = _voice_base(request)
     language = (request.query_params.get("language") or "").strip() or None
     content = await file.read()
     if not content:
