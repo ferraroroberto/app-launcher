@@ -132,4 +132,8 @@ async def status(request: Request) -> Dict[str, Any]:
         "tunnel_url": tunnel_url,
         "tls": cert_present(),
         "terminal": terminal_reachability(request),
+        # Compose-bar voice dictation is available only when a
+        # voice-transcriber base URL is configured (issue #165). The SPA
+        # hides the 🎤 record button otherwise.
+        "voice_dictation": bool((cfg.voice_transcriber_url or "").strip()),
     }

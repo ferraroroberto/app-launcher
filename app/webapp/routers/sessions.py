@@ -18,7 +18,7 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, launcher, session_client
+from src import audit, launcher, session_client, voice_client
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -109,6 +109,49 @@ async def session_image(
         raise HTTPException(status_code=exc.status, detail=str(exc))
     audit.session_log(
         sid, "image", path=result.get("path"), bytes=len(content), inline=inline
+    )
+    return result
+
+
+@router.post("/api/transcribe")
+async def transcribe_audio(
+    request: Request, file: UploadFile = File(...)
+) -> Dict[str, Any]:
+    """Transcribe a recording dictated from the compose bar (Tailscale-only + passkey).
+
+    The phone records audio and POSTs it here; the webapp proxies the blob
+    to the sibling voice-transcriber's session API over loopback (issue
+    #165) and returns the transcript for review in the compose textarea —
+    nothing is streamed into the PTY. ``?language=`` overrides the
+    voice-transcriber's configured default.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    base = (cfg.voice_transcriber_url or "").strip()
+    if not base:
+        raise HTTPException(
+            status_code=503,
+            detail="voice dictation is disabled (voice_transcriber_url unset)",
+        )
+    language = (request.query_params.get("language") or "").strip() or None
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="empty recording")
+    try:
+        result = await asyncio.to_thread(
+            voice_client.transcribe,
+            base,
+            file.filename or "recording.webm",
+            content,
+            file.content_type or "audio/webm",
+            language,
+        )
+    except voice_client.VoiceTranscriberError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event(
+        "transcribe",
+        bytes=len(content),
+        silent=bool(result.get("silent")),
+        client=client_ip(request),
     )
     return result
 

@@ -133,6 +133,15 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(sessions_router, "session_client", session_mock)
     monkeypatch.setattr(life_os_router, "session_client", session_mock)
 
+    # Mock the voice-transcriber loopback client (issue #165) — the
+    # /api/transcribe proxy goes through it; tests assert call args and set
+    # the transcript without a live voice-transcriber on :8443.
+    from src import voice_client as real_voice_client
+    voice_mock = MagicMock()
+    voice_mock.transcribe.return_value = {"transcript": "stub text", "language": "en"}
+    voice_mock.VoiceTranscriberError = real_voice_client.VoiceTranscriberError
+    monkeypatch.setattr(sessions_router, "voice_client", voice_mock)
+
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. After the split
     # the `audit` import lives in routers/apps.py, routers/sessions.py,
@@ -166,6 +175,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
 
     overrides = {
         "session": session_mock,
+        "voice": voice_mock,
         "audit": audit_mock,
         "webauthn": webauthn_mock,
         "tmp_registry_path": tmp_registry,
