@@ -443,18 +443,26 @@
       </div>
     </div>
     <div id="terminalHost" class="terminal-host"></div>
+    <div id="terminalOcrTray" class="ocr-tray" hidden>
+      <div id="terminalOcrThumbs" class="ocr-thumbs"></div>
+      <button id="terminalOcrExtract" type="button" class="ocr-extract">📷 Extract text</button>
+    </div>
     <div id="terminalComposeBar" class="compose-bar" hidden>
-      <button id="terminalRecord" type="button" class="compose-record" title="Dictate (voice → text)" aria-pressed="false">🎤</button>
       <textarea
         id="terminalComposeInput"
         class="compose-input"
-        rows="1"
+        rows="2"
         placeholder="Type a prompt — predictive on. ➤ to send."
         enterkeyhint="enter"></textarea>
+      <div class="compose-tools">
+        <button id="terminalRecord" type="button" class="compose-record" title="Dictate (voice → text)" aria-pressed="false">🎤</button>
+        <button id="terminalScreenshot" type="button" class="compose-record" title="Add screenshot for OCR" aria-pressed="false">📷</button>
+      </div>
       <button id="terminalComposeSend" type="button" class="compose-send" title="Send (with Enter)">➤</button>
     </div>
     <div id="terminalStatus" class="terminal-status" hidden></div>
     <input id="terminalImageInput" type="file" accept="image/*" hidden>
+    <input id="terminalScreenshotInput" type="file" accept="image/*" multiple hidden>
   </div>
 
   <script src="/static/vendor/xterm.js"></script>

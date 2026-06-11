@@ -136,4 +136,8 @@ async def status(request: Request) -> Dict[str, Any]:
         # voice-transcriber base URL is configured (issue #165). The SPA
         # hides the 🎤 record button otherwise.
         "voice_dictation": bool((cfg.voice_transcriber_url or "").strip()),
+        # Compose-bar screenshot OCR is available only when a photo-ocr
+        # base URL is configured (issue #171). The SPA hides the 📷 OCR
+        # button otherwise — the pixel counterpart to voice_dictation.
+        "screenshot_ocr": bool((cfg.photo_ocr_url or "").strip()),
     }

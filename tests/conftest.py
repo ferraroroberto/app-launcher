@@ -148,6 +148,17 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     voice_mock.VoiceTranscriberError = real_voice_client.VoiceTranscriberError
     monkeypatch.setattr(sessions_router, "voice_client", voice_mock)
 
+    # Mock the photo-ocr loopback client (issue #171) — the /api/ocr proxy
+    # goes through it; tests assert call args and set the extracted text
+    # without a live photo-ocr on :8444.
+    from src import photo_ocr_client as real_photo_ocr_client
+    photo_ocr_mock = MagicMock()
+    photo_ocr_mock.extract.return_value = {
+        "text": "stub ocr text", "model": "gemini_flash", "session_id": "po-stub"
+    }
+    photo_ocr_mock.PhotoOcrError = real_photo_ocr_client.PhotoOcrError
+    monkeypatch.setattr(sessions_router, "photo_ocr_client", photo_ocr_mock)
+
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. After the split
     # the `audit` import lives in routers/apps.py, routers/sessions.py,
@@ -182,6 +193,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     overrides = {
         "session": session_mock,
         "voice": voice_mock,
+        "photo_ocr": photo_ocr_mock,
         "audit": audit_mock,
         "webauthn": webauthn_mock,
         "tmp_registry_path": tmp_registry,

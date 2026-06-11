@@ -11,7 +11,7 @@ import asyncio
 import hmac
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
@@ -20,7 +20,7 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, launcher, session_client, voice_client
+from src import audit, launcher, photo_ocr_client, session_client, voice_client
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -243,6 +243,64 @@ async def transcribe_single_shot(
         "transcribe",
         bytes=len(content),
         silent=bool(result.get("silent")),
+        client=client_ip(request),
+    )
+    return result
+
+
+def _photo_ocr_base(request: Request) -> str:
+    """Return the configured photo-ocr base URL or 503."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    base = (cfg.photo_ocr_url or "").strip()
+    if not base:
+        raise HTTPException(
+            status_code=503,
+            detail="screenshot OCR is disabled (photo_ocr_url unset)",
+        )
+    return base
+
+
+@router.post("/api/ocr")
+async def ocr_screenshot(
+    request: Request, files: List[UploadFile] = File(...)
+) -> Dict[str, Any]:
+    """Single-shot screenshot OCR for the compose bar (#171).
+
+    The phone captures one or more screenshots and POSTs them here; the
+    webapp proxies the images to the sibling photo-ocr over loopback (its
+    consumable ``POST /api/extract``) and returns the extracted text for
+    review in the compose textarea — the pixel counterpart to
+    ``/api/transcribe``. Multiple shots of one document are collated into a
+    single deduplicated text by photo-ocr (its whole point). Model/prompt
+    are left unset so photo-ocr's own configured defaults apply.
+    """
+    base = _photo_ocr_base(request)
+    model = (request.query_params.get("model") or "").strip() or None
+    prompt_id = (request.query_params.get("prompt_id") or "").strip() or None
+    blobs = []
+    for upload in files:
+        content = await upload.read()
+        if content:
+            blobs.append(
+                (
+                    upload.filename or "screenshot.png",
+                    content,
+                    upload.content_type or "image/png",
+                )
+            )
+    if not blobs:
+        raise HTTPException(status_code=400, detail="empty image")
+    try:
+        result = await asyncio.to_thread(
+            photo_ocr_client.extract, base, blobs, model, prompt_id
+        )
+    except photo_ocr_client.PhotoOcrError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event(
+        "ocr",
+        images=len(blobs),
+        bytes=sum(len(b[1]) for b in blobs),
+        chars=int(result.get("chars") or 0),
         client=client_ip(request),
     )
     return result

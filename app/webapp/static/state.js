@@ -218,6 +218,11 @@ export const els = {
   terminalComposeInput: document.getElementById('terminalComposeInput'),
   terminalComposeSend: document.getElementById('terminalComposeSend'),
   terminalRecord: document.getElementById('terminalRecord'),
+  terminalScreenshot: document.getElementById('terminalScreenshot'),
+  terminalScreenshotInput: document.getElementById('terminalScreenshotInput'),
+  terminalOcrTray: document.getElementById('terminalOcrTray'),
+  terminalOcrThumbs: document.getElementById('terminalOcrThumbs'),
+  terminalOcrExtract: document.getElementById('terminalOcrExtract'),
 
   webauthnStatus: document.getElementById('webauthnStatus'),
   webauthnDevices: document.getElementById('webauthnDevices'),
