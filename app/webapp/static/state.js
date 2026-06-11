@@ -217,6 +217,7 @@ export const els = {
   terminalComposeBar: document.getElementById('terminalComposeBar'),
   terminalComposeInput: document.getElementById('terminalComposeInput'),
   terminalComposeSend: document.getElementById('terminalComposeSend'),
+  terminalRecord: document.getElementById('terminalRecord'),
 
   webauthnStatus: document.getElementById('webauthnStatus'),
   webauthnDevices: document.getElementById('webauthnDevices'),

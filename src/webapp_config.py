@@ -169,6 +169,15 @@ class WebappConfig:
     webauthn_rp_id: str = ""
     webauthn_rp_name: str = "Launcher"
     webauthn_origin: str = ""
+    # --- voice dictation (issue #165) -----------------------------------
+    # Base URL of the sibling voice-transcriber webapp, whose consumable
+    # session API (POST /api/sessions → /upload) transcribes a recording
+    # dictated from the Coding terminal's compose bar. The webapp proxies
+    # to it over loopback (verify=False on the self-signed cert), so the
+    # phone never talks to it directly. Empty string disables the feature
+    # (the 🎤 record button hides). Defaults to the voice-transcriber's
+    # loopback HTTPS port.
+    voice_transcriber_url: str = "https://127.0.0.1:8443"
     # --- Jobs-tab failure notifications (issue #66) ---------------------
     # Pushover credentials — both empty means no-op notifier (executor
     # still finalises runs identically). The master switch
@@ -243,6 +252,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         webauthn_rp_id=str(raw.get("webauthn_rp_id", "")),
         webauthn_rp_name=str(raw.get("webauthn_rp_name", "Launcher")),
         webauthn_origin=str(raw.get("webauthn_origin", "")),
+        voice_transcriber_url=str(
+            raw.get("voice_transcriber_url", "https://127.0.0.1:8443")
+        ),
         pushover_api_token=str(raw.get("pushover_api_token", "")),
         pushover_user_key=str(raw.get("pushover_user_key", "")),
         notify_on_failure=bool(raw.get("notify_on_failure", False)),
@@ -284,6 +296,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "webauthn_rp_id": cfg.webauthn_rp_id,
         "webauthn_rp_name": cfg.webauthn_rp_name,
         "webauthn_origin": cfg.webauthn_origin,
+        "voice_transcriber_url": cfg.voice_transcriber_url,
         "pushover_api_token": cfg.pushover_api_token,
         "pushover_user_key": cfg.pushover_user_key,
         "notify_on_failure": cfg.notify_on_failure,

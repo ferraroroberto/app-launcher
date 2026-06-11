@@ -313,6 +313,14 @@ export async function openTerminal(session) {
   // leave it stuck hidden.
   els.terminalCompose.hidden = isMirror;
 
+  // The 🎤 dictation button (issue #165) needs the voice-transcriber
+  // configured *and* MediaRecorder support; hide it otherwise so the
+  // compose bar degrades to type-only. (It lives inside the compose bar,
+  // so the PC mirror — where the bar never opens — already won't show it.)
+  const voiceOn = !!(state.status && state.status.voice_dictation) &&
+    !!window.MediaRecorder;
+  els.terminalRecord.hidden = !voiceOn;
+
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
@@ -673,13 +681,21 @@ function wireKeysPopover() {
 // which they can't inside xterm's per-keystroke-wiped helper textarea.
 // ➤ Send forwards the buffered text + \r to the PTY in one WS frame.
 
+// Max visible rows before the textarea scrolls internally. Roomy enough
+// for a long dictated voice note (#165) without the bar eating the whole
+// screen when the keyboard is up. The CSS min-height floors it at 2 rows.
+const _COMPOSE_MAX_ROWS = 8;
+
 function growComposeInput() {
-  // Auto-grow up to ~4 rows; the iOS return key adds newlines, only
-  // ➤ Send forwards to the PTY.
+  // Auto-grow up to _COMPOSE_MAX_ROWS; the iOS return key adds newlines,
+  // only ➤ Send forwards to the PTY.
   const ta = els.terminalComposeInput;
   ta.style.height = 'auto';
   const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-  ta.style.height = Math.min(ta.scrollHeight, 4 * lineHeight + 16) + 'px';
+  ta.style.height =
+    Math.min(ta.scrollHeight, _COMPOSE_MAX_ROWS * lineHeight + 16) + 'px';
+  // Keep the caret (end of a freshly inserted transcript) in view.
+  ta.scrollTop = ta.scrollHeight;
 }
 
 function resetComposeBar() {
@@ -693,6 +709,11 @@ function setComposeOpen(open) {
   if (!t) return;
   t.composeOpen = open;
   els.terminalComposeBar.hidden = !open;
+  if (!open) {
+    // Closing the bar abandons any in-flight recording so the mic isn't
+    // left live behind a hidden bar.
+    stopRecording();
+  }
   if (open) {
     // Focusing the textarea pops the phone keyboard with predictive on.
     els.terminalComposeInput.focus();
@@ -722,11 +743,144 @@ export function framePaste(t, text, submit) {
   return '\x1b[200~' + text + '\x1b[201~' + cr;
 }
 
+// Voice dictation (issue #165): the 🎤 button in the compose bar records
+// the mic, POSTs the blob to /api/transcribe (which proxies to the
+// sibling voice-transcriber over loopback), and drops the transcript into
+// the compose textarea for review — never straight into the PTY. Tap to
+// start, tap to stop. Phone-only by virtue of living in the compose bar,
+// which is hidden in the PC mirror window.
+let _recorder = null;
+let _recordChunks = [];
+
+// First supported of the recorder MIME ladder — iOS Safari usually only
+// offers audio/mp4, everyone else audio/webm/opus. The voice-transcriber
+// sniffs the real container at transcode time, so a truthful label is all
+// that matters.
+function pickAudioMime() {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/mp4;codecs=mp4a.40.2',
+    'audio/mp4',
+  ];
+  const MR = window.MediaRecorder;
+  if (!MR || !MR.isTypeSupported) return '';
+  for (let i = 0; i < candidates.length; i++) {
+    if (MR.isTypeSupported(candidates[i])) return candidates[i];
+  }
+  return '';
+}
+
+function setRecordingUI(on) {
+  const btn = els.terminalRecord;
+  if (!btn) return;
+  btn.classList.toggle('recording', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.textContent = on ? '⏹' : '🎤';
+  btn.title = on ? 'Stop recording' : 'Dictate (voice → text)';
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
+      !window.MediaRecorder) {
+    toast('Recording not supported on this browser', 'error');
+    return;
+  }
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (exc) {
+    toast('Microphone unavailable: ' + (exc.message || exc), 'error');
+    return;
+  }
+  const mime = pickAudioMime();
+  try {
+    _recorder = mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream);
+  } catch (exc) {
+    stream.getTracks().forEach(function (tr) { tr.stop(); });
+    toast('Recorder failed: ' + (exc.message || exc), 'error');
+    return;
+  }
+  _recordChunks = [];
+  _recorder.addEventListener('dataavailable', function (ev) {
+    if (ev.data && ev.data.size) _recordChunks.push(ev.data);
+  });
+  _recorder.addEventListener('stop', function () {
+    stream.getTracks().forEach(function (tr) { tr.stop(); });
+    const type = _recorder ? _recorder.mimeType : (mime || 'audio/webm');
+    const blob = new Blob(_recordChunks, { type: type });
+    _recordChunks = [];
+    _recorder = null;
+    setRecordingUI(false);
+    if (blob.size) sendRecording(blob);
+  });
+  _recorder.start();
+  setRecordingUI(true);
+}
+
+function stopRecording() {
+  if (_recorder && _recorder.state !== 'inactive') {
+    try { _recorder.stop(); } catch (_) { /* stop fires anyway */ }
+  } else {
+    setRecordingUI(false);
+  }
+}
+
+async function sendRecording(blob) {
+  const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
+  const fd = new FormData();
+  fd.append('file', blob, 'recording.' + ext);
+  els.terminalRecord.disabled = true;
+  try {
+    const headers = new Headers();
+    const bt = readToken();
+    if (bt) headers.set('Authorization', 'Bearer ' + bt);
+    const tt = readTerminalToken();
+    if (tt) headers.set('X-Terminal-Token', tt);
+    const res = await fetch('/api/transcribe', {
+      method: 'POST', headers: headers, body: fd,
+    });
+    if (!res.ok) {
+      const b = await res.json().catch(function () { return null; });
+      throw new Error((b && b.detail) || ('HTTP ' + res.status));
+    }
+    const body = await res.json().catch(function () { return null; });
+    const text = body && body.transcript;
+    if (body && body.silent) {
+      toast('🎤 Nothing heard — silent recording');
+      return;
+    }
+    if (!text) {
+      toast('🎤 No transcript returned');
+      return;
+    }
+    // Insert at the caret with a leading space when the textarea already
+    // has trailing content, so dictation appends cleanly to typed text.
+    const ta = els.terminalComposeInput;
+    const before = ta.value.slice(0, ta.selectionStart);
+    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
+    ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
+    growComposeInput();
+    ta.focus();
+    toast('🎤 Transcribed — review, then ➤ Send.', 'good');
+  } catch (exc) {
+    toast('Transcription failed: ' + (exc.message || exc), 'error');
+  } finally {
+    els.terminalRecord.disabled = false;
+  }
+}
+
 function wireCompose() {
   els.terminalCompose.addEventListener('click', function () {
     const t = state.terminal;
     if (!t) return;
     setComposeOpen(!t.composeOpen);
+  });
+  els.terminalRecord.addEventListener('click', function () {
+    if (_recorder && _recorder.state === 'recording') stopRecording();
+    else startRecording();
   });
   els.terminalComposeSend.addEventListener('click', function () {
     const t = state.terminal;
