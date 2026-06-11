@@ -74,9 +74,11 @@ def _terminal_guard_level(path: str) -> Optional[str]:
         return "tailnet"
     if path.startswith("/api/claude-code/sessions/") and path.endswith("/image"):
         return "passkey"
-    # Voice dictation (issue #165): the recording is as sensitive as
-    # terminal input, so the transcribe proxy gets the terminal's gate.
-    if path == "/api/transcribe":
+    # Voice dictation (issues #165 / #168): the recording is as sensitive
+    # as terminal input, so the single-shot proxy (/api/transcribe) and the
+    # streamed session proxy (/api/transcribe/sessions/*, incl. the SSE
+    # events stream) all get the terminal's gate.
+    if path == "/api/transcribe" or path.startswith("/api/transcribe/"):
         return "passkey"
     # Life OS private-content browser (issue #102): the file-content
     # endpoint (read/delete/rename, all under /api/life-os/file*) and the

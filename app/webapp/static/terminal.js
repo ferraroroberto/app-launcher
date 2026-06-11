@@ -743,14 +743,35 @@ export function framePaste(t, text, submit) {
   return '\x1b[200~' + text + '\x1b[201~' + cr;
 }
 
-// Voice dictation (issue #165): the 🎤 button in the compose bar records
-// the mic, POSTs the blob to /api/transcribe (which proxies to the
-// sibling voice-transcriber over loopback), and drops the transcript into
-// the compose textarea for review — never straight into the PTY. Tap to
-// start, tap to stop. Phone-only by virtue of living in the compose bar,
-// which is hidden in the PC mirror window.
+// Voice dictation (issues #165 / #168): the 🎤 button in the compose bar
+// records the mic and drops the transcript into the compose textarea for
+// review — never straight into the PTY. Tap to start, tap to stop.
+// Phone-only by virtue of living in the compose bar, which is hidden in
+// the PC mirror window.
+//
+// Preferred flow (#168) is *streamed*: create a voice session, POST audio
+// chunks at a 1 s cadence, and subscribe to a Server-Sent-Events stream of
+// rolling `partial` transcripts that revise the dictated span live as you
+// speak; `finish` settles the canonical text on stop. If streaming setup
+// fails we fall back to the #165 single-shot path (buffer the whole take,
+// POST it once to /api/transcribe) so dictation degrades rather than
+// breaks. The `finish` call is the source of truth either way, so even a
+// dead SSE stream still yields the full transcript on stop.
+const _CHUNK_MS = 1000;
 let _recorder = null;
 let _recordChunks = [];
+// Streaming state (#168). _voiceSession is the upstream session id;
+// _streaming flips true only once a session is created. The chunk queue
+// drains sequentially so chunks reach the session-host in order.
+let _voiceSession = null;
+let _streaming = false;
+let _voiceEvents = null;
+let _chunkQueue = [];
+let _chunkDraining = false;
+// The dictated span inside the textarea: [_dictStart, _dictStart+_dictLen].
+// Each partial replaces exactly that span, preserving text typed before it.
+let _dictStart = 0;
+let _dictLen = 0;
 
 // First supported of the recorder MIME ladder — iOS Safari usually only
 // offers audio/mp4, everyone else audio/webm/opus. The voice-transcriber
@@ -780,6 +801,67 @@ function setRecordingUI(on) {
   btn.title = on ? 'Stop recording' : 'Dictate (voice → text)';
 }
 
+// Auth headers for the transcribe endpoints (bearer + passkey terminal
+// token), mirroring sendImage.
+function voiceHeaders() {
+  const headers = new Headers();
+  const bt = readToken();
+  if (bt) headers.set('Authorization', 'Bearer ' + bt);
+  const tt = readTerminalToken();
+  if (tt) headers.set('X-Terminal-Token', tt);
+  return headers;
+}
+
+// EventSource can't set headers, so the SSE stream carries auth in the
+// query string (the gates read query params).
+function voiceQuery() {
+  const params = new URLSearchParams();
+  const bt = readToken();
+  if (bt) params.set('token', bt);
+  const tt = readTerminalToken();
+  if (tt) params.set('tt', tt);
+  const q = params.toString();
+  return q ? '?' + q : '';
+}
+
+// Replace the tracked dictation span with the latest transcript, leaving
+// any text the user typed before the span untouched, and keep the caret /
+// end in view.
+function renderDictation(text) {
+  const ta = els.terminalComposeInput;
+  ta.setRangeText(text, _dictStart, _dictStart + _dictLen, 'end');
+  _dictLen = text.length;
+  growComposeInput();
+}
+
+function closeVoiceEvents() {
+  if (_voiceEvents) {
+    try { _voiceEvents.close(); } catch (_) { /* best effort */ }
+    _voiceEvents = null;
+  }
+}
+
+// Sequentially POST queued audio chunks so they reach the session-host in
+// order (overlapping POSTs could interleave on the raw file).
+async function drainChunks() {
+  if (_chunkDraining) return;
+  _chunkDraining = true;
+  try {
+    while (_chunkQueue.length && _voiceSession) {
+      const blob = _chunkQueue.shift();
+      try {
+        await fetch(
+          '/api/transcribe/sessions/' + encodeURIComponent(_voiceSession) +
+            '/chunk',
+          { method: 'POST', headers: voiceHeaders(), body: blob }
+        );
+      } catch (_) { /* a dropped chunk is recoverable; finish reconciles */ }
+    }
+  } finally {
+    _chunkDraining = false;
+  }
+}
+
 async function startRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
       !window.MediaRecorder) {
@@ -804,19 +886,76 @@ async function startRecording() {
     return;
   }
   _recordChunks = [];
+  _chunkQueue = [];
+  _voiceSession = null;
+  _streaming = false;
+
+  // Try to open a streamed session (#168). On any failure, fall back to
+  // the buffered single-shot path (#165) — _streaming stays false.
+  try {
+    const res = await fetch('/api/transcribe/sessions', {
+      method: 'POST', headers: voiceHeaders(),
+    });
+    if (res.ok) {
+      const body = await res.json().catch(function () { return null; });
+      if (body && body.session_id) {
+        _voiceSession = body.session_id;
+        _streaming = true;
+      }
+    }
+  } catch (_) { /* fall back to buffered */ }
+
+  if (_streaming) {
+    // Anchor the dictation span at the caret (after a separator space when
+    // the textarea already has trailing content), then stream partials in.
+    const ta = els.terminalComposeInput;
+    const before = ta.value.slice(0, ta.selectionStart);
+    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
+    ta.setRangeText(sep, ta.selectionStart, ta.selectionEnd, 'end');
+    _dictStart = ta.selectionStart;
+    _dictLen = 0;
+    try {
+      _voiceEvents = new EventSource(
+        '/api/transcribe/sessions/' + encodeURIComponent(_voiceSession) +
+          '/events' + voiceQuery()
+      );
+      _voiceEvents.addEventListener('partial', function (ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          if (typeof data.transcript === 'string') renderDictation(data.transcript);
+        } catch (_) { /* ignore a malformed frame */ }
+      });
+      // `final` also arrives via /finish's return value; closing here is
+      // harmless — finish() is the source of truth.
+      _voiceEvents.addEventListener('final', closeVoiceEvents);
+    } catch (_) { _voiceEvents = null; }
+  }
+
   _recorder.addEventListener('dataavailable', function (ev) {
-    if (ev.data && ev.data.size) _recordChunks.push(ev.data);
+    if (!ev.data || !ev.data.size) return;
+    if (_streaming) {
+      _chunkQueue.push(ev.data);
+      drainChunks();
+    } else {
+      _recordChunks.push(ev.data);
+    }
   });
   _recorder.addEventListener('stop', function () {
     stream.getTracks().forEach(function (tr) { tr.stop(); });
-    const type = _recorder ? _recorder.mimeType : (mime || 'audio/webm');
-    const blob = new Blob(_recordChunks, { type: type });
-    _recordChunks = [];
-    _recorder = null;
     setRecordingUI(false);
-    if (blob.size) sendRecording(blob);
+    if (_streaming) {
+      finishStreaming();
+    } else {
+      const type = _recorder ? _recorder.mimeType : (mime || 'audio/webm');
+      const blob = new Blob(_recordChunks, { type: type });
+      _recordChunks = [];
+      _recorder = null;
+      if (blob.size) sendBufferedRecording(blob);
+    }
   });
-  _recorder.start();
+  // Timeslice only matters when streaming — it forces periodic
+  // dataavailable so chunks flow during the take.
+  _recorder.start(_streaming ? _CHUNK_MS : undefined);
   setRecordingUI(true);
 }
 
@@ -828,19 +967,52 @@ function stopRecording() {
   }
 }
 
-async function sendRecording(blob) {
+// Streamed stop (#168): flush remaining chunks, ask the voice-transcriber
+// for the canonical transcript, settle the dictated span, tear down.
+async function finishStreaming() {
+  const sid = _voiceSession;
+  _recorder = null;
+  els.terminalRecord.disabled = true;
+  try {
+    await drainChunks();
+    const res = await fetch(
+      '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/finish',
+      { method: 'POST', headers: voiceHeaders() }
+    );
+    if (!res.ok) {
+      const b = await res.json().catch(function () { return null; });
+      throw new Error((b && b.detail) || ('HTTP ' + res.status));
+    }
+    const body = await res.json().catch(function () { return null; });
+    if (body && body.silent) {
+      // Nothing heard — drop the empty span we anchored.
+      renderDictation('');
+      toast('🎤 Nothing heard — silent recording');
+    } else if (body && typeof body.transcript === 'string') {
+      renderDictation(body.transcript);
+      toast('🎤 Transcribed — review, then ➤ Send.', 'good');
+    }
+    const ta = els.terminalComposeInput;
+    ta.focus();
+  } catch (exc) {
+    toast('Transcription failed: ' + (exc.message || exc), 'error');
+  } finally {
+    closeVoiceEvents();
+    _voiceSession = null;
+    _streaming = false;
+    els.terminalRecord.disabled = false;
+  }
+}
+
+// Single-shot fallback (#165): the whole take in one POST to /api/transcribe.
+async function sendBufferedRecording(blob) {
   const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
   const fd = new FormData();
   fd.append('file', blob, 'recording.' + ext);
   els.terminalRecord.disabled = true;
   try {
-    const headers = new Headers();
-    const bt = readToken();
-    if (bt) headers.set('Authorization', 'Bearer ' + bt);
-    const tt = readTerminalToken();
-    if (tt) headers.set('X-Terminal-Token', tt);
     const res = await fetch('/api/transcribe', {
-      method: 'POST', headers: headers, body: fd,
+      method: 'POST', headers: voiceHeaders(), body: fd,
     });
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });

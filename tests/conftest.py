@@ -139,6 +139,12 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from src import voice_client as real_voice_client
     voice_mock = MagicMock()
     voice_mock.transcribe.return_value = {"transcript": "stub text", "language": "en"}
+    voice_mock.create_session.return_value = {"session_id": "vt-stub"}
+    voice_mock.send_chunk.return_value = {"raw_bytes": 0}
+    voice_mock.finish.return_value = {"transcript": "stub text", "language": "en"}
+    voice_mock.events_url.side_effect = (
+        lambda base, sid: f"{base.rstrip('/')}/api/sessions/{sid}/events"
+    )
     voice_mock.VoiceTranscriberError = real_voice_client.VoiceTranscriberError
     monkeypatch.setattr(sessions_router, "voice_client", voice_mock)
 

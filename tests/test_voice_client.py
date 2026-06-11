@@ -82,3 +82,65 @@ def test_transcribe_connection_failure_is_503(monkeypatch):
     with pytest.raises(voice_client.VoiceTranscriberError) as exc:
         voice_client.transcribe("https://127.0.0.1:8443", "r.webm", b"a", "audio/webm")
     assert exc.value.status == 503
+
+
+# --- streamed helpers (#168) -------------------------------------------
+
+
+def test_create_session_posts_language(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs.get("json")
+        return _Resp(200, {"session_id": "s1"})
+
+    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    out = voice_client.create_session("https://127.0.0.1:8443/", "es")
+    assert out["session_id"] == "s1"
+    assert captured["url"] == "https://127.0.0.1:8443/api/sessions"
+    assert captured["json"] == {"language": "es"}
+
+
+def test_send_chunk_posts_raw_body(monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["data"] = kwargs.get("data")
+        captured["headers"] = kwargs.get("headers")
+        return _Resp(200, {"raw_bytes": 3})
+
+    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    out = voice_client.send_chunk("https://127.0.0.1:8443", "s1", b"abc", "audio/mp4")
+    assert out["raw_bytes"] == 3
+    assert captured["url"] == "https://127.0.0.1:8443/api/sessions/s1/chunk"
+    assert captured["data"] == b"abc"
+    assert captured["headers"]["Content-Type"] == "audio/mp4"
+
+
+def test_finish_returns_transcript(monkeypatch):
+    def fake_post(url, **kwargs):
+        assert url == "https://127.0.0.1:8443/api/sessions/s1/finish"
+        return _Resp(200, {"transcript": "done", "language": "en"})
+
+    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    out = voice_client.finish("https://127.0.0.1:8443", "s1")
+    assert out["transcript"] == "done"
+
+
+def test_finish_upstream_error_raises(monkeypatch):
+    def fake_post(url, **kwargs):
+        return _Resp(502, {"detail": "whisper blew up"})
+
+    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    with pytest.raises(voice_client.VoiceTranscriberError) as exc:
+        voice_client.finish("https://127.0.0.1:8443", "s1")
+    assert exc.value.status == 502
+
+
+def test_events_url_builds_path():
+    assert (
+        voice_client.events_url("https://127.0.0.1:8443/", "s1")
+        == "https://127.0.0.1:8443/api/sessions/s1/events"
+    )

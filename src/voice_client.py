@@ -115,3 +115,91 @@ def transcribe(
         raise VoiceTranscriberError(
             f"voice-transcriber upload returned non-JSON ({exc})"
         ) from exc
+
+
+# --- streamed "never-lose-it" path (issue #168) -------------------------
+# The single-shot path above gives no feedback until /upload returns. For
+# live rolling partials the compose bar drives the chunked flow instead:
+# create → repeated chunk (1 s cadence) → SSE partials (proxied async in
+# the router) → finish. These helpers wrap the non-SSE legs.
+
+
+def create_session(base_url: str, language: Optional[str] = None) -> Dict[str, Any]:
+    """Create a streamed transcription session; return its JSON body."""
+    base = base_url.rstrip("/")
+    body: Dict[str, Any] = {}
+    if language:
+        body["language"] = language
+    try:
+        resp = requests.post(
+            f"{base}/api/sessions", json=body, timeout=_CREATE_TIMEOUT, verify=False
+        )
+    except requests.RequestException as exc:
+        raise VoiceTranscriberError(
+            f"voice-transcriber unreachable at {base} ({exc})", status=503
+        ) from exc
+    if resp.status_code >= 400:
+        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
+    try:
+        return dict(resp.json())
+    except ValueError as exc:
+        raise VoiceTranscriberError(
+            f"voice-transcriber create returned non-JSON ({exc})"
+        ) from exc
+
+
+def send_chunk(
+    base_url: str, session_id: str, content: bytes, content_type: str
+) -> Dict[str, Any]:
+    """Append one raw audio chunk to a streamed session (body is raw bytes)."""
+    base = base_url.rstrip("/")
+    try:
+        resp = requests.post(
+            f"{base}/api/sessions/{session_id}/chunk",
+            data=content,
+            headers={"Content-Type": content_type},
+            timeout=_TIMEOUT,
+            verify=False,
+        )
+    except requests.RequestException as exc:
+        raise VoiceTranscriberError(
+            f"voice-transcriber chunk failed ({exc})", status=503
+        ) from exc
+    if resp.status_code >= 400:
+        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
+    try:
+        return dict(resp.json())
+    except ValueError:
+        return {}
+
+
+def finish(
+    base_url: str, session_id: str, language: Optional[str] = None
+) -> Dict[str, Any]:
+    """Close a streamed session and return the canonical transcript."""
+    base = base_url.rstrip("/")
+    params = {"language": language} if language else None
+    try:
+        resp = requests.post(
+            f"{base}/api/sessions/{session_id}/finish",
+            params=params,
+            timeout=_TIMEOUT,
+            verify=False,
+        )
+    except requests.RequestException as exc:
+        raise VoiceTranscriberError(
+            f"voice-transcriber finish failed ({exc})", status=503
+        ) from exc
+    if resp.status_code >= 400:
+        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
+    try:
+        return dict(resp.json())
+    except ValueError as exc:
+        raise VoiceTranscriberError(
+            f"voice-transcriber finish returned non-JSON ({exc})"
+        ) from exc
+
+
+def events_url(base_url: str, session_id: str) -> str:
+    """Upstream SSE URL for a session's rolling-partial stream."""
+    return f"{base_url.rstrip('/')}/api/sessions/{session_id}/events"
