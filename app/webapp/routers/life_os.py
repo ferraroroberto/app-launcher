@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -60,6 +61,41 @@ _TEXT_SUFFIXES = frozenset(
 _MAX_FILE_BYTES = 256 * 1024
 # Directory names never walked for the browser (VCS / caches).
 _BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+
+# --- weekly recap (issue #167) -----------------------------------------
+# The recap is the ``_recap`` infra skill; it is underscore-prefixed, so
+# ``scan_skills`` deliberately skips it and the normal skill-launch route
+# can't reach it. The Life OS tab surfaces it as a dedicated "Weekly recap"
+# tile instead: a staleness badge driven by the ledger's mtime, and a launch
+# that invokes ``/weekly-recap`` (the interactive review). A safe literal slug
+# (validated by construction — matches ``scanner._SKILL_SLUG_RE``); if the
+# skill is ever renamed the tile 404s visibly rather than launching the wrong
+# thing.
+_RECAP_COMMAND = "weekly-recap"
+# The ledger is (re)written only when the user promotes a recap in review, so
+# its mtime is "when the memory was last curated" — exactly the staleness clock.
+_RECAP_LEDGER_REL = ".claude/skills/_recap/memory/ledger.json"
+# Headless drafts awaiting review land here (gitignored on the life-os side).
+_RECAP_PROPOSALS_REL = ".claude/skills/_recap/proposals"
+# Staleness thresholds in days: amber past DUE, red past OVERDUE.
+_RECAP_DUE_DAYS = 7
+_RECAP_OVERDUE_DAYS = 14
+
+
+def _recap_staleness(age_days: Optional[float]) -> str:
+    """Map a ledger age in days to a badge state.
+
+    ``never`` (no ledger yet) → ``fresh`` (≤7d) → ``due`` (>7d, amber) →
+    ``overdue`` (>14d, red). The boundaries are inclusive of the lower band:
+    exactly 7.0 days is still ``fresh``, just over is ``due``.
+    """
+    if age_days is None:
+        return "never"
+    if age_days > _RECAP_OVERDUE_DAYS:
+        return "overdue"
+    if age_days > _RECAP_DUE_DAYS:
+        return "due"
+    return "fresh"
 
 
 # ------------------------------------------------------------- path jail
@@ -123,6 +159,82 @@ def _resolve_skill(cfg: WebappConfig, skill_id: str) -> Skill:
     return skill
 
 
+async def _spawn_skill_session(
+    cfg: WebappConfig,
+    request: Request,
+    life_os_dir: Path,
+    *,
+    flags: str,
+    name: str,
+    kind: str,
+    opus: bool,
+    resume: bool,
+    audit_skill: str,
+    body: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Spawn a claude session in life-os, audit it, mirror to PC, shape the reply.
+
+    The shared tail of the skill-launch and recap-launch routes: each has
+    already resolved the claude ``flags`` (model + the bare ``/<command>``)
+    and the session ``kind``; this runs the spawn + audit + optional PC mirror
+    (issue #159) identically and returns the common response fields. The caller
+    prepends its own ``launched`` id.
+    """
+    try:
+        session = await asyncio.to_thread(
+            spawn_claude_session,
+            life_os_dir,
+            name,
+            flags,
+            cfg.session_host_port,
+            kind,
+            "claude",
+        )
+    except session_client.SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    sid = str(session.get("session_id") or "")
+    event = "remote_launch" if kind == "remote" else "session_start"
+    audit.audit_event(
+        event,
+        session=sid,
+        agent="claude",
+        skill=audit_skill,
+        name=name,
+        project=str(life_os_dir),
+        resume=resume,
+        client=client_ip(request),
+    )
+    audit.session_log(
+        sid, "start", agent="claude", skill=audit_skill, name=name,
+        project=str(life_os_dir),
+    )
+
+    # Mirror full-control sessions into a PC terminal window (skipped when
+    # the launch came from the PC itself — loopback IP or a desktop browser
+    # that already shows the terminal, issue #159) — identical to the
+    # Coding tab.
+    if kind == "pty" and should_mirror_to_pc(
+        cfg.claude_show_local_window, request, body
+    ):
+        scheme = "https" if cert_present() else "http"
+        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+        asyncio.create_task(
+            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
+        )
+
+    return {
+        "name": name,
+        "agent": "claude",
+        "mode": kind,
+        "opus": opus,
+        "resume": resume,
+        "session": session,
+    }
+
+
 # ----------------------------------------------------------------- routes
 
 
@@ -149,6 +261,86 @@ async def list_skills(request: Request) -> Dict[str, Any]:
         "life_os_dir": cfg.life_os_dir,
         "available": available,
     }
+
+
+@router.get("/api/life-os/recap-status")
+async def recap_status(request: Request) -> Dict[str, Any]:
+    """Weekly-recap staleness for the Life OS tab tile (public, token-gated).
+
+    Reports how long since the recap ledger was last written (the user's most
+    recent promotion in review) as a badge ``staleness`` state, plus whether a
+    headless draft is pending review. Read-only: one ``stat`` of the ledger + a
+    glob of the proposals dir, both inside ``life_os_dir`` — no new file-read
+    surface. ``available`` is ``False`` when life-os isn't checked out, so the
+    tile hides, exactly like the skills list.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    available = skills_dir_for(life_os_dir).is_dir()
+
+    age_days: Optional[float] = None
+    ledger_exists = False
+    try:
+        ledger = life_os_dir / _RECAP_LEDGER_REL
+        if ledger.is_file():
+            ledger_exists = True
+            age_days = max(0.0, (time.time() - ledger.stat().st_mtime) / 86400.0)
+    except OSError:
+        pass
+
+    proposal_name: Optional[str] = None
+    try:
+        pdir = life_os_dir / _RECAP_PROPOSALS_REL
+        if pdir.is_dir():
+            names = sorted((p.name for p in pdir.glob("*.md")), reverse=True)
+            proposal_name = names[0] if names else None
+    except OSError:
+        pass
+
+    return {
+        "available": available,
+        "ledger_exists": ledger_exists,
+        "age_days": None if age_days is None else round(age_days, 1),
+        "staleness": _recap_staleness(age_days),
+        "proposal_pending": proposal_name is not None,
+        "proposal_name": proposal_name,
+    }
+
+
+@router.post("/api/life-os/recap/launch")
+async def launch_recap(request: Request) -> Dict[str, Any]:
+    """Launch a claude session that invokes ``/weekly-recap`` (review) in life-os.
+
+    The Weekly-recap tile's 🚀 — the interactive **review** half of the recap
+    (issue #167 / life-os #15). Body: ``{"mode": "pty"|"remote", "opus": bool}``.
+    The drafting half runs headless on a schedule (the recap-draft Job), so this
+    tile is review-only: no ``/weekly-recap draft`` and no resume. cwd is fixed
+    to ``life_os_dir``; the positional prompt is a bare ``/weekly-recap``.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    if not life_os_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
+        )
+
+    body = await request.json() if (
+        request.headers.get("content-type", "").startswith("application/json")
+    ) else {}
+    body = body if isinstance(body, dict) else {}
+    mode = str(body.get("mode") or "pty").strip().lower()
+    opus = bool(body.get("opus", False))
+
+    model = "opus" if opus else "sonnet"
+    flags = f"{build_claude_flags(cfg, model_override=model)} /{_RECAP_COMMAND}"
+    kind = "remote" if mode == "remote" else "pty"
+    result = await _spawn_skill_session(
+        cfg, request, life_os_dir,
+        flags=flags, name=_RECAP_COMMAND, kind=kind, opus=opus, resume=False,
+        audit_skill="_recap", body=body,
+    )
+    return {"launched": _RECAP_COMMAND, **result}
 
 
 @router.post("/api/life-os/skills/{skill_id}/launch")
@@ -203,60 +395,12 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     # Resume forces a streamed PTY (the picker must be visible) — it wins
     # over Detached.
     kind = "pty" if resume else ("remote" if mode == "remote" else "pty")
-    try:
-        session = await asyncio.to_thread(
-            spawn_claude_session,
-            life_os_dir,
-            name,
-            flags,
-            cfg.session_host_port,
-            kind,
-            "claude",
-        )
-    except session_client.SessionHostError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc))
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-    sid = str(session.get("session_id") or "")
-    event = "remote_launch" if kind == "remote" else "session_start"
-    audit.audit_event(
-        event,
-        session=sid,
-        agent="claude",
-        skill=skill.id,
-        name=name,
-        project=str(life_os_dir),
-        resume=resume,
-        client=client_ip(request),
+    result = await _spawn_skill_session(
+        cfg, request, life_os_dir,
+        flags=flags, name=name, kind=kind, opus=opus, resume=resume,
+        audit_skill=skill.id, body=body,
     )
-    audit.session_log(
-        sid, "start", agent="claude", skill=skill.id, name=name,
-        project=str(life_os_dir),
-    )
-
-    # Mirror full-control sessions into a PC terminal window (skipped when
-    # the launch came from the PC itself — loopback IP or a desktop browser
-    # that already shows the terminal, issue #159) — identical to the
-    # Coding tab.
-    if kind == "pty" and should_mirror_to_pc(
-        cfg.claude_show_local_window, request, body
-    ):
-        scheme = "https" if cert_present() else "http"
-        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
-        asyncio.create_task(
-            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
-        )
-
-    return {
-        "launched": skill.id,
-        "name": name,
-        "agent": "claude",
-        "mode": kind,
-        "opus": opus,
-        "resume": resume,
-        "session": session,
-    }
+    return {"launched": skill.id, **result}
 
 
 @router.get("/api/life-os/skills/{skill_id}/files")

@@ -79,6 +79,74 @@ export function renderSkills() {
   });
 }
 
+// ------------------------------------------------- weekly recap (issue #167)
+// A pinned tile above the skills list: a staleness badge driven by the recap
+// ledger's mtime, and a 🚀 that launches /weekly-recap (the interactive
+// review). The drafting half runs headless on a schedule, so this is
+// review-only. Fetched on every Life OS tab open (cheap stat + glob server-side).
+export async function fetchRecapStatus() {
+  try {
+    state.lifeOsRecap = await jsonApi('/api/life-os/recap-status');
+    renderRecap();
+  } catch (exc) {
+    if (String(exc.message) !== 'auth required') {
+      console.warn('life-os recap-status fetch failed', exc);
+    }
+  }
+}
+
+function renderRecap() {
+  const host = els.lifeOsRecap;
+  if (!host) return;
+  const r = state.lifeOsRecap;
+  // Hide the tile when life-os isn't checked out — same as the skills list.
+  if (!r || !r.available) { host.hidden = true; return; }
+  host.hidden = false;
+
+  const badge = els.lifeOsRecapBadge;
+  const status = r.staleness || 'never';
+  badge.className = 'lifeos-recap-badge ' + status;
+  let label;
+  if (status === 'never') {
+    label = 'never run';
+  } else {
+    const d = Math.round(r.age_days || 0);
+    const ago = d <= 0 ? 'today' : (d + 'd ago');
+    const tag = status === 'due' ? ' · due'
+      : status === 'overdue' ? ' · overdue' : '';
+    label = ago + tag;
+  }
+  if (r.proposal_pending) label += ' · draft ready';
+  badge.textContent = label;
+}
+
+async function launchRecap() {
+  // Reuse the Life OS options card's toggles: ☁️ Detached → remote, opus → model.
+  const mode = (els.lifeOsDetached && els.lifeOsDetached.checked)
+    ? 'remote' : 'pty';
+  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
+  const payload = { mode: mode, opus: opus };
+  if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
+  try {
+    const body = await jsonApi('/api/life-os/recap/launch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    toast(
+      '🌱 Launched weekly recap' + (opus ? ' (Opus)' : '') +
+        (mode === 'remote' ? ' (detached)' : ''),
+      'good'
+    );
+    if (body.session) {
+      fetchSessions().catch(function () {});
+      if (body.session.kind !== 'remote') openTerminal(body.session);
+    }
+  } catch (exc) {
+    toast('Recap launch failed: ' + (exc.message || exc), 'error');
+  }
+}
+
 async function launchSkill(s) {
   // Resume (issue #151) reopens Claude's session picker (dropping the
   // /<skill> prompt) in a streamed PTY — it wins over Detached.
@@ -415,10 +483,15 @@ export function wireLifeOs() {
       loadFileList().catch(function () {});
     });
   }
-  // Refresh skills the moment the tab opens (cheap, live directory scan).
+  if (els.lifeOsRecapLaunch) {
+    els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
+  }
+  // Refresh skills + recap staleness the moment the tab opens (cheap: a live
+  // directory scan + a single ledger stat).
   if (els.tabLifeOS) {
     els.tabLifeOS.addEventListener('click', function () {
       fetchSkills().catch(function () {});
+      fetchRecapStatus().catch(function () {});
     });
   }
 }
