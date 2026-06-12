@@ -1456,7 +1456,26 @@ body.terminal-open {
 .lifeos-recap-badge.overdue { color: var(--danger); }
 .lifeos-recap-badge.overdue::before { background: var(--danger); }
 .lifeos-recap-badge.never::before { background: var(--muted); }
-.lifeos-recap-launch { font-size: 18px; }
+/* The recap card isn't an .app-item, so it doesn't inherit the tab's
+   .app-item .row-actions .icon-btn treatment — restate it here so the 🚀
+   matches the skill-tile launch buttons instead of rendering as a default
+   (white) UA button. */
+.lifeos-recap-card .icon-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+  min-width: 52px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lifeos-recap-card .icon-btn:active {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
 
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
