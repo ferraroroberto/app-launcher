@@ -21,9 +21,18 @@
     {
       "id": "codebase-audit-fleet",
       "name": "Weekly Codebase Audit (fleet)",
-      "script_path": "E:\\automation\\claude-config\\audit-fleet.bat",
+      "script_path": "E:\\automation\\claude-config\\skills\\audit-fleet\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
+      "visible": true,
+      "cooldown_seconds": 3600
+    },
+    {
+      "id": "weekly-recap-draft",
+      "name": "Weekly Recap (draft)",
+      "script_path": "E:\\automation\\life-os\\.claude\\skills\\_recap\\run-weekly.bat",
+      "args": "",
+      "schedule": { "type": "weekly", "day": "SUN", "at": "21:00" },
       "visible": true,
       "cooldown_seconds": 3600
     }

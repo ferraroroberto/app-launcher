@@ -54,6 +54,101 @@ def _mock_skills(page: Page) -> None:
     )
 
 
+def _mock_recap(
+    page: Page, *, staleness: str = "due", age_days: float = 9.0,
+    available: bool = True, proposal_pending: bool = False,
+) -> None:
+    page.route(
+        re.compile(r".*/api/life-os/recap-status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": available, "ledger_exists": True,
+                "age_days": age_days, "staleness": staleness,
+                "proposal_pending": proposal_pending, "proposal_name": None,
+            }),
+        ),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _default_recap(authed_page: Page) -> None:
+    """Stub /api/life-os/recap-status for every test so opening the Life OS tab
+    is hermetic — without this the live endpoint answers (life-os is checked
+    out beside the repo), unhiding the recap tile asynchronously and reflowing
+    the list mid-measurement, which jitters the #124 tile-geometry assertion.
+    Default is ``available:false`` → the recap tile stays hidden, so tests that
+    aren't about the recap see the exact pre-feature layout. The two recap
+    tests register their own ``_mock_recap`` after this; Playwright matches
+    routes last-registered-first, so that one wins."""
+    _mock_recap(authed_page, available=False)
+
+
+def test_life_os_recap_tile_shows_staleness_badge(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression for #167: the Weekly-recap tile renders above the skills
+    list with a staleness badge whose state class + label track the
+    recap-status payload (here overdue, with a draft pending). Hermetic —
+    /skills + /recap-status are route-mocked."""
+    _mock_skills(authed_page)
+    _mock_recap(
+        authed_page, staleness="overdue", age_days=20.0, proposal_pending=True
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+
+    recap = authed_page.locator("#lifeOsRecap")
+    expect(recap).to_be_visible(timeout=5_000)
+    badge = authed_page.locator("#lifeOsRecapBadge")
+    expect(badge).to_have_class(re.compile(r"\boverdue\b"))
+    expect(badge).to_contain_text("20d ago")
+    expect(badge).to_contain_text("overdue")
+    expect(badge).to_contain_text("draft ready")
+
+
+def test_life_os_recap_launch_posts(
+    authed_page: Page, base_url: str
+) -> None:
+    """Tapping 🚀 on the recap tile POSTs /api/life-os/recap/launch with the
+    options-card toggle state — proving the /weekly-recap review launch path
+    is reached. Detached on so it launches remote (no terminal overlay)."""
+    _mock_skills(authed_page)
+    _mock_recap(authed_page, staleness="fresh", age_days=1.0)
+
+    captured: dict = {}
+
+    def _capture(route):
+        captured["body"] = route.request.post_data or ""
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "weekly-recap", "name": "weekly-recap",
+                "agent": "claude", "mode": "remote", "opus": False,
+                "session": {"session_id": "r", "kind": "remote"},
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/recap/launch$"), _capture
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsRecap")).to_be_visible(timeout=5_000)
+
+    authed_page.evaluate(
+        "document.getElementById('lifeOsDetached').checked = true"
+    )
+    authed_page.locator("#lifeOsRecapLaunch").click()
+
+    authed_page.wait_for_timeout(400)
+    assert "body" in captured, "recap launch POST was never intercepted"
+    payload = _json.loads(captured["body"])
+    assert payload["mode"] == "remote", payload
+    assert payload["opus"] is False, payload
+
+
 def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
     _mock_skills(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 import pytest
 
-from app.webapp.routers.life_os import resolve_within
+from app.webapp.routers.life_os import resolve_within, _recap_staleness
 
 
 # --------------------------------------------------------------- path jail
@@ -31,6 +33,26 @@ class TestResolveWithin:
 
     def test_rejects_empty(self, tmp_path: Path):
         assert resolve_within(tmp_path, "") is None
+
+
+# ------------------------------------------------------- recap staleness (#167)
+class TestRecapStaleness:
+    """Pure threshold mapping — amber past 7 days, red past 14."""
+
+    def test_never_when_no_ledger(self):
+        assert _recap_staleness(None) == "never"
+
+    def test_fresh_inclusive_of_7_days(self):
+        assert _recap_staleness(0.0) == "fresh"
+        assert _recap_staleness(7.0) == "fresh"
+
+    def test_due_just_past_7(self):
+        assert _recap_staleness(7.01) == "due"
+        assert _recap_staleness(14.0) == "due"
+
+    def test_overdue_past_14(self):
+        assert _recap_staleness(14.01) == "overdue"
+        assert _recap_staleness(99.0) == "overdue"
 
 
 # --------------------------------------------------------------- fixtures
@@ -370,3 +392,109 @@ class TestContentBrowser:
         )
         assert resp.status_code == 403
         assert (life_os / rel).is_file()
+
+
+# ------------------------------------------------------- recap-status endpoint
+def _write_ledger(life_os: Path, age_days: float) -> Path:
+    """Create a _recap ledger whose mtime is ``age_days`` in the past."""
+    led = life_os / ".claude" / "skills" / "_recap" / "memory" / "ledger.json"
+    led.parent.mkdir(parents=True, exist_ok=True)
+    led.write_text("{}", encoding="utf-8")
+    when = time.time() - age_days * 86400.0
+    os.utime(led, (when, when))
+    return led
+
+
+class TestRecapStatus:
+    def test_never_when_no_ledger(self, life_os_client):
+        client, _, _ = life_os_client
+        resp = client.get("/api/life-os/recap-status")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["available"] is True
+        assert body["ledger_exists"] is False
+        assert body["age_days"] is None
+        assert body["staleness"] == "never"
+        assert body["proposal_pending"] is False
+
+    def test_fresh_recent_ledger(self, life_os_client):
+        client, _, overrides = life_os_client
+        _write_ledger(overrides["life_os_dir"], 2.0)
+        body = client.get("/api/life-os/recap-status").json()
+        assert body["ledger_exists"] is True
+        assert body["staleness"] == "fresh"
+        assert 1.5 < body["age_days"] < 2.5
+
+    def test_due_amber(self, life_os_client):
+        client, _, overrides = life_os_client
+        _write_ledger(overrides["life_os_dir"], 9.0)
+        assert client.get("/api/life-os/recap-status").json()["staleness"] == "due"
+
+    def test_overdue_red(self, life_os_client):
+        client, _, overrides = life_os_client
+        _write_ledger(overrides["life_os_dir"], 20.0)
+        body = client.get("/api/life-os/recap-status").json()
+        assert body["staleness"] == "overdue"
+
+    def test_proposal_pending_surfaced(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        _write_ledger(life_os, 9.0)
+        pdir = life_os / ".claude" / "skills" / "_recap" / "proposals"
+        pdir.mkdir(parents=True, exist_ok=True)
+        (pdir / "2026-06-01.md").write_text("older", encoding="utf-8")
+        (pdir / "2026-06-12.md").write_text("newest", encoding="utf-8")
+        body = client.get("/api/life-os/recap-status").json()
+        assert body["proposal_pending"] is True
+        # newest-first: the latest dated proposal wins.
+        assert body["proposal_name"] == "2026-06-12.md"
+
+    def test_unavailable_when_dir_missing(self, webapp_client, tmp_path):
+        client, app, _ = webapp_client
+        app.state.webapp_config.life_os_dir = str(tmp_path / "nope")
+        body = client.get("/api/life-os/recap-status").json()
+        assert body["available"] is False
+        assert body["staleness"] == "never"
+
+
+class TestLaunchRecap:
+    def test_launch_invokes_weekly_recap_review(self, life_os_client, monkeypatch):
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent):
+            captured.update(flags=flags, kind=kind, name=name, agent=agent)
+            return {"session_id": "r1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/recap/launch", json={"mode": "pty", "opus": False}
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["agent"] == "claude"
+        assert captured["kind"] == "pty"
+        # bare /weekly-recap (review), sonnet, and crucially NOT the draft mode.
+        assert captured["flags"].endswith(" /weekly-recap")
+        assert "--model sonnet" in captured["flags"]
+        assert "draft" not in captured["flags"]
+        assert resp.json()["launched"] == "weekly-recap"
+
+    def test_launch_opus_detached(self, life_os_client, monkeypatch):
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent):
+            captured.update(flags=flags, kind=kind)
+            return {"session_id": "r1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/recap/launch", json={"mode": "remote", "opus": True}
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["kind"] == "remote"
+        assert "--model opus" in captured["flags"]

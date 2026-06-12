@@ -1433,6 +1433,31 @@ body.terminal-open {
 .lifeos-toggles { display: flex; gap: 8px; }
 .lifeos-launch { font-size: 18px; }
 
+/* Weekly-recap tile (issue #167): title + a staleness badge on the left, the
+   🚀 review launch on the right. The badge is a coloured dot + label whose
+   colour tracks how stale the recap ledger is — green/accent fresh, amber
+   (--warn) past 7 days, red (--danger) past 14, muted when never run. Mirrors
+   the .health-dot colour vocabulary used elsewhere. */
+.lifeos-recap-card { padding: 12px 16px; }
+.lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.lifeos-recap-title { font-size: 15px; font-weight: 600; }
+.lifeos-recap-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--muted); white-space: nowrap;
+}
+.lifeos-recap-badge::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); flex: 0 0 auto;
+}
+.lifeos-recap-badge.fresh { color: var(--muted); }
+.lifeos-recap-badge.fresh::before { background: var(--accent); }
+.lifeos-recap-badge.due { color: var(--warn); }
+.lifeos-recap-badge.due::before { background: var(--warn); }
+.lifeos-recap-badge.overdue { color: var(--danger); }
+.lifeos-recap-badge.overdue::before { background: var(--danger); }
+.lifeos-recap-badge.never::before { background: var(--muted); }
+.lifeos-recap-launch { font-size: 18px; }
+
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
    bar closes it back to the list). Inside the reused .terminal-overlay. */
