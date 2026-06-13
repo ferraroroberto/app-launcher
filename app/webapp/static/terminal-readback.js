@@ -23,12 +23,14 @@
  *
  * Two voices share one button + one speaking-state machine (`setSpeaking` →
  * `onSpeakingChange`/`onSpeechEnd`):
- *  - **Hub TTS (issue #203)** — the preferred path when the local-llm-hub is
- *    reachable: `speakHub()` POSTs the reply to `/api/tts/speak` and plays the
- *    streamed WAV (Orpheus voice) through an `<audio>` element. `<audio src>`
- *    can't carry the bearer header and the text can be long, so the fetch is a
- *    POST with auth headers and the body is buffered to a blob before playback
- *    (the *server* streams hub→webapp→fetch; the client plays once received).
+ *  - **Hub TTS (issues #203, #206)** — the preferred path when the
+ *    local-llm-hub is reachable: `speakHub()` POSTs the reply to
+ *    `/api/tts/speak` to *stage* it (returns a short id), then points an
+ *    `<audio>` element at `/api/tts/stream/{id}` and lets the browser play the
+ *    Orpheus WAV **progressively, as it synthesizes** — low time-to-first-audio
+ *    instead of waiting for the whole clip. `<audio src>` can't carry the
+ *    bearer/passkey headers, so they ride the query string (like the WS URL);
+ *    the two-step stage keeps the long reply text out of that URL.
  *  - **Web Speech API (`speechSynthesis`)** — the on-device fallback when the
  *    hub is unconfigured / down / blocks the POST: zero infra, already on iOS
  *    Safari, and the button press supplies the user gesture iOS requires.
@@ -403,8 +405,7 @@ const SILENT_WAV =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 
 let _hubAudio = null;        // the <audio> element playing the streamed WAV
-let _hubAbort = null;        // AbortController for the in-flight fetch
-let _hubObjectUrl = null;    // object URL to revoke once playback ends
+let _hubAbort = null;        // AbortController for the in-flight staging fetch
 let _hubAvailable = null;    // tri-state: null = unprobed, true / false
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
@@ -433,27 +434,25 @@ export async function probeHub(opts) {
 /** True once a probe has confirmed the hub voice is reachable. */
 export function isHubAvailable() { return _hubAvailable === true; }
 
-function revokeHubUrl() {
-  if (_hubObjectUrl) {
-    try { URL.revokeObjectURL(_hubObjectUrl); } catch (_) { /* best effort */ }
-    _hubObjectUrl = null;
-  }
-}
-
 function finishHubNaturally() {
   _hubAbort = null;
   if (_hubAudio) { _hubAudio.onended = null; _hubAudio.onerror = null; }
   _hubAudio = null;
-  revokeHubUrl();
   if (!_speaking) return;       // already finalized (e.g. by a manual cancel)
   setSpeaking(false);
   if (_onEnd) { try { _onEnd(); } catch (_) { /* best effort */ } }
 }
 
 /**
- * Speak `text` through the hub's Orpheus voice. Resolves true once playback
- * starts; **rejects** on any hub failure (unconfigured / down / blocked POST /
- * empty body / autoplay refused) so the caller can fall back to `speak()`.
+ * Speak `text` through the hub's Orpheus voice, played progressively. Resolves
+ * true once playback starts; **rejects** on any staging failure (hub
+ * unconfigured / down / blocked POST / autoplay refused) so the caller can fall
+ * back to `speak()`.
+ *
+ * Two steps so the browser streams the WAV as it synthesizes (#206): POST the
+ * reply to stage it (returns an id), then point the `<audio>` element at
+ * `/api/tts/stream/{id}` — the bearer + passkey ride the query string since
+ * `<audio src>` can't set headers.
  *
  * `opts`: `{ token, terminalToken, voice, speed }`. Must be called directly
  * inside the button-click handler — the synchronous prologue (before the first
@@ -464,7 +463,7 @@ export async function speakHub(text, opts) {
   if (!clean) return false;
   cancelHub();                 // a second press / restart cancels in-flight audio
   // Unlock NOW, in the gesture tick: create the element and kick a muted play
-  // of the empty clip; the real blob src is swapped in after the fetch.
+  // of the empty clip; the real stream src is swapped in after the fetch.
   const audio = new Audio(SILENT_WAV);
   _hubAudio = audio;
   audio.play().catch(function () { /* unlock is best-effort */ });
@@ -485,15 +484,19 @@ export async function speakHub(text, opts) {
       signal: ac.signal,
     });
     if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
-    const blob = await res.blob();
+    const body = await res.json().catch(function () { return null; });
+    const id = body && body.id;
+    if (!id) throw new Error('hub tts staging returned no id');
     if (ac.signal.aborted) { return true; }   // cancelled mid-fetch — already idle
-    // The proxy emits a zero-byte body when the hub errors mid-stream (the
-    // 200 status is already committed) — treat it as a failure, not silence.
-    if (!blob || blob.size === 0) throw new Error('hub tts empty body');
-    _hubObjectUrl = URL.createObjectURL(blob);
+    // Progressive playback: the browser GETs the stream and plays the WAV as
+    // the hub synthesizes it. token + tt ride the query string (like the WS).
+    const params = new URLSearchParams();
+    if (opts && opts.token) params.set('token', opts.token);
+    if (opts && opts.terminalToken) params.set('tt', opts.terminalToken);
+    const q = params.toString();
     audio.onended = function () { finishHubNaturally(); };
     audio.onerror = function () { finishHubNaturally(); };
-    audio.src = _hubObjectUrl;
+    audio.src = '/api/tts/stream/' + encodeURIComponent(id) + (q ? '?' + q : '');
     await audio.play();
     return true;
   } catch (err) {
@@ -517,7 +520,6 @@ export function cancelHub() {
     try { _hubAudio.removeAttribute('src'); _hubAudio.load(); } catch (_) { /**/ }
     _hubAudio = null;
   }
-  revokeHubUrl();
   setSpeaking(false);
 }
 
