@@ -49,6 +49,7 @@ full per-family surface.  Top-level families:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import mimetypes
 import os
@@ -61,6 +62,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
+from src import launcher, session_client
 from src.app_config import load_app_config
 from src.static_versioning import (
     compute_asset_hashes,
@@ -141,8 +143,46 @@ class _VersionedStatic(StaticFiles):
         return response
 
 
+async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
+    """On boot, close Edge mirror windows no live session backs (issue #199).
+
+    The in-memory HWND registry (``src.launcher._mirror_hwnds``) is dropped
+    on every webapp restart, so mirrors opened before the restart can no
+    longer be closed by sid and pile up on the desktop. Reconcile them
+    against the session-host's live list — but only when that list is
+    *reliable*: a failed lookup means we can't tell live from orphan, so we
+    skip rather than risk closing a live session's window.
+    """
+    cfg = getattr(app.state, "webapp_config", None)
+    if cfg is None:
+        return
+    try:
+        sessions_live = await asyncio.to_thread(
+            session_client.list_sessions, cfg.session_host_port
+        )
+    except session_client.SessionHostError as exc:
+        _log.debug(
+            "ℹ️ orphan mirror reconcile skipped — session-host unreachable: %s",
+            exc,
+        )
+        return
+    live_sids = [
+        str(s.get("session_id")) for s in sessions_live if s.get("session_id")
+    ]
+    try:
+        closed = await asyncio.to_thread(
+            launcher.close_orphan_mirror_windows, live_sids
+        )
+    except Exception as exc:  # noqa: BLE001
+        _log.debug("ℹ️ orphan mirror reconcile failed: %s", exc)
+        return
+    if closed:
+        _log.info("🧹 reconciled %d orphaned mirror window(s) on startup", closed)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    await _reconcile_orphan_mirror_windows(app)
     yield
 
 

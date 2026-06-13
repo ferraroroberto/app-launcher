@@ -237,3 +237,123 @@ class TestOptionalPywin32Dependency:
         launcher.register_mirror_hwnd("sid-x", 4242)
         ok = launcher.close_mirror_window("sid-x")
         assert ok is False
+
+
+# ------------------------------------------------ close-time title-scan (#199)
+
+
+def _enum_windows_returning(windows):
+    """Fake EnumWindows that iterates ``(hwnd, title)`` pairs as cb(hwnd, extra)."""
+    def _side_effect(cb, extra):
+        for hwnd, _title in windows:
+            cb(hwnd, extra)
+    return _side_effect
+
+
+def _gettext_lookup(windows):
+    mapping = {hwnd: title for hwnd, title in windows}
+    return lambda hwnd: mapping.get(hwnd, "")
+
+
+class TestCloseTimeTitleScan:
+    """``close_mirror_window`` falls back to a live title-scan when no usable
+    HWND is registered — the path that survives a webapp restart (issue #199).
+    """
+
+    def test_unregistered_sid_closes_window_found_by_title(self, fake_win32gui):
+        """Registry empty (restart wiped it) but the window is still up —
+        the close-time scan finds and dismisses it."""
+        sid = "deadbeef" + "0" * 24
+        windows = [(100, "VS Code"), (300, f"app-launcher-mirror-{sid}")]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+
+        ok = launcher.close_mirror_window(sid)
+
+        assert ok is True
+        fake_win32gui.PostMessage.assert_called_once_with(300, WM_CLOSE, 0, 0)
+
+    def test_registered_hwnd_preferred_without_scanning(self, fake_win32gui):
+        """A live registered HWND closes directly — no EnumWindows sweep."""
+        launcher.register_mirror_hwnd("sid-reg", 999)
+
+        ok = launcher.close_mirror_window("sid-reg")
+
+        assert ok is True
+        fake_win32gui.PostMessage.assert_called_once_with(999, WM_CLOSE, 0, 0)
+        fake_win32gui.EnumWindows.assert_not_called()
+
+    def test_dead_registered_hwnd_falls_back_to_scan(self, fake_win32gui):
+        """A stale registered HWND (PostMessage raises) still closes the
+        window if a fresh scan finds the real one."""
+        sid = "feedface" + "1" * 24
+        windows = [(700, f"app-launcher-mirror-{sid}")]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+        dead_err = sys.modules["pywintypes"].error
+        posted: list[int] = []
+
+        def _post(hwnd, msg, wparam, lparam):
+            posted.append(hwnd)
+            if hwnd == 123:  # the stale registered HWND
+                raise dead_err("dead hwnd")
+
+        fake_win32gui.PostMessage.side_effect = _post
+        launcher.register_mirror_hwnd(sid, 123)
+
+        ok = launcher.close_mirror_window(sid)
+
+        assert ok is True
+        assert posted == [123, 700]  # tried the stale one, then the scanned one
+
+    def test_no_window_anywhere_returns_false(self, fake_win32gui):
+        """Neither a registered HWND nor a titled window — clean False."""
+        ok = launcher.close_mirror_window("ghost" + "0" * 27)
+        assert ok is False
+        fake_win32gui.PostMessage.assert_not_called()
+
+
+class TestOrphanMirrorSweep:
+    """``close_orphan_mirror_windows`` reconciles restart-orphaned windows
+    against the live-session list (issue #199)."""
+
+    def test_closes_orphans_keeps_live(self, fake_win32gui):
+        live = "live" + "a" * 28
+        orphan_a = "orphana" + "b" * 25
+        orphan_b = "orphanb" + "c" * 25
+        windows = [
+            (1, "Visual Studio Code"),
+            (2, f"app-launcher-mirror-{live}"),
+            (3, f"app-launcher-mirror-{orphan_a}"),
+            (4, f"app-launcher-mirror-{orphan_b}"),
+            (5, "Slack"),
+        ]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+
+        closed = launcher.close_orphan_mirror_windows([live])
+
+        assert closed == 2
+        posted = {c.args[0] for c in fake_win32gui.PostMessage.call_args_list}
+        assert posted == {3, 4}  # only the two orphans
+
+    def test_empty_live_list_closes_all_mirrors(self, fake_win32gui):
+        """Caller's contract: an empty list means *no* session is live, so
+        every mirror is an orphan. (Callers must not pass an empty list just
+        because the session-host was unreachable — that's enforced upstream.)"""
+        windows = [
+            (2, "app-launcher-mirror-aaa"),
+            (3, "app-launcher-mirror-bbb"),
+        ]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+
+        assert launcher.close_orphan_mirror_windows([]) == 2
+
+    def test_no_mirror_windows_returns_zero(self, fake_win32gui):
+        windows = [(1, "Microsoft Edge"), (2, "Notepad")]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+
+        assert launcher.close_orphan_mirror_windows(["whatever"]) == 0
+        fake_win32gui.PostMessage.assert_not_called()
