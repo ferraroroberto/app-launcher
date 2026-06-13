@@ -4,8 +4,9 @@ The feature: a ``✏️`` toolbar button toggles a slim ``<textarea>`` compose
 bar above the iOS keyboard. xterm.js wipes its helper textarea after
 every keystroke, so iOS/Android predictive keyboards can't suggest there
 — the compose bar is a normal textarea with default predictive
-attributes. ``➤`` Send forwards ``<text> + \\r`` to the PTY over the
-existing WS ``input`` frame.
+attributes. ``➤`` Send forwards ``<text>`` to the PTY over the WS
+``input`` channel, then a submitting ``\\r`` as a *separate* frame so it
+can't be absorbed into bracketed-paste finalization (#166).
 
 Phase 2 (#41): with the bar open, the ``🖼`` image button uploads with
 ``?inline=1`` so the session-host returns the stored path *without*
@@ -94,6 +95,59 @@ def test_compose_send_forwards_text_to_pty(
         f"➤ Send did not deliver the compose text to webapp/sessions/{sid}.log "
         "— the text never reached the live PTY session"
     )
+
+
+def test_compose_send_submits_cr_in_its_own_frame(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    r"""➤ Send delivers the submitting CR as a separate, final WS frame (#166).
+
+    The intermittent "Send does nothing" bug was the trailing ``\r`` riding
+    in the same WS frame as the ``\x1b[201~`` paste-end marker, where the TUI
+    sometimes swallowed it into paste finalization instead of submitting. We
+    spy on every outgoing ``input`` frame and pin that the last one is a lone
+    ``\r`` while the text rode an earlier frame with no CR glued on — the
+    ordering invariant, holding whether or not the live agent has bracketed
+    paste enabled.
+    """
+    sid = launched_pty_session
+    _open_terminal(authed_page, base_url, sid)
+
+    # Record the data of every outgoing WS `input` frame, in order. Patching
+    # the prototype catches the already-open socket too (send resolves on the
+    # prototype at call time); resize frames are type!='input' and skipped.
+    authed_page.evaluate(
+        """() => {
+            window.__sentInput = [];
+            const orig = WebSocket.prototype.send;
+            WebSocket.prototype.send = function (d) {
+                try {
+                    const m = JSON.parse(d);
+                    if (m && m.type === 'input') window.__sentInput.push(m.data);
+                } catch (_) { /* non-JSON frame */ }
+                return orig.call(this, d);
+            };
+        }"""
+    )
+
+    # Un-hide + open the compose bar (mirror trick — see module docstring).
+    authed_page.evaluate(
+        "document.getElementById('terminalCompose').hidden = false"
+    )
+    authed_page.locator("#terminalCompose").click()
+    expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+    payload = "compose-cr-frame"
+    authed_page.locator("#terminalComposeInput").fill(payload)
+    authed_page.locator("#terminalComposeSend").click()
+
+    frames = authed_page.evaluate("() => window.__sentInput")
+    assert len(frames) >= 2, f"➤ Send produced too few input frames: {frames!r}"
+    # The submitting CR is its own, final frame …
+    assert frames[-1] == "\r", f"submit CR was not its own final frame: {frames!r}"
+    # … and the payload rode the frame before it, with no CR glued on.
+    assert payload in frames[-2], f"payload not in the pre-CR frame: {frames!r}"
+    assert "\r" not in frames[-2], f"CR leaked into the text frame: {frames!r}"
 
 
 def test_compose_image_inserts_path_into_bar(

@@ -685,7 +685,8 @@ function wireKeysPopover() {
 // Compose bar (issue #37): a normal <textarea> with default predictive/
 // autocorrect/spellcheck so iOS/Android keyboards offer suggestions —
 // which they can't inside xterm's per-keystroke-wiped helper textarea.
-// ➤ Send forwards the buffered text + \r to the PTY in one WS frame.
+// ➤ Send forwards the buffered text, then a submitting \r as a SEPARATE
+// WS frame (see sendSubmit / #166).
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
 // for a long dictated voice note (#165) without the bar eating the whole
@@ -741,14 +742,33 @@ function setComposeOpen(open) {
 // asked for it (`term.modes.bracketedPasteMode`) — otherwise the literal
 // `\x1b[200~` would land as garbage in an agent that doesn't grok it.
 //
-// `submit` appends a carriage return OUTSIDE the end marker so the agent
-// still runs the prompt; a CR *inside* the markers is treated as literal
-// pasted text (the whole point of bracketed paste) and would never submit.
-export function framePaste(t, text, submit) {
-  const cr = submit ? '\r' : '';
+// Framing only — this never appends the submitting carriage return. A
+// submit goes through `sendSubmit`, which delivers the CR as its OWN WS
+// frame after this block (see #166).
+export function framePaste(t, text) {
   const bracketed = !!(t.term && t.term.modes && t.term.modes.bracketedPasteMode);
-  if (!bracketed) return text + cr;
-  return '\x1b[200~' + text + '\x1b[201~' + cr;
+  if (!bracketed) return text;
+  return '\x1b[200~' + text + '\x1b[201~';
+}
+
+// Send a composed prompt to the PTY and submit it. The submitting carriage
+// return is sent as its OWN WS frame *after* the (possibly bracketed) text
+// block — never concatenated onto it.
+//
+// Why split: the webapp proxies each WS `input` frame to the session-host
+// as a distinct `pty.write()`, so two frames become two PTY writes. That
+// guarantees the `\x1b[201~` paste-end marker is written — and the TUI has
+// finished exiting bracketed-paste mode — before the bare CR arrives. When
+// the CR rode in the same frame as the end marker, the TUI intermittently
+// absorbed it into paste finalization instead of running the prompt: the
+// "➤ Send sometimes does nothing" race of #166. A CR *inside* the markers
+// is literal pasted text by design, so the split is the only ordering that
+// reliably submits. With bracketed mode off there is no paste state machine
+// to race, but the two-frame path is harmless there, so it stays uniform.
+export function sendSubmit(t, text) {
+  if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+  t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
+  t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
 }
 
 // Voice dictation (issues #165 / #168): the 🎤 button in the compose bar
@@ -1221,7 +1241,7 @@ function wireCompose() {
     if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
     const text = els.terminalComposeInput.value;
     if (!text) return;
-    t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text, true) }));
+    sendSubmit(t, text);
     els.terminalComposeInput.value = '';
     els.terminalComposeInput.style.height = '';
     els.terminalComposeInput.focus();
@@ -1258,7 +1278,7 @@ export function wireTerminal() {
         return;
       }
       if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-      t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text, false) }));
+      t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
       if (t.term) t.term.focus();
     } catch (exc) {
       toast('Clipboard unavailable — paste manually', 'error');
