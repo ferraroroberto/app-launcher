@@ -15,13 +15,17 @@ import { readToken, toast } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
+  cancelHub,
   cancelSpeech,
   extractLastReply,
+  isHubAvailable,
   isSpeaking,
   isSpeechSupported,
   onSpeakingChange,
   onSpeechEnd,
+  probeHub,
   speak,
+  speakHub,
 } from './terminal-readback.js';
 import {
   clearTerminalToken,
@@ -379,10 +383,23 @@ export async function openTerminal(session) {
   const ocrOn = !!(state.status && state.status.screenshot_ocr);
   els.terminalScreenshot.hidden = !ocrOn;
 
-  // The 🔊 read-aloud button (issue #190) is pure on-device speech — no
-  // server flag, just Web Speech API support. Hide it where the browser
-  // can't synthesize speech, like 🎤 is hidden without MediaRecorder.
-  els.terminalSpeak.hidden = !isSpeechSupported();
+  // The 🔊 read-aloud button (issue #190) reads the last reply aloud through
+  // one of two voices: the hub's Orpheus voice (#203) when the local-llm-hub
+  // is configured, else the on-device Web Speech voice. Show it when EITHER
+  // path is possible. `state.status.tts` is the cheap config-presence flag; a
+  // live /api/tts/health probe then refines which path the click takes.
+  const ttsConfigured = !!(state.status && state.status.tts);
+  els.terminalSpeak.hidden = !(isSpeechSupported() || ttsConfigured);
+  if (ttsConfigured) {
+    probeHub({
+      token: readToken(),
+      terminalToken: readTerminalToken(),
+    }).then(function (ok) {
+      // A reachable hub means the button is useful even where Web Speech
+      // isn't supported (e.g. some embedded WebViews).
+      if (ok) els.terminalSpeak.hidden = false;
+    });
+  }
 
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
@@ -588,8 +605,9 @@ function unlockBodyScroll() {
 
 export function hideTerminal() {
   // Leaving the Coding tab silences any in-flight read-aloud (#190) — the
-  // speech queue is global and would otherwise keep talking off-screen.
-  cancelSpeech();
+  // speech queue / hub audio is global and would otherwise keep talking
+  // off-screen.
+  stopReading();
   closeTerminal();
   closeKeysPopover();
   els.terminalOverlay.hidden = true;
@@ -958,7 +976,7 @@ async function startRecording() {
   }
   // Starting to talk silences any in-flight read-aloud (issue #190) — you're
   // answering, not still listening.
-  cancelSpeech();
+  stopReading();
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1277,6 +1295,14 @@ async function runOcrExtraction() {
   }
 }
 
+// Stop read-aloud whichever voice is active — the hub <audio> and the Web
+// Speech queue are independent engines sharing one speaking-state flag, so a
+// stop (re-press, tab-leave, new dictation) must silence both.
+function stopReading() {
+  cancelHub();
+  cancelSpeech();
+}
+
 // Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
 function setSpeakingUI(on) {
   const btn = els.terminalSpeak;
@@ -1343,20 +1369,36 @@ export function wireTerminal() {
   // When the reply finishes reading on its own, reset the button (done by
   // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
   onSpeechEnd(function () { toast('🔊 Finished reading.', 'good'); });
-  els.terminalSpeak.addEventListener('click', function () {
-    if (isSpeaking()) { cancelSpeech(); return; }
+  els.terminalSpeak.addEventListener('click', async function () {
+    if (isSpeaking()) { stopReading(); return; }
     const t = state.terminal;
     if (!t || !t.term) return;
     const text = extractLastReply(t.term);
     if (!text) { toast('🔊 No reply to read yet.'); return; }
-    if (!speak(text)) {
-      toast('Speech not supported on this browser', 'error');
-      return;
-    }
     // Visible confirmation the press registered and text was found — so a
     // silent phone (mute switch, volume, BT routing) is distinguishable from
     // an extraction miss. Show the opening words.
     const peek = text.length > 60 ? text.slice(0, 60) + '…' : text;
+    // Prefer the hub's high-quality Orpheus voice; fall back to the on-device
+    // Web Speech voice on any hub failure (down, blocked, autoplay refused).
+    // speakHub() must be called directly here so its synchronous prologue
+    // unlocks the <audio> element inside this click's user-gesture tick.
+    if (isHubAvailable()) {
+      toast('🔊 Reading: ' + peek, 'good');
+      try {
+        await speakHub(text, {
+          token: readToken(),
+          terminalToken: readTerminalToken(),
+        });
+        return;
+      } catch (_) {
+        // hub path failed — fall through to Web Speech below
+      }
+    }
+    if (!speak(text)) {
+      toast('Speech not supported on this browser', 'error');
+      return;
+    }
     toast('🔊 Reading: ' + peek, 'good');
   });
   els.terminalPaste.addEventListener('click', async function () {

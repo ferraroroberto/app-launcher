@@ -140,4 +140,9 @@ async def status(request: Request) -> Dict[str, Any]:
         # base URL is configured (issue #171). The SPA hides the 📷 OCR
         # button otherwise — the pixel counterpart to voice_dictation.
         "screenshot_ocr": bool((cfg.photo_ocr_url or "").strip()),
+        # Read-aloud hub TTS is available only when a local-llm-hub base URL
+        # is configured (issue #203). A cheap config-presence flag — the SPA
+        # gates the 🔊 button's hub path on it before doing a live
+        # /api/tts/health probe to confirm the hub is actually answering.
+        "tts": bool((cfg.llm_hub_url or "").strip()),
     }

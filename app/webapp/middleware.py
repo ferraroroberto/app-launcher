@@ -85,6 +85,13 @@ def _terminal_guard_level(path: str) -> Optional[str]:
     # input and gets the same gate as voice dictation.
     if path == "/api/ocr":
         return "passkey"
+    # Read-aloud hub TTS (issue #203): the synthesized text is the agent's
+    # last reply — terminal content — so /api/tts/speak gets the terminal's
+    # gate. The /api/tts/health probe is innocuous (a bare up/down bool) and
+    # stays token-gated only, so the SPA can decide button visibility even
+    # over the public tunnel where the terminal itself is refused.
+    if path == "/api/tts/speak":
+        return "passkey"
     # Life OS private-content browser (issue #102): the file-content
     # endpoint (read/delete/rename, all under /api/life-os/file*) and the
     # per-skill file tree surface gitignored private knowledge, so they get

@@ -159,6 +159,19 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     photo_ocr_mock.PhotoOcrError = real_photo_ocr_client.PhotoOcrError
     monkeypatch.setattr(sessions_router, "photo_ocr_client", photo_ocr_mock)
 
+    # Mock the local-llm-hub TTS loopback client (issue #203) — the
+    # /api/tts/health probe goes through it; /api/tts/speak streams via httpx
+    # (mocked per-test). Tests assert health/payload without a live hub on
+    # :8000. build_speech_payload / speech_url keep their real behaviour so
+    # the proxy builds the correct upstream call.
+    from src import tts_client as real_tts_client
+    tts_mock = MagicMock()
+    tts_mock.health.return_value = True
+    tts_mock.speech_url.side_effect = real_tts_client.speech_url
+    tts_mock.build_speech_payload.side_effect = real_tts_client.build_speech_payload
+    tts_mock.TtsError = real_tts_client.TtsError
+    monkeypatch.setattr(sessions_router, "tts_client", tts_mock)
+
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. After the split
     # the `audit` import lives in routers/apps.py, routers/sessions.py,
@@ -194,6 +207,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "session": session_mock,
         "voice": voice_mock,
         "photo_ocr": photo_ocr_mock,
+        "tts": tts_mock,
         "audit": audit_mock,
         "webauthn": webauthn_mock,
         "tmp_registry_path": tmp_registry,
