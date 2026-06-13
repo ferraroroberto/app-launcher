@@ -105,11 +105,16 @@ fundamentally single-valued, don't simulate sharing — assign ownership.**
 
 ### Detached ≠ untracked
 The original "remote" launch orphaned a CMD window the launcher kept no
-handle to. Re-adding it as a *mode*, we kept the handle: spawn in a
-`CREATE_NEW_CONSOLE` so it stays visible and outlives the host, but hold
-the `Popen` so it can be **listed and killed**. **Lesson: "detached" and
-"untracked" are different choices — you can have the window's
-independence and still keep a kill switch.**
+handle to. Re-adding it as a *mode*, we kept a kill switch *without*
+holding a child handle: the console is spawned through a transient
+PowerShell `Start-Process -PassThru` that **re-parents it out of the
+session-host's process tree** — so a `tray.bat --restart`, which tears the
+tray subtree down with `taskkill /T`, can't cascade into it (issue #130) —
+and the launcher keeps **only the PID** that `-PassThru` printed. That PID
+is enough to **list and kill** it (`taskkill /PID … /T /F`); liveness is a
+bare PID probe, not a `Popen`. **Lesson: "detached" and "untracked" are
+different choices — you can have the window's independence (it even
+survives a launcher restart) and still keep a kill switch.**
 
 ### Self-signed certs and loopback
 The PC mirror window (an Edge/Chrome `--app` window over
@@ -132,9 +137,12 @@ question is always *which* origin.**
 - **Cheap gates, every time.** `py_compile`, `node --check`, an
   import-and-`create_app()` smoke test, `curl /healthz`. None take more
   than seconds; together they catch most "it doesn't even start" bugs.
-- **Cache-busting discipline.** Every static change bumps `?v=N` on the
-  CSS and JS. Mobile Safari caches aggressively; "the user is testing
-  stale code" is a costly confusion (it bit us once already this repo).
+- **Cache-busting is automatic.** Static asset URLs carry a content hash
+  (`?v=<hash>`) stamped at serve time, so any edit busts the phone's cache
+  with no manual step — see `docs/cache-hygiene-asset-hashing.md` (and do
+  **not** reintroduce hand-bumped `?v=N` query strings). Mobile Safari
+  caches aggressively, so "the user is testing stale code" used to be a
+  costly confusion; the content hash removes it.
 - **The changelog doc lives next to the code.** `docs/` captures *done*
   work; updating it in the same change as the code keeps it honest.
 - **Diagnose from the audit log.** The "Disconnected" bug was solved by
@@ -146,10 +154,15 @@ question is always *which* origin.**
 - **Per-client rendering** would need the session-host to broadcast
   size-change frames so a mirror can letterbox/scale instead of just
   matching. We chose not to — "phone drives, PC mirrors" was enough.
-- **Remote (detached) sessions don't survive in the list across a
-  session-host restart** — the `Popen` handle is lost even though the
-  window keeps running. Re-discovery by process scan would fix it; it
-  wasn't worth the complexity.
+- **Detached sessions now survive a `tray.bat --restart`** (issue #130).
+  The console is re-parented out of the tray's process tree and the
+  session-host (`:8446`) is excluded from the restart's reclaim sweep, so
+  the fresh tray re-adopts the still-running session-host and its in-memory
+  list — the detached window keeps running and stays listed (`alive` is a
+  PID probe). The gap left: a genuine *session-host process* restart still
+  drops them from the list — the orphaned console keeps running but its PID
+  is no longer tracked. Re-discovery by process scan would close that gap;
+  it wasn't worth the complexity.
 - **The terminal token TTL is 12 h.** If you shorten it, add a quiet
   re-auth path so the user isn't bounced mid-session.
 - **Edit mode** gates per-row rename/remove behind a Settings toggle to
