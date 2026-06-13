@@ -10,7 +10,7 @@ Holds:
 - scan roots for Claude-Code projects and Apps
 - per-agent launch flags (model, effort, verbose, debug) for all
   registered coding agents (claude, codex, antigravity, copilot)
-- sibling-app loopback URLs (voice-transcriber, photo-ocr)
+- sibling-app loopback URLs (voice-transcriber, photo-ocr, local-llm-hub)
 - Life OS tab settings
 - terminal display and passkey / WebAuthn config
 - Pushover failure-notification credentials
@@ -192,6 +192,14 @@ class WebappConfig:
     # Empty string disables the feature (the 📷 OCR button hides). Defaults
     # to the photo-ocr loopback HTTPS port.
     photo_ocr_url: str = "https://127.0.0.1:8444"
+    # --- read-aloud hub TTS (issue #203) --------------------------------
+    # Base URL of the local-llm-hub, whose OpenAI-shape POST /v1/audio/speech
+    # synthesizes the Coding terminal's 🔊 read-aloud with the high-quality
+    # Orpheus voice (streamed WAV). The webapp proxies to it over loopback so
+    # the phone never talks to it directly. Empty string disables the hub
+    # path (🔊 falls back to the on-device Web Speech voice). Plain HTTP — the
+    # hub binds loopback only and serves no TLS, unlike the sibling apps above.
+    llm_hub_url: str = "http://127.0.0.1:8000"
     # --- Jobs-tab failure notifications (issue #66) ---------------------
     # Pushover credentials — both empty means no-op notifier (executor
     # still finalises runs identically). The master switch
@@ -272,6 +280,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         photo_ocr_url=str(
             raw.get("photo_ocr_url", "https://127.0.0.1:8444")
         ),
+        llm_hub_url=str(
+            raw.get("llm_hub_url", "http://127.0.0.1:8000")
+        ),
         pushover_api_token=str(raw.get("pushover_api_token", "")),
         pushover_user_key=str(raw.get("pushover_user_key", "")),
         notify_on_failure=bool(raw.get("notify_on_failure", False)),
@@ -315,6 +326,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "webauthn_origin": cfg.webauthn_origin,
         "voice_transcriber_url": cfg.voice_transcriber_url,
         "photo_ocr_url": cfg.photo_ocr_url,
+        "llm_hub_url": cfg.llm_hub_url,
         "pushover_api_token": cfg.pushover_api_token,
         "pushover_user_key": cfg.pushover_user_key,
         "notify_on_failure": cfg.notify_on_failure,

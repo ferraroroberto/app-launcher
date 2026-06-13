@@ -20,7 +20,14 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, launcher, photo_ocr_client, session_client, voice_client
+from src import (
+    audit,
+    launcher,
+    photo_ocr_client,
+    session_client,
+    tts_client,
+    voice_client,
+)
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -307,6 +314,94 @@ async def ocr_screenshot(
         client=client_ip(request),
     )
     return result
+
+
+def _tts_base(request: Request) -> str:
+    """Return the configured local-llm-hub base URL or 503."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    base = (cfg.llm_hub_url or "").strip()
+    if not base:
+        raise HTTPException(
+            status_code=503,
+            detail="hub read-aloud is disabled (llm_hub_url unset)",
+        )
+    return base
+
+
+@router.get("/api/tts/health")
+async def tts_health(request: Request) -> Dict[str, Any]:
+    """Is the hub's high-quality read-aloud voice reachable right now (#203)?
+
+    The 🔊 button uses this to decide whether to route through the hub or fall
+    back to the on-device Web Speech voice. Degrades to ``available: False``
+    (never an error) when the hub is unconfigured or down, so the button is
+    always safe to gate on it.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    base = (cfg.llm_hub_url or "").strip()
+    if not base:
+        return {"available": False}
+    try:
+        ok = await asyncio.to_thread(tts_client.health, base)
+    except tts_client.TtsError as exc:
+        logger.debug(f"tts health probe failed: {exc}")
+        return {"available": False}
+    return {"available": bool(ok)}
+
+
+@router.post("/api/tts/speak")
+async def tts_speak(request: Request) -> StreamingResponse:
+    """Proxy a read-aloud request to the hub, streaming the WAV back (#203).
+
+    Body is JSON ``{text, voice?, speed?}``. The webapp forwards it to the
+    hub's OpenAI-shape ``POST /v1/audio/speech`` with ``stream_format="audio"``
+    and Orpheus as the default model, then streams the WAV bytes straight to
+    the browser as they arrive — the same chunk-for-chunk forwarding the
+    dictation SSE proxy uses, so time-to-first-audio stays low and the webapp
+    never buffers the whole clip. Carries the terminal's Tailscale-only +
+    passkey gate (the reply text is terminal content).
+    """
+    base = _tts_base(request)
+    body = await maybe_json(request)
+    text = str(body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty text")
+    voice = (str(body.get("voice") or "").strip()) or None
+    speed = body.get("speed")
+    payload = tts_client.build_speech_payload(
+        text, voice=voice, speed=speed if isinstance(speed, (int, float)) else None
+    )
+    upstream_url = tts_client.speech_url(base)
+
+    async def _pump():
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream(
+                    "POST", upstream_url, json=payload
+                ) as upstream:
+                    if upstream.status_code >= 400:
+                        # Drain so the connection closes cleanly, then surface
+                        # nothing further — the status line below can't change
+                        # once streaming has begun, so emit a silent (empty)
+                        # body. The JS treats a zero-byte WAV as a failure and
+                        # falls back to Web Speech.
+                        await upstream.aread()
+                        logger.debug(
+                            f"tts upstream HTTP {upstream.status_code}"
+                        )
+                        return
+                    async for chunk in upstream.aiter_bytes():
+                        if chunk:
+                            yield chunk
+        except httpx.HTTPError as exc:
+            logger.debug(f"tts speak proxy ended: {exc}")
+
+    audit.audit_event("tts_speak", chars=len(text), client=client_ip(request))
+    return StreamingResponse(
+        _pump(),
+        media_type="audio/wav",
+        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.websocket("/api/claude-code/sessions/{sid}/ws")

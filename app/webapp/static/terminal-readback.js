@@ -21,10 +21,22 @@
  * never open their own block, but they trail the last reply as unmarked
  * continuation; each block is truncated at the first epilogue line.
  *
- * Speaking uses the browser's Web Speech API (`speechSynthesis`) — zero infra,
- * already on iOS Safari, and the button press supplies the user gesture iOS
- * requires. A server-side hub voice is the documented phase-2 fallback
- * (local-llm-hub#98), behind the same speak() seam.
+ * Two voices share one button + one speaking-state machine (`setSpeaking` →
+ * `onSpeakingChange`/`onSpeechEnd`):
+ *  - **Hub TTS (issue #203)** — the preferred path when the local-llm-hub is
+ *    reachable: `speakHub()` POSTs the reply to `/api/tts/speak` and plays the
+ *    streamed WAV (Orpheus voice) through an `<audio>` element. `<audio src>`
+ *    can't carry the bearer header and the text can be long, so the fetch is a
+ *    POST with auth headers and the body is buffered to a blob before playback
+ *    (the *server* streams hub→webapp→fetch; the client plays once received).
+ *  - **Web Speech API (`speechSynthesis`)** — the on-device fallback when the
+ *    hub is unconfigured / down / blocks the POST: zero infra, already on iOS
+ *    Safari, and the button press supplies the user gesture iOS requires.
+ *
+ * The 🔊 button tap is the user gesture both paths need (iOS blocks both
+ * synthesized speech and `<audio>.play()` outside one) — so `speakHub` unlocks
+ * its audio element synchronously, inside the click tick, before its first
+ * `await`.
  */
 
 // Bullet glyphs an agent uses to open a block. The COLOUR (not the glyph)
@@ -382,6 +394,133 @@ export function cancelSpeech() {
   setSpeaking(false);
 }
 
+// ── Hub TTS (issue #203): high-quality Orpheus voice over local-llm-hub ─────
+// A 44-byte empty WAV. Played synchronously inside the button-click tick to
+// "unlock" the <audio> element for the deferred blob src we set after the
+// fetch resolves — on iOS a play() after an await is outside the user gesture
+// and gets blocked, but a previously-unlocked element keeps the permission.
+const SILENT_WAV =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+let _hubAudio = null;        // the <audio> element playing the streamed WAV
+let _hubAbort = null;        // AbortController for the in-flight fetch
+let _hubObjectUrl = null;    // object URL to revoke once playback ends
+let _hubAvailable = null;    // tri-state: null = unprobed, true / false
+
+// Bearer + passkey terminal token, supplied by the caller (terminal.js owns
+// the token plumbing; this module stays free of api.js / webauthn.js imports).
+function authHeaders(opts) {
+  const h = {};
+  if (opts && opts.token) h['Authorization'] = 'Bearer ' + opts.token;
+  if (opts && opts.terminalToken) h['x-terminal-token'] = opts.terminalToken;
+  return h;
+}
+
+/** Probe whether the hub's read-aloud voice is reachable right now and cache
+ *  the result. Returns the boolean; never throws (a failure caches false). */
+export async function probeHub(opts) {
+  try {
+    const res = await fetch('/api/tts/health', { headers: authHeaders(opts) });
+    if (!res.ok) { _hubAvailable = false; return false; }
+    const body = await res.json().catch(function () { return null; });
+    _hubAvailable = !!(body && body.available);
+  } catch (_) {
+    _hubAvailable = false;
+  }
+  return _hubAvailable;
+}
+
+/** True once a probe has confirmed the hub voice is reachable. */
+export function isHubAvailable() { return _hubAvailable === true; }
+
+function revokeHubUrl() {
+  if (_hubObjectUrl) {
+    try { URL.revokeObjectURL(_hubObjectUrl); } catch (_) { /* best effort */ }
+    _hubObjectUrl = null;
+  }
+}
+
+function finishHubNaturally() {
+  _hubAbort = null;
+  if (_hubAudio) { _hubAudio.onended = null; _hubAudio.onerror = null; }
+  _hubAudio = null;
+  revokeHubUrl();
+  if (!_speaking) return;       // already finalized (e.g. by a manual cancel)
+  setSpeaking(false);
+  if (_onEnd) { try { _onEnd(); } catch (_) { /* best effort */ } }
+}
+
+/**
+ * Speak `text` through the hub's Orpheus voice. Resolves true once playback
+ * starts; **rejects** on any hub failure (unconfigured / down / blocked POST /
+ * empty body / autoplay refused) so the caller can fall back to `speak()`.
+ *
+ * `opts`: `{ token, terminalToken, voice, speed }`. Must be called directly
+ * inside the button-click handler — the synchronous prologue (before the first
+ * `await`) unlocks the audio element within the user gesture iOS requires.
+ */
+export async function speakHub(text, opts) {
+  const clean = (text || '').trim();
+  if (!clean) return false;
+  cancelHub();                 // a second press / restart cancels in-flight audio
+  // Unlock NOW, in the gesture tick: create the element and kick a muted play
+  // of the empty clip; the real blob src is swapped in after the fetch.
+  const audio = new Audio(SILENT_WAV);
+  _hubAudio = audio;
+  audio.play().catch(function () { /* unlock is best-effort */ });
+  const ac = new AbortController();
+  _hubAbort = ac;
+  setSpeaking(true);
+  try {
+    const res = await fetch('/api/tts/speak', {
+      method: 'POST',
+      headers: Object.assign(
+        { 'Content-Type': 'application/json' }, authHeaders(opts)
+      ),
+      body: JSON.stringify({
+        text: clean,
+        voice: (opts && opts.voice) || undefined,
+        speed: (opts && opts.speed) || undefined,
+      }),
+      signal: ac.signal,
+    });
+    if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
+    const blob = await res.blob();
+    if (ac.signal.aborted) { return true; }   // cancelled mid-fetch — already idle
+    // The proxy emits a zero-byte body when the hub errors mid-stream (the
+    // 200 status is already committed) — treat it as a failure, not silence.
+    if (!blob || blob.size === 0) throw new Error('hub tts empty body');
+    _hubObjectUrl = URL.createObjectURL(blob);
+    audio.onended = function () { finishHubNaturally(); };
+    audio.onerror = function () { finishHubNaturally(); };
+    audio.src = _hubObjectUrl;
+    await audio.play();
+    return true;
+  } catch (err) {
+    // Only tear down if this call still owns the shared state — a newer
+    // speakHub() may have aborted us and taken over (don't clobber it).
+    if (_hubAbort === ac) cancelHub();
+    throw err;
+  }
+}
+
+/** Stop any in-flight hub read-aloud and reset to idle (a manual stop). */
+export function cancelHub() {
+  if (_hubAbort) {
+    try { _hubAbort.abort(); } catch (_) { /* best effort */ }
+    _hubAbort = null;
+  }
+  if (_hubAudio) {
+    try { _hubAudio.pause(); } catch (_) { /* best effort */ }
+    _hubAudio.onended = null;
+    _hubAudio.onerror = null;
+    try { _hubAudio.removeAttribute('src'); _hubAudio.load(); } catch (_) { /**/ }
+    _hubAudio = null;
+  }
+  revokeHubUrl();
+  setSpeaking(false);
+}
+
 // Test seam (#190/#197 e2e): the block segmentation and speech helpers are
 // standalone, so the suite drives them directly. `extractReplyBlocksFromRows`
 // takes synthetic `{text, marker}` rows (the marker is what the cell-colour
@@ -395,5 +534,9 @@ if (typeof window !== 'undefined') {
     extractLastReply: extractLastReply,
     speak: speak,
     cancelSpeech: cancelSpeech,
+    speakHub: speakHub,
+    cancelHub: cancelHub,
+    probeHub: probeHub,
+    isHubAvailable: isHubAvailable,
   };
 }
