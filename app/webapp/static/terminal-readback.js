@@ -40,6 +40,15 @@ const RECAP_END_RE = /disable\s+recaps/i;
 // (Worked / Crunched / Pondered / …), so match the shape — an optional
 // spinner glyph, a Capitalised word, "for", then a duration — not the verb.
 const TIMING_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+ for \d+\s*[smhd]\b/;
+// The *live* thinking spinner: "✻ Cogitating… (4m 39s · thinking)",
+// "Ruminating… (2m 3s · ↓ 7.2k tokens)", "Forming… (2m · ↓ 7k tokens)". Like
+// TIMING_LINE_RE, Claude Code randomises the gerund — so match the shape, not
+// the verb: an optional spinner glyph, a Capitalised gerund, a trailing
+// ellipsis, then a parenthetical status. Anchoring on the ellipsis-immediately-
+// after-gerund + the `(` keeps ordinary prose ("Forming a plan (see below)…")
+// from matching. STATUS_RE only catches the token-bearing variant; this also
+// catches the "· thinking" form that has no token count (issue #193).
+const SPINNER_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+(?:…|\.\.\.)\s*\(/;
 // Footer status lines under the box: folder/branch, permission mode, token
 // count, the gerund spinner ("Ruminating…", "Forming… (2m · ↓ 7k tokens)"),
 // and the keyboard hints. Each is below the composer, but match them anyway
@@ -118,6 +127,7 @@ export function extractLastReplyFromLines(lines) {
       if (inRecap) { if (RECAP_START_RE.test(t)) inRecap = false; continue; }
       if (RECAP_START_RE.test(t)) continue;
       if (TIMING_LINE_RE.test(t)) continue;
+      if (SPINNER_LINE_RE.test(t)) continue;
       if (STATUS_RE.test(line)) continue;
     }
     // Boundaries: the previous user turn, a tool result, or an earlier recap

@@ -135,6 +135,30 @@ _RUNNING_LINES = [
     "  Ruminating…  ✶  187754 tokens",
 ]
 
+# Issue #193 (20:46 screenshot): the live thinking spinner "✻ Cogitating…
+# (4m 39s · thinking)" — no token count, so STATUS_RE doesn't catch it — sits
+# above a Read tool boundary, with the *previous* turn's real prose further up.
+# The spinner must be skipped by shape; the walk then hits the ⎿ boundary and
+# returns nothing (mid-work → silent), NOT the spinner text.
+_THINKING_SPINNER_LINES = [
+    "  Key finding: there's a maintained chatterbox-",
+    "",
+    "  tts PyPI package with the exact API I need.",
+    "",
+    "  Read(E:\\automation\\local-llm-hub\\src\\whisper_",
+    "  translate_proxy.py)",
+    "  ⎿  Read 386 lines",
+    "",
+    "✻ Cogitating… (4m 39s · thinking)",
+    "",
+    "          ─────────────────────────────────",
+    "          > ",
+    "          ─────────────────────────────────",
+    "  12% | local-llm-hub (feat/98-tts-backend-audio…",
+    "  ▶▶ auto mode on (shift+tab to cycle)",
+    "                              127496 tokens",
+]
+
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
@@ -201,6 +225,13 @@ def test_extraction_reads_reply_not_footer_or_recap(
         _RUNNING_LINES,
     )
     assert running == ""
+    # The live "· thinking" spinner with NO token count (#193) must also be
+    # skipped by shape — not read aloud as the reply.
+    thinking = authed_page.evaluate(
+        "(lines) => window.__readback.extractLastReplyFromLines(lines)",
+        _THINKING_SPINNER_LINES,
+    )
+    assert thinking == ""
     # Titled composer border + a draft prompt inside the box (the 20:00 field
     # regression): the box must be cut so the draft `>` isn't read as a turn.
     titled = authed_page.evaluate(
