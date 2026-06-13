@@ -29,6 +29,20 @@ const RULE_CHARS_RE = /[─-▟│┄┅┈┉╌╍]/g;
 const RULE_RUN_RE = /[─━═┄┅┈┉╌╍]{6,}/;
 // Tool *result* tree branch: ⎿ └ ╰ ⤷ ↳ — ends a reply when walking up.
 const TOOL_RESULT_RE = /^\s*[⎿└╰⤷↳]/;
+// Claude Code's *spinner hint*: while the agent works, the live spinner renders
+// a randomised help line as a tool-result child —
+// "⎿  Tip: Running multiple Claude sessions? Use /color and /rename …". Its
+// wrapped continuation lines carry NO ⎿ glyph, so they read as prose and the
+// bottom-up walk collects them, then breaks at this line — speaking the tip
+// instead of the real reply (issue #195). Match the ⎿ + "Tip:" head; the walk
+// then discards the collected continuation and keeps going up to the real reply
+// above the spinner that owns the hint.
+const TIP_RESULT_RE = /^\s*[⎿└╰⤷↳]\s*Tip\b/i;
+// A leading assistant turn-marker bullet ("● ", "⏺ ", "• ") — Claude Code's
+// "this is the agent speaking" glyph on the first line of a reply. It's chrome,
+// not prose, so strip it from the spoken text (only the single leading marker;
+// inner markdown bullets are untouched).
+const LEAD_BULLET_RE = /^[●⏺•◉○]\s+/;
 // User prompt / echoed user turn: leading `>` or `❯` — the previous turn.
 const USER_ECHO_RE = /^\s*[>❯]\s?/;
 // Recap block: Claude Code prints a "recap:" summary after a turn, closed by
@@ -130,6 +144,16 @@ export function extractLastReplyFromLines(lines) {
       if (SPINNER_LINE_RE.test(t)) continue;
       if (STATUS_RE.test(line)) continue;
     }
+    // A spinner's "Tip:" hint (⎿ Tip: …): the lines we just collected are its
+    // wrapped continuation, not a reply. Drop them and keep walking up past the
+    // spinner (skipped by SPINNER_LINE_RE) to the real last reply above it,
+    // rather than speaking the hint (issue #195). Checked before the generic
+    // tool-result boundary, which this line also matches.
+    if (TIP_RESULT_RE.test(line)) {
+      collected.length = 0;
+      started = false;
+      continue;
+    }
     // Boundaries: the previous user turn, a tool result, or an earlier recap
     // all end the current reply.
     if (USER_ECHO_RE.test(line) || TOOL_RESULT_RE.test(line) ||
@@ -142,8 +166,10 @@ export function extractLastReplyFromLines(lines) {
   collected.reverse();
 
   // Collapse to one speakable paragraph — de-wraps the column-wrapped lines
-  // and squeezes the blank gutter the TUI renders between them.
-  return collected.join(' ').replace(/\s+/g, ' ').trim();
+  // and squeezes the blank gutter the TUI renders between them — then drop the
+  // leading assistant turn-marker bullet so the speech starts on real prose.
+  return collected.join(' ').replace(/\s+/g, ' ').trim()
+    .replace(LEAD_BULLET_RE, '');
 }
 
 // Read the xterm scrollback (scrollback + viewport) into trimmed lines.

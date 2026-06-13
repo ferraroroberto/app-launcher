@@ -160,6 +160,42 @@ _THINKING_SPINNER_LINES = [
 ]
 
 
+# Issue #195 (21:12 screenshot): the agent is mid-work and the live spinner
+# "· Processing… (15m 11s · ↓ 64.6k tokens)" renders a randomised help line as a
+# tool-result child — "⎿  Tip: Running multiple Claude sessions? Use /color and
+# /rename …". The tip's wrapped continuation lines carry NO ⎿ glyph, so the walk
+# collected them and spoke "/color and /rename … glance." instead of the REAL
+# reply ("● Everything's wired. … Let me write docs/add-tts.md and update the
+# README.") that sits just above the spinner. The tip block must be discarded
+# and the real reply read — with its leading "●" turn-marker stripped.
+_TIP_SPINNER_LINES = [
+    "  ⎿  Allowed by auto mode classifier",
+    "",
+    "● Everything's wired. Now docs — the README is",
+    "  explicitly part of what you asked for (\"put into",
+    "  the readme how to connect and consume from other",
+    "  apps\"). Let me write docs/add-tts.md and update",
+    "  the README.",
+    "",
+    "· Processing… (15m 11s · ↓ 64.6k tokens)",
+    "  ⎿  Tip: Running multiple Claude sessions? Use",
+    "     /color and /rename to tell them apart at a",
+    "     glance.",
+    "",
+    "          ─────────────────────────────────",
+    "          > ",
+    "          ─────────────────────────────────",
+    "  23% | local-llm-hub (feat/98-tts-backend-audio…",
+    "  ▶▶ auto mode on (shift+tab to cycle)",
+    "                              225377 tokens",
+]
+_TIP_SPINNER_EXPECTED = (
+    "Everything's wired. Now docs — the README is explicitly part of what you "
+    "asked for (\"put into the readme how to connect and consume from other "
+    "apps\"). Let me write docs/add-tts.md and update the README."
+)
+
+
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
@@ -232,6 +268,14 @@ def test_extraction_reads_reply_not_footer_or_recap(
         _THINKING_SPINNER_LINES,
     )
     assert thinking == ""
+    # The live spinner's "⎿ Tip:" hint (#195) must be discarded — its wrapped
+    # continuation is NOT the reply; the real turn above the spinner is read,
+    # with the leading "●" turn-marker stripped.
+    tip = authed_page.evaluate(
+        "(lines) => window.__readback.extractLastReplyFromLines(lines)",
+        _TIP_SPINNER_LINES,
+    )
+    assert tip == _TIP_SPINNER_EXPECTED
     # Titled composer border + a draft prompt inside the box (the 20:00 field
     # regression): the box must be cut so the draft `>` isn't read as a turn.
     titled = authed_page.evaluate(
