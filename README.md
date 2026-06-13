@@ -351,6 +351,7 @@ app-launcher/
 │   ├── scanner.py             # bat classifier + project-dir + life-os skill discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py        # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
+│   ├── _loopback_http.py      # shared loopback HTTP client base (session/voice/photo)
 │   ├── session_client.py      # webapp → session-host loopback HTTP client
 │   ├── webauthn_gate.py       # passkey enrollment / assertion + terminal tokens
 │   ├── audit.py               # terminal audit + per-session logs

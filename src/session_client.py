@@ -10,9 +10,11 @@ is handled separately in ``app/webapp/server.py``.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 import requests
+
+from src import _loopback_http
 
 logger = logging.getLogger(__name__)
 
@@ -32,39 +34,19 @@ def ws_url(port: int, session_id: str, role: str = "phone") -> str:
     return f"ws://127.0.0.1:{port}/sessions/{session_id}/ws?role={role}"
 
 
-class SessionHostError(RuntimeError):
+class SessionHostError(_loopback_http.LoopbackError):
     """Raised when the session-host is unreachable or returns an error."""
-
-    def __init__(self, message: str, status: int = 502) -> None:
-        super().__init__(message)
-        self.status = status
 
 
 def _request(method: str, port: int, path: str, *, timeout: float = _TIMEOUT, **kwargs) -> Any:
-    url = base_url(port) + path
-    try:
-        resp = requests.request(method, url, timeout=timeout, **kwargs)
-    except requests.RequestException as exc:
-        raise SessionHostError(
-            f"session-host unreachable on :{port} ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        detail = _detail(resp)
-        raise SessionHostError(detail, status=resp.status_code)
-    try:
-        return resp.json()
-    except ValueError:
-        return {}
-
-
-def _detail(resp: requests.Response) -> str:
-    try:
-        body = resp.json()
-        if isinstance(body, dict) and body.get("detail"):
-            return str(body["detail"])
-    except ValueError:
-        pass
-    return f"session-host HTTP {resp.status_code}"
+    return _loopback_http.request(
+        method,
+        base_url(port) + path,
+        error=SessionHostError,
+        service="session-host",
+        timeout=timeout,
+        **kwargs,
+    )
 
 
 def health(port: int) -> bool:

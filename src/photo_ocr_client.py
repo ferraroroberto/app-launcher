@@ -20,36 +20,22 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-import urllib3
+
+from src import _loopback_http
 
 logger = logging.getLogger(__name__)
-
-# photo-ocr serves a self-signed loopback cert, so every call sets
-# verify=False — silence the one-per-call InsecureRequestWarning that would
-# otherwise flood the log (the connection is loopback-only anyway).
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # A vision-hub round-trip on one screenshot is usually a few seconds, but
 # allow ample headroom for a cold hub on the first extract after boot.
 _TIMEOUT = 120.0
 
+# photo-ocr serves a self-signed loopback cert, so every call sets verify=False
+# (the per-call InsecureRequestWarning is suppressed once in _loopback_http).
+_VERIFY = False
 
-class PhotoOcrError(RuntimeError):
+
+class PhotoOcrError(_loopback_http.LoopbackError):
     """Raised when photo-ocr is unreachable or returns an error."""
-
-    def __init__(self, message: str, status: int = 502) -> None:
-        super().__init__(message)
-        self.status = status
-
-
-def _detail(resp: requests.Response) -> str:
-    try:
-        body = resp.json()
-        if isinstance(body, dict) and body.get("detail"):
-            return str(body["detail"])
-    except ValueError:
-        pass
-    return f"photo-ocr HTTP {resp.status_code}"
 
 
 def extract(
@@ -85,23 +71,14 @@ def extract(
     multipart = [
         ("files", (name, content, ctype)) for (name, content, ctype) in files
     ]
-    try:
-        resp = requests.post(
-            f"{base}/api/extract",
-            params=params or None,
-            files=multipart,
-            timeout=_TIMEOUT,
-            verify=False,
-        )
-    except requests.RequestException as exc:
-        raise PhotoOcrError(
-            f"photo-ocr unreachable at {base} ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        raise PhotoOcrError(_detail(resp), status=resp.status_code)
-    try:
-        return dict(resp.json())
-    except ValueError as exc:
-        raise PhotoOcrError(
-            f"photo-ocr extract returned non-JSON ({exc})"
-        ) from exc
+    return _loopback_http.request(
+        "POST",
+        f"{base}/api/extract",
+        error=PhotoOcrError,
+        service="photo-ocr",
+        timeout=_TIMEOUT,
+        verify=_VERIFY,
+        allow_empty=False,
+        params=params or None,
+        files=multipart,
+    )

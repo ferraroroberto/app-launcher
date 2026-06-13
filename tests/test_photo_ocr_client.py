@@ -24,14 +24,14 @@ class _Resp:
 def test_extract_posts_images_and_returns_text(monkeypatch):
     captured = {}
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         captured["url"] = url
         captured["params"] = kwargs.get("params")
         captured["files"] = kwargs.get("files")
         captured["verify"] = kwargs.get("verify")
         return _Resp(200, {"text": "buy milk", "model": "gemini_flash"})
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
 
     result = photo_ocr_client.extract(
         "https://127.0.0.1:8444/",
@@ -54,11 +54,11 @@ def test_extract_sends_multiple_images_as_repeated_files(monkeypatch):
     """The collation case: several shots of one doc → repeated 'files' parts."""
     captured = {}
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         captured["files"] = kwargs.get("files")
         return _Resp(200, {"text": "merged", "model": "gemini_flash"})
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
     photo_ocr_client.extract(
         "https://127.0.0.1:8444",
         [
@@ -79,22 +79,22 @@ def test_extract_no_images_raises_400(monkeypatch):
 
 
 def test_extract_no_model_omits_params(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         assert kwargs["params"] is None
         return _Resp(200, {"text": "x"})
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
     photo_ocr_client.extract(
         "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
     )
 
 
 def test_extract_forwards_prompt_id(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         assert kwargs["params"] == {"prompt_id": "code-fenced"}
         return _Resp(200, {"text": "x"})
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
     photo_ocr_client.extract(
         "https://127.0.0.1:8444",
         [("s.png", b"a", "image/png")],
@@ -103,10 +103,10 @@ def test_extract_forwards_prompt_id(monkeypatch):
 
 
 def test_extract_upstream_error_raises(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         return _Resp(413, {"detail": "too many photos"})
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
     with pytest.raises(photo_ocr_client.PhotoOcrError) as exc:
         photo_ocr_client.extract(
             "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
@@ -116,10 +116,10 @@ def test_extract_upstream_error_raises(monkeypatch):
 
 
 def test_extract_connection_failure_is_503(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         raise photo_ocr_client.requests.RequestException("connection refused")
 
-    monkeypatch.setattr(photo_ocr_client.requests, "post", fake_post)
+    monkeypatch.setattr(photo_ocr_client.requests, "request", fake_request)
     with pytest.raises(photo_ocr_client.PhotoOcrError) as exc:
         photo_ocr_client.extract(
             "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]

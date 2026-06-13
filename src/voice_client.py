@@ -20,37 +20,37 @@ import logging
 from typing import Any, Dict, Optional
 
 import requests
-import urllib3
+
+from src import _loopback_http
 
 logger = logging.getLogger(__name__)
-
-# The voice-transcriber serves a self-signed loopback cert, so every call
-# sets verify=False — silence the one-per-call InsecureRequestWarning that
-# would otherwise flood the log (the connection is loopback-only anyway).
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Whisper on a short dictation is quick, but allow ample headroom for a
 # cold whisper-server plus ffmpeg transcode on the first take after boot.
 _TIMEOUT = 60.0
 _CREATE_TIMEOUT = 15.0
 
+# The voice-transcriber serves a self-signed loopback cert, so every call sets
+# verify=False (the per-call InsecureRequestWarning is suppressed once in
+# _loopback_http).
+_VERIFY = False
 
-class VoiceTranscriberError(RuntimeError):
+
+class VoiceTranscriberError(_loopback_http.LoopbackError):
     """Raised when the voice-transcriber is unreachable or returns an error."""
 
-    def __init__(self, message: str, status: int = 502) -> None:
-        super().__init__(message)
-        self.status = status
 
-
-def _detail(resp: requests.Response) -> str:
-    try:
-        body = resp.json()
-        if isinstance(body, dict) and body.get("detail"):
-            return str(body["detail"])
-    except ValueError:
-        pass
-    return f"voice-transcriber HTTP {resp.status_code}"
+def _request(method: str, url: str, *, timeout: float, allow_empty: bool, **kwargs: Any) -> Any:
+    return _loopback_http.request(
+        method,
+        url,
+        error=VoiceTranscriberError,
+        service="voice-transcriber",
+        timeout=timeout,
+        verify=_VERIFY,
+        allow_empty=allow_empty,
+        **kwargs,
+    )
 
 
 def transcribe(
@@ -74,47 +74,20 @@ def transcribe(
     create_body: Dict[str, Any] = {}
     if language:
         create_body["language"] = language
-    try:
-        resp = requests.post(
-            f"{base}/api/sessions",
-            json=create_body,
-            timeout=_CREATE_TIMEOUT,
-            verify=False,
-        )
-    except requests.RequestException as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber unreachable at {base} ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
-    try:
-        sid = str(resp.json()["session_id"])
-    except (ValueError, KeyError, TypeError) as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber create returned no session_id ({exc})"
-        ) from exc
+    created = _request(
+        "POST", f"{base}/api/sessions", timeout=_CREATE_TIMEOUT, allow_empty=True,
+        json=create_body,
+    )
+    sid = created.get("session_id") if isinstance(created, dict) else None
+    if not sid:
+        raise VoiceTranscriberError("voice-transcriber create returned no session_id")
 
     params = {"language": language} if language else None
-    try:
-        up = requests.post(
-            f"{base}/api/sessions/{sid}/upload",
-            params=params,
-            files={"file": (filename, content, content_type)},
-            timeout=_TIMEOUT,
-            verify=False,
-        )
-    except requests.RequestException as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber upload failed ({exc})", status=503
-        ) from exc
-    if up.status_code >= 400:
-        raise VoiceTranscriberError(_detail(up), status=up.status_code)
-    try:
-        return dict(up.json())
-    except ValueError as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber upload returned non-JSON ({exc})"
-        ) from exc
+    return _request(
+        "POST", f"{base}/api/sessions/{sid}/upload", timeout=_TIMEOUT, allow_empty=False,
+        params=params,
+        files={"file": (filename, content, content_type)},
+    )
 
 
 # --- streamed "never-lose-it" path (issue #168) -------------------------
@@ -130,22 +103,10 @@ def create_session(base_url: str, language: Optional[str] = None) -> Dict[str, A
     body: Dict[str, Any] = {}
     if language:
         body["language"] = language
-    try:
-        resp = requests.post(
-            f"{base}/api/sessions", json=body, timeout=_CREATE_TIMEOUT, verify=False
-        )
-    except requests.RequestException as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber unreachable at {base} ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
-    try:
-        return dict(resp.json())
-    except ValueError as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber create returned non-JSON ({exc})"
-        ) from exc
+    return _request(
+        "POST", f"{base}/api/sessions", timeout=_CREATE_TIMEOUT, allow_empty=False,
+        json=body,
+    )
 
 
 def send_chunk(
@@ -153,24 +114,12 @@ def send_chunk(
 ) -> Dict[str, Any]:
     """Append one raw audio chunk to a streamed session (body is raw bytes)."""
     base = base_url.rstrip("/")
-    try:
-        resp = requests.post(
-            f"{base}/api/sessions/{session_id}/chunk",
-            data=content,
-            headers={"Content-Type": content_type},
-            timeout=_TIMEOUT,
-            verify=False,
-        )
-    except requests.RequestException as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber chunk failed ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
-    try:
-        return dict(resp.json())
-    except ValueError:
-        return {}
+    return _request(
+        "POST", f"{base}/api/sessions/{session_id}/chunk", timeout=_TIMEOUT,
+        allow_empty=True,
+        data=content,
+        headers={"Content-Type": content_type},
+    )
 
 
 def finish(
@@ -179,25 +128,11 @@ def finish(
     """Close a streamed session and return the canonical transcript."""
     base = base_url.rstrip("/")
     params = {"language": language} if language else None
-    try:
-        resp = requests.post(
-            f"{base}/api/sessions/{session_id}/finish",
-            params=params,
-            timeout=_TIMEOUT,
-            verify=False,
-        )
-    except requests.RequestException as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber finish failed ({exc})", status=503
-        ) from exc
-    if resp.status_code >= 400:
-        raise VoiceTranscriberError(_detail(resp), status=resp.status_code)
-    try:
-        return dict(resp.json())
-    except ValueError as exc:
-        raise VoiceTranscriberError(
-            f"voice-transcriber finish returned non-JSON ({exc})"
-        ) from exc
+    return _request(
+        "POST", f"{base}/api/sessions/{session_id}/finish", timeout=_TIMEOUT,
+        allow_empty=False,
+        params=params,
+    )
 
 
 def events_url(base_url: str, session_id: str) -> str:

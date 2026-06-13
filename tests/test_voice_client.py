@@ -24,13 +24,13 @@ class _Resp:
 def test_transcribe_creates_then_uploads(monkeypatch):
     calls = []
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         calls.append((url, kwargs))
         if url.endswith("/api/sessions"):
             return _Resp(200, {"session_id": "14-32-07-abcd"})
         return _Resp(200, {"transcript": "buy milk", "language": "en"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
 
     result = voice_client.transcribe(
         "https://127.0.0.1:8443/", "rec.webm", b"audio", "audio/webm", "en"
@@ -50,24 +50,24 @@ def test_transcribe_creates_then_uploads(monkeypatch):
 
 
 def test_transcribe_no_language_omits_it(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         if url.endswith("/api/sessions"):
             assert kwargs["json"] == {}
             return _Resp(200, {"session_id": "s1"})
         assert kwargs["params"] is None
         return _Resp(200, {"transcript": "x"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     voice_client.transcribe("https://127.0.0.1:8443", "r.webm", b"a", "audio/webm")
 
 
 def test_transcribe_upstream_error_raises(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         if url.endswith("/api/sessions"):
             return _Resp(200, {"session_id": "s1"})
         return _Resp(503, {"detail": "ffmpeg not installed"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     with pytest.raises(voice_client.VoiceTranscriberError) as exc:
         voice_client.transcribe("https://127.0.0.1:8443", "r.webm", b"a", "audio/webm")
     assert exc.value.status == 503
@@ -75,10 +75,10 @@ def test_transcribe_upstream_error_raises(monkeypatch):
 
 
 def test_transcribe_connection_failure_is_503(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         raise voice_client.requests.RequestException("connection refused")
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     with pytest.raises(voice_client.VoiceTranscriberError) as exc:
         voice_client.transcribe("https://127.0.0.1:8443", "r.webm", b"a", "audio/webm")
     assert exc.value.status == 503
@@ -90,12 +90,12 @@ def test_transcribe_connection_failure_is_503(monkeypatch):
 def test_create_session_posts_language(monkeypatch):
     captured = {}
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         captured["url"] = url
         captured["json"] = kwargs.get("json")
         return _Resp(200, {"session_id": "s1"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     out = voice_client.create_session("https://127.0.0.1:8443/", "es")
     assert out["session_id"] == "s1"
     assert captured["url"] == "https://127.0.0.1:8443/api/sessions"
@@ -105,13 +105,13 @@ def test_create_session_posts_language(monkeypatch):
 def test_send_chunk_posts_raw_body(monkeypatch):
     captured = {}
 
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         captured["url"] = url
         captured["data"] = kwargs.get("data")
         captured["headers"] = kwargs.get("headers")
         return _Resp(200, {"raw_bytes": 3})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     out = voice_client.send_chunk("https://127.0.0.1:8443", "s1", b"abc", "audio/mp4")
     assert out["raw_bytes"] == 3
     assert captured["url"] == "https://127.0.0.1:8443/api/sessions/s1/chunk"
@@ -120,20 +120,20 @@ def test_send_chunk_posts_raw_body(monkeypatch):
 
 
 def test_finish_returns_transcript(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         assert url == "https://127.0.0.1:8443/api/sessions/s1/finish"
         return _Resp(200, {"transcript": "done", "language": "en"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     out = voice_client.finish("https://127.0.0.1:8443", "s1")
     assert out["transcript"] == "done"
 
 
 def test_finish_upstream_error_raises(monkeypatch):
-    def fake_post(url, **kwargs):
+    def fake_request(method, url, **kwargs):
         return _Resp(502, {"detail": "whisper blew up"})
 
-    monkeypatch.setattr(voice_client.requests, "post", fake_post)
+    monkeypatch.setattr(voice_client.requests, "request", fake_request)
     with pytest.raises(voice_client.VoiceTranscriberError) as exc:
         voice_client.finish("https://127.0.0.1:8443", "s1")
     assert exc.value.status == 502
