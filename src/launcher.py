@@ -30,7 +30,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from src import session_client
 
@@ -214,23 +214,37 @@ def forget_mirror_hwnd(sid: str) -> None:
     _mirror_hwnds.pop(sid, None)
 
 
-def close_mirror_window(sid: str) -> bool:
-    """Post ``WM_CLOSE`` to the mirror window for ``sid``.
+def _post_wm_close(win32gui: Any, hwnd: int, tag: str) -> bool:
+    """``PostMessage(hwnd, WM_CLOSE)`` — True on success, False if it raised.
 
-    Returns ``True`` when a message was successfully posted (the window
-    will then close itself). Returns ``False`` when no HWND was stashed
-    (window never opened, launch came from the PC itself, or the
-    title-set race lost) or when ``PostMessage`` failed (the window was
-    already gone — manually closed, crashed, …). Either way the entry
-    is dropped from the registry so a stale HWND can't be retried.
+    ``tag`` is only for the log line (a sid prefix, or ``"orphan"``).
     """
-    hwnd = _mirror_hwnds.pop(sid, None)
-    if hwnd is None:
-        logger.debug(
-            f"close_mirror_window({sid[:8]}): no HWND stashed — "
-            f"registry has {len(_mirror_hwnds)} other entries"
+    try:
+        win32gui.PostMessage(hwnd, _WM_CLOSE, 0, 0)
+        logger.debug(f"PostMessage(WM_CLOSE) → hwnd {hwnd} for {tag}")
+        return True
+    except Exception as exc:  # noqa: BLE001 — pywintypes.error et al.
+        logger.warning(
+            f"🪟 PostMessage(WM_CLOSE) → hwnd {hwnd} for {tag} failed: {exc}"
         )
         return False
+
+
+def close_mirror_window(sid: str) -> bool:
+    """Dismiss the PC mirror window for ``sid`` via ``WM_CLOSE``.
+
+    Tries the HWND stashed at spawn time first; when none is stashed or
+    it's already dead, falls back to a fresh ``EnumWindows`` title-scan
+    for ``app-launcher-mirror-<sid>`` (issue #199). The close-time scan is
+    what makes Stop & Close survive a webapp restart — the in-memory
+    ``_mirror_hwnds`` registry is wiped on every restart, and a lost
+    spawn-time poll race never registers an HWND at all. Returns ``True``
+    when a ``WM_CLOSE`` was posted to some window.
+
+    The registry entry (if any) is always dropped so a stale HWND can't
+    be retried.
+    """
+    hwnd = _mirror_hwnds.pop(sid, None)
     try:
         import win32gui  # type: ignore
     except ImportError:
@@ -239,18 +253,101 @@ def close_mirror_window(sid: str) -> bool:
             f"sid {sid[:8]}"
         )
         return False
-    try:
-        win32gui.PostMessage(hwnd, _WM_CLOSE, 0, 0)
-        logger.debug(
-            f"PostMessage(WM_CLOSE) → hwnd {hwnd} for sid {sid[:8]}"
-        )
+    if hwnd is not None and _post_wm_close(win32gui, hwnd, sid[:8]):
         return True
-    except Exception as exc:  # noqa: BLE001 — pywintypes.error et al.
-        logger.warning(
-            f"🪟 PostMessage(WM_CLOSE) → hwnd {hwnd} for sid {sid[:8]} "
-            f"failed: {exc}"
+    # No registered HWND, or PostMessage to it failed (restart wiped the
+    # registry / window re-created / poll race lost). Scan live windows by
+    # title and close a match if one is still on the desktop.
+    scanned = _find_mirror_hwnd(win32gui, _MIRROR_TITLE_PREFIX + sid)
+    if scanned is not None:
+        logger.debug(
+            f"close_mirror_window({sid[:8]}): no usable registered HWND — "
+            f"close-time title-scan found hwnd {scanned}"
         )
-        return False
+        return _post_wm_close(win32gui, scanned, sid[:8])
+    logger.debug(
+        f"close_mirror_window({sid[:8]}): no HWND and no window titled "
+        f"'{_MIRROR_TITLE_PREFIX + sid}' on the desktop"
+    )
+    return False
+
+
+def close_orphan_mirror_windows(live_sids: Iterable[str]) -> int:
+    """Close every Edge mirror window not backed by a live session (#199).
+
+    Sweeps top-level windows whose title carries the mirror marker
+    ``app-launcher-mirror-`` and ``WM_CLOSE``s any whose sid isn't in
+    ``live_sids``. This reconciles the orphans the in-memory HWND registry
+    can't — it's dropped on every webapp restart, so mirrors opened before
+    a restart would otherwise pile up forever. Returns the count closed.
+
+    Membership is tested by marker substring (``app-launcher-mirror-<sid>``
+    in the title) rather than parsing the sid out, so an Edge-wrapped title
+    can't make a live window look orphaned. Callers must pass a *reliable*
+    live-session list — an empty list because the session-host was
+    unreachable would sweep every mirror, including live ones.
+    """
+    try:
+        import win32gui  # type: ignore
+    except ImportError:
+        return 0
+    live_markers = [_MIRROR_TITLE_PREFIX + s for s in live_sids]
+    orphans: List[int] = []
+
+    def _cb(hwnd: int, _extra: Any) -> bool:
+        try:
+            title = win32gui.GetWindowText(hwnd) or ""
+        except Exception:  # noqa: BLE001
+            return True
+        if _MIRROR_TITLE_PREFIX in title and not any(
+            marker in title for marker in live_markers
+        ):
+            orphans.append(hwnd)
+        return True
+
+    try:
+        win32gui.EnumWindows(_cb, None)
+    except Exception as exc:  # noqa: BLE001 — pywintypes.error
+        logger.debug(f"orphan mirror sweep EnumWindows failed: {exc}")
+        return 0
+    closed = sum(_post_wm_close(win32gui, hwnd, "orphan") for hwnd in orphans)
+    if closed:
+        logger.info(f"🧹 closed {closed} orphaned mirror window(s)")
+    return closed
+
+
+def _find_mirror_hwnd(
+    win32gui: Any, target: str, title_sink: Optional[List[str]] = None
+) -> Optional[int]:
+    """One ``EnumWindows`` sweep → HWND of the first top-level window whose
+    title contains ``target``, else ``None``.
+
+    Substring (not exact) match because some browser modes (PWA, certain
+    Edge channels) prepend the app name to the page title. When
+    ``title_sink`` is given, every non-empty title seen is appended to it
+    for timeout diagnostics.
+    """
+    found: List[int] = []
+
+    def _cb(hwnd: int, _extra: Any) -> bool:
+        if found:
+            return False
+        try:
+            title = win32gui.GetWindowText(hwnd) or ""
+        except Exception:  # noqa: BLE001
+            return True
+        if title and title_sink is not None:
+            title_sink.append(title)
+        if target in title:
+            found.append(hwnd)
+            return False
+        return True
+
+    try:
+        win32gui.EnumWindows(_cb, None)
+    except Exception as exc:  # noqa: BLE001 — pywintypes.error
+        logger.debug(f"EnumWindows failed: {exc}")
+    return found[0] if found else None
 
 
 def _safe_poll(sid: str) -> None:
@@ -287,40 +384,19 @@ def _poll_for_mirror_hwnd(sid: str) -> None:
     target = _MIRROR_TITLE_PREFIX + sid
     deadline = time.monotonic() + _HWND_POLL_BUDGET_SECONDS
     attempts = 0
-    last_titles: list[str] = []
+    last_titles: List[str] = []
 
     while time.monotonic() < deadline:
         attempts += 1
-        found: list[int] = []
-        # Snapshot enumerated titles for the diagnostic dump on timeout.
-        # Only kept for the latest sweep so the log line stays bounded.
+        # Fresh sink each sweep so the timeout diagnostic stays bounded.
         last_titles = []
-
-        def _cb(hwnd: int, _extra: Any) -> bool:
-            if found:
-                return False
-            try:
-                title = win32gui.GetWindowText(hwnd) or ""
-            except Exception:  # noqa: BLE001
-                return True
-            if title:
-                last_titles.append(title)
-            if target in title:
-                found.append(hwnd)
-                return False
-            return True
-
-        try:
-            win32gui.EnumWindows(_cb, None)
-        except Exception as exc:  # noqa: BLE001 — pywintypes.error
-            logger.debug(f"EnumWindows failed (attempt {attempts}): {exc}")
-
-        if found:
+        hwnd = _find_mirror_hwnd(win32gui, target, last_titles)
+        if hwnd is not None:
             logger.debug(
-                f"found mirror HWND {found[0]} for sid {sid[:8]} "
+                f"found mirror HWND {hwnd} for sid {sid[:8]} "
                 f"after {attempts} sweep(s)"
             )
-            register_mirror_hwnd(sid, found[0])
+            register_mirror_hwnd(sid, hwnd)
             return
 
         time.sleep(_HWND_POLL_INTERVAL_SECONDS)

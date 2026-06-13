@@ -57,9 +57,12 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     mode = str(body.get("mode") or "quit")
     close_window = bool(body.get("close_window", False))
     # Win32 close of the PC mirror window — primary mechanism for Stop &
-    # Close (issue #20). Best-effort: swallow any exception so a busted
-    # HWND can't keep the session alive. The cooperative WS shutdown
-    # below is the fallback for cases where no HWND was ever captured.
+    # Close (issue #20). close_mirror_window first tries the HWND stashed
+    # at spawn time, then falls back to a fresh title-scan of live windows
+    # (issue #199) so it works even after a webapp restart wiped the
+    # in-memory registry. Best-effort: swallow any exception so a busted
+    # HWND can't keep the session alive. The cooperative WS shutdown below
+    # is a further fallback for when no matching window is on the desktop.
     if close_window:
         try:
             posted = launcher.close_mirror_window(sid)
