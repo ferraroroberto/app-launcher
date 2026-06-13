@@ -1,77 +1,70 @@
-/* Read the last AI reply aloud (issue #190): eyes-free / driving mode.
+/* Read an AI reply aloud (issues #190, #197): eyes-free / driving mode.
  *
- * The Coding tab is a raw TUI stream, not structured chat — Claude Code /
- * Codex render prose, tool calls, spinners, boxed panels and a live input
- * composer with no machine-readable "assistant message ended here" marker.
- * So "the last reply" is a heuristic over the xterm scrollback: strip the
- * trailing input composer + UI chrome, then walk UP from the bottom and
- * keep the last contiguous block of assistant prose, stopping at the first
- * boundary above it (a tool call/result or the previous user turn).
+ * The Coding tab is a raw TUI stream, not structured chat — but Claude Code
+ * marks every block with a leading filled bullet whose COLOUR is the signal
+ * the Claude Code mobile app keys on to separate reply text from tool output:
  *
- * Speaking uses the browser's Web Speech API (`speechSynthesis`) — zero
- * infra, already on iOS Safari, and the button press supplies the user
- * gesture iOS requires. A server-side hub voice is the documented phase-2
- * fallback (local-llm-hub#98), behind the same speak() seam.
+ *   ● in the default / white foreground    → an assistant prose reply
+ *   ● in a saturated colour (green/red/…)  → a tool call (Bash / Read / …)
  *
- * The matchers are tuned for Claude Code (the primary agent) but degrade
- * sensibly for any agent: the generic core (strip the box composer, take
- * the trailing non-chrome prose, stop at a `>`/`❯` user line) still yields
- * a reasonable block even when the assistant bullet glyph differs.
+ * `translateToString()` throws that colour away, so the live reader pulls each
+ * line's leading-cell foreground straight from the xterm cell API and tags the
+ * line `assistant` / `tool` / `none`. The buffer then segments cleanly into an
+ * ordered list of reply blocks — no bottom-up boundary-walk heuristics. The 🔊
+ * button reads the LAST block by default; a future depth-selector ("read last
+ * N", #197) is just a slice of that list.
+ *
+ * One small residual filter survives the colour signal: the per-turn epilogue
+ * the TUI renders BELOW the final reply while/after working — the "Worked for"
+ * timing line, the recap block, the live thinking spinner, and the spinner's
+ * randomised "Tip:" hint (issues #193/#195). Those carry no bullet, so they
+ * never open their own block, but they trail the last reply as unmarked
+ * continuation; each block is truncated at the first epilogue line.
+ *
+ * Speaking uses the browser's Web Speech API (`speechSynthesis`) — zero infra,
+ * already on iOS Safari, and the button press supplies the user gesture iOS
+ * requires. A server-side hub voice is the documented phase-2 fallback
+ * (local-llm-hub#98), behind the same speak() seam.
  */
 
-// Box-drawing + block-element ranges mark TUI chrome: the input composer
-// frame and any boxed panel. A line carrying one of these is never prose.
+// Bullet glyphs an agent uses to open a block. The COLOUR (not the glyph)
+// decides assistant-vs-tool; the glyph just says "this line opens a block".
+const BULLET_RE = /^[●⏺•◉○]$/;
+// A leading assistant turn-marker bullet ("● ", "⏺ ", "• ") — strip it from the
+// spoken text so speech starts on real prose (only the single leading marker;
+// inner markdown bullets are untouched).
+const LEAD_BULLET_RE = /^[●⏺•◉○]\s+/;
 // Box-drawing + block-element glyphs that make up the input composer frame.
 const RULE_CHARS_RE = /[─-▟│┄┅┈┉╌╍]/g;
 // A run of ≥6 horizontal rule glyphs — catches a *titled* box border
 // ("──── voice drive from mobile ────"), where the title text dilutes the
 // whole-line ratio below the threshold but the rule run is unmistakable.
 const RULE_RUN_RE = /[─━═┄┅┈┉╌╍]{6,}/;
-// Tool *result* tree branch: ⎿ └ ╰ ⤷ ↳ — ends a reply when walking up.
-const TOOL_RESULT_RE = /^\s*[⎿└╰⤷↳]/;
-// Claude Code's *spinner hint*: while the agent works, the live spinner renders
-// a randomised help line as a tool-result child —
-// "⎿  Tip: Running multiple Claude sessions? Use /color and /rename …". Its
-// wrapped continuation lines carry NO ⎿ glyph, so they read as prose and the
-// bottom-up walk collects them, then breaks at this line — speaking the tip
-// instead of the real reply (issue #195). Match the ⎿ + "Tip:" head; the walk
-// then discards the collected continuation and keeps going up to the real reply
-// above the spinner that owns the hint.
-const TIP_RESULT_RE = /^\s*[⎿└╰⤷↳]\s*Tip\b/i;
-// A leading assistant turn-marker bullet ("● ", "⏺ ", "• ") — Claude Code's
-// "this is the agent speaking" glyph on the first line of a reply. It's chrome,
-// not prose, so strip it from the spoken text (only the single leading marker;
-// inner markdown bullets are untouched).
-const LEAD_BULLET_RE = /^[●⏺•◉○]\s+/;
-// User prompt / echoed user turn: leading `>` or `❯` — the previous turn.
-const USER_ECHO_RE = /^\s*[>❯]\s?/;
-// Recap block: Claude Code prints a "recap:" summary after a turn, closed by
-// a "(disable recaps …)" line. The user reads the real reply, not the recap.
+// ── Per-turn epilogue (the noise below the final reply) ─────────────────────
+// Recap block: Claude Code prints a "recap:" summary after a turn (closed by a
+// "(disable recaps …)" line). The user reads the real reply, not the recap.
 const RECAP_START_RE = /^recap\b/i;
-const RECAP_END_RE = /disable\s+recaps/i;
 // The per-turn timing line: "✻ Crunched for 5s · 1 shell still running",
-// "Worked for 21m 17s". Claude Code picks a *random gerund* each turn
-// (Worked / Crunched / Pondered / …), so match the shape — an optional
-// spinner glyph, a Capitalised word, "for", then a duration — not the verb.
+// "Worked for 21m 17s". Claude Code picks a *random gerund* each turn, so match
+// the shape — an optional spinner glyph, a Capitalised word, "for", a duration.
 const TIMING_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+ for \d+\s*[smhd]\b/;
 // The *live* thinking spinner: "✻ Cogitating… (4m 39s · thinking)",
-// "Ruminating… (2m 3s · ↓ 7.2k tokens)", "Forming… (2m · ↓ 7k tokens)". Like
-// TIMING_LINE_RE, Claude Code randomises the gerund — so match the shape, not
-// the verb: an optional spinner glyph, a Capitalised gerund, a trailing
-// ellipsis, then a parenthetical status. Anchoring on the ellipsis-immediately-
-// after-gerund + the `(` keeps ordinary prose ("Forming a plan (see below)…")
-// from matching. STATUS_RE only catches the token-bearing variant; this also
-// catches the "· thinking" form that has no token count (issue #193).
+// "Ruminating… (2m 3s · ↓ 7.2k tokens)". Match the shape, not the gerund: an
+// optional spinner glyph, a Capitalised gerund, a trailing ellipsis, then a
+// parenthetical status (issue #193 — the "· thinking" form has no token count).
 const SPINNER_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+(?:…|\.\.\.)\s*\(/;
-// Footer status lines under the box: folder/branch, permission mode, token
-// count, the gerund spinner ("Ruminating…", "Forming… (2m · ↓ 7k tokens)"),
-// and the keyboard hints. Each is below the composer, but match them anyway
-// as a belt-and-braces skip in case the box can't be located.
-const STATUS_RE =
-  /(\btokens?\b|shift\+tab|esc to|⏵⏵|\? for shortcuts|accept edits|bypass permissions|^\s*[*✶✻✽✢✱·•∗⁘…\s]+$)/i;
+// The spinner's randomised help line, rendered as a tool-result child:
+// "⎿  Tip: Running multiple Claude sessions? Use /color and /rename …" — its
+// wrapped continuation carries no glyph, so it trails the reply (issue #195).
+const TIP_RESULT_RE = /^\s*[⎿└╰⤷↳]\s*Tip\b/i;
 
-function isBlank(line) {
-  return !line || !line.trim();
+// True once a block's prose has ended and the per-turn epilogue begins. The
+// epilogue always follows the real reply, so truncating each block at its first
+// epilogue line keeps the prose and drops the timing/recap/spinner/tip noise.
+function isEpilogue(line) {
+  const t = (line || '').trim();
+  return TIMING_LINE_RE.test(t) || SPINNER_LINE_RE.test(t) ||
+    RECAP_START_RE.test(t) || TIP_RESULT_RE.test(line || '');
 }
 
 // A horizontal rule / box-border line — the composer frame. True when the
@@ -87,109 +80,156 @@ function isRuleLine(line) {
 }
 
 // Drop the trailing input composer box and the entire status footer beneath
-// it. The box is the lowest cluster of rule lines (top + bottom border, with
-// the `>` prompt and blanks between); everything from its top border down is
-// chrome. Returns the conversation slice above the box, or the input
-// unchanged when no box is found (so a boxless agent still yields something).
-function dropTrailingComposer(arr) {
+// it (rows is `{text, marker}[]`). The box is the lowest cluster of rule lines
+// (top + bottom border, with the `>` prompt and blanks between); everything
+// from its top border down is chrome. Returns the conversation slice above the
+// box, or the input unchanged when no box is found (boxless agents still
+// yield something).
+function dropTrailingComposer(rows) {
   let lastRule = -1;
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (isRuleLine(arr[i])) { lastRule = i; break; }
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (isRuleLine(rows[i].text)) { lastRule = i; break; }
   }
-  if (lastRule < 0) return arr;
+  if (lastRule < 0) return rows;
   // Extend up through the box cluster: another rule within a few lines (the
   // prompt + blank gutter) is the top border.
   let top = lastRule;
   let gap = 0;
   for (let i = lastRule - 1; i >= 0 && gap <= 4; i--) {
-    if (isRuleLine(arr[i])) { top = i; gap = 0; } else { gap++; }
+    if (isRuleLine(rows[i].text)) { top = i; gap = 0; } else { gap++; }
   }
-  return arr.slice(0, top);
+  return rows.slice(0, top);
+}
+
+// Collapse a block's lines to one speakable paragraph: truncate at the first
+// epilogue line (timing/recap/spinner/tip), de-wrap the column-wrapped prose,
+// squeeze whitespace, and drop the leading assistant turn-marker bullet.
+function finalizeBlock(lines) {
+  const prose = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isEpilogue(lines[i])) break;
+    prose.push(lines[i]);
+  }
+  return prose.join(' ').replace(/\s+/g, ' ').trim().replace(LEAD_BULLET_RE, '');
 }
 
 /**
- * Extract the agent's last spoken reply from already-rendered buffer lines.
- * Pure (no xterm dependency) so it is unit-testable against synthetic
- * transcripts. `lines` is top→bottom, each trailing-trimmed.
+ * Segment already-classified buffer rows into the ordered list of assistant
+ * reply blocks (oldest → newest). Pure (no xterm dependency) so it is
+ * unit-testable against synthetic transcripts.
  *
- * The Coding tab is a raw TUI, so this is structural, not semantic: cut the
- * composer box + footer, skip the trailing recap / "Worked for" / status
- * noise, then collect the last prose block up to the previous user turn or
- * tool boundary. Hard 51-column wraps are de-wrapped by collapsing the block
- * to a single speakable paragraph.
+ * Each row is `{ text, marker }` where `marker` is `'assistant'` (a default/
+ * white reply bullet), `'tool'` (a coloured tool-call bullet), or `'none'`. An
+ * `assistant` row opens a block; any marker row (assistant or tool) or the
+ * composer box closes it; `none` rows are continuation of an open block (or
+ * ignored before the first reply / inside a tool's output).
  *
- * @param {string[]} lines
- * @returns {string} speakable plain text, or '' when there is no reply yet.
+ * @param {{text: string, marker: string}[]} rows  top→bottom, trailing-trimmed
+ * @returns {string[]} speakable reply blocks, in order (empty blocks dropped)
  */
-export function extractLastReplyFromLines(lines) {
-  if (!Array.isArray(lines) || !lines.length) return '';
-  const arr = dropTrailingComposer(lines.slice());
-  if (!arr.length) return '';
-
-  const collected = [];
-  let inRecap = false;
-  let started = false;
-  for (let i = arr.length - 1; i >= 0; i--) {
-    const line = arr[i];
-    const t = line.trim();
-    if (!started) {
-      // Skip the trailing noise between the reply and the composer: blank
-      // gutter, the recap block (bottom-up: end line → body → "recap:"),
-      // the "Worked for" timing line, and any stray status/spinner remnant.
-      if (!t) continue;
-      if (RECAP_END_RE.test(t)) { inRecap = true; continue; }
-      if (inRecap) { if (RECAP_START_RE.test(t)) inRecap = false; continue; }
-      if (RECAP_START_RE.test(t)) continue;
-      if (TIMING_LINE_RE.test(t)) continue;
-      if (SPINNER_LINE_RE.test(t)) continue;
-      if (STATUS_RE.test(line)) continue;
+export function extractReplyBlocksFromRows(rows) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const arr = dropTrailingComposer(rows.slice());
+  const blocks = [];
+  let current = null;
+  const flush = function () {
+    if (current) {
+      const text = finalizeBlock(current);
+      if (text) blocks.push(text);
+      current = null;
     }
-    // A spinner's "Tip:" hint (⎿ Tip: …): the lines we just collected are its
-    // wrapped continuation, not a reply. Drop them and keep walking up past the
-    // spinner (skipped by SPINNER_LINE_RE) to the real last reply above it,
-    // rather than speaking the hint (issue #195). Checked before the generic
-    // tool-result boundary, which this line also matches.
-    if (TIP_RESULT_RE.test(line)) {
-      collected.length = 0;
-      started = false;
-      continue;
-    }
-    // Boundaries: the previous user turn, a tool result, or an earlier recap
-    // all end the current reply.
-    if (USER_ECHO_RE.test(line) || TOOL_RESULT_RE.test(line) ||
-        RECAP_START_RE.test(t) || RECAP_END_RE.test(t)) {
-      break;
-    }
-    started = true;
-    collected.push(line);
+  };
+  for (let i = 0; i < arr.length; i++) {
+    const row = arr[i];
+    if (row.marker === 'assistant') { flush(); current = [row.text]; }
+    else if (row.marker === 'tool') { flush(); }
+    else if (current) { current.push(row.text); }
   }
-  collected.reverse();
-
-  // Collapse to one speakable paragraph — de-wraps the column-wrapped lines
-  // and squeezes the blank gutter the TUI renders between them — then drop the
-  // leading assistant turn-marker bullet so the speech starts on real prose.
-  return collected.join(' ').replace(/\s+/g, ' ').trim()
-    .replace(LEAD_BULLET_RE, '');
+  flush();
+  return blocks;
 }
 
-// Read the xterm scrollback (scrollback + viewport) into trimmed lines.
-function bufferToLines(term) {
+// True when the leading visible glyph is a coloured (tool-call) bullet rather
+// than a default/white (assistant) one. Default fg → assistant; a saturated
+// hue (large channel spread) → tool. White/grey are low-spread → assistant, so
+// the test is robust across themes without hard-coding the exact bullet colour.
+function isToolColor(cell) {
+  if (cell.isFgDefault()) return false;
+  let rgb = null;
+  if (cell.isFgRGB()) {
+    const c = cell.getFgColor();
+    rgb = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff];
+  } else if (cell.isFgPalette()) {
+    rgb = paletteToRgb(cell.getFgColor());
+  }
+  if (!rgb) return false;
+  return Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]) > 60;
+}
+
+// Standard xterm 256-colour palette → [r,g,b]: the 16 base colours, the
+// 6×6×6 colour cube (16–231), and the 24-step greyscale ramp (232–255).
+const BASE16 = [
+  [0, 0, 0], [205, 0, 0], [0, 205, 0], [205, 205, 0],
+  [0, 0, 238], [205, 0, 205], [0, 205, 205], [229, 229, 229],
+  [127, 127, 127], [255, 0, 0], [0, 255, 0], [255, 255, 0],
+  [92, 92, 255], [255, 0, 255], [0, 255, 255], [255, 255, 255],
+];
+const CUBE = [0, 95, 135, 175, 215, 255];
+function paletteToRgb(i) {
+  if (i < 16) return BASE16[i];
+  if (i < 232) {
+    const n = i - 16;
+    return [CUBE[Math.floor(n / 36) % 6], CUBE[Math.floor(n / 6) % 6], CUBE[n % 6]];
+  }
+  const g = 8 + (i - 232) * 10;
+  return [g, g, g];
+}
+
+// Classify a live buffer line by its leading visible glyph + that glyph's
+// foreground colour: 'assistant' | 'tool' | 'none'.
+function lineMarker(line) {
+  const len = line.length;
+  let cell;
+  for (let x = 0; x < len; x++) {
+    cell = line.getCell(x, cell);
+    if (!cell) continue;
+    const ch = cell.getChars();
+    if (ch === '' || ch === ' ') continue;   // leading indentation
+    if (!BULLET_RE.test(ch)) return 'none';   // prose / box / tool-result line
+    return isToolColor(cell) ? 'tool' : 'assistant';
+  }
+  return 'none';
+}
+
+// Read the xterm scrollback (scrollback + viewport) into classified rows.
+function bufferToRows(term) {
   const out = [];
   try {
     const buf = term.buffer.active;
     const total = buf.length;
     for (let i = 0; i < total; i++) {
       const line = buf.getLine(i);
-      out.push(line ? line.translateToString(true) : '');
+      out.push({
+        text: line ? line.translateToString(true) : '',
+        marker: line ? lineMarker(line) : 'none',
+      });
     }
   } catch (_) { /* a torn-down terminal yields no reply */ }
   return out;
 }
 
-/** Extract the last reply straight from a live xterm Terminal. */
+/** Extract every assistant reply block (oldest → newest) from a live xterm
+ *  Terminal. The future depth-selector (#197) reads a slice of this list. */
+export function extractReplyBlocks(term) {
+  if (!term) return [];
+  return extractReplyBlocksFromRows(bufferToRows(term));
+}
+
+/** Extract the agent's last spoken reply straight from a live xterm Terminal,
+ *  or '' when there is no reply yet. */
 export function extractLastReply(term) {
-  if (!term) return '';
-  return extractLastReplyFromLines(bufferToLines(term));
+  const blocks = extractReplyBlocks(term);
+  return blocks.length ? blocks[blocks.length - 1] : '';
 }
 
 // ── Speech ────────────────────────────────────────────────────────────────
@@ -342,12 +382,16 @@ export function cancelSpeech() {
   setSpeaking(false);
 }
 
-// Test seam (#190 e2e): the extraction heuristic and speech helpers are
-// standalone, so the suite drives them directly instead of synthesizing a
-// live PTY buffer. Read-only — no effect on production behaviour.
+// Test seam (#190/#197 e2e): the block segmentation and speech helpers are
+// standalone, so the suite drives them directly. `extractReplyBlocksFromRows`
+// takes synthetic `{text, marker}` rows (the marker is what the cell-colour
+// reader derives live); `extractReplyBlocks`/`extractLastReply` exercise the
+// real cell-colour path against a Terminal the suite writes ANSI into.
+// Read-only — no effect on production behaviour.
 if (typeof window !== 'undefined') {
   window.__readback = {
-    extractLastReplyFromLines: extractLastReplyFromLines,
+    extractReplyBlocksFromRows: extractReplyBlocksFromRows,
+    extractReplyBlocks: extractReplyBlocks,
     extractLastReply: extractLastReply,
     speak: speak,
     cancelSpeech: cancelSpeech,
