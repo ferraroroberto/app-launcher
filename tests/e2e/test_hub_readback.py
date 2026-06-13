@@ -1,12 +1,13 @@
-"""Regression pin for hub read-aloud (issue #203).
+"""Regression pin for hub read-aloud (issues #203, #206).
 
 The 🔊 button gains a second voice: when the local-llm-hub is reachable, the
 reply is synthesized through the hub's Orpheus voice instead of the on-device
-Web Speech voice. ``speakHub()`` POSTs the reply to ``/api/tts/speak`` (bearer +
-passkey headers, since ``<audio src>`` can't carry them) and plays the returned
-WAV through an ``<audio>`` element; ``probeHub()`` caches hub reachability so the
-click can pick the path; ``cancelHub()`` stops in-flight audio on a re-press /
-tab-leave / new dictation.
+Web Speech voice. For low time-to-first-audio (#206) ``speakHub()`` POSTs the
+reply to ``/api/tts/speak`` to *stage* it (returns an id), then points an
+``<audio>`` element at ``/api/tts/stream/{id}`` (token + tt in the query, since
+``<audio src>`` can't carry headers) so the browser plays the WAV progressively.
+``probeHub()`` caches hub reachability so the click can pick the path;
+``cancelHub()`` stops in-flight audio on a re-press / tab-leave / new dictation.
 
 ``<audio>`` and the hub endpoints are stubbed (no live hub on :8000, no real
 autoplay in headless WebKit). The JS hub surface is driven through the
@@ -45,16 +46,12 @@ _AUDIO_MOCK = """
 })()
 """
 
-_WAV = b"RIFF$\x00\x00\x00WAVEfmt loud-bytes"
-
-
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
 
 
-def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
-               wav: bytes = _WAV) -> None:
+def _route_hub(page: Page, *, available: bool = True, stage_status: int = 200) -> None:
     page.route(
         "**/api/tts/health",
         lambda route: route.fulfill(
@@ -62,10 +59,14 @@ def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
             body='{"available": %s}' % ("true" if available else "false"),
         ),
     )
+    # POST /api/tts/speak stages the text and returns a stream id. The
+    # <audio> element then GETs /api/tts/stream/{id}; the stubbed Audio never
+    # actually fetches it, so only the stage POST needs a route.
     page.route(
         "**/api/tts/speak",
         lambda route: route.fulfill(
-            status=speak_status, content_type="audio/wav", body=wav,
+            status=stage_status, content_type="application/json",
+            body='{"id": "stub-id", "url": "/api/tts/stream/stub-id"}',
         ),
     )
 
@@ -83,32 +84,38 @@ def test_probe_caches_hub_availability(
     assert got == {"ok": True, "cached": True}
 
 
-def test_speak_hub_plays_streamed_wav(
+def test_speak_hub_streams_progressively(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """speakHub() unlocks the <audio> element, POSTs to /api/tts/speak, then
-    plays the returned WAV blob — two play()s (silent unlock + real blob) and a
-    blob: src swapped in after the empty-WAV unlock clip."""
+    """speakHub() unlocks the <audio> element, POSTs to stage the text, then
+    points the element at /api/tts/stream/{id} for progressive playback — two
+    play()s (silent unlock + the stream) and a stream src carrying the auth
+    query swapped in after the empty-WAV unlock clip."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _open_terminal(authed_page, base_url, launched_pty_session)
     got = authed_page.evaluate(
-        "async () => { const ok = await window.__readback.speakHub('Build is green.', {});"
+        "async () => { const ok = await window.__readback.speakHub("
+        "  'Build is green.', { token: 'bt', terminalToken: 'tt' });"
         " return { ok, played: window.__audioLog.played,"
-        "          blob: window.__audioLog.srcs.some(s => s.startsWith('blob:')) }; }"
+        "          stream: window.__audioLog.srcs.find(s =>"
+        "            s.indexOf('/api/tts/stream/stub-id') >= 0) || '' }; }"
     )
     assert got["ok"] is True
-    assert got["played"] >= 2           # silent unlock + real blob playback
-    assert got["blob"] is True          # the streamed WAV became a blob: src
+    assert got["played"] >= 2                       # silent unlock + the stream
+    assert "/api/tts/stream/stub-id" in got["stream"]
+    # bearer + passkey ride the query string (the <audio> can't set headers).
+    assert "token=bt" in got["stream"]
+    assert "tt=tt" in got["stream"]
 
 
-def test_speak_hub_empty_body_rejects_for_fallback(
+def test_speak_hub_stage_failure_rejects_for_fallback(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """A zero-byte body (hub errored after the 200 committed) makes speakHub()
-    reject, so the click handler can fall back to Web Speech."""
+    """A failed stage POST makes speakHub() reject, so the click handler can
+    fall back to Web Speech."""
     authed_page.add_init_script(_AUDIO_MOCK)
-    _route_hub(authed_page, available=True, wav=b"")
+    _route_hub(authed_page, available=True, stage_status=502)
     _open_terminal(authed_page, base_url, launched_pty_session)
     rejected = authed_page.evaluate(
         "async () => { try { await window.__readback.speakHub('hi', {}); return false; }"
