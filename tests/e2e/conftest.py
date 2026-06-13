@@ -390,7 +390,11 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
 
 
 # ----------------------------------------------------- input-delivery polling
-_LOG_POLL_DEADLINE_MS = 5_000
+# Env-aware so the slow hosted CI runner gets headroom without slowing local
+# runs (issue #184, finishing #58): the ConPTY round-trip (keystroke → session
+# host → log flush) lands well within 5 s locally but can exceed it on a loaded
+# windows-2025 runner. e2e.yml sets E2E_LOG_POLL_DEADLINE_MS larger for CI.
+_LOG_POLL_DEADLINE_MS = int(os.environ.get("E2E_LOG_POLL_DEADLINE_MS", "5000"))
 
 
 @pytest.fixture
