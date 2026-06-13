@@ -285,6 +285,30 @@ def browser_context_args(
     return args
 
 
+# Bound the default Playwright action + navigation timeout (issue #186).
+# Playwright defaults both to 30 s, so a single auto-waiting action whose
+# target never settles on a loaded hosted runner — a `.click()` / `goto` /
+# `wait_for_selector` with no explicit `timeout=` — blocks the full 30 s as an
+# *opaque* wait, and a few stacking inside one test reach the 120 s
+# `pytest-timeout` (#184) as a black box that never names which wait hung.
+# Capping them well under that deadline turns any such hang into a fast,
+# self-naming `TimeoutError: ... waiting for <locator>` instead — diagnosable
+# from the run page without a `-v` archaeology dig. `expect()` web-first
+# assertions keep their own 5 s default, and any explicit per-call `timeout=`
+# still overrides this. Env-tunable like E2E_LOG_POLL_DEADLINE_MS so a slow
+# runner can widen it without a code change.
+_DEFAULT_TIMEOUT_MS = int(os.environ.get("E2E_DEFAULT_TIMEOUT_MS", "15000"))
+
+
+@pytest.fixture(autouse=True)
+def _bound_default_timeouts(context: BrowserContext) -> None:
+    # Set on the context, not a single page: authed_page / unauthed_page each
+    # `context.new_page()`, and the default is consulted at action time, so a
+    # context-level cap covers every page they create.
+    context.set_default_timeout(_DEFAULT_TIMEOUT_MS)
+    context.set_default_navigation_timeout(_DEFAULT_TIMEOUT_MS)
+
+
 def _seed_token_init_script(token: str) -> str:
     # Seeded *before* the first navigation so app.js reads it on boot rather
     # than going through the ?token=… URL strip dance (which would leak the
