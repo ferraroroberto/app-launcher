@@ -1,37 +1,50 @@
 """FastAPI webapp — phone-first launcher hub.
 
-Routes (split across `app/webapp/routers/`):
+Routes are split across `app/webapp/routers/`; see each module for the
+full per-family surface.  Top-level families:
 
-    GET    /                                  → static/index.html         (misc)
-    GET    /static/{file}                     → CSS / JS / icons          (static mount)
-    GET    /healthz                           → liveness probe            (misc)
-    GET    /install-ca                        → iOS .mobileconfig         (misc)
+    misc         GET  /                         → static/index.html
+                 GET  /static/{file}            → CSS / JS / icons (static mount)
+                 GET  /healthz                  → liveness probe
+                 GET  /install-ca               → iOS .mobileconfig
+                 GET  /api/version              → git_sha + asset_hash
+                 GET  /api/agents               → registered coding agents
 
-    POST   /api/login                         → swap password for token   (auth)
-    GET    /api/config                        → host/port + scan + claude (config)
-    POST   /api/config                        → patch + persist           (config)
-    GET    /api/status                        → tunnel?, cert?, scan roots(config)
+    auth         POST /api/login                → swap password for token
 
-    GET    /api/apps                          → unified registry          (apps)
-    POST   /api/apps/scan                     → walk scan_root            (apps)
-    POST   /api/apps/save                     → persist selected          (apps)
-    PATCH  /api/apps/{id}                     → rename                    (apps)
-    DELETE /api/apps/{id}                     → remove                    (apps)
-    POST   /api/apps/{id}/launch              → spawn bat or claude       (apps)
+    config       GET  /api/config               → host/port + scan + agent flags
+                 POST /api/config               → patch + persist
+                 GET  /api/status               → tunnel?, cert?, scan roots
+                 GET  /api/ports/probe          → psutil snapshot
+                 POST /api/ports/{port}/kill    → kill PID owning that port
 
-    GET    /api/ports/probe                   → psutil snapshot           (misc)
-    POST   /api/ports/{port}/kill             → kill PID owning that port (misc)
+    apps         GET  /api/apps                 → unified registry
+                 POST /api/apps/scan            → walk scan_root
+                 POST /api/apps/save            → persist selected
+                 PATCH  /api/apps/{id}          → rename
+                 DELETE /api/apps/{id}          → remove
+                 POST /api/apps/{id}/launch     → spawn bat or coding-agent session
 
-    GET    /api/claude-code/flags             → persisted claude flags    (claude_code)
-    GET    /api/claude-code/git-status        → per-project branch+dirty  (claude_code)
-    GET    /api/claude-code/generate          → preview workspace↔bat     (claude_code)
-    POST   /api/claude-code/generate          → workspace↔bat sync        (claude_code)
-    GET    /api/claude-code/sessions          → running sessions          (sessions)
-    POST   /api/claude-code/sessions/{sid}/stop                           (sessions)
-    POST   /api/claude-code/sessions/{sid}/image                          (sessions)
-    WS     /api/claude-code/sessions/{sid}/ws                             (sessions)
+    sessions     GET  /api/claude-code/sessions           → running sessions
+                 POST /api/claude-code/sessions/{sid}/stop
+                 POST /api/claude-code/sessions/{sid}/image
+                 WS   /api/claude-code/sessions/{sid}/ws
+                 POST /api/transcribe                     → one-shot audio → text
+                 POST /api/transcribe/sessions            → start streaming dictation
+                 POST /api/transcribe/sessions/{id}/chunk → append audio chunk
+                 POST /api/transcribe/sessions/{id}/finish
+                 GET  /api/ocr                            → screenshot OCR
 
-    /api/webauthn/*                           → passkey ceremonies        (webauthn)
+    claude_code  GET  /api/claude-code/flags              → persisted per-agent flags
+                 GET  /api/claude-code/git-status         → per-project branch+dirty
+                 GET  /api/claude-code/generate           → preview workspace↔bat
+                 POST /api/claude-code/generate           → workspace↔bat sync
+
+    jobs         /api/jobs/*                   → Jobs tab (~30 routes)
+
+    life_os      /api/life-os/*                → Life OS tab
+
+    webauthn     /api/webauthn/*               → passkey ceremonies
 """
 
 from __future__ import annotations

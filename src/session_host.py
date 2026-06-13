@@ -1,10 +1,11 @@
 """Launcher-owned PTY sessions — the foundation for the phone terminal.
 
-A :class:`PtySession` wraps a ``winpty.PtyProcess`` running ``claude``
-inside a ConPTY the launcher owns. A background reader thread pumps the
-session's terminal output into a bounded ring buffer (so a reconnecting
-client gets scrollback) and to every live subscriber queue.
-:class:`SessionManager` owns the set of live sessions.
+A :class:`PtySession` wraps a ``winpty.PtyProcess`` running the selected
+coding agent (see :mod:`src.agents`) inside a ConPTY the launcher owns.
+A background reader thread pumps the session's terminal output into a
+bounded ring buffer (so a reconnecting client gets scrollback) and to
+every live subscriber queue. :class:`SessionManager` owns the set of
+live sessions.
 
 This module has no web-framework imports — ``app/session_host/server.py``
 is the HTTP + WebSocket surface layered on top of it. It is Windows-only
@@ -504,8 +505,7 @@ class SessionManager:
     ) -> PtySession:
         """Spawn ``<agent> <flags>`` inside a fresh ConPTY in ``project_dir``.
 
-        ``agent`` selects which coding CLI to run (``claude`` |
-        ``antigravity``); see :mod:`src.agents`.
+        ``agent`` selects which coding CLI to run; see :mod:`src.agents`.
 
         ``rows``/``cols`` size the ConPTY at spawn time. The phone passes
         its real terminal dimensions through the launch request so a

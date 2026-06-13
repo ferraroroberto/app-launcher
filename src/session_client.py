@@ -19,9 +19,9 @@ from src import _loopback_http
 logger = logging.getLogger(__name__)
 
 _TIMEOUT = 8.0
-# Spawning a PTY session is slow (cold pywinpty + claude --remote-control
-# can take 10–20 s on a freshly booted box). Reuse of the 8 s default here
-# was surfacing 'session-host unreachable' to the phone while the spawn was
+# Spawning a PTY session is slow (cold pywinpty + agent cold-start can take
+# 10–20 s on a freshly booted box). Reuse of the 8 s default here was
+# surfacing 'session-host unreachable' to the phone while the spawn was
 # still in flight, prompting retries that stacked orphan sessions.
 _CREATE_TIMEOUT = 45.0
 
