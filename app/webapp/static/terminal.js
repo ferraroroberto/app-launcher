@@ -106,6 +106,35 @@ function setTerminalStatus(msg) {
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
 
+// A server→client WS frame is normally raw terminal output, but the
+// session-host also multiplexes a cooperative {"type":"shutdown"} control
+// frame (issue #20 close fallback / #181). Detect it cheaply — only
+// JSON.parse frames that start with '{' so terminal throughput isn't taxed,
+// and a program printing a brace-leading non-JSON line (or any other JSON
+// shape) falls through to be rendered normally.
+function isShutdownFrame(data) {
+  if (typeof data !== 'string' || data.charCodeAt(0) !== 0x7b /* '{' */) {
+    return false;
+  }
+  try {
+    const msg = JSON.parse(data);
+    return !!msg && typeof msg === 'object' && msg.type === 'shutdown';
+  } catch (_) {
+    return false;
+  }
+}
+
+// Classify one server→client WS frame. Returns:
+//   'close-mirror' — shutdown frame in a mirror window → caller window.close()s
+//   'swallow'      — shutdown frame on the phone → drop, never render
+//   'write'        — ordinary terminal output → caller writes it to xterm
+// Pure + side-effect-free so the routing decision is unit-pinnable without a
+// live socket (mirrors framePaste; see tests/e2e/test_shutdown_frame.py).
+export function routeFrame(data, isMirror) {
+  if (isShutdownFrame(data)) return isMirror ? 'close-mirror' : 'swallow';
+  return 'write';
+}
+
 function connectWs(t) {
   // Re-bind ws.onclose for the previous socket so a late close event
   // from the dying connection doesn't interfere with the new one.
@@ -126,6 +155,20 @@ function connectWs(t) {
     if (t.term) t.term.focus();
   };
   ws.onmessage = function (ev) {
+    // The session-host multiplexes a cooperative {"type":"shutdown"} control
+    // frame onto the same stream as raw terminal output (issue #20 close
+    // fallback / #181). It must never reach xterm as junk text. On a mirror
+    // window it is the reliable self-close path for "Stop & Close" when the
+    // Win32 WM_CLOSE never captured an HWND; on the phone it's simply dropped
+    // (the server closes the socket with 4000 right after, which onclose
+    // surfaces as "Session ended.").
+    const route = routeFrame(ev.data, t.mirror);
+    if (route === 'close-mirror') {
+      closeTerminal();
+      try { window.close(); } catch (_) { /* may be blocked; teardown stands */ }
+      return;
+    }
+    if (route === 'swallow') return;
     if (!t.term) return;
     // tail -f follow: snap back to bottom on new output, but only
     // if the user was already there. If they scrolled up to read
