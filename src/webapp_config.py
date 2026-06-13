@@ -7,8 +7,13 @@ of truth.
 
 Holds:
 - network knobs (host, port)
-- where to scan for Claude-Code projects and Apps
-- persisted Claude-Code launch flags (model, effort, verbose, debug)
+- scan roots for Claude-Code projects and Apps
+- per-agent launch flags (model, effort, verbose, debug) for all
+  registered coding agents (claude, codex, antigravity, copilot)
+- sibling-app loopback URLs (voice-transcriber, photo-ocr)
+- Life OS tab settings
+- terminal display and passkey / WebAuthn config
+- Pushover failure-notification credentials
 - auth secrets (bearer token + login password)
 """
 

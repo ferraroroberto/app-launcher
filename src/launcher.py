@@ -1,23 +1,23 @@
-"""Process-launch helpers — spawn ``*.bat`` files or ``claude`` sessions.
+"""Process-launch helpers — spawn ``*.bat`` files or coding-agent sessions.
 
 Used by the FastAPI ``/api/apps/{id}/launch`` route:
 
 - ``spawn_bat`` opens a new visible CMD window that runs the bat and
   stays open afterwards (so the user can interact when they're back at
   the PC).
-- ``spawn_claude_session`` covers both Claude Code launch modes via its
-  ``kind`` argument. ``kind="pty"`` (full control) asks the loopback
-  session-host to run ``claude`` inside a launcher-owned ConPTY, streamed
-  to and driven from the phone. ``kind="remote"`` (detached) asks the
-  session-host to spawn ``claude`` in its own console window the launcher
-  only tracks — visible on the PC, killable from the phone, but not
-  streamed; the Claude cloud app drives it.
+- ``spawn_claude_session`` is the multi-agent session-launch helper for
+  the Coding tab. It asks the loopback session-host to run whichever
+  coding agent is requested (see :mod:`src.agents` for the full set).
+  ``kind="pty"`` (full control) streams the session to and drives it
+  from the phone inside a launcher-owned ConPTY. ``kind="remote"``
+  (detached) opens a console window on the PC that the session-host only
+  tracks — visible on the PC, killable from the phone, but not streamed.
 - ``open_local_terminal_window`` opens the PC-side mirror window for a
   full-control session and (optionally) tracks its HWND so Stop & Close
   can dismiss it via WM_CLOSE — issue #20.
 
-The Claude Code tab chooses the mode via the ``/api/apps/{id}/launch``
-``mode`` parameter (``pty`` | ``remote``).
+The Coding tab chooses the mode via the ``/api/apps/{id}/launch``
+``mode`` parameter (``pty`` | ``remote``) and the agent via ``agent``.
 """
 
 from __future__ import annotations
@@ -101,7 +101,7 @@ def spawn_claude_session(
 ) -> Dict[str, Any]:
     """Ask the session-host to run ``<agent> <flags>`` for ``project_dir``.
 
-    ``agent`` selects the coding CLI (``claude`` | ``antigravity``).
+    ``agent`` selects the coding CLI; see :data:`src.agents.AGENTS`.
     ``kind="pty"`` (default) spawns a launcher-owned ConPTY streamed to the
     phone; ``kind="remote"`` spawns a detached console window the host only
     tracks. ``rows``/``cols`` are the phone's real terminal dimensions, so a

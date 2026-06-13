@@ -165,8 +165,8 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # (`agent`). "pty" (default) = a launcher-owned PTY session streamed
     # to and driven from the phone. "remote" = a detached console window
     # on the PC the session-host only tracks (listed + killable but not
-    # streamed). `agent` is one of `claude` (Claude Code), `antigravity`
-    # (the `agy` CLI), or `copilot` (GitHub Copilot CLI).
+    # streamed). `agent` must be a key in `agents.AGENTS` (see
+    # `src/agents.py` for the full set).
     if entry.kind == KIND_CLAUDE_CODE:
         if not entry.project_dir:
             raise HTTPException(
