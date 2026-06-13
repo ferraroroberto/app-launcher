@@ -15,6 +15,15 @@ import { readToken, toast } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
+  cancelSpeech,
+  extractLastReply,
+  isSpeaking,
+  isSpeechSupported,
+  onSpeakingChange,
+  onSpeechEnd,
+  speak,
+} from './terminal-readback.js';
+import {
   clearTerminalToken,
   ensureTerminalToken,
   readTerminalToken,
@@ -370,6 +379,11 @@ export async function openTerminal(session) {
   const ocrOn = !!(state.status && state.status.screenshot_ocr);
   els.terminalScreenshot.hidden = !ocrOn;
 
+  // The 🔊 read-aloud button (issue #190) is pure on-device speech — no
+  // server flag, just Web Speech API support. Hide it where the browser
+  // can't synthesize speech, like 🎤 is hidden without MediaRecorder.
+  els.terminalSpeak.hidden = !isSpeechSupported();
+
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
@@ -573,6 +587,9 @@ function unlockBodyScroll() {
 }
 
 export function hideTerminal() {
+  // Leaving the Coding tab silences any in-flight read-aloud (#190) — the
+  // speech queue is global and would otherwise keep talking off-screen.
+  cancelSpeech();
   closeTerminal();
   closeKeysPopover();
   els.terminalOverlay.hidden = true;
@@ -939,6 +956,9 @@ async function startRecording() {
     toast('Recording not supported on this browser', 'error');
     return;
   }
+  // Starting to talk silences any in-flight read-aloud (issue #190) — you're
+  // answering, not still listening.
+  cancelSpeech();
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1257,6 +1277,16 @@ async function runOcrExtraction() {
   }
 }
 
+// Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
+function setSpeakingUI(on) {
+  const btn = els.terminalSpeak;
+  if (!btn) return;
+  btn.classList.toggle('speaking', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.textContent = on ? '⏹' : '🔊';
+  btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
+}
+
 function wireCompose() {
   els.terminalCompose.addEventListener('click', function () {
     const t = state.terminal;
@@ -1304,6 +1334,30 @@ export function wireTerminal() {
     if (!t || !t.term) return;
     try { t.term.scrollToBottom(); } catch (_) {}
     t.term.focus();
+  });
+  // 🔊 read the last AI reply aloud (issue #190) — a top-bar control beside
+  // ↓ Jump, not in the compose bar (which is for editing). Press while idle →
+  // extract the last reply + speak; press while reading → stop. The button
+  // tap is the user gesture iOS speech synthesis requires.
+  onSpeakingChange(setSpeakingUI);
+  // When the reply finishes reading on its own, reset the button (done by
+  // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
+  onSpeechEnd(function () { toast('🔊 Finished reading.', 'good'); });
+  els.terminalSpeak.addEventListener('click', function () {
+    if (isSpeaking()) { cancelSpeech(); return; }
+    const t = state.terminal;
+    if (!t || !t.term) return;
+    const text = extractLastReply(t.term);
+    if (!text) { toast('🔊 No reply to read yet.'); return; }
+    if (!speak(text)) {
+      toast('Speech not supported on this browser', 'error');
+      return;
+    }
+    // Visible confirmation the press registered and text was found — so a
+    // silent phone (mute switch, volume, BT routing) is distinguishable from
+    // an extraction miss. Show the opening words.
+    const peek = text.length > 60 ? text.slice(0, 60) + '…' : text;
+    toast('🔊 Reading: ' + peek, 'good');
   });
   els.terminalPaste.addEventListener('click', async function () {
     const t = state.terminal;
