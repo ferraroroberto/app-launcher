@@ -747,7 +747,11 @@ html, body {
   font-size: 14px;
   max-width: calc(100vw - 32px);
   box-shadow: 0 10px 24px rgba(0,0,0,0.4);
-  z-index: 100;
+  /* Above the full-screen terminal overlay (z-index 300) — otherwise every
+     toast raised while the terminal is open (read-aloud feedback #190, the
+     🎤 dictation / 📷 OCR / paste results) renders behind it and is invisible
+     on the phone. A transient toast should sit above everything. */
+  z-index: 400;
 }
 .toast.error { border-color: var(--danger); }
 .toast.good  { border-color: var(--good); }
@@ -1216,6 +1220,14 @@ body.terminal-open {
   font-size: 14px;
   min-height: 40px;
   cursor: pointer;
+}
+/* Reading the last reply aloud (issue #190) — accent pulse so the ⏹ stop
+   state is unmistakable while speech is playing. */
+.term-btn.speaking {
+  background: var(--accent);
+  color: #0a0a0a;
+  border-color: transparent;
+  animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
 /* On-screen keys popover (issue #36): D-pad anchored below the
    terminal bar, right-aligned under the ⌨️ button. */
