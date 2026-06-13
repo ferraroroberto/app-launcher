@@ -80,34 +80,6 @@ bump `?v=19`; that advice predated #30 and was correctly skipped — the
 #36/#37 static-file changes (May 2026) cache-busted automatically via
 the fleet hash with no version number touched anywhere.
 
-## Files modified
-
-- `src/static_versioning.py` *(new)* — pure helpers (`compute_asset_hashes`,
-  `rewrite_js_imports`, `rewrite_index_html`).
-- `app/webapp/server.py` — `_VersionedStatic` subclass; hash map computed
-  in `create_app()` and stashed on `app.state`.
-- `app/webapp/routers/misc.py` — `/` rewrites index URLs at request time;
-  new `/api/version` route.
-- `app/webapp/static/index.html` — drops hardcoded `?v=18`; adds
-  `<p id="buildReadout">` in Settings.
-- `app/webapp/static/main.js` + `state.js` — `fetchVersion()` renders
-  the build line via `jsonApi`.
-- `tests/test_webapp_api_basics.py` — four new asserts (index `no-cache`,
-  asset URL stamping, immutable Cache-Control on JS, import rewriting,
-  `/api/version` shape).
-
-## Validation
-
-- `pytest -q --ignore=tests/e2e` → 65 passed.
-- Live tray smoke via curl on loopback: `/api/version` returns the
-  expected shape; `/static/main.js` returns `Cache-Control: public,
-  max-age=31536000, immutable` with 8 ES-module imports stamped.
-- End-to-end via Playwright (headless Chromium) against the live tray
-  with `?token=…`: `#buildReadout` reads `Build: <sha> · <ts>` after boot.
-- Phone validation: edit `styles.css` (visible colour swap) → restart
-  tray → open the PWA cold → the change appears within one normal app
-  open. Settings panel shows the current SHA + timestamp.
-
 ## Out of scope (deliberately)
 
 - Service-worker offline cache — separate, much larger change.
