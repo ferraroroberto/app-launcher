@@ -238,8 +238,25 @@ def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     )
     expect(tile).to_be_visible(timeout=5_000)
 
-    name_box = tile.locator(".coding-name").bounding_box()
-    actions_box = tile.locator(".row-actions.agent-actions").bounding_box()
+    # Gate the geometry read on the *children* being laid out, not just the
+    # tile (#182). `_default_recap` already stubs the recap tile hidden, so the
+    # recap reflow isn't the cause here; the residual race is a plain layout
+    # settle on the loaded hosted runner — expect(tile).to_be_visible() can
+    # pass a tick before the child .coding-name / action strip are painted, so
+    # a single immediate bounding_box() read returns None. Wait for both parts
+    # to be visible, then poll until both boxes settle.
+    name = tile.locator(".coding-name")
+    actions = tile.locator(".row-actions.agent-actions")
+    expect(name).to_be_visible(timeout=5_000)
+    expect(actions).to_be_visible(timeout=5_000)
+
+    name_box = actions_box = None
+    for _ in range(50):
+        name_box = name.bounding_box()
+        actions_box = actions.bounding_box()
+        if name_box and actions_box:
+            break
+        authed_page.wait_for_timeout(100)
     assert name_box and actions_box, "tile parts not laid out"
 
     # Vertical overlap → same row (inline). No overlap → stacked (the bug).
