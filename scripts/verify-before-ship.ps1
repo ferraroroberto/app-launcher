@@ -41,12 +41,22 @@ try {
 
     Write-Host "==> pytest e2e (Chromium + WebKit/iPhone, auto-booted)..." -ForegroundColor Cyan
     $env:LAUNCHER_E2E_AUTOBOOT = "1"
+    # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts the
+    # process via os._exit, skipping the summary) is named by the last nodeid
+    # logged at test start. Locally keep the compact dotted output (#184).
+    if ($env:CI -eq "true") {
+        $env:PYTHONUNBUFFERED = "1"
+        $e2eArgs = @("tests/e2e", "-v")
+    } else {
+        $e2eArgs = @("tests/e2e", "-q")
+    }
     try {
-        & $python -m pytest tests/e2e -q
+        & $python -m pytest @e2eArgs
         $e2eExit = $LASTEXITCODE
     }
     finally {
         Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
+        if ($env:CI -eq "true") { Remove-Item Env:\PYTHONUNBUFFERED -ErrorAction SilentlyContinue }
     }
     if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
 }
