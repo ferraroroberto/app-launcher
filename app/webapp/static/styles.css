@@ -133,6 +133,10 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* Pin the row to the action-button height (36px) so a title-only card
+     (Projects) collapses to the same height as the ones carrying toggles
+     or buttons (Coding options, Running sessions, Settings) — issue #212. */
+  min-height: 36px;
 }
 .coding-summary-title { font-size: 15px; font-weight: 600; }
 .coding-summary-title::before {
@@ -467,7 +471,7 @@ html, body {
   /* Vertical padding trimmed (was 16px) so tiles take less height and more
      projects fit per screen (issue #212). Horizontal padding is unchanged —
      the tiles still breathe sideways. */
-  padding: 9px 18px;
+  padding: 7px 18px;
   font-size: 16px;
   font-weight: 600;
   color: var(--fg);
@@ -556,11 +560,11 @@ html, body {
    media query below) and the icon strip wraps as the final fallback. */
 .app-item .row-actions.agent-actions .icon-btn {
   width: 52px;
-  /* Shorter rows (was 60px) to match the trimmed .coding-name height and
-     fit more tiles per screen (issue #212). 44px is the floor — the icon is
-     30px + 6px padding ≈ 42px, and 44px keeps a comfortable phone tap target. */
-  min-height: 44px;
-  padding: 6px;
+  /* Shorter rows (was 60px) to fit more tiles per screen (issue #212). Tuned
+     down to 40px on device feedback — the 30px icon + 5px padding fills it and
+     it stays a usable phone tap target. */
+  min-height: 40px;
+  padding: 5px;
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
   border-top: 0;
@@ -798,6 +802,8 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  /* Match the collapsed height of the Code-tab cards (issue #212). */
+  min-height: 36px;
 }
 .settings-summary-title::before {
   content: "\203A";          /* › — rotates to ⌄ when the panel is open */
@@ -884,6 +890,14 @@ html, body {
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
+
+/* Status + build identity footer (issue #212): centred plain text at the
+   very bottom of the page, outside every card. */
+.page-foot {
+  margin: 16px 4px;
+  text-align: center;
+}
+.page-foot p { margin: 2px 0; }
 
 .listeners {
   display: flex;
