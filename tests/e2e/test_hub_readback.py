@@ -40,9 +40,9 @@ _AUDIO_MOCK = """
     copyToChannel() {}
   }
   class FakeNode {
-    constructor() { this.buffer = null; }
+    constructor() { this.buffer = null; this.onended = null; }
     connect() {}
-    start() { window.__audioLog.started += 1; }
+    start() { window.__audioLog.started += 1; window.__lastNode = this; }
   }
   class FakeAudioContext {
     constructor() {
@@ -126,6 +126,25 @@ def test_speak_hub_plays_pcm_via_web_audio(
     assert got["resumed"] >= 1           # resumed in the gesture for iOS autoplay
     assert got["buffers"] >= 1           # PCM decoded into ≥1 AudioBuffer
     assert got["started"] >= 1           # scheduled on the timeline
+
+
+def test_speak_hub_finishes_on_last_buffer_end(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """Playback finalizes on the LAST scheduled buffer's onended (the real end),
+    not a timer computed from a possibly-drifted playHead — so a slower-than-
+    realtime stream isn't cut off early (#206 follow-up). Firing the last node's
+    onended resets the button to idle."""
+    authed_page.add_init_script(_AUDIO_MOCK)
+    _route_hub(authed_page, available=True)
+    _open_terminal(authed_page, base_url, launched_pty_session)
+    pressed = authed_page.evaluate(
+        "async () => { await window.__readback.speakHub('Reading on.', {});"
+        " window.__lastNode.onended();"   # the final buffer drains
+        " return document.getElementById('terminalSpeak')"
+        "          .getAttribute('aria-pressed'); }"
+    )
+    assert pressed == "false"
 
 
 def test_speak_hub_failure_rejects_for_fallback(

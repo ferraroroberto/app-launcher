@@ -471,11 +471,22 @@ function finishHubNaturally() {
 // WHOLE stream has been read + scheduled; the audio keeps playing until the last
 // buffer's end, after which `finishHubNaturally` fires. Mirrors local-llm-hub's
 // playground.js speakStream.
+//
+// Orpheus can synthesize slower than realtime, so the stream may arrive slower
+// than it plays. Two guards keep the tail from being cut (issue #206 follow-up):
+//  1. never schedule a buffer in the *past* — if delivery fell behind, resume
+//     `playHead` from "now", so it always tracks the true end of audio (a buffer
+//     started in the past would otherwise make playHead under-count the end and
+//     overlap earlier audio); and
+//  2. finish on the LAST buffer's `onended` (the real end), with a generous
+//     timer only as a backstop — the previous timer-only finish, computed from a
+//     drifted playHead, fired early and `ctx.close()` chopped the tail.
 async function pumpPcmStream(ctx, res, ac) {
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
-  let playHead = ctx.currentTime + 0.12;   // small lead-in to avoid underrun
+  let playHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
   let leftover = new Uint8Array(0);
+  let lastNode = null;
   const reader = res.body.getReader();
   _hubReader = reader;
   for (;;) {
@@ -500,11 +511,17 @@ async function pumpPcmStream(ctx, res, ac) {
     const node = ctx.createBufferSource();
     node.buffer = buf;
     node.connect(ctx.destination);
+    // Guard 1: never start in the past — keeps playHead == true end of audio.
+    if (playHead < ctx.currentTime + 0.02) playHead = ctx.currentTime + 0.02;
     node.start(playHead);
     playHead += buf.duration;
+    lastNode = node;
   }
-  // Finalize once the last scheduled buffer has drained.
-  const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 200;
+  if (!lastNode) { finishHubNaturally(); return; }
+  // Guard 2: finish when the final buffer actually ends; the timer only backs
+  // it up (with ample slack) in case onended doesn't fire.
+  lastNode.onended = function () { finishHubNaturally(); };
+  const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 1500;
   _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
 }
 
