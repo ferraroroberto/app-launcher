@@ -39,8 +39,11 @@ class TestIndex:
         body = resp.text
         assert "/static/styles.css?v=" in body
         assert "/static/main.js?v=" in body
-        # No literal ?v=18 left over from the manual era.
-        assert "?v=18" not in body
+        # No literal ?v=18 left over from the manual era. Match the complete
+        # legacy stamp (the closing quote) — a substring "?v=18" also matches
+        # valid 8-hex fleet hashes that happen to begin "18…" (the 8-hex
+        # format itself is enforced by the loop below).
+        assert '?v=18"' not in body
         # Stamps are 8 hex chars.
         stamps = re.findall(r"/static/[\w\-.]+\.(?:css|js)\?v=([a-f0-9]+)", body)
         assert stamps, "expected at least one stamped asset URL"

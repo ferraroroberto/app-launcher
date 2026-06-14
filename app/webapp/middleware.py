@@ -86,13 +86,12 @@ def _terminal_guard_level(path: str) -> Optional[str]:
     if path == "/api/ocr":
         return "passkey"
     # Read-aloud hub TTS (issues #203, #206): the synthesized text is the
-    # agent's last reply — terminal content — so the staging POST
-    # (/api/tts/speak) and the progressive stream GET (/api/tts/stream/{id},
-    # whose passkey token rides ?tt= since <audio src> can't set headers) both
-    # get the terminal's gate. The /api/tts/health probe is innocuous (a bare
-    # up/down bool) and stays token-gated only, so the SPA can decide button
-    # visibility even over the public tunnel where the terminal is refused.
-    if path == "/api/tts/speak" or path.startswith("/api/tts/stream/"):
+    # agent's last reply — terminal content — so the PCM stream POST
+    # (/api/tts/speak) gets the terminal's gate. The /api/tts/health probe is
+    # innocuous (a bare up/down bool) and stays token-gated only, so the SPA
+    # can decide button visibility even over the public tunnel where the
+    # terminal itself is refused.
+    if path == "/api/tts/speak":
         return "passkey"
     # Life OS private-content browser (issue #102): the file-content
     # endpoint (read/delete/rename, all under /api/life-os/file*) and the

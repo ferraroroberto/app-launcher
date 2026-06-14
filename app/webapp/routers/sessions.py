@@ -11,9 +11,7 @@ import asyncio
 import hmac
 import json
 import logging
-import secrets
-import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
@@ -351,112 +349,71 @@ async def tts_health(request: Request) -> Dict[str, Any]:
     return {"available": bool(ok)}
 
 
-# Ephemeral staging for the two-step read-aloud (#206). The 🔊 reply text is
-# too long for a GET query string and <audio src> can't carry the bearer /
-# passkey headers — so POST /api/tts/speak stashes the text and returns a short
-# id, and the <audio> element GETs /api/tts/stream/{id} (auth via the query
-# string, like the WS URL). The browser then plays the hub's WAV *as it
-# synthesizes* (low time-to-first-audio) instead of waiting for the whole clip.
-# Entries are per-webapp (app.state), TTL-expired, and NOT one-shot — iOS may
-# issue a Range probe before the real fetch, so both must find the entry.
-_TTS_STAGE_TTL = 30.0  # seconds — only has to bridge the POST→GET hop
-
-
-def _tts_store(request: Request) -> Dict[str, Dict[str, Any]]:
-    store = getattr(request.app.state, "tts_stage", None)
-    if store is None:
-        store = {}
-        request.app.state.tts_stage = store
-    return store
-
-
-def _tts_purge(store: Dict[str, Dict[str, Any]]) -> None:
-    now = time.monotonic()
-    stale = [k for k, v in store.items() if now - v["ts"] > _TTS_STAGE_TTL]
-    for k in stale:
-        store.pop(k, None)
-
-
 @router.post("/api/tts/speak")
-async def tts_speak(request: Request) -> Dict[str, Any]:
-    """Stage a read-aloud request and return its stream id (#203, #206).
+async def tts_speak(request: Request) -> StreamingResponse:
+    """Stream the read-aloud reply as headerless PCM16 from the hub (#203, #206).
 
-    Body is JSON ``{text, voice?, speed?}``. The text is stashed server-side
-    (no synthesis yet — instant) and the ``id`` is handed back so the browser's
-    ``<audio>`` element can GET ``/api/tts/stream/{id}`` and play the hub WAV
-    progressively. Carries the terminal's Tailscale-only + passkey gate (the
-    reply text is terminal content).
+    Body is JSON ``{text, voice?, speed?}``. The webapp forwards it to the
+    hub's OpenAI-shape ``POST /v1/audio/speech`` with ``response_format="pcm"``
+    + ``stream_format="audio"`` and Orpheus as the default model, then streams
+    the raw PCM16 bytes to the browser as they synthesize — the client plays
+    them through the Web Audio API for low time-to-first-audio. The hub's
+    ``X-Sample-Rate`` is forwarded so the client knows the PCM rate. PCM (not
+    WAV) because the hub's streaming WAV uses an open-ended RIFF header an
+    ``<audio>`` element can't play progressively (issue #206). Carries the
+    terminal's Tailscale-only + passkey gate (the reply text is terminal
+    content).
     """
-    _tts_base(request)  # 503 early when the hub is unconfigured
+    base = _tts_base(request)
     body = await maybe_json(request)
     text = str(body.get("text") or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="empty text")
     voice = (str(body.get("voice") or "").strip()) or None
     speed = body.get("speed")
-    store = _tts_store(request)
-    _tts_purge(store)
-    sid = secrets.token_urlsafe(16)
-    store[sid] = {
-        "text": text,
-        "voice": voice,
-        "speed": speed if isinstance(speed, (int, float)) else None,
-        "ts": time.monotonic(),
-    }
-    audit.audit_event("tts_speak", chars=len(text), client=client_ip(request))
-    return {"id": sid, "url": f"/api/tts/stream/{sid}"}
-
-
-@router.get("/api/tts/stream/{sid}")
-async def tts_stream(sid: str, request: Request) -> StreamingResponse:
-    """Stream the staged reply's WAV from the hub, chunk-for-chunk (#206).
-
-    Forwards the staged text to the hub's OpenAI-shape ``POST /v1/audio/speech``
-    with ``stream_format="audio"`` and Orpheus as the default model, then
-    streams the WAV bytes to the ``<audio>`` element as they arrive — the same
-    forwarding the dictation SSE proxy uses, so the webapp never buffers the
-    whole clip and the browser plays it progressively. The bearer + passkey
-    ride the query string, since ``<audio src>`` can't set headers.
-    """
-    base = _tts_base(request)
-    store = _tts_store(request)
-    _tts_purge(store)
-    staged: Optional[Dict[str, Any]] = store.get(sid)
-    if staged is None:
-        raise HTTPException(status_code=404, detail="unknown or expired tts id")
     payload = tts_client.build_speech_payload(
-        staged["text"], voice=staged["voice"], speed=staged["speed"]
+        text, voice=voice, speed=speed if isinstance(speed, (int, float)) else None
     )
     upstream_url = tts_client.speech_url(base)
 
-    async def _pump():
-        try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST", upstream_url, json=payload
-                ) as upstream:
-                    if upstream.status_code >= 400:
-                        # Drain so the connection closes cleanly. The 200 is
-                        # already committed, so a hub error just yields a
-                        # truncated/empty stream — the <audio> onerror fires and
-                        # the button resets (the hub was probed live first).
-                        await upstream.aread()
-                        logger.debug(f"tts upstream HTTP {upstream.status_code}")
-                        return
-                    async for chunk in upstream.aiter_bytes():
-                        if chunk:
-                            yield chunk
-        except httpx.HTTPError as exc:
-            logger.debug(f"tts stream proxy ended: {exc}")
+    # Open the upstream stream first so the hub's X-Sample-Rate header can be
+    # forwarded on the response (it must be set before streaming begins). This
+    # mirrors the hub's own /v1/audio/speech streaming proxy.
+    client = httpx.AsyncClient(timeout=None)
+    stream_cm = client.stream("POST", upstream_url, json=payload)
+    try:
+        upstream = await stream_cm.__aenter__()
+    except httpx.HTTPError as exc:
+        await client.aclose()
+        raise HTTPException(status_code=502, detail=f"tts upstream error: {exc}")
+    if upstream.status_code >= 400:
+        await upstream.aread()
+        await stream_cm.__aexit__(None, None, None)
+        await client.aclose()
+        raise HTTPException(
+            status_code=502, detail=f"tts hub HTTP {upstream.status_code}"
+        )
+    sample_rate = upstream.headers.get("x-sample-rate", "24000")
 
+    async def _forward():
+        try:
+            async for chunk in upstream.aiter_bytes():
+                if chunk:
+                    yield chunk
+        except httpx.HTTPError as exc:
+            logger.debug(f"tts speak proxy ended: {exc}")
+        finally:
+            await stream_cm.__aexit__(None, None, None)
+            await client.aclose()
+
+    audit.audit_event("tts_speak", chars=len(text), client=client_ip(request))
     return StreamingResponse(
-        _pump(),
-        media_type="audio/wav",
+        _forward(),
+        media_type="audio/L16",
         headers={
             "Cache-Control": "no-store",
             "X-Accel-Buffering": "no",
-            # Discourage iOS from issuing Range requests against a live stream.
-            "Accept-Ranges": "none",
+            "X-Sample-Rate": str(sample_rate),
         },
     )
 

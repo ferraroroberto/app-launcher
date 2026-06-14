@@ -70,19 +70,22 @@ def build_speech_payload(
     model: Optional[str] = None,
     speed: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Build the streamed-WAV request body for the hub speech endpoint.
+    """Build the streamed-PCM request body for the hub speech endpoint.
 
-    ``stream_format="audio"`` makes the hub hold the upstream connection open
-    and forward bytes as they arrive (low time-to-first-audio); the open-ended
-    RIFF header lets the browser play the WAV incrementally. An unknown
-    ``voice`` falls back to the Orpheus default rather than erroring.
+    ``response_format="pcm"`` + ``stream_format="audio"`` makes the hub stream
+    **headerless PCM16** (``content-type: audio/L16``, ``X-Sample-Rate``) as it
+    synthesizes — the browser plays it through the Web Audio API for low
+    time-to-first-audio (issue #206). WAV is deliberately avoided: the hub's
+    streaming WAV uses an open-ended RIFF header that an ``<audio>`` element
+    can't play progressively. An unknown ``voice`` falls back to the Orpheus
+    default rather than erroring.
     """
     chosen_voice = voice if voice in VALID_VOICES else DEFAULT_VOICE
     payload: Dict[str, Any] = {
         "model": model or DEFAULT_MODEL,
         "input": text,
         "voice": chosen_voice,
-        "response_format": "wav",
+        "response_format": "pcm",
         "stream_format": "audio",
     }
     if speed is not None:

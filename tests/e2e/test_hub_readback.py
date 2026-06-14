@@ -3,15 +3,16 @@
 The 🔊 button gains a second voice: when the local-llm-hub is reachable, the
 reply is synthesized through the hub's Orpheus voice instead of the on-device
 Web Speech voice. For low time-to-first-audio (#206) ``speakHub()`` POSTs the
-reply to ``/api/tts/speak`` to *stage* it (returns an id), then points an
-``<audio>`` element at ``/api/tts/stream/{id}`` (token + tt in the query, since
-``<audio src>`` can't carry headers) so the browser plays the WAV progressively.
-``probeHub()`` caches hub reachability so the click can pick the path;
-``cancelHub()`` stops in-flight audio on a re-press / tab-leave / new dictation.
+reply to ``/api/tts/speak``, which streams **headerless PCM16** as the hub
+synthesizes, and plays it through the **Web Audio API** — read the streaming
+fetch, convert int16→float32, and schedule ``AudioBufferSourceNode``s on an
+``AudioContext`` resumed in the click gesture. ``probeHub()`` caches hub
+reachability so the click can pick the path; ``cancelHub()`` closes the context
+(silencing scheduled audio) on a re-press / tab-leave / new dictation.
 
-``<audio>`` and the hub endpoints are stubbed (no live hub on :8000, no real
-autoplay in headless WebKit). The JS hub surface is driven through the
-``window.__readback`` seam, mirroring ``test_voice_readback.py``.
+The ``AudioContext`` and the hub endpoints are stubbed (no live hub on :8000,
+no real audio pipeline in headless WebKit). The JS hub surface is driven
+through the ``window.__readback`` seam, mirroring ``test_voice_readback.py``.
 """
 
 from __future__ import annotations
@@ -21,37 +22,61 @@ from playwright.sync_api import Page
 
 pytestmark = pytest.mark.smoke
 
-# Stub the <audio> element: record every play()/pause() and every src set so
-# the test can assert the unlock-then-blob playback sequence without a real
-# audio pipeline (headless WebKit has none, and autoplay is gated).
+# Stub the Web Audio API: record AudioContext lifecycle + every scheduled buffer
+# so the test can assert PCM was decoded and scheduled, without a real audio
+# pipeline (headless WebKit has none). Shadows both the standard and webkit
+# constructors so the SPA's `window.AudioContext || window.webkitAudioContext`
+# resolves to the fake.
 _AUDIO_MOCK = """
 (() => {
-  window.__audioLog = { played: 0, paused: 0, srcs: [] };
-  class FakeAudio {
-    constructor(src) {
-      this._src = src || '';
-      this.onended = null; this.onerror = null;
-      if (src) window.__audioLog.srcs.push(src);
+  window.__audioLog = {
+    contexts: 0, resumed: 0, buffers: 0, started: 0, closed: 0, samples: 0,
+  };
+  class FakeAudioBuffer {
+    constructor(ch, len, sr) {
+      this.length = len; this.sampleRate = sr;
+      this.duration = len / Math.max(1, sr);
     }
-    get src() { return this._src; }
-    set src(v) { this._src = v; if (v) window.__audioLog.srcs.push(v); }
-    play() { window.__audioLog.played += 1; return Promise.resolve(); }
-    pause() { window.__audioLog.paused += 1; }
-    removeAttribute() { this._src = ''; }
-    load() {}
+    copyToChannel() {}
   }
-  Object.defineProperty(window, 'Audio', {
-    configurable: true, writable: true, value: FakeAudio,
-  });
+  class FakeNode {
+    constructor() { this.buffer = null; }
+    connect() {}
+    start() { window.__audioLog.started += 1; }
+  }
+  class FakeAudioContext {
+    constructor() {
+      this.currentTime = 0; this.destination = {};
+      window.__audioLog.contexts += 1;
+    }
+    resume() { window.__audioLog.resumed += 1; return Promise.resolve(); }
+    createBuffer(ch, len, sr) {
+      window.__audioLog.buffers += 1; window.__audioLog.samples += len;
+      return new FakeAudioBuffer(ch, len, sr);
+    }
+    createBufferSource() { return new FakeNode(); }
+    close() { window.__audioLog.closed += 1; return Promise.resolve(); }
+  }
+  for (const name of ['AudioContext', 'webkitAudioContext']) {
+    Object.defineProperty(window, name, {
+      configurable: true, writable: true, value: FakeAudioContext,
+    });
+  }
 })()
 """
+
+# A few whole int16 samples of PCM16 — enough for the pump loop to decode and
+# schedule at least one buffer.
+_PCM = b"\xc2\xff\xc0\xff\xc5\xff\xca\xff"
+
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
 
 
-def _route_hub(page: Page, *, available: bool = True, stage_status: int = 200) -> None:
+def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
+               pcm: bytes = _PCM) -> None:
     page.route(
         "**/api/tts/health",
         lambda route: route.fulfill(
@@ -59,14 +84,13 @@ def _route_hub(page: Page, *, available: bool = True, stage_status: int = 200) -
             body='{"available": %s}' % ("true" if available else "false"),
         ),
     )
-    # POST /api/tts/speak stages the text and returns a stream id. The
-    # <audio> element then GETs /api/tts/stream/{id}; the stubbed Audio never
-    # actually fetches it, so only the stage POST needs a route.
+    # POST /api/tts/speak streams headerless PCM16 with an X-Sample-Rate header;
+    # the client decodes it through the (stubbed) Web Audio API.
     page.route(
         "**/api/tts/speak",
         lambda route: route.fulfill(
-            status=stage_status, content_type="application/json",
-            body='{"id": "stub-id", "url": "/api/tts/stream/stub-id"}',
+            status=speak_status, content_type="audio/L16",
+            headers={"X-Sample-Rate": "24000"}, body=pcm,
         ),
     )
 
@@ -84,38 +108,33 @@ def test_probe_caches_hub_availability(
     assert got == {"ok": True, "cached": True}
 
 
-def test_speak_hub_streams_progressively(
+def test_speak_hub_plays_pcm_via_web_audio(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """speakHub() unlocks the <audio> element, POSTs to stage the text, then
-    points the element at /api/tts/stream/{id} for progressive playback — two
-    play()s (silent unlock + the stream) and a stream src carrying the auth
-    query swapped in after the empty-WAV unlock clip."""
+    """speakHub() creates + resumes an AudioContext, POSTs to /api/tts/speak,
+    then decodes the PCM stream and schedules it on the Web Audio timeline."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _open_terminal(authed_page, base_url, launched_pty_session)
     got = authed_page.evaluate(
         "async () => { const ok = await window.__readback.speakHub("
         "  'Build is green.', { token: 'bt', terminalToken: 'tt' });"
-        " return { ok, played: window.__audioLog.played,"
-        "          stream: window.__audioLog.srcs.find(s =>"
-        "            s.indexOf('/api/tts/stream/stub-id') >= 0) || '' }; }"
+        " return Object.assign({ ok }, window.__audioLog); }"
     )
     assert got["ok"] is True
-    assert got["played"] >= 2                       # silent unlock + the stream
-    assert "/api/tts/stream/stub-id" in got["stream"]
-    # bearer + passkey ride the query string (the <audio> can't set headers).
-    assert "token=bt" in got["stream"]
-    assert "tt=tt" in got["stream"]
+    assert got["contexts"] >= 1          # an AudioContext was created
+    assert got["resumed"] >= 1           # resumed in the gesture for iOS autoplay
+    assert got["buffers"] >= 1           # PCM decoded into ≥1 AudioBuffer
+    assert got["started"] >= 1           # scheduled on the timeline
 
 
-def test_speak_hub_stage_failure_rejects_for_fallback(
+def test_speak_hub_failure_rejects_for_fallback(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """A failed stage POST makes speakHub() reject, so the click handler can
-    fall back to Web Speech."""
+    """A failed POST makes speakHub() reject, so the click handler can fall
+    back to Web Speech."""
     authed_page.add_init_script(_AUDIO_MOCK)
-    _route_hub(authed_page, available=True, stage_status=502)
+    _route_hub(authed_page, available=True, speak_status=502)
     _open_terminal(authed_page, base_url, launched_pty_session)
     rejected = authed_page.evaluate(
         "async () => { try { await window.__readback.speakHub('hi', {}); return false; }"
@@ -127,16 +146,17 @@ def test_speak_hub_stage_failure_rejects_for_fallback(
 def test_cancel_hub_stops_audio(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """cancelHub() pauses in-flight audio and resets the button to idle."""
+    """cancelHub() closes the AudioContext (silencing scheduled audio) and
+    resets the button to idle."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _open_terminal(authed_page, base_url, launched_pty_session)
     got = authed_page.evaluate(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
         " window.__readback.cancelHub();"
-        " return { paused: window.__audioLog.paused,"
+        " return { closed: window.__audioLog.closed,"
         "          pressed: document.getElementById('terminalSpeak')"
         "                     .getAttribute('aria-pressed') }; }"
     )
-    assert got["paused"] >= 1
+    assert got["closed"] >= 1
     assert got["pressed"] == "false"
