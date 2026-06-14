@@ -75,8 +75,7 @@ if defined WANT_RESTART (
     REM the shared base python while CommandLine still carries the .venv path.
     REM Matching the image path would miss the real webapp/session-host; the
     REM CommandLine scope keeps the sweep on THIS repo's children only.
-    set "RECLAIM_VENV=%SCRIPT_DIR%.venv"
-    %PS% -NoProfile -NonInteractive -File "%TRAY_PS%" reclaim -VenvDir "%RECLAIM_VENV%" -Ports "8445"
+    %PS% -NoProfile -NonInteractive -File "%TRAY_PS%" reclaim -VenvDir "%TRAY_VENV%" -Ports "8445"
     REM Give Windows a moment to release :8445 before rebinding.
     ping 127.0.0.1 -n 3 >nul
 )
