@@ -143,6 +143,23 @@ html, body {
   transition: transform 0.15s ease;
 }
 .coding-card[open] .coding-summary-title::before { transform: rotate(90deg); }
+
+/* Running-sessions + Projects panels (issue #212) reuse the coding-card
+   chrome — `.coding-card { padding: 0 }` plus the `.coding-summary` header
+   — so their body content needs the side padding added back. The Apps/Jobs
+   running panels are plain `.card.sessions-card` (no `.coding-card`) and are
+   intentionally untouched. Bottom padding is gated on `[open]` so a collapsed
+   card sits flush under its summary with no dangling gap. */
+.sessions-card.coding-card > :not(summary),
+.projects-card.coding-card > :not(summary) {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.sessions-card.coding-card[open],
+.projects-card.coding-card[open] { padding-bottom: 14px; }
+/* Tighter inter-tile gap on the Projects list — part of the vertical
+   compaction (issue #212); horizontal rhythm is left alone. */
+.projects-card .card-list { gap: 6px; }
 .opt-group {
   padding: 6px 16px 14px;
   border-top: 1px solid #2a2f42;
@@ -447,7 +464,10 @@ html, body {
    the right — sat side by side, not stacked. */
 .coding-item .app-main { justify-content: center; }
 .coding-name {
-  padding: 16px 18px;
+  /* Vertical padding trimmed (was 16px) so tiles take less height and more
+     projects fit per screen (issue #212). Horizontal padding is unchanged —
+     the tiles still breathe sideways. */
+  padding: 9px 18px;
   font-size: 16px;
   font-weight: 600;
   color: var(--fg);
@@ -536,8 +556,11 @@ html, body {
    media query below) and the icon strip wraps as the final fallback. */
 .app-item .row-actions.agent-actions .icon-btn {
   width: 52px;
-  min-height: 60px;
-  padding: 8px;
+  /* Shorter rows (was 60px) to match the trimmed .coding-name height and
+     fit more tiles per screen (issue #212). 44px is the floor — the icon is
+     30px + 6px padding ≈ 42px, and 44px keeps a comfortable phone tap target. */
+  min-height: 44px;
+  padding: 6px;
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
   border-top: 0;
