@@ -103,30 +103,40 @@
         </div>
       </details>
 
-      <section class="card sessions-card">
-        <div class="card-header">
-          <h2>🟢 Running sessions</h2>
-          <div class="sessions-header-actions">
-            <button id="gitStatusBtn" type="button" class="ghost-btn git-status-btn"
-                    title="Check each project's git branch + uncommitted changes"
-                    aria-label="Check git status of all projects">⎇ status</button>
-            <button id="refreshSessions" type="button" class="ghost-btn" title="Refresh">🔄</button>
-            <div id="gitStatusSummary" class="git-summary" hidden
-                 role="list" aria-label="Projects not on their default branch"></div>
+      <details class="card coding-card sessions-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">🟢 Running sessions</span>
+            <div class="sessions-header-actions">
+              <button id="gitStatusBtn" type="button" class="ghost-btn git-status-btn"
+                      title="Check each project's git branch + uncommitted changes"
+                      aria-label="Check git status of all projects">⎇ status</button>
+              <button id="refreshSessions" type="button" class="ghost-btn" title="Refresh">🔄</button>
+              <div id="gitStatusSummary" class="git-summary" hidden
+                   role="list" aria-label="Projects not on their default branch"></div>
+            </div>
           </div>
-        </div>
+        </summary>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
         <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
         <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
-      </section>
-      <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
-      <div id="claudeEmpty" class="empty" hidden>
-        No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
-      </div>
-      <p id="gitStatusLegend" class="muted small git-legend" hidden>
-        <span class="git-swatch off-main"></span> not on main ·
-        <span class="git-swatch dirty"></span> uncommitted changes
-      </p>
+      </details>
+
+      <details class="card coding-card projects-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">📁 Projects</span>
+          </div>
+        </summary>
+        <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
+        <div id="claudeEmpty" class="empty" hidden>
+          No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
+        </div>
+        <p id="gitStatusLegend" class="muted small git-legend" hidden>
+          <span class="git-swatch off-main"></span> not on main ·
+          <span class="git-swatch dirty"></span> uncommitted changes
+        </p>
+      </details>
     </section>
 
     <section id="paneApps" class="pane" hidden>
