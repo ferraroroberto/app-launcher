@@ -14,14 +14,20 @@ import pytest
 
 
 class TestTtsGate:
-    """``/api/tts/speak`` carries the terminal's Tailscale-only + passkey gate
-    (the synthesized text is the agent's reply — terminal content). The
-    TestClient connects as host 'testclient' (not loopback, not tailnet), so it
-    is refused. ``/api/tts/health`` is innocuous and stays ungated."""
+    """``/api/tts/speak`` and ``/api/tts/summarize`` carry the terminal's
+    Tailscale-only + passkey gate (the text is the agent's reply — terminal
+    content). The TestClient connects as host 'testclient' (not loopback, not
+    tailnet), so both are refused. ``/api/tts/health`` is innocuous and stays
+    ungated."""
 
     def test_speak_refused_off_tailnet(self, webapp_client):
         client, _, _ = webapp_client
         resp = client.post("/api/tts/speak", json={"text": "hello"})
+        assert resp.status_code == 403
+
+    def test_summarize_refused_off_tailnet(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.post("/api/tts/summarize", json={"text": "hello"})
         assert resp.status_code == 403
 
     def test_health_allowed_off_tailnet(self, webapp_client):
@@ -29,6 +35,50 @@ class TestTtsGate:
         resp = client.get("/api/tts/health")
         assert resp.status_code == 200
         assert resp.json()["available"] is True
+
+
+class TestTtsSummarize:
+    """``/api/tts/summarize`` condenses the agent's reply via the hub's
+    claude-haiku-4-5 (issue #210). Bypass the terminal gate (covered by
+    TestTtsGate) by treating the TestClient host as loopback."""
+
+    @pytest.fixture(autouse=True)
+    def _bypass_gate(self, monkeypatch):
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware,
+            "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+
+    def test_returns_summary(self, webapp_client):
+        client, _, overrides = webapp_client
+        overrides["llm"].summarize.return_value = "Ship it. Decide: merge now?"
+        resp = client.post("/api/tts/summarize", json={"text": "a long reply"})
+        assert resp.status_code == 200
+        assert resp.json() == {"summary": "Ship it. Decide: merge now?"}
+        # The hub base + the reply text are forwarded to the chat client.
+        args = overrides["llm"].summarize.call_args.args
+        assert args[0] == "http://127.0.0.1:8000"
+        assert args[1] == "a long reply"
+
+    def test_empty_text_rejected(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.post("/api/tts/summarize", json={"text": "   "})
+        assert resp.status_code == 400
+
+    def test_disabled_when_url_unset(self, webapp_client):
+        client, app, _ = webapp_client
+        app.state.webapp_config.llm_hub_url = ""
+        resp = client.post("/api/tts/summarize", json={"text": "hi"})
+        assert resp.status_code == 503
+
+    def test_hub_error_maps_to_status(self, webapp_client):
+        client, _, overrides = webapp_client
+        llm = overrides["llm"]
+        llm.summarize.side_effect = llm.LlmError("hub unreachable", status=503)
+        resp = client.post("/api/tts/summarize", json={"text": "hi"})
+        assert resp.status_code == 503
 
 
 class TestTtsHealth:

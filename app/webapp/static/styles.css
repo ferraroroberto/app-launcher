@@ -1229,6 +1229,83 @@ body.terminal-open {
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
+/* Read-aloud action menu (issue #210): a small dropdown anchored below the
+   terminal bar under the 🔊 button — "Read aloud" (verbatim) and
+   "Summarize & read" (hub-condensed for hands-free / driving). */
+.speak-popover {
+  position: absolute;
+  top: 48px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-elev-2);
+  border: 1px solid #2a2f42;
+  border-radius: 12px;
+  z-index: 30;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.speak-action {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 15px;
+  text-align: left;
+  white-space: nowrap;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.speak-action:active { background: var(--bg-elev-2); }
+/* Read-aloud summary modal (issue #210): the hub summary shown on screen while
+   it's read aloud (and readable on its own), auto-closing when the read ends or
+   on a tap. Sits above the terminal overlay (300), below the toast (400). */
+.summary-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.summary-card {
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-elev-2);
+  border: 1px solid #2a2f42;
+  border-radius: 16px;
+  padding: 18px 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.summary-title { font-weight: 700; font-size: 16px; }
+.summary-close {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 8px;
+  min-width: 36px;
+  min-height: 36px;
+  font-size: 15px;
+  cursor: pointer;
+}
+.summary-text {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.summary-foot { text-align: center; }
 /* On-screen keys popover (issue #36): D-pad anchored below the
    terminal bar, right-aligned under the ⌨️ button. */
 .keys-popover {

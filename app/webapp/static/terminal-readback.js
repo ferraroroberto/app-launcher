@@ -482,6 +482,10 @@ function finishHubNaturally() {
 //     timer only as a backstop — the previous timer-only finish, computed from a
 //     drifted playHead, fired early and `ctx.close()` chopped the tail.
 async function pumpPcmStream(ctx, res, ac) {
+  // Recover the context if iOS suspended/interrupted it during the await(s)
+  // between the gesture and now — without this, a long gap (the summarize
+  // path waits on the LLM first) leaves the context silent (issue #210).
+  try { ctx.resume(); } catch (_) { /* best effort */ }
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
   let playHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
@@ -540,16 +544,55 @@ async function pumpPcmStream(ctx, res, ac) {
 export async function speakHub(text, opts) {
   const clean = (text || '').trim();
   if (!clean) return false;
+  const handle = prepareHub();     // synchronous gesture-tick prologue
+  return speakHubInto(handle, clean, opts);
+}
+
+/**
+ * Synchronous prologue for hub playback — MUST run inside the button-click
+ * gesture tick. Cancels any in-flight read-aloud, creates + resumes a fresh
+ * AudioContext (iOS only lets audio sound when the context is unlocked inside a
+ * user gesture), arms an AbortController, and flips the speaking state on so the
+ * button shows ⏹ immediately. Returns a `{ ctx, ac }` handle for
+ * `speakHubInto`. Split out (issue #210) so the "summarize & read" path can
+ * unlock audio in the gesture, then `await` the summary, then stream into this
+ * context — keeping iOS autoplay happy across the network round-trip. Throws
+ * when Web Audio is unavailable (the caller falls back to Web Speech).
+ */
+export function prepareHub() {
   cancelHub();                 // a second press / restart cancels in-flight audio
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) throw new Error('Web Audio API unavailable');
-  // Create + resume the context NOW, in the gesture tick, so iOS lets it sound.
   const ctx = new AudioCtx();
   _hubCtx = ctx;
   try { ctx.resume(); } catch (_) { /* best effort */ }
+  // iOS unlock: play one silent sample NOW, inside the gesture, so the context
+  // is genuinely user-activated. iOS only "blesses" a context that produces
+  // output within the gesture's activation window — the summarize path's real
+  // audio arrives seconds later (after the LLM round-trip), too late to unlock
+  // on its own, so a context created-but-silent stays muted without this (#210).
+  try {
+    const silent = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = silent;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch (_) { /* best effort */ }
   const ac = new AbortController();
   _hubAbort = ac;
   setSpeaking(true);
+  return { ctx, ac };
+}
+
+/**
+ * Async body for hub playback: POST `text` to `/api/tts/speak` and stream the
+ * PCM into the prepared `handle.ctx`. Resolves true once the stream is consumed
+ * (audio keeps playing to its scheduled end); **rejects** on any failure so the
+ * caller can fall back to `speak()`. A manual cancel is NOT a rejection.
+ * `handle` comes from `prepareHub()` (called in the gesture tick).
+ */
+export async function speakHubInto(handle, text, opts) {
+  const { ctx, ac } = handle;
   try {
     const res = await fetch('/api/tts/speak', {
       method: 'POST',
@@ -557,7 +600,7 @@ export async function speakHub(text, opts) {
         { 'Content-Type': 'application/json' }, authHeaders(opts)
       ),
       body: JSON.stringify({
-        text: clean,
+        text: (text || '').trim(),
         voice: (opts && opts.voice) || undefined,
         speed: (opts && opts.speed) || undefined,
       }),
@@ -574,6 +617,30 @@ export async function speakHub(text, opts) {
     if (_hubAbort === ac) cancelHub();
     throw err;
   }
+}
+
+/**
+ * Ask the hub to summarize `text` for driving (issue #210): POST it to
+ * `/api/tts/summarize`, which routes to the hub's `claude-haiku-4-5`, and
+ * resolve the short summary string. Rejects on any failure (hub unconfigured /
+ * down / blocked POST / empty completion) so the caller can surface an error
+ * and skip the read. `opts`: `{ token, terminalToken }`.
+ */
+export async function summarizeReply(text, opts) {
+  const clean = (text || '').trim();
+  if (!clean) throw new Error('nothing to summarize');
+  const res = await fetch('/api/tts/summarize', {
+    method: 'POST',
+    headers: Object.assign(
+      { 'Content-Type': 'application/json' }, authHeaders(opts)
+    ),
+    body: JSON.stringify({ text: clean }),
+  });
+  if (!res.ok) throw new Error('hub summarize HTTP ' + res.status);
+  const body = await res.json().catch(function () { return null; });
+  const summary = body && typeof body.summary === 'string' ? body.summary.trim() : '';
+  if (!summary) throw new Error('empty summary');
+  return summary;
 }
 
 /** Stop any in-flight hub read-aloud and reset to idle (a manual stop). */
@@ -596,6 +663,9 @@ if (typeof window !== 'undefined') {
     speak: speak,
     cancelSpeech: cancelSpeech,
     speakHub: speakHub,
+    prepareHub: prepareHub,
+    speakHubInto: speakHubInto,
+    summarizeReply: summarizeReply,
     cancelHub: cancelHub,
     probeHub: probeHub,
     isHubAvailable: isHubAvailable,
