@@ -23,6 +23,7 @@ from websockets.exceptions import InvalidHandshake
 from src import (
     audit,
     launcher,
+    llm_client,
     photo_ocr_client,
     session_client,
     tts_client,
@@ -416,6 +417,34 @@ async def tts_speak(request: Request) -> StreamingResponse:
             "X-Sample-Rate": str(sample_rate),
         },
     )
+
+
+@router.post("/api/tts/summarize")
+async def tts_summarize(request: Request) -> Dict[str, Any]:
+    """Summarize the agent's last reply for hands-free / driving listening (#210).
+
+    Body is JSON ``{text}``. Forwards it to the hub's ``claude-haiku-4-5`` with
+    a driving-mode prompt (the essence + any decision to take) and returns
+    ``{summary}``; the client then reads the summary aloud through the same
+    voice path as ``/api/tts/speak``. Carries the terminal's Tailscale-only +
+    passkey gate (the input text is the agent's reply — terminal content).
+    """
+    base = _tts_base(request)
+    body = await maybe_json(request)
+    text = str(body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty text")
+    try:
+        summary = await asyncio.to_thread(llm_client.summarize, base, text)
+    except llm_client.LlmError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event(
+        "tts_summarize",
+        chars=len(text),
+        summary_chars=len(summary),
+        client=client_ip(request),
+    )
+    return {"summary": summary}
 
 
 @router.websocket("/api/claude-code/sessions/{sid}/ws")

@@ -23,9 +23,12 @@ import {
   isSpeechSupported,
   onSpeakingChange,
   onSpeechEnd,
+  prepareHub,
   probeHub,
   speak,
   speakHub,
+  speakHubInto,
+  summarizeReply,
 } from './terminal-readback.js';
 import {
   clearTerminalToken,
@@ -390,16 +393,24 @@ export async function openTerminal(session) {
   // live /api/tts/health probe then refines which path the click takes.
   const ttsConfigured = !!(state.status && state.status.tts);
   els.terminalSpeak.hidden = !(isSpeechSupported() || ttsConfigured);
-  if (ttsConfigured) {
-    probeHub({
-      token: readToken(),
-      terminalToken: readTerminalToken(),
-    }).then(function (ok) {
-      // A reachable hub means the button is useful even where Web Speech
-      // isn't supported (e.g. some embedded WebViews).
-      if (ok) els.terminalSpeak.hidden = false;
-    });
-  }
+  // The "Summarize & read" menu action (issue #210) needs the hub's LLM, so
+  // it's revealed only once the live /api/tts/health probe confirms the hub is
+  // reachable — hidden until then. Verbatim "Read aloud" stays available via
+  // Web Speech regardless. We always probe (not gated on state.status.tts,
+  // which may not be populated yet on a deep-link open): the health endpoint
+  // answers available:false cheaply when the hub is unconfigured/down.
+  const summarizeAction = els.terminalSpeakPopover &&
+    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
+  if (summarizeAction) summarizeAction.hidden = true;
+  probeHub({
+    token: readToken(),
+    terminalToken: readTerminalToken(),
+  }).then(function (ok) {
+    // A reachable hub means the button is useful even where Web Speech
+    // isn't supported (e.g. some embedded WebViews), and unlocks summarize.
+    if (ok) els.terminalSpeak.hidden = false;
+    if (summarizeAction) summarizeAction.hidden = !ok;
+  });
 
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
@@ -610,6 +621,7 @@ export function hideTerminal() {
   stopReading();
   closeTerminal();
   closeKeysPopover();
+  closeSpeakPopover();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
   unlockBodyScroll();
@@ -1305,12 +1317,173 @@ function stopReading() {
 
 // Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
 function setSpeakingUI(on) {
+  // Auto-close the summary modal (issue #210) the moment reading stops —
+  // whether it finished naturally, was stopped, or the tab was left. This is
+  // the single sink for every speaking→idle transition, so the modal can't
+  // outlive the read.
+  if (!on) closeSummaryModal();
   const btn = els.terminalSpeak;
   if (!btn) return;
   btn.classList.toggle('speaking', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   btn.textContent = on ? '⏹' : '🔊';
   btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
+}
+
+// ── Summary modal (issue #210) ──────────────────────────────────────────────
+// Shows the hub summary on screen while it's read aloud — and readable on its
+// own when audio is muted. Auto-closes when the read ends (via setSpeakingUI);
+// a tap anywhere (or the ✕) dismisses it and stops the read.
+function showSummaryModal(text) {
+  if (!els.summaryModal) return;
+  els.summaryModalText.textContent = text;
+  els.summaryModal.hidden = false;
+}
+
+function closeSummaryModal() {
+  if (!els.summaryModal || els.summaryModal.hidden) return;
+  els.summaryModal.hidden = true;
+}
+
+function wireSummaryModal() {
+  if (!els.summaryModal) return;
+  // Tap the backdrop (or ✕) → dismiss + stop reading. stopReading() flips the
+  // speaking state, which closeSummaryModal()s via setSpeakingUI as a backstop.
+  els.summaryModal.addEventListener('click', function () {
+    stopReading();
+    closeSummaryModal();
+  });
+}
+
+// ── Read-aloud action menu (issue #210) ─────────────────────────────────────
+// The 🔊 button opens a small dropdown with two actions: "Read aloud" (the
+// verbatim path, #190/#203/#206) and "Summarize & read" — condense the reply
+// via the hub's claude-haiku-4-5 first, for hands-free / driving listening. The
+// menu only appears when the summarize action is available (hub reachable);
+// otherwise the button keeps its original single-tap "read aloud" behaviour.
+let _speakOutsideHandler = null;
+
+function closeSpeakPopover() {
+  if (!els.terminalSpeakPopover) return;
+  els.terminalSpeakPopover.hidden = true;
+  if (_speakOutsideHandler) {
+    document.removeEventListener('pointerdown', _speakOutsideHandler);
+    _speakOutsideHandler = null;
+  }
+}
+
+function openSpeakPopover() {
+  if (!els.terminalSpeakPopover) return;
+  els.terminalSpeakPopover.hidden = false;
+  // Close on any tap outside the popover or its toggle button. The opening
+  // tap's pointerdown has already fired, so binding now won't catch it; the
+  // contains() guards cover a tap on the 🔊 button itself.
+  if (!_speakOutsideHandler) {
+    _speakOutsideHandler = function (ev) {
+      if (els.terminalSpeakPopover.contains(ev.target) ||
+          els.terminalSpeak.contains(ev.target)) return;
+      closeSpeakPopover();
+    };
+    document.addEventListener('pointerdown', _speakOutsideHandler);
+  }
+}
+
+// True when the "Summarize & read" action is currently offered (hub reachable).
+function summarizeAvailable() {
+  const a = els.terminalSpeakPopover &&
+    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
+  return !!(a && !a.hidden);
+}
+
+// Speak `text` aloud, preferring the hub's Orpheus voice and falling back to
+// on-device Web Speech. `handle` is an optional pre-armed hub context from
+// prepareHub() — the summarize path arms it inside the click gesture, then
+// awaits the summary, then reads into it (so iOS still lets the audio sound
+// after the network round-trip). The verbatim path passes none; speakHub then
+// arms its own context inside this call's synchronous prologue.
+async function readTextAloud(text, handle, quiet) {
+  const peek = text.length > 60 ? text.slice(0, 60) + '…' : text;
+  const opts = { token: readToken(), terminalToken: readTerminalToken() };
+  // `quiet` suppresses the peek toast — the summarize path already shows the
+  // full text in the modal, so the toast would be redundant noise.
+  if (handle || isHubAvailable()) {
+    if (!quiet) toast('🔊 Reading: ' + peek, 'good');
+    try {
+      if (handle) await speakHubInto(handle, text, opts);
+      else await speakHub(text, opts);
+      return true;
+    } catch (_) {
+      // hub path failed — fall through to Web Speech below
+    }
+  }
+  if (!speak(text)) {
+    toast('Speech not supported on this browser', 'error');
+    return false;
+  }
+  if (!quiet) toast('🔊 Reading: ' + peek, 'good');
+  return true;
+}
+
+// "Read aloud": extract the last reply and speak it verbatim. Must be called
+// directly from the button-click gesture (speakHub arms audio synchronously).
+function readLastReplyAloud() {
+  const t = state.terminal;
+  if (!t || !t.term) return;
+  const text = extractLastReply(t.term);
+  if (!text) { toast('🔊 No reply to read yet.'); return; }
+  readTextAloud(text, null);
+}
+
+// "Summarize & read": condense the last reply via the hub, then speak the
+// summary. Arms the hub audio context in the gesture tick (before the awaited
+// summary) so iOS lets the synthesized summary sound. Must be called directly
+// from the button-click gesture.
+async function summarizeAndReadLastReply() {
+  const t = state.terminal;
+  if (!t || !t.term) return;
+  const text = extractLastReply(t.term);
+  if (!text) { toast('🔊 No reply to read yet.'); return; }
+  const opts = { token: readToken(), terminalToken: readTerminalToken() };
+  // Arm hub audio now, in the gesture, so the summary can sound after the LLM
+  // round-trip; null when Web Audio is unavailable → Web Speech fallback.
+  let handle = null;
+  if (isHubAvailable()) {
+    try { handle = prepareHub(); } catch (_) { handle = null; }
+  }
+  toast('📝 Summarizing…');
+  let summary;
+  try {
+    summary = await summarizeReply(text, opts);
+  } catch (_) {
+    if (handle) cancelHub();   // release the armed context + reset the button
+    toast('Could not summarize the reply.', 'error');
+    return;
+  }
+  // Show the summary on screen (readable on its own when audio is muted); it
+  // auto-closes when the read finishes — or stays until dismissed if silent.
+  showSummaryModal(summary);
+  await readTextAloud(summary, handle, true);
+}
+
+function wireSpeakMenu() {
+  // Idle press: open the action menu when summarize is available, else read
+  // aloud directly (preserve the original single-tap behaviour). Press while
+  // reading: stop. The tap is the user gesture iOS speech needs, so the read
+  // helpers run synchronously off this handler.
+  els.terminalSpeak.addEventListener('click', function () {
+    if (isSpeaking()) { stopReading(); closeSpeakPopover(); return; }
+    if (!summarizeAvailable()) { readLastReplyAloud(); return; }
+    if (els.terminalSpeakPopover.hidden) openSpeakPopover();
+    else closeSpeakPopover();
+  });
+  els.terminalSpeakPopover.addEventListener('click', function (ev) {
+    const btn = ev.target.closest('.speak-action');
+    if (!btn) return;
+    const action = btn.getAttribute('data-action');
+    closeSpeakPopover();
+    if (action === 'summarize') summarizeAndReadLastReply();
+    else readLastReplyAloud();
+  });
 }
 
 function wireCompose() {
@@ -1361,46 +1534,17 @@ export function wireTerminal() {
     try { t.term.scrollToBottom(); } catch (_) {}
     t.term.focus();
   });
-  // 🔊 read the last AI reply aloud (issue #190) — a top-bar control beside
-  // ↓ Jump, not in the compose bar (which is for editing). Press while idle →
-  // extract the last reply + speak; press while reading → stop. The button
-  // tap is the user gesture iOS speech synthesis requires.
+  // 🔊 read-aloud control (issues #190, #210) — a top-bar control beside
+  // ↓ Jump, not in the compose bar (which is for editing). Idle press opens the
+  // action menu (Read aloud / Summarize & read) when the hub is reachable, else
+  // reads aloud directly; press while reading → stop. The tap is the user
+  // gesture iOS speech synthesis requires, so the read helpers run off it.
   onSpeakingChange(setSpeakingUI);
   // When the reply finishes reading on its own, reset the button (done by
   // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
   onSpeechEnd(function () { toast('🔊 Finished reading.', 'good'); });
-  els.terminalSpeak.addEventListener('click', async function () {
-    if (isSpeaking()) { stopReading(); return; }
-    const t = state.terminal;
-    if (!t || !t.term) return;
-    const text = extractLastReply(t.term);
-    if (!text) { toast('🔊 No reply to read yet.'); return; }
-    // Visible confirmation the press registered and text was found — so a
-    // silent phone (mute switch, volume, BT routing) is distinguishable from
-    // an extraction miss. Show the opening words.
-    const peek = text.length > 60 ? text.slice(0, 60) + '…' : text;
-    // Prefer the hub's high-quality Orpheus voice; fall back to the on-device
-    // Web Speech voice on any hub failure (down, blocked, autoplay refused).
-    // speakHub() must be called directly here so its synchronous prologue
-    // unlocks the <audio> element inside this click's user-gesture tick.
-    if (isHubAvailable()) {
-      toast('🔊 Reading: ' + peek, 'good');
-      try {
-        await speakHub(text, {
-          token: readToken(),
-          terminalToken: readTerminalToken(),
-        });
-        return;
-      } catch (_) {
-        // hub path failed — fall through to Web Speech below
-      }
-    }
-    if (!speak(text)) {
-      toast('Speech not supported on this browser', 'error');
-      return;
-    }
-    toast('🔊 Reading: ' + peek, 'good');
-  });
+  wireSpeakMenu();
+  wireSummaryModal();
   els.terminalPaste.addEventListener('click', async function () {
     const t = state.terminal;
     if (!t) return;

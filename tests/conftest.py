@@ -172,6 +172,16 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     tts_mock.TtsError = real_tts_client.TtsError
     monkeypatch.setattr(sessions_router, "tts_client", tts_mock)
 
+    # Mock the local-llm-hub chat client (issue #210) — the /api/tts/summarize
+    # proxy goes through it; tests assert the summary without a live hub on
+    # :8000. summarize() returns a stub by default; LlmError keeps its real
+    # type so error-mapping tests can raise it.
+    from src import llm_client as real_llm_client
+    llm_mock = MagicMock()
+    llm_mock.summarize.return_value = "Build is green. No decision needed."
+    llm_mock.LlmError = real_llm_client.LlmError
+    monkeypatch.setattr(sessions_router, "llm_client", llm_mock)
+
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. After the split
     # the `audit` import lives in routers/apps.py, routers/sessions.py,
@@ -208,6 +218,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "voice": voice_mock,
         "photo_ocr": photo_ocr_mock,
         "tts": tts_mock,
+        "llm": llm_mock,
         "audit": audit_mock,
         "webauthn": webauthn_mock,
         "tmp_registry_path": tmp_registry,
