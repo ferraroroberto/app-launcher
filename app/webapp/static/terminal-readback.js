@@ -25,12 +25,12 @@
  * `onSpeakingChange`/`onSpeechEnd`):
  *  - **Hub TTS (issues #203, #206)** — the preferred path when the
  *    local-llm-hub is reachable: `speakHub()` POSTs the reply to
- *    `/api/tts/speak` to *stage* it (returns a short id), then points an
- *    `<audio>` element at `/api/tts/stream/{id}` and lets the browser play the
- *    Orpheus WAV **progressively, as it synthesizes** — low time-to-first-audio
- *    instead of waiting for the whole clip. `<audio src>` can't carry the
- *    bearer/passkey headers, so they ride the query string (like the WS URL);
- *    the two-step stage keeps the long reply text out of that URL.
+ *    `/api/tts/speak`, which streams **headerless PCM16** as the hub
+ *    synthesizes, and plays it through the **Web Audio API** — first audio in
+ *    ~1.5 s instead of waiting for the whole clip. (An `<audio>` element can't
+ *    play the hub's open-ended streaming WAV progressively, so Web Audio reads
+ *    the PCM stream and schedules it on an AudioContext timeline; the context
+ *    is resumed in the click gesture so iOS lets it sound.)
  *  - **Web Speech API (`speechSynthesis`)** — the on-device fallback when the
  *    hub is unconfigured / down / blocks the POST: zero infra, already on iOS
  *    Safari, and the button press supplies the user gesture iOS requires.
@@ -396,16 +396,23 @@ export function cancelSpeech() {
   setSpeaking(false);
 }
 
-// ── Hub TTS (issue #203): high-quality Orpheus voice over local-llm-hub ─────
-// A 44-byte empty WAV. Played synchronously inside the button-click tick to
-// "unlock" the <audio> element for the deferred blob src we set after the
-// fetch resolves — on iOS a play() after an await is outside the user gesture
-// and gets blocked, but a previously-unlocked element keeps the permission.
-const SILENT_WAV =
-  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+// ── Hub TTS (issues #203, #206): high-quality Orpheus voice over local-llm-hub ─
+// The hub streams *headerless PCM16* (`/api/tts/speak` → `audio/L16` +
+// `X-Sample-Rate`) and we play it through the **Web Audio API** — read the
+// streaming fetch with getReader(), convert each int16 chunk to float32, and
+// schedule AudioBufferSourceNodes back-to-back on an AudioContext timeline.
+// This is the technique the hub's own TTS UI uses (first audio in ~1.4 s).
+//
+// Why not <audio src>: the hub's streaming WAV carries an open-ended RIFF
+// header (0xFFFFFFFF sizes) that an <audio> element can't play progressively —
+// it just buffers silently (#206). Web Audio sidesteps the container entirely.
+// The AudioContext is created + resumed inside the click gesture (before the
+// first await) so iOS autoplay policy lets it make sound.
 
-let _hubAudio = null;        // the <audio> element playing the streamed WAV
-let _hubAbort = null;        // AbortController for the in-flight staging fetch
+let _hubCtx = null;          // the AudioContext currently rendering hub audio
+let _hubReader = null;       // the streaming-body reader (cancelled on stop)
+let _hubAbort = null;        // AbortController for the in-flight fetch
+let _hubEndTimer = null;     // fires finishHubNaturally once the last buffer ends
 let _hubAvailable = null;    // tri-state: null = unprobed, true / false
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
@@ -434,39 +441,95 @@ export async function probeHub(opts) {
 /** True once a probe has confirmed the hub voice is reachable. */
 export function isHubAvailable() { return _hubAvailable === true; }
 
+// Tear down all hub-playback resources (timer, reader, fetch, AudioContext).
+// Closing the context silences any still-scheduled buffers immediately.
+function hubTeardown() {
+  if (_hubEndTimer) { clearTimeout(_hubEndTimer); _hubEndTimer = null; }
+  if (_hubReader) {
+    try { _hubReader.cancel(); } catch (_) { /* best effort */ }
+    _hubReader = null;
+  }
+  if (_hubAbort) {
+    try { _hubAbort.abort(); } catch (_) { /* best effort */ }
+    _hubAbort = null;
+  }
+  if (_hubCtx) {
+    const ctx = _hubCtx;
+    _hubCtx = null;
+    try { ctx.close(); } catch (_) { /* best effort */ }
+  }
+}
+
 function finishHubNaturally() {
-  _hubAbort = null;
-  if (_hubAudio) { _hubAudio.onended = null; _hubAudio.onerror = null; }
-  _hubAudio = null;
+  hubTeardown();
   if (!_speaking) return;       // already finalized (e.g. by a manual cancel)
   setSpeaking(false);
   if (_onEnd) { try { _onEnd(); } catch (_) { /* best effort */ } }
 }
 
+// Stream PCM16 from `res` and schedule it on `ctx`'s timeline. Resolves once the
+// WHOLE stream has been read + scheduled; the audio keeps playing until the last
+// buffer's end, after which `finishHubNaturally` fires. Mirrors local-llm-hub's
+// playground.js speakStream.
+async function pumpPcmStream(ctx, res, ac) {
+  const sampleRate =
+    parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
+  let playHead = ctx.currentTime + 0.12;   // small lead-in to avoid underrun
+  let leftover = new Uint8Array(0);
+  const reader = res.body.getReader();
+  _hubReader = reader;
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    if (ac.signal.aborted) return;
+    const value = chunk.value;
+    if (!value || value.length === 0) continue;
+    // Merge any odd trailing byte from the previous chunk, then split into whole
+    // int16 samples (carry the remainder forward).
+    const merged = new Uint8Array(leftover.length + value.length);
+    merged.set(leftover, 0);
+    merged.set(value, leftover.length);
+    const usable = merged.length - (merged.length % 2);
+    leftover = merged.slice(usable);
+    if (usable === 0) continue;
+    const i16 = new Int16Array(merged.buffer.slice(0, usable));
+    const f32 = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
+    const buf = ctx.createBuffer(1, f32.length, sampleRate);
+    buf.copyToChannel(f32, 0);
+    const node = ctx.createBufferSource();
+    node.buffer = buf;
+    node.connect(ctx.destination);
+    node.start(playHead);
+    playHead += buf.duration;
+  }
+  // Finalize once the last scheduled buffer has drained.
+  const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 200;
+  _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
+}
+
 /**
- * Speak `text` through the hub's Orpheus voice, played progressively. Resolves
- * true once playback starts; **rejects** on any staging failure (hub
- * unconfigured / down / blocked POST / autoplay refused) so the caller can fall
- * back to `speak()`.
- *
- * Two steps so the browser streams the WAV as it synthesizes (#206): POST the
- * reply to stage it (returns an id), then point the `<audio>` element at
- * `/api/tts/stream/{id}` — the bearer + passkey ride the query string since
- * `<audio src>` can't set headers.
+ * Speak `text` through the hub's Orpheus voice, played progressively via Web
+ * Audio. Resolves true once the stream has been consumed (audio keeps playing
+ * until its scheduled end); **rejects** on any failure (hub unconfigured /
+ * down / blocked POST / no Web Audio) so the caller can fall back to `speak()`.
+ * A manual cancel is NOT a rejection.
  *
  * `opts`: `{ token, terminalToken, voice, speed }`. Must be called directly
  * inside the button-click handler — the synchronous prologue (before the first
- * `await`) unlocks the audio element within the user gesture iOS requires.
+ * `await`) creates + resumes the AudioContext within the user gesture iOS
+ * requires.
  */
 export async function speakHub(text, opts) {
   const clean = (text || '').trim();
   if (!clean) return false;
   cancelHub();                 // a second press / restart cancels in-flight audio
-  // Unlock NOW, in the gesture tick: create the element and kick a muted play
-  // of the empty clip; the real stream src is swapped in after the fetch.
-  const audio = new Audio(SILENT_WAV);
-  _hubAudio = audio;
-  audio.play().catch(function () { /* unlock is best-effort */ });
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) throw new Error('Web Audio API unavailable');
+  // Create + resume the context NOW, in the gesture tick, so iOS lets it sound.
+  const ctx = new AudioCtx();
+  _hubCtx = ctx;
+  try { ctx.resume(); } catch (_) { /* best effort */ }
   const ac = new AbortController();
   _hubAbort = ac;
   setSpeaking(true);
@@ -484,22 +547,11 @@ export async function speakHub(text, opts) {
       signal: ac.signal,
     });
     if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
-    const body = await res.json().catch(function () { return null; });
-    const id = body && body.id;
-    if (!id) throw new Error('hub tts staging returned no id');
-    if (ac.signal.aborted) { return true; }   // cancelled mid-fetch — already idle
-    // Progressive playback: the browser GETs the stream and plays the WAV as
-    // the hub synthesizes it. token + tt ride the query string (like the WS).
-    const params = new URLSearchParams();
-    if (opts && opts.token) params.set('token', opts.token);
-    if (opts && opts.terminalToken) params.set('tt', opts.terminalToken);
-    const q = params.toString();
-    audio.onended = function () { finishHubNaturally(); };
-    audio.onerror = function () { finishHubNaturally(); };
-    audio.src = '/api/tts/stream/' + encodeURIComponent(id) + (q ? '?' + q : '');
-    await audio.play();
+    if (!res.body || !res.body.getReader) throw new Error('hub tts stream unsupported');
+    await pumpPcmStream(ctx, res, ac);
     return true;
   } catch (err) {
+    if (ac.signal.aborted) return true;   // cancelled — not a failure, no fallback
     // Only tear down if this call still owns the shared state — a newer
     // speakHub() may have aborted us and taken over (don't clobber it).
     if (_hubAbort === ac) cancelHub();
@@ -509,17 +561,7 @@ export async function speakHub(text, opts) {
 
 /** Stop any in-flight hub read-aloud and reset to idle (a manual stop). */
 export function cancelHub() {
-  if (_hubAbort) {
-    try { _hubAbort.abort(); } catch (_) { /* best effort */ }
-    _hubAbort = null;
-  }
-  if (_hubAudio) {
-    try { _hubAudio.pause(); } catch (_) { /* best effort */ }
-    _hubAudio.onended = null;
-    _hubAudio.onerror = null;
-    try { _hubAudio.removeAttribute('src'); _hubAudio.load(); } catch (_) { /**/ }
-    _hubAudio = null;
-  }
+  hubTeardown();
   setSpeaking(false);
 }
 

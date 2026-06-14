@@ -62,12 +62,13 @@ def test_speech_url_builds_path():
     )
 
 
-def test_payload_defaults_to_orpheus_streaming_wav():
+def test_payload_defaults_to_orpheus_streaming_pcm():
     p = tts_client.build_speech_payload("hello world")
     assert p["model"] == "orpheus"
     assert p["input"] == "hello world"
     assert p["voice"] == "tara"
-    assert p["response_format"] == "wav"
+    # Headerless PCM16 streaming for Web Audio playback (#206) — not WAV.
+    assert p["response_format"] == "pcm"
     assert p["stream_format"] == "audio"
     assert "speed" not in p  # omitted unless explicitly set
 
