@@ -32,7 +32,7 @@ PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 
 # Local LLM hub — see global CLAUDE.md "claude-local-calls".
 LOCAL_LLM_BASE_URL = "http://127.0.0.1:8000"
-LOCAL_LLM_MODEL = "claude-haiku-4-5"
+LOCAL_LLM_MODEL = "claude_haiku"
 LOCAL_LLM_TIMEOUT_SECONDS = 8.0
 SUMMARY_TAIL_CHARS = 500
 

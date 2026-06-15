@@ -35,7 +35,7 @@ def test_chat_url_builds_path():
 
 def test_payload_uses_haiku_and_driving_prompt():
     p = llm_client.build_summary_payload("a long reply")
-    assert p["model"] == "claude-haiku-4-5"
+    assert p["model"] == "claude_haiku"
     assert p["stream"] is False
     assert p["messages"][0]["role"] == "system"
     assert "driving" in p["messages"][0]["content"].lower()
