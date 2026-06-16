@@ -1,7 +1,7 @@
-"""Fleet system map — serve the claude-config architecture PNG (issue #173).
+"""Fleet system map — serve the fleet-config architecture PNG (issue #173).
 
 The fleet system map (``<claude_config_dir>/architecture/system-map.png``,
-rendered by claude-config's ``/system-map`` job) is surfaced as a foldable
+rendered by fleet-config's ``/system-map`` job) is surfaced as a foldable
 section on the Coding tab — "see my whole system" one tap from the phone,
 any time, instead of waiting for the weekly Slack image post.
 
@@ -31,7 +31,7 @@ from src.webapp_config import WebappConfig
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Location of the rendered map inside a claude-config checkout.
+# Location of the rendered map inside a fleet-config checkout.
 _MAP_REL = "architecture/system-map.png"
 
 

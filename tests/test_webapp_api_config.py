@@ -147,15 +147,15 @@ class TestPatchConfig:
         it patches through and surfaces on the next GET."""
         client, app, _ = webapp_client
         resp = client.post(
-            "/api/config", json={"claude_config_dir": "E:\\automation\\claude-config"}
+            "/api/config", json={"claude_config_dir": "E:\\automation\\fleet-config"}
         )
         assert resp.status_code == 200
         assert (
             app.state.webapp_config.claude_config_dir
-            == "E:\\automation\\claude-config"
+            == "E:\\automation\\fleet-config"
         )
         body = client.get("/api/config").json()
-        assert body["claude_config_dir"] == "E:\\automation\\claude-config"
+        assert body["claude_config_dir"] == "E:\\automation\\fleet-config"
 
     def test_antigravity_toggles_round_trip(self, webapp_client):
         """The two Antigravity launch toggles patch through and surface

@@ -84,7 +84,7 @@ A job can carry `"visible": true` (omitted / `false` is the default). It changes
 {
   "id": "codebase-audit-fleet",
   "name": "Weekly Codebase Audit (fleet)",
-  "script_path": "E:\\automation\\claude-config\\audit-fleet.bat",
+  "script_path": "E:\\automation\\fleet-config\\audit-fleet.bat",
   "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
   "visible": true
 }

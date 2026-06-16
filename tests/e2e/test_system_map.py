@@ -2,12 +2,12 @@
 
 The feature: the Code tab carries a foldable **🗺️ System map** section —
 a ``<details>`` mirroring the other Coding-tab panels — that lazy-loads the
-claude-config ``architecture/system-map.png`` on first expand and opens it
+fleet-config ``architecture/system-map.png`` on first expand and opens it
 full-screen (lightbox) on tap. The section hides unless
 ``/api/system-map/status`` reports the PNG exists.
 
 Both endpoints are stubbed via ``page.route`` so the test is deterministic
-regardless of whether a claude-config checkout (and a rendered map) is
+regardless of whether a fleet-config checkout (and a rendered map) is
 present on the host — on CI there is none.
 
 Runs in both projections — the wiring is browser-agnostic but the iPhone

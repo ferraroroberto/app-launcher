@@ -22,7 +22,7 @@ _MAP_BYTES = b"\x89PNG\r\n\x1a\n stub render"
 
 def _make_map(tmp_path: Path) -> Path:
     """Create a stub ``architecture/system-map.png`` and return the root dir."""
-    root = tmp_path / "claude-config"
+    root = tmp_path / "fleet-config"
     arch = root / "architecture"
     arch.mkdir(parents=True)
     (arch / "system-map.png").write_bytes(_MAP_BYTES)

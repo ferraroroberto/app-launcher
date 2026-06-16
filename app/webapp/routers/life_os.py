@@ -493,7 +493,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
 
 
 # Date-stamped prefix (YYYY-MM-DD-HHMM-) a rename preserves — only the slug
-# after it changes (mirrors claude-config's conversation_capture.py naming).
+# after it changes (mirrors fleet-config's conversation_capture.py naming).
 _DATE_PREFIX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}-\d{4}-)")
 
 
