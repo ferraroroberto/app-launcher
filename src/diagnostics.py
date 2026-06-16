@@ -20,7 +20,7 @@ import threading
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Deque, List, Optional
+from typing import Callable, Deque, List, Optional
 
 try:
     import psutil  # type: ignore
@@ -96,6 +96,11 @@ class PortOwner:
     exe: str = ""
     cwd: str = ""
     cmdline: List[str] = field(default_factory=list)
+    # PID of the nearest ancestor that is *itself* a listed listener, or
+    # ``None`` for a top-level app. Set by :func:`_assign_parents` so the
+    # UI can nest a helper service (e.g. a TTS shim a hub spawned) under
+    # its parent app instead of showing it as a duplicate top-level row.
+    parent_pid: Optional[int] = None
 
     def cmdline_str(self) -> str:
         return " ".join(self.cmdline) if self.cmdline else ""
@@ -297,7 +302,46 @@ def list_app_listeners() -> List[PortOwner]:
             owner.cmdline = []
         found[port] = owner
 
-    return [found[p] for p in sorted(found)]
+    owners = [found[p] for p in sorted(found)]
+    _assign_parents(owners, _psutil_ppid)
+    return owners
+
+
+def _psutil_ppid(pid: int) -> Optional[int]:
+    """Parent PID of ``pid`` via psutil, or ``None`` if unknown/denied."""
+    if psutil is None:
+        return None
+    try:
+        return int(psutil.Process(pid).ppid())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
+        return None
+
+
+def _assign_parents(
+    owners: List[PortOwner],
+    ppid_lookup: Callable[[int], Optional[int]],
+) -> None:
+    """Set each owner's ``parent_pid`` to the nearest ancestor PID that is
+    *itself* one of ``owners`` (or leave it ``None`` for a top-level app).
+
+    Grouping is by **process ancestry**, not a shared port range, so a
+    helper service a parent app spawned (e.g. local-llm-hub's Orpheus TTS
+    shim, a child of the hub) nests under the parent while sibling apps —
+    separate process trees — never group together. ``ppid_lookup`` maps a
+    PID to its parent PID (or ``None`` at the top); it is a parameter so the
+    walk is unit-testable without real processes. The ``seen`` guard makes a
+    pathological cycle terminate instead of spinning.
+    """
+    listener_pids = {o.pid for o in owners}
+    for owner in owners:
+        seen: set[int] = {owner.pid}
+        cur = ppid_lookup(owner.pid)
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            if cur in listener_pids:
+                owner.parent_pid = cur
+                break
+            cur = ppid_lookup(cur)
 
 
 def kill_process_tree(pid: int, grace_seconds: float = 3.0) -> List[int]:

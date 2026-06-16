@@ -964,6 +964,12 @@ html, body {
   font-size: 13px;
 }
 .listener-row > div { min-width: 0; }
+/* A helper service nested under its parent app's row (#224). */
+.listener-row.child {
+  margin-left: 18px;
+  background: transparent;
+  border-left: 2px solid var(--accent, #4a5170);
+}
 .listener-row strong { word-break: break-word; }
 .listener-row .meta { color: var(--muted); font-size: 11px; }
 .listener-row button {
