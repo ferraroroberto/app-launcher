@@ -111,6 +111,8 @@ export const els = {
   jobsEmpty: document.getElementById('jobsEmpty'),
   jobsAddBtn: document.getElementById('jobsAddBtn'),
   jobsSortBtn: document.getElementById('jobsSortBtn'),
+  jobsAgendaCard: document.getElementById('jobsAgendaCard'),
+  jobsAgendaBody: document.getElementById('jobsAgendaBody'),
   jobDialog: document.getElementById('jobDialog'),
   jobForm: document.getElementById('jobForm'),
   jobDialogTitle: document.getElementById('jobDialogTitle'),

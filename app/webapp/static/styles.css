@@ -697,6 +697,52 @@ html, body {
   padding: 6px 10px;
   white-space: nowrap;
 }
+/* Agenda panel (issue #230) — foldable 🗓️ Schedule list above Registered
+   jobs. Day headers separate time-ordered rows; tapping a row reveals that
+   job in the list below. */
+.jobs-agenda-body { padding: 4px 0 8px; }
+.jobs-agenda-day {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 8px 16px 4px;
+  border-top: 1px solid #2a2f42;
+  margin-top: 4px;
+}
+.jobs-agenda-day:first-child { border-top: 0; margin-top: 0; }
+.jobs-agenda-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.jobs-agenda-row:hover { background: rgba(255, 255, 255, 0.03); }
+.jobs-agenda-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 42px;
+}
+.jobs-agenda-name {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jobs-agenda-frequent {
+  padding: 8px 16px 2px;
+  border-top: 1px solid #2a2f42;
+  margin-top: 4px;
+}
+
 /* Countdown chip on the pills row. Reuses .kind-pill (muted, no border);
    an accent text colour sets "when it next fires" apart from the cadence
    chip. Scoped under .launch-btn to beat `.launch-btn .kind-pill`'s

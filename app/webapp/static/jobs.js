@@ -97,6 +97,135 @@ function renderCountdownChip(job) {
   return chip;
 }
 
+// ----------------------------------------------------------- agenda panel
+//
+// The foldable 🗓️ Schedule panel (issue #230) — a mobile-native, day-grouped
+// list of upcoming fires (the deliberate alternative to a 2D calendar grid).
+// Backed by GET /api/jobs/agenda, fetched lazily when the panel opens.
+
+const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function _dayKey(epoch) {
+  const d = new Date(epoch * 1000);
+  return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+}
+
+function _dayHeader(epoch) {
+  const d = new Date(epoch * 1000);
+  const now = new Date();
+  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const b = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diff = Math.round((b - a) / 86400000);
+  if (diff === 0) return 'Today';
+  if (diff === 1) return 'Tomorrow';
+  return _DOW[d.getDay()] + ' ' + d.getDate() + ' ' + _MON[d.getMonth()];
+}
+
+function _clock(epoch) {
+  const d = new Date(epoch * 1000);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return hh + ':' + mm;
+}
+
+function renderAgenda(data) {
+  const host = els.jobsAgendaBody;
+  if (!host) return;
+  host.innerHTML = '';
+  const occ = (data && data.occurrences) || [];
+  const frequent = (data && data.frequent) || [];
+  if (!occ.length && !frequent.length) {
+    const p = document.createElement('p');
+    p.className = 'muted small';
+    p.textContent = 'No scheduled runs in the next ' +
+      ((data && data.days) || 7) + ' days.';
+    host.appendChild(p);
+    return;
+  }
+
+  let currentKey = null;
+  occ.forEach(function (o) {
+    const key = _dayKey(o.fire_epoch);
+    if (key !== currentKey) {
+      currentKey = key;
+      const h = document.createElement('div');
+      h.className = 'jobs-agenda-day';
+      h.textContent = _dayHeader(o.fire_epoch);
+      host.appendChild(h);
+    }
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'jobs-agenda-row';
+    row.dataset.jobId = o.job_id;
+
+    const time = document.createElement('span');
+    time.className = 'jobs-agenda-time';
+    time.textContent = _clock(o.fire_epoch);
+    row.appendChild(time);
+
+    const name = document.createElement('span');
+    name.className = 'jobs-agenda-name';
+    name.textContent = o.name;
+    row.appendChild(name);
+
+    if (o.cadence) {
+      const chip = document.createElement('span');
+      chip.className = 'kind-pill';
+      chip.textContent = o.cadence;
+      row.appendChild(chip);
+    }
+    row.addEventListener('click', function () { revealJob(o.job_id); });
+    host.appendChild(row);
+  });
+
+  if (frequent.length) {
+    const foot = document.createElement('div');
+    foot.className = 'jobs-agenda-frequent muted small';
+    foot.textContent = 'Also frequent: ' + frequent.map(function (f) {
+      return f.name + ' (' + f.cadence + ')';
+    }).join(' · ');
+    host.appendChild(foot);
+  }
+}
+
+async function fetchAgenda() {
+  const host = els.jobsAgendaBody;
+  try {
+    const data = await jsonApi('/api/jobs/agenda?days=7');
+    renderAgenda(data);
+  } catch (exc) {
+    if (String(exc.message) === 'auth required') return;
+    if (host) {
+      host.innerHTML = '';
+      const p = document.createElement('p');
+      p.className = 'muted small';
+      p.textContent = 'Could not load schedule.';
+      host.appendChild(p);
+    }
+  }
+}
+
+// Tapping an agenda row jumps to that job in the Registered-jobs list and
+// expands it — the agenda is a lens, not a second control surface.
+function revealJob(jobId) {
+  const job = state.jobs.find(function (j) { return j.id === jobId; });
+  if (!job) return;
+  if (state.expandedJob !== jobId) {
+    state.expandedJob = jobId;
+    state.selectedRun = null;
+    renderJobs();
+    refreshExpandedContent(jobId, { fetchOutput: true }).catch(function () {});
+  }
+  const row = els.jobsList.querySelector(
+    "li.app-item[data-id='" + cssEscape(jobId) + "']"
+  );
+  if (row && row.scrollIntoView) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
 function renderJobRow(job) {
   const li = document.createElement('li');
   li.className = 'app-item job-item';
@@ -1447,6 +1576,13 @@ export function wireJobs() {
     els.jobsSortBtn.addEventListener('click', function (ev) {
       ev.stopPropagation();
       toggleSort();
+    });
+  }
+  if (els.jobsAgendaCard) {
+    // Lazy + fresh: the agenda is collapsed by default and re-fetched on
+    // each open (mirrors the system-map panel). Nothing polls it.
+    els.jobsAgendaCard.addEventListener('toggle', function () {
+      if (els.jobsAgendaCard.open) fetchAgenda().catch(function () {});
     });
   }
   if (els.jobsAddBtn) {
