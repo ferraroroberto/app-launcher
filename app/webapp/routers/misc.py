@@ -11,7 +11,7 @@ import datetime as _dt
 import logging
 import subprocess
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
@@ -146,6 +146,8 @@ async def probe_ports() -> Dict[str, Any]:
     process's working directory) so you know what you're killing.
     """
     dir_names = _registered_dir_names()
+    owners = list_app_listeners()
+    pid_to_port = {o.pid: o.port for o in owners}
     out = [
         {
             "port": owner.port,
@@ -154,8 +156,12 @@ async def probe_ports() -> Dict[str, Any]:
             "exe": owner.exe,
             "cmdline": owner.cmdline_str(),
             "app": _app_label_for_dir(owner.cwd, dir_names),
+            # When this listener is a helper service the UI nests it under
+            # the parent app's row instead of duplicating the app name.
+            "parent_port": pid_to_port.get(owner.parent_pid) if owner.parent_pid else None,
+            "service": _service_label(owner.cmdline),
         }
-        for owner in list_app_listeners()
+        for owner in owners
     ]
     return {"listeners": out}
 
@@ -196,6 +202,25 @@ def _registered_dir_names() -> Dict[str, str]:
         if app_entry.bat_path:
             mapping[_norm_dir(str(Path(app_entry.bat_path).parent))] = app_entry.name
     return mapping
+
+
+def _service_label(cmdline: List[str]) -> str:
+    """Concise label for a (child) service from its command line.
+
+    Generic across apps: the ``-m <module>`` target if present, else the
+    first ``.py`` script's basename, else "". Used as the nested row's name
+    so a helper reads as e.g. "src.tts_server" rather than repeating the
+    parent app's name.
+    """
+    if not cmdline:
+        return ""
+    for i, tok in enumerate(cmdline):
+        if tok == "-m" and i + 1 < len(cmdline):
+            return cmdline[i + 1]
+    for tok in cmdline[1:]:
+        if tok.endswith(".py"):
+            return Path(tok).name
+    return ""
 
 
 def _app_label_for_dir(cwd: str, dir_names: Dict[str, str]) -> str:

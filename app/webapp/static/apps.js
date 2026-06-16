@@ -658,37 +658,61 @@ function renderListeners(items) {
   const host = els.listenersList;
   host.innerHTML = '';
   els.listenersEmpty.hidden = items.length !== 0;
+
+  // Group helper services (parent_port set, parent present) under their
+  // parent app's row so one app reads as one top-level entry — see #224.
+  const byPort = {};
+  items.forEach(function (l) { byPort[l.port] = l; });
+  const childrenOf = {};
+  const topLevel = [];
   items.forEach(function (l) {
-    const row = document.createElement('div');
-    row.className = 'listener-row';
-
-    const meta = document.createElement('div');
-    const strong = document.createElement('strong');
-    strong.textContent = l.app || l.name || ('port ' + l.port);
-    const sub = document.createElement('span');
-    sub.className = 'meta';
-    sub.textContent = ' :' + l.port + ' · pid ' + l.pid + ' · ' + (l.name || '?');
-    meta.appendChild(strong);
-    meta.appendChild(sub);
-    row.appendChild(meta);
-
-    const kill = document.createElement('button');
-    kill.type = 'button';
-    kill.textContent = '🛑 Kill';
-    kill.addEventListener('click', async function () {
-      const label = l.app || ('port ' + l.port);
-      if (!confirm('Kill ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
-      try {
-        const r = await jsonApi('/api/ports/' + l.port + '/kill', { method: 'POST' });
-        toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
-        fetchListeners();
-      } catch (exc) {
-        toast('Kill failed: ' + (exc.message || exc), 'error');
-      }
-    });
-    row.appendChild(kill);
-    host.appendChild(row);
+    if (l.parent_port != null && byPort[l.parent_port]) {
+      (childrenOf[l.parent_port] = childrenOf[l.parent_port] || []).push(l);
+    } else {
+      topLevel.push(l);
+    }
   });
+
+  topLevel.forEach(function (l) {
+    host.appendChild(buildListenerRow(l, false));
+    (childrenOf[l.port] || []).forEach(function (c) {
+      host.appendChild(buildListenerRow(c, true));
+    });
+  });
+}
+
+function buildListenerRow(l, isChild) {
+  const row = document.createElement('div');
+  row.className = isChild ? 'listener-row child' : 'listener-row';
+
+  const meta = document.createElement('div');
+  const strong = document.createElement('strong');
+  strong.textContent = isChild
+    ? ('↳ ' + (l.service || l.name || ('port ' + l.port)))
+    : (l.app || l.name || ('port ' + l.port));
+  const sub = document.createElement('span');
+  sub.className = 'meta';
+  sub.textContent = ' :' + l.port + ' · pid ' + l.pid + ' · ' + (l.name || '?');
+  meta.appendChild(strong);
+  meta.appendChild(sub);
+  row.appendChild(meta);
+
+  const kill = document.createElement('button');
+  kill.type = 'button';
+  kill.textContent = '🛑 Kill';
+  kill.addEventListener('click', async function () {
+    const label = (isChild ? l.service : l.app) || ('port ' + l.port);
+    if (!confirm('Kill ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
+    try {
+      const r = await jsonApi('/api/ports/' + l.port + '/kill', { method: 'POST' });
+      toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
+      fetchListeners();
+    } catch (exc) {
+      toast('Kill failed: ' + (exc.message || exc), 'error');
+    }
+  });
+  row.appendChild(kill);
+  return row;
 }
 
 export function wireApps() {
