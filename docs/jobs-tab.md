@@ -353,6 +353,7 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 | Route | Auth | Purpose |
 | --- | --- | --- |
 | `GET /api/jobs` | bearer-token | List jobs, decorated with `schedule_chip`, `target_kind`, `next_run`, `next_run_epoch` / `next_run_iso` (computed), `last_run`, `running` |
+| `GET /api/jobs/agenda?days=7` | bearer-token | Upcoming fires over the next `days` (1..14), grouped client-side: `{occurrences, frequent, days, generated_epoch}` (issue #230) |
 | `POST /api/jobs` | bearer-token | Create — body `{name, script_path, args?, schedule?}` |
 | `PUT /api/jobs/<id>` | bearer-token | Edit (re-syncs schtasks) |
 | `DELETE /api/jobs/<id>` | bearer-token | Remove + delete schtasks entries |
@@ -379,6 +380,14 @@ As the registry grows, the question that matters at a glance is *"what fires nex
 - **Computed next-fire timestamp.** `src.jobs.next_fire(schedule, *, now)` derives the next wall-clock fire purely from the bounded schedule shape — `daily_times` picks the earliest upcoming slot, `weekly` rolls to the next matching weekday, `once` returns its instant only if still future, and `none` (which includes a *paused* job, whose active schedule is parked as `none`) returns `None`. It is exposed as `next_run_epoch` (int seconds) + `next_run_iso` on `/api/jobs`. This is deliberately **separate from** the schtasks `next_run` string, which is a locale-formatted, lexically-sorted best-effort value — fine to display, useless to sort by.
 - **Default Next-run order.** The client (`app/webapp/static/jobs.js` `sortedJobs`) sorts ascending by `next_run_epoch`; jobs with no next fire (manual-only / paused) sink to the bottom, tie-broken by name. A header toggle (`#jobsSortBtn`) flips to classic A–Z; the choice persists in `localStorage` (`launcher.jobsSort`, default `next`).
 - **Countdown chip.** Each scheduled row shows a relative `⏱ in 3h` chip next to its cadence chip, recomputed in place on every poll. No chip for jobs with no next fire. Replaces the old `next: <schtasks string>` text in the meta line so "next" has exactly one home.
+
+## Schedule agenda (issue #230)
+
+A foldable **🗓️ Schedule** panel sits above Registered jobs (collapsed by default, same `<details>` chrome as #226). It answers *"what's planned over the next few days?"* without a desktop-style 2D calendar grid — the deliberate mobile-native substitute is a **day-grouped agenda list**.
+
+- **Occurrence expansion.** `src.jobs.upcoming_fires(schedule, *, start, end, cap=200)` enumerates every fire in a window by walking `next_fire` forward (each call returns a fire strictly after the cursor), so it reuses the #229 logic rather than re-deriving cadence math. Dense `minutes` / `hourly` cadences (`FREQUENT_SCHEDULE_TYPES`) are **not** enumerated — they'd flood the window — and return `[]` here.
+- **Endpoint.** `GET /api/jobs/agenda?days=7` (clamp 1..14) expands each non-paused job into `{occurrences, frequent, days, generated_epoch}`: `occurrences` is a flat, time-sorted list of `{job_id, name, fire_epoch, fire_iso, cadence}`; `frequent` summarises the minutes/hourly jobs as one `{job_id, name, cadence}` row each. No schtasks, no per-job decoration.
+- **Panel.** `app/webapp/static/jobs.js` fetches lazily when the panel opens (re-fetched on each open; nothing polls it) and groups `occurrences` by calendar day under `Today` / `Tomorrow` / `Wed 18 Jun` headers, each row `HH:MM · name · cadence`. Frequent jobs render as a muted footer; an empty window shows "No scheduled runs in the next 7 days." Tapping a row calls `revealJob` — it expands that job in the Registered-jobs list below and scrolls it into view (the agenda is a read-only lens, not a second control surface).
 
 ### `run_stats` shape
 

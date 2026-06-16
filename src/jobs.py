@@ -574,6 +574,42 @@ def next_fire(
     return None
 
 
+# Schedule types whose cadence is too dense to enumerate over an agenda
+# window (issue #230). The agenda summarises these as a single "frequent"
+# row instead of one entry per fire. next_fire never returns None for
+# them, so upcoming_fires must short-circuit before the enumeration loop.
+FREQUENT_SCHEDULE_TYPES = frozenset({"minutes", "hourly"})
+
+
+def upcoming_fires(
+    sched: Schedule, *, start: datetime, end: datetime, cap: int = 200
+) -> List[datetime]:
+    """Every fire of ``sched`` in the half-open window ``[start, end)``.
+
+    Built by walking :func:`next_fire` forward — each call with
+    ``now=cursor`` returns a fire strictly after ``cursor`` (the
+    ``candidate <= now`` roll-forward guarantees it), so advancing the
+    cursor to each result enumerates the window without re-deriving any
+    cadence math (issue #230 reuses #229's tested helper).
+
+    Returns ``[]`` for ``none`` / already-elapsed ``once`` and for the
+    dense :data:`FREQUENT_SCHEDULE_TYPES` (``minutes`` / ``hourly``),
+    which the agenda summarises rather than expands. ``cap`` bounds the
+    list defensively (a 3-slot ``daily_times`` over a week is ~21).
+    """
+    if sched.type in FREQUENT_SCHEDULE_TYPES:
+        return []
+    fires: List[datetime] = []
+    cursor = start
+    while len(fires) < cap:
+        nf = next_fire(sched, now=cursor)
+        if nf is None or nf >= end:
+            break
+        fires.append(nf)
+        cursor = nf
+    return fires
+
+
 # ----------------------------------------------------------- run history
 
 

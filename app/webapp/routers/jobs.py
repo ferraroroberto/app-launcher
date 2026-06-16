@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -150,6 +150,55 @@ async def get_jobs(request: Request) -> Dict[str, Any]:
         lambda: [_decorate_job(j) for j in cfg.jobs]
     )
     return {"jobs": decorated}
+
+
+@router.get("/api/jobs/agenda")
+async def get_jobs_agenda(request: Request, days: int = 7) -> Dict[str, Any]:
+    """Upcoming scheduled fires over the next ``days`` (issue #230).
+
+    Backs the Jobs-tab agenda panel. Expands each non-paused job's schedule
+    across ``[now, now+days)`` into a flat, time-sorted occurrence list (the
+    client groups it by day), plus a ``frequent`` summary for the dense
+    minutes/hourly jobs that would flood the window. Lightweight — no
+    schtasks, no per-job decoration — but still offloaded to a worker thread
+    to keep the event loop clear. ``days`` is clamped to 1..14.
+    """
+    days = max(1, min(14, days))
+    cfg = load_jobs()
+    now = datetime.now()
+    end = now + timedelta(days=days)
+
+    def _build() -> Dict[str, Any]:
+        occurrences: List[Dict[str, Any]] = []
+        frequent: List[Dict[str, Any]] = []
+        for job in cfg.jobs:
+            if job.is_paused or job.schedule.type == "none":
+                continue
+            cadence = job.schedule.chip()
+            if job.schedule.type in jobs_mod.FREQUENT_SCHEDULE_TYPES:
+                frequent.append(
+                    {"job_id": job.id, "name": job.name, "cadence": cadence}
+                )
+                continue
+            for fire in jobs_mod.upcoming_fires(job.schedule, start=now, end=end):
+                occurrences.append(
+                    {
+                        "job_id": job.id,
+                        "name": job.name,
+                        "fire_epoch": int(fire.timestamp()),
+                        "fire_iso": fire.isoformat(timespec="minutes"),
+                        "cadence": cadence,
+                    }
+                )
+        occurrences.sort(key=lambda o: o["fire_epoch"])
+        return {
+            "days": days,
+            "generated_epoch": int(now.timestamp()),
+            "occurrences": occurrences,
+            "frequent": frequent,
+        }
+
+    return await asyncio.to_thread(_build)
 
 
 @router.post("/api/jobs")
