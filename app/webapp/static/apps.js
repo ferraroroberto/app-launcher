@@ -692,8 +692,6 @@ function renderListeners(items) {
 }
 
 export function wireApps() {
-  els.refreshListeners.addEventListener('click', fetchListeners);
-  els.refreshRunningApps.addEventListener('click', fetchRunningApps);
   if (els.gitStatusBtn) {
     els.gitStatusBtn.addEventListener('click', function () {
       // Toggle: a second tap closes the summary; otherwise re-fetch fresh

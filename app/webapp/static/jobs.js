@@ -1347,9 +1347,6 @@ export function wireJobs() {
   els.tabJobs.addEventListener('click', function () {
     fetchJobs().catch(function () {});
   });
-  if (els.refreshJobs) {
-    els.refreshJobs.addEventListener('click', function () { fetchJobs().catch(function () {}); });
-  }
   if (els.jobsAddBtn) {
     els.jobsAddBtn.addEventListener('click', function () { openJobDialog(null); });
   }

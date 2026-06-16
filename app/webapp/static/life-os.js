@@ -198,8 +198,8 @@ async function openBrowser(s) {
   await loadFileList();
 }
 
-// (Re)load the current skill's file list — used on open and by 🔄 refresh
-// (a new conversation log won't appear until the list is reloaded).
+// (Re)load the current skill's file list — runs every time the browser
+// overlay opens, so a conversation log added on the PC shows up on reopen.
 async function loadFileList() {
   const b = state.lifeOsBrowser;
   if (!b) return;
@@ -476,11 +476,6 @@ export function wireLifeOs() {
     // Rename the open conversation log → prompt, POST, back to the list.
     els.lifeOsDocRename.addEventListener('click', function () {
       if (openDocFile) renameFile(openDocFile);
-    });
-  }
-  if (els.lifeOsBrowserRefresh) {
-    els.lifeOsBrowserRefresh.addEventListener('click', function () {
-      loadFileList().catch(function () {});
     });
   }
   if (els.lifeOsRecapLaunch) {

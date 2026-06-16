@@ -81,23 +81,15 @@ function closeLightbox() {
 export function wireSystemMap() {
   if (!els.systemMapCard) return;
 
-  // Lazy-load on first expand; reload via the 🔄 button.
+  // Re-fetch the latest rendered map every time the panel is expanded — the
+  // artifact is static (no poll), so reloading on the open gesture is how a
+  // fresh /system-map render gets picked up (replaces the old 🔄 button).
   els.systemMapCard.addEventListener('toggle', function () {
-    if (els.systemMapCard.open && !state.systemMapObjectUrl) {
+    if (els.systemMapCard.open) {
+      revokeObjectUrl();
       loadImage();
     }
   });
-
-  if (els.systemMapRefresh) {
-    els.systemMapRefresh.addEventListener('click', function (ev) {
-      // Inside <summary>: stop the click from also toggling the panel.
-      ev.preventDefault();
-      ev.stopPropagation();
-      revokeObjectUrl();
-      els.systemMapCard.open = true;
-      loadImage();
-    });
-  }
 
   if (els.systemMapImage) {
     els.systemMapImage.addEventListener('click', openLightbox);

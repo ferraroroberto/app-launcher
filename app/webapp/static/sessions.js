@@ -181,13 +181,14 @@ export async function fetchSessions() {
 }
 
 export function wireSessions() {
-  els.refreshSessions.addEventListener('click', fetchSessions);
-  // The ⎇ status / 🔄 refresh buttons (and the off-main popover) now live
-  // in the Running-sessions card's <summary>, so a click there would also
-  // toggle the <details>. Stop the click at the actions container so it
-  // only drives the buttons, never the collapse — same trick the Coding
-  // options card uses for its Detached/Resume toggles.
-  const headerActions = els.refreshSessions.closest('.sessions-header-actions');
+  // The ⎇ status button (and the off-main popover) live in the Running-
+  // sessions card's <summary>, so a click there would also toggle the
+  // <details>. Stop the click at the actions container so it only drives
+  // the buttons, never the collapse — same trick the Coding options card
+  // uses for its Detached/Resume toggles.
+  const headerActions = els.gitStatusBtn
+    ? els.gitStatusBtn.closest('.sessions-header-actions')
+    : null;
   if (headerActions) {
     headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
   }
