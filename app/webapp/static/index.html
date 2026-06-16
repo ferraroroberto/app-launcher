@@ -137,6 +137,20 @@
           <span class="git-swatch dirty"></span> uncommitted changes
         </p>
       </details>
+
+      <details id="systemMapCard" class="card coding-card system-map-card" hidden>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">🗺️ System map</span>
+            <button id="systemMapRefresh" type="button" class="ghost-btn"
+                    title="Reload the latest rendered map">🔄</button>
+          </div>
+        </summary>
+        <div class="system-map-body">
+          <img id="systemMapImage" class="system-map-img" alt="Fleet system map" hidden>
+          <p id="systemMapStatus" class="muted small system-map-status" hidden></p>
+        </div>
+      </details>
     </section>
 
     <section id="paneApps" class="pane" hidden>
@@ -385,6 +399,10 @@
         <span>Life OS dir (life-os checkout)</span>
         <input id="lifeOsDir" type="text" class="input-native">
       </label>
+      <label class="stacked">
+        <span>Claude-config dir (system map)</span>
+        <input id="claudeConfigDir" type="text" class="input-native">
+      </label>
       <div class="row settings-actions">
         <button id="saveSettings" type="button" class="ghost-btn accent-btn">💾 Save</button>
         <button id="rescanBtn" type="button" class="ghost-btn">🔎 Scan for new apps</button>
@@ -508,6 +526,13 @@
       <p id="summaryModalText" class="summary-text"></p>
       <div class="summary-foot muted small">🔊 Reading aloud… tap anywhere to dismiss</div>
     </div>
+  </div>
+
+  <!-- System map lightbox (issue #173): tap the inline map to open it
+       full-screen for pan/zoom; tap anywhere (or ✕) to dismiss. -->
+  <div id="systemMapLightbox" class="system-map-lightbox" hidden>
+    <button id="systemMapLightboxClose" type="button" class="system-map-lightbox-close" title="Close">✕</button>
+    <img id="systemMapLightboxImage" class="system-map-lightbox-img" alt="Fleet system map (full screen)">
   </div>
 
   <script src="/static/vendor/xterm.js"></script>

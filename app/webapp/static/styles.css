@@ -155,12 +155,59 @@ html, body {
    intentionally untouched. Bottom padding is gated on `[open]` so a collapsed
    card sits flush under its summary with no dangling gap. */
 .sessions-card.coding-card > :not(summary),
-.projects-card.coding-card > :not(summary) {
+.projects-card.coding-card > :not(summary),
+.system-map-card.coding-card > :not(summary) {
   padding-left: 16px;
   padding-right: 16px;
 }
 .sessions-card.coding-card[open],
-.projects-card.coding-card[open] { padding-bottom: 14px; }
+.projects-card.coding-card[open],
+.system-map-card.coding-card[open] { padding-bottom: 14px; }
+
+/* System map (issue #173): the inline PNG fills the card width and is
+   tappable to open the full-screen lightbox for pan/zoom. */
+.system-map-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #2a2f42;
+  cursor: zoom-in;
+}
+.system-map-status { margin: 6px 0 0; }
+.system-map-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 8px) 8px env(safe-area-inset-bottom, 8px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  cursor: zoom-out;
+}
+.system-map-lightbox-img {
+  max-width: 100%;
+  height: auto;
+  /* Wider than the viewport when zoomed: let the overlay scroll to pan. */
+  border-radius: 6px;
+}
+.system-map-lightbox-close {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: 14px;
+  z-index: 360;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(40, 44, 60, 0.9);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
 /* Tighter inter-tile gap on the Projects list — part of the vertical
    compaction (issue #212); horizontal rhythm is left alone. */
 .projects-card .card-list { gap: 6px; }

@@ -82,6 +82,7 @@ from app.webapp.routers import (
     life_os,
     misc,
     sessions,
+    system_map,
     webauthn,
 )
 from app.webapp.routers._helpers import STATIC_DIR
@@ -232,6 +233,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(claude_code.router)
     app.include_router(life_os.router)
+    app.include_router(system_map.router)
     app.include_router(webauthn.router)
 
     return app

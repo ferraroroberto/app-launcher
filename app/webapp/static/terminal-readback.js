@@ -621,7 +621,7 @@ export async function speakHubInto(handle, text, opts) {
 
 /**
  * Ask the hub to summarize `text` for driving (issue #210): POST it to
- * `/api/tts/summarize`, which routes to the hub's `claude-haiku-4-5`, and
+ * `/api/tts/summarize`, which routes to the hub's `claude_haiku`, and
  * resolve the short summary string. Rejects on any failure (hub unconfigured /
  * down / blocked POST / empty completion) so the caller can surface an error
  * and skip the read. `opts`: `{ token, terminalToken }`.

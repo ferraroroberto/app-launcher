@@ -107,6 +107,11 @@ def _default_life_os_dir() -> str:
     return str(PROJECT_ROOT.parent / "life-os")
 
 
+def _default_claude_config_dir() -> str:
+    """Default to the sibling ``claude-config`` checkout next to this repo."""
+    return str(PROJECT_ROOT.parent / "claude-config")
+
+
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
@@ -128,6 +133,12 @@ class WebappConfig:
     # shows disabled, the same way the Coding tab handles a missing
     # `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
+    # Root of the claude-config checkout whose `architecture/` directory holds
+    # the rendered fleet system map (issue #173). The Coding tab's 🗺️ System
+    # map section serves `<claude_config_dir>/architecture/system-map.png`;
+    # when the PNG is absent the section hides, the same way the Life OS tab
+    # handles a missing life-os checkout.
+    claude_config_dir: str = field(default_factory=_default_claude_config_dir)
     # Persisted Claude Code launch flag defaults.
     claude_model: str = DEFAULT_CLAUDE_MODEL
     claude_effort: str = DEFAULT_CLAUDE_EFFORT
@@ -243,6 +254,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
         apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
         life_os_dir=str(raw.get("life_os_dir") or _default_life_os_dir()),
+        claude_config_dir=str(
+            raw.get("claude_config_dir") or _default_claude_config_dir()
+        ),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
         claude_verbose=bool(raw.get("claude_verbose", True)),
@@ -305,6 +319,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "projects_ignore": cfg.projects_ignore,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
+        "claude_config_dir": cfg.claude_config_dir,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,
         "claude_verbose": cfg.claude_verbose,
