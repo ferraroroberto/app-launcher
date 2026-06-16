@@ -422,27 +422,15 @@ html, body {
 .app-item .health-dot.down { background: var(--danger); }
 .app-item .health-dot.stuck { background: var(--warn, #d6a043); }
 
-/* Jobs tab action bar (issue #69): stack the tile vertically and lay the
-   action buttons out as a horizontal strip across the bottom. The
-   default right-side vertical column got uncomfortably tall on a phone
-   once edit mode adds 🧪 / ✏️ / 🗑️ next to ▶ / ⏸. */
-.app-item.job-item {
-  flex-direction: column;
-  align-items: stretch;
-}
-.app-item.job-item .row-actions.session-actions {
-  flex-direction: row;
-  border-left: 0;
-  border-top: 1px solid #2a2f42;
-}
-.app-item.job-item .row-actions.session-actions .icon-btn {
-  flex: 1 1 0;
-  width: auto;
-}
-.app-item.job-item .row-actions.session-actions .icon-btn + .icon-btn {
-  border-top: 0;
-  border-left: 1px solid #2a2f42;
-}
+/* Jobs tab action rail (issue #232): job tiles use the shared .app-item
+   layout — info block on the left, a compact vertical action rail on the
+   right (▶ / ⏸ always, 🧪 / ✏️ / 🗑️ revealed only in edit mode). This
+   reclaims the full-width bottom button row that #69 spent on just ▶ / ⏸,
+   so more jobs fit on screen, and keeps the three tabs consistent. The
+   rail is sized by its icons; the tile height stays bound by the info
+   text. No Jobs-only flex override here — falling back to .app-item is
+   the layout. (Reverts #69's flex-column / horizontal-strip override; the
+   #66 two-line info layout below is unaffected.) */
 
 /* ---------- Jobs tab: two-line row layout (issue #66) ---------- */
 /* The row is two stacked lines: dot + name on top, then a compact
