@@ -58,6 +58,8 @@ export const state = {
   lifeOsSkills: [],
   lifeOsAvailable: false,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
+  systemMapAvailable: false, // /api/system-map/status → show/hide the section
+  systemMapObjectUrl: null,  // object URL of the loaded map blob (revoked on reload)
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
@@ -90,6 +92,7 @@ export const els = {
   lifeOsRecapBadge: document.getElementById('lifeOsRecapBadge'),
   lifeOsRecapLaunch: document.getElementById('lifeOsRecapLaunch'),
   lifeOsDir: document.getElementById('lifeOsDir'),
+  claudeConfigDir: document.getElementById('claudeConfigDir'),
   lifeOsBrowser: document.getElementById('lifeOsBrowser'),
   lifeOsBrowserBack: document.getElementById('lifeOsBrowserBack'),
   lifeOsBrowserTitle: document.getElementById('lifeOsBrowserTitle'),
@@ -162,6 +165,13 @@ export const els = {
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
+  systemMapCard: document.getElementById('systemMapCard'),
+  systemMapImage: document.getElementById('systemMapImage'),
+  systemMapStatus: document.getElementById('systemMapStatus'),
+  systemMapRefresh: document.getElementById('systemMapRefresh'),
+  systemMapLightbox: document.getElementById('systemMapLightbox'),
+  systemMapLightboxImage: document.getElementById('systemMapLightboxImage'),
+  systemMapLightboxClose: document.getElementById('systemMapLightboxClose'),
   gitStatusBtn: document.getElementById('gitStatusBtn'),
   gitStatusSummary: document.getElementById('gitStatusSummary'),
   gitStatusLegend: document.getElementById('gitStatusLegend'),

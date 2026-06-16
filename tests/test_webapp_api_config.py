@@ -17,6 +17,8 @@ class TestGetConfig:
         assert "projects_ignore" in body
         assert isinstance(body["projects_ignore"], list)
         assert "apps_scan_root" in body
+        assert "life_os_dir" in body
+        assert "claude_config_dir" in body
         assert "claude" in body
         # auth_password_set is what the SPA shows in the login overlay
         # ("a password is required" vs not). Bool, not the password itself.
@@ -139,6 +141,21 @@ class TestPatchConfig:
         # And it survives a GET round-trip.
         body = client.get("/api/config").json()
         assert body["projects_ignore"] == ["archive", "*-old"]
+
+    def test_claude_config_dir_round_trips(self, webapp_client):
+        """claude_config_dir (system map, issue #173) is in the allow-list —
+        it patches through and surfaces on the next GET."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"claude_config_dir": "E:\\automation\\claude-config"}
+        )
+        assert resp.status_code == 200
+        assert (
+            app.state.webapp_config.claude_config_dir
+            == "E:\\automation\\claude-config"
+        )
+        body = client.get("/api/config").json()
+        assert body["claude_config_dir"] == "E:\\automation\\claude-config"
 
     def test_antigravity_toggles_round_trip(self, webapp_client):
         """The two Antigravity launch toggles patch through and surface

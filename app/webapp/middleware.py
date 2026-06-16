@@ -102,6 +102,13 @@ def _terminal_guard_level(path: str) -> Optional[str]:
         return "passkey"
     if path.startswith("/api/life-os/skills/") and path.endswith("/files"):
         return "passkey"
+    # Fleet system map (issue #173): the rendered PNG can carry fleet topology,
+    # so the image endpoint is Tailscale-only (refused over the Cloudflare
+    # tunnel) on top of the bearer token — no passkey. The companion
+    # /api/system-map/status probe stays token-only (returns None here) so the
+    # SPA can decide the section's visibility off-tailnet, like /api/tts/health.
+    if path == "/api/system-map/image":
+        return "tailnet"
     return None
 
 

@@ -43,6 +43,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "projects_ignore": cfg.projects_ignore,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
+        "claude_config_dir": cfg.claude_config_dir,
         "claude": {
             "model": cfg.claude_model,
             "effort": cfg.claude_effort,
@@ -85,6 +86,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "projects_ignore",
         "apps_scan_root",
         "life_os_dir",
+        "claude_config_dir",
         "claude_model",
         "claude_effort",
         "claude_verbose",
