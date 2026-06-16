@@ -49,6 +49,10 @@ export const state = {
   // poll re-renders tiles from this map but never re-runs the check.
   gitStatus: null,
   jobs: [],
+  // Jobs-list ordering (issue #229). 'next' = ascending by computed next
+  // fire (imminent dailies above weeklies; manual/paused sink to the
+  // bottom); 'name' = A–Z. Persisted across reloads like editMode.
+  jobsSort: localStorage.getItem('launcher.jobsSort') === 'name' ? 'name' : 'next',
   jobRuns: {},      // job_id → array of recent runs (lazy)
   expandedJob: null, // job_id currently expanded inline (history visible)
   selectedRun: null, // { jobId, runId } — which run's log is in the panel
@@ -106,6 +110,7 @@ export const els = {
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),
   jobsAddBtn: document.getElementById('jobsAddBtn'),
+  jobsSortBtn: document.getElementById('jobsSortBtn'),
   jobDialog: document.getElementById('jobDialog'),
   jobForm: document.getElementById('jobForm'),
   jobDialogTitle: document.getElementById('jobDialogTitle'),

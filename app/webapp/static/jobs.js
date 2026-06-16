@@ -23,13 +23,78 @@ export function renderJobs() {
   host.innerHTML = '';
   els.jobsEmpty.hidden = state.jobs.length !== 0;
   if (els.jobsAddBtn) els.jobsAddBtn.hidden = !state.editMode;
+  syncSortBtn();
 
-  state.jobs.forEach(function (job) {
+  sortedJobs().forEach(function (job) {
     host.appendChild(renderJobRow(job));
     if (state.expandedJob === job.id) {
       host.appendChild(renderHistoryLi(job));
     }
   });
+}
+
+// ------------------------------------------------------------ sort + order
+//
+// Two orderings (issue #229). 'next' is the default and the point of the
+// feature: ascending by the server-computed next_run_epoch, so imminent
+// daily jobs float above weekly ones and the eye lands on "what fires
+// next". Manual-only / paused jobs (no next fire) sink to the bottom,
+// tie-broken by name so the order is stable poll-to-poll. 'name' keeps the
+// classic A–Z.
+
+function sortedJobs() {
+  const jobs = (state.jobs || []).slice();
+  if (state.jobsSort === 'name') {
+    jobs.sort(byName);
+    return jobs;
+  }
+  jobs.sort(function (a, b) {
+    const ae = Number.isFinite(a.next_run_epoch) ? a.next_run_epoch : Infinity;
+    const be = Number.isFinite(b.next_run_epoch) ? b.next_run_epoch : Infinity;
+    if (ae !== be) return ae - be;
+    return byName(a, b);
+  });
+  return jobs;
+}
+
+function byName(a, b) {
+  return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+}
+
+function syncSortBtn() {
+  const btn = els.jobsSortBtn;
+  if (!btn) return;
+  if (state.jobsSort === 'name') {
+    btn.textContent = '↕ A–Z';
+    btn.title = 'Sorted A–Z — tap to sort by next run';
+  } else {
+    btn.textContent = '⏱ Next run';
+    btn.title = 'Sorted by next run — tap to sort A–Z';
+  }
+}
+
+function toggleSort() {
+  state.jobsSort = state.jobsSort === 'next' ? 'name' : 'next';
+  localStorage.setItem('launcher.jobsSort', state.jobsSort);
+  renderJobs();
+}
+
+// Forward-looking countdown — the past-tense sibling of fmtAgo (sessions.js).
+function fmtUntil(epochSeconds) {
+  const secs = Math.floor(epochSeconds - Date.now() / 1000);
+  if (secs <= 0) return 'due';
+  if (secs < 3600) return 'in ' + Math.max(1, Math.round(secs / 60)) + 'm';
+  if (secs < 86400) return 'in ' + Math.round(secs / 3600) + 'h';
+  return 'in ' + Math.round(secs / 86400) + 'd';
+}
+
+function renderCountdownChip(job) {
+  if (!Number.isFinite(job.next_run_epoch)) return null;
+  const chip = document.createElement('span');
+  chip.className = 'kind-pill job-countdown-chip';
+  chip.textContent = '⏱ ' + fmtUntil(job.next_run_epoch);
+  if (job.next_run) chip.title = 'Next run: ' + job.next_run;
+  return chip;
 }
 
 function renderJobRow(job) {
@@ -77,6 +142,14 @@ function renderJobRow(job) {
     chip.className = 'kind-pill';
     chip.textContent = job.schedule_chip;
     pills.appendChild(chip);
+  }
+
+  // Relative countdown to the next computed fire (issue #229). Sits right
+  // after the cadence chip so "every Friday" reads "every Friday · in 2d".
+  const countdown = renderCountdownChip(job);
+  if (countdown) {
+    countdown.dataset.role = 'countdown-chip';
+    pills.appendChild(countdown);
   }
 
   if (job.mutex_group) {
@@ -306,7 +379,8 @@ function describeLastRun(job) {
   if (job.stuck) bits.push('⚠️ stuck');
   const sr = job.stats && job.stats.success_rate_30d;
   if (sr != null && Number.isFinite(sr)) bits.push(Math.round(sr * 100) + '% / 30d');
-  if (job.next_run) bits.push('next: ' + job.next_run);
+  // "next" now lives in the countdown chip on the pills row (issue #229),
+  // so it's intentionally not repeated here.
   return bits.join(' · ');
 }
 
@@ -1285,10 +1359,15 @@ async function saveJobAnyway() {
 function patchRowsInPlace() {
   const host = els.jobsList;
   const existing = Array.from(host.querySelectorAll('li.app-item[data-id]'));
-  if (existing.length !== state.jobs.length) { renderJobs(); return; }
+  // Compare against the *sorted* order — the DOM is rendered sorted, so a
+  // length OR order change (a job's next_run_epoch crossing another's
+  // between polls) means the in-place patch can't keep rows aligned; fall
+  // back to a full re-render in that case.
+  const ordered = sortedJobs();
+  if (existing.length !== ordered.length) { renderJobs(); return; }
   for (let i = 0; i < existing.length; i++) {
     const li = existing[i];
-    const job = state.jobs[i];
+    const job = ordered[i];
     if (!job || li.dataset.id !== job.id) { renderJobs(); return; }
     const dot = li.querySelector('[data-role="status-dot"]');
     if (dot) dot.className = 'health-dot ' + statusClass(job);
@@ -1296,6 +1375,21 @@ function patchRowsInPlace() {
     if (meta) meta.textContent = describeLastRun(job);
     const runBtn = li.querySelector('[data-role="run-btn"]');
     if (runBtn) setRunBtnState(runBtn, job);
+    // The countdown ticks down between polls — swap it in place so the
+    // "in 3h" stays honest without re-rendering the whole row.
+    const pills = li.querySelector('[data-role="job-pills"]');
+    if (pills) {
+      const oldCd = pills.querySelector('[data-role="countdown-chip"]');
+      const freshCd = renderCountdownChip(job);
+      if (freshCd) freshCd.dataset.role = 'countdown-chip';
+      if (oldCd && freshCd) pills.replaceChild(freshCd, oldCd);
+      else if (oldCd && !freshCd) oldCd.remove();
+      else if (!oldCd && freshCd) {
+        const mutex = pills.querySelector('.job-mutex-pill');
+        if (mutex) pills.insertBefore(freshCd, mutex);
+        else pills.appendChild(freshCd);
+      }
+    }
     // Sparkline + duration chip can change between polls (new run
     // finished, stats recomputed) — swap them in place so the rest of
     // the row doesn't flash. Both live on the "load" sub-row.
@@ -1347,6 +1441,14 @@ export function wireJobs() {
   els.tabJobs.addEventListener('click', function () {
     fetchJobs().catch(function () {});
   });
+  if (els.jobsSortBtn) {
+    // The toggle lives in the card's <summary>; stop the click so it
+    // flips the sort without also toggling the <details> open/closed.
+    els.jobsSortBtn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleSort();
+    });
+  }
   if (els.jobsAddBtn) {
     els.jobsAddBtn.addEventListener('click', function () { openJobDialog(null); });
     // The ➕ Add job button lives in the Registered-jobs card's <summary>, so a
