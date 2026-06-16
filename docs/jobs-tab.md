@@ -352,7 +352,7 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/jobs` | bearer-token | List jobs, decorated with `schedule_chip`, `target_kind`, `next_run`, `last_run`, `running` |
+| `GET /api/jobs` | bearer-token | List jobs, decorated with `schedule_chip`, `target_kind`, `next_run`, `next_run_epoch` / `next_run_iso` (computed), `last_run`, `running` |
 | `POST /api/jobs` | bearer-token | Create — body `{name, script_path, args?, schedule?}` |
 | `PUT /api/jobs/<id>` | bearer-token | Edit (re-syncs schtasks) |
 | `DELETE /api/jobs/<id>` | bearer-token | Remove + delete schtasks entries |
@@ -371,6 +371,14 @@ The row carries five lightweight signals on top of the schedule chip and last-ru
 - **⚠️ stuck marker** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The marker is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act.
 - **CPU / peak RSS** — surfaced on the selected run's output label inside the expanded panel (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
 - **Tap-to-copy log (issue #97)** — tapping the selected run's output pane copies the whole log to the clipboard (toast `📋 Copied log`), so an error trace is one tap away from pasting into a report / chat. A manual text selection inside the pane is left alone (auto-copy is suppressed while a selection exists), and the empty placeholder is a no-op.
+
+## List order + countdown (issue #229)
+
+As the registry grows, the question that matters at a glance is *"what fires next?"* — which name order can't answer (it interleaves cadences). So:
+
+- **Computed next-fire timestamp.** `src.jobs.next_fire(schedule, *, now)` derives the next wall-clock fire purely from the bounded schedule shape — `daily_times` picks the earliest upcoming slot, `weekly` rolls to the next matching weekday, `once` returns its instant only if still future, and `none` (which includes a *paused* job, whose active schedule is parked as `none`) returns `None`. It is exposed as `next_run_epoch` (int seconds) + `next_run_iso` on `/api/jobs`. This is deliberately **separate from** the schtasks `next_run` string, which is a locale-formatted, lexically-sorted best-effort value — fine to display, useless to sort by.
+- **Default Next-run order.** The client (`app/webapp/static/jobs.js` `sortedJobs`) sorts ascending by `next_run_epoch`; jobs with no next fire (manual-only / paused) sink to the bottom, tie-broken by name. A header toggle (`#jobsSortBtn`) flips to classic A–Z; the choice persists in `localStorage` (`launcher.jobsSort`, default `next`).
+- **Countdown chip.** Each scheduled row shows a relative `⏱ in 3h` chip next to its cadence chip, recomputed in place on every poll. No chip for jobs with no next fire. Replaces the old `next: <schtasks string>` text in the meta line so "next" has exactly one home.
 
 ### `run_stats` shape
 

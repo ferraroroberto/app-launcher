@@ -75,6 +75,14 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     payload["paused"] = job.is_paused
     payload["target_kind"] = job.target_kind
     payload["next_run"] = jobs_mod.query_next_run(job.id)
+    # Computed next fire from the schedule shape (issue #229). Unlike the
+    # schtasks string above, this is sortable + countdown-able. None for
+    # manual-only / paused / already-elapsed-once jobs.
+    nf = jobs_mod.next_fire(job.schedule)
+    payload["next_run_epoch"] = int(nf.timestamp()) if nf is not None else None
+    payload["next_run_iso"] = (
+        nf.isoformat(timespec="seconds") if nf is not None else None
+    )
     latest = jobs_mod.latest_run(job.id)
     if latest is not None:
         payload["last_run"] = {

@@ -477,6 +477,103 @@ def query_next_run(
     return candidates[0] if candidates else None
 
 
+# ------------------------------------------------------- computed next fire
+#
+# The schtasks "Next Run Time" string above is a locale-formatted, lexically
+# sorted best-effort value — fine to *display*, useless to *sort by* or to
+# turn into a countdown. The schedule definition, however, is a small
+# deterministic set (see src.jobs_config), so we compute the next wall-clock
+# fire ourselves. This is the field the UI sorts on and renders "in 3h" from.
+
+# Day-name → datetime.weekday() index (Mon=0 .. Sun=6).
+_WEEKDAY_INDEX = {
+    "MON": 0,
+    "TUE": 1,
+    "WED": 2,
+    "THU": 3,
+    "FRI": 4,
+    "SAT": 5,
+    "SUN": 6,
+}
+
+
+def _hhmm(value: Any) -> Optional[Tuple[int, int]]:
+    """Parse ``"HH:MM"`` → ``(hour, minute)``, or ``None`` when malformed."""
+    if not isinstance(value, str):
+        return None
+    try:
+        hh, mm = value.split(":", 1)
+        h, m = int(hh), int(mm)
+    except ValueError:
+        return None
+    if 0 <= h <= 23 and 0 <= m <= 59:
+        return h, m
+    return None
+
+
+def next_fire(
+    sched: Schedule, *, now: Optional[datetime] = None
+) -> Optional[datetime]:
+    """The next wall-clock fire time for ``sched``, computed from its shape.
+
+    Pure + deterministic — derived from the bounded schedule definition,
+    not from schtasks. Returns ``None`` for ``none`` (which includes a
+    *paused* job, whose active schedule is parked as ``none`` while the
+    real shape lives in ``paused_schedule``) and for a ``once`` schedule
+    that has already elapsed. ``now`` is injectable for testing.
+
+    Computed in local naive time: the launcher and Task Scheduler both run
+    in the logged-on session's local time, so this matches what the user
+    sees and what actually fires.
+    """
+    now = now or datetime.now()
+    t = sched.type
+    if t == "minutes" and isinstance(sched.every, int) and sched.every > 0:
+        return now + timedelta(minutes=sched.every)
+    if t == "hourly" and isinstance(sched.every, int) and sched.every > 0:
+        return now + timedelta(hours=sched.every)
+    if t == "daily":
+        hm = _hhmm(sched.at)
+        if hm is None:
+            return None
+        candidate = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
+    if t == "daily_times" and isinstance(sched.at, list):
+        best: Optional[datetime] = None
+        for entry in sched.at:
+            hm = _hhmm(entry)
+            if hm is None:
+                continue
+            candidate = now.replace(
+                hour=hm[0], minute=hm[1], second=0, microsecond=0
+            )
+            if candidate <= now:
+                candidate += timedelta(days=1)
+            if best is None or candidate < best:
+                best = candidate
+        return best
+    if t == "weekly" and sched.day in _WEEKDAY_INDEX:
+        hm = _hhmm(sched.at)
+        if hm is None:
+            return None
+        candidate = now.replace(hour=hm[0], minute=hm[1], second=0, microsecond=0)
+        days_ahead = (_WEEKDAY_INDEX[sched.day] - now.weekday()) % 7
+        candidate += timedelta(days=days_ahead)
+        if candidate <= now:
+            candidate += timedelta(days=7)
+        return candidate
+    if t == "once" and isinstance(sched.at, str):
+        try:
+            fire = datetime.fromisoformat(sched.at)
+        except ValueError:
+            return None
+        return fire if fire > now else None
+    # "none" and any malformed shape fall through to no next fire.
+    return None
+
+
 # ----------------------------------------------------------- run history
 
 

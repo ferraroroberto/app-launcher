@@ -702,6 +702,22 @@ html, body {
   padding: 6px 10px;
   white-space: nowrap;
 }
+/* Sort toggle (issue #229) — same compact footprint as the Add button,
+   always visible (Add is edit-mode-only). */
+.jobs-sort-btn {
+  font-size: 12px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+/* Countdown chip on the pills row. Reuses .kind-pill (muted, no border);
+   an accent text colour sets "when it next fires" apart from the cadence
+   chip. Scoped under .launch-btn to beat `.launch-btn .kind-pill`'s
+   `color: var(--muted)` (equal specificity, later in the cascade). */
+.launch-btn .job-countdown-chip {
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 /* The history sits in its OWN <li> right under the job row — previously
    it was nested inside the row's <li> and the row's display:flex squeezed
