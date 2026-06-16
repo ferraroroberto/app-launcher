@@ -1,5 +1,5 @@
 /* Fleet system map (issue #173): a foldable Coding-tab section that shows
- * the claude-config architecture PNG, with tap-to-zoom full-screen.
+ * the fleet-config architecture PNG, with tap-to-zoom full-screen.
  *
  * The section hides unless /api/system-map/status reports the rendered PNG
  * exists. The image is lazy-loaded the first time the panel is expanded —
@@ -49,7 +49,7 @@ async function loadImage() {
       return;
     }
     if (res.status === 404) {
-      setStatus('System map not found — run /system-map in claude-config, or point Claude-config dir in Settings at a claude-config checkout.');
+      setStatus('System map not found — run /system-map in fleet-config, or point Fleet-config dir in Settings at a fleet-config checkout.');
       return;
     }
     if (!res.ok) throw new Error('status ' + res.status);

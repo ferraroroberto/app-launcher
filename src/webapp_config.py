@@ -108,8 +108,8 @@ def _default_life_os_dir() -> str:
 
 
 def _default_claude_config_dir() -> str:
-    """Default to the sibling ``claude-config`` checkout next to this repo."""
-    return str(PROJECT_ROOT.parent / "claude-config")
+    """Default to the sibling ``fleet-config`` checkout next to this repo."""
+    return str(PROJECT_ROOT.parent / "fleet-config")
 
 
 @dataclass
@@ -133,7 +133,7 @@ class WebappConfig:
     # shows disabled, the same way the Coding tab handles a missing
     # `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
-    # Root of the claude-config checkout whose `architecture/` directory holds
+    # Root of the fleet-config checkout whose `architecture/` directory holds
     # the rendered fleet system map (issue #173). The Coding tab's 🗺️ System
     # map section serves `<claude_config_dir>/architecture/system-map.png`;
     # when the PNG is absent the section hides, the same way the Life OS tab
