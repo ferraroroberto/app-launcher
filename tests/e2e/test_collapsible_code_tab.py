@@ -54,9 +54,9 @@ def test_header_action_tap_does_not_toggle_sessions_panel(
     sessions.wait_for(state="attached", timeout=10_000)
     assert _is_open(authed_page, "details.sessions-card")
 
-    # The 🔄 refresh button sits inside the sessions <summary>; clicking it
-    # must refresh sessions but leave the panel open (stopPropagation).
-    authed_page.locator("#refreshSessions").click()
+    # The ⎇ status button sits inside the sessions <summary>; clicking it
+    # must drive the button but leave the panel open (stopPropagation).
+    authed_page.locator("#gitStatusBtn").click()
     assert _is_open(authed_page, "details.sessions-card"), (
-        "refresh button tap must not collapse the sessions panel"
+        "header action tap must not collapse the sessions panel"
     )

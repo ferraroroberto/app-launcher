@@ -128,12 +128,12 @@ def test_pty_session_renders_with_both_stop_buttons(
     the full-control rows.
     """
     _navigate_collecting_errors(authed_page, base_url)
-    # Poll for the freshly-launched session to surface. The SPA refreshes
-    # the list on a 5 s timer; we'd rather not wait that long, so hit the
-    # refresh button directly (it triggers an immediate fetchSessions).
-    authed_page.locator("#refreshSessions").click()
+    # The session was launched before navigation, so boot()'s initial
+    # fetchSessions should already include it; the SPA also re-polls on a
+    # 5 s timer. Wait out one poll cycle as a fallback (no manual refresh
+    # button to force an immediate fetch any more).
     pty_rows = authed_page.locator("#sessionsList li.session-item:has(.session-kind.pty)")
-    expect(pty_rows.first).to_be_visible(timeout=5_000)
+    expect(pty_rows.first).to_be_visible(timeout=8_000)
 
     rows = authed_page.locator("#sessionsList li.session-item")
     count = rows.count()
