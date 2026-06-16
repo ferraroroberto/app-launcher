@@ -81,13 +81,6 @@ html, body {
   padding: 14px 16px;
   margin: 0 0 14px;
 }
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-.card-header h2 { margin: 0; font-size: 15px; font-weight: 600; }
 /* Detached toggle — modelled on voice-transcriber's `.incognito-btn`:
    the checkbox is hidden, the <label> itself is the button. Opacity +
    accent border flip on `:has(input:checked)` so it reads as on/off
@@ -148,21 +141,30 @@ html, body {
 }
 .coding-card[open] .coding-summary-title::before { transform: rotate(90deg); }
 
-/* Running-sessions + Projects panels (issue #212) reuse the coding-card
-   chrome — `.coding-card { padding: 0 }` plus the `.coding-summary` header
-   — so their body content needs the side padding added back. The Apps/Jobs
-   running panels are plain `.card.sessions-card` (no `.coding-card`) and are
-   intentionally untouched. Bottom padding is gated on `[open]` so a collapsed
-   card sits flush under its summary with no dangling gap. */
+/* Collapsible body panels reuse the coding-card chrome — `.coding-card
+   { padding: 0 }` plus the `.coding-summary` header — so their body content
+   needs the side padding added back. Started as Running-sessions + Projects
+   (issue #212); extended to the Apps (Running apps, Port listeners, Registered
+   apps), Jobs (Registered jobs) and Life (Skills) panels (issue #226) so every
+   tab shares one foldable-section idiom. The Coding-options card (`#codingOptions`)
+   is deliberately absent: its `.opt-group` children bring their own padding.
+   Bottom padding is gated on `[open]` so a collapsed card sits flush under its
+   summary with no dangling gap. */
 .sessions-card.coding-card > :not(summary),
 .projects-card.coding-card > :not(summary),
-.system-map-card.coding-card > :not(summary) {
+.system-map-card.coding-card > :not(summary),
+.listeners-card.coding-card > :not(summary),
+.apps-list-card.coding-card > :not(summary),
+.lifeos-list-card.coding-card > :not(summary) {
   padding-left: 16px;
   padding-right: 16px;
 }
 .sessions-card.coding-card[open],
 .projects-card.coding-card[open],
-.system-map-card.coding-card[open] { padding-bottom: 14px; }
+.system-map-card.coding-card[open],
+.listeners-card.coding-card[open],
+.apps-list-card.coding-card[open],
+.lifeos-list-card.coding-card[open] { padding-bottom: 14px; }
 
 /* System map (issue #173): the inline PNG fills the card width and is
    tappable to open the full-screen lightbox for pan/zoom. */
@@ -687,12 +689,18 @@ html, body {
 }
 
 /* ---------- jobs tab ---------- */
-/* The list now lives inside a `.sessions-card` so the title + refresh
-   share one header, mirroring the Apps tab's Running/Listeners cards
-   (issue #47 follow-up). No separate toolbar. */
+/* The list lives inside a collapsible `.sessions-card.coding-card` (issue
+   #226). The ➕ Add job button sits in the summary row alongside the title,
+   mirroring the Running-sessions card's ⎇ status button. */
+.jobs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .jobs-add-btn {
-  width: 100%;
-  margin: 4px 0 10px;
+  font-size: 12px;
+  padding: 6px 10px;
+  white-space: nowrap;
 }
 
 /* The history sits in its OWN <li> right under the job row — previously
@@ -835,8 +843,8 @@ html, body {
 .settings-card summary.settings-summary {
   cursor: pointer;
   user-select: none;
-  /* Same 15 px as .card-header h2 / .coding-summary-title — Settings used
-     to read smaller than the other card titles and looked downgraded. */
+  /* Same 15 px as .coding-summary-title — Settings used to read smaller
+     than the other card titles and looked downgraded. */
   font-size: 15px;
   font-weight: 600;
   list-style: none;

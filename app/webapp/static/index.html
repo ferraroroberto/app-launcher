@@ -151,41 +151,56 @@
     </section>
 
     <section id="paneApps" class="pane" hidden>
-      <section class="card sessions-card">
-        <div class="card-header">
-          <h2>🟢 Running apps</h2>
-        </div>
+      <details class="card coding-card sessions-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">🟢 Running apps</span>
+          </div>
+        </summary>
         <ul id="runningAppsList" class="card-list" aria-label="Running apps"></ul>
         <p id="runningAppsEmpty" class="muted small">Nothing running. (A webapp restart forgets running apps — check Port listeners for orphans.)</p>
         <p class="launcher-note">Only apps launched from here appear — tap a registered app below to start one.</p>
-      </section>
+      </details>
 
-      <section class="card listeners-card">
-        <div class="card-header">
-          <h2>🔌 Port listeners</h2>
-        </div>
+      <details class="card coding-card listeners-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">🔌 Port listeners</span>
+          </div>
+        </summary>
         <div id="listenersList" class="listeners"></div>
         <p id="listenersEmpty" class="muted small">Nothing running on common app ports.</p>
         <p class="launcher-note">The launcher itself isn't listed — it can't kill its own process.</p>
-      </section>
+      </details>
 
-      <ul id="appsList" class="card-list" aria-label="Apps"></ul>
-      <div id="appsEmpty" class="empty" hidden>
-        No apps registered yet — tap 🔎 to scan your projects root.
-      </div>
+      <details class="card coding-card apps-list-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">📦 Registered apps</span>
+          </div>
+        </summary>
+        <ul id="appsList" class="card-list" aria-label="Apps"></ul>
+        <div id="appsEmpty" class="empty" hidden>
+          No apps registered yet — tap 🔎 to scan your projects root.
+        </div>
+      </details>
     </section>
 
     <section id="paneJobs" class="pane" hidden>
-      <section class="card sessions-card">
-        <div class="card-header">
-          <h2>📋 Registered jobs</h2>
-        </div>
-        <button id="jobsAddBtn" type="button" class="big-btn jobs-add-btn" hidden>➕ Add job</button>
+      <details class="card coding-card sessions-card jobs-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">📋 Registered jobs</span>
+            <div class="jobs-header-actions">
+              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" hidden>➕ Add job</button>
+            </div>
+          </div>
+        </summary>
         <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
         <p id="jobsEmpty" class="muted small" hidden>
           No jobs registered yet — turn on <strong>Edit mode</strong> in Settings, then tap <strong>➕ Add job</strong>.
         </p>
-      </section>
+      </details>
     </section>
 
     <section id="paneLifeOS" class="pane" hidden>
@@ -225,11 +240,18 @@
         </div>
       </section>
 
-      <ul id="lifeOsList" class="card-list" aria-label="Life OS skills"></ul>
-      <div id="lifeOsEmpty" class="empty" hidden>
-        No life-os skills found — point <strong>Life OS dir</strong> in Settings
-        at a life-os checkout (skills live under <code>.claude/skills</code>).
-      </div>
+      <details class="card coding-card lifeos-list-card" open>
+        <summary class="coding-summary">
+          <div class="coding-summary-row">
+            <span class="coding-summary-title">📚 Skills</span>
+          </div>
+        </summary>
+        <ul id="lifeOsList" class="card-list" aria-label="Life OS skills"></ul>
+        <div id="lifeOsEmpty" class="empty" hidden>
+          No life-os skills found — point <strong>Life OS dir</strong> in Settings
+          at a life-os checkout (skills live under <code>.claude/skills</code>).
+        </div>
+      </details>
     </section>
 
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>

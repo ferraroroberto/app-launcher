@@ -1349,6 +1349,13 @@ export function wireJobs() {
   });
   if (els.jobsAddBtn) {
     els.jobsAddBtn.addEventListener('click', function () { openJobDialog(null); });
+    // The ➕ Add job button lives in the Registered-jobs card's <summary>, so a
+    // click there would also toggle the <details>. Stop the click at the actions
+    // container — same trick the Running-sessions card uses (sessions.js).
+    const headerActions = els.jobsAddBtn.closest('.jobs-header-actions');
+    if (headerActions) {
+      headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    }
   }
   if (els.jobForm) {
     els.jobForm.addEventListener('submit', submitJobDialog);
