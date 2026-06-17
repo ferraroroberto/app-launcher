@@ -1,0 +1,8 @@
+# .fleet.toml — this repo's card on the fleet architecture map.
+# fleet-config's /system-map aggregates every repo's .fleet.toml. Keep current:
+# update in the same PR as any material change (layer, port, role, one-line
+# description, exposed services). Schema: fleet-config/architecture/README.md.
+layer       = "enabling"
+icon        = "🚀"
+port        = ":8445"
+description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs · automation · Life OS, all from the phone. Born from one goal: do <i>everything</i> on the PC from mobile. The entry point to it all."
