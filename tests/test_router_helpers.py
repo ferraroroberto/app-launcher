@@ -1,9 +1,10 @@
 """Unit tests for cross-router helpers.
 
-Focus: ``should_mirror_to_pc`` — the decision (issue #20 / #159) of whether
-a PTY launch opens the PC mirror window. A phone launch (non-loopback, no
-``desktop`` flag) opens it; a desktop browser (loopback, or a non-loopback
-client that set ``desktop: true``) skips it.
+Focus: ``should_mirror_to_pc`` — the decision (issue #20 / #241) of whether
+a PTY launch opens the dedicated PC mirror window. Both a phone launch
+(non-loopback, no ``desktop`` flag) and a desktop-browser launch
+(``desktop: true``, loopback or tunnel) open it; only a non-desktop loopback
+launch skips it and renders in-page.
 """
 
 from __future__ import annotations
@@ -23,17 +24,29 @@ def test_phone_launch_opens_mirror() -> None:
     assert should_mirror_to_pc(True, _request("100.64.0.5"), {}) is True
 
 
-def test_desktop_flag_skips_mirror() -> None:
-    # The issue #159 fix: a desktop browser over the tunnel is non-loopback
-    # but already shows the terminal in-page, so it suppresses the mirror.
+def test_desktop_flag_opens_mirror_over_tunnel() -> None:
+    # Issue #241: a desktop browser gets a dedicated PC Edge window, not an
+    # in-page terminal — over the tunnel (non-loopback) it mirrors.
     assert (
         should_mirror_to_pc(True, _request("100.64.0.5"), {"desktop": True})
-        is False
+        is True
     )
 
 
-def test_loopback_launch_skips_mirror() -> None:
-    # The PC itself by IP — the launching browser already shows the terminal.
+def test_desktop_flag_opens_mirror_over_loopback() -> None:
+    # Issue #241, the user's exact scenario: desktop Chrome on the PC itself
+    # (loopback) must still get its own Edge window so Stop & Close never
+    # tears down the controlling browser. The desktop flag wins over the IP.
+    for host in ("127.0.0.1", "::1", "localhost"):
+        assert (
+            should_mirror_to_pc(True, _request(host), {"desktop": True}) is True
+        )
+
+
+def test_loopback_launch_without_desktop_flag_skips_mirror() -> None:
+    # A loopback client that did NOT flag itself a desktop (the rare coarse-
+    # pointer PC browser) still renders in-page — harmless now that an in-page
+    # loopback terminal is no longer mis-classified as a mirror (issue #241).
     for host in ("127.0.0.1", "::1", "localhost"):
         assert should_mirror_to_pc(True, _request(host), {}) is False
 

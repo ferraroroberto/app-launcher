@@ -68,6 +68,12 @@ export const state = {
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
   status: null,     // /api/status payload (incl. terminal reachability)
+  // True only when this page was opened as the launcher-spawned PC mirror
+  // window — i.e. via the ?terminal=<sid> deep-link (set at boot, issue
+  // #241). A human's own desktop browser over loopback is NOT a mirror, so
+  // the connection's loopback reason alone must never flip isMirror — that
+  // mis-classification made Stop & Close window.close() the user's Chrome.
+  isMirrorWindow: false,
   // Edit mode (Settings toggle) reveals rename + remove on Apps tab
   // rows only — Coding tab rows are disk-scanned and never editable.
   // Persisted across reloads.

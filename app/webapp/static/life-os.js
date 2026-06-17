@@ -126,6 +126,9 @@ async function launchRecap() {
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
   const payload = { mode: mode, opus: opus };
+  // A desktop browser launch gets a dedicated PC Edge --app window (issue
+  // #241); the flag tells the server to mirror. Remote launches have no
+  // terminal/mirror, so it only matters for pty.
   if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
   try {
     const body = await jsonApi('/api/life-os/recap/launch', {
@@ -140,7 +143,11 @@ async function launchRecap() {
     );
     if (body.session) {
       fetchSessions().catch(function () {});
-      if (body.session.kind !== 'remote') openTerminal(body.session);
+      // A desktop browser gets its terminal in a dedicated PC Edge window,
+      // not in-page (issue #241) — so it stays on the launcher SPA.
+      if (body.session.kind !== 'remote' && !isDesktopClient()) {
+        openTerminal(body.session);
+      }
     }
   } catch (exc) {
     toast('Recap launch failed: ' + (exc.message || exc), 'error');
@@ -158,9 +165,9 @@ async function launchSkill(s) {
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
   const payload = { mode: mode, opus: opus, resume: resume };
-  // A desktop browser already shows a streamed (pty) terminal in-page, so
-  // the server should skip the redundant PC mirror window (issue #159).
-  // Remote launches have no terminal/mirror, so the flag only matters here.
+  // A desktop browser launch gets a dedicated PC Edge --app window (issue
+  // #241); the flag tells the server to mirror. Remote launches have no
+  // terminal/mirror, so the flag only matters here.
   if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
   try {
     const body = await jsonApi(
@@ -179,8 +186,12 @@ async function launchSkill(s) {
     if (body.session) {
       fetchSessions().catch(function () {});
       // Full-control sessions drop straight into the terminal; detached
-      // ones only appear in the Coding tab's running-sessions list.
-      if (body.session.kind !== 'remote') openTerminal(body.session);
+      // ones only appear in the Coding tab's running-sessions list. A
+      // desktop browser gets its terminal in a dedicated PC Edge window
+      // instead of in-page (issue #241), so it stays on the launcher SPA.
+      if (body.session.kind !== 'remote' && !isDesktopClient()) {
+        openTerminal(body.session);
+      }
     }
   } catch (exc) {
     toast('Launch failed: ' + (exc.message || exc), 'error');
