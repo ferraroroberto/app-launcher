@@ -321,16 +321,27 @@ def _assign_parents(
     owners: List[PortOwner],
     ppid_lookup: Callable[[int], Optional[int]],
 ) -> None:
-    """Set each owner's ``parent_pid`` to the nearest ancestor PID that is
-    *itself* one of ``owners`` (or leave it ``None`` for a top-level app).
+    """Set each owner's ``parent_pid`` to its parent listener, or leave it
+    ``None`` for a top-level app.
 
-    Grouping is by **process ancestry**, not a shared port range, so a
-    helper service a parent app spawned (e.g. local-llm-hub's Orpheus TTS
-    shim, a child of the hub) nests under the parent while sibling apps —
-    separate process trees — never group together. ``ppid_lookup`` maps a
-    PID to its parent PID (or ``None`` at the top); it is a parameter so the
-    walk is unit-testable without real processes. The ``seen`` guard makes a
-    pathological cycle terminate instead of spinning.
+    Two signals, applied in order:
+
+    1. **Process ancestry** — a listener whose process is a descendant of
+       another listener nests under that nearest ancestor. ``ppid_lookup``
+       maps a PID to its parent PID (or ``None`` at the top); it is a
+       parameter so the walk is unit-testable without real processes. The
+       ``seen`` guard makes a pathological cycle terminate instead of
+       spinning.
+    2. **Shared working directory** (fallback) — a helper a parent app
+       spawned **detached** re-parents out of the parent's process tree, so
+       ancestry can't see the link (e.g. local-llm-hub spawns its Orpheus
+       TTS server and whisper-translate proxy detached, leaving three flat
+       "Local Llm Hub" rows). For listeners *still* top-level after step 1,
+       group by normalized ``cwd`` — the same app-identity signal
+       :func:`misc._app_label_for_dir` already uses — and nest the
+       higher-port members under the lowest-port one in each same-dir group.
+
+    Sibling apps in separate trees and separate directories never group.
     """
     listener_pids = {o.pid for o in owners}
     for owner in owners:
@@ -342,6 +353,33 @@ def _assign_parents(
                 owner.parent_pid = cur
                 break
             cur = ppid_lookup(cur)
+
+    _group_residual_by_cwd(owners)
+
+
+def _group_residual_by_cwd(owners: List[PortOwner]) -> None:
+    """Nest detached helpers under their app by shared working directory.
+
+    Only considers listeners still top-level after the ancestry pass. Within
+    each group of 2+ sharing a normalized ``cwd``, the lowest-port listener is
+    the parent and the rest get ``parent_pid`` set to it. Listeners with an
+    empty/unknown ``cwd`` never group — that keeps unrelated processes whose
+    cwd we couldn't read from collapsing into one bogus app.
+    """
+    groups: dict[str, List[PortOwner]] = {}
+    for owner in owners:
+        if owner.parent_pid is not None or not owner.cwd:
+            continue
+        key = os.path.normcase(os.path.normpath(owner.cwd))
+        groups.setdefault(key, []).append(owner)
+
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        parent = min(members, key=lambda o: o.port)
+        for owner in members:
+            if owner is not parent:
+                owner.parent_pid = parent.pid
 
 
 def kill_process_tree(pid: int, grace_seconds: float = 3.0) -> List[int]:
