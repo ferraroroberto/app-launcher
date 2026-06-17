@@ -148,10 +148,13 @@ async function launchRecap() {
 }
 
 async function launchSkill(s) {
-  // Resume (issue #151) reopens Claude's session picker (dropping the
-  // /<skill> prompt) in a streamed PTY — it wins over Detached.
+  // Resume (issue #151) reopens Claude's session picker, dropping the
+  // /<skill> prompt. Detached and Resume are orthogonal (issue #157,
+  // matching the Coding tab): Detached → 'remote' independent of Resume, so
+  // a Detached+Resume launch renders the picker in the detached console
+  // while Resume alone streams it to the phone over a PTY.
   const resume = !!(els.lifeOsResume && els.lifeOsResume.checked);
-  const mode = (!resume && els.lifeOsDetached && els.lifeOsDetached.checked)
+  const mode = (els.lifeOsDetached && els.lifeOsDetached.checked)
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
   const payload = { mode: mode, opus: opus, resume: resume };

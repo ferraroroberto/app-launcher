@@ -354,11 +354,13 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     streamed to the phone vs. detached console window, + PC mirror window
     + audit).
 
-    Resume (issue #151) reopens Claude's own native session picker in a
-    streamed PTY instead of invoking the skill: it forces ``kind="pty"``
-    (the picker must be visible — Resume wins over Detached) and **drops
-    the ``/<skill>`` prompt** so the user lands on the picker to pick up a
-    prior conversation rather than starting the skill afresh.
+    Resume (issue #151) reopens Claude's own native session picker instead
+    of invoking the skill: it **drops the ``/<skill>`` prompt** so the user
+    lands on the picker to pick up a prior conversation rather than starting
+    the skill afresh. Resume is orthogonal to Detached (issue #157, matching
+    the Coding tab): the requested ``mode`` still decides where the picker
+    renders — a detached console window (``mode="remote"``) or a streamed PTY
+    (``mode="pty"``). Resume no longer forces a PTY.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     life_os_dir = Path(cfg.life_os_dir)
@@ -392,9 +394,10 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         )
     name = skill.name
 
-    # Resume forces a streamed PTY (the picker must be visible) — it wins
-    # over Detached.
-    kind = "pty" if resume else ("remote" if mode == "remote" else "pty")
+    # Detached and Resume are orthogonal (issue #157, matching the Coding
+    # tab): the requested mode decides where the session renders — a detached
+    # console (remote) or a streamed PTY — independent of resume.
+    kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
         flags=flags, name=name, kind=kind, opus=opus, resume=resume,

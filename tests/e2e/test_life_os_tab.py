@@ -214,6 +214,61 @@ def test_life_os_launch_posts_mode_and_opus(
     assert payload == {"mode": "remote", "opus": True, "resume": False}, payload
 
 
+def test_life_os_detached_resume_posts_remote_console(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression for #239: Detached and Resume are orthogonal on the Life OS
+    tab (matching the Coding tab, #157). Flipping both must POST
+    ``mode: remote`` AND ``resume: true`` — the picker renders in the detached
+    console — rather than Resume silently forcing a streamed PTY."""
+    _mock_skills(authed_page)
+
+    captured: dict = {}
+
+    def _capture_launch(route):
+        captured["body"] = route.request.post_data or ""
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "journal-daily", "name": "journal-daily",
+                "agent": "claude", "mode": "remote", "opus": False,
+                "resume": True,
+                "session": {"session_id": "x", "kind": "remote"},
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
+        _capture_launch,
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+
+    # Flip Detached + Resume both on. A remote launch has no terminal overlay
+    # / WS, so the assertion stays clean.
+    authed_page.evaluate(
+        "document.getElementById('lifeOsDetached').checked = true"
+    )
+    authed_page.evaluate(
+        "document.getElementById('lifeOsResume').checked = true"
+    )
+
+    tile = authed_page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
+    )
+    tile.locator(".lifeos-launch").click()
+
+    authed_page.wait_for_timeout(400)
+    assert "body" in captured, "launch POST was never intercepted"
+    payload = _json.loads(captured["body"])
+    assert payload.get("mode") == "remote", payload
+    assert payload.get("resume") is True, payload
+
+
 def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     authed_page: Page, base_url: str
 ) -> None:
