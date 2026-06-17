@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Voice spike">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>🎙️ Voice loop spike (#246)</title>
+  <style>
+    /* Self-contained — THROWAWAY spike page (#246), no dependency on the app CSS. */
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      /* Clear the translucent iOS status bar / notch + home indicator
+         (status-bar-style is black-translucent, viewport-fit=cover). */
+      padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+               max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: #0a0a0a; color: #e6e6e6;
+    }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .topbar h1 { flex: 1 1 auto; }
+    h1 { font-size: 1.15rem; margin: 0 0 4px; }
+    #closeBtn {
+      flex: 0 0 auto; width: 44px; min-width: 44px; height: 44px; padding: 0;
+      font-size: 1.2rem; background: #333; border-radius: 12px;
+    }
+    p.sub { margin: 0 0 16px; color: #999; font-size: 0.85rem; }
+    .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+    button {
+      flex: 1 1 auto; min-width: 110px; padding: 14px 18px; font-size: 1rem;
+      border: 0; border-radius: 12px; background: #2563eb; color: #fff; font-weight: 600;
+    }
+    button:disabled { opacity: 0.4; }
+    #stopBtn { background: #444; }
+    #resumeBtn { background: #d97706; }
+    .verdict {
+      padding: 12px 14px; border-radius: 12px; margin-bottom: 16px;
+      background: #1a1a1a; font-weight: 600; text-align: center;
+    }
+    .verdict.good { background: #052e16; color: #4ade80; }
+    .verdict.bad { background: #3f1212; color: #f87171; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+    .cell { background: #141414; border-radius: 12px; padding: 12px; }
+    .cell .k { color: #888; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    .cell .v { font-size: 1.4rem; font-weight: 700; margin-top: 2px; }
+    .span2 { grid-column: 1 / -1; }
+    .span2 .v { font-size: 0.95rem; font-weight: 500; word-break: break-word; min-height: 1.4em; }
+    .latrow { display: flex; gap: 10px; }
+    .latrow .cell { flex: 1; }
+    #eventLog {
+      background: #0d0d0d; border: 1px solid #222; border-radius: 12px;
+      padding: 10px; height: 38vh; overflow-y: auto;
+      font: 12px/1.4 ui-monospace, "SF Mono", Menlo, monospace; color: #bbb;
+    }
+    #eventLog .ok { color: #4ade80; }
+    #eventLog .warn { color: #fbbf24; }
+    #eventLog .err { color: #f87171; }
+    #eventLog .life { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <h1>🎙️ Hands-free voice loop — spike #246</h1>
+    <button id="closeBtn" type="button" aria-label="Close — stop the loop and return to the launcher">✕</button>
+  </header>
+  <p class="sub">Throwaway prototype. Tap <b>Start</b>, grant the mic, then speak. The loop should run with no further taps: listen → whisper → mock board narration → re-listen. Watch <b>Forced taps</b> — any tap iOS demands means it is not hands-free.</p>
+
+  <div class="controls">
+    <button id="startBtn" type="button">▶️ Start</button>
+    <button id="resumeBtn" type="button" hidden>👆 Resume</button>
+    <button id="stopBtn" type="button" hidden>⏹️ Stop</button>
+  </div>
+
+  <div id="verdict" class="verdict">Awaiting first turn…</div>
+
+  <div class="grid">
+    <div class="cell"><div class="k">State</div><div class="v" id="mState">idle</div></div>
+    <div class="cell"><div class="k">Hands-free turns</div><div class="v" id="mTurns">0</div></div>
+    <div class="cell"><div class="k">Forced taps</div><div class="v" id="mForced">0</div></div>
+    <div class="cell"><div class="k">Barge-ins</div><div class="v" id="mBarge">0</div></div>
+    <div class="cell span2"><div class="k">Last transcript (whisper)</div><div class="v" id="lastTranscript">—</div></div>
+    <div class="cell span2"><div class="k">Last narration (mock brain)</div><div class="v" id="lastNarration">—</div></div>
+  </div>
+
+  <div class="latrow">
+    <div class="cell"><div class="k">Speak → understood</div><div class="v" id="mSpeechToText">—</div></div>
+    <div class="cell"><div class="k">Understood → talking</div><div class="v" id="mTextToAudio">—</div></div>
+    <div class="cell"><div class="k">Transcripts</div><div class="v" id="mTranscripts">0</div></div>
+  </div>
+
+  <h1 style="font-size:0.9rem;margin:16px 0 6px;color:#888;">Event &amp; lifecycle log</h1>
+  <div id="eventLog"></div>
+
+  <script type="module" src="/static/spike-voice-loop.js"></script>
+</body>
+</html>

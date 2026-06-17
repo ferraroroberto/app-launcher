@@ -92,6 +92,27 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/spike/voice-loop")
+async def spike_voice_loop(request: Request) -> HTMLResponse:
+    """THROWAWAY de-risking spike (#246): a hands-free voice-loop prototype.
+
+    Served through the same ``rewrite_index_html`` + no-cache path as ``/`` so
+    its module script picks up the asset hash (and never serves stale across
+    builds). Bearer-gated like every page (``?token=`` accepted); the page
+    bootstraps the passkey terminal token itself. Delete this route with the
+    spike-voice-loop.* files once the viability gate is answered.
+    """
+    page = STATIC_DIR / "spike-voice-loop.html"
+    if not page.exists():
+        raise HTTPException(status_code=404, detail="voice-loop spike page missing")
+    asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
+    stamped = rewrite_index_html(page.read_text(encoding="utf-8"), asset_hashes)
+    return HTMLResponse(
+        content=stamped,
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
+
+
 @router.get("/api/version")
 async def version(request: Request) -> Dict[str, str]:
     """Build identity. Stable across requests; cached at module load."""
