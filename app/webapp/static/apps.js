@@ -326,16 +326,22 @@ async function launchApp(a, agentId) {
     if (mode) payload.mode = mode;
     if (resume) payload.resume = true;
     if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
-    // Streamed (pty) coding launches carry the phone's real terminal size
-    // so the PTY's first frame is the right width for a ratatui TUI
-    // (issue #126). Detached (remote) launches have no PTY, so skip it.
+    // Streamed (pty) coding launches need a starting PTY size. Detached
+    // (remote) launches have no PTY, so skip it.
     if (a.kind === 'claude-code' && !mode) {
-      const sz = estimateTermSize();
-      payload.rows = sz.rows;
-      payload.cols = sz.cols;
-      // A desktop browser already shows this terminal in-page, so the
-      // server should skip the redundant PC mirror window (issue #159).
-      if (isDesktopClient()) payload.desktop = true;
+      if (isDesktopClient()) {
+        // A desktop browser gets a dedicated PC Edge --app window, not an
+        // in-page terminal (issue #241). Size the PTY to that window (the
+        // session-host default 40×120 fits the 1024×720 --app window) — not
+        // to this browser's viewport, which would overflow the Edge window.
+        payload.desktop = true;
+      } else {
+        // The phone carries its real terminal size so the PTY's first frame
+        // is the right width for a ratatui TUI (issue #126).
+        const sz = estimateTermSize();
+        payload.rows = sz.rows;
+        payload.cols = sz.cols;
+      }
     }
     if (Object.keys(payload).length) {
       opts.headers = { 'Content-Type': 'application/json' };
@@ -359,8 +365,12 @@ async function launchApp(a, agentId) {
     if (a.kind === 'claude-code' && body.session) {
       fetchSessions().catch(function () {});
       // Full-control sessions drop straight into the terminal; detached
-      // ones only appear in the running-sessions list.
-      if (body.session.kind !== 'remote') openTerminal(body.session);
+      // ones only appear in the running-sessions list. A desktop browser
+      // gets its terminal in a dedicated PC Edge window instead of in-page,
+      // so it stays on the launcher SPA (issue #241).
+      if (body.session.kind !== 'remote' && !isDesktopClient()) {
+        openTerminal(body.session);
+      }
     } else if (a.kind !== 'claude-code') {
       // Non-claude-code: a bat was spawned and is now tracked. Port
       // discovery is racy (Streamlit takes 1-3 s to bind) so poll the

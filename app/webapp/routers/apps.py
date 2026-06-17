@@ -281,10 +281,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         audit.session_log(
             sid, "start", agent=agent, name=entry.name, project=entry.project_dir
         )
-        # Mirror the session into an interactive terminal window on the PC,
-        # unless the launch came from the PC itself (loopback or a desktop
-        # browser, issue #159 — see should_mirror_to_pc). The PC window
-        # connects over loopback, bypassing the Tailscale + passkey gate.
+        # Mirror the session into a dedicated interactive terminal window on
+        # the PC for both phone and desktop-browser launches (issue #241 —
+        # see should_mirror_to_pc); only a non-desktop loopback launch renders
+        # in-page and skips it. The PC window connects over loopback,
+        # bypassing the Tailscale + passkey gate.
         if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
             scheme = "https" if cert_present() else "http"
             pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"

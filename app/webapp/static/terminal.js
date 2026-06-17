@@ -359,12 +359,18 @@ export async function openTerminal(session) {
   els.terminalTitle.textContent = sessionTitle(session);
   setTerminalStatus('Connecting…');
 
-  // The PC mirror window connects over loopback. It renders whatever
-  // size the phone set and never resizes the PTY — the phone is the
-  // single size authority, so the two clients never fight (the server
-  // also ignores resize frames from role=pc).
-  const isMirror = !!(state.status && state.status.terminal &&
-    state.status.terminal.reason === 'loopback');
+  // The PC mirror window is the launcher-spawned Edge --app window: it is
+  // opened via the ?terminal=<sid> deep-link (state.isMirrorWindow, set at
+  // boot) AND connects over loopback. Both conditions are required — a
+  // human's own desktop browser over loopback also reports reason
+  // 'loopback' but is NOT a mirror, and treating it as one made Stop &
+  // Close window.close() the user's actual Chrome window (issue #241). It
+  // renders whatever size the phone set and never resizes the PTY — the
+  // phone is the single size authority, so the two clients never fight (the
+  // server also ignores resize frames from role=pc).
+  const isMirror = !!state.isMirrorWindow &&
+    !!(state.status && state.status.terminal &&
+       state.status.terminal.reason === 'loopback');
 
   // The compose bar (issue #37) is phone-only — the PC mirror already
   // has a real keyboard with full predictive support. Reset the button

@@ -93,6 +93,12 @@ async function boot() {
   const fromUrl = tokenFromUrl();
   if (fromUrl) writeToken(fromUrl);
   const deepLinkSid = terminalFromUrl();
+  // Only the launcher-spawned PC mirror window opens via the ?terminal=<sid>
+  // deep-link; a human's own browser never does. Recording it here (before
+  // the param is stripped from the URL) is what lets terminal.js tell a real
+  // mirror apart from a desktop browser that merely connects over loopback
+  // (issue #241).
+  state.isMirrorWindow = !!deepLinkSid;
 
   try {
     await fetchConfig();

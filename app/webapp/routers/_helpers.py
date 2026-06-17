@@ -39,23 +39,31 @@ def should_mirror_to_pc(
 ) -> bool:
     """Whether a PTY launch should open the PC mirror window (issue #20).
 
-    The mirror is for the **phone-launch** case (the PC has no window yet).
-    It is skipped when the launch came from the PC itself — either by
-    loopback IP, or (issue #159) because a desktop browser set
-    ``desktop: true`` in the launch body: such a client already renders the
-    streamed terminal in-page, so a separate Edge ``--app`` window would be
-    redundant. The IP check alone misses a desktop reaching the app over the
-    Tailscale/Cloudflare tunnel, which is non-loopback yet still the PC.
+    Both the phone and a desktop browser get a dedicated Edge ``--app``
+    window on the PC (issue #241):
+
+    * **Phone** — non-loopback and no ``desktop`` flag: the PC has no window
+      of its own, so mirror to one.
+    * **Desktop browser** — ``desktop: true`` in the launch body: mirror to a
+      dedicated, independently-closable Edge window rather than rendering the
+      terminal inside the user's own browser. This reverses issue #159's
+      desktop-skips-mirror optimization for the PTY case — the "redundant"
+      in-page render was the very thing that let Stop & Close tear down the
+      controlling Chrome window, so the dedicated window is the fix, not the
+      redundancy. The flag (set client-side by ``isDesktopClient``) is what
+      distinguishes a desktop from a phone regardless of loopback vs tunnel.
+
+    A non-``desktop`` loopback launch (the rare PC client that reports a
+    coarse pointer) still skips the mirror and renders in-page — harmless now
+    that an in-page loopback terminal is no longer mis-treated as a mirror.
     """
     # Imported here to avoid a module-load cycle (middleware imports nothing
     # from the routers package, but keep the dependency edge one-directional).
     from app.webapp.middleware import LOOPBACK_HOSTS
 
-    return (
-        bool(show_local_window)
-        and client_ip(request) not in LOOPBACK_HOSTS
-        and not bool(body.get("desktop"))
-    )
+    if not show_local_window:
+        return False
+    return bool(body.get("desktop")) or client_ip(request) not in LOOPBACK_HOSTS
 
 
 def client_ip_ws(websocket: WebSocket) -> str:
