@@ -1,8 +1,10 @@
 # Spike #246 — hands-free two-way voice loop in the iOS PWA: viability findings
 
-**Status: instrument shipped; foreground device run done (✅ go); screen-lock leg pending.** This is a de-risking spike, not a build commitment. It answers one gate question — *can a continuous, eyes-free, no-tap voice conversation loop run inside the iOS Safari PWA, or must it fold into the native iOS hub (#40)?*
+**Status: device run complete (all four questions measured). ✅ go for screen-on; ⚠️ screen-lock survives better than expected, with one tail-truncation caveat.** This is a de-risking spike, not a build commitment. It answers one gate question — *can a continuous, eyes-free, no-tap voice conversation loop run inside the iOS Safari PWA, or must it fold into the native iOS hub (#40)?*
 
-**Headline result (2026-06-17, real iPhone over the tunnel, screen on):** the loop ran **6 turns hands-free with 0 forced taps**, barge-in worked, and time-to-first-audio was **16 ms** (hub Orpheus TTS). The single Start gesture's blessing on one long-lived `AudioContext` + one reused mic stream **survives turn after turn** — the core bet held. That is a **go for the screen-on / foreground case.** The one leg still unmeasured on-device is **screen-lock / backgrounding (question 4)** — the driving case — which the documented constraints expect to require the native hub (#40). See the device table below.
+**Headline result (2026-06-17, real iPhone over the tunnel, screen on):** the loop ran **6 turns hands-free with 0 forced taps**, barge-in worked, and time-to-first-audio was **16 ms** (hub Orpheus TTS). The single Start gesture's blessing on one long-lived `AudioContext` + one reused mic stream **survives turn after turn** — the core bet held. That is a **go for the screen-on / foreground case.**
+
+**Screen-lock result (2026-06-18, real iPhone):** better than the documented expectation. Locking the screen mid-narration leaves the `AudioContext` **`running`** and the mic track **`live` (muted)**; on unlock the narration **resumes and the loop continues with no tap** — the run logged **2 turns, 0 forced taps with the screen locked mid-turn each time**. The one defect: a lock *during narration* **truncates the tail by roughly the locked duration** (~2–3 s reported). Cause: the `AudioContext` clock keeps advancing while output is suspended, so the PCM buffers scheduled for the locked interval are "played in the past" (skipped) on resume. This is a **bug in the shipped read-aloud playback path** (`terminal-readback.js` `pumpPcmStream`, #206), not spike-specific — tracked separately as **#248** (see "Tail truncation" below). Net: short locks are survivable and recover hands-free; the driving end-state (screen off for long stretches, app fully backgrounded) is still the case the native hub (#40) is the safe home for.
 
 ## The end-state this de-risks
 
@@ -58,9 +60,10 @@ These are the *known* WebKit/iOS behaviours that frame the device run. They expl
 The constraints predicted a split, and the foreground half is now confirmed on-device:
 
 - **Screen-on, foreground (phone in a mount, awake):** **viable — confirmed.** One long-lived running `AudioContext` + one reused mic stream survive across turns without fresh activation: 6 turns, 0 forced taps on a real iPhone over the tunnel. This is the **go** case.
-- **Screen-locked / true eyes-free driving:** *still expected not to be viable in a PWA* (not yet measured on-device), because backgrounding suspends both audio and mic and there is no web background-audio entitlement. This points at **#40 (native iOS hub)** for the driving end-state — confirm via the screen-lock leg below.
+- **Short screen-lock mid-turn:** **survives — measured, better than expected.** The `AudioContext` stays `running`, the mic track stays `live` (muted) through the lock, and on unlock narration resumes and the loop re-arms **with no tap** (2 turns, 0 forced taps with a lock mid-turn each time). One defect: a lock *during narration* truncates the tail by ~the locked duration (see "Tail truncation"). So a brief glance-away / pocket moment does not break the loop.
+- **Screen-locked / true eyes-free driving (screen off for long stretches):** *still the native hub's territory.* A short lock survives, but the documented constraints (mic muted while backgrounded → no capture; long-background freeze/discard) mean a sustained screen-off driving loop is not something a PWA can guarantee. This remains the case for **#40 (native iOS hub)**.
 
-So the answer's shape is **go for screen-on, needs-#40 for screen-locked/driving**, with the screen-lock leg the last thing to nail down empirically.
+So the answer's shape is **go for screen-on (incl. brief locks), needs-#40 for sustained screen-off / driving** — the screen-lock leg is now measured.
 
 ## Off-device loop-logic proof (what is already green)
 
@@ -78,22 +81,26 @@ This proves the loop **sequences turns correctly**. Headless WebKit does **not**
 
 **How to run.** Open the **🎙️ Voice loop spike (#246)** link in the launcher's footer (it bakes in the bearer token so the page-load passes the gate over the tunnel), or go straight to `https://<host>.<tailnet>.ts.net:8445/spike/voice-loop?token=<token>`. For the truest test, **Add to Home Screen** and launch the PWA from there. Tap **Start**, grant the mic + (if prompted) the passkey, then speak a short phrase and pause. Watch the loop cycle; let it run several turns; then **lock the screen** mid-loop and unlock to read the lifecycle log. The **✕ Close** button stops the loop (releasing the mic) and returns to the launcher.
 
-**Device results (2026-06-17, real iPhone, screen on, over the tunnel):**
+**Device results (real iPhone, over the tunnel):**
 
 | # | Question | Measure | Result |
 | --- | --- | --- | --- |
 | 1 | Mic re-arm | turns before a forced tap (foreground) | ✅ **6 turns, 0 forced taps** — one reused stream re-armed every turn with no tap |
 | 2 | Back-to-back playback | narration on turns 2…N without a tap? | ✅ **yes, 0 forced taps over 6 turns** — one blessed `AudioContext` reused across turns |
 | 3 | Barge-in | speaking over narration stops it? | ✅ **works** — 1 barge-in observed, narration cut, dropped back to listen |
-| 4 | Screen-lock | audio + mic survive lock/unlock? | ⏳ **not yet measured on-device** — documented expectation: PWA suspends both → needs #40 |
-| — | Latency | speak→understood / understood→talking | **~1437 ms** (whisper round-trip dominates) / **16 ms** (hub TTS first audio) |
+| 4 | Screen-lock | audio + mic survive lock/unlock? | ✅ **survives (short lock)** — `ctx=running`, mic `live`(muted) through the lock; on unlock narration resumes + loop re-arms **with no tap** (2 turns, 0 forced taps with a lock mid-turn). ⚠️ a lock *during narration* truncates the tail by ~the locked duration (see below) |
+| — | Latency | speak→understood / understood→talking | **~900–1440 ms** (whisper round-trip dominates) / **16–17 ms** (hub TTS first audio) |
 
-The speak→understood latency is essentially the whisper transcription round-trip; the 16 ms understood→talking confirms the hub-TTS Web Audio streaming path starts near-instantly.
+The speak→understood latency is essentially the whisper transcription round-trip; the ~16 ms understood→talking confirms the hub-TTS Web Audio streaming path starts near-instantly.
 
-**Recommendation: GO for screen-on "conversation mode"; needs-#40 for screen-locked / eyes-free driving** (pending the question-4 confirmation, which the documented constraints make near-certain).
+### Tail truncation on mid-narration screen-lock
 
-- **Go (foreground / screen-on).** A hands-free, screen-on conversation loop is viable in the PWA today. v1 follow-ups (each its own issue): wire the loop to the real orchestrator (#245) PTY in place of the mock narration; drive narration from summarized board state (#164); add a real "conversation mode" entry point in the Code tab; tune the VAD thresholds against real driving-cabin noise.
-- **Needs-#40 (screen-locked / driving).** The eyes-free-while-driving end-state — screen off, phone in a pocket/mount — is expected to require native background audio + mic, which a PWA cannot get. Once the screen-lock leg is measured, record the finding as a pointer comment on **#40** linking this doc + the numbers.
+Locking the screen *while narration is playing* drops roughly the locked-interval's worth of audio from the playback, so the tail is cut by ~2–3 s. The `AudioContext` clock (`currentTime`) keeps advancing while the screen is locked, but audio output is suspended; `pumpPcmStream` (`terminal-readback.js`, #206) schedules each PCM buffer on an absolute `ctx.currentTime` timeline, so on unlock the buffers whose start times elapsed during the lock are "started in the past" and skipped, and the last-buffer `onended` fires early. This affects the **shipped** read-aloud feature too (lock the screen mid-🔊-read and the tail truncates), so it is tracked as its own bug (**#248**), not patched into this throwaway. A production voice mode would need playback that pauses/reschedules on `visibilitychange` rather than scheduling blindly on the wall-clock timeline.
+
+**Recommendation: GO for a screen-on "conversation mode" (brief screen-locks survive); needs-#40 for sustained screen-off / eyes-free driving.** The core bet held on every leg measured.
+
+- **Go (screen-on, incl. brief locks).** A hands-free conversation loop is viable in the PWA today. v1 follow-ups (each its own issue): wire the loop to the real orchestrator (#245) PTY in place of the mock narration; drive narration from summarized board state (#164); add a real "conversation mode" entry point in the Code tab; tune the VAD thresholds against real driving-cabin noise; fix the tail-truncation in the playback path so a mid-read lock doesn't clip.
+- **Needs-#40 (sustained screen-off / driving).** The eyes-free-while-driving end-state — screen off for long stretches, app fully backgrounded — requires native background audio + mic, which a PWA cannot get (the mic track mutes while backgrounded, and long-background pages freeze/discard). The pointer is recorded on **#40**.
 
 ## Related
 
