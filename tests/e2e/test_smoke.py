@@ -143,17 +143,17 @@ def test_pty_session_renders_with_both_stop_buttons(
     for i in range(count):
         row = rows.nth(i)
         kind = row.locator(".session-kind").inner_text().strip().lower()
-        stop = row.locator(".action-stop")
-        stop_close = row.locator(".action-stop-close")
+        # Issue #253: exactly one 🛑 Stop-and-kill button per row, both
+        # kinds — the old ⏹ "leave window open" button is gone.
+        stop = row.locator(".action-stop:not(.action-stop-close)")
+        stop_kill = row.locator(".action-stop-close")
+        assert stop.count() == 0, f"row {i} ({kind}): stray legacy Stop button"
+        assert stop_kill.count() == 1, f"row {i} ({kind}): expected one 🛑 button"
+        expect(stop_kill.first).to_be_visible()
         if "detached" in kind:
-            assert stop.count() == 0, f"row {i} ({kind}): unexpected ⏹ Stop button"
-            assert stop_close.count() == 1, f"row {i} ({kind}): missing ⏏ button"
+            pass
         elif "full control" in kind:
             saw_pty = True
-            assert stop.count() == 1, f"row {i} ({kind}): missing ⏹ Stop button"
-            assert stop_close.count() == 1, f"row {i} ({kind}): missing ⏏ button"
-            expect(stop.first).to_be_visible()
-            expect(stop_close.first).to_be_visible()
         else:
             pytest.fail(f"row {i}: unrecognised session kind text {kind!r}")
 

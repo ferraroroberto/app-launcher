@@ -166,9 +166,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
         mode = str(body.get("mode") or "quit")
-        close_window = bool(body.get("close_window", False))
-        session.stop(mode, close_window=close_window)
-        return {"ok": True, "mode": mode, "close_window": close_window}
+        # The graceful stop polls for exit up to a few seconds — run it off
+        # the event loop so the session-host stays responsive (issue #253).
+        await asyncio.to_thread(session.stop, mode)
+        return {"ok": True, "mode": mode}
 
     @app.post("/sessions/{sid}/image")
     async def session_image(

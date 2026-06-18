@@ -359,7 +359,7 @@ def _stop_session(base_url: str, headers: dict, sid: str) -> None:
     try:
         requests.post(
             f"{base_url}/api/claude-code/sessions/{sid}/stop",
-            json={"mode": "kill", "close_window": True},
+            json={"mode": "kill"},
             headers=headers,
             verify=False,
             timeout=5,

@@ -1,9 +1,11 @@
 /* Running Claude Code sessions panel: list, stop, refresh.
  *
- * Stop modes:
- *   PTY ("full control"):  ⏹ Stop (leave window open)  + ⏏ Stop & Close
- *   Remote ("detached"):                                 only ⏏ Stop & Close
- *     (graceful Ctrl+C requires stdin access — only the PTY owns that.)
+ * One 🛑 "Stop and kill" button per row (issue #253), same for both kinds.
+ * The session-host types the agent's own quit command (Claude's /quit,
+ * Copilot's /exit, …), waits briefly for a clean exit so shutdown hooks
+ * run, then force-terminates as a fallback — and the window always closes.
+ * Detached (remote) rows have no PTY to type into, so the host force-kills
+ * the console directly.
  */
 
 import { els, state } from './state.js';
@@ -102,27 +104,17 @@ export function renderSessions() {
     const actions = document.createElement('div');
     actions.className = 'row-actions session-actions';
 
-    // For attached (PTY) sessions: show both Stop and Stop & Close.
-    // For detached (remote) sessions: show only Stop & Close (graceful stop requires stdin access).
-    if (!remote) {
-      const stopBtn = document.createElement('button');
-      stopBtn.type = 'button';
-      stopBtn.className = 'icon-btn action-stop';
-      stopBtn.textContent = '⏹️';
-      stopBtn.title = 'Stop (leave window open)';
-      stopBtn.setAttribute('aria-label', 'Stop session');
-      stopBtn.addEventListener('click', function () { stopSession(s, false); });
-      actions.appendChild(stopBtn);
-    }
-
-    const stopCloseBtn = document.createElement('button');
-    stopCloseBtn.type = 'button';
-    stopCloseBtn.className = 'icon-btn action-stop-close';
-    stopCloseBtn.textContent = '⏏️';
-    stopCloseBtn.title = remote ? 'Stop session' : 'Stop and close window';
-    stopCloseBtn.setAttribute('aria-label', 'Stop and close session');
-    stopCloseBtn.addEventListener('click', function () { stopSession(s, true); });
-    actions.appendChild(stopCloseBtn);
+    // Single Stop-and-kill button per row, both kinds (issue #253). The
+    // session-host quits gracefully then force-falls-back; the window
+    // always closes. `action-stop-close` keeps the danger styling.
+    const stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'icon-btn action-stop-close';
+    stopBtn.textContent = '🛑';
+    stopBtn.title = 'Stop and kill';
+    stopBtn.setAttribute('aria-label', 'Stop and kill session');
+    stopBtn.addEventListener('click', function () { stopSession(s); });
+    actions.appendChild(stopBtn);
 
     li.appendChild(actions);
 
@@ -130,21 +122,13 @@ export function renderSessions() {
   });
 }
 
-export async function stopSession(s, closeWindow) {
+export async function stopSession(s) {
   const remote = s.kind === 'remote';
-  let msg;
-  if (closeWindow) {
-    // Stop & Close
-    msg = remote
-      ? 'Stop and close the detached session "' + s.name + '"?\n\n' +
-        'Its console window will be closed.'
-      : 'Stop and close the session "' + s.name + '"?\n\n' +
-        'The terminal window will close.';
-  } else {
-    // Just Stop (PtySession only)
-    msg = 'Stop the session "' + s.name + '"?\n\n' +
-      'The terminal window will stay open, and the agent will exit cleanly.';
-  }
+  const msg = remote
+    ? 'Stop and kill the detached session "' + s.name + '"?\n\n' +
+      'Its console window will be closed.'
+    : 'Stop and kill the session "' + s.name + '"?\n\n' +
+      'The agent is asked to quit cleanly, then the terminal window closes.';
   if (!confirm(msg)) return;
   try {
     await jsonApi(
@@ -153,11 +137,10 @@ export async function stopSession(s, closeWindow) {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'quit', close_window: closeWindow }),
+        body: JSON.stringify({ mode: 'quit' }),
       }
     );
-    const action = closeWindow ? '🛑 Stopping & closing ' : '🛑 Stopping ';
-    toast(action + s.name + '…', 'good');
+    toast('🛑 Stopping ' + s.name + '…', 'good');
     if (state.terminal && state.terminal.sid === s.session_id) {
       hideTerminal();
     }
