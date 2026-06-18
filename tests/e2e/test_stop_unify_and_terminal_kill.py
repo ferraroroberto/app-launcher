@@ -64,12 +64,15 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
         "#terminalOverlay:not([hidden])", timeout=10_000
     )
 
-    # stopSession() guards with confirm() — accept it so the kill proceeds.
-    authed_page.on("dialog", lambda d: d.accept())
+    # One tap stops — stopSession() no longer guards with a confirm() dialog
+    # (issue #253 follow-up); a stray dialog would mean the guard came back.
+    authed_page.on("dialog", lambda d: pytest.fail(f"unexpected dialog: {d.message}"))
 
     authed_page.locator("#terminalKill").click()
 
     # The stop POST waits out the graceful-then-force window on the host;
     # on success stopSession() hides the overlay (we were viewing the
-    # session it stopped). Generous timeout to cover the force-fallback.
-    authed_page.wait_for_selector("#terminalOverlay[hidden]", timeout=12_000)
+    # session it stopped). to_be_hidden() (not wait_for_selector, which
+    # waits for *visibility*) is what asserts the overlay closed. Generous
+    # timeout to cover the force-fallback.
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden(timeout=12_000)
