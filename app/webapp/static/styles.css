@@ -1400,8 +1400,12 @@ body.terminal-open {
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
-/* 🛑 Stop-and-kill in the terminal bar (issue #253) — destructive, so it
-   flashes danger-red on press like the list row's stop button. */
+/* ✕ Stop-and-kill in the terminal bar (issue #253) — a muted glyph that
+   blends with the dark bar by default, flashing danger-red on press like
+   the list row's stop button (so it doesn't shout a loud red emoji). */
+.term-btn.term-kill {
+  color: var(--muted);
+}
 .term-btn.term-kill:active {
   background: rgba(204, 51, 68, 0.25);
   color: var(--danger);

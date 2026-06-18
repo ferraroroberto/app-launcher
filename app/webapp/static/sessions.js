@@ -106,11 +106,12 @@ export function renderSessions() {
 
     // Single Stop-and-kill button per row, both kinds (issue #253). The
     // session-host quits gracefully then force-falls-back; the window
-    // always closes. `action-stop-close` keeps the danger styling.
+    // always closes. A plain ✕ glyph (not a loud 🛑 emoji) inherits the
+    // theme — muted by default via `action-stop-close`, danger-red on press.
     const stopBtn = document.createElement('button');
     stopBtn.type = 'button';
     stopBtn.className = 'icon-btn action-stop-close';
-    stopBtn.textContent = '🛑';
+    stopBtn.textContent = '✕';
     stopBtn.title = 'Stop and kill';
     stopBtn.setAttribute('aria-label', 'Stop and kill session');
     stopBtn.addEventListener('click', function () { stopSession(s); });
@@ -123,13 +124,9 @@ export function renderSessions() {
 }
 
 export async function stopSession(s) {
-  const remote = s.kind === 'remote';
-  const msg = remote
-    ? 'Stop and kill the detached session "' + s.name + '"?\n\n' +
-      'Its console window will be closed.'
-    : 'Stop and kill the session "' + s.name + '"?\n\n' +
-      'The agent is asked to quit cleanly, then the terminal window closes.';
-  if (!confirm(msg)) return;
+  // No confirm — one tap stops (issue #253 follow-up). The stop is graceful
+  // (the agent's own quit, then force-fallback) and a mis-tap is resumable,
+  // so a confirmation dialog is just friction.
   try {
     await jsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
