@@ -644,7 +644,7 @@ html, body {
 }
 
 /* ---------- Coding tab favorites (issue #250) ---------- */
-/* Per-tile star toggle — leftmost in the agent-action strip, a glyph (not an
+/* Per-tile star toggle — rightmost in the agent-action strip, a glyph (not an
    svg icon) so it can fill/hollow on state. Muted ☆ when unstarred (like the
    other idle icons), gold ★ when starred. */
 .app-item .row-actions.agent-actions .icon-btn.star-btn {

@@ -65,18 +65,6 @@ function renderCodingList(host, items) {
     const actions = document.createElement('div');
     actions.className = 'row-actions agent-actions';
 
-    // Favorite star — leftmost in the action strip, a toggle distinct from
-    // the agent-launch buttons. Filled ★ when starred, hollow ☆ otherwise.
-    const starBtn = document.createElement('button');
-    starBtn.type = 'button';
-    starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
-    starBtn.textContent = a.is_favorite ? '★' : '☆';
-    starBtn.title = a.is_favorite ? 'Unstar (remove from favorites)' : 'Star (add to favorites)';
-    starBtn.setAttribute('aria-label', starBtn.title);
-    starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
-    starBtn.addEventListener('click', function () { toggleFavorite(a); });
-    actions.appendChild(starBtn);
-
     state.agents.forEach(function (agent) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -122,6 +110,18 @@ function renderCodingList(host, items) {
       ghBtn.setAttribute('aria-label', 'No GitHub remote');
     }
     actions.appendChild(ghBtn);
+
+    // Favorite star — rightmost in the action strip, a toggle distinct from
+    // the agent-launch buttons. Filled ★ when starred, hollow ☆ otherwise.
+    const starBtn = document.createElement('button');
+    starBtn.type = 'button';
+    starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
+    starBtn.textContent = a.is_favorite ? '★' : '☆';
+    starBtn.title = a.is_favorite ? 'Unstar (remove from favorites)' : 'Star (add to favorites)';
+    starBtn.setAttribute('aria-label', starBtn.title);
+    starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
+    starBtn.addEventListener('click', function () { toggleFavorite(a); });
+    actions.appendChild(starBtn);
 
     li.appendChild(actions);
     host.appendChild(li);
