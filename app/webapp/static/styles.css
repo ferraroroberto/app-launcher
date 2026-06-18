@@ -642,6 +642,29 @@ html, body {
 .app-item .row-actions.agent-actions .icon-btn:disabled .agent-icon {
   filter: grayscale(1);
 }
+
+/* ---------- Coding tab favorites (issue #250) ---------- */
+/* Per-tile star toggle — leftmost in the agent-action strip, a glyph (not an
+   svg icon) so it can fill/hollow on state. Muted ☆ when unstarred (like the
+   other idle icons), gold ★ when starred. */
+.app-item .row-actions.agent-actions .icon-btn.star-btn {
+  font-size: 20px;
+  line-height: 1;
+}
+.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav,
+.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav:active {
+  color: #f4c430;
+}
+/* "★ Favorites" header filter toggle — compact ghost button sized like the
+   git-status button; gold outline + glyph when the filter is active. */
+.fav-filter-btn { font-size: 12px; padding: 6px 10px; }
+.fav-filter-btn.active { color: #f4c430; border-color: #f4c430; }
+/* Shown in place of the list when the filter is on but nothing is starred. */
+.coding-fav-empty {
+  list-style: none;
+  padding: 10px 4px;
+  text-align: center;
+}
 .session-agent-icon {
   width: 18px;
   height: 18px;

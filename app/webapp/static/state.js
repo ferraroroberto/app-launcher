@@ -48,6 +48,11 @@ export const state = {
   // default_branch, on_default_branch, dirty }. Cached: the 4 s apps
   // poll re-renders tiles from this map but never re-runs the check.
   gitStatus: null,
+  // Coding-tab favorites filter (issue #250). false = show all projects
+  // (favorites pinned to the top); true = show only starred projects. A
+  // client-side view toggle, persisted across reloads like editMode so the
+  // 4 s apps poll re-renders without dropping it.
+  codingFavFilter: localStorage.getItem('launcher.codingFavFilter') === '1',
   jobs: [],
   // Jobs-list ordering (issue #229). 'next' = ascending by computed next
   // fire (imminent dailies above weeklies; manual/paused sink to the
@@ -176,6 +181,7 @@ export const els = {
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
+  favFilterBtn: document.getElementById('favFilterBtn'),
   systemMapCard: document.getElementById('systemMapCard'),
   systemMapImage: document.getElementById('systemMapImage'),
   systemMapStatus: document.getElementById('systemMapStatus'),

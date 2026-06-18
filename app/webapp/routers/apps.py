@@ -90,6 +90,12 @@ async def get_apps(request: Request) -> Dict[str, Any]:
     for d in decorated:
         if d.get("kind") == KIND_TUNNEL:
             d["health"] = health.get(d.get("tunnel_url"))
+    # Mark which live coding rows the user has starred (issue #250). Bat-
+    # based kinds never carry the flag — favorites are a Coding-tab concept.
+    favorites = set(cfg.coding_favorites)
+    for d in decorated:
+        if d.get("kind") == KIND_CLAUDE_CODE:
+            d["is_favorite"] = d.get("id") in favorites
     return {
         "scan_root": registry.scan_root,
         "apps": decorated,
