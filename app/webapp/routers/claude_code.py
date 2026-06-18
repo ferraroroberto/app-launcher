@@ -10,7 +10,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from src.scanner import git_status, scan_project_dirs
 from src.webapp_config import (
@@ -20,9 +20,38 @@ from src.webapp_config import (
     VALID_CLAUDE_PERMISSION_MODES,
     WebappConfig,
     build_claude_flags,
+    update_webapp_config,
 )
 
 router = APIRouter()
+
+
+@router.post("/api/claude-code/favorites")
+async def toggle_favorite(request: Request) -> Dict[str, Any]:
+    """Star/unstar a coding project (issue #250).
+
+    Body: ``{"id": "<scanner-slug>", "favorite": true|false}``. Membership in
+    ``coding_favorites`` is set idempotently — favoriting an already-favorite
+    (or unfavoriting an absent) id is a no-op that still returns 200 — so a
+    double-tap from the phone can't corrupt the list. Persisted to
+    webapp_config and mirrored back into ``app.state`` so the next ``/api/apps``
+    render reflects it without a reload.
+    """
+    body = await request.json()
+    project_id = str(body.get("id") or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=400, detail="missing project id")
+    favorite = bool(body.get("favorite"))
+
+    cfg: WebappConfig = request.app.state.webapp_config
+    # Preserve order, drop dupes — the list is the user's, kept tidy.
+    favorites = [f for f in cfg.coding_favorites if f != project_id]
+    if favorite:
+        favorites.append(project_id)
+
+    new_cfg = update_webapp_config(coding_favorites=favorites)
+    request.app.state.webapp_config = new_cfg
+    return {"ok": True, "coding_favorites": new_cfg.coding_favorites}
 
 
 @router.get("/api/claude-code/flags")

@@ -31,7 +31,24 @@ export function renderApps() {
 // remove controls — Settings → Edit mode does not apply here.
 function renderCodingList(host, items) {
   host.innerHTML = '';
-  items.forEach(function (a) {
+  // Favorites pinned to the top (issue #250). `items` arrives alphabetical
+  // from the scanner, so a stable partition keeps both groups A–Z. The
+  // "★ Favorites" header toggle (state.codingFavFilter) narrows the list to
+  // just the starred ones.
+  const favs = items.filter(function (a) { return a.is_favorite; });
+  const rest = items.filter(function (a) { return !a.is_favorite; });
+  const ordered = state.codingFavFilter ? favs : favs.concat(rest);
+  syncFavFilterBtn();
+
+  if (state.codingFavFilter && favs.length === 0) {
+    const note = document.createElement('li');
+    note.className = 'coding-fav-empty muted small';
+    note.textContent = 'No favorites yet — tap a project’s ☆ to star it.';
+    host.appendChild(note);
+    return;
+  }
+
+  ordered.forEach(function (a) {
     const li = document.createElement('li');
     li.className = 'app-item coding-item';
     li.dataset.id = a.id;
@@ -47,6 +64,19 @@ function renderCodingList(host, items) {
 
     const actions = document.createElement('div');
     actions.className = 'row-actions agent-actions';
+
+    // Favorite star — leftmost in the action strip, a toggle distinct from
+    // the agent-launch buttons. Filled ★ when starred, hollow ☆ otherwise.
+    const starBtn = document.createElement('button');
+    starBtn.type = 'button';
+    starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
+    starBtn.textContent = a.is_favorite ? '★' : '☆';
+    starBtn.title = a.is_favorite ? 'Unstar (remove from favorites)' : 'Star (add to favorites)';
+    starBtn.setAttribute('aria-label', starBtn.title);
+    starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
+    starBtn.addEventListener('click', function () { toggleFavorite(a); });
+    actions.appendChild(starBtn);
+
     state.agents.forEach(function (agent) {
       const btn = document.createElement('button');
       btn.type = 'button';
@@ -96,6 +126,36 @@ function renderCodingList(host, items) {
     li.appendChild(actions);
     host.appendChild(li);
   });
+}
+
+// Star / unstar a coding project (issue #250). Persists server-side, then
+// re-fetches /api/apps so the star and the favorites-first ordering update
+// from the authoritative payload (no optimistic local mutation to drift).
+async function toggleFavorite(a) {
+  try {
+    await jsonApi('/api/claude-code/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: a.id, favorite: !a.is_favorite }),
+    });
+    await fetchApps();
+  } catch (exc) {
+    if (String(exc.message) !== 'auth required') {
+      toast('Could not update favorite: ' + (exc.message || exc), 'error');
+    }
+  }
+}
+
+// Keep the "★ Favorites" header toggle's pressed state + glyph in sync with
+// state.codingFavFilter. Called on every coding re-render so the 4 s apps
+// poll can't leave the button out of step with the list it's filtering.
+function syncFavFilterBtn() {
+  const btn = els.favFilterBtn;
+  if (!btn) return;
+  const on = state.codingFavFilter;
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  btn.textContent = (on ? '★' : '☆') + ' Favorites';
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
@@ -735,6 +795,19 @@ export function wireApps() {
         return;
       }
       fetchGitStatus().catch(function () {});
+    });
+  }
+  if (els.favFilterBtn) {
+    els.favFilterBtn.addEventListener('click', function (ev) {
+      // The toggle lives inside the Projects <summary>; stopPropagation keeps
+      // the tap from also collapsing the panel (same trick the Settings edit
+      // toggle and the sessions header actions use).
+      ev.stopPropagation();
+      state.codingFavFilter = !state.codingFavFilter;
+      localStorage.setItem(
+        'launcher.codingFavFilter', state.codingFavFilter ? '1' : '0'
+      );
+      renderApps();
     });
   }
   // Refresh the running-apps panel the moment the Apps tab is opened —

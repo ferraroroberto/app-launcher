@@ -125,6 +125,12 @@ class WebappConfig:
     # exclude from the Claude Code tab (matched case-insensitively, `*`
     # globs honoured). VCS / build dirs are always skipped regardless.
     projects_ignore: list = field(default_factory=list)
+    # Project ids (scanner slugs) the user starred as favorites in the
+    # Coding tab (issue #250). Favorites sort to the top of the project
+    # list and can be filtered to on their own. Stored exactly like
+    # `projects_ignore` — a plain string list in this same config — so the
+    # feature needs no new file.
+    coding_favorites: list = field(default_factory=list)
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
     # Root of the life-os checkout the Life OS tab surfaces (issue #102).
@@ -252,6 +258,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         port=int(raw.get("port", DEFAULT_PORT)),
         projects_dir=str(raw.get("projects_dir") or _default_projects_dir()),
         projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
+        coding_favorites=[str(p) for p in (raw.get("coding_favorites") or [])],
         apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
         life_os_dir=str(raw.get("life_os_dir") or _default_life_os_dir()),
         claude_config_dir=str(
@@ -317,6 +324,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
+        "coding_favorites": cfg.coding_favorites,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
