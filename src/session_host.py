@@ -64,6 +64,12 @@ STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
 STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
 STOP_KILL = "kill"            # force-terminate the ConPTY
 
+# Graceful-stop grace window: how long STOP_QUIT waits for the agent to exit
+# on its own quit command before force-terminating as a fallback (issue #253).
+# A clean /quit exits in ~0.7 s empirically; 5 s is generous headroom and
+# stays under the session-client stop timeout.
+_STOP_GRACE_SECONDS = 5.0
+
 # Session kinds. "pty" is a launcher-owned ConPTY streamed to the phone;
 # "remote" is a detached console window the launcher only tracks (no PTY,
 # no scrollback, no WebSocket — the Claude cloud app drives it).
@@ -332,33 +338,60 @@ class PtySession:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} resize failed: {exc}")
 
-    def stop(self, mode: str = STOP_QUIT, close_window: bool = False) -> None:
-        """Stop the session — graceful per-agent quit, or interrupt / kill.
+    def stop(
+        self, mode: str = STOP_QUIT, grace_seconds: float = _STOP_GRACE_SECONDS
+    ) -> None:
+        """Stop the session: graceful agent-own quit, then force-fallback.
 
-        ``close_window`` (the "Stop & Close" action) force-terminates the
-        ConPTY tree outright: it means "gone", and a typed quit command
-        can't be relied on — the agent may be mid-task, the prompt may
-        hold partial input, or the agent's quit command may differ. Plain
-        "Stop" keeps the window open and types the agent's *own* quit
-        command (Claude's ``/quit``, Copilot's ``/exit``, …) so the agent
-        exits cleanly.
+        ``STOP_QUIT`` (the path the single "Stop and kill" button drives)
+        types the agent's *own* quit command — Claude's ``/quit``,
+        Copilot's ``/exit``, … (see :func:`quit_command_for`) — after an
+        ESC that clears any partial prompt, then waits up to
+        ``grace_seconds`` for the agent to exit on its own. The clean exit
+        lets the agent run its shutdown path (Claude Code SessionEnd hooks,
+        transcript finalisation, …) deterministically, rather than relying
+        on the abnormal console-close path a bare force-terminate triggers.
+        Only if the agent has not exited within the grace window do we
+        force-terminate the ConPTY — the guarantee that a stop always ends
+        the session (issue #253).
+
+        ``STOP_KILL`` force-terminates immediately (no graceful step);
+        ``STOP_INTERRUPT`` sends Ctrl+C and leaves the session running.
+        Every *terminating* stop signals subscribers so the mirror page
+        self-closes; an interrupt does not.
         """
-        try:
-            if close_window or mode == STOP_KILL:
-                self._pty.terminate(force=True)
-            elif mode == STOP_INTERRUPT:
+        if mode == STOP_INTERRUPT:
+            try:
                 self._pty.sendintr()
-            else:  # STOP_QUIT — graceful, agent-appropriate.
-                # ESC clears any partial input first so the quit command
-                # lands on an empty prompt.
+            except Exception as exc:  # noqa: BLE001
+                logger.debug(f"PTY {self.session_id[:8]} interrupt failed: {exc}")
+            return  # not a termination — leave the session (and mirror) alive
+
+        try:
+            if mode == STOP_KILL:
+                self._pty.terminate(force=True)
+            else:  # STOP_QUIT — graceful, agent-appropriate, with fallback.
+                # ESC clears any partial input so the quit command lands on
+                # an empty prompt.
                 self._pty.write("\x1b")
                 self._pty.write(quit_command_for(self.agent) + "\r")
+                deadline = time.monotonic() + max(0.0, grace_seconds)
+                while time.monotonic() < deadline:
+                    if not self.alive:
+                        break
+                    time.sleep(0.1)
+                if self.alive:
+                    logger.info(
+                        f"PTY {self.session_id[:8]} did not exit on "
+                        f"{quit_command_for(self.agent)!r} within "
+                        f"{grace_seconds:.0f}s — force-terminating"
+                    )
+                    self._pty.terminate(force=True)
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} stop({mode}) failed: {exc}")
 
-        # Signal mirror page to self-close if requested.
-        if close_window:
-            self._signal_shutdown_to_subscribers()
+        # Every terminating stop closes the window — signal mirror page(s).
+        self._signal_shutdown_to_subscribers()
 
     def force_kill(self) -> None:
         try:
@@ -440,7 +473,9 @@ class RemoteSession:
     def alive(self) -> bool:
         return _pid_alive(self._pid)
 
-    def stop(self, mode: str = STOP_KILL, close_window: bool = False) -> None:
+    def stop(
+        self, mode: str = STOP_KILL, grace_seconds: float = _STOP_GRACE_SECONDS
+    ) -> None:
         """Stop and close the detached console session.
 
         Detached processes (RemoteSession) cannot be gracefully stopped without
@@ -449,8 +484,8 @@ class RemoteSession:
         The console is orphaned from the host tree, but it is still reachable by
         its own PID, so an explicit Stop from the phone still works.
 
-        ``close_window`` is accepted for interface parity with :class:`PtySession`
-        but is always treated as True. ``mode`` is ignored — no PTY to send /quit.
+        ``mode`` / ``grace_seconds`` are accepted for interface parity with
+        :class:`PtySession` but ignored — there is no PTY to type a quit into.
         """
         if not _pid_alive(self._pid):
             return
@@ -624,11 +659,14 @@ class SessionManager:
         sessions.sort(key=lambda s: s.started_at)
         return sessions
 
-    def stop(self, session_id: str, mode: str = STOP_QUIT, close_window: bool = False) -> bool:
+    def stop(
+        self, session_id: str, mode: str = STOP_QUIT,
+        grace_seconds: float = _STOP_GRACE_SECONDS,
+    ) -> bool:
         session = self.get(session_id)
         if session is None:
             return False
-        session.stop(mode, close_window=close_window)
+        session.stop(mode, grace_seconds=grace_seconds)
         return True
 
     def remove(self, session_id: str) -> Optional[Any]:

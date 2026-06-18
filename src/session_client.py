@@ -24,6 +24,10 @@ _TIMEOUT = 8.0
 # surfacing 'session-host unreachable' to the phone while the spawn was
 # still in flight, prompting retries that stacked orphan sessions.
 _CREATE_TIMEOUT = 45.0
+# A graceful stop polls for the agent to exit on its quit command (up to the
+# host's ~5 s grace window) before force-falling-back, so the stop call needs
+# more headroom than the 8 s default (issue #253).
+_STOP_TIMEOUT = 10.0
 
 
 def base_url(port: int) -> str:
@@ -110,9 +114,10 @@ def resize(port: int, session_id: str, rows: int, cols: int) -> Dict[str, Any]:
     )
 
 
-def stop(port: int, session_id: str, mode: str = "quit", close_window: bool = False) -> Dict[str, Any]:
+def stop(port: int, session_id: str, mode: str = "quit") -> Dict[str, Any]:
     return _request(
-        "POST", port, f"/sessions/{session_id}/stop", json={"mode": mode, "close_window": close_window}
+        "POST", port, f"/sessions/{session_id}/stop",
+        json={"mode": mode}, timeout=_STOP_TIMEOUT,
     )
 
 

@@ -1400,6 +1400,13 @@ body.terminal-open {
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
+/* 🛑 Stop-and-kill in the terminal bar (issue #253) — destructive, so it
+   flashes danger-red on press like the list row's stop button. */
+.term-btn.term-kill:active {
+  background: rgba(204, 51, 68, 0.25);
+  color: var(--danger);
+  border-color: var(--danger);
+}
 /* Read-aloud action menu (issue #210): a small dropdown anchored below the
    terminal bar under the 🔊 button — "Read aloud" (verbatim) and
    "Summarize & read" (hub-condensed for hands-free / driving). */

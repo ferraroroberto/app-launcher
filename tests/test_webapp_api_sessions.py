@@ -53,14 +53,15 @@ class TestStopSession:
         sess.stop.return_value = {"ok": True, "mode": "kill"}
         resp = client.post(
             "/api/claude-code/sessions/abc-123/stop",
-            json={"mode": "kill", "close_window": True},
+            json={"mode": "kill"},
         )
         assert resp.status_code == 200
         # Exact arg shape — session-host port from default config + sid +
-        # mode + close_window flag — mirrors session_client.stop signature.
-        sess.stop.assert_called_once_with(8446, "abc-123", "kill", True)
+        # mode — mirrors session_client.stop signature (issue #253 dropped
+        # the close_window axis; every stop now closes).
+        sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
-    def test_quit_mode_default_close_window_false(self, webapp_client):
+    def test_quit_mode_forwarded_to_session_client(self, webapp_client):
         client, _, overrides = webapp_client
         sess = overrides["session"]
         sess.stop.return_value = {"ok": True}
@@ -69,8 +70,7 @@ class TestStopSession:
             json={"mode": "quit"},
         )
         assert resp.status_code == 200
-        # close_window defaults to False when omitted from the body.
-        sess.stop.assert_called_once_with(8446, "abc-123", "quit", False)
+        sess.stop.assert_called_once_with(8446, "abc-123", "quit")
 
     def test_default_mode_is_quit(self, webapp_client):
         """Empty body → mode falls back to quit per the endpoint contract."""
@@ -81,7 +81,7 @@ class TestStopSession:
             "/api/claude-code/sessions/abc-123/stop", json={}
         )
         assert resp.status_code == 200
-        sess.stop.assert_called_once_with(8446, "abc-123", "quit", False)
+        sess.stop.assert_called_once_with(8446, "abc-123", "quit")
 
     def test_session_host_error_maps_to_http_status(self, webapp_client):
         client, _, overrides = webapp_client
@@ -98,26 +98,25 @@ class TestStopSession:
 
 
 class TestStopSessionMirrorClose:
-    """Issue #20: Stop & Close must also dismiss the PC mirror window.
+    """Issue #20 / #253: every stop must also dismiss the PC mirror window.
 
-    The cooperative WS-shutdown fallback (step 7) still goes through
-    via ``session_client.stop(..., close_window=True)``; on top of
-    that, the webapp's stop route asks ``launcher.close_mirror_window``
-    to PostMessage WM_CLOSE to the stashed HWND. Either path is enough
-    on its own — both run because the cooperative one is silent if the
-    page is unresponsive, and the Win32 one is silent if the HWND was
-    never captured (e.g. launch came from the PC itself).
+    Since #253 unified the button, every stop closes the window, so the
+    webapp's stop route always asks ``launcher.close_mirror_window`` to
+    PostMessage WM_CLOSE to the stashed HWND, on top of the cooperative
+    WS-shutdown frame the session-host fires. Either path is enough on its
+    own — both run because the cooperative one is silent if the page is
+    unresponsive, and the Win32 one is silent if the HWND was never
+    captured (e.g. launch came from the PC itself).
     """
 
-    def test_close_window_true_invokes_mirror_close_and_forwards(
+    def test_mirror_close_always_invoked_and_stop_forwarded(
         self, webapp_client, monkeypatch
     ):
         client, _, overrides = webapp_client
         sess = overrides["session"]
-        sess.stop.return_value = {"ok": True, "mode": "kill", "close_window": True}
+        sess.stop.return_value = {"ok": True, "mode": "quit"}
         # Stub the launcher hook the sessions router will call.
         from app.webapp.routers import sessions as sessions_router
-        from src import launcher as real_launcher
         mock_close = MagicMock(return_value=True)
         monkeypatch.setattr(
             sessions_router.launcher, "close_mirror_window", mock_close
@@ -125,36 +124,15 @@ class TestStopSessionMirrorClose:
 
         resp = client.post(
             "/api/claude-code/sessions/abc-123/stop",
-            json={"mode": "kill", "close_window": True},
+            json={"mode": "quit"},
         )
 
         assert resp.status_code == 200
+        # Even a plain graceful quit closes the mirror window now (#253).
         mock_close.assert_called_once_with("abc-123")
-        # Cooperative WS shutdown still goes through to the session-host.
-        sess.stop.assert_called_once_with(8446, "abc-123", "kill", True)
+        sess.stop.assert_called_once_with(8446, "abc-123", "quit")
 
-    def test_close_window_false_does_not_call_mirror_close(
-        self, webapp_client, monkeypatch
-    ):
-        """Plain Stop (not Stop & Close) leaves the PC window open."""
-        client, _, overrides = webapp_client
-        sess = overrides["session"]
-        sess.stop.return_value = {"ok": True}
-        from app.webapp.routers import sessions as sessions_router
-        mock_close = MagicMock(return_value=True)
-        monkeypatch.setattr(
-            sessions_router.launcher, "close_mirror_window", mock_close
-        )
-
-        resp = client.post(
-            "/api/claude-code/sessions/abc-123/stop",
-            json={"mode": "quit", "close_window": False},
-        )
-
-        assert resp.status_code == 200
-        mock_close.assert_not_called()
-
-    def test_close_window_true_no_stashed_hwnd_still_forwards(
+    def test_mirror_close_no_stashed_hwnd_still_forwards(
         self, webapp_client, monkeypatch
     ):
         """When the HWND lookup never captured one (launch from PC, or
@@ -173,12 +151,12 @@ class TestStopSessionMirrorClose:
 
         resp = client.post(
             "/api/claude-code/sessions/abc-123/stop",
-            json={"mode": "kill", "close_window": True},
+            json={"mode": "kill"},
         )
 
         assert resp.status_code == 200
         mock_close.assert_called_once_with("abc-123")
-        sess.stop.assert_called_once_with(8446, "abc-123", "kill", True)
+        sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
     def test_mirror_close_failure_does_not_break_stop(
         self, webapp_client, monkeypatch
@@ -196,11 +174,11 @@ class TestStopSessionMirrorClose:
 
         resp = client.post(
             "/api/claude-code/sessions/abc-123/stop",
-            json={"mode": "kill", "close_window": True},
+            json={"mode": "kill"},
         )
 
         assert resp.status_code == 200
-        sess.stop.assert_called_once_with(8446, "abc-123", "kill", True)
+        sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
 
 class TestProxySessionWS:

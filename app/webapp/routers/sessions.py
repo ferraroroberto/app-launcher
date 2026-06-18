@@ -59,39 +59,36 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/claude-code/sessions/{sid}/stop")
 async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
-    """Stop a PTY session — quit | interrupt | kill (public, token-gated)."""
+    """Stop a PTY session — graceful /quit then force-fallback (public, token-gated)."""
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     mode = str(body.get("mode") or "quit")
-    close_window = bool(body.get("close_window", False))
-    # Win32 close of the PC mirror window — primary mechanism for Stop &
-    # Close (issue #20). close_mirror_window first tries the HWND stashed
-    # at spawn time, then falls back to a fresh title-scan of live windows
-    # (issue #199) so it works even after a webapp restart wiped the
-    # in-memory registry. Best-effort: swallow any exception so a busted
-    # HWND can't keep the session alive. The cooperative WS shutdown below
-    # is a further fallback for when no matching window is on the desktop.
-    if close_window:
-        try:
-            posted = launcher.close_mirror_window(sid)
-            logger.debug(
-                f"close_mirror_window({sid[:8]}) returned {posted}; "
-                f"forwarding stop({mode!r}) to session-host"
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                f"🛑 mirror window close raised for {sid[:8]}: {exc}"
-            )
+    # Every stop now closes the window (issue #253 unified the button), so
+    # always Win32-close the PC mirror window (issue #20). close_mirror_window
+    # first tries the HWND stashed at spawn time, then falls back to a fresh
+    # title-scan of live windows (issue #199) so it works even after a webapp
+    # restart wiped the in-memory registry. Best-effort: swallow any exception
+    # so a busted HWND can't keep the session alive. The cooperative WS
+    # shutdown the session-host fires is a further fallback for when no
+    # matching window is on the desktop.
+    try:
+        posted = launcher.close_mirror_window(sid)
+        logger.debug(
+            f"close_mirror_window({sid[:8]}) returned {posted}; "
+            f"forwarding stop({mode!r}) to session-host"
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"🛑 mirror window close raised for {sid[:8]}: {exc}")
     try:
         result = await asyncio.to_thread(
-            session_client.stop, cfg.session_host_port, sid, mode, close_window
+            session_client.stop, cfg.session_host_port, sid, mode
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
     audit.audit_event(
-        "session_stop", session=sid, mode=mode, close_window=close_window, client=client_ip(request)
+        "session_stop", session=sid, mode=mode, client=client_ip(request)
     )
-    audit.session_log(sid, "stop", mode=mode, close_window=close_window)
+    audit.session_log(sid, "stop", mode=mode)
     return result
 
 

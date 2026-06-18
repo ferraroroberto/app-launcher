@@ -231,6 +231,7 @@ export const els = {
   terminalOverlay: document.getElementById('terminalOverlay'),
   terminalBar: document.querySelector('.terminal-bar'),
   terminalBack: document.getElementById('terminalBack'),
+  terminalKill: document.getElementById('terminalKill'),
   terminalTitle: document.getElementById('terminalTitle'),
   terminalHost: document.getElementById('terminalHost'),
   terminalStatus: document.getElementById('terminalStatus'),

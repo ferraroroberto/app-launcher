@@ -12,7 +12,7 @@
 
 import { els, state } from './state.js';
 import { readToken, toast } from './api.js';
-import { fetchSessions, sessionTitle } from './sessions.js';
+import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
   cancelHub,
@@ -1529,6 +1529,18 @@ function wireCompose() {
 
 export function wireTerminal() {
   els.terminalBack.addEventListener('click', hideTerminal);
+  // 🛑 Stop-and-kill the session straight from the terminal view (issue
+  // #253) — no need to go back to the list first. Resolve the open
+  // session from state.sessions by sid; stopSession() confirms, then
+  // hides the overlay when it stops the session we're viewing.
+  els.terminalKill.addEventListener('click', function () {
+    const t = state.terminal;
+    if (!t) return;
+    const s = (state.sessions || []).find(function (x) {
+      return x.session_id === t.sid;
+    });
+    if (s) stopSession(s);
+  });
   wireKeysPopover();
   wireCompose();
   els.terminalImage.addEventListener('click', function () {
