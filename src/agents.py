@@ -148,11 +148,21 @@ def is_installed(agent_id: str) -> bool:
 def detect_agents() -> List[Dict[str, object]]:
     """Detection snapshot for the SPA — one dict per known agent.
 
-    Each dict is ``{"id", "label", "available"}``; ``available`` is the
-    live ``PATH`` check. The Coding tab disables an agent's launch
-    button (with a hover hint) when ``available`` is ``False``.
+    Each dict is ``{"id", "label", "available", "fullscreen"}``;
+    ``available`` is the live ``PATH`` check, and ``fullscreen`` lets the
+    SPA tell a differential TUI (Codex/ratatui) apart from inline Claude so
+    the phone terminal can pan the fixed canvas above the keyboard instead
+    of reflowing — reflowing resizes the PTY and makes ratatui repaint on
+    every keyboard open/close (issue #264). The Coding tab disables an
+    agent's launch button (with a hover hint) when ``available`` is
+    ``False``.
     """
     return [
-        {"id": agent.id, "label": agent.label, "available": is_installed(agent.id)}
+        {
+            "id": agent.id,
+            "label": agent.label,
+            "available": is_installed(agent.id),
+            "fullscreen": agent.fullscreen,
+        }
         for agent in AGENTS.values()
     ]

@@ -95,8 +95,14 @@ class TestDetectAgents:
         # One entry per known agent, each with the SPA-facing keys.
         assert {d["id"] for d in detected} == set(agents.AGENTS)
         for d in detected:
-            assert set(d) == {"id", "label", "available"}
+            assert set(d) == {"id", "label", "available", "fullscreen"}
             assert isinstance(d["available"], bool)
+            assert isinstance(d["fullscreen"], bool)
+        # The SPA pans (vs reflows) the phone terminal off this flag, so the
+        # fullscreen TUIs must report True and inline Claude False (#264).
+        by_id = {d["id"]: d["fullscreen"] for d in detected}
+        assert by_id["claude"] is False
+        assert by_id["codex"] is True
 
     def test_availability_reflects_path(self, monkeypatch):
         # Only `claude` resolves; `agy` does not.

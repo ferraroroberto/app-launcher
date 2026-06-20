@@ -106,6 +106,21 @@ export function keyboardOverlayHeight(layoutHeight, visualHeight) {
   return null;
 }
 
+// Pixels to shift a full-screen TUI's canvas *up* so its bottom row (the
+// agent's prompt/composer) sits just above the on-screen keyboard, given
+// the rendered content height and the visible box height. For a fullscreen
+// differential agent (Codex/ratatui) the phone must NOT reflow xterm to the
+// smaller keyboard box — reflowing changes the PTY rows, which SIGWINCHes
+// the agent into repainting its whole frame on every keyboard open/close
+// (the visible "refreshment", issue #264). Instead we keep the PTY at its
+// stable size and pan the fixed canvas: translate it up by the overflow so
+// the bottom stays visible while the top scrolls off behind the chrome.
+// Clamped at 0 so a canvas already shorter than the box never shifts down.
+export function terminalPanY(contentHeight, visibleHeight) {
+  if (!(contentHeight > 0) || !(visibleHeight > 0)) return 0;
+  return Math.max(0, Math.round(contentHeight - visibleHeight));
+}
+
 function setTerminalStatus(msg) {
   if (!els.terminalStatus) return;
   if (msg) {
@@ -466,11 +481,21 @@ export async function openTerminal(session) {
     webgl = null;
   }
 
+  // Full-screen differential agents (Codex/Antigravity/Copilot ratatui)
+  // drive the pan-not-reflow keyboard path (issue #264): on these the phone
+  // pans the fixed canvas above the keyboard rather than resizing the PTY.
+  // Resolved off the live /api/agents flag; an unknown/missing agent (or a
+  // degraded fallback agents list) reads as non-fullscreen — Claude's
+  // inline reflow (#135), the safe default.
+  const knownAgent = (state.agents || []).find(function (a) {
+    return a.id === session.agent;
+  });
   const t = {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
     disposeTouch: null, composeOpen: false,
+    isFullscreen: !!(knownAgent && knownAgent.fullscreen),
   };
   state.terminal = t;
 
@@ -503,10 +528,11 @@ export async function openTerminal(session) {
     // when the keyboard hides. Must run *before* fit() so it measures the
     // new host size.
     const vp = window.visualViewport;
+    const kbH = (vp && els.terminalOverlay)
+      ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
     if (vp && els.terminalOverlay) {
-      const h = keyboardOverlayHeight(window.innerHeight, vp.height);
-      if (h != null) {
-        els.terminalOverlay.style.height = h + 'px';
+      if (kbH != null) {
+        els.terminalOverlay.style.height = kbH + 'px';
         els.terminalOverlay.style.bottom = 'auto';
         els.terminalOverlay.style.top = Math.round(vp.offsetTop || 0) + 'px';
       } else {
@@ -515,6 +541,27 @@ export async function openTerminal(session) {
         els.terminalOverlay.style.top = '';
       }
     }
+    // Full-screen differential agent + keyboard up: PAN, don't reflow
+    // (issue #264). Keep the PTY at its stable size and translate the fixed
+    // canvas up so the bottom row (the agent's prompt) sits above the
+    // keyboard — no fit(), no resize frame, so ratatui is never SIGWINCHed
+    // into repainting its whole frame on a keyboard open/close. The host is
+    // overflow:hidden, so the panned-off top rows clip cleanly. Measuring
+    // .xterm-screen (the rendered grid) is translate-invariant, so the pan
+    // is stable across the repeated scroll/resize events iOS fires while the
+    // keyboard animates. Claude (inline) and the keyboard-down/rotation case
+    // fall through to the reflow path below, which also clears the pan.
+    if (t.isFullscreen && kbH != null) {
+      const screen = term.element &&
+        term.element.querySelector('.xterm-screen');
+      const contentH = screen ? screen.getBoundingClientRect().height : 0;
+      const panY = terminalPanY(contentH, kbH);
+      if (term.element) {
+        term.element.style.transform = 'translateY(-' + panY + 'px)';
+      }
+      return;
+    }
+    if (term.element) term.element.style.transform = '';
     try { if (fit) fit.fit(); } catch (_) {}
     // Keep the prompt (bottom row) in view after a keyboard-driven
     // reflow, but only if the user hadn't scrolled up to read history.
