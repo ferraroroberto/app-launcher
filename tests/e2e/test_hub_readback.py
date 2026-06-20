@@ -31,6 +31,7 @@ _AUDIO_MOCK = """
 (() => {
   window.__audioLog = {
     contexts: 0, resumed: 0, buffers: 0, started: 0, closed: 0, samples: 0,
+    startedAt: [], stopped: 0,
   };
   class FakeAudioBuffer {
     constructor(ch, len, sr) {
@@ -42,12 +43,18 @@ _AUDIO_MOCK = """
   class FakeNode {
     constructor() { this.buffer = null; this.onended = null; }
     connect() {}
-    start() { window.__audioLog.started += 1; window.__lastNode = this; }
+    start(t) {
+      window.__audioLog.started += 1;
+      window.__audioLog.startedAt.push(t);
+      window.__lastNode = this;
+    }
+    stop() { window.__audioLog.stopped += 1; }
   }
   class FakeAudioContext {
     constructor() {
       this.currentTime = 0; this.destination = {};
       window.__audioLog.contexts += 1;
+      window.__lastCtx = this;
     }
     resume() { window.__audioLog.resumed += 1; return Promise.resolve(); }
     createBuffer(ch, len, sr) {
@@ -62,6 +69,14 @@ _AUDIO_MOCK = """
       configurable: true, writable: true, value: FakeAudioContext,
     });
   }
+  // Make document.visibilityState scriptable so a test can simulate a
+  // screen-lock (hidden) → unlock (visible) cycle and drive visibilitychange.
+  window.__setVisibility = (state) => {
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true, get: () => state,
+    });
+    document.dispatchEvent(new Event('visibilitychange'));
+  };
 })()
 """
 
@@ -179,3 +194,46 @@ def test_cancel_hub_stops_audio(
     )
     assert got["closed"] >= 1
     assert got["pressed"] == "false"
+
+
+def test_screen_lock_reschedules_pending_buffers(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A screen-lock mid-playback (#248) must not drop the read-aloud tail.
+
+    iOS keeps the AudioContext `running` (currentTime advances) but suspends
+    output during a lock, so buffers scheduled on the absolute timeline whose
+    start elapsed during the lock are "started in the past" and dropped. Simulate
+    the lock as a `visibilitychange` hidden→visible cycle around a forced
+    `currentTime` jump: every still-pending buffer must be re-scheduled from the
+    new clock position (no buffer lost) and playback must not finish early."""
+    authed_page.add_init_script(_AUDIO_MOCK)
+    _route_hub(authed_page, available=True)
+    _open_terminal(authed_page, base_url, launched_pty_session)
+    got = authed_page.evaluate(
+        "async () => {"
+        "  await window.__readback.speakHub('Reading a long reply.', {});"
+        "  const before = window.__audioLog.started;"
+        "  const ctx = window.__lastCtx;"
+        "  window.__setVisibility('hidden');"       # lock: capture audible position
+        "  ctx.currentTime = 100;"                  # clock advanced during the lock
+        "  window.__setVisibility('visible');"      # unlock: re-anchor the tail
+        "  const after = window.__audioLog.started;"
+        "  const reanchored = window.__audioLog.startedAt.slice(before);"
+        "  return {"
+        "    before, after,"
+        "    reanchored,"
+        "    pressed: document.getElementById('terminalSpeak')"
+        "               .getAttribute('aria-pressed'),"
+        "  };"
+        "}"
+    )
+    # The un-played tail is re-scheduled after the lock — nothing silently dropped.
+    assert got["before"] >= 1
+    assert got["after"] > got["before"]
+    assert got["reanchored"]
+    # The re-anchored buffers start at/after the post-lock clock (100), never in
+    # the past where iOS would skip them.
+    assert all(t >= 100 for t in got["reanchored"])
+    # Playback is still in progress — the tail was preserved, not finished early.
+    assert got["pressed"] == "true"
