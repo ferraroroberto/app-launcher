@@ -14,6 +14,8 @@
   --danger: #cc3344;
   --radius: 14px;
   --pad: 16px;
+  --bottom-tabs-height: 60px;
+  --bottom-tabs-gap: 4px;
 }
 
 * { box-sizing: border-box; }
@@ -39,6 +41,7 @@ html, body {
   max-width: 720px;
   margin: 0 auto;
   padding: env(safe-area-inset-top, 0) var(--pad) calc(env(safe-area-inset-bottom, 0) + 24px);
+  scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0) + 24px);
 }
 
 /* ---------- header ---------- */
@@ -72,6 +75,98 @@ html, body {
 }
 .tab.active { background: var(--bg-elev-2); color: var(--fg); }
 .tab:active { color: var(--fg); }
+.tab-icon { display: none; }
+
+@media (pointer: coarse) and (max-width: 520px) {
+  .app {
+    padding-bottom: calc(
+      env(safe-area-inset-bottom, 0) + var(--bottom-tabs-height) +
+      var(--bottom-tabs-gap) + 24px
+    );
+    scroll-padding-bottom: calc(
+      env(safe-area-inset-bottom, 0) + var(--bottom-tabs-height) +
+      var(--bottom-tabs-gap) + 24px
+    );
+  }
+
+  .tabs {
+    position: fixed;
+    left: max(12px, env(safe-area-inset-left, 0));
+    right: max(12px, env(safe-area-inset-right, 0));
+    bottom: calc(env(safe-area-inset-bottom, 0) + var(--bottom-tabs-gap));
+    z-index: 120;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    height: var(--bottom-tabs-height);
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 4px;
+    background: rgba(18, 18, 18, 0.86);
+    border-color: rgba(255, 255, 255, 0.13);
+    border-radius: 30px;
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(20px) saturate(1.25);
+    -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  }
+
+  .tab {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    min-height: 50px;
+    padding: 6px 4px 5px;
+    border-radius: 25px;
+    border: 1px solid transparent;
+    font-size: 11px;
+    line-height: 1.1;
+    color: rgba(243, 243, 243, 0.62);
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+
+  .tab.active {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.18);
+    color: var(--fg);
+  }
+
+  .tab-icon {
+    display: block;
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .tab-label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  body.terminal-open .tabs,
+  body:has(#lifeOsBrowser:not([hidden])) .tabs,
+  body:has(#loginOverlay:not([hidden])) .tabs,
+  body:has(dialog[open]) .tabs,
+  body:has(#systemMapLightbox:not([hidden])) .tabs,
+  body:has(#summaryModal:not([hidden])) .tabs {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) and (max-width: 520px) and (prefers-reduced-motion: reduce) {
+  .tab { transition: none; }
+}
 
 /* ---------- card ---------- */
 .card {

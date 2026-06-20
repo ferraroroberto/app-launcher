@@ -17,14 +17,45 @@
 </head>
 <body>
   <main class="app">
-    <nav class="tabs">
-      <button id="tabClaude" type="button" class="tab active" data-tab="claude">Code</button>
-      <button id="tabApps" type="button" class="tab" data-tab="apps">Apps</button>
-      <button id="tabJobs" type="button" class="tab" data-tab="jobs">Jobs</button>
-      <button id="tabLifeOS" type="button" class="tab" data-tab="lifeos">Life</button>
+    <nav class="tabs" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
+      <button id="tabClaude" type="button" class="tab active" data-tab="claude"
+              role="tab" aria-selected="true" aria-controls="paneClaude">
+        <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <path d="M8 9 4.5 12 8 15" />
+          <path d="m16 9 3.5 3L16 15" />
+          <path d="m13.5 6-3 12" />
+        </svg>
+        <span class="tab-label">Code</span>
+      </button>
+      <button id="tabApps" type="button" class="tab" data-tab="apps"
+              role="tab" aria-selected="false" aria-controls="paneApps" tabindex="-1">
+        <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <rect x="4" y="4" width="6" height="6" rx="1.5" />
+          <rect x="14" y="4" width="6" height="6" rx="1.5" />
+          <rect x="4" y="14" width="6" height="6" rx="1.5" />
+          <rect x="14" y="14" width="6" height="6" rx="1.5" />
+        </svg>
+        <span class="tab-label">Apps</span>
+      </button>
+      <button id="tabJobs" type="button" class="tab" data-tab="jobs"
+              role="tab" aria-selected="false" aria-controls="paneJobs" tabindex="-1">
+        <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <path d="M5 12h4l2-7 3 14 2-7h3" />
+        </svg>
+        <span class="tab-label">Jobs</span>
+      </button>
+      <button id="tabLifeOS" type="button" class="tab" data-tab="lifeos"
+              role="tab" aria-selected="false" aria-controls="paneLifeOS" tabindex="-1">
+        <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <path d="M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16Z" />
+          <path d="M12 8v8" />
+          <path d="M8 12h8" />
+        </svg>
+        <span class="tab-label">Life</span>
+      </button>
     </nav>
 
-    <section id="paneClaude" class="pane">
+    <section id="paneClaude" class="pane" role="tabpanel" aria-labelledby="tabClaude">
       <details id="codingOptions" class="card coding-card">
         <summary class="coding-summary">
           <div class="coding-summary-row">
@@ -152,7 +183,7 @@
       </details>
     </section>
 
-    <section id="paneApps" class="pane" hidden>
+    <section id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
       <details class="card coding-card sessions-card" open>
         <summary class="coding-summary">
           <div class="coding-summary-row">
@@ -188,7 +219,7 @@
       </details>
     </section>
 
-    <section id="paneJobs" class="pane" hidden>
+    <section id="paneJobs" class="pane" role="tabpanel" aria-labelledby="tabJobs" hidden>
       <details id="jobsAgendaCard" class="card coding-card sessions-card jobs-agenda-card">
         <summary class="coding-summary">
           <div class="coding-summary-row">
@@ -216,7 +247,7 @@
       </details>
     </section>
 
-    <section id="paneLifeOS" class="pane" hidden>
+    <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
       <section id="lifeOsOptions" class="card lifeos-options-card">
         <div class="coding-summary-row">
           <span class="lifeos-options-title">🌱 options</span>
