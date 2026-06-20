@@ -1,4 +1,4 @@
-/* Three-tab switcher: Coding | Apps | Jobs.
+/* Four-tab switcher: Code | Apps | Jobs | Life.
  *
  * The Coding tab's element ids keep the historical `claude` prefix
  * (tabClaude / paneClaude / state.tab='claude') — only the visible
@@ -6,25 +6,33 @@
 
 import { els, state } from './state.js';
 
+const TAB_CONFIG = [
+  { name: 'claude', tab: 'tabClaude', pane: 'paneClaude' },
+  { name: 'apps', tab: 'tabApps', pane: 'paneApps' },
+  { name: 'jobs', tab: 'tabJobs', pane: 'paneJobs' },
+  { name: 'lifeos', tab: 'tabLifeOS', pane: 'paneLifeOS' },
+];
+
 export function setTab(tab) {
   state.tab = tab;
-  els.tabClaude.classList.toggle('active', tab === 'claude');
-  els.tabApps.classList.toggle('active', tab === 'apps');
-  if (els.tabJobs) els.tabJobs.classList.toggle('active', tab === 'jobs');
-  if (els.tabLifeOS) els.tabLifeOS.classList.toggle('active', tab === 'lifeos');
-  els.paneClaude.hidden = tab !== 'claude';
-  els.paneApps.hidden = tab !== 'apps';
-  if (els.paneJobs) els.paneJobs.hidden = tab !== 'jobs';
-  if (els.paneLifeOS) els.paneLifeOS.hidden = tab !== 'lifeos';
+  TAB_CONFIG.forEach(function (cfg) {
+    const tabEl = els[cfg.tab];
+    const paneEl = els[cfg.pane];
+    const active = tab === cfg.name;
+    if (tabEl) {
+      tabEl.classList.toggle('active', active);
+      tabEl.setAttribute('aria-selected', active ? 'true' : 'false');
+      tabEl.tabIndex = active ? 0 : -1;
+    }
+    if (paneEl) paneEl.hidden = !active;
+  });
+  const nav = els.tabClaude && els.tabClaude.closest('.tabs');
+  if (nav) nav.dataset.activeTab = tab;
 }
 
 export function wireTabs() {
-  els.tabClaude.addEventListener('click', function () { setTab('claude'); });
-  els.tabApps.addEventListener('click', function () { setTab('apps'); });
-  if (els.tabJobs) {
-    els.tabJobs.addEventListener('click', function () { setTab('jobs'); });
-  }
-  if (els.tabLifeOS) {
-    els.tabLifeOS.addEventListener('click', function () { setTab('lifeos'); });
-  }
+  TAB_CONFIG.forEach(function (cfg) {
+    const tabEl = els[cfg.tab];
+    if (tabEl) tabEl.addEventListener('click', function () { setTab(cfg.name); });
+  });
 }
