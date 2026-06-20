@@ -45,10 +45,18 @@ _SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 _BASE_URL = "https://127.0.0.1:8445"
 _TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/state.js:21
 
-# The loopback PTY session-host port. Default in webapp_config; the webapp
-# subprocess reads it from there, so autoboot keeps the session-host on this
-# fixed port (adopt-or-spawn) rather than a free one — no config injection.
-_SESSION_HOST_PORT = 8446
+# The live tray's loopback PTY session-host port. Autoboot must NEVER adopt a
+# host listening here: on a dev box it holds the user's real PTY/Claude
+# sessions — including the one running the gate — and the destructive e2e
+# tests would kill them (issue #260). Instead autoboot always spawns its own
+# disposable session-host on a free port and points the disposable webapp at
+# it via LAUNCHER_SESSION_HOST_PORT. This constant is kept only so the
+# isolation guarantee can be asserted (never bound/adopted under autoboot).
+_LIVE_SESSION_HOST_PORT = 8446
+# Env var the webapp honours to override its session-host port (see
+# src/webapp_config.py:SESSION_HOST_PORT_ENV) — the injection that isolates
+# the gate from the live :8446.
+_SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 
 
@@ -80,12 +88,19 @@ def _port_listening(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _spawn(cmd: List[str], log: IO[str]) -> subprocess.Popen:
+def _spawn(
+    cmd: List[str],
+    log: IO[str],
+    extra_env: Optional[dict] = None,
+) -> subprocess.Popen:
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    if extra_env:
+        env.update(extra_env)
     kwargs: dict = dict(
         cwd=str(_REPO_ROOT),
         stdout=log,
         stderr=subprocess.STDOUT,
-        env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+        env=env,
     )
     if sys.platform == "win32":
         # New process group so we can deliver CTRL_BREAK for a clean stop;
@@ -159,7 +174,7 @@ def _autoboot_server() -> Iterator[str]:
 
     def _teardown() -> None:
         _terminate(wa_proc)
-        if sh_proc is not None:  # only the one we own — never an adopted tray
+        if sh_proc is not None:  # always ours now (never an adopted tray)
             _terminate(sh_proc)
         for handle in handles:
             try:
@@ -168,23 +183,27 @@ def _autoboot_server() -> Iterator[str]:
                 pass
 
     try:
-        # Session-host: adopt an already-listening one (a running tray), else
-        # spawn our own on the same fixed port the webapp config expects.
-        if not _port_listening(_SESSION_HOST_PORT):
-            sh_cmd = [
-                sys.executable,
-                str(_REPO_ROOT / "launcher.py"),
-                "session-host",
-                "--port",
-                str(_SESSION_HOST_PORT),
-            ]
-            sh_proc = _spawn(sh_cmd, _open_log("e2e-autoboot-session-host.log"))
-            if not _wait_port(_SESSION_HOST_PORT, timeout=15):
-                _teardown()
-                pytest.fail(
-                    f"autoboot: session-host did not listen on :{_SESSION_HOST_PORT} "
-                    "within 15s — see webapp/e2e-autoboot-session-host.log"
-                )
+        # Session-host: ALWAYS spawn our own on a free port — never adopt a
+        # host already listening on the live :8446, which on a dev box owns
+        # the user's real PTY/Claude sessions (issue #260). A free, disposable
+        # host starts empty, so the destructive e2e tests can only ever touch
+        # sessions this run launched. The disposable webapp is pointed at it
+        # via LAUNCHER_SESSION_HOST_PORT below.
+        sh_port = _free_tcp_port()
+        sh_cmd = [
+            sys.executable,
+            str(_REPO_ROOT / "launcher.py"),
+            "session-host",
+            "--port",
+            str(sh_port),
+        ]
+        sh_proc = _spawn(sh_cmd, _open_log("e2e-autoboot-session-host.log"))
+        if not _wait_port(sh_port, timeout=15):
+            _teardown()
+            pytest.fail(
+                f"autoboot: session-host did not listen on :{sh_port} "
+                "within 15s — see webapp/e2e-autoboot-session-host.log"
+            )
 
         # Webapp on a free port. HTTPS when the cert pair exists (mirrors the
         # real phone path); plain HTTP otherwise so a cert-less checkout still
@@ -207,7 +226,13 @@ def _autoboot_server() -> Iterator[str]:
         if certs:
             cert, key = certs
             wa_cmd += ["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)]
-        wa_proc = _spawn(wa_cmd, _open_log("e2e-autoboot-webapp.log"))
+        # Point the disposable webapp at our disposable session-host, not the
+        # config's :8446 — the env injection that isolates the gate.
+        wa_proc = _spawn(
+            wa_cmd,
+            _open_log("e2e-autoboot-webapp.log"),
+            extra_env={_SESSION_HOST_PORT_ENV: str(sh_port)},
+        )
 
         base = f"{scheme}://127.0.0.1:{port}"
         if not _wait_healthz(base, timeout=20):

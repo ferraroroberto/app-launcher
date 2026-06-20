@@ -37,6 +37,13 @@ DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8445
 # Loopback port the PTY session-host binds. Never network-reachable.
 DEFAULT_SESSION_HOST_PORT = 8446
+# Env override for the session-host port. Set ONLY by the e2e pre-ship gate's
+# autoboot so a disposable webapp can be pointed at a disposable, free-port
+# session-host instead of the live :8446 a running tray owns. This is what
+# stops the gate from reaching into — and killing — the user's real PTY
+# sessions (issue #260). Not a user-facing knob; intentionally undocumented
+# in the config sample.
+SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 
 VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku")
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
@@ -235,6 +242,34 @@ class WebappConfig:
     notify_failure_summary: bool = False
 
 
+def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
+    """Apply the ``LAUNCHER_SESSION_HOST_PORT`` env override, if set and valid.
+
+    The webapp subprocess reads its session-host port from config; the e2e
+    pre-ship gate sets this env var so its disposable webapp connects to a
+    disposable, free-port session-host rather than adopting the live :8446
+    (issue #260). A missing/blank/invalid value leaves the configured port
+    untouched, so normal runs are unaffected.
+    """
+    raw = os.environ.get(SESSION_HOST_PORT_ENV, "").strip()
+    if not raw:
+        return cfg
+    try:
+        port = int(raw)
+    except ValueError:
+        logger.warning(
+            "⚠️  ignoring non-integer %s=%r", SESSION_HOST_PORT_ENV, raw
+        )
+        return cfg
+    if not (1 <= port <= 65535):
+        logger.warning(
+            "⚠️  ignoring out-of-range %s=%d", SESSION_HOST_PORT_ENV, port
+        )
+        return cfg
+    cfg.session_host_port = port
+    return cfg
+
+
 def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
     """Load the webapp config, falling back to defaults if the file is missing."""
     target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
@@ -243,7 +278,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
             f"📂 webapp_config not found at {target}, using defaults "
             f"(file will be created when settings change)"
         )
-        return WebappConfig()
+        return _apply_session_host_override(WebappConfig())
 
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
@@ -251,7 +286,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         logger.warning(
             f"⚠️  Could not read {target} ({exc}); falling back to defaults"
         )
-        return WebappConfig()
+        return _apply_session_host_override(WebappConfig())
 
     cfg = WebappConfig(
         host=str(raw.get("host", DEFAULT_HOST)),
@@ -310,6 +345,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
         notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
     )
+    _apply_session_host_override(cfg)
     _validate(cfg)
     return cfg
 
