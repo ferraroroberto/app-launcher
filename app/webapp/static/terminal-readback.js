@@ -414,6 +414,11 @@ let _hubReader = null;       // the streaming-body reader (cancelled on stop)
 let _hubAbort = null;        // AbortController for the in-flight fetch
 let _hubEndTimer = null;     // fires finishHubNaturally once the last buffer ends
 let _hubAvailable = null;    // tri-state: null = unprobed, true / false
+let _hubQueue = [];          // scheduled buffers {buf,node,start,dur} for re-anchor
+let _hubPlayHead = 0;        // shared scheduling cursor (pump loop + re-anchor)
+let _hubHiddenAt = null;     // ctx.currentTime captured when the page went hidden
+let _hubStreamDone = false;  // true once the PCM stream is fully read + scheduled
+let _hubVisHandler = null;   // visibilitychange listener (removed on teardown)
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
 // the token plumbing; this module stays free of api.js / webauthn.js imports).
@@ -445,6 +450,14 @@ export function isHubAvailable() { return _hubAvailable === true; }
 // Closing the context silences any still-scheduled buffers immediately.
 function hubTeardown() {
   if (_hubEndTimer) { clearTimeout(_hubEndTimer); _hubEndTimer = null; }
+  if (_hubVisHandler) {
+    try { document.removeEventListener('visibilitychange', _hubVisHandler); }
+    catch (_) { /* best effort */ }
+    _hubVisHandler = null;
+  }
+  _hubQueue = [];
+  _hubHiddenAt = null;
+  _hubStreamDone = false;
   if (_hubReader) {
     try { _hubReader.cancel(); } catch (_) { /* best effort */ }
     _hubReader = null;
@@ -465,6 +478,74 @@ function finishHubNaturally() {
   if (!_speaking) return;       // already finalized (e.g. by a manual cancel)
   setSpeaking(false);
   if (_onEnd) { try { _onEnd(); } catch (_) { /* best effort */ } }
+}
+
+// Screen-lock / backgrounding robustness (issue #248). iOS leaves the
+// AudioContext `running` through a short lock — its `currentTime` clock keeps
+// advancing — but SUSPENDS actual output. Buffers scheduled on the absolute
+// `ctx.currentTime` timeline whose start elapsed during the lock are "started
+// in the past" → silently dropped, so the read-aloud tail is clipped by ~the
+// locked duration. The fix: remember where the clock was when the page went
+// hidden, and on resume re-anchor every buffer that hadn't finished playing by
+// then to `ctx.currentTime`, contiguously — so no scheduled buffer is lost.
+function installHubVisibility() {
+  if (_hubVisHandler) return;
+  _hubVisHandler = function () {
+    if (!_hubCtx) return;
+    if (document.visibilityState === 'hidden') {
+      _hubHiddenAt = _hubCtx.currentTime;        // last audible position
+    } else if (document.visibilityState === 'visible') {
+      reanchorHubQueue();
+    }
+  };
+  try { document.addEventListener('visibilitychange', _hubVisHandler); }
+  catch (_) { /* best effort */ }
+}
+
+// Re-schedule the un-played tail after an output suspension. `_hubHiddenAt` is
+// the clock position when output stopped; any buffer whose playback window
+// extended past it was dropped or cut short by the suspension and is replayed,
+// contiguously, from "now". A no-op when nothing was hidden / no buffer remains.
+function reanchorHubQueue() {
+  const ctx = _hubCtx;
+  if (!ctx) return;
+  const boundary = _hubHiddenAt;
+  _hubHiddenAt = null;
+  if (boundary == null) return;
+  // Buffers that fully sounded before the suspension are done; keep the rest.
+  const pending = _hubQueue.filter(function (e) {
+    return e.start + e.dur > boundary;
+  });
+  if (!pending.length) return;
+  // Cancel the stale nodes (dropped ones are already silent; a mid-play or
+  // still-future node is replaced so the tail stays gap-free and unduplicated).
+  for (let i = 0; i < pending.length; i++) {
+    try { pending[i].node.stop(); } catch (_) { /* already ended */ }
+    pending[i].node.onended = null;
+  }
+  let playHead = ctx.currentTime + 0.05;       // small lead-in after the gap
+  const fresh = [];
+  let lastNode = null;
+  for (let i = 0; i < pending.length; i++) {
+    if (playHead < ctx.currentTime + 0.02) playHead = ctx.currentTime + 0.02;
+    const node = ctx.createBufferSource();
+    node.buffer = pending[i].buf;
+    node.connect(ctx.destination);
+    node.start(playHead);
+    fresh.push({ buf: pending[i].buf, node: node, start: playHead, dur: pending[i].dur });
+    playHead += pending[i].dur;
+    lastNode = node;
+  }
+  _hubQueue = fresh;
+  _hubPlayHead = playHead;
+  // Re-arm the natural-finish only when the stream is fully read; if the pump
+  // loop is still running it owns the finish on the true last buffer.
+  if (_hubEndTimer) { clearTimeout(_hubEndTimer); _hubEndTimer = null; }
+  if (_hubStreamDone && lastNode) {
+    lastNode.onended = function () { finishHubNaturally(); };
+    const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 1500;
+    _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
+  }
 }
 
 // Stream PCM16 from `res` and schedule it on `ctx`'s timeline. Resolves once the
@@ -488,7 +569,11 @@ async function pumpPcmStream(ctx, res, ac) {
   try { ctx.resume(); } catch (_) { /* best effort */ }
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
-  let playHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
+  _hubPlayHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
+  _hubQueue = [];
+  _hubHiddenAt = null;
+  _hubStreamDone = false;
+  installHubVisibility();   // re-anchor the tail if iOS suspends output (lock)
   let leftover = new Uint8Array(0);
   let lastNode = null;
   const reader = res.body.getReader();
@@ -516,16 +601,20 @@ async function pumpPcmStream(ctx, res, ac) {
     node.buffer = buf;
     node.connect(ctx.destination);
     // Guard 1: never start in the past — keeps playHead == true end of audio.
-    if (playHead < ctx.currentTime + 0.02) playHead = ctx.currentTime + 0.02;
-    node.start(playHead);
-    playHead += buf.duration;
+    if (_hubPlayHead < ctx.currentTime + 0.02) _hubPlayHead = ctx.currentTime + 0.02;
+    node.start(_hubPlayHead);
+    // Track every scheduled buffer so a screen-lock suspension (#248) can
+    // re-anchor the un-played tail instead of losing it.
+    _hubQueue.push({ buf: buf, node: node, start: _hubPlayHead, dur: buf.duration });
+    _hubPlayHead += buf.duration;
     lastNode = node;
   }
+  _hubStreamDone = true;
   if (!lastNode) { finishHubNaturally(); return; }
   // Guard 2: finish when the final buffer actually ends; the timer only backs
   // it up (with ample slack) in case onended doesn't fire.
   lastNode.onended = function () { finishHubNaturally(); };
-  const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 1500;
+  const ms = Math.max(0, (_hubPlayHead - ctx.currentTime) * 1000) + 1500;
   _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
 }
 
