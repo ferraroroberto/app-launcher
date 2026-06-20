@@ -15,7 +15,18 @@
   --radius: 14px;
   --pad: 16px;
   --bottom-tabs-height: 60px;
-  --bottom-tabs-gap: 4px;
+  --bottom-tabs-gap: 2px;
+  /* How much of the iPhone home-indicator safe area the floating bottom
+     bar is allowed to sit within. 1 = clear the whole inset (the #263
+     original); < 1 lets the bar sit lower to use the screen's vertical
+     space while still clearing the ~5 pt home indicator (issue #267).
+     The bar's `bottom` and the `.app` bottom padding both derive from
+     this single knob so they stay in sync. */
+  --bottom-tabs-inset: calc(env(safe-area-inset-bottom, 0px) * 0.5);
+  /* Fixed pill height for the phone bottom bar — see the grid-auto-rows
+     note on `.tabs`. 60 px bar − 8 px padding = 52 px inner; a 48 px
+     centred pill leaves a 2 px breathing margin top and bottom. */
+  --bottom-tabs-pill-height: 48px;
 }
 
 * { box-sizing: border-box; }
@@ -80,11 +91,11 @@ html, body {
 @media (pointer: coarse) and (max-width: 520px) {
   .app {
     padding-bottom: calc(
-      env(safe-area-inset-bottom, 0) + var(--bottom-tabs-height) +
+      var(--bottom-tabs-inset) + var(--bottom-tabs-height) +
       var(--bottom-tabs-gap) + 24px
     );
     scroll-padding-bottom: calc(
-      env(safe-area-inset-bottom, 0) + var(--bottom-tabs-height) +
+      var(--bottom-tabs-inset) + var(--bottom-tabs-height) +
       var(--bottom-tabs-gap) + 24px
     );
   }
@@ -93,10 +104,19 @@ html, body {
     position: fixed;
     left: max(12px, env(safe-area-inset-left, 0));
     right: max(12px, env(safe-area-inset-right, 0));
-    bottom: calc(env(safe-area-inset-bottom, 0) + var(--bottom-tabs-gap));
+    bottom: calc(var(--bottom-tabs-inset) + var(--bottom-tabs-gap));
     z-index: 120;
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    /* Pin every pill to the same fixed row height instead of letting the
+       grid row stretch resolve against the bar height. The implicit auto
+       row settles a frame late as the page content paints, which let the
+       active (filled) pill briefly render taller — protruding above the
+       bar's top edge — before dropping level (issue #267). A fixed row +
+       centred pills make the geometry deterministic from first paint. */
+    grid-auto-rows: var(--bottom-tabs-pill-height);
+    align-content: center;
+    align-items: center;
     gap: 4px;
     height: var(--bottom-tabs-height);
     max-width: 420px;
@@ -108,6 +128,15 @@ html, body {
     box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(20px) saturate(1.25);
     -webkit-backdrop-filter: blur(20px) saturate(1.25);
+    /* Keep the fixed bar on its own stable compositing layer. iOS Safari
+       repaints a plain `position: fixed` element on the main thread and
+       only snaps it to its final spot after a scroll / address-bar
+       transition settles — the visible "drift a few px then lock". A
+       promoted layer is pinned by the compositor instead; the
+       visualViewport pin in tabs.js handles the residual address-bar
+       case (issue #267). */
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .tab {
@@ -119,7 +148,7 @@ html, body {
     justify-content: center;
     gap: 3px;
     min-width: 0;
-    min-height: 50px;
+    height: var(--bottom-tabs-pill-height);
     padding: 6px 4px 5px;
     border-radius: 25px;
     border: 1px solid transparent;

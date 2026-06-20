@@ -35,4 +35,34 @@ export function wireTabs() {
     const tabEl = els[cfg.tab];
     if (tabEl) tabEl.addEventListener('click', function () { setTab(cfg.name); });
   });
+  wireBottomTabsPin();
+}
+
+// Keep the floating bottom tab bar glued to the *visual* viewport bottom
+// (issue #267). iOS Safari positions `position: fixed` against the layout
+// viewport and only re-snaps fixed elements once a scroll / address-bar
+// transition settles, so the bar visibly drifts a few px before locking.
+// Translating it by the gap between the visual and layout viewport bottoms
+// tracks the address bar in real time. No-op when the two viewports
+// coincide (delta 0) — i.e. desktop, the e2e projections, and a settled
+// phone — so it only ever moves during the transient that causes drift.
+function pinBottomTabs() {
+  const nav = els.tabClaude && els.tabClaude.closest('.tabs');
+  if (!nav) return;
+  const vp = window.visualViewport;
+  if (!vp) return;
+  const layoutH = document.documentElement.clientHeight;
+  // Distance the visual viewport bottom sits above the layout viewport
+  // bottom that the bar is anchored to. > 0 while the address bar / a
+  // bottom toolbar is encroaching; the bar is pulled up to match.
+  const delta = Math.round(layoutH - (vp.offsetTop + vp.height));
+  nav.style.transform = delta > 0 ? 'translateY(' + -delta + 'px)' : '';
+}
+
+function wireBottomTabsPin() {
+  if (!window.visualViewport) return;
+  pinBottomTabs();
+  window.visualViewport.addEventListener('resize', pinBottomTabs);
+  window.visualViewport.addEventListener('scroll', pinBottomTabs);
+  window.addEventListener('scroll', pinBottomTabs, { passive: true });
 }
