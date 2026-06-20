@@ -562,20 +562,33 @@ function reanchorHubQueue() {
 //  2. finish on the LAST buffer's `onended` (the real end), with a generous
 //     timer only as a backstop — the previous timer-only finish, computed from a
 //     drifted playHead, fired early and `ctx.close()` chopped the tail.
-async function pumpPcmStream(ctx, res, ac) {
+//
+// `seg` carries a segment's position within a multi-request read (issue #254):
+// the hub caps each synthesis request at ~49.6 s of audio, so a long reply is
+// streamed as several back-to-back POSTs onto this *one* timeline. Only the
+// FIRST segment resets the playHead / queue (and installs the lock re-anchor);
+// only the LAST arms the natural finish — the segments in between simply append
+// their buffers to the shared timeline and return. A single-shot read omits
+// `seg`, so both flags default true and the path is unchanged.
+async function pumpPcmStream(ctx, res, ac, seg) {
+  const isFirst = !seg || seg.isFirst !== false;
+  const isLast = !seg || seg.isLast !== false;
   // Recover the context if iOS suspended/interrupted it during the await(s)
   // between the gesture and now — without this, a long gap (the summarize
   // path waits on the LLM first) leaves the context silent (issue #210).
   try { ctx.resume(); } catch (_) { /* best effort */ }
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
-  _hubPlayHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
-  _hubQueue = [];
-  _hubHiddenAt = null;
+  if (isFirst) {
+    _hubPlayHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
+    _hubQueue = [];
+    _hubHiddenAt = null;
+    installHubVisibility();   // re-anchor the tail if iOS suspends output (lock)
+  }
+  // Not finished until the FINAL segment is fully scheduled; an intermediate
+  // segment keeps the stream "open" so the lock re-anchor doesn't fire finish.
   _hubStreamDone = false;
-  installHubVisibility();   // re-anchor the tail if iOS suspends output (lock)
   let leftover = new Uint8Array(0);
-  let lastNode = null;
   const reader = res.body.getReader();
   _hubReader = reader;
   for (;;) {
@@ -607,15 +620,64 @@ async function pumpPcmStream(ctx, res, ac) {
     // re-anchor the un-played tail instead of losing it.
     _hubQueue.push({ buf: buf, node: node, start: _hubPlayHead, dur: buf.duration });
     _hubPlayHead += buf.duration;
-    lastNode = node;
   }
+  if (!isLast) return;   // more segments still to stream onto this timeline
   _hubStreamDone = true;
-  if (!lastNode) { finishHubNaturally(); return; }
+  if (!_hubQueue.length) { finishHubNaturally(); return; }
   // Guard 2: finish when the final buffer actually ends; the timer only backs
-  // it up (with ample slack) in case onended doesn't fire.
-  lastNode.onended = function () { finishHubNaturally(); };
+  // it up (with ample slack) in case onended doesn't fire. The true last buffer
+  // is the tail of the shared queue (across all segments), not this segment's.
+  const finalNode = _hubQueue[_hubQueue.length - 1].node;
+  finalNode.onended = function () { finishHubNaturally(); };
   const ms = Math.max(0, (_hubPlayHead - ctx.currentTime) * 1000) + 1500;
   _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
+}
+
+// The hub's Orpheus engine hard-caps each synthesis request at n_predict:4096
+// SNAC tokens ≈ 49.6 s of audio (local-llm-hub tts_engines.py); a longer reply
+// is silently truncated server-side on an HTTP-200 stream, so the verbatim
+// read-aloud of any non-trivial reply loses everything past ~49.6 s (issue
+// #254). Until the hub itself chunks (the primary fix — see the cross-linked
+// local-llm-hub issue), the verbatim path defends in depth by splitting the
+// reply into segments that each synthesize well under the cap and streaming
+// them back-to-back on one Web Audio timeline. Budget: ~18 chars/s of speech
+// measured at default speed (67 chars → 3.67 s), so the 49.6 s cap ≈ 900 chars;
+// 700 (~38 s) leaves headroom for slower `speed` settings and punctuation.
+const HUB_SEGMENT_CHARS = 700;
+
+// Split `text` into ≤HUB_SEGMENT_CHARS segments for back-to-back hub synthesis,
+// breaking on sentence boundaries (like `chunkForSpeech` for the Web-Speech
+// path) and greedily packing whole sentences up to the budget. A single
+// sentence longer than the budget is hard-split, preferring the last space so a
+// word isn't cut mid-token. Returns [] for empty input, [text] when it already
+// fits (the common short-reply case → one request, unchanged behaviour).
+export function chunkForHub(text) {
+  const clean = (text || '').trim();
+  if (!clean) return [];
+  if (clean.length <= HUB_SEGMENT_CHARS) return [clean];
+  const sentences = clean.replace(/([.!?])\s+/g, '$1\n').split(/\n+/);
+  const segments = [];
+  let cur = '';
+  const push = function (s) { const t = (s || '').trim(); if (t) segments.push(t); };
+  for (let i = 0; i < sentences.length; i++) {
+    let s = sentences[i].trim();
+    if (!s) continue;
+    // An oversized lone sentence: flush the pending segment, then carve budget-
+    // sized chunks off the front, breaking at the last space within budget.
+    while (s.length > HUB_SEGMENT_CHARS) {
+      if (cur) { push(cur); cur = ''; }
+      let cut = s.lastIndexOf(' ', HUB_SEGMENT_CHARS);
+      if (cut <= 0) cut = HUB_SEGMENT_CHARS;
+      push(s.slice(0, cut));
+      s = s.slice(cut).trim();
+    }
+    if (!s) continue;
+    if (!cur) cur = s;
+    else if (cur.length + 1 + s.length <= HUB_SEGMENT_CHARS) cur += ' ' + s;
+    else { push(cur); cur = s; }
+  }
+  push(cur);
+  return segments;
 }
 
 /**
@@ -682,30 +744,49 @@ export function prepareHub() {
  */
 export async function speakHubInto(handle, text, opts) {
   const { ctx, ac } = handle;
-  try {
-    const res = await fetch('/api/tts/speak', {
-      method: 'POST',
-      headers: Object.assign(
-        { 'Content-Type': 'application/json' }, authHeaders(opts)
-      ),
-      body: JSON.stringify({
-        text: (text || '').trim(),
-        voice: (opts && opts.voice) || undefined,
-        speed: (opts && opts.speed) || undefined,
-      }),
-      signal: ac.signal,
-    });
-    if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
-    if (!res.body || !res.body.getReader) throw new Error('hub tts stream unsupported');
-    await pumpPcmStream(ctx, res, ac);
-    return true;
-  } catch (err) {
-    if (ac.signal.aborted) return true;   // cancelled — not a failure, no fallback
-    // Only tear down if this call still owns the shared state — a newer
-    // speakHub() may have aborted us and taken over (don't clobber it).
-    if (_hubAbort === ac) cancelHub();
-    throw err;
+  // Split a long reply into sub-cap segments streamed back-to-back on the one
+  // timeline (issue #254). A short reply yields a single segment → one POST,
+  // identical to the previous behaviour.
+  const segments = chunkForHub(text);
+  if (!segments.length) { finishHubNaturally(); return true; }
+  for (let i = 0; i < segments.length; i++) {
+    if (ac.signal.aborted) return true;   // cancelled between segments — done
+    try {
+      const res = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: Object.assign(
+          { 'Content-Type': 'application/json' }, authHeaders(opts)
+        ),
+        body: JSON.stringify({
+          text: segments[i],
+          voice: (opts && opts.voice) || undefined,
+          speed: (opts && opts.speed) || undefined,
+        }),
+        signal: ac.signal,
+      });
+      if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
+      if (!res.body || !res.body.getReader) throw new Error('hub tts stream unsupported');
+      await pumpPcmStream(ctx, res, ac, {
+        isFirst: i === 0, isLast: i === segments.length - 1,
+      });
+    } catch (err) {
+      if (ac.signal.aborted) return true;  // cancelled — not a failure, no fallback
+      if (i === 0) {
+        // Nothing has sounded yet: tear down and reject so the caller falls back
+        // to Web Speech for the whole reply (preserves the single-shot contract).
+        // Only if this call still owns the shared state — a newer speakHub() may
+        // have aborted us and taken over (don't clobber it).
+        if (_hubAbort === ac) cancelHub();
+        throw err;
+      }
+      // A later segment failed AFTER earlier ones already sounded. Restarting the
+      // whole reply via Web Speech would re-read what the user just heard, so
+      // finish gracefully on what played rather than reject into the fallback.
+      finishHubNaturally();
+      return true;
+    }
   }
+  return true;
 }
 
 /**
@@ -751,6 +832,7 @@ if (typeof window !== 'undefined') {
     extractLastReply: extractLastReply,
     speak: speak,
     cancelSpeech: cancelSpeech,
+    chunkForHub: chunkForHub,
     speakHub: speakHub,
     prepareHub: prepareHub,
     speakHubInto: speakHubInto,
