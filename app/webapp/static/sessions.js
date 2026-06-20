@@ -41,6 +41,10 @@ export function renderSessions() {
   state.sessions.forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item session-item';
+    // Stable hook so a test (or any consumer) can target a specific
+    // session's row by id rather than position — e.g. the kill regression
+    // must act on the session it launched, never ".first" (issue #260).
+    li.dataset.sessionId = s.session_id;
 
     const main = document.createElement('div');
     main.className = 'app-main';

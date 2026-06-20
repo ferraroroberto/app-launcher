@@ -28,9 +28,12 @@ def test_terminal_view_has_back_arrow_and_kill_button(
         "Build:", timeout=10_000
     )
 
+    # Target the row for the session THIS test launched, by id — never
+    # ".first", which on a shared/live host could be the user's own session
+    # (issue #260). The disposable autoboot host makes this deterministic.
     pty_row = authed_page.locator(
-        "#sessionsList li.session-item:has(.session-kind.pty)"
-    ).first
+        f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
+    )
     expect(pty_row).to_be_visible(timeout=8_000)
 
     # The row carries a single stop control — the unified 🛑 (issue #253).
@@ -55,9 +58,10 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
         "Build:", timeout=10_000
     )
 
+    # Scope to the session this test launched (issue #260) — never ".first".
     pty_row = authed_page.locator(
-        "#sessionsList li.session-item:has(.session-kind.pty)"
-    ).first
+        f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
+    )
     expect(pty_row).to_be_visible(timeout=8_000)
     pty_row.locator(".session-open").click()
     authed_page.wait_for_selector(
