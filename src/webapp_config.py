@@ -9,7 +9,7 @@ Holds:
 - network knobs (host, port)
 - scan roots for Claude-Code projects and Apps
 - per-agent launch flags (model, effort, verbose, debug) for all
-  registered coding agents (claude, codex, antigravity, copilot)
+  registered coding agents (claude, codex, antigravity, copilot, pi)
 - sibling-app loopback URLs (voice-transcriber, photo-ocr, local-llm-hub)
 - Life OS tab settings
 - terminal display and passkey / WebAuthn config
@@ -97,6 +97,25 @@ VALID_COPILOT_MODELS = (
     "gpt-4.1",
 )
 
+# Models the Pi coding agent launches under the `claude-agent-sdk` provider
+# (issue #273). Pi is driven by the Claude **subscription** via the
+# claude-agent-sdk-pi extension (the Claude Agent SDK / Claude Code path) —
+# NOT pi's native `anthropic` provider, which bills metered API "extra usage"
+# credits. The launch therefore always forces `--provider claude-agent-sdk
+# --model claude-agent-sdk/<model>` (see `build_pi_flags`); unlike Copilot's
+# empty "Default", pi_model is never empty — an empty/unknown value falls back
+# to DEFAULT_PI_MODEL so the launch can never slip onto the billing provider.
+# In-session model switching is still available with `/model` / `Ctrl+L`.
+# See docs/pi-coding-agent.md. Refresh from `pi --list-models claude-agent-sdk`.
+VALID_PI_MODELS = (
+    "claude-opus-4-8",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+    "claude-fable-5",
+    "claude-opus-4-7",
+)
+DEFAULT_PI_MODEL = "claude-opus-4-8"
+
 # `--remote-control` is *always* added to the generated claude command
 # line — that's the whole point of the Coding tab, and the UI can't turn
 # it off without breaking the workflow. The permission flag used to live
@@ -175,6 +194,11 @@ class WebappConfig:
     # `copilot_skip_permissions` is the opt-in allow-all switch.
     copilot_skip_permissions: bool = False
     copilot_model: str = ""
+    # Pi coding agent launch model (issue #273). The launched `pi` always
+    # runs under the `claude-agent-sdk` provider (Claude subscription, no API
+    # credits); `pi_model` picks which model that provider uses. Never empty —
+    # `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown value.
+    pi_model: str = DEFAULT_PI_MODEL
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
@@ -318,6 +342,7 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
             raw.get("copilot_skip_permissions", False)
         ),
         copilot_model=str(raw.get("copilot_model", "")),
+        pi_model=str(raw.get("pi_model", DEFAULT_PI_MODEL)),
         auth_token=str(raw.get("auth_token", "")),
         auth_password=str(raw.get("auth_password", "")),
         session_host_port=int(
@@ -375,6 +400,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "codex_permission_mode": cfg.codex_permission_mode,
         "copilot_skip_permissions": cfg.copilot_skip_permissions,
         "copilot_model": cfg.copilot_model,
+        "pi_model": cfg.pi_model,
         "auth_token": cfg.auth_token,
         "auth_password": cfg.auth_password,
         "session_host_port": cfg.session_host_port,
@@ -503,6 +529,23 @@ def build_copilot_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
+def build_pi_flags(cfg: WebappConfig) -> str:
+    """Compose the `pi` CLI flags from the persisted Pi model (issue #273).
+
+    Forces the ``claude-agent-sdk`` provider so the launch always runs on
+    the Claude **subscription** quota (no API "extra usage" credits) — pi's
+    native ``anthropic`` provider bills metered credits and is deliberately
+    bypassed. The provider/model are passed explicitly because pi's
+    settings.json ``defaultProvider`` does not reliably reroute the launch.
+    ``pi_model`` is never empty: an unknown value falls back to
+    ``DEFAULT_PI_MODEL`` so the launch can't slip onto the billing provider.
+    In-session switching stays available via ``/model`` / ``Ctrl+L``.
+    See docs/pi-coding-agent.md.
+    """
+    model = cfg.pi_model if cfg.pi_model in VALID_PI_MODELS else DEFAULT_PI_MODEL
+    return f"--provider claude-agent-sdk --model claude-agent-sdk/{model}"
+
+
 def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None
 ) -> str:
@@ -539,6 +582,8 @@ def build_resume_flags(
         base = build_antigravity_flags(cfg)
     elif agent_id == "copilot":
         base = build_copilot_flags(cfg)
+    elif agent_id == "pi":  # keep the SDK provider/model on resume (issue #273)
+        base = build_pi_flags(cfg)
     else:
         base = ""
     return f"{token} {base}".strip()
@@ -579,6 +624,10 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"copilot_model must be empty or one of {VALID_COPILOT_MODELS}; "
             f"got {cfg.copilot_model!r}"
+        )
+    if cfg.pi_model not in VALID_PI_MODELS:
+        raise ValueError(
+            f"pi_model must be one of {VALID_PI_MODELS}; got {cfg.pi_model!r}"
         )
     if cfg.notify_failure_streak < 0:
         raise ValueError(

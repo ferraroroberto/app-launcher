@@ -46,6 +46,7 @@ from src.webapp_config import (
     build_claude_flags,
     build_codex_flags,
     build_copilot_flags,
+    build_pi_flags,
     build_resume_flags,
 )
 
@@ -216,6 +217,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "codex": build_codex_flags,
             "antigravity": build_antigravity_flags,
             "copilot": build_copilot_flags,
+            "pi": build_pi_flags,
         }
         if resume:
             # Swap the normal flags for the agent's resume invocation; the

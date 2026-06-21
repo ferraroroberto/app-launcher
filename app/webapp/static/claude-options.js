@@ -1,7 +1,9 @@
 /* Coding options card: a collapsible panel (collapsed by default) with a
  * Claude Code subsection (model + effort + verbose/debug + flags preview),
- * an Antigravity subsection (skip-permissions + sandbox toggles), and a
- * GitHub Copilot subsection (model picker + skip-permissions toggle).
+ * an Antigravity subsection (skip-permissions + sandbox toggles), a
+ * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
+ * Pi subsection (model picker — pi runs on the claude-agent-sdk provider, the
+ * Claude subscription path, so the model is always passed explicitly).
  *
  * `patchConfig` round-trips through GET /api/config so the SPA's view of
  * config stays a single source of truth — server-computed flags + the
@@ -27,6 +29,7 @@ export function renderClaudeOptions() {
   renderCodexSubsection();
   renderAntigravitySubsection();
   renderCopilotSubsection();
+  renderPiSubsection();
 }
 
 function renderClaudeSubsection() {
@@ -142,6 +145,25 @@ function renderCopilotSubsection() {
     'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
 }
 
+function renderPiSubsection() {
+  const p = state.config && state.config.pi;
+  if (!p || !els.piModel) return;
+  // Model picker — a <select> over the claude-agent-sdk lineup. Unlike
+  // Copilot there is NO empty "Default" option: pi always launches with an
+  // explicit `--model claude-agent-sdk/<model>` so it can never fall back to
+  // the native (billing) anthropic provider.
+  els.piModel.innerHTML = '';
+  (p.models_available || []).forEach(function (m) {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    els.piModel.appendChild(opt);
+  });
+  els.piModel.value = p.model || '';
+  els.piFlagsPreview.textContent =
+    'pi' + (p.computed_flags ? ' ' + p.computed_flags : '');
+}
+
 export async function patchConfig(patch) {
   try {
     await jsonApi('/api/config', {
@@ -174,6 +196,11 @@ export function wireClaudeOptions() {
   els.copilotModel.addEventListener('change', function () {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
+  if (els.piModel) {
+    els.piModel.addEventListener('change', function () {
+      patchConfig({ pi_model: els.piModel.value });
+    });
+  }
   // The ☁️ Detached and ↺ Resume toggles live in the card's <summary> so
   // they stay visible when the panel is collapsed — but a click there
   // would also expand/collapse the <details>. Stop the click at each

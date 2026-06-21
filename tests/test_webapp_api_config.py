@@ -86,6 +86,20 @@ class TestGetConfig:
         assert cp["model"] == ""
         assert cp["computed_flags"] == ""
 
+    def test_pi_block_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        body = client.get("/api/config").json()
+        pi = body["pi"]
+        assert set(pi) == {"model", "models_available", "computed_flags"}
+        assert isinstance(pi["models_available"], list) and pi["models_available"]
+        # Pi always launches under the claude-agent-sdk provider (subscription,
+        # no API credits) with an explicit model — never bare, never the
+        # native billing provider.
+        assert pi["model"] in pi["models_available"]
+        assert pi["computed_flags"] == (
+            f"--provider claude-agent-sdk --model claude-agent-sdk/{pi['model']}"
+        )
+
 
 class TestPatchConfig:
     def test_patches_allowed_field(self, webapp_client):
@@ -222,6 +236,22 @@ class TestPatchConfig:
         assert f"--model {model}" in cp["computed_flags"]
         # An unknown model is rejected, not silently launched.
         bad = client.post("/api/config", json={"copilot_model": "gpt-not-real"})
+        assert bad.status_code == 400
+
+    def test_pi_model_round_trips(self, webapp_client):
+        """A valid Pi model patches through and surfaces in the forced
+        claude-agent-sdk launch flags; an invalid one is rejected with 400."""
+        client, app, _ = webapp_client
+        models = client.get("/api/config").json()["pi"]["models_available"]
+        model = models[-1]  # pick a non-default to prove it round-trips
+        resp = client.post("/api/config", json={"pi_model": model})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.pi_model == model
+        pi = client.get("/api/config").json()["pi"]
+        assert pi["model"] == model
+        assert f"--model claude-agent-sdk/{model}" in pi["computed_flags"]
+        # An unknown model is rejected, not silently launched onto a bad provider.
+        bad = client.post("/api/config", json={"pi_model": "claude-not-real"})
         assert bad.status_code == 400
 
     def test_ignores_unknown_field_silently(self, webapp_client):

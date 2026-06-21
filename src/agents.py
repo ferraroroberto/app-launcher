@@ -11,6 +11,9 @@ machinery:
   replaced Gemini CLI).
 - ``copilot`` — GitHub Copilot CLI (GitHub's terminal-native agentic
   coding agent; authenticates in-session via ``/login``).
+- ``pi`` — the Pi coding agent, launched under the ``claude-agent-sdk``
+  provider so it runs on the Claude subscription (no API credits); see
+  ``build_pi_flags`` and ``docs/pi-coding-agent.md``.
 
 This module is the single source of truth for the agent id → command
 mapping. It is imported by *both* long-lived processes — the webapp
@@ -80,6 +83,15 @@ AGENTS: Dict[str, Agent] = {
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
         quit_command="/exit", fullscreen=True, resume_token="--resume",
+    ),
+    # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
+    # the Claude **subscription** path (no API credits); see the launch flags
+    # in `build_pi_flags` and docs/pi-coding-agent.md. `-r` renders pi's own
+    # session picker. fullscreen=False: pi's core TUI uses no alternate-screen
+    # buffer (it renders inline like Claude Code, not like Codex's ratatui).
+    "pi": Agent(
+        id="pi", label="Pi", command="pi",
+        quit_command="/quit", fullscreen=False, resume_token="-r",
     ),
 }
 

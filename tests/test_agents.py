@@ -20,6 +20,9 @@ class TestCommandFor:
     def test_copilot_resolves(self):
         assert agents.command_for("copilot") == "copilot"
 
+    def test_pi_resolves(self):
+        assert agents.command_for("pi") == "pi"
+
     def test_unknown_agent_raises(self):
         with pytest.raises(ValueError):
             agents.command_for("bogus")
@@ -31,6 +34,9 @@ class TestQuitCommandFor:
 
     def test_copilot_quits_with_slash_exit(self):
         assert agents.quit_command_for("copilot") == "/exit"
+
+    def test_pi_quits_with_slash_quit(self):
+        assert agents.quit_command_for("pi") == "/quit"
 
     def test_unknown_agent_falls_back_to_default(self):
         # A bad id must never block a stop — fall back, don't raise.
@@ -53,6 +59,10 @@ class TestResumeCommandFor:
     def test_antigravity_continues_most_recent(self):
         # agy has no picker flag; --continue reopens the most recent.
         assert agents.resume_command_for("antigravity") == "--continue"
+
+    def test_pi_resumes_with_flag(self):
+        # pi's -r renders its own session picker over the PTY.
+        assert agents.resume_command_for("pi") == "-r"
 
     def test_unknown_agent_returns_empty(self):
         # A bad id is "not resumable", never a raise.
@@ -82,6 +92,11 @@ class TestIsFullscreen:
         assert agents.is_fullscreen("codex") is True
         assert agents.is_fullscreen("antigravity") is True
         assert agents.is_fullscreen("copilot") is True
+
+    def test_pi_is_inline(self):
+        # Pi's core TUI uses no alternate-screen buffer — it renders inline
+        # like Claude Code (not like Codex's ratatui), so no forced repaint.
+        assert agents.is_fullscreen("pi") is False
 
     def test_unknown_agent_defaults_to_inline(self):
         # Unknown id → safe inline default (matches Claude), never raises.
