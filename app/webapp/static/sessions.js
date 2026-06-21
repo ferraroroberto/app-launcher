@@ -9,7 +9,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { isDesktopClient, jsonApi, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 
 export function fmtAgo(epochSeconds) {
@@ -100,7 +100,7 @@ export function renderSessions() {
     meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + s.project_dir;
     open.appendChild(meta);
     if (!remote) {
-      open.addEventListener('click', function () { openTerminal(s); });
+      open.addEventListener('click', function () { openSession(s); });
     }
     main.appendChild(open);
     li.appendChild(main);
@@ -125,6 +125,38 @@ export function renderSessions() {
 
     host.appendChild(li);
   });
+}
+
+// Open a full-control session when its row is tapped. On a desktop browser
+// this opens a dedicated PC Edge --app window (issue #282) — the same window
+// a new-session launch opens — instead of rendering the terminal inside the
+// user's own browser, so it can be closed without fear while the session
+// keeps running headless. A second tap focuses that window rather than
+// spawning a duplicate. The phone (and a desktop with mirroring disabled)
+// streams the terminal in-page as before.
+export async function openSession(s) {
+  if (isDesktopClient()) {
+    try {
+      const r = await jsonApi(
+        '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
+          '/mirror',
+        { method: 'POST' }
+      );
+      if (r && r.mirrored) {
+        toast(
+          (r.action === 'focused' ? '🖥️ Focused ' : '🖥️ Opened ') +
+            sessionTitle(s) + ' window',
+          'good'
+        );
+        return;
+      }
+      // Mirroring disabled server-side — fall through to the in-page terminal.
+    } catch (exc) {
+      toast('Open window failed: ' + (exc.message || exc), 'error');
+      return;
+    }
+  }
+  openTerminal(s);
 }
 
 export async function stopSession(s) {

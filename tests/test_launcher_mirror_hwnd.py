@@ -357,3 +357,92 @@ class TestOrphanMirrorSweep:
 
         assert launcher.close_orphan_mirror_windows(["whatever"]) == 0
         fake_win32gui.PostMessage.assert_not_called()
+
+
+# ------------------------------------------- focus / open-or-focus (#282)
+
+
+class TestFocusMirrorWindow:
+    """``focus_mirror_window`` foregrounds an existing window if one is live —
+    the "don't spawn a duplicate" half of the desktop click change (issue #282).
+    """
+
+    def test_live_registered_hwnd_foregrounded_no_scan(self, fake_win32gui):
+        """A registered, still-live HWND is foregrounded directly — no sweep."""
+        fake_win32gui.IsWindow.return_value = True
+        launcher.register_mirror_hwnd("sid-live", 4242)
+
+        assert launcher.focus_mirror_window("sid-live") is True
+        fake_win32gui.SetForegroundWindow.assert_called_once_with(4242)
+        fake_win32gui.EnumWindows.assert_not_called()  # no title-scan needed
+
+    def test_stale_registered_hwnd_dropped_and_no_window_returns_false(
+        self, fake_win32gui
+    ):
+        """A registered HWND whose window is gone is dropped; with nothing on
+        the desktop to re-find, focus reports False so the caller spawns."""
+        fake_win32gui.IsWindow.return_value = False  # registered window died
+        # EnumWindows default: no windows on the desktop.
+        launcher.register_mirror_hwnd("sid-stale", 555)
+
+        assert launcher.focus_mirror_window("sid-stale") is False
+        assert "sid-stale" not in launcher._mirror_hwnds
+        fake_win32gui.SetForegroundWindow.assert_not_called()
+
+    def test_unregistered_window_found_by_scan_is_registered(self, fake_win32gui):
+        """No registration (e.g. after a webapp restart) but the window is up —
+        the title-scan re-finds, re-registers, and foregrounds it."""
+        sid = "deadbeef" + "0" * 24
+        windows = [(100, "VS Code"), (300, f"app-launcher-mirror-{sid}")]
+        fake_win32gui.EnumWindows.side_effect = _enum_windows_returning(windows)
+        fake_win32gui.GetWindowText.side_effect = _gettext_lookup(windows)
+
+        assert launcher.focus_mirror_window(sid) is True
+        assert launcher._mirror_hwnds.get(sid) == 300
+        fake_win32gui.SetForegroundWindow.assert_called_once_with(300)
+
+    def test_no_window_anywhere_returns_false(self, fake_win32gui):
+        assert launcher.focus_mirror_window("ghost" + "0" * 27) is False
+        fake_win32gui.SetForegroundWindow.assert_not_called()
+
+    def test_foreground_failure_still_reports_found(self, fake_win32gui):
+        """SetForegroundWindow is restricted from a background process and may
+        raise/flash; a live window still counts as found so no duplicate spawns."""
+        fake_win32gui.IsWindow.return_value = True
+        fake_win32gui.SetForegroundWindow.side_effect = RuntimeError("denied")
+        launcher.register_mirror_hwnd("sid-fg", 77)
+
+        assert launcher.focus_mirror_window("sid-fg") is True  # swallowed
+
+    def test_returns_false_when_win32gui_missing(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "win32gui", None)
+        launcher.register_mirror_hwnd("sid-z", 1)
+        assert launcher.focus_mirror_window("sid-z") is False
+
+
+class TestOpenOrFocusMirrorWindow:
+    """``open_or_focus_mirror_window`` is the route seam: focus if live, else
+    open — and never both (the registry is keyed by sid, issue #282)."""
+
+    def test_focuses_existing_without_spawning(self, fake_win32gui, monkeypatch):
+        fake_win32gui.IsWindow.return_value = True
+        launcher.register_mirror_hwnd("sid-1", 9000)
+        spawn = MagicMock()
+        monkeypatch.setattr(launcher, "open_local_terminal_window", spawn)
+
+        action = launcher.open_or_focus_mirror_window("http://127.0.0.1/x", "sid-1")
+
+        assert action == "focused"
+        spawn.assert_not_called()  # no duplicate window
+
+    def test_opens_when_no_existing_window(self, fake_win32gui, monkeypatch):
+        # Empty registry + no desktop window → focus fails → spawn.
+        spawn = MagicMock()
+        monkeypatch.setattr(launcher, "open_local_terminal_window", spawn)
+        sid = "feedface" + "1" * 24
+        url = "http://127.0.0.1:8445/?terminal=" + sid
+
+        action = launcher.open_or_focus_mirror_window(url, sid)
+
+        assert action == "opened"
+        spawn.assert_called_once_with(url, sid)

@@ -11,6 +11,7 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 from typing import Any, Dict, List
 
 import httpx
@@ -29,7 +30,7 @@ from src import (
     tts_client,
     voice_client,
 )
-from src.webapp_config import WebappConfig
+from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
 from app.webapp.middleware import (
@@ -37,7 +38,12 @@ from app.webapp.middleware import (
     client_in_tailnet,
     via_cloudflare,
 )
-from app.webapp.routers._helpers import client_ip, client_ip_ws, maybe_json
+from app.webapp.routers._helpers import (
+    cert_present,
+    client_ip,
+    client_ip_ws,
+    maybe_json,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -90,6 +96,48 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     )
     audit.session_log(sid, "stop", mode=mode)
     return result
+
+
+@router.post("/api/claude-code/sessions/{sid}/mirror")
+async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
+    """Open (or focus) the PC mirror window for an existing session (issue #282).
+
+    Desktop parity with the launch flow: clicking a session row on a desktop
+    browser should get the same dedicated Edge ``--app`` window a *new*-session
+    launch opens (``should_mirror_to_pc``), not render the terminal inside the
+    user's own browser — so closing it can't tear down the controlling window.
+    A second click focuses the live window rather than spawning a duplicate
+    (the HWND registry is keyed by sid; a duplicate would orphan the first).
+    Stop still closes it — the open path registers the HWND exactly as the
+    launch path does (issue #20).
+
+    The phone never calls this (it streams in-page). When local-window
+    mirroring is disabled (``claude_show_local_window`` false) the launch flow
+    opens no window either, so this returns ``mirrored: false`` and the caller
+    falls back to the in-page terminal — preserving the old behaviour for that
+    config.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    if not cfg.claude_show_local_window:
+        return {"mirrored": False, "reason": "local window mirroring disabled"}
+    # A disposable e2e / verify-before-ship instance (identified by the
+    # session-host port override, set only by autoboot) must never spawn a real
+    # Edge window or focus the canonical instance's desktop windows — the same
+    # rule the orphan-mirror sweep follows (issue #278). Report ``mirrored`` so
+    # the desktop client still skips the in-page terminal, but touch no window.
+    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+        return {"mirrored": True, "action": "skipped"}
+    scheme = "https" if cert_present() else "http"
+    pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+    # Runs the win32 focus/spawn off the event loop; the spawn returns as soon
+    # as Edge is launched (its HWND poll is a daemon thread), so this is quick.
+    action = await asyncio.to_thread(
+        launcher.open_or_focus_mirror_window, pc_url, sid
+    )
+    audit.audit_event(
+        "session_mirror", session=sid, action=action, client=client_ip(request)
+    )
+    return {"mirrored": True, "action": action}
 
 
 @router.post("/api/claude-code/sessions/{sid}/image")
