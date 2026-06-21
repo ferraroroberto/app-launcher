@@ -109,13 +109,26 @@ def _connect(monkeypatch, agent: str):
 
 
 def test_ws_skips_ring_replay_for_fullscreen_agent(monkeypatch):
-    """Codex (fullscreen): the raw ring is NOT replayed — the only server
-    frame is the close, so the DA-query leak can't happen (issue #128)."""
+    """Codex (fullscreen): the raw ring is NOT replayed. The only text frame
+    is the clean-frame preamble (#270 tail-jump) — never the stale ring — so
+    the DA-query leak can't happen (issue #128) and the reopened session lands
+    on a clean buffer instead of crawling through history."""
     client = _connect(monkeypatch, "codex")
     with client.websocket_connect("/sessions/abc/ws?role=phone") as ws:
+        first = ws.receive_text()
+        assert first == server._CLEAR_FRAME
+        assert first != "RAW-RING-SNAPSHOT"  # the stale ring is never sent
+        assert "\x1b[3J" in first  # erase-scrollback, not just clear-screen
         with pytest.raises(WebSocketDisconnect):
-            # No text frame precedes the close: nothing replayed.
+            # Nothing else precedes the close: only the clean preamble.
             ws.receive_text()
+
+
+def test_clean_frame_preamble_is_csi_only():
+    """The preamble must be pure CSI — no OSC/DA — so it can never
+    reintroduce the colour-query / DA leak the #128/#270 strip removed."""
+    assert "\x1b]" not in server._CLEAR_FRAME  # no OSC introducer
+    assert not server._CLEAR_FRAME.endswith("c")  # not a DA-shaped reply
 
 
 def test_ws_replays_ring_for_inline_agent(monkeypatch):
