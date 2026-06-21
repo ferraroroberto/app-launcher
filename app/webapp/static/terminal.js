@@ -10,8 +10,8 @@
  * rubber-band doesn't drag the page under the status bar.
  */
 
-import { els, state } from './state.js';
-import { readToken, toast } from './api.js';
+import { els, state, SESSIONS_POLL_MS } from './state.js';
+import { jsonApi, readToken, toast } from './api.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
@@ -35,6 +35,26 @@ import {
   ensureTerminalToken,
   readTerminalToken,
 } from './webauthn.js';
+
+// The PC mirror window's OS title: the human session title first (so it shows
+// in the Windows/PTI title bar) followed by the hidden marker the launcher's
+// EnumWindows scan matches — as a substring — to close/reconcile the window
+// (issue #20). The marker must always be present; the scan tolerates text
+// around it (it already handles Edge prepending the app name).
+export function mirrorDocTitle(sid, title) {
+  const marker = 'app-launcher-mirror-' + sid;
+  return title ? title + ' — ' + marker : marker;
+}
+
+// Push the current title onto the open overlay header and, for a mirror
+// window, the OS title bar (keeping the close marker). Called on open and on
+// each title poll so a later rename (Claude's evolving summary, a first-prompt
+// title landing) updates the live window (issue #266).
+function refreshTerminalTitle(t, session) {
+  const title = sessionTitle(session);
+  if (els.terminalTitle) els.terminalTitle.textContent = title;
+  if (t.mirror) document.title = mirrorDocTitle(t.sid, title);
+}
 
 function termWsUrl(sid, tt) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -446,7 +466,7 @@ export async function openTerminal(session) {
   // console.info is intentional — open DevTools on the mirror window
   // to confirm the title was actually applied if Stop & Close fails.
   if (isMirror) {
-    const mirrorTitle = 'app-launcher-mirror-' + sid;
+    const mirrorTitle = mirrorDocTitle(sid, sessionTitle(session));
     document.title = mirrorTitle;
     console.info('[app-launcher] mirror title set:', mirrorTitle);
   }
@@ -504,6 +524,24 @@ export async function openTerminal(session) {
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
   };
   state.terminal = t;
+
+  // Live-refresh the title while the overlay is open (issue #266). The main
+  // sessions poll is paused under the overlay (main.js), so without this an
+  // open terminal / PC mirror window stays stuck on its first-paint title when
+  // the agent renames the conversation (or a first-prompt title lands). Reuses
+  // SESSIONS_POLL_MS so the session-fetch cadence is unchanged whether the
+  // overlay is open or closed — just a direct fetch with no Running-sessions
+  // list re-render, which is what the main poll's pause deliberately avoids.
+  t.titleTimer = setInterval(function () {
+    if (t !== state.terminal) return;
+    jsonApi('/api/claude-code/sessions').then(function (body) {
+      if (t !== state.terminal) return;
+      const s = (body.sessions || []).find(function (x) {
+        return x.session_id === sid;
+      });
+      if (s) refreshTerminalTitle(t, s);
+    }).catch(function () { /* best-effort; title just won't refresh */ });
+  }, SESSIONS_POLL_MS);
 
   // Native iOS momentum (fling) scrolling on the phone (issue #23).
   // Skipped for the PC mirror window — it scrolls with a wheel and
@@ -625,6 +663,7 @@ export function closeTerminal() {
   resetComposeBar();
   clearReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
+  if (t.titleTimer) clearInterval(t.titleTimer);
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
