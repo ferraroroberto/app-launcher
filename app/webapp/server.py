@@ -69,7 +69,7 @@ from src.static_versioning import (
     fleet_hash_of,
     rewrite_js_imports,
 )
-from src.webapp_config import load_webapp_config
+from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.webauthn_gate import WebAuthnGate
 
 from app.webapp.middleware import BearerTokenMiddleware
@@ -153,7 +153,26 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
     against the session-host's live list — but only when that list is
     *reliable*: a failed lookup means we can't tell live from orphan, so we
     skip rather than risk closing a live session's window.
+
+    The sweep is machine-global (``EnumWindows`` over the whole desktop), so a
+    *disposable* webapp — the e2e / verify-before-ship gate's autoboot instance,
+    pointed at an empty disposable session-host — would see an empty live list
+    and ``WM_CLOSE`` every real ``app-launcher-mirror-*`` window on the desktop,
+    killing the user's live session mirrors while the sessions survive headless
+    on the real ``:8446`` (issue #278). ``#260`` isolated the session-host but
+    left this window sweep machine-wide. Only the canonical instance owns the
+    desktop, so a disposable instance — identified by the
+    ``LAUNCHER_SESSION_HOST_PORT`` override, which is set *only* by autoboot and
+    never in production — skips the sweep entirely.
     """
+    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+        _log.debug(
+            "ℹ️ orphan mirror reconcile skipped — disposable instance "
+            "(%s set, e.g. e2e/verify autoboot); the machine-global sweep must "
+            "not close the canonical instance's desktop windows (#278)",
+            SESSION_HOST_PORT_ENV,
+        )
+        return
     cfg = getattr(app.state, "webapp_config", None)
     if cfg is None:
         return
