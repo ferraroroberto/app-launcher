@@ -64,6 +64,18 @@ _repaint_tasks: "set[asyncio.Task]" = set()
 _REPAINT_SETTLE = 0.15
 _REPAINT_TOGGLE_GAP = 0.05
 
+# Clean-frame preamble for a full-screen TUI (re)connect (#270 tail-jump).
+# A no-alt-screen agent (Codex/ratatui) paints the *main* buffer, so on a
+# reconnect — where the client reuses the same xterm instance with the stale
+# frame still in its buffer — the forced repaint is appended *below* that
+# stale content, and xterm auto-follows to the bottom, scrolling through the
+# old frame to reach the prompt (the "crawl"). Sending an erase-scrollback +
+# clear-screen + home preamble before the repaint nudge wipes the client's
+# buffer so the fresh frame lands on an empty screen — the reopened session
+# jumps straight to the current frame. CSI only (no OSC/DA), so it can't
+# reintroduce the query leak the #128/#270 strip removed.
+_CLEAR_FRAME = "\x1b[H\x1b[2J\x1b[3J"
+
 # Where uploaded images land inside the project so `claude` can read them.
 _IMAGE_DIR_NAME = ".launcher-tmp"
 _SAFE_IMAGE_EXT = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
@@ -208,6 +220,11 @@ def create_app() -> FastAPI:
                 # as input — the `[?1;2c` DA leak (issue #128). Force a clean
                 # repaint at the current size instead. Role-independent: the
                 # leak hits the PC mirror too.
+                #
+                # Wipe the client's buffer first (#270 tail-jump): the xterm
+                # instance is reused across a reconnect, so without this the
+                # repaint appends below the stale frame and crawls through it.
+                await websocket.send_text(_CLEAR_FRAME)
                 task = asyncio.create_task(_force_repaint(session))
                 _repaint_tasks.add(task)
                 task.add_done_callback(_repaint_tasks.discard)

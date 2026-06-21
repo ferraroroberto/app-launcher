@@ -182,6 +182,12 @@ function connectWs(t) {
     t.giveUpAt = 0;
     clearReconnect(t);
     setTerminalStatus(null);
+    // Full-screen TUI (re)connect: drop any stale buffer so the server's
+    // clean-frame repaint lands on an empty screen instead of crawling
+    // through the previous frame's history (#270 tail-jump). The xterm
+    // instance is reused across reconnects, so the old frame is still here.
+    // Inline agents (Claude) keep their replayed scrollback — untouched.
+    if (t.isFullscreen && t.term) { try { t.term.clear(); } catch (_) {} }
     if (t.applySize) t.applySize();
     if (t.term) t.term.focus();
   };
