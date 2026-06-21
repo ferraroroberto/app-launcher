@@ -132,6 +132,16 @@
           <p class="opt-hint">Sign in with <code>/login</code> inside the session. <strong>Default</strong> leaves the model to the Copilot CLI's own setting.</p>
           <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
         </div>
+
+        <div class="opt-group">
+          <h3 class="opt-group-title">Pi</h3>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <select id="piModel" class="select-native" aria-label="Pi model"></select>
+          </div>
+          <p class="opt-hint">Runs on your <strong>Claude subscription</strong> via the <code>claude-agent-sdk</code> provider — no API credits. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Switch models in-session with <code>/model</code>.</p>
+          <div id="piFlagsPreview" class="flags-preview">pi</div>
+        </div>
       </details>
 
       <details class="card coding-card sessions-card" open>

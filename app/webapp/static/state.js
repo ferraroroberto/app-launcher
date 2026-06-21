@@ -41,6 +41,7 @@ export const state = {
     { id: 'claude', label: 'Claude Code', available: true },
     { id: 'antigravity', label: 'Antigravity CLI', available: false },
     { id: 'copilot', label: 'GitHub Copilot CLI', available: false },
+    { id: 'pi', label: 'Pi', available: false },
   ],
   runningApps: [],
   // Coding tab git flags (issue #115). null until the user taps the
@@ -179,6 +180,8 @@ export const els = {
   copilotModel: document.getElementById('copilotModel'),
   copilotSkipPerms: document.getElementById('copilotSkipPerms'),
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
+  piModel: document.getElementById('piModel'),
+  piFlagsPreview: document.getElementById('piFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),
   favFilterBtn: document.getElementById('favFilterBtn'),

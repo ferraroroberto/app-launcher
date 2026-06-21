@@ -2,7 +2,7 @@
 
 Phone-first launcher hub. One tap on your phone → the home PC either:
 
-- runs a coding agent — **Claude Code**, **Codex CLI**, **Antigravity CLI**, or **GitHub Copilot CLI** — in a project folder (**Coding** tab),
+- runs a coding agent — **Claude Code**, **Codex CLI**, **Antigravity CLI**, **GitHub Copilot CLI**, or **Pi** — in a project folder (**Coding** tab),
 - spawns any registered Streamlit / FastAPI launcher (**Apps** tab),
 - fires a one-shot Python script or scheduled job (**Jobs** tab — same trigger surface the Stream Deck and Task Scheduler use), or
 - invokes a [`life-os`](https://github.com/ferraroroberto/life-os) productivity skill and browses what it knows about you (**Life OS** tab).
@@ -21,7 +21,7 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 The web UI has four tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
-  - **Claude Code** (`claude`), **Codex CLI** (`codex`), **Antigravity CLI** (`agy`), and **GitHub Copilot CLI** (`copilot`) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Codex CLI](#installing-the-codex-cli), [Installing the Antigravity CLI](#installing-the-antigravity-cli), and [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli) below.
+  - **Claude Code** (`claude`), **Codex CLI** (`codex`), **Antigravity CLI** (`agy`), **GitHub Copilot CLI** (`copilot`), and **Pi** (`pi`, on your Claude subscription via the Agent SDK) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Codex CLI](#installing-the-codex-cli), [Installing the Antigravity CLI](#installing-the-antigravity-cli), [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli), and [Installing Pi](#installing-pi) below.
   - A trailing **GitHub icon** opens the project's repo in a new browser tab — no process spawned, no session created. The repo URL is derived from the project's `origin` git remote; the icon is disabled with a hover hint when the folder has no GitHub remote.
   - Each launch has **two modes** chosen by the **☁️ Detached** toggle in the options card. **Toggle off → full control:** the agent starts inside a **launcher-owned pseudo-console (ConPTY)** and the phone drops straight into a **live, fully interactive terminal** — real output, scrollback, typing, `Ctrl+C`, image paste. **Toggle on → detached:** the agent opens in its own console window on the PC; the launcher only *tracks* it (running-sessions list, killable from the phone) and it survives a launcher restart — including a full `tray.bat --restart` (issue #130).
   - A second toggle, **↺ Resume** (issue #151), reopens an existing conversation: with it on, the next agent tap launches that agent's **own native session picker** — `claude --resume`, `codex resume`, `copilot --resume` all show their list of recent sessions to pick from. (The launcher never builds its own session list; it only hands off to the agent's picker.) Antigravity has no picker flag, so its Resume **continues the most recent** conversation (`agy --continue`). Resume is **orthogonal to Detached** (issue #157): with Detached **off** the picker streams to the phone in a full-control terminal; with Detached **on** the picker renders in the **detached console window** on the PC (a real interactive console, so the list is pickable there) and the session shows as `☁️ detached` in the running-sessions list.
@@ -138,6 +138,38 @@ for the channel that suits you. Verify with `copilot --version`.
 > tray restart to inherit the new `PATH`). Use `tray.bat --restart` for that;
 > a bare `tray.bat` is a no-op when a tray is already running.
 
+### Installing Pi
+
+The Coding tab can also launch the **Pi coding agent** (`pi`), driven by your
+**Claude subscription** through the Claude Agent SDK — **no API credits**. The
+tab's Pi button stays disabled until `pi` is on `PATH`. Install the CLI and the
+SDK provider extension (needs Node.js):
+
+```powershell
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi install npm:claude-agent-sdk-pi
+```
+
+Verify with `pi --version` and `pi --list-models claude-agent-sdk` (the latter
+should list `claude-opus-4-8`, `claude-sonnet-4-6`, etc.). Pick the launch model
+in the Coding **options** card's *Pi* block.
+
+> **Why the SDK extension is required.** Pi's *native* `anthropic` provider
+> bills metered API "extra usage" credits, **not** your subscription — so the
+> launcher always launches Pi as
+> `pi --provider claude-agent-sdk --model claude-agent-sdk/<model>`, which routes
+> through the Claude Code subscription quota instead. Don't set
+> `ANTHROPIC_API_KEY`. Authenticate the subscription once with Claude Code
+> (`npx @anthropic-ai/claude-code`, or your existing Claude Code login). Switch
+> models inside the session with `/model`. Details: [`docs/pi-coding-agent.md`](docs/pi-coding-agent.md).
+>
+> Pi is detected on `PATH` *and* registered in `src/agents.py`, which the
+> `:8446` session-host imports at start — so after installing Pi (or upgrading
+> the launcher to a build that adds it), a `🔄 Restart webapp` / `tray.bat
+> --restart` is **not** enough: the session-host that spawns `pi` needs a
+> **full tray restart** (which ends open Coding/PTY sessions) before the Pi
+> button works, otherwise the launch fails with `unknown agent: pi`.
+
 ---
 
 ## Run
@@ -234,7 +266,7 @@ After this you **must** re-install the trust profile on every device: delete the
 
 ## Interactive terminal from the phone
 
-Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for any coding agent (Claude Code, Codex CLI, Antigravity CLI, or GitHub Copilot CLI). Tap a `⚡ full control` session in the list to re-attach.
+Launching a Coding-tab project in **full control** mode (the default — the ☁️ Detached toggle off) opens a **live terminal** — the same thing you'd see in the CMD window on the PC, streamed to the phone: real output, scrollback, typing, `Ctrl+C`, `/quit`, and image paste. This works the same for any coding agent (Claude Code, Codex CLI, Antigravity CLI, GitHub Copilot CLI, or Pi). Tap a `⚡ full control` session in the list to re-attach.
 
 A full-control launch — from the phone **or** from a desktop browser on the PC — opens the terminal in a **dedicated Edge `--app` window on the PC**, not inside the launching browser, so it closes independently when you stop the session, without touching your other tabs (issue #241). **Tapping a row in the running-sessions list re-opens the session the same way:** on the **phone** it streams *in-page* as an ordinary terminal overlay (stopping it just dismisses the overlay — never a browser window), while on a **desktop browser** it opens that dedicated PC Edge window too — or, if one is already open for that session, focuses it rather than spawning a second — so you can close it without fear while the session keeps running headless (issue #282). Either way, **stopping the session closes its mirror window** (issue #20). When the same session is open on both phone and PC, the **phone drives the terminal size** and the PC window mirrors it — one ConPTY has one size, so the phone is the single authority and the two never fight over dimensions.
 
@@ -604,7 +636,7 @@ The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `tes
 - `src/audit.py` — terminal audit + per-session logs/transcripts
 - `src/registry.py` — unified apps registry
 - `src/scanner.py` — bat classifier + project-directory discovery
-- `src/agents.py` — coding-agent registry (Claude Code / Codex CLI / Antigravity CLI / GitHub Copilot CLI) + PATH detection
+- `src/agents.py` — coding-agent registry (Claude Code / Codex CLI / Antigravity CLI / GitHub Copilot CLI / Pi) + PATH detection
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored
