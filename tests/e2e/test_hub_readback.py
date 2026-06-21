@@ -237,3 +237,99 @@ def test_screen_lock_reschedules_pending_buffers(
     assert all(t >= 100 for t in got["reanchored"])
     # Playback is still in progress — the tail was preserved, not finished early.
     assert got["pressed"] == "true"
+
+
+def test_chunk_for_hub_bounds_long_text(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """chunkForHub() keeps every segment under the per-request budget and loses
+    no text (#254). A short reply stays a single segment (one request, unchanged);
+    a long reply splits into several bounded segments whose concatenation still
+    covers the whole input."""
+    _open_terminal(authed_page, base_url, launched_pty_session)
+    got = authed_page.evaluate(
+        "() => {"
+        "  const short = 'Build is green.';"
+        "  const long = Array.from({length: 22}, (_, i) =>"
+        "    `Segment number ${i} explains a distinct part of the deployment plan in some detail.`"
+        "  ).join(' ');"
+        "  const c = window.__readback;"
+        "  return {"
+        "    shortSegs: c.chunkForHub(short),"
+        "    long: long,"
+        "    segs: c.chunkForHub(long),"
+        "  };"
+        "}"
+    )
+    # A short reply is a single segment — one POST, identical to before.
+    assert got["shortSegs"] == ["Build is green."]
+    # The long reply is over the hub's ~900-char single-request cap and splits.
+    assert len(got["long"]) > 1500
+    segs = got["segs"]
+    assert len(segs) >= 2
+    # Every segment is bounded (JS budget HUB_SEGMENT_CHARS = 700; allow slack).
+    assert all(0 < len(s) <= 760 for s in segs)
+    # Nothing dropped: the concatenated segments cover essentially the whole reply
+    # (only inter-segment join spaces are trimmed at boundaries).
+    assert sum(len(s) for s in segs) >= int(0.95 * len(got["long"]))
+
+
+def test_long_reply_issues_multiple_bounded_requests(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """The acceptance for #254: a verbatim reply longer than the hub's per-request
+    cap (~49.6 s of speech ≈ ~900 chars) must NOT be silently truncated. The hub
+    path splits it into several bounded /api/tts/speak requests streamed
+    back-to-back on ONE Web Audio timeline, so the total synthesized audio tracks
+    the input length instead of flatlining at the single-request cap. Before this
+    fix the verbatim path issued exactly one POST and lost everything past ~49.6 s.
+    """
+    authed_page.add_init_script(_AUDIO_MOCK)
+    captured: list[str] = []
+
+    def _capture(route) -> None:  # type: ignore[no-untyped-def]
+        try:
+            captured.append((route.request.post_data_json or {}).get("text", ""))
+        except Exception:
+            captured.append(route.request.post_data or "")
+        route.fulfill(
+            status=200, content_type="audio/L16",
+            headers={"X-Sample-Rate": "24000"}, body=_PCM,
+        )
+
+    authed_page.route(
+        "**/api/tts/health",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"available": true}'
+        ),
+    )
+    authed_page.route("**/api/tts/speak", _capture)
+    _open_terminal(authed_page, base_url, launched_pty_session)
+
+    # ~1800 chars ≈ 98 s of Orpheus speech at the measured ~18 chars/s — well past
+    # the single-request ~49.6 s / ~900-char cap, so a non-chunking path truncates.
+    long_reply = " ".join(
+        f"Segment number {i} explains a distinct part of the deployment plan in some detail."
+        for i in range(22)
+    )
+    assert len(long_reply) > 1500
+
+    got = authed_page.evaluate(
+        "async (t) => { const ok = await window.__readback.speakHub("
+        "  t, { token: 'bt', terminalToken: 'tt' });"
+        " return Object.assign({ ok }, window.__audioLog); }",
+        long_reply,
+    )
+    assert got["ok"] is True
+    # MULTIPLE bounded synth requests were issued — not one capped request.
+    assert len(captured) >= 2
+    # Each request stays within the segment budget (~700 chars) so the hub never
+    # hits its 4096-token / ~49.6 s ceiling on any single request.
+    assert all(0 < len(t) <= 760 for t in captured)
+    # The whole reply was synthesized: total characters across the requests track
+    # the input length rather than flatlining at the first ~900-char cap.
+    assert sum(len(t) for t in captured) >= int(0.95 * len(long_reply))
+    # All segments streamed onto ONE timeline (one AudioContext), back-to-back,
+    # with at least one scheduled buffer per segment.
+    assert got["contexts"] == 1
+    assert got["started"] >= 2
