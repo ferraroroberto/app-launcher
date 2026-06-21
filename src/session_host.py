@@ -196,18 +196,39 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
 # read boundary so the leak is killed for fresh + reconnect, pc + phone. We
 # match TIGHTLY — only OSC 10/11/12 with a ``?`` query or an ``rgb:``/``#``
 # colour payload — so we never touch title OSC (0/1/2), hyperlink OSC 8,
-# clipboard OSC 52, or any CSI. Terminator is BEL (\x07) or ST (ESC \).
+# clipboard OSC 52, or any CSI.
+#
+# Terminator handling differs by form (empirical, from a live pywinpty
+# capture of Codex startup): the ``rgb:``/``#`` *reply* always carries a BEL
+# (\x07) or ST (ESC \) terminator. The ``?`` *query*, however, is emitted by
+# Codex **unterminated and back-to-back** — ``ESC]10;?ESC]11;?`` — each query
+# implicitly ended by the next ESC, with no BEL/ST at all. The original #270
+# pattern required a terminator on every form, so it silently MISSED these
+# bare queries: they reached xterm.js, which answered with ``ESC]10;rgb:…``,
+# and that reply leaked. So the terminator is OPTIONAL for the ``?`` query
+# (a bare ``ESC]1X;?`` is already a complete colour query) and stays REQUIRED
+# for the rgb/# reply (its payload needs a clear end so we don't over-strip).
 _OSC_COLOR_RE = re.compile(
-    r"\x1b\]1[012];"          # OSC 10 | 11 | 12 ;
-    r"(?:\?|rgb:[0-9A-Fa-f/]+|#[0-9A-Fa-f]+)"  # query ? OR rgb:… OR #… payload
-    r"(?:\x07|\x1b\\)"        # terminator: BEL or ST
+    r"\x1b\]1[012];"                                   # OSC 10 | 11 | 12 ;
+    r"(?:"
+    r"\?(?:\x07|\x1b\\)?"                              # query: terminator OPTIONAL
+    r"|(?:rgb:[0-9A-Fa-f/]+|#[0-9A-Fa-f]+)(?:\x07|\x1b\\)"  # reply: term REQUIRED
+    r")"
 )
-# A partial OSC 10/11/12 sequence — opened but not yet terminated. When a
-# chunk ends mid-sequence we carry this tail to the next read rather than
-# leaking it. Anchored to the END so we only ever carry a true trailing
-# fragment.
+# A trailing fragment we must hold back to the next read: either the *start*
+# of a colour OSC opened but not yet terminated, OR a complete-but-bare ``?``
+# query whose BEL/ST terminator may still land in the next chunk (so we don't
+# strip the query here and orphan its terminator into the next chunk). Anchored
+# to the END, and tight — it only matches valid colour-OSC prefixes (``?`` /
+# ``rgb:…`` / ``#…``), never arbitrary trailing text, because it is consulted
+# BEFORE the strip: a loose ``[^\x07\x1b]*`` here would wrongly hold real text
+# that merely follows a query in the same chunk.
 _OSC_COLOR_PARTIAL_RE = re.compile(
-    r"\x1b(?:\](?:1(?:[012](?:;[^\x07\x1b]*\x1b?)?)?)?)?\Z"
+    r"\x1b(?:\](?:1(?:[012](?:;(?:"
+    r"\?\x1b?"                                  # query (+ pending ST ESC)
+    r"|r(?:g(?:b(?::[0-9A-Fa-f/]*\x1b?)?)?)?"   # rgb:… reply in progress
+    r"|#[0-9A-Fa-f]*\x1b?"                      # #… reply in progress
+    r")?)?)?)?)?\Z"
 )
 # Cap on the carried partial: if an unterminated ESC] grows past this without a
 # terminator it's not really a colour query — flush it as-is so a stray ESC can
@@ -231,15 +252,19 @@ def _strip_color_osc(chunk: str, carry: str) -> Tuple[str, str]:
         return chunk, ""
 
     data = carry + chunk
-    cleaned = _OSC_COLOR_RE.sub("", data)
 
-    # Hold back a trailing partial colour-OSC so a sequence split across the
-    # read boundary is still caught next chunk. Bound it: a runaway ESC] that
-    # never terminates is flushed rather than carried forever.
-    m = _OSC_COLOR_PARTIAL_RE.search(cleaned)
-    if m and (len(cleaned) - m.start()) <= _OSC_CARRY_MAX:
-        return cleaned[: m.start()], cleaned[m.start() :]
-    return cleaned, ""
+    # Hold back a trailing partial/bare colour-OSC BEFORE stripping, so a
+    # sequence split across the read boundary — or a bare ``?`` query whose
+    # terminator lands in the next chunk — is caught whole next read instead
+    # of being half-stripped (which would orphan a BEL/ST into the next
+    # chunk). Bound it: a fragment past the cap is flushed rather than carried
+    # forever, so a stray ESC can't wedge the stream.
+    m = _OSC_COLOR_PARTIAL_RE.search(data)
+    if m and (len(data) - m.start()) <= _OSC_CARRY_MAX:
+        head, new_carry = data[: m.start()], data[m.start() :]
+    else:
+        head, new_carry = data, ""
+    return _OSC_COLOR_RE.sub("", head), new_carry
 
 
 @dataclass
