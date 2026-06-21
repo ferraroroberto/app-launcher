@@ -32,8 +32,21 @@ pytestmark = pytest.mark.smoke
 
 
 def test_inpage_loopback_open_is_not_treated_as_mirror(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
+    # Opening a session by tapping its row is an *in-page* terminal only on a
+    # touch (phone) client now — a desktop browser (pointer: fine) opens a
+    # dedicated PC Edge mirror window instead (issue #282). The conftest maps
+    # the WebKit projection onto an iPhone (coarse pointer), so this in-page
+    # path is exercised there; on the Chromium desktop projection the row-tap
+    # mirrors and there is no in-page terminal to misclassify. The terminal.js
+    # isMirror logic this pins is projection-independent, so WebKit covers it.
+    if browser_name != "webkit":
+        pytest.skip(
+            "in-page terminal via row-tap is phone-only since #282; the "
+            "desktop row-tap opens a mirror window (see "
+            "test_desktop_session_mirror.py)"
+        )
     sid = launched_pty_session
 
     # Land on the SPA with NO ?terminal deep-link — exactly how a desktop

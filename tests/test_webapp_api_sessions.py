@@ -181,6 +181,66 @@ class TestStopSessionMirrorClose:
         sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
 
+class TestMirrorSession:
+    """Issue #282: a desktop click on an existing session opens (or focuses)
+    the same dedicated Edge mirror window the new-session launch opens, instead
+    of rendering the terminal in the controlling browser."""
+
+    def test_open_invokes_launcher_and_reports_opened(
+        self, webapp_client, monkeypatch
+    ):
+        client, app, _ = webapp_client
+        app.state.webapp_config.claude_show_local_window = True
+        from app.webapp.routers import sessions as sessions_router
+        mock_open = MagicMock(return_value="opened")
+        monkeypatch.setattr(
+            sessions_router.launcher, "open_or_focus_mirror_window", mock_open
+        )
+
+        resp = client.post("/api/claude-code/sessions/abc-123/mirror")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"mirrored": True, "action": "opened"}
+        # Called with the loopback mirror URL (no cert in tests → http) + sid.
+        url, sid = mock_open.call_args.args
+        assert sid == "abc-123"
+        assert url.startswith("http") and url.endswith("/?terminal=abc-123")
+
+    def test_focus_reports_focused(self, webapp_client, monkeypatch):
+        client, app, _ = webapp_client
+        app.state.webapp_config.claude_show_local_window = True
+        from app.webapp.routers import sessions as sessions_router
+        monkeypatch.setattr(
+            sessions_router.launcher,
+            "open_or_focus_mirror_window",
+            MagicMock(return_value="focused"),
+        )
+
+        resp = client.post("/api/claude-code/sessions/abc-123/mirror")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"mirrored": True, "action": "focused"}
+
+    def test_disabled_mirroring_returns_not_mirrored_without_spawning(
+        self, webapp_client, monkeypatch
+    ):
+        """With local-window mirroring off, the endpoint opens nothing and the
+        client falls back to the in-page terminal (old behaviour preserved)."""
+        client, app, _ = webapp_client
+        app.state.webapp_config.claude_show_local_window = False
+        from app.webapp.routers import sessions as sessions_router
+        mock_open = MagicMock()
+        monkeypatch.setattr(
+            sessions_router.launcher, "open_or_focus_mirror_window", mock_open
+        )
+
+        resp = client.post("/api/claude-code/sessions/abc-123/mirror")
+
+        assert resp.status_code == 200
+        assert resp.json()["mirrored"] is False
+        mock_open.assert_not_called()
+
+
 class TestProxySessionWS:
     """Issue #61: an upstream WS handshake rejection must not escape.
 

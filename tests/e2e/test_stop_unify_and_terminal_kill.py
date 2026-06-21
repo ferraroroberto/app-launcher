@@ -10,6 +10,13 @@ Two iPhone bites in one issue:
 
 Complements ``test_smoke.py``'s per-row button assertion; this one drives
 the terminal-view kill end to end.
+
+Both tests open the terminal by tapping the session row, which is an *in-page*
+terminal only on a touch (phone) client now — a desktop browser opens a
+dedicated PC Edge mirror window instead (issue #282). So they run on the
+iPhone (WebKit) projection, where the in-page terminal view they exercise is
+the real behaviour; the desktop row-tap is covered by
+``test_desktop_session_mirror.py``.
 """
 
 from __future__ import annotations
@@ -20,9 +27,20 @@ from playwright.sync_api import Page, expect
 pytestmark = pytest.mark.smoke
 
 
+def _skip_unless_phone(browser_name: str) -> None:
+    # conftest projects WebKit onto an iPhone (coarse pointer → in-page
+    # terminal); the Chromium desktop projection mirrors the row-tap (#282).
+    if browser_name != "webkit":
+        pytest.skip(
+            "in-page terminal view via row-tap is phone-only since #282; the "
+            "desktop row-tap opens a mirror window"
+        )
+
+
 def test_terminal_view_has_back_arrow_and_kill_button(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
+    _skip_unless_phone(browser_name)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=10_000
@@ -51,8 +69,9 @@ def test_terminal_view_has_back_arrow_and_kill_button(
 
 
 def test_kill_from_terminal_view_stops_and_returns_to_list(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
+    _skip_unless_phone(browser_name)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=10_000

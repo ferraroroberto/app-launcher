@@ -272,6 +272,88 @@ def close_mirror_window(sid: str) -> bool:
     return False
 
 
+# SW_RESTORE from winuser.h — un-minimize (and leave a normal window as-is)
+# before foregrounding. Inlined like _WM_CLOSE so callers needn't import
+# win32con.
+_SW_RESTORE = 9
+
+
+def _is_window(win32gui: Any, hwnd: int) -> bool:
+    """``IsWindow(hwnd)`` — False (never raises) if the handle is dead."""
+    try:
+        return bool(win32gui.IsWindow(hwnd))
+    except Exception:  # noqa: BLE001 — pywintypes.error
+        return False
+
+
+def _bring_to_front(win32gui: Any, hwnd: int, tag: str) -> None:
+    """Restore (if minimized) and foreground ``hwnd`` — best-effort, never raises.
+
+    Windows forbids ``SetForegroundWindow`` from a background process, so the
+    call may only flash the taskbar button rather than raise the window. That
+    is acceptable: the point of focusing is to *avoid spawning a duplicate*
+    window, not to guarantee a raise — a flashing taskbar button is a fine
+    fallback. ``tag`` is a sid prefix for the log line.
+    """
+    try:
+        win32gui.ShowWindow(hwnd, _SW_RESTORE)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"ShowWindow(SW_RESTORE) → hwnd {hwnd} for {tag} skipped: {exc}")
+    try:
+        win32gui.SetForegroundWindow(hwnd)
+        logger.debug(f"SetForegroundWindow → hwnd {hwnd} for {tag}")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"SetForegroundWindow → hwnd {hwnd} for {tag} failed: {exc}")
+
+
+def focus_mirror_window(sid: str) -> bool:
+    """Foreground ``sid``'s existing mirror window if one is live (issue #282).
+
+    Returns ``True`` when a live mirror window for ``sid`` was found (and a
+    best-effort foreground attempted), ``False`` when none exists — in which
+    case the caller should spawn a fresh window. A stale registered HWND (its
+    window already closed) is re-validated and dropped, then a fresh
+    ``EnumWindows`` title-scan re-finds and re-registers the window — so a
+    mirror opened before a webapp restart (registry wiped) is still focused,
+    not duplicated.
+    """
+    try:
+        import win32gui  # type: ignore
+    except ImportError:
+        logger.warning(
+            "pywin32 not available — mirror window focus skipped for "
+            f"sid {sid[:8]}"
+        )
+        return False
+    hwnd = _mirror_hwnds.get(sid)
+    if hwnd is not None and not _is_window(win32gui, hwnd):
+        forget_mirror_hwnd(sid)
+        hwnd = None
+    if hwnd is None:
+        hwnd = _find_mirror_hwnd(win32gui, _MIRROR_TITLE_PREFIX + sid)
+        if hwnd is not None:
+            register_mirror_hwnd(sid, hwnd)
+    if hwnd is None:
+        return False
+    _bring_to_front(win32gui, hwnd, sid[:8])
+    return True
+
+
+def open_or_focus_mirror_window(url: str, sid: str) -> str:
+    """Focus ``sid``'s existing mirror window if live, else open a fresh one.
+
+    Returns ``"focused"`` or ``"opened"`` (issue #282). This is what makes a
+    desktop click on an existing session row behave like the new-session
+    launch — a dedicated Edge window — without ever spawning a *second* window
+    for the same session: the HWND registry is keyed by sid, so a duplicate
+    spawn would orphan the first window's tracked HWND and break Stop & Close.
+    """
+    if focus_mirror_window(sid):
+        return "focused"
+    open_local_terminal_window(url, sid)
+    return "opened"
+
+
 def close_orphan_mirror_windows(live_sids: Iterable[str]) -> int:
     """Close every Edge mirror window not backed by a live session (#199).
 
