@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import logging
+import re
 import subprocess
 import threading
 import time
@@ -188,6 +189,59 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
     return remaining, extracted
 
 
+# OSC colour query/reply leak (#270). Codex emits OSC 10/11/12 *queries*
+# (``ESC]10;?``) at startup; something answers them and the reply
+# (``ESC]10;rgb:…``) leaks as visible text on a fresh/dirty xterm. We strip
+# both the query and reply forms of OSC 10/11/12 from the output stream at the
+# read boundary so the leak is killed for fresh + reconnect, pc + phone. We
+# match TIGHTLY — only OSC 10/11/12 with a ``?`` query or an ``rgb:``/``#``
+# colour payload — so we never touch title OSC (0/1/2), hyperlink OSC 8,
+# clipboard OSC 52, or any CSI. Terminator is BEL (\x07) or ST (ESC \).
+_OSC_COLOR_RE = re.compile(
+    r"\x1b\]1[012];"          # OSC 10 | 11 | 12 ;
+    r"(?:\?|rgb:[0-9A-Fa-f/]+|#[0-9A-Fa-f]+)"  # query ? OR rgb:… OR #… payload
+    r"(?:\x07|\x1b\\)"        # terminator: BEL or ST
+)
+# A partial OSC 10/11/12 sequence — opened but not yet terminated. When a
+# chunk ends mid-sequence we carry this tail to the next read rather than
+# leaking it. Anchored to the END so we only ever carry a true trailing
+# fragment.
+_OSC_COLOR_PARTIAL_RE = re.compile(
+    r"\x1b(?:\](?:1(?:[012](?:;[^\x07\x1b]*\x1b?)?)?)?)?\Z"
+)
+# Cap on the carried partial: if an unterminated ESC] grows past this without a
+# terminator it's not really a colour query — flush it as-is so a stray ESC can
+# never wedge the stream.
+_OSC_CARRY_MAX = 64
+
+
+def _strip_color_osc(chunk: str, carry: str) -> Tuple[str, str]:
+    """Strip OSC 10/11/12 colour query/reply sequences from ``chunk``.
+
+    Stateful across reads: ``carry`` is any trailing partial colour-OSC
+    fragment held back from the previous chunk. Returns
+    ``(clean_output, new_carry)`` — ``clean_output`` is safe to emit now,
+    ``new_carry`` is the partial fragment to prepend to the next chunk.
+
+    Fast path: a chunk with no ESC at all and an empty carry can't contain a
+    colour OSC (nor the start of one straddling the boundary), so it passes
+    through untouched.
+    """
+    if not carry and "\x1b" not in chunk:
+        return chunk, ""
+
+    data = carry + chunk
+    cleaned = _OSC_COLOR_RE.sub("", data)
+
+    # Hold back a trailing partial colour-OSC so a sequence split across the
+    # read boundary is still caught next chunk. Bound it: a runaway ESC] that
+    # never terminates is flushed rather than carried forever.
+    m = _OSC_COLOR_PARTIAL_RE.search(cleaned)
+    if m and (len(cleaned) - m.start()) <= _OSC_CARRY_MAX:
+        return cleaned[: m.start()], cleaned[m.start() :]
+    return cleaned, ""
+
+
 @dataclass
 class PtySession:
     """One ``claude`` process running inside a launcher-owned ConPTY."""
@@ -212,6 +266,7 @@ class PtySession:
     _transcript: Optional[TextIO] = None
     live_title: str = ""
     _osc_buffer: str = ""
+    _color_osc_carry: str = ""
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -247,6 +302,15 @@ class PtySession:
                 if not self._pty.isalive():
                     break
                 time.sleep(0.01)
+                continue
+            # Strip OSC 10/11/12 colour query/reply sequences (#270) at the
+            # source — before scrollback + broadcast — so the leak never
+            # reaches a fresh OR reconnecting client. Stateful: a sequence
+            # split across two reads is held in _color_osc_carry.
+            chunk, self._color_osc_carry = _strip_color_osc(
+                chunk, self._color_osc_carry
+            )
+            if not chunk:
                 continue
             # Parse OSC window-title sequences and cache the latest title.
             self._osc_buffer += chunk
