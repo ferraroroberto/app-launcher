@@ -22,14 +22,38 @@ export function fmtAgo(epochSeconds) {
   return hrs + 'h ' + (mins % 60) + 'm';
 }
 
-// Display title for a session. Coding agents prefix their live terminal
-// title with a brand glyph (e.g. Claude's green ✳). The per-session
-// agent icon already identifies the agent, so that leading glyph is
-// redundant — strip any leading run of non-alphanumeric characters.
+// Last path segment of a session's project dir, lowercased — the project
+// folder name, used to spot a live title that merely echoes it.
+function projectBasename(s) {
+  const dir = String((s && s.project_dir) || '');
+  const parts = dir.split(/[\\/]/).filter(Boolean);
+  return (parts.length ? parts[parts.length - 1] : '').toLowerCase();
+}
+
+// Display title for a session, with smart precedence (issue #266). Only some
+// agents self-name per conversation: Claude emits a real summary, but Codex
+// emits "<folder> | <model>", Pi emits "π - <folder>", and Antigravity /
+// Copilot emit no title at all. So:
+//   1. a genuine live title (not just the project folder) wins — Claude's;
+//   2. else the first-prompt-derived title (prompt_title) — covers the agents
+//      that don't self-name, and de-genericizes the folder-only ones;
+//   3. else fall back to the folder-echo title, then the launch name.
+// Coding agents prefix their live title with a brand glyph (Claude's green ✳);
+// the per-session agent icon already identifies the agent, so strip any
+// leading run of non-alphanumeric characters.
 export function sessionTitle(s) {
   const live = String((s && s.live_title) || '')
     .replace(/^[^\p{L}\p{N}]+/u, '')
     .trim();
+  const prompt = String((s && s.prompt_title) || '').trim();
+  const base = projectBasename(s);
+  // A short live title containing the folder name is a project echo (Codex /
+  // Pi), no more distinctive than the launch name. A real summary is longer
+  // and not folder-dominated, so the word-count guard lets it through.
+  const projectEcho = !!live && !!base &&
+    live.toLowerCase().includes(base) && live.split(/\s+/).length <= 4;
+  if (live && !projectEcho) return live;
+  if (prompt) return prompt;
   return live || (s && s.name) || 'session';
 }
 

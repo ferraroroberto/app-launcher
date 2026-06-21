@@ -7,8 +7,8 @@ mirror window on the PC. The fix has two halves:
     level window whose title contains a unique marker, then PostMessage
     WM_CLOSE on Stop. Verified by ``tests/test_launcher_mirror_hwnd.py``
     (16 tests with mocked win32gui).
-  * JS (this test): ``terminal.js`` sets ``document.title`` to
-    ``app-launcher-mirror-<sid>`` when the page is in mirror mode, so
+  * JS (this test): ``terminal.js`` keeps the ``app-launcher-mirror-<sid>``
+    marker in ``document.title`` when the page is in mirror mode, so
     EnumWindows has something to match on.
 
 If the JS half regresses (someone refactors the title assignment away),
@@ -16,6 +16,12 @@ EnumWindows never finds the HWND, WM_CLOSE is never posted, and the
 Edge mirror lingers — but the Python side keeps passing in isolation
 because it's testing the polling loop with mocked title strings. This
 test closes that gap.
+
+Since #266 the mirror title also **leads with the human session name** (for
+the Windows/PTI title bar), e.g. ``"fix the login bug — app-launcher-mirror-
+<sid>"``. The launcher's scan matches the marker as a *substring*
+(``marker in title``), so the contract this pins is that the marker still
+**trails** the title intact — not that it is the whole title.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ from playwright.sync_api import Page
 pytestmark = pytest.mark.smoke
 
 
-def test_mirror_page_sets_unique_document_title(
+def test_mirror_page_keeps_close_marker_in_document_title(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     sid = launched_pty_session
@@ -36,8 +42,11 @@ def test_mirror_page_sets_unique_document_title(
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
 
-    expected = f"app-launcher-mirror-{sid}"
+    # The marker must remain at the tail of the title (a human name may lead,
+    # issue #266) so the launcher's substring EnumWindows scan still finds and
+    # closes the Edge --app window.
+    marker = f"app-launcher-mirror-{sid}"
     authed_page.wait_for_function(
-        f"() => document.title === {expected!r}",
+        f"() => document.title.endsWith({marker!r})",
         timeout=5_000,
     )

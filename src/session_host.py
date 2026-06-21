@@ -60,6 +60,16 @@ _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
 
+# First-prompt session title (issue #266). Only Claude Code emits a genuine
+# per-conversation OSC title; Antigravity/Copilot emit none and Codex/Pi emit
+# only the project folder, so for those agents we derive a human title from the
+# first submitted prompt. Cap how much un-submitted input we buffer (a line the
+# user never sends must not grow unbounded), and how long / how many words the
+# derived title runs.
+_PROMPT_TITLE_BUF_MAX = 400
+_PROMPT_TITLE_MAX_CHARS = 48
+_PROMPT_TITLE_MAX_WORDS = 6
+
 # Stop modes accepted by SessionManager.stop / PtySession.stop.
 STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
 STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
@@ -189,6 +199,68 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
     return remaining, extracted
 
 
+def _cook_input_line(raw: str) -> str:
+    """Reduce a raw keystroke stream to the visible text the user typed.
+
+    The PTY input path carries raw bytes — printable characters, backspaces,
+    arrow-key escape sequences, bracketed-paste markers. To title a session
+    from its first prompt (issue #266) we replay that stream into the text it
+    produces: apply backspace (DEL/BS), drop ESC-introduced control sequences
+    (CSI ``ESC [ … final`` — which also covers ``ESC[200~``/``ESC[201~`` paste
+    markers — and OSC ``ESC ] … BEL/ST``), and keep the printable remainder.
+    Best-effort, not a full terminal emulator — good enough for a title.
+    """
+    out: List[str] = []
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if ch == "\x1b":
+            i += 1
+            if i < n and raw[i] == "[":  # CSI: run to a final byte 0x40-0x7E
+                i += 1
+                while i < n and not ("\x40" <= raw[i] <= "\x7e"):
+                    i += 1
+                i += 1  # consume the final byte
+            elif i < n and raw[i] == "]":  # OSC: run to BEL or ST
+                i += 1
+                while i < n and raw[i] not in ("\x07", "\x1b"):
+                    i += 1
+                if i < n and raw[i] == "\x07":
+                    i += 1
+            else:  # ESC + single char (or a lone trailing ESC)
+                i += 1
+            continue
+        if ch in ("\x7f", "\x08"):  # DEL / BS — erase the last visible char
+            if out:
+                out.pop()
+            i += 1
+            continue
+        if ord(ch) >= 32:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _derive_prompt_title(text: str) -> str:
+    """Derive a short, human-readable session title from a first prompt.
+
+    Deterministic and offline (no LLM, issue #266): collapse whitespace, drop
+    control chars, take the leading few words, cap the length. ``text`` should
+    already be the cooked visible line from :func:`_cook_input_line`.
+    """
+    # Collapse all whitespace runs (incl. tabs/newlines) to single spaces
+    # first — so whitespace separators survive — then drop residual control
+    # chars, which can only sit inside a token at this point.
+    clean = "".join(c for c in " ".join(text.split()) if ord(c) >= 32)
+    if not clean:
+        return ""
+    title = " ".join(clean.split(" ")[:_PROMPT_TITLE_MAX_WORDS])
+    if len(title) > _PROMPT_TITLE_MAX_CHARS:
+        title = title[:_PROMPT_TITLE_MAX_CHARS].rstrip()
+    return title
+
+
 # OSC colour query/reply leak (#270). Codex emits OSC 10/11/12 *queries*
 # (``ESC]10;?``) at startup; something answers them and the reply
 # (``ESC]10;rgb:…``) leaks as visible text on a fresh/dirty xterm. We strip
@@ -290,8 +362,11 @@ class PtySession:
     _exited: bool = False
     _transcript: Optional[TextIO] = None
     live_title: str = ""
+    prompt_title: str = ""
     _osc_buffer: str = ""
     _color_osc_carry: str = ""
+    _prompt_raw: str = ""
+    _prompt_captured: bool = False
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -391,9 +466,61 @@ class PtySession:
             self._subscribers.discard(queue)
 
     # --------------------------------------------------------------- io
+    def _maybe_capture_prompt(self, data: str) -> None:
+        """Accumulate input until the first submit, then derive a title (#266).
+
+        Every keystroke and paste the browser sends routes through
+        :meth:`write`, so this is the single chokepoint that sees the user's
+        first prompt. We buffer raw input until the first CR/LF (the submit),
+        cook it to visible text, and store a derived title — used as the
+        display name for agents that don't self-name per conversation. Stops
+        after the first capture; bounded so an un-submitted line can't grow
+        without limit.
+        """
+        if self._prompt_captured:
+            return
+        self._prompt_raw += data
+        while True:
+            cr = self._prompt_raw.find("\r")
+            lf = self._prompt_raw.find("\n")
+            ends = [i for i in (cr, lf) if i != -1]
+            if not ends:
+                # No submit yet. If the user has typed a wall of input without
+                # ever sending it, give up and title from what we have rather
+                # than buffering without bound.
+                if len(self._prompt_raw) > _PROMPT_TITLE_BUF_MAX:
+                    self._finalize_prompt_title(self._prompt_raw)
+                return
+            end = min(ends)
+            title = _derive_prompt_title(_cook_input_line(self._prompt_raw[:end]))
+            if title:
+                self._finalize_prompt_title_with(title)
+                return
+            # Empty submit (a bare Enter / whitespace-only line) — drop it and
+            # keep looking, so the first *meaningful* prompt wins. Skip the
+            # terminator, collapsing a paired CR+LF.
+            nxt = end + 1
+            if (self._prompt_raw[end] == "\r" and nxt < len(self._prompt_raw)
+                    and self._prompt_raw[nxt] == "\n"):
+                nxt += 1
+            self._prompt_raw = self._prompt_raw[nxt:]
+
+    def _finalize_prompt_title(self, raw_line: str) -> None:
+        self._finalize_prompt_title_with(
+            _derive_prompt_title(_cook_input_line(raw_line))
+        )
+
+    def _finalize_prompt_title_with(self, title: str) -> None:
+        self._prompt_captured = True
+        self._prompt_raw = ""
+        if title:
+            self.prompt_title = title
+
     def write(self, data: str) -> None:
         if self._exited or not data:
             return
+        if not self._prompt_captured:
+            self._maybe_capture_prompt(data)
         try:
             if len(data) <= _WRITE_CHUNK_THRESHOLD:
                 self._pty.write(data)
@@ -522,6 +649,7 @@ class PtySession:
             "rows": self.rows,
             "cols": self.cols,
             "live_title": self.live_title,
+            "prompt_title": self.prompt_title,
         }
 
 
