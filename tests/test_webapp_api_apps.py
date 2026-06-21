@@ -144,10 +144,6 @@ class TestClaudeCodeDiscovery:
         from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        # No PC mirror window in the test.
-        monkeypatch.setattr(
-            apps_router, "open_local_terminal_window", lambda *a, **k: None
-        )
         captured: dict = {}
 
         def fake_spawn(
@@ -309,10 +305,6 @@ class TestClaudeCodeDiscovery:
         from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        # A pty launch would otherwise open the PC mirror window.
-        monkeypatch.setattr(
-            apps_router, "open_local_terminal_window", lambda *a, **k: None
-        )
         captured: dict = {}
 
         def fake_spawn(
@@ -378,9 +370,6 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        monkeypatch.setattr(
-            apps_router, "open_local_terminal_window", lambda *a, **k: None
-        )
         captured: dict = {}
 
         def fake_spawn(
@@ -413,9 +402,6 @@ class TestClaudeCodeDiscovery:
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
-        )
-        monkeypatch.setattr(
-            apps_router, "open_local_terminal_window", lambda *a, **k: None
         )
         captured: dict = {}
 

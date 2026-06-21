@@ -12,6 +12,7 @@ opt-in via ``pytest -m smoke``.
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from pathlib import Path
@@ -28,6 +29,34 @@ if str(PROJECT_ROOT) not in sys.path:
 @pytest.fixture
 def project_root() -> Path:
     return PROJECT_ROOT
+
+
+@pytest.fixture(autouse=True)
+def _no_real_mirror_window(request, monkeypatch):
+    """Never spawn a real PC mirror window from a non-e2e test (issue #279).
+
+    Both launch handlers — the Apps tab (``routers/apps.py``) and the Life OS
+    tab (``routers/life_os.py``) — call ``open_local_terminal_window`` when
+    ``should_mirror_to_pc`` is True, which it is under ``TestClient`` (its
+    request host isn't loopback). Left real, each launch spawns an Edge
+    ``--app`` window the unit test never tears down, littering the desktop with
+    ``app-launcher-mirror-*`` windows. Stub the name as imported into each
+    router so any launch test — present or future — is leak-proof from one
+    place.
+
+    The ``launcher`` module's own function is intentionally left intact so
+    ``tests/test_launcher_mirror_hwnd.py`` can still exercise it directly with
+    the inner spawn stubbed. Skipped for the live-tray e2e (``smoke``) suite,
+    which drives a separate webapp process this in-process patch can't reach.
+    """
+    if request.node.get_closest_marker("smoke"):
+        return
+    for mod_name in ("app.webapp.routers.apps", "app.webapp.routers.life_os"):
+        module = importlib.import_module(mod_name)
+        if hasattr(module, "open_local_terminal_window"):
+            monkeypatch.setattr(
+                module, "open_local_terminal_window", lambda *a, **k: None
+            )
 
 
 @pytest.fixture
