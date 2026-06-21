@@ -45,7 +45,50 @@ def test_strips_query_between_normal_text():
     assert _strip_color_osc(chunk, "") == ("beforeafter", "")
 
 
+def test_strips_unterminated_query():
+    # Codex emits the colour query with NO terminator — a bare ESC]10;? — not
+    # the BEL/ST-terminated form #270 originally assumed. The reopened #270
+    # root cause: the terminator-required regex silently missed this, so the
+    # query reached xterm.js, which answered and the reply leaked. A bare query
+    # at the very end of a chunk is held (a BEL/ST terminator may still arrive
+    # next read) — it never leaks, and the following read flushes it stripped.
+    out, carry = _strip_color_osc("\x1b]10;?", "")
+    assert out == ""
+    assert carry == "\x1b]10;?"
+    assert _strip_color_osc("\x1b[2J", carry) == ("\x1b[2J", "")
+
+
+def test_strips_back_to_back_unterminated_queries():
+    # Exact bytes from a live pywinpty capture of Codex startup: two
+    # unterminated queries back-to-back, each implicitly ended by the next ESC.
+    # The first strips immediately; the trailing one is held (then stripped on
+    # the next read). End to end via _feed, nothing leaks.
+    assert _feed("\x1b]10;?\x1b]11;?", "\x1b[H") == "\x1b[H"
+
+
+def test_unterminated_queries_then_repaint_frame_is_clean():
+    # The real leak shape: queries immediately followed by the ratatui repaint.
+    # Only the queries vanish; the CSI repaint + banner text are byte-exact.
+    frame = "\x1b]10;?\x1b]11;?\x1b[2J\x1b[Hgpt-5.5 high"
+    assert _strip_color_osc(frame, "") == ("\x1b[2J\x1b[Hgpt-5.5 high", "")
+
+
+def test_unterminated_query_keeps_following_text():
+    # A bare query is stripped but adjacent text after it is preserved.
+    assert _strip_color_osc("\x1b]10;?prompt>", "") == ("prompt>", "")
+
+
 # ------------------------------------------------------------- boundary split
+
+
+def test_unterminated_queries_split_anywhere_stay_clean():
+    # The captured back-to-back queries plus a repaint tail, split at every
+    # index across two feed() calls — the queries must always fully vanish and
+    # the tail must always survive byte-exact.
+    full = "\x1b]10;?\x1b]11;?\x1b[2J\x1b[Hprompt>"
+    tail = "\x1b[2J\x1b[Hprompt>"
+    for cut in range(len(full) + 1):
+        assert _feed(full[:cut], full[cut:]) == tail, f"leak at cut={cut}"
 
 
 def test_split_inside_sequence_is_fully_stripped():
