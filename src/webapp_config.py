@@ -97,24 +97,51 @@ VALID_COPILOT_MODELS = (
     "gpt-4.1",
 )
 
-# Models the Pi coding agent launches under the `claude-agent-sdk` provider
-# (issue #273). Pi is driven by the Claude **subscription** via the
-# claude-agent-sdk-pi extension (the Claude Agent SDK / Claude Code path) —
-# NOT pi's native `anthropic` provider, which bills metered API "extra usage"
-# credits. The launch therefore always forces `--provider claude-agent-sdk
-# --model claude-agent-sdk/<model>` (see `build_pi_flags`); unlike Copilot's
-# empty "Default", pi_model is never empty — an empty/unknown value falls back
-# to DEFAULT_PI_MODEL so the launch can never slip onto the billing provider.
-# In-session model switching is still available with `/model` / `Ctrl+L`.
-# See docs/pi-coding-agent.md. Refresh from `pi --list-models claude-agent-sdk`.
-VALID_PI_MODELS = (
-    "claude-opus-4-8",
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5",
-    "claude-fable-5",
-    "claude-opus-4-7",
-)
+# Pi coding-agent launch models (issues #273, #288). The Coding tab shows a
+# deliberately small, segmented model control — three options spanning two
+# subscription providers (the one cross-provider wrinkle in the launcher):
+#
+#   - Opus / Sonnet → the `claude-agent-sdk` provider, driven by the Claude
+#     **subscription** via the claude-agent-sdk-pi extension (the Claude Agent
+#     SDK / Claude Code path). NOT pi's native `anthropic` provider, which
+#     bills metered API "extra usage" credits (that OAuth is disconnected on
+#     this machine — only the SDK + openai-codex paths remain).
+#   - GPT → pi's `openai-codex` provider, the ChatGPT-plan **subscription**
+#     (its OAuth token lives in pi's auth.json). Verified no-API-credit:
+#     `pi -p --provider openai-codex --model openai-codex/gpt-5.5` completes
+#     cleanly with no key set.
+#
+# Each option maps to (provider, full `provider/id` model arg, display label);
+# `build_pi_flags` switches `--provider`/`--model` on the chosen option.
+# `pi_model` is never empty — an unknown value falls back to DEFAULT_PI_MODEL
+# so the launch can never slip onto a billing path. Refresh the model ids from
+# `pi --list-models claude-agent-sdk` / `pi --list-models openai-codex`.
+PI_MODEL_SPECS: dict = {
+    "claude-opus-4-8": ("claude-agent-sdk", "claude-agent-sdk/claude-opus-4-8", "Opus"),
+    "claude-sonnet-4-6": ("claude-agent-sdk", "claude-agent-sdk/claude-sonnet-4-6", "Sonnet"),
+    "gpt-5.5": ("openai-codex", "openai-codex/gpt-5.5", "GPT"),
+}
+VALID_PI_MODELS = tuple(PI_MODEL_SPECS)
 DEFAULT_PI_MODEL = "claude-opus-4-8"
+
+# Pi reasoning effort, mapped to pi's `--thinking <level>` flag (issue #288).
+# A small segmented control mirroring Claude's Effort; defaults high (the user
+# changes it in-session with Shift+Tab if needed). Pi's full ladder is
+# off/minimal/low/medium/high/xhigh; the UI offers the same small set as the
+# other agents.
+VALID_PI_EFFORTS = ("low", "medium", "high")
+DEFAULT_PI_EFFORT = "high"
+
+# Pi project-trust mode, mapped to pi's `--approve`/`--no-approve` flag
+# (issue #288). NOTE: this is NOT a tool-execution permission gate like
+# Claude's/Codex's auto/skip — pi has no tool sandbox or per-action prompt
+# (see pi's security.md). It governs project *trust*: whether pi loads
+# project-local `.pi/` settings/extensions/skills. "trust" → `--approve`
+# (load them, no startup trust prompt — the smooth phone default); "ask" →
+# `--no-approve` (ignore project-local resources for the run). Default
+# "trust" so an interactive phone launch never stalls on a trust prompt.
+VALID_PI_TRUST_MODES = ("trust", "ask")
+DEFAULT_PI_TRUST_MODE = "trust"
 
 # `--remote-control` is *always* added to the generated claude command
 # line — that's the whole point of the Coding tab, and the UI can't turn
@@ -194,11 +221,17 @@ class WebappConfig:
     # `copilot_skip_permissions` is the opt-in allow-all switch.
     copilot_skip_permissions: bool = False
     copilot_model: str = ""
-    # Pi coding agent launch model (issue #273). The launched `pi` always
-    # runs under the `claude-agent-sdk` provider (Claude subscription, no API
-    # credits); `pi_model` picks which model that provider uses. Never empty —
-    # `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown value.
+    # Pi coding agent launch settings (issues #273, #288). `pi_model` is one
+    # of three segmented options (Opus/Sonnet on the claude-agent-sdk
+    # subscription path, GPT on the openai-codex ChatGPT-plan path) — never
+    # empty; `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown
+    # value so the launch can't slip onto a billing path. `pi_effort` maps to
+    # `--thinking` (default high); `pi_trust_mode` maps to `--approve` /
+    # `--no-approve` (project trust, not a tool-permission gate — see
+    # VALID_PI_TRUST_MODES).
     pi_model: str = DEFAULT_PI_MODEL
+    pi_effort: str = DEFAULT_PI_EFFORT
+    pi_trust_mode: str = DEFAULT_PI_TRUST_MODE
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
@@ -343,6 +376,8 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         ),
         copilot_model=str(raw.get("copilot_model", "")),
         pi_model=str(raw.get("pi_model", DEFAULT_PI_MODEL)),
+        pi_effort=str(raw.get("pi_effort", DEFAULT_PI_EFFORT)),
+        pi_trust_mode=str(raw.get("pi_trust_mode", DEFAULT_PI_TRUST_MODE)),
         auth_token=str(raw.get("auth_token", "")),
         auth_password=str(raw.get("auth_password", "")),
         session_host_port=int(
@@ -401,6 +436,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "copilot_skip_permissions": cfg.copilot_skip_permissions,
         "copilot_model": cfg.copilot_model,
         "pi_model": cfg.pi_model,
+        "pi_effort": cfg.pi_effort,
+        "pi_trust_mode": cfg.pi_trust_mode,
         "auth_token": cfg.auth_token,
         "auth_password": cfg.auth_password,
         "session_host_port": cfg.session_host_port,
@@ -530,20 +567,33 @@ def build_copilot_flags(cfg: WebappConfig) -> str:
 
 
 def build_pi_flags(cfg: WebappConfig) -> str:
-    """Compose the `pi` CLI flags from the persisted Pi model (issue #273).
+    """Compose the `pi` CLI flags from the persisted Pi knobs (issues #273, #288).
 
-    Forces the ``claude-agent-sdk`` provider so the launch always runs on
-    the Claude **subscription** quota (no API "extra usage" credits) — pi's
-    native ``anthropic`` provider bills metered credits and is deliberately
-    bypassed. The provider/model are passed explicitly because pi's
-    settings.json ``defaultProvider`` does not reliably reroute the launch.
-    ``pi_model`` is never empty: an unknown value falls back to
-    ``DEFAULT_PI_MODEL`` so the launch can't slip onto the billing provider.
-    In-session switching stays available via ``/model`` / ``Ctrl+L``.
-    See docs/pi-coding-agent.md.
+    Three pieces, all passed explicitly because pi's settings.json defaults
+    do not reliably reroute a launch:
+
+    - **provider + model** — looked up from :data:`PI_MODEL_SPECS` for the
+      chosen option. Opus/Sonnet route to the ``claude-agent-sdk`` provider
+      (the Claude **subscription** quota, no API "extra usage" credits); GPT
+      routes to ``openai-codex`` (the ChatGPT-plan subscription). ``pi_model``
+      is never empty — an unknown value falls back to ``DEFAULT_PI_MODEL`` so
+      the launch can't slip onto a billing path (pi's native ``anthropic``
+      provider is deliberately bypassed, and disconnected on this machine).
+    - **thinking** — ``--thinking <effort>`` from ``pi_effort`` (default high).
+    - **trust** — ``--approve`` (trust mode) or ``--no-approve`` (ask mode).
+      This is project *trust* (loading project-local ``.pi/`` resources), NOT
+      a tool-permission gate: pi has no tool sandbox or per-action prompt.
+
+    In-session switching stays available via ``/model`` / ``Ctrl+L`` /
+    ``Shift+Tab``. See docs/pi-coding-agent.md.
     """
     model = cfg.pi_model if cfg.pi_model in VALID_PI_MODELS else DEFAULT_PI_MODEL
-    return f"--provider claude-agent-sdk --model claude-agent-sdk/{model}"
+    provider, model_arg, _label = PI_MODEL_SPECS[model]
+    parts = ["--provider", provider, "--model", model_arg]
+    effort = cfg.pi_effort if cfg.pi_effort in VALID_PI_EFFORTS else DEFAULT_PI_EFFORT
+    parts.extend(["--thinking", effort])
+    parts.append("--approve" if cfg.pi_trust_mode == "trust" else "--no-approve")
+    return " ".join(parts)
 
 
 def build_resume_flags(
@@ -628,6 +678,15 @@ def _validate(cfg: WebappConfig) -> None:
     if cfg.pi_model not in VALID_PI_MODELS:
         raise ValueError(
             f"pi_model must be one of {VALID_PI_MODELS}; got {cfg.pi_model!r}"
+        )
+    if cfg.pi_effort not in VALID_PI_EFFORTS:
+        raise ValueError(
+            f"pi_effort must be one of {VALID_PI_EFFORTS}; got {cfg.pi_effort!r}"
+        )
+    if cfg.pi_trust_mode not in VALID_PI_TRUST_MODES:
+        raise ValueError(
+            f"pi_trust_mode must be one of {VALID_PI_TRUST_MODES}; "
+            f"got {cfg.pi_trust_mode!r}"
         )
     if cfg.notify_failure_streak < 0:
         raise ValueError(

@@ -181,6 +181,8 @@ export const els = {
   copilotSkipPerms: document.getElementById('copilotSkipPerms'),
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   piModel: document.getElementById('piModel'),
+  piEffort: document.getElementById('piEffort'),
+  piTrust: document.getElementById('piTrust'),
   piFlagsPreview: document.getElementById('piFlagsPreview'),
   claudeList: document.getElementById('claudeList'),
   claudeEmpty: document.getElementById('claudeEmpty'),

@@ -137,9 +137,17 @@
           <h3 class="opt-group-title">Pi</h3>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <select id="piModel" class="select-native" aria-label="Pi model"></select>
+            <div id="piModel" class="segmented" role="radiogroup" aria-label="Pi model"></div>
           </div>
-          <p class="opt-hint">Runs on your <strong>Claude subscription</strong> via the <code>claude-agent-sdk</code> provider — no API credits. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Switch models in-session with <code>/model</code>.</p>
+          <div class="opt-row">
+            <span class="opt-name">Effort</span>
+            <div id="piEffort" class="segmented" role="radiogroup" aria-label="Pi reasoning"></div>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Project trust</span>
+            <div id="piTrust" class="segmented" role="radiogroup" aria-label="Pi project trust"></div>
+          </div>
+          <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>GPT</strong> runs on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Effort maps to <code>--thinking</code>; switch models/effort in-session with <code>/model</code> / <code>Shift+Tab</code>. <strong>Trust</strong> loads project-local <code>.pi/</code> resources (not a tool-permission gate — pi has no sandbox).</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
         </div>
       </details>
