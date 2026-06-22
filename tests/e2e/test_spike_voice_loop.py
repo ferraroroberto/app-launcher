@@ -1,4 +1,7 @@
-"""Loop-logic proof for the hands-free voice-loop spike (#246). THROWAWAY.
+"""Loop-logic proof for the hands-free voice-loop spike (#246).
+
+THROWAWAY by design, but RETAINED FOR NOW (#258) as the live reference until the
+kanban/board view and the orchestrator (#245) voice mode land.
 
 This pins the *wiring* of the continuous voice loop — the turn sequence, the
 barge-in escape, the forced-gesture escape, and the per-turn latency
@@ -14,7 +17,8 @@ machine sequences turns correctly", not "iOS allows it".
 The loop's state machine (spike-voice-loop-fsm.js) is pure — no audio, no
 network, no timers — and is exposed on ``window.__voiceloop`` by the prototype
 page. The test drives it through that seam with synthetic events + injected
-timestamps. Delete with the rest of the spike-voice-loop.* set.
+timestamps. Delete with the rest of the spike-voice-loop.* set once #245 + the
+board view have shipped (see docs/voice-loop-spike.md for the retention decision).
 """
 
 from __future__ import annotations

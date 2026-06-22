@@ -1,4 +1,7 @@
-/* Spike #246 — controller for the hands-free voice loop prototype. THROWAWAY.
+/* Spike #246 — controller for the hands-free voice loop prototype.
+ * THROWAWAY by design, but RETAINED FOR NOW (#258) as the live reference until
+ * the kanban/board view and the orchestrator (#245) voice mode land — see
+ * docs/voice-loop-spike.md for the retention decision.
  *
  * Wires real audio + network to the pure state machine in
  * spike-voice-loop-fsm.js and instruments the four viability questions the

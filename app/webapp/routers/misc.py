@@ -94,13 +94,18 @@ async def index(request: Request) -> HTMLResponse:
 
 @router.get("/spike/voice-loop")
 async def spike_voice_loop(request: Request) -> HTMLResponse:
-    """THROWAWAY de-risking spike (#246): a hands-free voice-loop prototype.
+    """De-risking spike (#246): a hands-free voice-loop prototype.
 
     Served through the same ``rewrite_index_html`` + no-cache path as ``/`` so
     its module script picks up the asset hash (and never serves stale across
     builds). Bearer-gated like every page (``?token=`` accepted); the page
-    bootstraps the passkey terminal token itself. Delete this route with the
-    spike-voice-loop.* files once the viability gate is answered.
+    bootstraps the passkey terminal token itself.
+
+    Throwaway by design, but **retained for now** (issue #258): the viability
+    gate is answered, yet this route + the spike-voice-loop.* files stay the
+    live reference until the kanban/board view and the orchestrator (#245)
+    voice mode land. Delete the set only once those have shipped — see
+    ``docs/voice-loop-spike.md`` for the retention decision.
     """
     page = STATIC_DIR / "spike-voice-loop.html"
     if not page.exists():

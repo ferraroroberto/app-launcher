@@ -1,10 +1,13 @@
 /* Spike #246 — pure state machine for the hands-free voice loop.
  *
- * THROWAWAY. This module (and its sibling spike-voice-loop.{html,js} +
- * tests/e2e/test_spike_voice_loop.py + docs/voice-loop-spike.md) is a
- * de-risking spike: prove whether a continuous, no-tap voice conversation
- * loop is viable inside the iOS Safari PWA, or whether it has to fold into
- * the native iOS hub (#40). Delete the whole set once the gate is answered.
+ * THROWAWAY BY DESIGN — but RETAINED FOR NOW (#258). This module (and its
+ * sibling spike-voice-loop.{html,js} + tests/e2e/test_spike_voice_loop.py +
+ * docs/voice-loop-spike.md) is a de-risking spike: prove whether a continuous,
+ * no-tap voice conversation loop is viable inside the iOS Safari PWA, or
+ * whether it has to fold into the native iOS hub (#40). The gate is answered,
+ * but the set is kept as the live reference until the kanban/board view and the
+ * orchestrator (#245) voice mode land — delete it only once those ship. See
+ * docs/voice-loop-spike.md for the retention decision.
  *
  * The loop is one turn repeated forever, hands-free after a single Start tap:
  *
