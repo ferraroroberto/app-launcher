@@ -93,10 +93,11 @@ class TestIsFullscreen:
         assert agents.is_fullscreen("antigravity") is True
         assert agents.is_fullscreen("copilot") is True
 
-    def test_pi_is_inline(self):
-        # Pi's core TUI uses no alternate-screen buffer — it renders inline
-        # like Claude Code (not like Codex's ratatui), so no forced repaint.
-        assert agents.is_fullscreen("pi") is False
+    def test_pi_is_fullscreen(self):
+        # Pi uses no alternate-screen buffer but is still a differential TUI —
+        # it repaints its chrome in place via synchronized output, so its ring
+        # is replay-unsafe and it takes Codex's forced-repaint path (#291).
+        assert agents.is_fullscreen("pi") is True
 
     def test_unknown_agent_defaults_to_inline(self):
         # Unknown id → safe inline default (matches Claude), never raises.
@@ -118,6 +119,7 @@ class TestDetectAgents:
         by_id = {d["id"]: d["fullscreen"] for d in detected}
         assert by_id["claude"] is False
         assert by_id["codex"] is True
+        assert by_id["pi"] is True  # differential TUI, forced-repaint path (#291)
 
     def test_availability_reflects_path(self, monkeypatch):
         # Only `claude` resolves; `agy` does not.

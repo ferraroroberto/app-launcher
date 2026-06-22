@@ -87,11 +87,17 @@ AGENTS: Dict[str, Agent] = {
     # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
     # the Claude **subscription** path (no API credits); see the launch flags
     # in `build_pi_flags` and docs/pi-coding-agent.md. `-r` renders pi's own
-    # session picker. fullscreen=False: pi's core TUI uses no alternate-screen
-    # buffer (it renders inline like Claude Code, not like Codex's ratatui).
+    # session picker. fullscreen=True (issue #291): pi uses no alternate-screen
+    # buffer, but it is still a *differential* TUI — during a response it
+    # repaints its bottom chrome (header/status/input box/separator) in place
+    # via cursor-up + clear-line wrapped in synchronized output (DEC 2026),
+    # ~4 redraw ops per line. That makes its raw scrollback ring replay-unsafe
+    # (unlike Claude's inline-append output): replaying it into a fresh xterm
+    # scrolls through the whole redraw history and never settles (#291). So pi
+    # takes Codex's skip-replay + forced-repaint path, not Claude's.
     "pi": Agent(
         id="pi", label="Pi", command="pi",
-        quit_command="/quit", fullscreen=False, resume_token="-r",
+        quit_command="/quit", fullscreen=True, resume_token="-r",
     ),
 }
 
