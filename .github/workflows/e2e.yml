@@ -56,8 +56,11 @@ jobs:
       - name: Run pre-ship gate
         # Give the input-delivery polls headroom on the slow hosted runner
         # (issue #184): 20 s on CI vs the 5 s local default in conftest.py.
+        # Likewise widen the stop/kill overlay-hide budget (#286) so the
+        # graceful-then-force stop window doesn't time the WebKit test out.
         env:
           E2E_LOG_POLL_DEADLINE_MS: '20000'
+          E2E_STOP_OVERLAY_HIDE_MS: '30000'
         run: pwsh -File scripts/verify-before-ship.ps1
 
       - name: Upload e2e diagnostic logs

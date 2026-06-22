@@ -21,10 +21,23 @@ the real behaviour; the desktop row-tap is covered by
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
+
+# How long to wait for the terminal overlay to hide after a kill (issue #286).
+# stopSession() awaits the *entire* /stop POST, which on the host runs the
+# graceful quit's grace window (``_STOP_GRACE_SECONDS`` = 5 s) then the
+# force-fallback before responding; only then does the client hide the overlay.
+# So the hide budget is network + up to 5 s grace + force + shutdown signal +
+# network — a fixed 12 s could be exceeded on a loaded WebKit/iPhone projection,
+# the same timing-flake class as the PTY-input-delivery tests (#58/#184). Env-
+# tunable like ``E2E_LOG_POLL_DEADLINE_MS`` so the slow hosted runner gets
+# headroom (e2e.yml widens it on CI) without slowing the local pass.
+_STOP_OVERLAY_HIDE_MS = int(os.environ.get("E2E_STOP_OVERLAY_HIDE_MS", "20000"))
 
 
 def _skip_unless_phone(browser_name: str) -> None:
@@ -96,6 +109,9 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     # The stop POST waits out the graceful-then-force window on the host;
     # on success stopSession() hides the overlay (we were viewing the
     # session it stopped). to_be_hidden() (not wait_for_selector, which
-    # waits for *visibility*) is what asserts the overlay closed. Generous
-    # timeout to cover the force-fallback.
-    expect(authed_page.locator("#terminalOverlay")).to_be_hidden(timeout=12_000)
+    # waits for *visibility*) is what asserts the overlay closed. The budget
+    # must exceed the host's worst-case stop window (grace + force) plus the
+    # two network hops on a loaded runner — env-tunable for CI headroom (#286).
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden(
+        timeout=_STOP_OVERLAY_HIDE_MS
+    )
