@@ -141,7 +141,8 @@ for the channel that suits you. Verify with `copilot --version`.
 ### Installing Pi
 
 The Coding tab can also launch the **Pi coding agent** (`pi`), driven by your
-**Claude subscription** through the Claude Agent SDK — **no API credits**. The
+**Claude subscription** through the Claude Agent SDK *or* your **ChatGPT plan**
+through pi's `openai-codex` provider — **no API credits** either way. The
 tab's Pi button stays disabled until `pi` is on `PATH`. Install the CLI and the
 SDK provider extension (needs Node.js):
 
@@ -150,18 +151,27 @@ npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 pi install npm:claude-agent-sdk-pi
 ```
 
-Verify with `pi --version` and `pi --list-models claude-agent-sdk` (the latter
-should list `claude-opus-4-8`, `claude-sonnet-4-6`, etc.). Pick the launch model
-in the Coding **options** card's *Pi* block.
+Verify with `pi --version`, `pi --list-models claude-agent-sdk` (lists
+`claude-opus-4-8`, `claude-sonnet-4-6`, etc.) and `pi --list-models openai-codex`
+(lists `gpt-5.5`, etc.). The Coding **options** card's *Pi* block then offers
+segmented **model** (Opus / Sonnet / GPT), **effort** (low / medium / high,
+default high → `--thinking`), and **project-trust** controls.
 
 > **Why the SDK extension is required.** Pi's *native* `anthropic` provider
 > bills metered API "extra usage" credits, **not** your subscription — so the
-> launcher always launches Pi as
+> launcher launches the Claude models as
 > `pi --provider claude-agent-sdk --model claude-agent-sdk/<model>`, which routes
-> through the Claude Code subscription quota instead. Don't set
-> `ANTHROPIC_API_KEY`. Authenticate the subscription once with Claude Code
-> (`npx @anthropic-ai/claude-code`, or your existing Claude Code login). Switch
-> models inside the session with `/model`. Details: [`docs/pi-coding-agent.md`](docs/pi-coding-agent.md).
+> through the Claude Code subscription quota instead, and the GPT option as
+> `pi --provider openai-codex --model openai-codex/gpt-5.5` (your ChatGPT-plan
+> login). Don't set `ANTHROPIC_API_KEY`. Authenticate the Claude subscription
+> once with Claude Code (`npx @anthropic-ai/claude-code`, or your existing
+> Claude Code login), and the ChatGPT plan once via pi's `openai-codex` OAuth.
+> The native `anthropic` OAuth is left disconnected so a launch can never slip
+> onto the billing path. The **project-trust** control maps to pi's
+> `--approve`/`--no-approve` (whether pi loads project-local `.pi/` resources) —
+> it is **not** a tool-permission gate, as pi ships no sandbox. Switch models
+> and effort inside the session with `/model` / `Shift+Tab`. Details:
+> [`docs/pi-coding-agent.md`](docs/pi-coding-agent.md).
 >
 > Pi is detected on `PATH` *and* registered in `src/agents.py`, which the
 > `:8446` session-host imports at start — so after installing Pi (or upgrading

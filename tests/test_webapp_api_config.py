@@ -90,14 +90,30 @@ class TestGetConfig:
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
         pi = body["pi"]
-        assert set(pi) == {"model", "models_available", "computed_flags"}
+        assert set(pi) == {
+            "model",
+            "effort",
+            "trust_mode",
+            "models_available",
+            "efforts_available",
+            "trust_modes_available",
+            "computed_flags",
+        }
+        # models_available carries {value,label} so the segmented buttons can
+        # read "Opus/Sonnet/GPT" rather than the raw model ids.
         assert isinstance(pi["models_available"], list) and pi["models_available"]
-        # Pi always launches under the claude-agent-sdk provider (subscription,
-        # no API credits) with an explicit model — never bare, never the
-        # native billing provider.
-        assert pi["model"] in pi["models_available"]
+        values = [m["value"] for m in pi["models_available"]]
+        labels = [m["label"] for m in pi["models_available"]]
+        assert pi["model"] in values
+        assert labels == ["Opus", "Sonnet", "GPT"]
+        assert pi["effort"] in pi["efforts_available"]
+        assert pi["trust_mode"] in pi["trust_modes_available"]
+        # Default config → Opus on the claude-agent-sdk subscription path,
+        # high thinking, project trust on. Explicit provider/model always —
+        # never bare, never the native billing provider.
         assert pi["computed_flags"] == (
-            f"--provider claude-agent-sdk --model claude-agent-sdk/{pi['model']}"
+            "--provider claude-agent-sdk --model claude-agent-sdk/claude-opus-4-8 "
+            "--thinking high --approve"
         )
 
 
@@ -240,18 +256,58 @@ class TestPatchConfig:
 
     def test_pi_model_round_trips(self, webapp_client):
         """A valid Pi model patches through and surfaces in the forced
-        claude-agent-sdk launch flags; an invalid one is rejected with 400."""
+        explicit-provider launch flags; an invalid one is rejected with 400."""
         client, app, _ = webapp_client
-        models = client.get("/api/config").json()["pi"]["models_available"]
-        model = models[-1]  # pick a non-default to prove it round-trips
-        resp = client.post("/api/config", json={"pi_model": model})
+        # Sonnet stays on the claude-agent-sdk subscription path.
+        resp = client.post("/api/config", json={"pi_model": "claude-sonnet-4-6"})
         assert resp.status_code == 200
-        assert app.state.webapp_config.pi_model == model
+        assert app.state.webapp_config.pi_model == "claude-sonnet-4-6"
         pi = client.get("/api/config").json()["pi"]
-        assert pi["model"] == model
-        assert f"--model claude-agent-sdk/{model}" in pi["computed_flags"]
+        assert pi["model"] == "claude-sonnet-4-6"
+        assert (
+            "--provider claude-agent-sdk "
+            "--model claude-agent-sdk/claude-sonnet-4-6" in pi["computed_flags"]
+        )
         # An unknown model is rejected, not silently launched onto a bad provider.
         bad = client.post("/api/config", json={"pi_model": "claude-not-real"})
+        assert bad.status_code == 400
+
+    def test_pi_gpt_switches_provider(self, webapp_client):
+        """Selecting GPT routes pi to the openai-codex subscription provider —
+        the one cross-provider option — not claude-agent-sdk."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"pi_model": "gpt-5.5"})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.pi_model == "gpt-5.5"
+        flags = client.get("/api/config").json()["pi"]["computed_flags"]
+        assert "--provider openai-codex --model openai-codex/gpt-5.5" in flags
+        assert "claude-agent-sdk" not in flags
+
+    def test_pi_effort_round_trips(self, webapp_client):
+        """pi_effort patches through and surfaces as --thinking; an invalid
+        tier is rejected with 400."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"pi_effort": "low"})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.pi_effort == "low"
+        pi = client.get("/api/config").json()["pi"]
+        assert pi["effort"] == "low"
+        assert "--thinking low" in pi["computed_flags"]
+        bad = client.post("/api/config", json={"pi_effort": "ultra"})
+        assert bad.status_code == 400
+
+    def test_pi_trust_mode_round_trips(self, webapp_client):
+        """pi_trust_mode patches through: 'ask' swaps --approve for
+        --no-approve; an invalid value is rejected with 400."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"pi_trust_mode": "ask"})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.pi_trust_mode == "ask"
+        pi = client.get("/api/config").json()["pi"]
+        assert pi["trust_mode"] == "ask"
+        assert "--no-approve" in pi["computed_flags"]
+        assert "--approve" not in pi["computed_flags"].replace("--no-approve", "")
+        bad = client.post("/api/config", json={"pi_trust_mode": "bogus"})
         assert bad.status_code == 400
 
     def test_ignores_unknown_field_silently(self, webapp_client):

@@ -2,8 +2,9 @@
  * Claude Code subsection (model + effort + verbose/debug + flags preview),
  * an Antigravity subsection (skip-permissions + sandbox toggles), a
  * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
- * Pi subsection (model picker — pi runs on the claude-agent-sdk provider, the
- * Claude subscription path, so the model is always passed explicitly).
+ * Pi subsection (segmented model / effort / project-trust controls — Opus and
+ * Sonnet run on the claude-agent-sdk subscription path, GPT on the openai-codex
+ * ChatGPT-plan path, so the provider/model are always passed explicitly).
  *
  * `patchConfig` round-trips through GET /api/config so the SPA's view of
  * config stays a single source of truth — server-computed flags + the
@@ -148,18 +149,50 @@ function renderCopilotSubsection() {
 function renderPiSubsection() {
   const p = state.config && state.config.pi;
   if (!p || !els.piModel) return;
-  // Model picker — a <select> over the claude-agent-sdk lineup. Unlike
-  // Copilot there is NO empty "Default" option: pi always launches with an
-  // explicit `--model claude-agent-sdk/<model>` so it can never fall back to
-  // the native (billing) anthropic provider.
+  // Model — a segmented control over three options spanning two subscription
+  // providers (Opus/Sonnet on claude-agent-sdk, GPT on openai-codex), mirroring
+  // the other agents' button rows. `models_available` carries {value,label} so
+  // the buttons read "Opus/Sonnet/GPT" rather than the raw model ids.
   els.piModel.innerHTML = '';
   (p.models_available || []).forEach(function (m) {
-    const opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = m;
-    els.piModel.appendChild(opt);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = m.label;
+    b.dataset.value = m.value;
+    if (m.value === p.model) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ pi_model: m.value });
+    });
+    els.piModel.appendChild(b);
   });
-  els.piModel.value = p.model || '';
+  // Effort — segmented control mapped to `--thinking`, mirroring Claude.
+  els.piEffort.innerHTML = '';
+  (p.efforts_available || []).forEach(function (e) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e.charAt(0).toUpperCase() + e.slice(1);
+    b.dataset.value = e;
+    if (e === p.effort) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ pi_effort: e });
+    });
+    els.piEffort.appendChild(b);
+  });
+  // Project trust — `--approve` (Trust) vs `--no-approve` (Ask). NOT a
+  // tool-permission gate (pi has no sandbox); it governs whether pi loads
+  // project-local `.pi/` resources.
+  els.piTrust.innerHTML = '';
+  (p.trust_modes_available || []).forEach(function (t) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = t === 'trust' ? 'Trust' : 'Ask';
+    b.dataset.value = t;
+    if (t === p.trust_mode) b.classList.add('active');
+    b.addEventListener('click', function () {
+      patchConfig({ pi_trust_mode: t });
+    });
+    els.piTrust.appendChild(b);
+  });
   els.piFlagsPreview.textContent =
     'pi' + (p.computed_flags ? ' ' + p.computed_flags : '');
 }
@@ -196,11 +229,8 @@ export function wireClaudeOptions() {
   els.copilotModel.addEventListener('change', function () {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
-  if (els.piModel) {
-    els.piModel.addEventListener('change', function () {
-      patchConfig({ pi_model: els.piModel.value });
-    });
-  }
+  // Pi's model/effort/trust are segmented buttons that wire their own click
+  // handlers in renderPiSubsection(), so there's no static listener here.
   // The ☁️ Detached and ↺ Resume toggles live in the card's <summary> so
   // they stay visible when the panel is collapsed — but a click there
   // would also expand/collapse the <details>. Stop the click at each

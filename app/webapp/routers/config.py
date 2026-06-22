@@ -19,7 +19,10 @@ from src.webapp_config import (
     VALID_CODEX_EFFORTS,
     VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
+    VALID_PI_EFFORTS,
     VALID_PI_MODELS,
+    VALID_PI_TRUST_MODES,
+    PI_MODEL_SPECS,
     WebappConfig,
     build_antigravity_flags,
     build_claude_flags,
@@ -78,7 +81,14 @@ async def get_config(request: Request) -> Dict[str, Any]:
         },
         "pi": {
             "model": cfg.pi_model,
-            "models_available": list(VALID_PI_MODELS),
+            "effort": cfg.pi_effort,
+            "trust_mode": cfg.pi_trust_mode,
+            "models_available": [
+                {"value": value, "label": spec[2]}
+                for value, spec in PI_MODEL_SPECS.items()
+            ],
+            "efforts_available": list(VALID_PI_EFFORTS),
+            "trust_modes_available": list(VALID_PI_TRUST_MODES),
             "computed_flags": build_pi_flags(cfg),
         },
         "auth_password_set": bool(cfg.auth_password),
@@ -106,6 +116,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "copilot_skip_permissions",
         "copilot_model",
         "pi_model",
+        "pi_effort",
+        "pi_trust_mode",
     }
     patch = {k: v for k, v in body.items() if k in allowed}
     # projects_ignore is a list of patterns — coerce to a clean string
