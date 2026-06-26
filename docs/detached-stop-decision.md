@@ -2,18 +2,20 @@
 
 A design decision worth re-reading before anyone tries to add a graceful "Ctrl+C, leave the window open" stop to detached sessions. Short version: it was considered and deliberately not built — the cost outweighs the marginal UX win.
 
-## The two session kinds
+## The two session kinds (historical context)
 
 The launcher runs Claude/agent sessions in two shapes:
 
-- **Attached (`PtySession`)** — the process runs in a ConPTY owned by the session-host, output streamed to the phone over a WebSocket. It has a real stdin/PTY, so it can be **gracefully stopped** (send `Ctrl+C`, the agent exits cleanly, the terminal stays in the viewport) *or* stopped-and-closed.
+- **Attached (`PtySession`)** — the process runs in a ConPTY owned by the session-host, output streamed to the phone over a WebSocket. It has a real stdin/PTY, so it *could* be gracefully stopped (send `Ctrl+C`, the agent exits cleanly) *or* stopped-and-closed.
 - **Detached (`RemoteSession`)** — the process runs in its own console window, orphaned out of the session-host's process tree (see `SessionManager.create_remote`). The launcher keeps **only the PID**; there is no PTY, no stdin pipe, no WebSocket. Remote control comes from the Claude cloud app, not the launcher.
 
 Because a detached session has no stdin/PTY the launcher can reach, the only stop it can perform is a kill.
 
 ## The decision
 
-**Detached sessions expose a single Stop (⏏️) button that kills the console subtree** (`taskkill /PID <pid> /T /F` over the orphaned console — still reachable by its own PID). Attached sessions keep both ⏹️ (Stop, graceful) and ⏏️ (Stop & Close). `RemoteSession.stop()` accepts the `close_window`/`mode` parameters only for interface parity with `PtySession`; for a detached session they are inert — there is no PTY to send `/quit` to and nothing to keep open.
+**Both session kinds expose a single ✕ Stop button that kills the session.** Detached sessions use `taskkill /PID <pid> /T /F` over the orphaned console (still reachable by its own PID). Attached sessions were unified to the same single-kill shape by issue #253 — the earlier dual-button UI (⏹️ graceful Stop + ⏏️ Stop & Close) was retired because the graceful-vs-kill distinction did not carry enough user-facing value to justify the asymmetry. `RemoteSession.stop()` accepts the `close_window`/`mode` parameters only for interface parity with `PtySession`; for a detached session they are inert — there is no PTY to send `/quit` to and nothing to keep open.
+
+The remaining design point specific to detached sessions is solely the technical reason why a graceful stop was never built for them in the first place (see next section).
 
 ## Why graceful stop for a detached session isn't worth it
 
