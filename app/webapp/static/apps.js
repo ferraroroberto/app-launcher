@@ -87,9 +87,10 @@ function renderCodingList(host, items) {
       actions.appendChild(btn);
     });
 
-    // GitHub repo icon — opens the project's repo in a new browser tab.
-    // Spawns no process and creates no session. Disabled with a hover
-    // hint when the project has no GitHub remote (a.repo_url is unset).
+    // GitHub repo icon — opens the repo's open-issues list (sorted by last
+    // updated) in a new browser tab. Spawns no process and creates no
+    // session. Disabled with a hover hint when the project has no GitHub
+    // remote (a.repo_url is unset).
     const ghBtn = document.createElement('button');
     ghBtn.type = 'button';
     ghBtn.className = 'icon-btn agent-btn';
@@ -99,10 +100,11 @@ function renderCodingList(host, items) {
     ghIcon.alt = 'GitHub';
     ghBtn.appendChild(ghIcon);
     if (a.repo_url) {
-      ghBtn.title = 'Open GitHub repo';
-      ghBtn.setAttribute('aria-label', 'Open GitHub repo');
+      ghBtn.title = 'Open GitHub issues';
+      ghBtn.setAttribute('aria-label', 'Open GitHub issues');
       ghBtn.addEventListener('click', function () {
-        window.open(a.repo_url, '_blank', 'noopener,noreferrer');
+        const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc';
+        window.open(issuesUrl, '_blank', 'noopener,noreferrer');
       });
     } else {
       ghBtn.disabled = true;
