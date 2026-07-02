@@ -107,7 +107,7 @@ html, body {
     bottom: calc(var(--bottom-tabs-inset) + var(--bottom-tabs-gap));
     z-index: 120;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     /* Pin every pill to the same fixed row height instead of letting the
        grid row stretch resolve against the bar height. The implicit auto
        row settles a frame late as the page content paints, which let the
@@ -1903,6 +1903,124 @@ body.terminal-open {
   align-items: stretch;
   gap: 6px;
   margin: 4px 0;
+}
+
+/* ---------- Board tab (issue #300 / #164) ---------- */
+/* Column switcher strip: four count buttons + the gh refresh. Doubles as
+   the column header on the phone, where the carousel shows one column. */
+.board-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.board-strip-btn {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev);
+  border: 1px solid #2a2f42;
+  border-radius: 10px;
+  color: var(--muted);
+  padding: 8px 2px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-strip-btn.active { background: var(--bg-elev-2); color: var(--fg); }
+.board-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  font-size: 11px;
+}
+/* "Your turn" holding work is the one number that matters. State signal,
+   not decoration — the warn color marks pending human action. */
+.board-strip-btn.attention .board-count { background: var(--warn); color: #000; }
+.board-refresh { flex: 0 0 auto; }
+.board-status { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+
+/* Phone-first carousel: one column per viewport, swipe between them.
+   scroll-snap gives the swipe for free — no gesture JS. */
+.board-columns {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.board-columns::-webkit-scrollbar { display: none; }
+.board-col {
+  flex: 0 0 100%;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+/* The strip is the column header on the carousel; the per-column title
+   only earns space in the desktop grid below. */
+.board-col-title { display: none; }
+
+.board-list { list-style: none; margin: 0; padding: 0; }
+.board-item { margin: 0 0 8px; }
+.board-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-elev);
+  border: 1px solid #2a2f42;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.board-card:disabled { cursor: default; opacity: 0.75; }
+.board-card-top {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-card-title {
+  font-size: 14px;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+/* Status accents on the card's left edge — state colors signal state. */
+.board-item.is-needs-you .board-card { border-left: 3px solid var(--warn); }
+.board-item.is-working .board-card { border-left: 3px solid var(--accent); }
+.board-item.is-failed .board-card,
+.board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
+.board-item.is-idle .board-card { opacity: 0.7; }
+.board-empty { margin: 4px 0 12px; }
+
+/* Desktop / wide: all four columns side by side; titles come back. */
+@media (min-width: 700px) and (pointer: fine) {
+  .board-columns {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    overflow-x: visible;
+    scroll-snap-type: none;
+  }
+  .board-col-title {
+    display: block;
+    margin: 0 0 8px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: none;
+    color: var(--muted);
+  }
 }
 .lifeos-file-btn {
   flex: 1;

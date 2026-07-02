@@ -27,6 +27,7 @@ export const SESSIONS_POLL_MS = 5000;     // refresh running Claude Code session
 export const LISTENERS_POLL_MS = 5000;    // refresh port listeners
 export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
 export const JOBS_POLL_MS = 4000;         // refresh Jobs tab while it's visible
+export const BOARD_POLL_MS = 5000;        // refresh Board tab while it's visible
 export const WEBAUTHN_POLL_MS = 15000;
 
 export const state = {
@@ -63,6 +64,13 @@ export const state = {
   expandedJob: null, // job_id currently expanded inline (history visible)
   selectedRun: null, // { jobId, runId } — which run's log is in the panel
   sessions: [],
+  // Board tab (issue #300 / #164): the /api/board payload, null until the
+  // tab's first fetch. The 5 s poll self-gates on the tab being visible;
+  // GitHub data inside it comes from the server-side gh cache and is only
+  // refreshed on demand (the ↻ button / first activation), never per poll.
+  board: null,
+  // Which board column the phone carousel has in view.
+  boardCol: 'your_turn',
   // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
@@ -93,10 +101,20 @@ export const els = {
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),
   tabLifeOS: document.getElementById('tabLifeOS'),
+  tabBoard: document.getElementById('tabBoard'),
   paneClaude: document.getElementById('paneClaude'),
   paneApps: document.getElementById('paneApps'),
   paneJobs: document.getElementById('paneJobs'),
   paneLifeOS: document.getElementById('paneLifeOS'),
+  paneBoard: document.getElementById('paneBoard'),
+
+  boardColumns: document.getElementById('boardColumns'),
+  boardStatus: document.getElementById('boardStatus'),
+  boardRefresh: document.getElementById('boardRefresh'),
+  boardColBacklog: document.getElementById('boardColBacklog'),
+  boardColClaude: document.getElementById('boardColClaude'),
+  boardColYours: document.getElementById('boardColYours'),
+  boardColDone: document.getElementById('boardColDone'),
 
   lifeOsOptions: document.getElementById('lifeOsOptions'),
   lifeOsOpus: document.getElementById('lifeOsOpus'),

@@ -105,6 +105,11 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
                 "auth_token": "",
                 "auth_password": "",
                 "session_host_port": 8446,
+                # Board tab (issue #300): point the sessions-state file at a
+                # temp path so a test can never read the real hook-written
+                # ~/.claude/hooks/state/sessions-state.json.
+                "sessions_state_file": str(tmp_path / "sessions-state.json"),
+                "github_owner": "testowner",
             }
         ),
         encoding="utf-8",
@@ -141,6 +146,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # module-level references inside each router that talks to them).
     from app.webapp import server as server_mod
     from app.webapp.routers import apps as apps_router
+    from app.webapp.routers import board as board_router
     from app.webapp.routers import life_os as life_os_router
     from app.webapp.routers import sessions as sessions_router
 
@@ -161,6 +167,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(apps_router, "session_client", session_mock)
     monkeypatch.setattr(sessions_router, "session_client", session_mock)
     monkeypatch.setattr(life_os_router, "session_client", session_mock)
+    monkeypatch.setattr(board_router, "session_client", session_mock)
 
     # Mock the voice-transcriber loopback client (issue #165) — the
     # /api/transcribe proxy goes through it; tests assert call args and set

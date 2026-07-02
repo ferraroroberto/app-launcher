@@ -165,6 +165,11 @@ def _default_claude_config_dir() -> str:
     return str(PROJECT_ROOT.parent / "fleet-config")
 
 
+def _default_sessions_state_file() -> str:
+    """Where fleet-config's ``session_state`` hook writes the board rows."""
+    return str(Path.home() / ".claude" / "hooks" / "state" / "sessions-state.json")
+
+
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
@@ -198,6 +203,14 @@ class WebappConfig:
     # when the PNG is absent the section hides, the same way the Life OS tab
     # handles a missing life-os checkout.
     claude_config_dir: str = field(default_factory=_default_claude_config_dir)
+    # --- Board tab (issue #300 / #164) -----------------------------------
+    # The sessions-state file written by fleet-config's session_state hook
+    # (fleet-config#91). The board reads it defensively — absent/corrupt/stale
+    # degrades to unknown session status, never an error.
+    sessions_state_file: str = field(default_factory=_default_sessions_state_file)
+    # GitHub owner whose repos the Board's gh searches span (backlog / PRs /
+    # done-today). One owner covers the whole fleet.
+    github_owner: str = "ferraroroberto"
     # Persisted Claude Code launch flag defaults.
     claude_model: str = DEFAULT_CLAUDE_MODEL
     claude_effort: str = DEFAULT_CLAUDE_EFFORT
@@ -356,6 +369,10 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         claude_config_dir=str(
             raw.get("claude_config_dir") or _default_claude_config_dir()
         ),
+        sessions_state_file=str(
+            raw.get("sessions_state_file") or _default_sessions_state_file()
+        ),
+        github_owner=str(raw.get("github_owner", "ferraroroberto")),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
         claude_verbose=bool(raw.get("claude_verbose", True)),
@@ -424,6 +441,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
+        "sessions_state_file": cfg.sessions_state_file,
+        "github_owner": cfg.github_owner,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,
         "claude_verbose": cfg.claude_verbose,

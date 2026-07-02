@@ -76,6 +76,7 @@ from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.routers import (
     apps,
     auth,
+    board,
     claude_code,
     config,
     jobs,
@@ -252,6 +253,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(claude_code.router)
     app.include_router(life_os.router)
+    app.include_router(board.router)
     app.include_router(system_map.router)
     app.include_router(webauthn.router)
 
