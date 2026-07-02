@@ -173,13 +173,29 @@ def test_merge_cold_state_only_row_dropped():
     assert cards == []
 
 
-# ------------------------------------- transcript activity overlay (#305)
+# ------------------------------- transcript activity overlay (#305 / #309)
 
 
-def _transcript_file(tmp_path: Path, mtime: datetime) -> str:
-    """A real transcript file with its mtime pinned to ``mtime``."""
+def _msg_line(kind: str, ts: datetime) -> str:
+    """One real conversation line — the shape the #309 tail probe accepts."""
+    return json.dumps({
+        "type": kind,
+        "timestamp": _iso(ts),
+        "message": {"role": kind, "content": [{"type": "text", "text": "hi"}]},
+    })
+
+
+def _transcript_file(tmp_path: Path, mtime: datetime, content: str = None) -> str:
+    """A transcript file with its mtime pinned to ``mtime``.
+
+    Default content is a single assistant line stamped at ``mtime``, so mtime
+    and last-activity agree (the plain #305 shape). Pass ``content`` to make
+    them diverge — the #309 metadata-only-appends case.
+    """
     target = tmp_path / "transcript.jsonl"
-    target.write_text("{}\n", encoding="utf-8")
+    if content is None:
+        content = _msg_line("assistant", mtime) + "\n"
+    target.write_text(content, encoding="utf-8")
     stamp = mtime.timestamp()
     os.utime(target, (stamp, stamp))
     return str(target)
@@ -228,6 +244,67 @@ def test_overlay_applies_to_external_cards(tmp_path: Path):
     cards = board.merge_sessions([], {"t": row}, now=NOW)
     assert cards[0]["kind"] == "external"
     assert cards[0]["status"] == "working"
+
+
+def test_overlay_metadata_only_appends_keep_needs_you(tmp_path: Path):
+    """#309: post-Stop metadata lines (system, pr-link, snapshots) advance the
+    file mtime past the epsilon with no real resume — the tail probe sees the
+    last conversation line is still pre-stamp and keeps the hook status."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _msg_line("assistant", stamp_time - timedelta(seconds=3)) + "\n"
+        + json.dumps({"type": "system",
+                      "timestamp": _iso(stamp_time + timedelta(minutes=2))}) + "\n"
+        + json.dumps({"type": "pr-link", "url": "https://x"}) + "\n"
+        + json.dumps({"type": "file-history-snapshot", "snapshot": {"f": 1}}) + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=1), content
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+    # Age still anchors to the hook stamp, not the metadata mtime.
+    assert cards[0]["age_seconds"] == 600
+
+
+def test_overlay_metadata_only_appends_keep_idle(tmp_path: Path):
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _msg_line("assistant", stamp_time - timedelta(seconds=3)) + "\n"
+        + json.dumps({"type": "ai-title", "title": "t"}) + "\n"
+    )
+    row = _state_row("E:/x/y", status="idle", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=1), content
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle"
+
+
+def test_overlay_message_buried_under_metadata_still_flips(tmp_path: Path):
+    """A real resume followed by metadata lines: the reverse walk skips the
+    metadata and finds the conversation line, so the flip still happens."""
+    resumed = NOW - timedelta(minutes=1)
+    content = (
+        _msg_line("user", resumed) + "\n"
+        + json.dumps({"type": "file-history-snapshot", "snapshot": {}}) + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, resumed, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+    assert cards[0]["age_seconds"] == 60
+
+
+def test_overlay_malformed_tail_keeps_hook_status(tmp_path: Path):
+    """Unparseable tail (torn write, junk) degrades to the hook status."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=1), "{torn line no json\nnot json either\n"
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
 
 
 # ------------------------------------------------------------ jobs_attention
