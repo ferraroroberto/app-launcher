@@ -2005,6 +2005,57 @@ body.terminal-open {
 .board-item.is-idle .board-card { opacity: 0.7; }
 .board-empty { margin: 4px 0 12px; }
 
+/* Drill-down drawer (#301): last exchange + reply, inline under the card. */
+.board-drawer {
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  background: var(--bg-elev-2);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.board-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.board-exchange-user {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+  border-left: 2px solid var(--muted);
+  padding-left: 8px;
+}
+.board-exchange-assistant { white-space: pre-wrap; }
+.board-drawer-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.board-reply-input {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+/* One-tap issue start (#301) — sits on the li, under the card button. */
+.board-issue-actions {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 2px;
+}
+.board-issue-btn { font-size: 13px; }
+
 /* Desktop / wide: all four columns side by side; titles come back. */
 @media (min-width: 700px) and (pointer: fine) {
   .board-columns {

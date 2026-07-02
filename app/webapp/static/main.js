@@ -6,14 +6,14 @@
  */
 
 import { els, state, BOARD_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { jsonApi, readToken, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
+import { boardFromUrl, jsonApi, readToken, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchSessions, wireSessions } from './sessions.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, wireLifeOs } from './life-os.js';
-import { fetchBoard, wireBoard } from './board.js';
+import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
@@ -135,6 +135,12 @@ async function boot() {
       return s.session_id === deepLinkSid;
     });
     openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
+  } else {
+    // ?board=<sid> (issue #301): a Slack ping lands on that session's
+    // Board card, drawer open. Mutually exclusive with ?terminal= by
+    // construction (each link carries one param).
+    const boardSid = boardFromUrl();
+    if (boardSid) openBoardCard(boardSid).catch(function () {});
   }
   setInterval(function () {
     fetchApps().catch(function () {});

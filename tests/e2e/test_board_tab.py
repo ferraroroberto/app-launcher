@@ -243,6 +243,130 @@ def test_board_strip_click_scrolls_carousel_not_page(
     )
 
 
+_FAKE_EXCHANGE = {
+    "available": True,
+    "user": {"text": "please fix the merge", "timestamp": "2026-07-02T11:50:00Z"},
+    "assistant": {
+        "text": "Merge fixed — tests green. Ship it?",
+        "timestamp": "2026-07-02T11:55:00Z",
+    },
+}
+
+
+def _mock_exchange(page: Page, sid: str = "s-wait") -> None:
+    page.route(
+        re.compile(r".*/api/board/sessions/" + sid + r"/exchange.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(_FAKE_EXCHANGE),
+        ),
+    )
+
+
+def test_board_card_drawer_shows_exchange_and_posts_reply(
+    authed_page: Page, base_url: str
+) -> None:
+    """#301: tapping a session card opens the drawer with the last exchange;
+    ➤ posts the reply body {data, submit: true} to the input proxy."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+
+    captured: dict = {}
+
+    def _capture_input(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/input$"), _capture_input
+    )
+
+    _open_board(authed_page, base_url)
+    card = authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card")
+    card.click()
+
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    expect(drawer).to_contain_text("please fix the merge")
+    expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
+
+    authed_page.locator(".board-reply-input").fill("go ahead")
+    authed_page.locator(".board-reply-send").click()
+    authed_page.wait_for_timeout(500)
+
+    assert captured.get("method") == "POST"
+    assert captured.get("body") == {"data": "go ahead", "submit": True}
+
+
+def test_backlog_start_button_posts_issue_start(
+    authed_page: Page, base_url: str
+) -> None:
+    """#301: a backlog card of a repo present in the projects folder carries
+    ▶ Start, which posts the server-validated {repo, number, mode}."""
+    # The ▶/⚡ buttons only render for repos the Coding tab could launch in —
+    # mock /api/apps so 'app-launcher' (the fake issue's repo) qualifies.
+    authed_page.route(
+        re.compile(r".*/api/apps$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"scan_root": "", "apps": [{
+                "id": "cc-app-launcher", "kind": "claude-code",
+                "name": "app-launcher",
+                "project_dir": "E:/automation/app-launcher",
+            }]}),
+        ),
+    )
+    _mock_board(authed_page)
+
+    captured: dict = {}
+
+    def _capture_start(route):
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "/issue-start 301", "repo": "app-launcher",
+                "session": {"session_id": "sX", "kind": "pty",
+                            "name": "app-launcher"},
+            }),
+        )
+
+    authed_page.route(re.compile(r".*/api/board/issues/start$"), _capture_start)
+
+    _open_board(authed_page, base_url)
+    authed_page.locator("#boardColBacklog").click()
+    start_btn = authed_page.locator(
+        '.board-list[data-col="backlog"] .board-issue-btn'
+    ).first
+    expect(start_btn).to_be_visible()
+    start_btn.click()
+    authed_page.wait_for_timeout(500)
+
+    body = captured.get("body") or {}
+    assert body.get("repo") == "app-launcher"
+    assert body.get("number") == 301
+    assert body.get("mode") == "start"
+
+
+def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
+    """#301: ?board=<sid> lands on the Board with that card's drawer open —
+    the target of the Slack-ping deep link."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+
+    authed_page.goto(f"{base_url}/?board=s-wait", wait_until="domcontentloaded")
+    expect(authed_page.locator("#paneBoard")).to_be_visible(timeout=10_000)
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible(timeout=10_000)
+    expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
+
+
 def test_board_columns_layout_matches_projection(
     authed_page: Page, base_url: str
 ) -> None:

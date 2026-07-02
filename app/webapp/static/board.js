@@ -11,15 +11,21 @@
  * refreshed via the ↻ button or on tab activation when the cache is older
  * than GH_STALE_MS — never on the 5 s poll, never while just looking at it.
  *
- * Cards are a view, not a control surface (v1): a live session card opens
- * the existing terminal overlay, issue/PR/done cards open GitHub, job cards
- * jump to the Jobs tab. Drill-down, reply and dispatch are #301 / #302.
+ * Act-from-the-card loop (#301): tapping a live session card opens an
+ * inline drawer with the last user↔assistant exchange (passkey-gated — it
+ * is transcript text) and a reply box that writes straight into the PTY;
+ * backlog cards of repos present in the projects folder carry ▶ Start /
+ * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
+ * card with its drawer open. While a drawer is open the poll pauses, so a
+ * re-render can never wipe a reply being typed. Issue/PR/done cards open
+ * GitHub, job cards jump to the Jobs tab. Free-text dispatch is #302.
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
+import { ensureTerminalToken } from './webauthn.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -77,15 +83,173 @@ function renderSessionCard(card) {
   const meta = STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
   const shell = cardShell(meta.icon + ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
-  if (card.alive && card.session_id && card.kind !== 'remote') {
+  if (card.session_id) {
+    // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
+    // the way into the full terminal now.
     shell.btn.addEventListener('click', function () {
-      openTerminal({ session_id: card.session_id, name: sessionLabel(card) });
+      state.boardExpanded =
+        state.boardExpanded === card.session_id ? null : card.session_id;
+      renderBoard();
+      if (!state.boardExpanded) fetchBoard().catch(function () {});
     });
+    if (state.boardExpanded === card.session_id) {
+      shell.li.classList.add('expanded');
+      shell.li.appendChild(buildDrawer(card));
+    }
   } else {
     shell.btn.classList.add('inert');
     shell.btn.disabled = true;
   }
   return shell.li;
+}
+
+// ------------------------------------------------------ drill-down drawer
+
+function terminalHeaders(tt, json) {
+  const h = json ? { 'Content-Type': 'application/json' } : {};
+  if (tt) h['x-terminal-token'] = tt;
+  return h;
+}
+
+function buildDrawer(card) {
+  const drawer = document.createElement('div');
+  drawer.className = 'board-drawer';
+
+  const exchange = document.createElement('div');
+  exchange.className = 'board-exchange';
+  exchange.textContent = 'Loading last exchange…';
+  drawer.appendChild(exchange);
+  loadExchange(card, exchange);
+
+  const actions = document.createElement('div');
+  actions.className = 'board-drawer-actions';
+  // Reply straight into the PTY — only for live launcher-owned sessions;
+  // detached consoles and state-only cards have no reachable stdin.
+  const canReply = card.alive && card.kind === 'pty';
+  if (canReply) {
+    const input = document.createElement('textarea');
+    input.className = 'board-reply-input';
+    input.rows = 2;
+    input.placeholder = 'Reply to ' + (card.project || 'session') + '…';
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'icon-btn board-reply-send';
+    send.textContent = '➤';
+    send.title = 'Send into the session';
+    send.addEventListener('click', function () {
+      sendReply(card, input, send);
+    });
+    actions.appendChild(input);
+    actions.appendChild(send);
+  }
+  if (card.alive && card.kind !== 'remote') {
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'icon-btn board-open-terminal';
+    open.textContent = '⚡';
+    open.title = 'Open the full terminal';
+    open.addEventListener('click', function () {
+      state.boardExpanded = null;
+      openTerminal({ session_id: card.session_id, name: sessionLabel(card) });
+    });
+    actions.appendChild(open);
+  }
+  if (actions.childElementCount) drawer.appendChild(actions);
+  return drawer;
+}
+
+async function loadExchange(card, el) {
+  try {
+    const tt = await ensureTerminalToken();
+    const body = await jsonApi(
+      '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange',
+      { headers: terminalHeaders(tt, false) }
+    );
+    el.replaceChildren();
+    if (!body.available) {
+      el.textContent = 'No exchange yet — the transcript isn’t linked to this session.';
+      return;
+    }
+    if (body.user && body.user.text) {
+      const u = document.createElement('div');
+      u.className = 'board-exchange-user';
+      u.textContent = body.user.text;
+      el.appendChild(u);
+    }
+    if (body.assistant && body.assistant.text) {
+      const a = document.createElement('div');
+      a.className = 'board-exchange-assistant';
+      a.textContent = body.assistant.text;
+      el.appendChild(a);
+    }
+    el.scrollTop = el.scrollHeight;
+  } catch (exc) {
+    el.textContent = '⚠️ ' + (exc.message || exc);
+  }
+}
+
+async function sendReply(card, input, btn) {
+  const text = input.value.trim();
+  if (!text) return;
+  btn.disabled = true;
+  try {
+    const tt = await ensureTerminalToken();
+    await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(card.session_id) + '/input',
+      {
+        method: 'POST',
+        headers: terminalHeaders(tt, true),
+        body: JSON.stringify({ data: text, submit: true }),
+      }
+    );
+    toast('➤ Sent to ' + (card.project || 'session'), 'good');
+    input.value = '';
+    // Close the drawer and resume the poll — the prompt-submit hook plus
+    // the transcript overlay flip the card to working within a cycle.
+    state.boardExpanded = null;
+    renderBoard();
+    fetchBoard().catch(function () {});
+  } catch (exc) {
+    toast('Reply failed: ' + (exc.message || exc), 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------- one-tap issue start
+
+function repoInProjects(repo) {
+  return (state.apps || []).some(function (a) {
+    return a.kind === 'claude-code' &&
+      String(a.name).toLowerCase() === String(repo || '').toLowerCase();
+  });
+}
+
+async function startIssue(card, mode, btn) {
+  btn.disabled = true;
+  try {
+    const tt = await ensureTerminalToken();
+    const payload = { repo: card.repo, number: card.number, mode: mode };
+    // Desktop browsers get the PC mirror window, like every launch (#241).
+    if (isDesktopClient()) payload.desktop = true;
+    const body = await jsonApi('/api/board/issues/start', {
+      method: 'POST',
+      headers: terminalHeaders(tt, true),
+      body: JSON.stringify(payload),
+    });
+    toast(
+      (mode === 'yolo' ? '⚡ /issue-yolo ' : '▶ /issue-start ') + '#' +
+        card.number + ' in ' + (body.repo || card.repo),
+      'good'
+    );
+    if (body.session && body.session.kind !== 'remote' && !isDesktopClient()) {
+      openTerminal(body.session);
+    }
+  } catch (exc) {
+    toast('Issue start failed: ' + (exc.message || exc), 'error');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function renderIssueCard(card) {
@@ -95,6 +259,24 @@ function renderIssueCard(card) {
     shell.btn.addEventListener('click', function () {
       window.open(card.url, '_blank', 'noopener');
     });
+  }
+  // One-tap start (#301) — only for repos the Coding tab could launch in.
+  // Buttons live on the <li>, outside the card <button> (no nesting).
+  if (card.number && repoInProjects(card.repo)) {
+    const row = document.createElement('div');
+    row.className = 'board-issue-actions';
+    [['start', '▶ Start'], ['yolo', '⚡ YOLO']].forEach(function (pair) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'icon-btn board-issue-btn';
+      btn.textContent = pair[1];
+      btn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
+      btn.addEventListener('click', function () {
+        startIssue(card, pair[0], btn);
+      });
+      row.appendChild(btn);
+    });
+    shell.li.appendChild(row);
   }
   return shell.li;
 }
@@ -191,11 +373,36 @@ export function renderBoard() {
 // ----------------------------------------------------------------- fetch
 
 export async function fetchBoard() {
-  // Self-gate: costs nothing while another tab is up (pattern: fetchJobs).
-  if (state.tab !== 'board') return;
+  // Self-gate: costs nothing while another tab is up (pattern: fetchJobs),
+  // and pauses while a drawer is open so the re-render can't wipe a reply
+  // being typed (pattern: the terminal pausing the session poll).
+  if (state.tab !== 'board' || state.boardExpanded) return;
   const body = await jsonApi('/api/board');
   state.board = body;
   renderBoard();
+}
+
+// ?board=<sid> deep-link (#301): land on the Board with that card's drawer
+// open, carousel on the card's column. Called from main.js at boot.
+export async function openBoardCard(sid) {
+  setTab('board');
+  try {
+    await fetchBoard();
+  } catch (_) { /* render whatever we have */ }
+  const columns = (state.board && state.board.columns) || {};
+  const colKey = Object.keys(columns).find(function (key) {
+    return (columns[key] || []).some(function (c) { return c.session_id === sid; });
+  });
+  if (!colKey) {
+    // Session already gone (stopped between the ping and the tap) — leave
+    // the board browsable; an expanded id with no card would pause the
+    // poll forever.
+    toast('Session not on the board any more.', 'error');
+    return;
+  }
+  state.boardExpanded = sid;
+  renderBoard();
+  requestAnimationFrame(function () { showColumn(colKey, false); });
 }
 
 // Stale = never fetched, or older than GH_STALE_MS. An errored cache is

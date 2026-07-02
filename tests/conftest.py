@@ -51,7 +51,11 @@ def _no_real_mirror_window(request, monkeypatch):
     """
     if request.node.get_closest_marker("smoke"):
         return
-    for mod_name in ("app.webapp.routers.apps", "app.webapp.routers.life_os"):
+    for mod_name in (
+        "app.webapp.routers.apps",
+        "app.webapp.routers.life_os",
+        "app.webapp.routers.board",
+    ):
         module = importlib.import_module(mod_name)
         if hasattr(module, "open_local_terminal_window"):
             monkeypatch.setattr(
@@ -228,6 +232,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(sessions_router, "audit", audit_mock)
     monkeypatch.setattr(webauthn_router, "audit", audit_mock)
     monkeypatch.setattr(life_os_router, "audit", audit_mock)
+    monkeypatch.setattr(board_router, "audit", audit_mock)
 
     # WebAuthnGate doesn't touch disk until configured (rp_id + origin set)
     # so default tests are safe. We still stub it for the few endpoints that
