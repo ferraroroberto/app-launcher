@@ -15,8 +15,9 @@ id: the hook's ``session_id`` is Claude Code's transcript UUID while the
 session-host mints its own ``uuid4().hex`` — they can never match. Two live
 sessions in one directory tie-break by most recent ``started_at``; the rest
 show ``unknown``. Everything here is pure (inputs → dicts, injectable clock)
-— except one ``os.stat`` per session row for the transcript-activity overlay
-(#305) — so it unit-tests without a webapp.
+— except one ``os.stat`` (plus a bounded tail read when the stat says the file
+moved, #305/#309) per session row for the transcript-activity overlay — so it
+unit-tests without a webapp.
 
 Degradation contract (#164 acceptance): a missing/corrupt/stale state file
 must never error — session cards fall back to ``unknown`` status and the
@@ -183,6 +184,46 @@ def state_row_for_session(
     return None
 
 
+_ACTIVITY_TAIL_BYTES = 8 * 1024
+
+
+def _last_activity(transcript_path: Any) -> Optional[datetime]:
+    """Timestamp of the newest real conversation event in the transcript tail.
+
+    Claude Code appends non-message metadata lines (``system``, ``pr-link``,
+    ``ai-title``, ``file-history-snapshot``, …) seconds-to-minutes after a
+    turn ends, so the file's mtime overstates activity (#309). Only
+    ``assistant``/``user`` lines carrying a ``message`` payload mark a live
+    turn; the newest one's ``timestamp`` is the activity anchor. Torn or
+    unparseable lines are skipped (a line may be appended mid-read); no
+    conversation event in the tail → ``None`` — callers keep the hook status.
+    """
+    try:
+        with Path(str(transcript_path)).open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - _ACTIVITY_TAIL_BYTES))
+            lines = fh.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") not in ("assistant", "user"):
+            continue
+        if not isinstance(obj.get("message"), dict):
+            continue
+        stamp = _parse_iso(obj.get("timestamp"))
+        if stamp is not None:
+            return stamp
+    return None
+
+
 def _transcript_overlay(
     row: Optional[Dict[str, Any]],
     status: str,
@@ -197,8 +238,14 @@ def _transcript_overlay(
     The transcript JSONL is ground truth: it is appended continuously during
     a turn and goes quiet on stop — and the Stop hook re-stamps the row
     *after* the final transcript write, so a genuine ``needs-you`` still wins
-    immediately. One ``os.stat`` per row; any failure keeps the hook status.
-    Returns the (possibly overridden) ``(status, age-anchor)``.
+    immediately.
+
+    The probe is two-stage (#309): the mtime ``os.stat`` is only a cheap
+    pre-filter — post-Stop metadata lines advance mtime with no real resume —
+    so when mtime clears the epsilon, :func:`_last_activity` reads the tail
+    and only a real conversation line past the stamp flips the status. Any
+    failure keeps the hook status. Returns the (possibly overridden)
+    ``(status, age-anchor)``.
     """
     if row is None or status not in ("needs-you", "idle"):
         return status, anchor
@@ -212,8 +259,11 @@ def _transcript_overlay(
         )
     except OSError:
         return status, anchor
-    if mtime - updated > _RESUME_EPSILON:
-        return "working", mtime
+    if mtime - updated <= _RESUME_EPSILON:
+        return status, anchor  # nothing written past the stamp — skip the read
+    activity = _last_activity(transcript)
+    if activity is not None and activity - updated > _RESUME_EPSILON:
+        return "working", activity
     return status, anchor
 
 
