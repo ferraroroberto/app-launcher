@@ -102,10 +102,13 @@ async def spike_voice_loop(request: Request) -> HTMLResponse:
     bootstraps the passkey terminal token itself.
 
     Throwaway by design, but **retained for now** (issue #258): the viability
-    gate is answered, yet this route + the spike-voice-loop.* files stay the
-    live reference until the kanban/board view and the orchestrator (#245)
-    voice mode land. Delete the set only once those have shipped — see
-    ``docs/voice-loop-spike.md`` for the retention decision.
+    gate is answered, and the kanban/board view has since shipped (#164,
+    completed by #302 — including the board's dictation mics via the shared
+    ``voice.js``), so the retention now rests **solely on the orchestrator
+    (#245) voice mode**: this loop remains the live reference for wiring real
+    narration + a conversation-mode entry point. Delete the set only once
+    #245's voice mode has shipped — see ``docs/voice-loop-spike.md`` for the
+    retention decision.
     """
     page = STATIC_DIR / "spike-voice-loop.html"
     if not page.exists():

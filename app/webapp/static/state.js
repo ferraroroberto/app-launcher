@@ -118,6 +118,13 @@ export const els = {
   boardColClaude: document.getElementById('boardColClaude'),
   boardColYours: document.getElementById('boardColYours'),
   boardColDone: document.getElementById('boardColDone'),
+  boardDispatchGoal: document.getElementById('boardDispatchGoal'),
+  boardDispatchRepo: document.getElementById('boardDispatchRepo'),
+  boardDispatchModes: document.getElementById('boardDispatchModes'),
+  boardDispatchOpus: document.getElementById('boardDispatchOpus'),
+  boardDispatchRecord: document.getElementById('boardDispatchRecord'),
+  boardDispatchClear: document.getElementById('boardDispatchClear'),
+  boardDispatchSend: document.getElementById('boardDispatchSend'),
 
   lifeOsOptions: document.getElementById('lifeOsOptions'),
   lifeOsOpus: document.getElementById('lifeOsOpus'),

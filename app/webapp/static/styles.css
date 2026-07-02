@@ -1906,6 +1906,68 @@ body.terminal-open {
 }
 
 /* ---------- Board tab (issue #300 / #164) ---------- */
+/* Dispatch bar (#302): speak/type a goal → a fresh /issue-* session.
+   Static markup above the column strip — renderBoard() never touches it,
+   so the poll can't wipe a goal being typed. */
+.board-dispatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+/* The compose textarea look, but shorter — the bar is a launcher, not a
+   writing surface. */
+.board-dispatch-goal { min-height: 56px; }
+.board-dispatch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.board-dispatch-repo {
+  flex: 1;
+  min-width: 80px;
+  min-height: 36px;
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 10px;
+  padding: 0 8px;
+  font-size: 13px;
+  /* Native selects paint a white control on WebKit regardless of the
+     background above — tell the engine this control is dark. */
+  color-scheme: dark;
+}
+.board-dispatch-modes { display: flex; gap: 4px; }
+.board-mode-btn {
+  min-height: 36px;
+  padding: 0 10px;
+  background: var(--bg-elev);
+  border: 1px solid #2a2f42;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.board-mode-btn.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--bg-elev-2);
+}
+/* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
+   height so the dispatch row lines up; same for the drawer reply mic. */
+.board-dispatch-row .compose-record,
+.board-dispatch-row .compose-send,
+.board-drawer-actions .compose-record {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 10px;
+  font-size: 15px;
+}
+/* When the row wraps on a narrow phone, ➤ right-aligns on its wrap line
+   instead of stranding at the left edge. */
+.board-dispatch-row .compose-send { margin-left: auto; }
+
 /* Column switcher strip: four count buttons + the gh refresh. Doubles as
    the column header on the phone, where the carousel shows one column. */
 .board-strip {

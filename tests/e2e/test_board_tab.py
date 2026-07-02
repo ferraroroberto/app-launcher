@@ -1,14 +1,18 @@
-"""Board tab e2e (issue #300 / #164).
+"""Board tab e2e (issues #300 / #301 / #302 / #164).
 
 Browser-side coverage: the fifth tab renders the four kanban columns from a
 route-mocked ``/api/board`` payload, the strip shows per-column counts (with
 the Your-turn attention highlight), the ↻ button POSTs the gh refresh, and
 the phone projection lays the columns out as a one-column-per-viewport
-carousel while desktop gets the four-column grid. Hermetic — the board API
-is route-mocked like the Jobs / Life OS e2e tests.
+carousel while desktop gets the four-column grid. The #302 dispatch bar
+POSTs {repo, goal, mode} and keeps its goal for rapid multi-dispatch, and
+the dictation mics (dispatch bar + drawer reply box) render when the server
+reports voice dictation available. Hermetic — the board API is route-mocked
+like the Jobs / Life OS e2e tests.
 
-Server-side logic (cwd join, jobs scan, gh cache/degradation) is covered by
-the in-process suite in tests/test_board.py.
+Server-side logic (cwd join, jobs scan, gh cache/degradation, the
+spawn-then-type dispatch endpoint) is covered by the in-process suite in
+tests/test_board.py + tests/test_board_dispatch.py.
 """
 
 from __future__ import annotations
@@ -384,6 +388,109 @@ def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible(timeout=10_000)
     expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
+
+
+def _mock_apps_with_app_launcher(page: Page) -> None:
+    """state.apps with one claude-code entry, so the dispatch repo select
+    (and the #301 ▶/⚡ buttons) have a launchable repo."""
+    page.route(
+        re.compile(r".*/api/apps$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"scan_root": "", "apps": [{
+                "id": "cc-app-launcher", "kind": "claude-code",
+                "name": "app-launcher",
+                "project_dir": "E:/automation/app-launcher",
+            }]}),
+        ),
+    )
+
+
+def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
+    authed_page: Page, base_url: str
+) -> None:
+    """#302: goal + repo + mode ride POST /api/board/dispatch; the goal text
+    survives the send (populated-but-clearable for rapid multi-dispatch)."""
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page)
+
+    captured: dict = {}
+
+    def _capture_dispatch(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "/issue-yolo ship the goal bar",
+                "repo": "app-launcher",
+                "session": {"session_id": "sD", "kind": "pty",
+                            "name": "app-launcher"},
+            }),
+        )
+
+    authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
+
+    _open_board(authed_page, base_url)
+    # The repo select fills once boot's /api/apps fetch lands; the board
+    # render re-syncs it, so a full poll cycle is the worst case.
+    expect(
+        authed_page.locator('#boardDispatchRepo option[value="app-launcher"]')
+    ).to_have_count(1, timeout=15_000)
+
+    authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
+    authed_page.locator('.board-mode-btn[data-mode="yolo"]').click()
+    authed_page.locator("#boardDispatchSend").click()
+    authed_page.wait_for_timeout(500)
+
+    assert captured.get("method") == "POST"
+    body = captured.get("body") or {}
+    assert body.get("repo") == "app-launcher"
+    assert body.get("goal") == "ship the goal bar"
+    assert body.get("mode") == "yolo"
+    assert body.get("opus") is False
+    # Populated-but-clearable: the goal stays after a successful send.
+    expect(authed_page.locator("#boardDispatchGoal")).to_have_value(
+        "ship the goal bar"
+    )
+    authed_page.locator("#boardDispatchClear").click()
+    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
+
+
+def test_dispatch_and_reply_mics_render_when_voice_available(
+    authed_page: Page, base_url: str
+) -> None:
+    """#302: with the server reporting voice dictation available (and
+    MediaRecorder present), the 🎤 shows on the dispatch bar and inside the
+    drawer's reply row."""
+    # voiceAvailable() also needs window.MediaRecorder, absent in headless
+    # WebKit — a bare stub is enough (presence check only, no recording).
+    authed_page.add_init_script(
+        "if (!window.MediaRecorder) { window.MediaRecorder = class {}; }"
+    )
+
+    def _status_voice_on(route):
+        resp = route.fetch()
+        body = resp.json()
+        body["voice_dictation"] = True
+        route.fulfill(response=resp, json=body)
+
+    authed_page.route(re.compile(r".*/api/status$"), _status_voice_on)
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+
+    _open_board(authed_page, base_url)
+    # The board render re-syncs mic visibility once /api/status has landed.
+    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible(
+        timeout=15_000
+    )
+
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    expect(drawer.locator(".board-reply-record")).to_be_visible()
 
 
 def test_board_columns_layout_matches_projection(
