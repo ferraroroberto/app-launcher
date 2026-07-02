@@ -14,8 +14,9 @@ The join between hook rows and live sessions is by **normalized cwd**, never by
 id: the hook's ``session_id`` is Claude Code's transcript UUID while the
 session-host mints its own ``uuid4().hex`` — they can never match. Two live
 sessions in one directory tie-break by most recent ``started_at``; the rest
-show ``unknown``. Everything here is pure (inputs → dicts, injectable clock),
-so it unit-tests without a webapp.
+show ``unknown``. Everything here is pure (inputs → dicts, injectable clock)
+— except one ``os.stat`` per session row for the transcript-activity overlay
+(#305) — so it unit-tests without a webapp.
 
 Degradation contract (#164 acceptance): a missing/corrupt/stale state file
 must never error — session cards fall back to ``unknown`` status and the
@@ -38,6 +39,12 @@ STATE_STALE_AFTER = timedelta(hours=24)
 
 # Statuses the hook writer emits; anything else renders as "unknown".
 _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
+
+# Transcript-activity overlay (#305): a transcript appended this much later
+# than the row's stamp means Claude resumed without any hook firing. The
+# margin absorbs the Stop hook and the final transcript write landing a
+# couple of seconds apart in either order.
+_RESUME_EPSILON = timedelta(seconds=10)
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
@@ -176,6 +183,40 @@ def state_row_for_session(
     return None
 
 
+def _transcript_overlay(
+    row: Optional[Dict[str, Any]],
+    status: str,
+    anchor: Optional[datetime],
+) -> tuple:
+    """Override a waiting status with ``working`` when the transcript says so.
+
+    The hooks flip status only on prompt-submit / stop / notification — but
+    Claude *resumes* without any of those firing (an answered permission
+    prompt or AskUserQuestion, a prompt queued into a running turn), so a
+    ``needs-you``/``idle`` stamp sticks while the agent visibly works (#305).
+    The transcript JSONL is ground truth: it is appended continuously during
+    a turn and goes quiet on stop — and the Stop hook re-stamps the row
+    *after* the final transcript write, so a genuine ``needs-you`` still wins
+    immediately. One ``os.stat`` per row; any failure keeps the hook status.
+    Returns the (possibly overridden) ``(status, age-anchor)``.
+    """
+    if row is None or status not in ("needs-you", "idle"):
+        return status, anchor
+    updated = _parse_iso(row.get("updated_at"))
+    transcript = row.get("transcript_path")
+    if updated is None or not transcript:
+        return status, anchor
+    try:
+        mtime = datetime.fromtimestamp(
+            Path(str(transcript)).stat().st_mtime, tz=timezone.utc
+        )
+    except OSError:
+        return status, anchor
+    if mtime - updated > _RESUME_EPSILON:
+        return "working", mtime
+    return status, anchor
+
+
 def merge_sessions(
     live: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
@@ -189,6 +230,8 @@ def merge_sessions(
     same directory render ``unknown``. Fresh state rows with no live match
     become state-only cards (a conversation running in a plain desktop
     terminal): ``alive: False``, no ``session_id`` the terminal could attach to.
+    Waiting statuses are checked against transcript activity — see
+    :func:`_transcript_overlay` (#305).
     """
     now = now or _now()
     cards: List[Dict[str, Any]] = []
@@ -202,6 +245,7 @@ def merge_sessions(
         anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
             _parse_iso(sess.get("started_at"))
         )
+        status, anchor = _transcript_overlay(row, status, anchor)
         cards.append({
             "session_id": sess.get("session_id"),
             "kind": sess.get("kind"),
@@ -224,6 +268,8 @@ def merge_sessions(
         raw_status = row.get("status")
         cwd = row.get("cwd")
         project = row.get("project") or Path(str(cwd or "")).name
+        status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
+        status, anchor = _transcript_overlay(row, status, stamp)
         cards.append({
             "session_id": None,
             "kind": "external",
@@ -235,8 +281,8 @@ def merge_sessions(
             "live_title": "",
             "prompt_title": "",
             "project": str(project),
-            "status": raw_status if raw_status in _KNOWN_STATUSES else "unknown",
-            "age_seconds": _age_seconds(stamp, now),
+            "status": status,
+            "age_seconds": _age_seconds(anchor, now),
         })
 
     return cards

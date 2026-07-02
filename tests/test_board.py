@@ -14,6 +14,7 @@ Covers the three sources and their degradation contract:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -170,6 +171,63 @@ def test_merge_cold_state_only_row_dropped():
         [], {"t": _state_row("E:/x", updated_min_ago=60 * 30)}, now=NOW
     )
     assert cards == []
+
+
+# ------------------------------------- transcript activity overlay (#305)
+
+
+def _transcript_file(tmp_path: Path, mtime: datetime) -> str:
+    """A real transcript file with its mtime pinned to ``mtime``."""
+    target = tmp_path / "transcript.jsonl"
+    target.write_text("{}\n", encoding="utf-8")
+    stamp = mtime.timestamp()
+    os.utime(target, (stamp, stamp))
+    return str(target)
+
+
+def test_overlay_needs_you_with_active_transcript_is_working(tmp_path: Path):
+    """Resume paths fire no hook (#305): a transcript appended well after the
+    row's stamp means Claude is working, whatever the last hook event said."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+    # The age re-anchors to the transcript activity, not the stale hook stamp.
+    assert cards[0]["age_seconds"] == 60
+
+
+def test_overlay_idle_with_active_transcript_is_working(tmp_path: Path):
+    row = _state_row("E:/x/y", status="idle", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_inside_stop_epsilon_keeps_needs_you(tmp_path: Path):
+    """Stop's row stamp and the final transcript write land seconds apart (in
+    either order) — inside the epsilon the hook status wins, so a genuine
+    needs-you alert is never delayed."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=5)
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+
+
+def test_overlay_missing_transcript_keeps_hook_status(tmp_path: Path):
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = str(tmp_path / "gone.jsonl")
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+
+
+def test_overlay_applies_to_external_cards(tmp_path: Path):
+    row = _state_row("E:/automation/reporting", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards[0]["kind"] == "external"
+    assert cards[0]["status"] == "working"
 
 
 # ------------------------------------------------------------ jobs_attention
