@@ -64,7 +64,7 @@ _FAKE_BOARD = {
              "title": "read-aloud segmentation",
              "url": "https://github.com/ferraroroberto/voice-transcriber/pull/88",
              "updated_at": "2026-07-02T08:00:00Z", "state": "merged",
-             "is_draft": False},
+             "is_draft": False, "closes": [87]},
         ],
     },
     "github": {"fetched_at": "2026-07-02T11:00:00Z", "error": None},
@@ -144,6 +144,9 @@ def test_board_renders_columns_counts_and_cards(
     expect(backlog.first).to_contain_text("app-launcher #301")
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
     expect(done.first).to_contain_text("merged")
+    # A merged PR that closed an issue names it (server-side pairing) so
+    # Done never doubles PR + issue for one unit of work.
+    expect(done.first).to_contain_text("closes #87")
 
 
 def test_board_refresh_button_posts_gh_refresh(
@@ -295,6 +298,18 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     expect(drawer).to_be_visible()
     expect(drawer).to_contain_text("please fix the merge")
     expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
+
+    # The drawer stacks BELOW the card at (almost) full card width — never
+    # splits it horizontally (phone feedback on #301).
+    box_card = card.bounding_box()
+    box_drawer = drawer.bounding_box()
+    assert box_card and box_drawer, "card/drawer not laid out"
+    assert box_drawer["y"] >= box_card["y"] + box_card["height"] - 2, (
+        "drawer must render below the card, not beside it"
+    )
+    assert box_drawer["width"] >= box_card["width"] * 0.9, (
+        "drawer must span the card's width"
+    )
 
     authed_page.locator(".board-reply-input").fill("go ahead")
     authed_page.locator(".board-reply-send").click()

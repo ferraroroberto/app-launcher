@@ -1965,7 +1965,14 @@ body.terminal-open {
 .board-col-title { display: none; }
 
 .board-list { list-style: none; margin: 0; padding: 0; }
-.board-item { margin: 0 0 8px; }
+/* Column, not the shared .app-item row: the drawer and the issue-action
+   buttons must land BELOW the card, never split it horizontally (#301
+   phone feedback). */
+.board-item {
+  margin: 0 0 8px;
+  flex-direction: column;
+  align-items: stretch;
+}
 .board-card {
   display: flex;
   flex-direction: column;
@@ -2048,13 +2055,31 @@ body.terminal-open {
   font-size: 14px;
   font-family: inherit;
 }
-/* One-tap issue start (#301) — sits on the li, under the card button. */
+/* One-tap issue start (#301) — a compact row under the card button. */
 .board-issue-actions {
   display: flex;
   gap: 8px;
-  margin: 6px 0 2px;
+  justify-content: flex-end;
+  padding: 0 10px 10px;
 }
-.board-issue-btn { font-size: 13px; }
+/* Every board action button gets the dark theme explicitly — without this
+   they render as the UA's native white buttons (phone feedback, #301). */
+.board-refresh,
+.board-issue-btn,
+.board-reply-send,
+.board-open-terminal {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border: 1px solid #2a2f42;
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.board-reply-send { font-size: 16px; }
+.board-issue-btn:active,
+.board-reply-send:active,
+.board-open-terminal:active { background: var(--bg-elev); }
 
 /* Desktop / wide: all four columns side by side; titles come back. */
 @media (min-width: 700px) and (pointer: fine) {

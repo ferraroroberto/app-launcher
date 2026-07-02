@@ -343,6 +343,42 @@ def test_github_refresh_and_snapshot(monkeypatch):
     assert len(fake.calls) == calls_before
 
 
+def test_done_pairs_closed_issue_with_merging_pr(monkeypatch):
+    """One card per unit of work (#301 phone feedback): an issue closed by a
+    merged PR ("Closes #N" in its body) folds into the PR card; issues
+    closed by hand keep their own card; cross-repo refs don't pair here."""
+    merged_pr = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 306, "title": "fix: overlay", "url": "u306",
+        "updatedAt": "2026-07-02T15:00:00Z",
+        "body": "## Summary\n\nFixes the thing.\n\nCloses #305. "
+                "Also fixes other-repo#77 (their card, not ours).",
+    }
+    closed_paired = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 305, "title": "status sticks", "url": "u305",
+        "updatedAt": "2026-07-02T15:00:01Z",
+    }
+    closed_alone = {
+        "repository": {"nameWithOwner": "ferraroroberto/reporting"},
+        "number": 9, "title": "closed by hand", "url": "u9",
+        "updatedAt": "2026-07-02T14:00:00Z",
+    }
+
+    def fake_run(argv, **kwargs):
+        rows = [merged_pr] if "--merged" in argv else [closed_paired, closed_alone]
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    done = github_client.search_done_today("ferraroroberto")
+    cards = {(d["kind"], d["repo"], d["number"]) for d in done}
+    assert ("pr", "app-launcher", 306) in cards
+    assert ("issue", "reporting", 9) in cards
+    assert ("issue", "app-launcher", 305) not in cards
+    pr = next(d for d in done if d["kind"] == "pr")
+    assert pr["closes"] == [305]
+
+
 def test_github_refresh_failure_keeps_old_data(monkeypatch):
     fake = _FakeGh()
     monkeypatch.setattr(github_client.subprocess, "run", fake)

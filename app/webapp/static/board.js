@@ -133,7 +133,7 @@ function buildDrawer(card) {
     input.placeholder = 'Reply to ' + (card.project || 'session') + '…';
     const send = document.createElement('button');
     send.type = 'button';
-    send.className = 'icon-btn board-reply-send';
+    send.className = 'board-reply-send';
     send.textContent = '➤';
     send.title = 'Send into the session';
     send.addEventListener('click', function () {
@@ -145,8 +145,8 @@ function buildDrawer(card) {
   if (card.alive && card.kind !== 'remote') {
     const open = document.createElement('button');
     open.type = 'button';
-    open.className = 'icon-btn board-open-terminal';
-    open.textContent = '⚡';
+    open.className = 'board-open-terminal';
+    open.textContent = '⚡ Terminal';
     open.title = 'Open the full terminal';
     open.addEventListener('click', function () {
       state.boardExpanded = null;
@@ -268,7 +268,7 @@ function renderIssueCard(card) {
     [['start', '▶ Start'], ['yolo', '⚡ YOLO']].forEach(function (pair) {
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'icon-btn board-issue-btn';
+      btn.className = 'board-issue-btn';
       btn.textContent = pair[1];
       btn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
       btn.addEventListener('click', function () {
@@ -304,7 +304,13 @@ function renderJobCard(card) {
 function renderDoneCard(card) {
   const icon = card.state === 'merged' ? '✅' : '☑️';
   const noun = card.kind === 'pr' ? 'PR #' : '#';
-  const shell = cardShell(icon + ' ' + [card.repo, noun + card.number].join(' ') + ' · ' + card.state,
+  // A merged PR that closed issues absorbs their cards (server-side
+  // pairing) and names them here, so Done stays one card per unit of work.
+  const closes = (card.closes && card.closes.length)
+    ? ' · closes #' + card.closes.join(' #') : '';
+  const shell = cardShell(
+    icon + ' ' + [card.repo, noun + card.number].join(' ') + ' · ' +
+      card.state + closes,
     card.title || '', '');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
