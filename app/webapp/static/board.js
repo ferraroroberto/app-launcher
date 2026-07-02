@@ -8,8 +8,8 @@
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
- * refreshed via the ↻ button or once on first activation when it has never
- * been filled — never on the 5 s poll.
+ * refreshed via the ↻ button or on tab activation when the cache is older
+ * than GH_STALE_MS — never on the 5 s poll, never while just looking at it.
  *
  * Cards are a view, not a control surface (v1): a live session card opens
  * the existing terminal overlay, issue/PR/done cards open GitHub, job cards
@@ -28,7 +28,8 @@ const COLUMNS = [
   { key: 'done', btn: 'boardColDone', empty: 'Nothing merged or closed today yet.' },
 ];
 
-let autoRefreshTried = false;
+const GH_STALE_MS = 2 * 60 * 1000;
+
 let refreshInFlight = false;
 
 // --------------------------------------------------------------- helpers
@@ -89,7 +90,7 @@ function renderSessionCard(card) {
 
 function renderIssueCard(card) {
   const top = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  const shell = cardShell('🐛 ' + top, card.title || '', '');
+  const shell = cardShell(top, card.title || '', '');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
       window.open(card.url, '_blank', 'noopener');
@@ -195,12 +196,14 @@ export async function fetchBoard() {
   const body = await jsonApi('/api/board');
   state.board = body;
   renderBoard();
-  // First-ever activation with an empty gh cache: fill it once so the
-  // board isn't blank out of the box. Manual ↻ from then on.
-  if (!autoRefreshTried && body.github && !body.github.fetched_at && !body.github.error) {
-    autoRefreshTried = true;
-    refreshGithub().catch(function () {});
-  }
+}
+
+// Stale = never fetched, or older than GH_STALE_MS. An errored cache is
+// never auto-retried — that would hammer a broken gh; ↻ stays manual.
+function ghStale(body) {
+  if (!body || !body.github || body.github.error) return false;
+  const t = Date.parse(body.github.fetched_at || '');
+  return isNaN(t) || Date.now() - t > GH_STALE_MS;
 }
 
 async function refreshGithub() {
@@ -229,13 +232,15 @@ function columnEl(key) {
 
 function showColumn(key, smooth) {
   state.boardCol = key;
+  const wrap = els.boardColumns;
   const col = columnEl(key);
-  if (col) {
-    col.scrollIntoView({
-      behavior: smooth === false ? 'auto' : 'smooth',
-      block: 'nearest',
-      inline: 'start',
-    });
+  if (wrap && col) {
+    // Scroll only the carousel container. scrollIntoView also scrolls the
+    // *page* vertically when the column overflows the viewport, yanking
+    // the whole tab upward on every strip tap (phone-verify bug, #300).
+    const left = col.getBoundingClientRect().left
+      - wrap.getBoundingClientRect().left + wrap.scrollLeft;
+    wrap.scrollTo({ left: left, behavior: smooth === false ? 'auto' : 'smooth' });
   }
   syncStripActive();
 }
@@ -266,7 +271,11 @@ function syncStripActive() {
 export function wireBoard() {
   if (!els.tabBoard) return;
   els.tabBoard.addEventListener('click', function () {
-    fetchBoard().catch(function () {});
+    fetchBoard().then(function () {
+      // Opening the tab with a stale (or never-filled) gh cache refreshes
+      // it once; while the tab just sits open only the free poll runs.
+      if (ghStale(state.board)) refreshGithub().catch(function () {});
+    }).catch(function () {});
     // The pane was hidden until this click — position the carousel on the
     // remembered column now that it has layout (no animation on arrival).
     requestAnimationFrame(function () { showColumn(state.boardCol, false); });

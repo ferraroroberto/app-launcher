@@ -13,13 +13,21 @@ the in-process suite in tests/test_board.py.
 
 from __future__ import annotations
 
+import copy
 import json as _json
 import re
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
+
+
+def _iso_utc(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
 
 _FAKE_BOARD = {
     "generated_at": "2026-07-02T12:00:00Z",
@@ -65,12 +73,36 @@ _FAKE_BOARD = {
 }
 
 
+def _board_payload(gh_age_seconds: int = 0) -> dict:
+    """_FAKE_BOARD with ``fetched_at`` stamped relative to the real clock —
+    fresh by default so opening the tab does not trigger the stale-cache
+    auto-refresh; pass a large age to test that it does."""
+    payload = copy.deepcopy(_FAKE_BOARD)
+    payload["github"]["fetched_at"] = _iso_utc(
+        datetime.now(timezone.utc) - timedelta(seconds=gh_age_seconds)
+    )
+    return payload
+
+
 def _mock_board(page: Page, payload: dict | None = None) -> None:
-    body = _json.dumps(payload or _FAKE_BOARD)
+    body = _json.dumps(payload or _board_payload())
     page.route(
         re.compile(r".*/api/board$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body,
+        ),
+    )
+    # Default stub for the gh-refresh POST so an auto-refresh can never
+    # escape to the real server (and its real gh subprocess). Tests that
+    # care about the POST register their own capturing route *after* this
+    # one — Playwright matches the most recently added route first.
+    page.route(
+        re.compile(r".*/api/board/github/refresh$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(
+                {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}
+            ),
         ),
     )
 
@@ -136,6 +168,78 @@ def test_board_refresh_button_posts_gh_refresh(
 
     assert captured.get("method") == "POST", (
         "↻ never POSTed /api/board/github/refresh"
+    )
+
+
+def test_board_auto_refreshes_stale_github_on_open(
+    authed_page: Page, base_url: str
+) -> None:
+    """Opening the tab with a gh cache older than the client's staleness
+    window (2 min) fires one automatic refresh POST — no ↻ tap needed."""
+    _mock_board(authed_page, _board_payload(gh_age_seconds=15 * 60))
+
+    posts: list[str] = []
+
+    def _capture(route):
+        posts.append(route.request.method)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(
+                {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}
+            ),
+        )
+
+    authed_page.route(re.compile(r".*/api/board/github/refresh$"), _capture)
+
+    _open_board(authed_page, base_url)
+    authed_page.wait_for_timeout(1_000)
+
+    assert posts == ["POST"], (
+        f"stale gh cache should auto-refresh exactly once on tab open, got {posts}"
+    )
+
+
+def test_board_fresh_github_not_refreshed_on_open(
+    authed_page: Page, base_url: str
+) -> None:
+    """A fresh cache must NOT auto-refresh — tab-open stays free."""
+    _mock_board(authed_page, _board_payload(gh_age_seconds=0))
+
+    posts: list[str] = []
+    authed_page.route(
+        re.compile(r".*/api/board/github/refresh$"),
+        lambda route: (posts.append(route.request.method), route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"fetched_at": None, "error": None}),
+        )),
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.wait_for_timeout(1_000)
+
+    assert posts == [], f"fresh gh cache must not auto-refresh on open, got {posts}"
+
+
+def test_board_strip_click_scrolls_carousel_not_page(
+    authed_page: Page, base_url: str
+) -> None:
+    """Tapping a strip button pans the carousel horizontally without moving
+    the page vertically (the scrollIntoView fly-up bug found on the phone).
+    Carousel only exists on the phone projection — desktop shows the grid."""
+    viewport = authed_page.viewport_size or {"width": 0}
+    if viewport["width"] >= 700:
+        pytest.skip("carousel is phone-projection-only; desktop uses the grid")
+
+    _mock_board(authed_page)
+    _open_board(authed_page, base_url)
+
+    scroll_y_before = authed_page.evaluate("window.scrollY")
+    authed_page.locator("#boardColDone").click()
+    authed_page.wait_for_function(
+        "document.getElementById('boardColumns').scrollLeft > 0", timeout=5_000
+    )
+    assert authed_page.evaluate("window.scrollY") == scroll_y_before, (
+        "strip tap scrolled the page vertically (fly-up regression)"
     )
 
 
