@@ -53,6 +53,16 @@
         </svg>
         <span class="tab-label">Life</span>
       </button>
+      <button id="tabBoard" type="button" class="tab" data-tab="board"
+              role="tab" aria-selected="false" aria-controls="paneBoard" tabindex="-1">
+        <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M8 7v7" />
+          <path d="M12 7v4" />
+          <path d="M16 7v9" />
+        </svg>
+        <span class="tab-label">Board</span>
+      </button>
     </nav>
 
     <section id="paneClaude" class="pane" role="tabpanel" aria-labelledby="tabClaude">
@@ -314,6 +324,45 @@
           at a life-os checkout (skills live under <code>.claude/skills</code>).
         </div>
       </details>
+    </section>
+
+    <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
+      <div class="board-strip" role="tablist" aria-label="Board columns">
+        <button id="boardColBacklog" type="button" class="board-strip-btn" data-col="backlog"
+                role="tab" aria-selected="false">Backlog <span class="board-count">0</span></button>
+        <button id="boardColClaude" type="button" class="board-strip-btn" data-col="claude_turn"
+                role="tab" aria-selected="false">Claude's <span class="board-count">0</span></button>
+        <button id="boardColYours" type="button" class="board-strip-btn active" data-col="your_turn"
+                role="tab" aria-selected="true">Yours <span class="board-count">0</span></button>
+        <button id="boardColDone" type="button" class="board-strip-btn" data-col="done"
+                role="tab" aria-selected="false">Done <span class="board-count">0</span></button>
+        <button id="boardRefresh" type="button" class="icon-btn board-refresh"
+                title="Refresh GitHub issues / PRs / done-today (runs gh)"
+                aria-label="Refresh GitHub data">↻</button>
+      </div>
+      <div id="boardStatus" class="board-status" hidden></div>
+      <div id="boardColumns" class="board-columns">
+        <section class="board-col" data-col="backlog" aria-label="Backlog">
+          <h3 class="board-col-title">Backlog</h3>
+          <ul class="card-list board-list" data-col="backlog"></ul>
+          <div class="empty board-empty" data-col="backlog" hidden></div>
+        </section>
+        <section class="board-col" data-col="claude_turn" aria-label="Claude's turn">
+          <h3 class="board-col-title">Claude's turn</h3>
+          <ul class="card-list board-list" data-col="claude_turn"></ul>
+          <div class="empty board-empty" data-col="claude_turn" hidden></div>
+        </section>
+        <section class="board-col" data-col="your_turn" aria-label="Your turn">
+          <h3 class="board-col-title">Your turn</h3>
+          <ul class="card-list board-list" data-col="your_turn"></ul>
+          <div class="empty board-empty" data-col="your_turn" hidden></div>
+        </section>
+        <section class="board-col" data-col="done" aria-label="Done today">
+          <h3 class="board-col-title">Done today</h3>
+          <ul class="card-list board-list" data-col="done"></ul>
+          <div class="empty board-empty" data-col="done" hidden></div>
+        </section>
+      </div>
     </section>
 
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>

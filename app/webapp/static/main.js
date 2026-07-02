@@ -5,7 +5,7 @@
  * each fetchX() refreshes its slice of state and re-renders.
  */
 
-import { els, state, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
+import { els, state, BOARD_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { jsonApi, readToken, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
@@ -13,6 +13,7 @@ import { fetchSessions, wireSessions } from './sessions.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, wireLifeOs } from './life-os.js';
+import { fetchBoard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
@@ -155,6 +156,10 @@ async function boot() {
     fetchJobs().catch(function () {});
   }, JOBS_POLL_MS);
   setInterval(function () {
+    // fetchBoard() self-gates: only polls while the Board tab is visible.
+    fetchBoard().catch(function () {});
+  }, BOARD_POLL_MS);
+  setInterval(function () {
     fetchWebauthnStatus().catch(function () {});
   }, WEBAUTHN_POLL_MS);
 }
@@ -167,6 +172,7 @@ wireSessions();
 wireApps();
 wireJobs();
 wireLifeOs();
+wireBoard();
 wireSystemMap();
 wireTerminal();
 wireWebauthn();

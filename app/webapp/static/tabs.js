@@ -1,8 +1,8 @@
-/* Four-tab switcher: Code | Apps | Jobs | Life.
+/* Five-tab switcher: Code | Apps | Jobs | Life | Board.
  *
  * The Coding tab's element ids keep the historical `claude` prefix
  * (tabClaude / paneClaude / state.tab='claude') — only the visible
- * label changed (issue #45). Jobs added by issue #47. */
+ * label changed (issue #45). Jobs added by issue #47; Board by #300. */
 
 import { els, state } from './state.js';
 
@@ -11,6 +11,7 @@ const TAB_CONFIG = [
   { name: 'apps', tab: 'tabApps', pane: 'paneApps' },
   { name: 'jobs', tab: 'tabJobs', pane: 'paneJobs' },
   { name: 'lifeos', tab: 'tabLifeOS', pane: 'paneLifeOS' },
+  { name: 'board', tab: 'tabBoard', pane: 'paneBoard' },
 ];
 
 export function setTab(tab) {
