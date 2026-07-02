@@ -1934,6 +1934,9 @@ body.terminal-open {
   border-radius: 10px;
   padding: 0 8px;
   font-size: 13px;
+  /* Native selects paint a white control on WebKit regardless of the
+     background above — tell the engine this control is dark. */
+  color-scheme: dark;
 }
 .board-dispatch-modes { display: flex; gap: 4px; }
 .board-mode-btn {
@@ -1961,6 +1964,9 @@ body.terminal-open {
   padding: 0 10px;
   font-size: 15px;
 }
+/* When the row wraps on a narrow phone, ➤ right-aligns on its wrap line
+   instead of stranding at the left edge. */
+.board-dispatch-row .compose-send { margin-left: auto; }
 
 /* Column switcher strip: four count buttons + the gh refresh. Doubles as
    the column header on the phone, where the carousel shows one column. */
