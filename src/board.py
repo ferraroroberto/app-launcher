@@ -136,6 +136,46 @@ def _match_state_row(
     return best_sid
 
 
+def _claim_walk(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
+) -> tuple:
+    """Assign state rows to live sessions, newest session first.
+
+    The single source of the claim order — ``merge_sessions`` renders it and
+    ``state_row_for_session`` resolves one session's row consistently with
+    what the board displays. Returns ``(pairs, leftovers)`` where ``pairs``
+    is ``[(session, row-or-None), ...]`` and ``leftovers`` the unclaimed rows.
+    """
+    unmatched = dict(state_rows)
+    pairs: List[tuple] = []
+
+    def started(sess: Dict[str, Any]) -> datetime:
+        return _parse_iso(sess.get("started_at")) or _EPOCH
+
+    for sess in sorted(live, key=started, reverse=True):
+        sid = _match_state_row(_normalize_dir(sess.get("project_dir")), unmatched)
+        pairs.append((sess, unmatched.pop(sid) if sid else None))
+    return pairs, unmatched
+
+
+def state_row_for_session(
+    live: List[Dict[str, Any]],
+    state_rows: Dict[str, Dict[str, Any]],
+    session_id: str,
+) -> Optional[Dict[str, Any]]:
+    """The state row the board's merge assigns to this live session (or None).
+
+    Used by the drill-down endpoint (#301) to find a session's
+    ``transcript_path`` — the transcript UUID lives only in the hook row,
+    never in the session-host record.
+    """
+    pairs, _ = _claim_walk(live, state_rows)
+    for sess, row in pairs:
+        if str(sess.get("session_id")) == str(session_id):
+            return row
+    return None
+
+
 def merge_sessions(
     live: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
@@ -151,16 +191,11 @@ def merge_sessions(
     terminal): ``alive: False``, no ``session_id`` the terminal could attach to.
     """
     now = now or _now()
-    unmatched = dict(state_rows)
     cards: List[Dict[str, Any]] = []
+    pairs, unmatched = _claim_walk(live, state_rows)
 
-    def started(sess: Dict[str, Any]) -> datetime:
-        return _parse_iso(sess.get("started_at")) or _EPOCH
-
-    for sess in sorted(live, key=started, reverse=True):
+    for sess, row in pairs:
         project_dir = sess.get("project_dir")
-        sid = _match_state_row(_normalize_dir(project_dir), unmatched)
-        row = unmatched.pop(sid) if sid else None
 
         raw_status = (row or {}).get("status")
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
@@ -205,6 +240,119 @@ def merge_sessions(
         })
 
     return cards
+
+
+# -------------------------------------------------------- last exchange
+
+# Only the transcript's tail is read — a long session's JSONL runs to many
+# MB but the last exchange always sits within the final few hundred KB.
+_EXCHANGE_TAIL_BYTES = 256 * 1024
+
+# User lines whose string content is harness plumbing, not a typed prompt:
+# slash-command wrappers, local-command output, background-task events.
+_SKIP_USER_PREFIXES = (
+    "<command-", "<local-command-", "<task-notification", "<system-reminder",
+)
+
+# Phone-drawer display caps — the ⚡ open-terminal button is the escape
+# hatch for anything longer.
+_ASSISTANT_TEXT_CAP = 6000
+_USER_TEXT_CAP = 1500
+
+
+def _assistant_text(content: Any) -> str:
+    """Join the ``text`` blocks of an assistant message's content list."""
+    if not isinstance(content, list):
+        return ""
+    parts = [
+        str(block.get("text") or "").strip()
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    ]
+    return "\n\n".join(p for p in parts if p)
+
+
+def last_exchange(transcript_path: Any) -> Dict[str, Any]:
+    """The last completed user→assistant exchange from a transcript JSONL.
+
+    Reads the final :data:`_EXCHANGE_TAIL_BYTES`, walks the lines in reverse:
+    the newest assistant line carrying a ``text`` block is the reply (earlier
+    lines of the *same* ``message.id`` are prepended — transcripts write one
+    line per content block); the nearest preceding user line whose content is
+    a plain string is the prompt (list-shaped user content is tool results;
+    harness wrappers like ``<command-…>`` are skipped). Missing file, no
+    assistant text in the tail → ``{"available": False}`` — never an error.
+    """
+    unavailable: Dict[str, Any] = {"available": False, "user": None, "assistant": None}
+    if not transcript_path:
+        return unavailable
+    try:
+        with Path(str(transcript_path)).open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - _EXCHANGE_TAIL_BYTES))
+            lines = fh.read().decode("utf-8", errors="replace").splitlines()
+    except OSError:
+        return unavailable
+    if size > _EXCHANGE_TAIL_BYTES and lines:
+        lines = lines[1:]  # first line is almost certainly a partial record
+
+    assistant: Optional[Dict[str, Any]] = None
+    assistant_msg_id: Any = None
+    user: Optional[Dict[str, Any]] = None
+
+    for raw in reversed(lines):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+
+        if assistant is None:
+            if obj.get("type") != "assistant":
+                continue
+            text = _assistant_text(msg.get("content"))
+            if not text:
+                continue  # thinking / tool_use-only line
+            assistant = {"text": text, "timestamp": obj.get("timestamp")}
+            assistant_msg_id = msg.get("id")
+            continue
+
+        if (
+            obj.get("type") == "assistant"
+            and assistant_msg_id
+            and msg.get("id") == assistant_msg_id
+        ):
+            text = _assistant_text(msg.get("content"))
+            if text:
+                assistant["text"] = text + "\n\n" + assistant["text"]
+                assistant["timestamp"] = obj.get("timestamp") or assistant["timestamp"]
+            continue
+
+        if obj.get("type") == "user":
+            content = msg.get("content")
+            if not isinstance(content, str):
+                continue  # tool results ride as content lists
+            stripped = content.strip()
+            if not stripped or any(
+                stripped.startswith(p) for p in _SKIP_USER_PREFIXES
+            ):
+                continue
+            user = {
+                "text": stripped[:_USER_TEXT_CAP],
+                "timestamp": obj.get("timestamp"),
+            }
+            break
+
+    if assistant is None:
+        return unavailable
+    assistant["text"] = assistant["text"][-_ASSISTANT_TEXT_CAP:]
+    return {"available": True, "user": user, "assistant": assistant}
 
 
 # ------------------------------------------------------------------ jobs

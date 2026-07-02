@@ -74,6 +74,16 @@ def _terminal_guard_level(path: str) -> Optional[str]:
         return "tailnet"
     if path.startswith("/api/claude-code/sessions/") and path.endswith("/image"):
         return "passkey"
+    # Board drill-down (issue #301): the last-exchange endpoint surfaces
+    # transcript text (terminal-grade content), the reply proxy writes into
+    # a live PTY, and issue-start spawns a coding session — all three get
+    # the terminal's gate.
+    if path.startswith("/api/claude-code/sessions/") and path.endswith("/input"):
+        return "passkey"
+    if path.startswith("/api/board/sessions/") and path.endswith("/exchange"):
+        return "passkey"
+    if path == "/api/board/issues/start":
+        return "passkey"
     # Voice dictation (issues #165 / #168): the recording is as sensitive
     # as terminal input, so the single-shot proxy (/api/transcribe) and the
     # streamed session proxy (/api/transcribe/sessions/*, incl. the SSE
