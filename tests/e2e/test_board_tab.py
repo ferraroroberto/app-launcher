@@ -359,7 +359,11 @@ def test_backlog_start_button_posts_issue_start(
     start_btn = authed_page.locator(
         '.board-list[data-col="backlog"] .board-issue-btn'
     ).first
-    expect(start_btn).to_be_visible()
+    # The buttons render only once boot's /api/apps fetch has populated
+    # state.apps; on a slow runner the first board render can precede it
+    # (seen on CI). The 5 s poll re-renders with apps loaded, so a budget
+    # spanning a full poll cycle makes this deterministic.
+    expect(start_btn).to_be_visible(timeout=15_000)
     start_btn.click()
     authed_page.wait_for_timeout(500)
 
