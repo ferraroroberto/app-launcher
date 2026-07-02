@@ -209,3 +209,20 @@ def test_pty_session_to_api_carries_agent():
         agent="antigravity",
     )
     assert session.to_api()["agent"] == "antigravity"
+
+
+def test_pty_session_to_api_reports_output_chars():
+    """The board's dispatch readiness probe (#302) reads ``output_chars`` —
+    0 before the agent paints anything, the scrollback ring's length after."""
+    session = PtySession(
+        session_id="sid-test",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(),
+    )
+    assert session.to_api()["output_chars"] == 0
+    session._ring = "hello from the agent"
+    assert session.to_api()["output_chars"] == len("hello from the agent")

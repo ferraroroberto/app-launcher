@@ -327,6 +327,35 @@
     </section>
 
     <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
+      <div id="boardDispatch" class="board-dispatch">
+        <textarea
+          id="boardDispatchGoal"
+          class="compose-input board-dispatch-goal"
+          rows="2"
+          placeholder="Speak or type a goal — ➤ dispatches an /issue-* session."
+          enterkeyhint="enter"></textarea>
+        <div class="board-dispatch-row">
+          <select id="boardDispatchRepo" class="board-dispatch-repo" aria-label="Target repo"></select>
+          <div id="boardDispatchModes" class="board-dispatch-modes" role="radiogroup" aria-label="Dispatch mode">
+            <button type="button" class="board-mode-btn active" data-mode="add"
+                    role="radio" aria-checked="true" title="/issue-add — file the issue only">add</button>
+            <button type="button" class="board-mode-btn" data-mode="build"
+                    role="radio" aria-checked="false" title="/issue-add now — file and build straight away">build</button>
+            <button type="button" class="board-mode-btn" data-mode="yolo"
+                    role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
+          </div>
+          <label class="detached-toggle" title="opus model: off = Sonnet (default), on = Opus">
+            <input type="checkbox" id="boardDispatchOpus" hidden>
+            <span>opus</span>
+          </label>
+          <button id="boardDispatchRecord" type="button" class="compose-record"
+                  title="Dictate (voice → text)" aria-pressed="false" hidden>🎤</button>
+          <button id="boardDispatchClear" type="button" class="compose-record"
+                  title="Clear the goal">✕</button>
+          <button id="boardDispatchSend" type="button" class="compose-send"
+                  title="Dispatch the goal">➤</button>
+        </div>
+      </div>
       <div class="board-strip" role="tablist" aria-label="Board columns">
         <button id="boardColBacklog" type="button" class="board-strip-btn" data-col="backlog"
                 role="tab" aria-selected="false">Backlog <span class="board-count">0</span></button>

@@ -1,4 +1,4 @@
-/* Board tab (issue #300 / #164): read-only fleet kanban.
+/* Board tab (issues #300 / #301 / #302 / #164): the fleet kanban.
  *
  * Four computed columns from GET /api/board — Backlog (open issues),
  * Claude's turn (sessions working/unknown/idle), Your turn (needs-you
@@ -18,13 +18,24 @@
  * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
  * card with its drawer open. While a drawer is open the poll pauses, so a
  * re-render can never wipe a reply being typed. Issue/PR/done cards open
- * GitHub, job cards jump to the Jobs tab. Free-text dispatch is #302.
+ * GitHub, job cards jump to the Jobs tab.
+ *
+ * Free-text dispatch (#302): the bar pinned above the columns speaks/types
+ * a goal into a fresh /issue-add | /issue-add now | /issue-yolo session in
+ * any repo of the projects folder. The goal rides POST /api/board/dispatch,
+ * which spawns prompt-free and *types* the command into the PTY server-side
+ * (spawn-then-type — free text never touches the spawn command line). The
+ * bar keeps its text after a send so rapid multi-dispatch works; ✕ clears.
+ * The bar is static markup renderBoard() never touches, so the 5 s poll
+ * can't wipe a goal being typed. Dictation mics (shared voice.js) mount on
+ * the goal box and on each drawer reply box.
  */
 
 import { els, state } from './state.js';
 import { isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
+import { createDictation, startWorkTimer } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
 
 const COLUMNS = [
@@ -111,6 +122,14 @@ function terminalHeaders(tt, json) {
   return h;
 }
 
+// The same availability gate as the compose-bar mic (terminal.js): the
+// voice-transcriber must be configured server-side and the browser must
+// have MediaRecorder.
+function voiceAvailable() {
+  return !!(state.status && state.status.voice_dictation) &&
+    !!window.MediaRecorder;
+}
+
 function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
@@ -131,6 +150,23 @@ function buildDrawer(card) {
     input.className = 'board-reply-input';
     input.rows = 2;
     input.placeholder = 'Reply to ' + (card.project || 'session') + '…';
+    actions.appendChild(input);
+    // Voice-reply (#302): a per-drawer dictation instance — the drawer is
+    // rebuilt on every render, so the mic and its state live and die with it.
+    if (voiceAvailable()) {
+      const mic = document.createElement('button');
+      mic.type = 'button';
+      mic.className = 'compose-record board-reply-record';
+      mic.textContent = '🎤';
+      mic.title = 'Dictate (voice → text)';
+      mic.setAttribute('aria-pressed', 'false');
+      const dictation = createDictation({
+        button: mic,
+        getTextarea: function () { return input; },
+      });
+      mic.addEventListener('click', dictation.toggle);
+      actions.appendChild(mic);
+    }
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'board-reply-send';
@@ -139,7 +175,6 @@ function buildDrawer(card) {
     send.addEventListener('click', function () {
       sendReply(card, input, send);
     });
-    actions.appendChild(input);
     actions.appendChild(send);
   }
   if (card.alive && card.kind !== 'remote') {
@@ -373,6 +408,9 @@ export function renderBoard() {
   });
 
   renderStatusLine(body);
+  // Keep the dispatch bar's repo list + mic visibility in step with state
+  // that may land after the first render (/api/apps, /api/status).
+  syncDispatchBar();
   syncStripActive();
 }
 
@@ -479,11 +517,126 @@ function syncStripActive() {
   });
 }
 
+// -------------------------------------------------------- dispatch (#302)
+
+let dispatchMode = 'add';
+
+// Repo <select> ← the same live claude-code listing the Coding tab renders
+// (state.apps). Re-synced on tab activation and on every board render (so a
+// boot /api/apps fetch that lands late still populates it), but the options
+// are only rebuilt when the list actually changed — a rebuild mid-tap would
+// dismiss an open native select popup. The current selection survives a
+// rebuild when the repo is still listed.
+let _repoSig = null;
+
+function syncDispatchRepos() {
+  const sel = els.boardDispatchRepo;
+  if (!sel) return;
+  const repos = (state.apps || [])
+    .filter(function (a) { return a.kind === 'claude-code'; })
+    .map(function (a) { return String(a.name); });
+  const sig = repos.join('\n');
+  if (sig === _repoSig) return;
+  _repoSig = sig;
+  const current = sel.value;
+  sel.replaceChildren();
+  repos.forEach(function (name) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  if (current && repos.indexOf(current) >= 0) sel.value = current;
+}
+
+function setDispatchMode(mode) {
+  dispatchMode = mode;
+  els.boardDispatchModes.querySelectorAll('.board-mode-btn')
+    .forEach(function (btn) {
+      const active = btn.dataset.mode === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-checked', active ? 'true' : 'false');
+    });
+}
+
+async function dispatchGoal() {
+  const goal = els.boardDispatchGoal.value.trim();
+  if (!goal) {
+    toast('Type or dictate a goal first', 'error');
+    return;
+  }
+  const repo = els.boardDispatchRepo.value;
+  if (!repo) {
+    toast('No repo to dispatch to', 'error');
+    return;
+  }
+  const btn = els.boardDispatchSend;
+  btn.disabled = true;
+  // The server waits for the agent's first output before typing the goal
+  // in (spawn-then-type), so this call legitimately takes seconds — tick.
+  const stopTimer = startWorkTimer(btn, '➤');
+  try {
+    const tt = await ensureTerminalToken();
+    const payload = {
+      repo: repo,
+      goal: goal,
+      mode: dispatchMode,
+      opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.checked),
+    };
+    if (isDesktopClient()) payload.desktop = true;
+    const body = await jsonApi('/api/board/dispatch', {
+      method: 'POST',
+      headers: terminalHeaders(tt, true),
+      body: JSON.stringify(payload),
+    });
+    toast('🚀 ' + (body.launched || dispatchMode) + ' → ' + (body.repo || repo), 'good');
+    // The goal stays in the bar for rapid multi-dispatch ("create more");
+    // ✕ clears it. The new card lands in Claude's turn on the next poll.
+    fetchBoard().catch(function () {});
+  } catch (exc) {
+    toast('Dispatch failed: ' + (exc.message || exc), 'error');
+  } finally {
+    stopTimer();
+    btn.disabled = false;
+  }
+}
+
+function syncDispatchBar() {
+  syncDispatchRepos();
+  if (els.boardDispatchRecord) {
+    els.boardDispatchRecord.hidden = !voiceAvailable();
+  }
+}
+
+function wireDispatch() {
+  if (!els.boardDispatchSend) return;
+  els.boardDispatchModes.querySelectorAll('.board-mode-btn')
+    .forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        setDispatchMode(btn.dataset.mode);
+      });
+    });
+  els.boardDispatchSend.addEventListener('click', function () {
+    dispatchGoal();
+  });
+  els.boardDispatchClear.addEventListener('click', function () {
+    els.boardDispatchGoal.value = '';
+    els.boardDispatchGoal.focus();
+  });
+  const dictation = createDictation({
+    button: els.boardDispatchRecord,
+    getTextarea: function () { return els.boardDispatchGoal; },
+  });
+  els.boardDispatchRecord.addEventListener('click', dictation.toggle);
+  syncDispatchBar();
+}
+
 // ------------------------------------------------------------------ wire
 
 export function wireBoard() {
   if (!els.tabBoard) return;
   els.tabBoard.addEventListener('click', function () {
+    syncDispatchBar();
     fetchBoard().then(function () {
       // Opening the tab with a stale (or never-filled) gh cache refreshes
       // it once; while the tab just sits open only the free poll runs.
@@ -493,6 +646,7 @@ export function wireBoard() {
     // remembered column now that it has layout (no animation on arrival).
     requestAnimationFrame(function () { showColumn(state.boardCol, false); });
   });
+  wireDispatch();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {
       toast('GitHub refresh failed: ' + (exc.message || exc), 'error');
