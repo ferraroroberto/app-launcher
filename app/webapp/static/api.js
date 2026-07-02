@@ -40,6 +40,22 @@ export function terminalFromUrl() {
   return sid;
 }
 
+// ?board=<sid> deep-link (issue #301) — a Slack ping lands straight on that
+// session's Board card with its drawer open. Read once, strip from the URL,
+// exactly like ?terminal=.
+export function boardFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const sid = (params.get('board') || '').trim();
+  if (!sid) return null;
+  params.delete('board');
+  const q = params.toString();
+  window.history.replaceState(
+    {}, '',
+    window.location.pathname + (q ? '?' + q : '') + window.location.hash
+  );
+  return sid;
+}
+
 // True when this browser is a desktop (a fine/mouse pointer), as opposed
 // to a phone (a coarse/touch pointer). A coding launch carries this so the
 // server can skip the PC mirror window (issue #159): a desktop browser

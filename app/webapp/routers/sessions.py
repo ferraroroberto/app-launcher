@@ -171,6 +171,38 @@ async def session_image(
     return result
 
 
+@router.post("/api/claude-code/sessions/{sid}/input")
+async def session_input(sid: str, request: Request) -> Dict[str, Any]:
+    """Write composed text into a session's PTY (Tailscale-only + passkey, #301).
+
+    The Board drawer's reply path. Body: ``{"data": str, "submit": bool}``.
+    Multi-line data is wrapped in bracketed-paste markers so the TUI buffers
+    it as one atomic paste (#64); the submitting CR is delivered as its own
+    *second* PTY write, never concatenated onto the text — the same two-frame
+    ordering the compose bar's ➤ Send uses over the WS (#166), which is what
+    keeps the paste-end marker from swallowing the CR.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    data = body.get("data")
+    if not isinstance(data, str) or not data.strip():
+        raise HTTPException(status_code=400, detail="data must be a non-empty string")
+    submit = bool(body.get("submit", True))
+    payload = "\x1b[200~" + data + "\x1b[201~" if "\n" in data else data
+    try:
+        await asyncio.to_thread(
+            session_client.send_input, cfg.session_host_port, sid, payload
+        )
+        if submit:
+            await asyncio.to_thread(
+                session_client.send_input, cfg.session_host_port, sid, "\r"
+            )
+    except session_client.SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.session_log(sid, "input", bytes=len(data), submit=submit)
+    return {"ok": True, "bytes": len(data), "submit": submit}
+
+
 def _voice_base(request: Request) -> str:
     """Return the configured voice-transcriber base URL or 503."""
     cfg: WebappConfig = request.app.state.webapp_config
