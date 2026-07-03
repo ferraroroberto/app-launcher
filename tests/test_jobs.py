@@ -945,6 +945,34 @@ class TestRunHistory:
         assert record["trigger"] == "manual"
         assert record["exit_code"] == 0
 
+    def test_kill_precedence_survives_later_finalise(self, tmp_path, monkeypatch):
+        # Race (#316): the webapp's Kill writes a killed/failed record, then the
+        # naturally-finishing executor finalises with success. The kill's
+        # terminal outcome must win — the user explicitly stopped the run.
+        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        rd = jobs_mod.new_run_dir("demo", "20260523T060000")
+        jobs_mod.write_run_json(rd, status="running", started_at="t0")
+        # Kill endpoint fires.
+        jobs_mod.write_run_json(
+            rd, status="failed", exit_code=-9, finished_at="t1", killed=True
+        )
+        # Executor's finalise lands afterwards with its own outcome + stats.
+        jobs_mod.write_run_json(
+            rd,
+            status="success",
+            exit_code=0,
+            finished_at="t2",
+            duration_seconds=1.5,
+            peak_rss_bytes=1024,
+        )
+        record = jobs_mod.read_run(rd)
+        assert record["killed"] is True
+        assert record["status"] == "failed"
+        assert record["exit_code"] == -9
+        assert record["finished_at"] == "t1"
+        # Harmless resource stats from the finalise still merge.
+        assert record["peak_rss_bytes"] == 1024
+
     def test_list_runs_newest_first(self, tmp_path, monkeypatch):
         monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
         for stamp in ("20260101T060000", "20260102T060000", "20260103T060000"):

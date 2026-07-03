@@ -430,17 +430,32 @@ export async function fetchBoard() {
 // open, carousel on the card's column. Called from main.js at boot.
 export async function openBoardCard(sid) {
   setTab('board');
+  // Distinguish a failed fetch from a genuinely-missing sid (#316): a transient
+  // fetchBoard() failure (auth flip, gh cache warming, backend restart) leaves
+  // columns empty, which must NOT read as "session gone". Retry once, then, if
+  // still failing, surface a distinct "refresh failed" toast.
+  let fetchOk = true;
   try {
     await fetchBoard();
-  } catch (_) { /* render whatever we have */ }
+  } catch (_) {
+    try {
+      await fetchBoard();
+    } catch (_2) {
+      fetchOk = false;
+    }
+  }
+  if (!fetchOk) {
+    toast('Board refresh failed — tap ↻ to retry.', 'error');
+    return;
+  }
   const columns = (state.board && state.board.columns) || {};
   const colKey = Object.keys(columns).find(function (key) {
     return (columns[key] || []).some(function (c) { return c.session_id === sid; });
   });
   if (!colKey) {
-    // Session already gone (stopped between the ping and the tap) — leave
-    // the board browsable; an expanded id with no card would pause the
-    // poll forever.
+    // Fetch succeeded but the sid isn't there — session genuinely gone
+    // (stopped between the ping and the tap). Leave the board browsable; an
+    // expanded id with no card would pause the poll forever.
     toast('Session not on the board any more.', 'error');
     return;
   }
