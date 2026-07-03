@@ -472,12 +472,18 @@ export async function openTerminal(session) {
     console.info('[app-launcher] mirror title set:', mirrorTitle);
   }
 
+  // Source the terminal colours from the design tokens so they can't fork
+  // from the SPA's --bg / --fg (issue #314). Fallbacks equal the token values.
+  const rootStyle = getComputedStyle(document.documentElement);
   const term = new window.Terminal({
     cursorBlink: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 13,
     scrollback: 10000,
-    theme: { background: '#0a0a0a', foreground: '#e6e6e6' },
+    theme: {
+      background: rootStyle.getPropertyValue('--bg').trim() || '#0a0a0a',
+      foreground: rootStyle.getPropertyValue('--fg').trim() || '#f3f3f3',
+    },
   });
   let fit = null;
   if (!isMirror) {

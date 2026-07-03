@@ -256,7 +256,7 @@ def _maybe_notify_failure(
         tail = read_output_tail(run_dir, max_bytes=8 * 1024)
         body_parts: List[str] = []
         if cfg.notify_failure_summary:
-            summary = summarise_failure(tail)
+            summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
             if summary:
                 body_parts.append(summary)
         # The raw tail is what an operator wants when the summary is

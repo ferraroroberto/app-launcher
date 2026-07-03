@@ -126,3 +126,23 @@ class TestSummariseFailure:
             status_code=200, json=lambda: {"unexpected": "shape"}
         )
         assert notif.summarise_failure("oops", http=http) is None
+
+    def test_base_url_from_config_is_honoured(self):
+        http = MagicMock()
+        http.post.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"content": [{"type": "text", "text": "root cause"}]},
+        )
+        notif.summarise_failure("oops", http=http, base_url="http://127.0.0.1:9999")
+        assert http.post.call_args.args[0] == "http://127.0.0.1:9999/v1/messages"
+
+    def test_missing_base_url_falls_back_to_constant(self):
+        http = MagicMock()
+        http.post.return_value = SimpleNamespace(
+            status_code=200,
+            json=lambda: {"content": [{"type": "text", "text": "root cause"}]},
+        )
+        notif.summarise_failure("oops", http=http, base_url="")
+        assert http.post.call_args.args[0] == (
+            f"{notif.LOCAL_LLM_BASE_URL}/v1/messages"
+        )

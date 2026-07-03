@@ -12,6 +12,14 @@
   --good: #4caf50;
   --warn: #f0a100;
   --danger: #cc3344;
+  --border-color: #2a2f42;   /* default hairline — the dominant border */
+  --border-muted: #333;      /* quieter ghost-toggle border */
+  --surface-2: #0d0d0d;      /* inset code/output block background */
+  --code-fg: #d4d4d4;        /* text inside a code/output inset */
+  --star: #f4c430;           /* favorite-star gold */
+  /* Brand-colour alpha overlays derive from the tokens above via relative
+     colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
+     never forks from its base colour. */
   --radius: 14px;
   --pad: 16px;
   --bottom-tabs-height: 60px;
@@ -70,7 +78,7 @@ html, body {
   margin: 12px 0 16px;
   background: var(--bg-elev);
   padding: 4px;
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
 }
 .tab {
@@ -154,7 +162,7 @@ html, body {
     border: 1px solid transparent;
     font-size: 11px;
     line-height: 1.1;
-    color: rgba(243, 243, 243, 0.62);
+    color: rgb(from var(--fg) r g b / 0.62);
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   }
 
@@ -200,7 +208,7 @@ html, body {
 /* ---------- card ---------- */
 .card {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius);
   padding: 14px 16px;
   margin: 0 0 14px;
@@ -218,7 +226,7 @@ html, body {
   white-space: nowrap;
   padding: 6px 12px;
   min-height: 36px;
-  border: 1px solid #333;
+  border: 1px solid var(--border-muted);
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
@@ -229,7 +237,7 @@ html, body {
 .detached-toggle:has(input:checked) {
   opacity: 1;
   border-color: var(--accent);
-  background: rgba(74, 138, 243, 0.18);
+  background: rgb(from var(--accent) r g b / 0.18);
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
@@ -297,7 +305,7 @@ html, body {
   width: 100%;
   height: auto;
   border-radius: 8px;
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   cursor: zoom-in;
 }
 .system-map-status { margin: 6px 0 0; }
@@ -339,7 +347,7 @@ html, body {
 .projects-card .card-list { gap: 6px; }
 .opt-group {
   padding: 6px 16px 14px;
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
 }
 .opt-group-title {
   font-size: 12px;
@@ -356,7 +364,7 @@ html, body {
 }
 .opt-hint code {
   background: var(--bg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 11px;
@@ -380,7 +388,7 @@ html, body {
   display: flex;
   flex: 1;
   background: var(--bg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 3px;
   gap: 2px;
@@ -416,7 +424,7 @@ html, body {
   font-size: 11px;
   color: var(--muted);
   background: var(--bg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 8px 10px;
   margin: 4px 0 0;
@@ -435,7 +443,7 @@ html, body {
 }
 .app-item {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
@@ -485,7 +493,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 18px 10px;
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   font-size: 12px;
   color: var(--muted);
 }
@@ -498,7 +506,7 @@ html, body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-left: 1px solid #2a2f42;
+  border-left: 1px solid var(--border-color);
 }
 .app-item .row-actions .icon-btn {
   flex: 1;
@@ -517,7 +525,7 @@ html, body {
   min-height: 44px;
 }
 .app-item .row-actions .icon-btn + .icon-btn {
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
 }
 .app-item .row-actions .icon-btn:active {
   background: var(--bg-elev-2);
@@ -525,7 +533,7 @@ html, body {
 }
 .app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
 .app-item .row-actions .action-stop-close:active {
-  background: rgba(204, 51, 68, 0.2);
+  background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger);
 }
 /* Open button before its app has bound a port / with no tailnet_host */
@@ -544,7 +552,7 @@ html, body {
 }
 .app-item .health-dot.up { background: var(--good); }
 .app-item .health-dot.down { background: var(--danger); }
-.app-item .health-dot.stuck { background: var(--warn, #d6a043); }
+.app-item .health-dot.stuck { background: var(--warn); }
 
 /* Jobs tab action rail (issue #232): job tiles use the shared .app-item
    layout — info block on the left, a compact vertical action rail on the
@@ -609,7 +617,7 @@ html, body {
 }
 .job-spark-dot.up { color: var(--good); }
 .job-spark-dot.down { color: var(--danger); }
-.job-spark-dot.live { color: var(--warn, #d6a043); }
+.job-spark-dot.live { color: var(--warn); }
 .job-spark-dot.unknown { color: #555; }
 
 .job-duration-chip {
@@ -665,7 +673,7 @@ html, body {
   gap: 5px;
   padding: 9px 11px;
   background: var(--bg-elev-2);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
@@ -691,7 +699,7 @@ html, body {
   font-size: 12px;
   font-weight: 500;
   color: var(--warn);
-  background: rgba(240, 161, 0, 0.12);
+  background: rgb(from var(--warn) r g b / 0.12);
   vertical-align: middle;
   word-break: break-all;
 }
@@ -729,7 +737,7 @@ html, body {
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
   border-top: 0;
-  border-left: 1px solid #2a2f42;
+  border-left: 1px solid var(--border-color);
 }
 @media (max-width: 520px) {
   /* Stack: folder name on its own full-width line, agent icons on a
@@ -740,10 +748,10 @@ html, body {
     flex-wrap: wrap;
     justify-content: flex-end;
     border-left: 0;
-    border-top: 1px solid #2a2f42;
+    border-top: 1px solid var(--border-color);
   }
   .coding-item .row-actions.agent-actions .icon-btn + .icon-btn {
-    border-left: 1px solid #2a2f42;
+    border-left: 1px solid var(--border-color);
   }
   /* Life OS tiles share the .coding-item class but only ever carry two
      actions (📖 + 🚀), which fit beside the name even on the narrowest
@@ -753,7 +761,7 @@ html, body {
      side border. The Code tab's five-icon stack is untouched. */
   .coding-item.lifeos-item { flex-direction: row; align-items: stretch; }
   .coding-item.lifeos-item .row-actions.agent-actions {
-    border-left: 1px solid #2a2f42;
+    border-left: 1px solid var(--border-color);
     border-top: 0;
   }
 }
@@ -777,12 +785,12 @@ html, body {
 }
 .app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav,
 .app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav:active {
-  color: #f4c430;
+  color: var(--star);
 }
 /* "★ Favorites" header filter toggle — compact ghost button sized like the
    git-status button; gold outline + glyph when the filter is active. */
 .fav-filter-btn { font-size: 12px; padding: 6px 10px; }
-.fav-filter-btn.active { color: #f4c430; border-color: #f4c430; }
+.fav-filter-btn.active { color: var(--star); border-color: var(--star); }
 /* Shown in place of the list when the filter is on but nothing is starred. */
 .coding-fav-empty {
   list-style: none;
@@ -854,7 +862,7 @@ html, body {
   letter-spacing: 0.06em;
   color: var(--muted);
   padding: 8px 16px 4px;
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   margin-top: 4px;
 }
 .jobs-agenda-day:first-child { border-top: 0; margin-top: 0; }
@@ -886,7 +894,7 @@ html, body {
 }
 .jobs-agenda-frequent {
   padding: 8px 16px 2px;
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   margin-top: 4px;
 }
 
@@ -908,7 +916,7 @@ html, body {
 .jobs-history-li {
   list-style: none;
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-top: 0;
   border-radius: 0 0 var(--radius) var(--radius);
   margin-top: -1px;
@@ -923,7 +931,7 @@ html, body {
   gap: 8px;
   padding: 8px 12px;
   background: var(--bg-elev-2);
-  border-bottom: 1px solid #2a2f42;
+  border-bottom: 1px solid var(--border-color);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -938,7 +946,7 @@ html, body {
 }
 .jobs-history-bar .jobs-history-close {
   background: transparent;
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   color: var(--fg);
   border-radius: 8px;
   padding: 6px 12px;
@@ -962,7 +970,7 @@ html, body {
   gap: 8px;
   padding: 8px 10px;
   background: transparent;
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--fg);
   font: 13px/1.3 inherit;
@@ -978,7 +986,7 @@ html, body {
 }
 .jobs-run-btn.selected {
   border-color: var(--accent);
-  background: rgba(74, 138, 243, 0.12);
+  background: rgb(from var(--accent) r g b / 0.12);
 }
 .jobs-run-btn.selected .jobs-run-meta { color: var(--fg); }
 
@@ -990,10 +998,10 @@ html, body {
 .jobs-output-tail {
   margin: 0;
   padding: 8px;
-  background: #0d0d0d;
-  border: 1px solid #2a2f42;
+  background: var(--surface-2);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
-  color: #d4d4d4;
+  color: var(--code-fg);
   font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   max-height: 50vh;
   overflow: auto;
@@ -1006,7 +1014,7 @@ html, body {
 .empty {
   padding: 24px;
   background: var(--bg-elev);
-  border: 1px dashed #2a2f42;
+  border: 1px dashed var(--border-color);
   border-radius: var(--radius);
   color: var(--muted);
   text-align: center;
@@ -1019,7 +1027,7 @@ html, body {
   bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
   transform: translateX(-50%);
   background: var(--bg-elev-2);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   color: var(--fg);
   padding: 10px 16px;
   border-radius: 10px;
@@ -1081,7 +1089,7 @@ html, body {
   white-space: nowrap;
   padding: 6px 12px;
   min-height: 36px;
-  border: 1px solid #333;
+  border: 1px solid var(--border-muted);
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
@@ -1092,7 +1100,7 @@ html, body {
 .edit-toggle:has(input:checked) {
   opacity: 1;
   border-color: var(--accent);
-  background: rgba(74, 138, 243, 0.18);
+  background: rgb(from var(--accent) r g b / 0.18);
 }
 .settings-card .stacked {
   display: flex;
@@ -1103,7 +1111,7 @@ html, body {
 .input-native, .select-native {
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 14px;
@@ -1125,7 +1133,7 @@ html, body {
 .ghost-btn {
   background: transparent;
   color: var(--muted);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   padding: 8px 12px;
   font-size: 13px;
   border-radius: 9px;
@@ -1163,7 +1171,7 @@ html, body {
   justify-content: space-between;
   gap: 10px;
   background: var(--bg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 13px;
@@ -1173,7 +1181,7 @@ html, body {
 .listener-row.child {
   margin-left: 18px;
   background: transparent;
-  border-left: 2px solid var(--accent, #4a5170);
+  border-left: 2px solid var(--accent);
 }
 .listener-row strong { word-break: break-word; }
 .listener-row .meta { color: var(--muted); font-size: 11px; }
@@ -1188,7 +1196,7 @@ html, body {
   font-size: 13px;
   min-height: 40px;
 }
-.listener-row button:active { background: rgba(204,51,68,0.15); }
+.listener-row button:active { background: rgb(from var(--danger) r g b / 0.15); }
 .launcher-note {
   margin: 10px 2px 0;
   font-size: 11px;
@@ -1199,7 +1207,7 @@ html, body {
 /* ---------- dialogs ---------- */
 .scan-dialog, .rename-dialog {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 14px;
   color: var(--fg);
   padding: 18px;
@@ -1229,7 +1237,7 @@ html, body {
   gap: 8px;
   padding: 8px 10px;
   background: var(--bg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   margin-bottom: 4px;
   font-size: 13px;
@@ -1285,11 +1293,11 @@ html, body {
   line-height: 1.35;
 }
 .job-preflight-problem.error {
-  background: rgba(204, 51, 68, 0.12);
+  background: rgb(from var(--danger) r g b / 0.12);
   border: 1px solid var(--danger);
 }
 .job-preflight-problem.warning {
-  background: rgba(240, 161, 0, 0.12);
+  background: rgb(from var(--warn) r g b / 0.12);
   border: 1px solid var(--warn);
 }
 .job-preflight-tag { flex: 0 0 auto; }
@@ -1298,7 +1306,7 @@ html, body {
  * Run-now dialog uses the same stacked label pattern as the rest of
  * the form, so no extra styling is needed there. */
 .job-params-fieldset {
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
   margin: 10px 0;
@@ -1319,7 +1327,7 @@ html, body {
   gap: 8px;
 }
 .job-param-row {
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 8px;
   background: var(--bg);
@@ -1353,7 +1361,7 @@ html, body {
 }
 .login-card {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 20px;
   width: 100%;
@@ -1366,13 +1374,13 @@ html, body {
 .login-card input {
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 12px;
   font-size: 15px;
 }
 .login-error {
-  background: rgba(204,51,68,0.15);
+  background: rgb(from var(--danger) r g b / 0.15);
   border: 1px solid var(--danger);
   color: #ffb4b4;
   padding: 8px 10px;
@@ -1494,7 +1502,7 @@ body.terminal-open {
   gap: 8px;
   padding: 8px 10px;
   background: var(--bg-elev);
-  border-bottom: 1px solid #2a2f42;
+  border-bottom: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 .terminal-title {
@@ -1509,7 +1517,7 @@ body.terminal-open {
 .term-btn {
   background: var(--bg-elev-2);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 9px 12px;
   font-size: 14px;
@@ -1534,7 +1542,7 @@ body.terminal-open {
   color: var(--muted);
 }
 .term-btn.term-kill:active {
-  background: rgba(204, 51, 68, 0.25);
+  background: rgb(from var(--danger) r g b / 0.25);
   color: var(--danger);
   border-color: var(--danger);
 }
@@ -1550,7 +1558,7 @@ body.terminal-open {
   gap: 8px;
   padding: 10px;
   background: var(--bg-elev-2);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   z-index: 30;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
@@ -1563,7 +1571,7 @@ body.terminal-open {
   white-space: nowrap;
   background: var(--bg-elev);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -1586,7 +1594,7 @@ body.terminal-open {
   max-height: 80vh;
   overflow-y: auto;
   background: var(--bg-elev-2);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 16px;
   padding: 18px 20px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -1601,7 +1609,7 @@ body.terminal-open {
 .summary-close {
   background: var(--bg-elev);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   min-width: 36px;
   min-height: 36px;
@@ -1626,7 +1634,7 @@ body.terminal-open {
   gap: 8px;
   padding: 10px;
   background: var(--bg-elev-2);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   z-index: 30;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
@@ -1636,7 +1644,7 @@ body.terminal-open {
   font-size: 18px;
   background: var(--bg-elev);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -1683,7 +1691,7 @@ body.terminal-open {
   gap: 8px;
   padding: 8px 10px;
   background: var(--bg-elev);
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 /* 🎤 + 📷 stack vertically in one narrow column so the textarea keeps the
@@ -1709,7 +1717,7 @@ body.terminal-open {
   padding: 10px 12px;
   background: var(--bg-elev-2);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
 }
 .compose-send {
@@ -1732,7 +1740,7 @@ body.terminal-open {
   font-size: 18px;
   background: var(--bg-elev-2);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   cursor: pointer;
 }
@@ -1760,7 +1768,7 @@ body.terminal-open {
   gap: 8px;
   padding: 6px 10px;
   background: var(--bg-elev);
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 .ocr-thumbs {
@@ -1776,7 +1784,7 @@ body.terminal-open {
   width: 44px;
   object-fit: cover;
   border-radius: 6px;
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   display: block;
 }
 .ocr-thumb-x {
@@ -1814,7 +1822,7 @@ body.terminal-open {
   font-size: 13px;
   color: var(--warn);
   background: var(--bg-elev);
-  border-top: 1px solid #2a2f42;
+  border-top: 1px solid var(--border-color);
   flex-shrink: 0;
 }
 
@@ -1930,7 +1938,7 @@ body.terminal-open {
   min-height: 36px;
   background: var(--bg-elev-2);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 0 8px;
   font-size: 13px;
@@ -1943,7 +1951,7 @@ body.terminal-open {
   min-height: 36px;
   padding: 0 10px;
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 999px;
   color: var(--muted);
   font-size: 12px;
@@ -1980,7 +1988,7 @@ body.terminal-open {
   flex: 1;
   min-width: 0;
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   color: var(--muted);
   padding: 8px 2px;
@@ -2043,7 +2051,7 @@ body.terminal-open {
   width: 100%;
   text-align: left;
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius);
   padding: 12px 14px;
   color: var(--fg);
@@ -2111,7 +2119,7 @@ body.terminal-open {
   resize: vertical;
   background: var(--bg);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 8px 10px;
   font-size: 14px;
@@ -2132,7 +2140,7 @@ body.terminal-open {
 .board-open-terminal {
   background: var(--bg-elev-2);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 8px 14px;
   font-size: 13px;
@@ -2166,7 +2174,7 @@ body.terminal-open {
   text-align: left;
   background: var(--bg-elev);
   color: var(--fg);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 14px;
@@ -2175,7 +2183,7 @@ body.terminal-open {
 }
 .lifeos-file-btn.active {
   border-color: var(--accent);
-  background: rgba(74, 138, 243, 0.18);
+  background: rgb(from var(--accent) r g b / 0.18);
 }
 .lifeos-file-content {
   position: absolute;
@@ -2193,14 +2201,14 @@ body.terminal-open {
 .lifeos-file-content a { color: var(--accent); }
 .lifeos-file-content code {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 13px;
 }
 .lifeos-file-content pre.md-code {
   background: var(--bg-elev);
-  border: 1px solid #2a2f42;
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
   overflow-x: auto;
