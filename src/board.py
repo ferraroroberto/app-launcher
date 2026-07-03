@@ -47,6 +47,13 @@ _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
 # couple of seconds apart in either order.
 _RESUME_EPSILON = timedelta(seconds=10)
 
+# Working-ghost detection (#322): headless / Agent-SDK-CLI invocations (cron
+# routines, sub-agent bootstraps) apparently never fire Stop or SessionEnd, so
+# their row sticks at "working" forever instead of being deleted or flipped to
+# needs-you. A transcript quiet this much longer than any real turn takes
+# means the process is dead, not working.
+_WORKING_GHOST_AFTER = timedelta(minutes=15)
+
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
@@ -267,6 +274,29 @@ def _transcript_overlay(
     return status, anchor
 
 
+def _is_working_ghost(row: Optional[Dict[str, Any]], status: str, now: datetime) -> bool:
+    """A state-only ``working`` row whose transcript has gone quiet for far
+    longer than any real turn takes is not still working (#322) — it is a
+    headless/sdk-cli invocation that finished without ever firing ``Stop`` or
+    ``SessionEnd``. Scoped to ``working`` only: a quiet transcript on
+    ``needs-you``/``idle`` is the expected, correct shape of a real session
+    genuinely waiting on the user, and there is no signal to tell that apart
+    from a ghost in those statuses, so they are left untouched.
+    """
+    if status != "working" or row is None:
+        return False
+    transcript = row.get("transcript_path")
+    if not transcript:
+        return False
+    try:
+        mtime = datetime.fromtimestamp(
+            Path(str(transcript)).stat().st_mtime, tz=timezone.utc
+        )
+    except OSError:
+        return False
+    return now - mtime > _WORKING_GHOST_AFTER
+
+
 def merge_sessions(
     live: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
@@ -320,6 +350,8 @@ def merge_sessions(
         project = row.get("project") or Path(str(cwd or "")).name
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
         status, anchor = _transcript_overlay(row, status, stamp)
+        if _is_working_ghost(row, status, now):
+            continue  # dead headless/sdk-cli session — see #322
         cards.append({
             "session_id": None,
             "kind": "external",

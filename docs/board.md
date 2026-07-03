@@ -48,6 +48,7 @@ Join mechanics (`_claim_walk` / `_match_state_row`):
 - Two candidate rows in one directory → the **most recently updated** wins.
 - Two live sessions in the same dir → the fresher one claims the row; the older renders `unknown`.
 - A fresh unmatched row with **no** live session becomes a **state-only card** (`kind: "external"`, `alive: false`) — a conversation running in a plain desktop terminal the session-host never spawned. Cold leftovers (stamp older than 24 h) are dropped.
+- **Working-ghost drop (#322):** headless / Agent-SDK-CLI invocations (`entrypoint: sdk-cli` — cron routines, sub-agent bootstraps) apparently never fire `Stop` or `SessionEnd`, so their row can stick at `working` long after the process is dead — the 24 h cold-drop above is the only other backstop, and 24 h is far too long to keep claiming "Claude is working." A state-only row whose status is `working` and whose transcript hasn't been written to in `_WORKING_GHOST_AFTER` (15 min) is dropped outright. Scoped to `working` only — a quiet transcript on `needs-you`/`idle` is the expected, correct shape of a real session genuinely waiting on the user, and there's no signal to tell that apart from a ghost in those statuses.
 
 **States** (`_KNOWN_STATUSES`): `working`, `needs-you`, `idle`. Anything else — including a missing row — renders `unknown`.
 
