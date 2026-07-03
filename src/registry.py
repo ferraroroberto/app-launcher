@@ -112,6 +112,7 @@ def load_registry(path: Optional[Path] = None) -> Registry:
                 kind=kind,
                 bat_path=row.get("bat_path"),
                 project_dir=row.get("project_dir"),
+                repo_url=row.get("repo_url"),
                 added_at=str(row.get("added_at") or ""),
             )
         )

@@ -893,10 +893,6 @@ class SessionManager:
         session.stop(mode, grace_seconds=grace_seconds)
         return True
 
-    def remove(self, session_id: str) -> Optional[Any]:
-        with self._lock:
-            return self._sessions.pop(session_id, None)
-
     def reap_dead(self) -> int:
         """Drop sessions whose process has exited. Returns the count reaped."""
         with self._lock:
