@@ -173,6 +173,47 @@ def test_merge_cold_state_only_row_dropped():
     assert cards == []
 
 
+# --------------------------------- working-ghost drop (#322)
+
+
+def test_merge_working_ghost_dropped(tmp_path: Path):
+    """A headless/sdk-cli row stuck at 'working' with a long-quiet transcript
+    is a dead process, not active work — dropped, not rendered."""
+    row = _state_row("E:/automation/local-llm-hub", status="working", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=40))
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards == []
+
+
+def test_merge_working_fresh_transcript_still_renders(tmp_path: Path):
+    """A genuinely active 'working' row (recent transcript activity) still
+    shows up — the ghost check must not catch real work in progress."""
+    row = _state_row("E:/automation/local-llm-hub", status="working", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert len(cards) == 1
+    assert cards[0]["status"] == "working"
+
+
+def test_merge_working_no_transcript_path_still_renders():
+    """No transcript_path at all → nothing to check staleness against; keep
+    the existing (pre-#322) behavior of trusting the hook status."""
+    row = _state_row("E:/automation/local-llm-hub", status="working", updated_min_ago=40)
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert len(cards) == 1
+    assert cards[0]["status"] == "working"
+
+
+def test_merge_needs_you_quiet_transcript_still_renders(tmp_path: Path):
+    """The ghost check is scoped to 'working' only — a quiet transcript on a
+    needs-you row is the expected shape of a real waiting session."""
+    row = _state_row("E:/automation/local-llm-hub", status="needs-you", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=40))
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert len(cards) == 1
+    assert cards[0]["status"] == "needs-you"
+
+
 # ------------------------------- transcript activity overlay (#305 / #309)
 
 
