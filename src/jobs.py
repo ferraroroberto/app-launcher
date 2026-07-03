@@ -31,10 +31,16 @@ import re
 import statistics
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+
+try:  # Windows-only interprocess file lock (this repo runs Windows-only).
+    import msvcrt
+except ImportError:  # pragma: no cover - non-Windows fallback
+    msvcrt = None  # type: ignore[assignment]
 
 from src.jobs_config import Job, Schedule
 
@@ -642,19 +648,87 @@ def new_run_dir(job_id: str, run_id: Optional[str] = None) -> Path:
     return target
 
 
+# Terminal-outcome fields a Kill claims once it has fired. The webapp's
+# Kill endpoint and the executor's natural finalise are separate processes
+# writing the same ``run.json``; once a run is marked ``killed``, a later
+# finalise must not silently downgrade these back to a "success" the user
+# explicitly stopped. Resource stats (peak_rss_bytes, cpu_seconds) are not
+# in this set — recording them post-kill is harmless.
+_KILL_OWNED_FIELDS = ("status", "exit_code", "finished_at", "duration_seconds")
+
+
+@contextmanager
+def _run_json_lock(run_dir: Path) -> Iterator[None]:
+    """Hold an exclusive interprocess lock for a ``run.json`` read-merge-swap.
+
+    The two writers (the executor's finalise and the webapp's Kill endpoint)
+    live in different processes, so a thread lock is not enough — this uses a
+    Windows ``msvcrt.locking`` byte-range lock on a dedicated ``run.json.lock``
+    sidecar (never on ``run.json`` itself, which ``os.replace`` swaps out from
+    under any held handle). ``LK_LOCK`` is the fully-blocking flavour: it retries
+    for ~10 s then raises, so a couple of attempts covers any real contention
+    (the critical section is sub-millisecond). If the lock genuinely can't be
+    taken, we log and proceed best-effort — losing serialization is far better
+    than wedging a job's finalisation forever.
+    """
+    if msvcrt is None:  # pragma: no cover - non-Windows fallback
+        yield
+        return
+    run_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = run_dir / "run.json.lock"
+    handle = open(lock_path, "a+b")
+    locked = False
+    try:
+        for attempt in range(3):
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                locked = True
+                break
+            except OSError:
+                if attempt == 2:
+                    logger.warning(
+                        "⚠️  run.json lock contended for %s — writing unlocked",
+                        run_dir,
+                    )
+        yield
+    finally:
+        if locked:
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        handle.close()
+
+
 def write_run_json(run_dir: Path, **fields: Any) -> None:
-    """Atomic write of ``run_dir / run.json`` — merges with existing fields."""
+    """Interprocess-locked atomic merge into ``run_dir / run.json``.
+
+    The read-merge-swap is serialized across processes with an exclusive file
+    lock so the executor's finalise and the webapp's Kill endpoint can't race
+    on the same record. Kill precedence: once a Kill has marked the run
+    ``killed=True``, a later natural finalise is not allowed to overwrite the
+    terminal outcome (:data:`_KILL_OWNED_FIELDS`) back to success.
+    """
     target = run_dir / "run.json"
-    existing: Dict[str, Any] = {}
-    if target.exists():
-        try:
-            existing = json.loads(target.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            existing = {}
-    existing.update({k: v for k, v in fields.items() if v is not None})
-    tmp = target.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    incoming = {k: v for k, v in fields.items() if v is not None}
+    with _run_json_lock(run_dir):
+        existing: Dict[str, Any] = {}
+        if target.exists():
+            try:
+                existing = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                existing = {}
+        # A write that is not itself (re)asserting the kill must not clobber a
+        # kill already on record.
+        if existing.get("killed") and not incoming.get("killed"):
+            for key in _KILL_OWNED_FIELDS:
+                incoming.pop(key, None)
+        existing.update(incoming)
+        tmp = target.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+        os.replace(tmp, target)
 
 
 def read_run(run_dir: Path) -> Dict[str, Any]:

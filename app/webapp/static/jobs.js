@@ -597,7 +597,10 @@ function redrawRunsList(jobId, runs) {
   const job = state.jobs.find(function (j) { return j.id === jobId; });
   const declaredNames = new Set(((job && job.params) || []).map(function (p) { return p.name; }));
 
-  runs.slice(0, 5).forEach(function (r) {
+  // Render the whole server response (already capped at MAX_RUNS_PER_JOB) —
+  // a hardcoded 5-row slice hid older runs on high-cadence jobs, making their
+  // logs unreachable (#316).
+  runs.forEach(function (r) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -764,8 +767,11 @@ async function refreshExpandedContent(jobId, opts) {
   if (!state.selectedRun || state.selectedRun.jobId !== jobId) {
     if (runs.length) state.selectedRun = { jobId: jobId, runId: runs[0].run_id };
   }
-  // If selection no longer exists (pruned), fall back to newest.
-  if (state.selectedRun && state.selectedRun.jobId === jobId &&
+  // If selection no longer exists (pruned), fall back to newest — but only on
+  // an explicit/initial refresh, never on the 2 s poll. Snapping the poll back
+  // to the newest run yanked the user off an older run's log they were reading
+  // (#316); on the poll we leave a vanished selection alone.
+  if (!opts.poll && state.selectedRun && state.selectedRun.jobId === jobId &&
       !runs.find(function (r) { return r.run_id === state.selectedRun.runId; })) {
     state.selectedRun = runs.length ? { jobId: jobId, runId: runs[0].run_id } : null;
   }
@@ -1551,7 +1557,9 @@ export async function fetchJobs() {
   // While a row is expanded, polling refreshes that one panel's content
   // in place — touching the row list would tear down the user's view.
   if (state.expandedJob) {
-    await refreshExpandedContent(state.expandedJob);
+    // Poll path: refresh content in place without stealing the user's run
+    // selection (see the `opts.poll` guard in refreshExpandedContent, #316).
+    await refreshExpandedContent(state.expandedJob, { poll: true });
     return;
   }
   try {
