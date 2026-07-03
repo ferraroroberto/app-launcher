@@ -100,8 +100,15 @@ class PushoverNotifier:
             logger.warning(f"⚠️  pushover send failed: {exc}")
 
 
-def summarise_failure(tail: str, *, http: Any = None) -> Optional[str]:
+def summarise_failure(
+    tail: str, *, http: Any = None, base_url: Optional[str] = None
+) -> Optional[str]:
     """Ask the local LLM hub for a one-line summary of ``tail``.
+
+    ``base_url`` is the configured hub base URL (``WebappConfig.llm_hub_url``)
+    — the caller threads it through so a user who moves the hub off ``:8000``
+    still gets failure summaries. Falls back to :data:`LOCAL_LLM_BASE_URL`
+    only when the config is genuinely missing/empty.
 
     Returns ``None`` when the hub is unreachable or the response is
     malformed — the caller falls back to the raw tail. Bounded by a
@@ -110,6 +117,7 @@ def summarise_failure(tail: str, *, http: Any = None) -> Optional[str]:
     snippet = tail[-SUMMARY_TAIL_CHARS:] if tail else ""
     if not snippet.strip():
         return None
+    base = (base_url or "").strip() or LOCAL_LLM_BASE_URL
     client = http or requests
     body = {
         "model": LOCAL_LLM_MODEL,
@@ -128,7 +136,7 @@ def summarise_failure(tail: str, *, http: Any = None) -> Optional[str]:
     }
     try:
         resp = client.post(
-            f"{LOCAL_LLM_BASE_URL}/v1/messages",
+            f"{base}/v1/messages",
             json=body,
             headers={"x-api-key": "local-dummy", "anthropic-version": "2023-06-01"},
             timeout=LOCAL_LLM_TIMEOUT_SECONDS,

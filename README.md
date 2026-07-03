@@ -492,7 +492,7 @@ UI prefs + secrets, authored from the web UI:
 | `pushover_api_token` / `pushover_user_key` | `""` | Pushover credentials for Jobs-tab failure notifications (issue #66). Both must be set; missing creds = no-op. |
 | `notify_on_failure` | `false` | Master switch — even with creds set, no push fires until this flips on. |
 | `notify_failure_streak` | `0` | When > 0, also fire a separate "N consecutive failures" push when the failure streak ticks to exactly this count. |
-| `notify_failure_summary` | `false` | When `true`, pipe the output tail through the local LLM hub (`http://127.0.0.1:8000`, `claude-haiku-4-5`) for a one-line root-cause line prepended to the push body. |
+| `notify_failure_summary` | `false` | When `true`, pipe the output tail through the local LLM hub at `llm_hub_url` (`claude-haiku-4-5`) for a one-line root-cause line prepended to the push body. |
 
 `--remote-control` is **always** added to the **Claude Code** launch — that's the whole point of the remote tab. The permission flag is set by the Coding-options **Permission** selector: `--permission-mode auto` (default) or `--dangerously-skip-permissions`. The **Codex CLI** launches with its **Reasoning** tier (`-c model_reasoning_effort=<low|medium|high>`) plus a **Permission** pair — `--ask-for-approval never --sandbox workspace-write` (Auto mode) or `--dangerously-bypass-approvals-and-sandbox` (Skip permissions). The Antigravity CLI and the GitHub Copilot CLI launch with no flags unless their opt-in Coding-options toggles are set.
 
