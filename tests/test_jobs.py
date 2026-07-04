@@ -20,6 +20,9 @@ import pytest
 
 from app.cli.commands.run_job_cmd import build_invocation
 from src import jobs as jobs_mod
+from src import jobs_history as jobs_history_mod
+from src import jobs_queue as jobs_queue_mod
+from src import jobs_schtasks as jobs_schtasks_mod
 from src.jobs import resolve_venv_python
 from src.jobs_config import (
     Job,
@@ -248,9 +251,9 @@ class TestMutexQueueFile:
     """``src.jobs.enqueue_mutex`` / ``pop_mutex_entry`` / ``peek_mutex_queue``."""
 
     def test_enqueue_and_pop_fifo(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         monkeypatch.setattr(
-            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+            jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
         )
         jobs_mod.enqueue_mutex("chrome", {"job_id": "a", "run_id": "r1"})
         jobs_mod.enqueue_mutex("chrome", {"job_id": "b", "run_id": "r2"})
@@ -271,16 +274,16 @@ class TestMutexQueueFile:
         assert "db" in on_disk
 
     def test_pop_empty_returns_none(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         monkeypatch.setattr(
-            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+            jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
         )
         assert jobs_mod.pop_mutex_entry("nothing") is None
 
     def test_remove_by_run_id(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         monkeypatch.setattr(
-            jobs_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+            jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
         )
         jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r1"})
         jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r2"})
@@ -289,9 +292,9 @@ class TestMutexQueueFile:
         assert jobs_mod.remove_queue_entry("g", "missing") is False
 
     def test_malformed_file_treated_as_empty(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         qpath = tmp_path / "_queue.json"
-        monkeypatch.setattr(jobs_mod, "JOBS_QUEUE_PATH", qpath)
+        monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", qpath)
         qpath.parent.mkdir(parents=True, exist_ok=True)
         qpath.write_text("{not json}", encoding="utf-8")
         # peek must not raise — defensive read.
@@ -860,6 +863,30 @@ class TestDeleteSchtasks:
         assert "\\AppLauncher\\other" not in result
 
 
+class TestBulkParser:
+    """``src.jobs_schtasks._parse_bulk_query`` — the bulk Next Run Time parse."""
+
+    def test_filters_by_prefix(self):
+        stdout = (
+            "TaskName: \\AppLauncher\\demo\nNext Run Time: 2026-06-01 06:00:00\n\n"
+            "TaskName: \\Foreign\\task\nNext Run Time: 2026-06-01 12:00:00\n\n"
+        )
+        out = jobs_schtasks_mod._parse_bulk_query(stdout)
+        assert "\\AppLauncher\\demo" in out
+        assert out["\\AppLauncher\\demo"] == "2026-06-01 06:00:00"
+        # Foreign task is filtered out.
+        assert "\\Foreign\\task" not in out
+
+    def test_n_a_collapses_to_none(self):
+        stdout = (
+            "TaskName: \\AppLauncher\\demo-1\nNext Run Time: N/A\n\n"
+            "TaskName: \\AppLauncher\\demo-2\nNext Run Time: Disabled\n\n"
+        )
+        out = jobs_schtasks_mod._parse_bulk_query(stdout)
+        assert out["\\AppLauncher\\demo-1"] is None
+        assert out["\\AppLauncher\\demo-2"] is None
+
+
 # ================================================================ executor
 
 
@@ -922,20 +949,20 @@ class TestBuildInvocation:
 
 class TestRunHistory:
     def test_new_run_dir_creates(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260523T060000")
         assert rd.exists()
         assert rd.parent.name == "demo"
 
     def test_new_run_dir_handles_collisions(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd1 = jobs_mod.new_run_dir("demo", "20260523T060000")
         rd2 = jobs_mod.new_run_dir("demo", "20260523T060000")
         assert rd1 != rd2
         assert rd2.name.endswith("-2")
 
     def test_write_and_read_run_json(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260523T060000")
         jobs_mod.write_run_json(rd, status="running", trigger="manual")
         jobs_mod.write_run_json(rd, status="success", exit_code=0)
@@ -949,7 +976,7 @@ class TestRunHistory:
         # Race (#316): the webapp's Kill writes a killed/failed record, then the
         # naturally-finishing executor finalises with success. The kill's
         # terminal outcome must win — the user explicitly stopped the run.
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260523T060000")
         jobs_mod.write_run_json(rd, status="running", started_at="t0")
         # Kill endpoint fires.
@@ -974,7 +1001,7 @@ class TestRunHistory:
         assert record["peak_rss_bytes"] == 1024
 
     def test_list_runs_newest_first(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         for stamp in ("20260101T060000", "20260102T060000", "20260103T060000"):
             rd = jobs_mod.new_run_dir("demo", stamp)
             jobs_mod.write_run_json(rd, status="success")
@@ -986,7 +1013,7 @@ class TestRunHistory:
         ]
 
     def test_prune_keeps_latest_n(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         for i in range(5):
             stamp = f"2026010{i + 1}T060000"
             rd = jobs_mod.new_run_dir("demo", stamp)
@@ -1000,7 +1027,7 @@ class TestRunHistory:
         ]
 
     def test_read_output_tail(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260523T060000")
         (rd / "output.log").write_text("hello\nworld\n", encoding="utf-8")
         assert "world" in jobs_mod.read_output_tail(rd)

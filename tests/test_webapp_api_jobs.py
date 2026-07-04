@@ -604,9 +604,12 @@ class TestMutexGroups:
 
     def _isolate_queue(self, overrides, monkeypatch):
         """Point the queue file at the fixture's tmp jobs root."""
-        from src import jobs as jm
+        # JOBS_QUEUE_PATH is owned by src.jobs_queue (issue #315 split) —
+        # enqueue_mutex/pop_mutex_entry/etc. resolve it as their own
+        # module global, not through the src.jobs facade.
+        from src import jobs_queue as jobs_queue_mod
         monkeypatch.setattr(
-            jm, "JOBS_QUEUE_PATH",
+            jobs_queue_mod, "JOBS_QUEUE_PATH",
             overrides["tmp_jobs_runs_dir"] / "_queue.json",
         )
 
@@ -767,6 +770,7 @@ class TestBulkCacheNextRun:
 
         from app.webapp.routers import jobs as jobs_router
         from src import jobs as jobs_mod
+        from src import jobs_schtasks as jobs_schtasks_mod
 
         client, _, _ = webapp_client
 
@@ -807,7 +811,9 @@ class TestBulkCacheNextRun:
             )
             return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout, stderr="")
 
-        monkeypatch.setattr(jobs_mod, "_run_schtasks", fake_run)
+        # _run_schtasks is owned by src.jobs_schtasks (issue #315 split) —
+        # query_next_run's cache reads it as its own module global.
+        monkeypatch.setattr(jobs_schtasks_mod, "_run_schtasks", fake_run)
 
         # Seed N=5 jobs.
         for i in range(5):
@@ -836,6 +842,7 @@ class TestBulkCacheNextRun:
         from unittest.mock import MagicMock
 
         from src import jobs as jobs_mod
+        from src import jobs_schtasks as jobs_schtasks_mod
         from src.jobs_config import Job, Schedule
 
         # Set up a fake runner that records calls.
@@ -846,7 +853,8 @@ class TestBulkCacheNextRun:
             calls.append(list(argv))
             return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
 
-        monkeypatch.setattr(jobs_mod, "_run_schtasks", fake_run)
+        # _run_schtasks is owned by src.jobs_schtasks (issue #315 split).
+        monkeypatch.setattr(jobs_schtasks_mod, "_run_schtasks", fake_run)
         jobs_mod.invalidate_next_run_cache()
 
         # Warm the cache.

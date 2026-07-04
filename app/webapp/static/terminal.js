@@ -8,6 +8,13 @@
  *
  * The body is `position:fixed`-pinned while the overlay is open so iOS
  * rubber-band doesn't drag the page under the status bar.
+ *
+ * This module owns the PTY WebSocket lifecycle + the xterm instance
+ * (connect/reconnect, sizing/keyboard-pan, the on-screen keys D-pad, and
+ * image paste/drop). Three related concerns split out (issue #315):
+ * the compose bar + dictation + OCR (terminal-compose.js), read-aloud UI
+ * (terminal-readaloud.js, atop the terminal-readback.js engine), and the
+ * PC-mirror-window title/guard logic (terminal-mirror.js).
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
@@ -16,47 +23,31 @@ import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
-  cancelHub,
-  cancelSpeech,
-  extractLastReply,
-  isHubAvailable,
-  isSpeaking,
-  isSpeechSupported,
-  onSpeakingChange,
-  onSpeechEnd,
-  prepareHub,
-  probeHub,
-  speak,
-  speakHub,
-  speakHubInto,
-  summarizeReply,
-} from './terminal-readback.js';
+  announceMirrorWindow,
+  isMirrorWindowSession,
+  mirrorDocTitle,
+  refreshTerminalTitle,
+} from './terminal-mirror.js';
+import {
+  framePaste,
+  resetComposeBar,
+  sendSubmit,
+  wireCompose,
+  growComposeInput,
+} from './terminal-compose.js';
+import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
 import {
   clearTerminalToken,
   ensureTerminalToken,
   readTerminalToken,
 } from './webauthn.js';
-import { createDictation, startWorkTimer } from './voice.js';
 
-// The PC mirror window's OS title: the human session title first (so it shows
-// in the Windows/PTI title bar) followed by the hidden marker the launcher's
-// EnumWindows scan matches — as a substring — to close/reconcile the window
-// (issue #20). The marker must always be present; the scan tolerates text
-// around it (it already handles Edge prepending the app name).
-export function mirrorDocTitle(sid, title) {
-  const marker = 'app-launcher-mirror-' + sid;
-  return title ? title + ' — ' + marker : marker;
-}
-
-// Push the current title onto the open overlay header and, for a mirror
-// window, the OS title bar (keeping the close marker). Called on open and on
-// each title poll so a later rename (Claude's evolving summary, a first-prompt
-// title landing) updates the live window (issue #266).
-function refreshTerminalTitle(t, session) {
-  const title = sessionTitle(session);
-  if (els.terminalTitle) els.terminalTitle.textContent = title;
-  if (t.mirror) document.title = mirrorDocTitle(t.sid, title);
-}
+// Test seam (#20/#135/#166/#181/#264): several pure helpers below are
+// imported directly by the e2e suite via `import('/static/terminal.js')`
+// (terminalPanY, keyboardOverlayHeight, sendSubmit, framePaste, routeFrame,
+// mirrorDocTitle). Re-export the ones that moved to a split module so those
+// imports keep working unchanged.
+export { mirrorDocTitle, framePaste, sendSubmit };
 
 function termWsUrl(sid, tt) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -402,18 +393,12 @@ export async function openTerminal(session) {
   els.terminalTitle.textContent = sessionTitle(session);
   setTerminalStatus('Connecting…');
 
-  // The PC mirror window is the launcher-spawned Edge --app window: it is
-  // opened via the ?terminal=<sid> deep-link (state.isMirrorWindow, set at
-  // boot) AND connects over loopback. Both conditions are required — a
-  // human's own desktop browser over loopback also reports reason
-  // 'loopback' but is NOT a mirror, and treating it as one made Stop &
-  // Close window.close() the user's actual Chrome window (issue #241). It
-  // renders whatever size the phone set and never resizes the PTY — the
-  // phone is the single size authority, so the two clients never fight (the
-  // server also ignores resize frames from role=pc).
-  const isMirror = !!state.isMirrorWindow &&
-    !!(state.status && state.status.terminal &&
-       state.status.terminal.reason === 'loopback');
+  // The PC mirror window is the launcher-spawned Edge --app window (issue
+  // #241 — see terminal-mirror.js for why this can't just be the loopback
+  // reason check). It renders whatever size the phone set and never resizes
+  // the PTY — the phone is the single size authority, so the two clients
+  // never fight (the server also ignores resize frames from role=pc).
+  const isMirror = isMirrorWindowSession();
 
   // The compose bar (issue #37) is phone-only — the PC mirror already
   // has a real keyboard with full predictive support. Reset the button
@@ -435,43 +420,15 @@ export async function openTerminal(session) {
   const ocrOn = !!(state.status && state.status.screenshot_ocr);
   els.terminalScreenshot.hidden = !ocrOn;
 
-  // The 🔊 read-aloud button (issue #190) reads the last reply aloud through
-  // one of two voices: the hub's Orpheus voice (#203) when the local-llm-hub
-  // is configured, else the on-device Web Speech voice. Show it when EITHER
-  // path is possible. `state.status.tts` is the cheap config-presence flag; a
-  // live /api/tts/health probe then refines which path the click takes.
-  const ttsConfigured = !!(state.status && state.status.tts);
-  els.terminalSpeak.hidden = !(isSpeechSupported() || ttsConfigured);
-  // The "Summarize & read" menu action (issue #210) needs the hub's LLM, so
-  // it's revealed only once the live /api/tts/health probe confirms the hub is
-  // reachable — hidden until then. Verbatim "Read aloud" stays available via
-  // Web Speech regardless. We always probe (not gated on state.status.tts,
-  // which may not be populated yet on a deep-link open): the health endpoint
-  // answers available:false cheaply when the hub is unconfigured/down.
-  const summarizeAction = els.terminalSpeakPopover &&
-    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
-  if (summarizeAction) summarizeAction.hidden = true;
-  probeHub({
-    token: readToken(),
-    terminalToken: readTerminalToken(),
-  }).then(function (ok) {
-    // A reachable hub means the button is useful even where Web Speech
-    // isn't supported (e.g. some embedded WebViews), and unlocks summarize.
-    if (ok) els.terminalSpeak.hidden = false;
-    if (summarizeAction) summarizeAction.hidden = !ok;
-  });
+  // The 🔊 read-aloud button (issue #190) reveal/probe lives in
+  // terminal-readaloud.js — it needs both the cheap status flag and a live
+  // hub health probe (see revealReadAloudButton for why).
+  revealReadAloudButton();
 
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
-  // with WM_CLOSE on Stop & Close (issue #20). Must run on every open
-  // because Edge sets the title from the page after load. The
-  // console.info is intentional — open DevTools on the mirror window
-  // to confirm the title was actually applied if Stop & Close fails.
-  if (isMirror) {
-    const mirrorTitle = mirrorDocTitle(sid, sessionTitle(session));
-    document.title = mirrorTitle;
-    console.info('[app-launcher] mirror title set:', mirrorTitle);
-  }
+  // with WM_CLOSE on Stop & Close (issue #20).
+  if (isMirror) announceMirrorWindow(sid, sessionTitle(session));
 
   // Source the terminal colours from the design tokens so they can't fork
   // from the SPA's --bg / --fg (issue #314). Fallbacks equal the token values.
@@ -867,428 +824,6 @@ function wireKeysPopover() {
   });
 }
 
-// Compose bar (issue #37): a normal <textarea> with default predictive/
-// autocorrect/spellcheck so iOS/Android keyboards offer suggestions —
-// which they can't inside xterm's per-keystroke-wiped helper textarea.
-// ➤ Send forwards the buffered text, then a submitting \r as a SEPARATE
-// WS frame (see sendSubmit / #166).
-
-// Max visible rows before the textarea scrolls internally. Roomy enough
-// for a long dictated voice note (#165) without the bar eating the whole
-// screen when the keyboard is up. The CSS min-height floors it at 2 rows.
-const _COMPOSE_MAX_ROWS = 8;
-
-function growComposeInput() {
-  // Auto-grow up to _COMPOSE_MAX_ROWS; the iOS return key adds newlines,
-  // only ➤ Send forwards to the PTY.
-  const ta = els.terminalComposeInput;
-  ta.style.height = 'auto';
-  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-  ta.style.height =
-    Math.min(ta.scrollHeight, _COMPOSE_MAX_ROWS * lineHeight + 16) + 'px';
-  // Keep the caret (end of a freshly inserted transcript) in view.
-  ta.scrollTop = ta.scrollHeight;
-}
-
-function resetComposeBar() {
-  els.terminalComposeBar.hidden = true;
-  els.terminalComposeInput.value = '';
-  els.terminalComposeInput.style.height = '';
-  clearOcrStaging();
-}
-
-function setComposeOpen(open) {
-  const t = state.terminal;
-  if (!t) return;
-  t.composeOpen = open;
-  els.terminalComposeBar.hidden = !open;
-  if (!open) {
-    // Closing the bar abandons any in-flight recording so the mic isn't
-    // left live behind a hidden bar, and drops any staged OCR images.
-    composeDictation.stop();
-    clearOcrStaging();
-  }
-  if (open) {
-    // Focusing the textarea pops the phone keyboard with predictive on.
-    els.terminalComposeInput.focus();
-  } else if (t.term) {
-    // Direct mode resumes — hand focus back to xterm.
-    t.term.focus();
-  }
-}
-
-// Wrap a clipboard / compose payload in bracketed-paste markers (DECSET
-// 2004) when the agent's TUI has them enabled, so it buffers the whole
-// block as one atomic paste instead of absorbing a per-keystroke burst —
-// which the Windows console input queue silently drops spans of under a
-// multi-KB load (#64). This is exactly what xterm already does for its own
-// native paste (term.onData); the 📋 button and compose ➤ Send bypass
-// xterm, so they have to replicate it. Only bracket when the app actually
-// asked for it (`term.modes.bracketedPasteMode`) — otherwise the literal
-// `\x1b[200~` would land as garbage in an agent that doesn't grok it.
-//
-// Framing only — this never appends the submitting carriage return. A
-// submit goes through `sendSubmit`, which delivers the CR as its OWN WS
-// frame after this block (see #166).
-export function framePaste(t, text) {
-  const bracketed = !!(t.term && t.term.modes && t.term.modes.bracketedPasteMode);
-  if (!bracketed) return text;
-  return '\x1b[200~' + text + '\x1b[201~';
-}
-
-// Send a composed prompt to the PTY and submit it. The submitting carriage
-// return is sent as its OWN WS frame *after* the (possibly bracketed) text
-// block — never concatenated onto it.
-//
-// Why split: the webapp proxies each WS `input` frame to the session-host
-// as a distinct `pty.write()`, so two frames become two PTY writes. That
-// guarantees the `\x1b[201~` paste-end marker is written — and the TUI has
-// finished exiting bracketed-paste mode — before the bare CR arrives. When
-// the CR rode in the same frame as the end marker, the TUI intermittently
-// absorbed it into paste finalization instead of running the prompt: the
-// "➤ Send sometimes does nothing" race of #166. A CR *inside* the markers
-// is literal pasted text by design, so the split is the only ordering that
-// reliably submits. With bracketed mode off there is no paste state machine
-// to race, but the two-frame path is harmless there, so it stays uniform.
-export function sendSubmit(t, text) {
-  if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-  t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
-  t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
-}
-
-// Voice dictation (issues #165 / #168): the 🎤 button in the compose bar
-// records the mic and drops the transcript into the compose textarea for
-// review — never straight into the PTY. Tap to start, tap to stop.
-// Phone-only by virtue of living in the compose bar, which is hidden in
-// the PC mirror window. The recording pipeline itself (streamed partials
-// with the single-shot fallback) lives in the shared voice.js since #302 —
-// this is just the compose bar's mounted instance. Starting to talk
-// silences any in-flight read-aloud (issue #190): you're answering, not
-// still listening.
-const composeDictation = createDictation({
-  button: els.terminalRecord,
-  getTextarea: function () { return els.terminalComposeInput; },
-  onRender: growComposeInput,
-  onStart: stopReading,
-});
-
-// Screenshot OCR (issue #171). The 📷 button *stages* one or more
-// screenshots into a tray; nothing is sent yet. Each tap accumulates more
-// images. When the user taps **Extract**, ALL staged images go to photo-ocr
-// in a SINGLE /api/ocr call, so photo-ocr collates them into one
-// deduplicated text (overlapping shots of one document are merged, duplicate
-// boundary lines removed) — instead of one isolated OCR per image. The text
-// drops into the compose textarea for review before ➤ Send. Model/prompt are
-// left to photo-ocr's own config.
-let _ocrStaged = [];        // File objects awaiting a collated extraction
-let _ocrThumbUrls = [];     // object URLs to revoke when the tray clears
-
-function clearOcrStaging() {
-  _ocrStaged = [];
-  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
-  _ocrThumbUrls = [];
-  renderOcrTray();
-}
-
-function renderOcrTray() {
-  const strip = els.terminalOcrThumbs;
-  strip.innerHTML = '';
-  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
-  _ocrThumbUrls = [];
-  if (!_ocrStaged.length) {
-    els.terminalOcrTray.hidden = true;
-    return;
-  }
-  els.terminalOcrTray.hidden = false;
-  _ocrStaged.forEach(function (file, idx) {
-    const cell = document.createElement('div');
-    cell.className = 'ocr-thumb';
-    const img = document.createElement('img');
-    const url = URL.createObjectURL(file);
-    _ocrThumbUrls.push(url);
-    img.src = url;
-    img.alt = 'staged screenshot ' + (idx + 1);
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'ocr-thumb-x';
-    rm.textContent = '✕';
-    rm.title = 'Remove';
-    rm.addEventListener('click', function () {
-      _ocrStaged.splice(idx, 1);
-      renderOcrTray();
-    });
-    cell.appendChild(img);
-    cell.appendChild(rm);
-    strip.appendChild(cell);
-  });
-  els.terminalOcrExtract.textContent =
-    '📷 Extract text (' + _ocrStaged.length + ')';
-}
-
-function stageOcrImages(files) {
-  const list = files ? Array.prototype.slice.call(files) : [];
-  if (!list.length) return;
-  _ocrStaged = _ocrStaged.concat(list);
-  renderOcrTray();
-}
-
-// Run OCR over EVERY staged image in one call so photo-ocr deduplicates the
-// overlap. Headers mirror sendImage (bearer + passkey terminal token).
-async function runOcrExtraction() {
-  const list = _ocrStaged.slice();
-  if (!list.length) return;
-  const fd = new FormData();
-  list.forEach(function (f, i) {
-    fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
-  });
-  const btn = els.terminalOcrExtract;
-  btn.disabled = true;
-  els.terminalScreenshot.disabled = true;
-  const stopTimer = startWorkTimer(btn, '📷 Extract text', '⏳ Reading ');
-  try {
-    const tt = readTerminalToken();
-    const res = await fetch('/api/ocr', {
-      method: 'POST', headers: authHeaders({ terminalToken: tt }), body: fd,
-    });
-    if (!res.ok) {
-      const b = await res.json().catch(function () { return null; });
-      throw new Error((b && b.detail) || ('HTTP ' + res.status));
-    }
-    const body = await res.json().catch(function () { return null; });
-    const text = body && body.text;
-    const plural = list.length > 1;
-    if (!text) {
-      toast('📷 No text found in the image' + (plural ? 's' : ''));
-      return;
-    }
-    // Insert at the caret with a leading space when the textarea already
-    // has trailing content, so the OCR appends cleanly to typed text.
-    const ta = els.terminalComposeInput;
-    const before = ta.value.slice(0, ta.selectionStart);
-    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
-    ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
-    growComposeInput();
-    ta.focus();
-    clearOcrStaging();
-    toast(
-      '📷 Text extracted from ' + list.length + ' image' +
-        (plural ? 's' : '') + ' — review, then ➤ Send.',
-      'good'
-    );
-  } catch (exc) {
-    apiFailToast('OCR failed', exc);
-  } finally {
-    stopTimer();
-    btn.disabled = false;
-    els.terminalScreenshot.disabled = false;
-  }
-}
-
-// Stop read-aloud whichever voice is active — the hub <audio> and the Web
-// Speech queue are independent engines sharing one speaking-state flag, so a
-// stop (re-press, tab-leave, new dictation) must silence both.
-function stopReading() {
-  cancelHub();
-  cancelSpeech();
-}
-
-// Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
-function setSpeakingUI(on) {
-  // Auto-close the summary modal (issue #210) the moment reading stops —
-  // whether it finished naturally, was stopped, or the tab was left. This is
-  // the single sink for every speaking→idle transition, so the modal can't
-  // outlive the read.
-  if (!on) closeSummaryModal();
-  const btn = els.terminalSpeak;
-  if (!btn) return;
-  btn.classList.toggle('speaking', on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.textContent = on ? '⏹' : '🔊';
-  btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
-}
-
-// ── Summary modal (issue #210) ──────────────────────────────────────────────
-// Shows the hub summary on screen while it's read aloud — and readable on its
-// own when audio is muted. Auto-closes when the read ends (via setSpeakingUI);
-// a tap anywhere (or the ✕) dismisses it and stops the read.
-function showSummaryModal(text) {
-  if (!els.summaryModal) return;
-  els.summaryModalText.textContent = text;
-  els.summaryModal.hidden = false;
-}
-
-function closeSummaryModal() {
-  if (!els.summaryModal || els.summaryModal.hidden) return;
-  els.summaryModal.hidden = true;
-}
-
-function wireSummaryModal() {
-  if (!els.summaryModal) return;
-  // Tap the backdrop (or ✕) → dismiss + stop reading. stopReading() flips the
-  // speaking state, which closeSummaryModal()s via setSpeakingUI as a backstop.
-  els.summaryModal.addEventListener('click', function () {
-    stopReading();
-    closeSummaryModal();
-  });
-}
-
-// ── Read-aloud action menu (issue #210) ─────────────────────────────────────
-// The 🔊 button opens a small dropdown with two actions: "Read aloud" (the
-// verbatim path, #190/#203/#206) and "Summarize & read" — condense the reply
-// via the hub's claude_haiku first, for hands-free / driving listening. The
-// menu only appears when the summarize action is available (hub reachable);
-// otherwise the button keeps its original single-tap "read aloud" behaviour.
-let _disposeSpeakOutsideClick = null;
-
-function closeSpeakPopover() {
-  if (!els.terminalSpeakPopover) return;
-  els.terminalSpeakPopover.hidden = true;
-  if (_disposeSpeakOutsideClick) {
-    _disposeSpeakOutsideClick();
-    _disposeSpeakOutsideClick = null;
-  }
-}
-
-function openSpeakPopover() {
-  if (!els.terminalSpeakPopover) return;
-  els.terminalSpeakPopover.hidden = false;
-  if (!_disposeSpeakOutsideClick) {
-    _disposeSpeakOutsideClick = bindOutsideClickToClose(
-      els.terminalSpeakPopover, els.terminalSpeak, closeSpeakPopover
-    );
-  }
-}
-
-// True when the "Summarize & read" action is currently offered (hub reachable).
-function summarizeAvailable() {
-  const a = els.terminalSpeakPopover &&
-    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
-  return !!(a && !a.hidden);
-}
-
-// Speak `text` aloud, preferring the hub's Orpheus voice and falling back to
-// on-device Web Speech. `handle` is an optional pre-armed hub context from
-// prepareHub() — the summarize path arms it inside the click gesture, then
-// awaits the summary, then reads into it (so iOS still lets the audio sound
-// after the network round-trip). The verbatim path passes none; speakHub then
-// arms its own context inside this call's synchronous prologue.
-async function readTextAloud(text, handle, quiet) {
-  const peek = text.length > 60 ? text.slice(0, 60) + '…' : text;
-  const opts = { token: readToken(), terminalToken: readTerminalToken() };
-  // `quiet` suppresses the peek toast — the summarize path already shows the
-  // full text in the modal, so the toast would be redundant noise.
-  if (handle || isHubAvailable()) {
-    if (!quiet) toast('🔊 Reading: ' + peek, 'good');
-    try {
-      if (handle) await speakHubInto(handle, text, opts);
-      else await speakHub(text, opts);
-      return true;
-    } catch (_) {
-      // hub path failed — fall through to Web Speech below
-    }
-  }
-  if (!speak(text)) {
-    toast('Speech not supported on this browser', 'error');
-    return false;
-  }
-  if (!quiet) toast('🔊 Reading: ' + peek, 'good');
-  return true;
-}
-
-// "Read aloud": extract the last reply and speak it verbatim. Must be called
-// directly from the button-click gesture (speakHub arms audio synchronously).
-function readLastReplyAloud() {
-  const t = state.terminal;
-  if (!t || !t.term) return;
-  const text = extractLastReply(t.term);
-  if (!text) { toast('🔊 No reply to read yet.'); return; }
-  readTextAloud(text, null);
-}
-
-// "Summarize & read": condense the last reply via the hub, then speak the
-// summary. Arms the hub audio context in the gesture tick (before the awaited
-// summary) so iOS lets the synthesized summary sound. Must be called directly
-// from the button-click gesture.
-async function summarizeAndReadLastReply() {
-  const t = state.terminal;
-  if (!t || !t.term) return;
-  const text = extractLastReply(t.term);
-  if (!text) { toast('🔊 No reply to read yet.'); return; }
-  const opts = { token: readToken(), terminalToken: readTerminalToken() };
-  // Arm hub audio now, in the gesture, so the summary can sound after the LLM
-  // round-trip; null when Web Audio is unavailable → Web Speech fallback.
-  let handle = null;
-  if (isHubAvailable()) {
-    try { handle = prepareHub(); } catch (_) { handle = null; }
-  }
-  toast('📝 Summarizing…');
-  let summary;
-  try {
-    summary = await summarizeReply(text, opts);
-  } catch (_) {
-    if (handle) cancelHub();   // release the armed context + reset the button
-    toast('Could not summarize the reply.', 'error');
-    return;
-  }
-  // Show the summary on screen (readable on its own when audio is muted); it
-  // auto-closes when the read finishes — or stays until dismissed if silent.
-  showSummaryModal(summary);
-  await readTextAloud(summary, handle, true);
-}
-
-function wireSpeakMenu() {
-  // Idle press: open the action menu when summarize is available, else read
-  // aloud directly (preserve the original single-tap behaviour). Press while
-  // reading: stop. The tap is the user gesture iOS speech needs, so the read
-  // helpers run synchronously off this handler.
-  els.terminalSpeak.addEventListener('click', function () {
-    if (isSpeaking()) { stopReading(); closeSpeakPopover(); return; }
-    if (!summarizeAvailable()) { readLastReplyAloud(); return; }
-    if (els.terminalSpeakPopover.hidden) openSpeakPopover();
-    else closeSpeakPopover();
-  });
-  els.terminalSpeakPopover.addEventListener('click', function (ev) {
-    const btn = ev.target.closest('.speak-action');
-    if (!btn) return;
-    const action = btn.getAttribute('data-action');
-    closeSpeakPopover();
-    if (action === 'summarize') summarizeAndReadLastReply();
-    else readLastReplyAloud();
-  });
-}
-
-function wireCompose() {
-  els.terminalCompose.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t) return;
-    setComposeOpen(!t.composeOpen);
-  });
-  els.terminalRecord.addEventListener('click', composeDictation.toggle);
-  els.terminalScreenshot.addEventListener('click', function () {
-    els.terminalScreenshotInput.click();
-  });
-  els.terminalScreenshotInput.addEventListener('change', function () {
-    const picked = els.terminalScreenshotInput.files;
-    const list = picked && picked.length
-      ? Array.prototype.slice.call(picked) : [];
-    els.terminalScreenshotInput.value = '';
-    // Stage, don't send — accumulate across taps; Extract collates them all.
-    if (list.length) stageOcrImages(list);
-  });
-  els.terminalOcrExtract.addEventListener('click', runOcrExtraction);
-  els.terminalComposeSend.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-    const text = els.terminalComposeInput.value;
-    if (!text) return;
-    sendSubmit(t, text);
-    els.terminalComposeInput.value = '';
-    els.terminalComposeInput.style.height = '';
-    els.terminalComposeInput.focus();
-  });
-  els.terminalComposeInput.addEventListener('input', growComposeInput);
-}
-
 export function wireTerminal() {
   els.terminalBack.addEventListener('click', hideTerminal);
   // 🛑 Stop-and-kill the session straight from the terminal view (issue
@@ -1314,17 +849,10 @@ export function wireTerminal() {
     try { t.term.scrollToBottom(); } catch (_) {}
     t.term.focus();
   });
-  // 🔊 read-aloud control (issues #190, #210) — a top-bar control beside
-  // ↓ Jump, not in the compose bar (which is for editing). Idle press opens the
-  // action menu (Read aloud / Summarize & read) when the hub is reachable, else
-  // reads aloud directly; press while reading → stop. The tap is the user
-  // gesture iOS speech synthesis requires, so the read helpers run off it.
-  onSpeakingChange(setSpeakingUI);
-  // When the reply finishes reading on its own, reset the button (done by
-  // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
-  onSpeechEnd(function () { toast('🔊 Finished reading.', 'good'); });
-  wireSpeakMenu();
-  wireSummaryModal();
+  // 🔊 read-aloud control (issues #190, #210) — wiring lives in
+  // terminal-readaloud.js, alongside the button's action menu and the
+  // summary modal it opens.
+  wireReadAloud();
   els.terminalPaste.addEventListener('click', async function () {
     const t = state.terminal;
     if (!t) return;

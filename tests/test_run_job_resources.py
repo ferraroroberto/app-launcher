@@ -21,6 +21,7 @@ import pytest
 
 from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
+from src import jobs_history as jobs_history_mod
 
 
 # ============================================================== sampler
@@ -68,7 +69,7 @@ class TestExecutorFinalises:
 
     @pytest.fixture
     def isolated_runs_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         return tmp_path
 
     def test_records_pid_duration_and_resources(
@@ -146,7 +147,7 @@ class TestMaybeNotifyFailure:
     def test_noop_on_success(self, tmp_path, monkeypatch):
         from src.jobs_config import Job
 
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
         jobs_mod.write_run_json(rd, status="success")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
@@ -160,7 +161,7 @@ class TestMaybeNotifyFailure:
     def test_noop_when_master_switch_off(self, tmp_path, monkeypatch):
         from src.jobs_config import Job
 
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
         jobs_mod.write_run_json(rd, status="failed")
         (rd / "output.log").write_bytes(b"boom\n")
@@ -175,7 +176,7 @@ class TestMaybeNotifyFailure:
     def test_fires_on_failure(self, tmp_path, monkeypatch):
         from src.jobs_config import Job
 
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
         (rd / "output.log").write_bytes(b"Traceback\nValueError: nope\n")
         jobs_mod.write_run_json(rd, status="failed")
@@ -198,7 +199,7 @@ class TestMaybeNotifyFailure:
     def test_streak_fires_on_exact_count(self, tmp_path, monkeypatch):
         from src.jobs_config import Job
 
-        monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         # Seed two prior failed runs so the count hits 3 with the live one.
         for i, rid in enumerate(["20260101T060000", "20260102T060000"]):
             rd = jobs_mod.new_run_dir("demo", rid)

@@ -131,10 +131,13 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # DEFAULT_JOBS_PATH and writes run records under JOBS_RUNS_DIR.
     tmp_jobs_cfg = tmp_path / "jobs.json"
     tmp_jobs_runs = tmp_path / "jobs_runs"
-    from src import jobs as jobs_mod
     from src import jobs_config as jobs_cfg_mod
+    from src import jobs_history as jobs_history_mod
     monkeypatch.setattr(jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_jobs_cfg)
-    monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_jobs_runs)
+    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split) — patch
+    # it there, not on the src.jobs facade, so runs_dir()/list_runs()/etc.
+    # (which read their own module's global, not the facade's copy) see it.
+    monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_jobs_runs)
 
     # app_config.json — also redirect to tmp so create_app's load_app_config
     # doesn't read the real one. The launcher's app_config has very little

@@ -18,13 +18,15 @@ import pytest
 
 from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
+from src import jobs_history as jobs_history_mod
 from src.app_config import AppConfig
 from src.jobs_config import Job, JobsConfig
 
 
 @pytest.fixture
 def isolated_runs_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split).
+    monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     return tmp_path
 
 
