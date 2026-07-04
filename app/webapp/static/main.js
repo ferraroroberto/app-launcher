@@ -6,7 +6,7 @@
  */
 
 import { els, state, BOARD_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { boardFromUrl, jsonApi, readToken, terminalFromUrl, tokenFromUrl, toast, wireLoginForm, writeToken } from './api.js';
+import { apiFailToast, consumeUrlParam, jsonApi, readToken, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchSessions, wireSessions } from './sessions.js';
@@ -91,7 +91,7 @@ async function fetchVersion() {
 
 // --------------------------------------------------------- boot
 async function boot() {
-  const fromUrl = tokenFromUrl();
+  const fromUrl = consumeUrlParam('token');
   if (fromUrl) writeToken(fromUrl);
   // THROWAWAY spike #246: bake the bearer token into the spike link so a full
   // page-load of /spike/voice-loop passes the gate over the tunnel (the
@@ -102,7 +102,7 @@ async function boot() {
     els.spikeVoiceLink.href =
       '/spike/voice-loop' + (tok ? '?token=' + encodeURIComponent(tok) : '');
   }
-  const deepLinkSid = terminalFromUrl();
+  const deepLinkSid = consumeUrlParam('terminal');
   // Only the launcher-spawned PC mirror window opens via the ?terminal=<sid>
   // deep-link; a human's own browser never does. Recording it here (before
   // the param is stripped from the URL) is what lets terminal.js tell a real
@@ -113,9 +113,7 @@ async function boot() {
   try {
     await fetchConfig();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
-      toast('Boot failed: ' + (exc.message || exc), 'error');
-    }
+    apiFailToast('Boot failed', exc);
     return;
   }
   await fetchAgents();
@@ -139,7 +137,7 @@ async function boot() {
     // ?board=<sid> (issue #301): a Slack ping lands on that session's
     // Board card, drawer open. Mutually exclusive with ?terminal= by
     // construction (each link carries one param).
-    const boardSid = boardFromUrl();
+    const boardSid = consumeUrlParam('board');
     if (boardSid) openBoardCard(boardSid).catch(function () {});
   }
   setInterval(function () {

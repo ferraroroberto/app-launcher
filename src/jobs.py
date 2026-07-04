@@ -42,6 +42,7 @@ try:  # Windows-only interprocess file lock (this repo runs Windows-only).
 except ImportError:  # pragma: no cover - non-Windows fallback
     msvcrt = None  # type: ignore[assignment]
 
+from src._json_io import atomic_write_json
 from src.jobs_config import Job, Schedule
 
 logger = logging.getLogger(__name__)
@@ -112,25 +113,19 @@ def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
     )
 
 
-def _pythonw_path() -> str:
-    """The launcher's own venv ``pythonw.exe``, with PATH fallback."""
-    candidate = PROJECT_ROOT / ".venv" / "Scripts" / "pythonw.exe"
-    if candidate.is_file():
-        return str(candidate)
-    return "pythonw.exe"
+def _launcher_python(*, visible: bool = False) -> str:
+    """The launcher's own venv interpreter, with PATH fallback.
 
-
-def _python_path() -> str:
-    """The launcher's own venv ``python.exe`` (console subsystem), PATH fallback.
-
-    Used by ``visible`` jobs so the scheduled task fires under a
-    console-subsystem interpreter — a window appears in the logged-on
-    session — instead of the windowless ``pythonw.exe``.
+    ``visible=True`` resolves ``python.exe`` (console subsystem) — used by
+    jobs so the scheduled task fires with a console window in the
+    logged-on session. ``visible=False`` (default) resolves the windowless
+    ``pythonw.exe``.
     """
-    candidate = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    name = "python.exe" if visible else "pythonw.exe"
+    candidate = PROJECT_ROOT / ".venv" / "Scripts" / name
     if candidate.is_file():
         return str(candidate)
-    return "python.exe"
+    return name
 
 
 def _launcher_py() -> str:
@@ -145,7 +140,7 @@ def task_run_command(job_id: str, *, visible: bool = False) -> str:
     under ``python.exe`` (console window in the logged-on session); every
     other job stays on the silent ``pythonw.exe``.
     """
-    interpreter = _python_path() if visible else _pythonw_path()
+    interpreter = _launcher_python(visible=visible)
     return f'"{interpreter}" "{_launcher_py()}" run-job {job_id}'
 
 
@@ -173,7 +168,7 @@ def spawn_run_job_detached(
     record. Mutex queue / chain callers never set it.
     """
     argv = [
-        _pythonw_path(),
+        _launcher_python(),
         _launcher_py(),
         "run-job",
         job_id,
@@ -726,9 +721,7 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
             for key in _KILL_OWNED_FIELDS:
                 incoming.pop(key, None)
         existing.update(incoming)
-        tmp = target.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(existing, indent=2), encoding="utf-8")
-        os.replace(tmp, target)
+        atomic_write_json(target, existing)
 
 
 def read_run(run_dir: Path) -> Dict[str, Any]:
@@ -803,9 +796,7 @@ def _write_queue_file(state: Dict[str, List[Dict[str, Any]]]) -> None:
     """Persist the queue atomically. Drops groups whose list is empty."""
     JOBS_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
     pruned = {g: e for g, e in state.items() if e}
-    tmp = JOBS_QUEUE_PATH.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(pruned, indent=2), encoding="utf-8")
-    os.replace(tmp, JOBS_QUEUE_PATH)
+    atomic_write_json(JOBS_QUEUE_PATH, pruned)
 
 
 def enqueue_mutex(group: str, entry: Dict[str, Any]) -> None:

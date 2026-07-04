@@ -13,7 +13,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { apiFailToast, AuthRequiredError, jsonApi, toast } from './api.js';
 import { fmtAgo } from './sessions.js';
 
 // --------------------------------------------------------------- render
@@ -196,7 +196,7 @@ async function fetchAgenda() {
     const data = await jsonApi('/api/jobs/agenda?days=7');
     renderAgenda(data);
   } catch (exc) {
-    if (String(exc.message) === 'auth required') return;
+    if (exc instanceof AuthRequiredError) return;
     if (host) {
       host.innerHTML = '';
       const p = document.createElement('p');
@@ -760,7 +760,7 @@ async function refreshExpandedContent(jobId, opts) {
     runs = body.runs || [];
     state.jobRuns[jobId] = runs;
   } catch (exc) {
-    if (String(exc.message) === 'auth required') return;
+    if (exc instanceof AuthRequiredError) return;
   }
 
   // Default selection on first paint: newest run.
@@ -850,7 +850,7 @@ async function killRun(jobId, runId) {
     await refreshExpandedContent(jobId, { fetchOutput: true });
     await fetchJobs();
   } catch (exc) {
-    toast('Kill failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Kill failed', exc);
   }
 }
 
@@ -864,8 +864,7 @@ async function togglePause(job) {
     toast(job.paused ? '▶ Resumed ' + job.name : '⏸ Paused ' + job.name, 'good');
     await fetchJobs();
   } catch (exc) {
-    toast(action.charAt(0).toUpperCase() + action.slice(1) +
-          ' failed: ' + (exc.message || exc), 'error');
+    apiFailToast(action.charAt(0).toUpperCase() + action.slice(1) + ' failed', exc);
   }
 }
 
@@ -936,7 +935,7 @@ async function runJobNow(job, options) {
         return;
       }
     }
-    toast('Run failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Run failed', exc);
   }
 }
 
@@ -1222,7 +1221,7 @@ async function submitRunDialog(ev) {
   if (!runDialogJob) return;
   let values;
   try { values = readRunDialogValues(); } catch (exc) {
-    toast(String(exc.message || exc), 'error');
+    apiFailToast('', exc);
     return;
   }
   const job = runDialogJob;
@@ -1243,7 +1242,7 @@ async function removeJob(job) {
     toast('Removed ' + job.name, 'good');
     await fetchJobs();
   } catch (exc) {
-    toast('Remove failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Remove failed', exc);
   }
 }
 
@@ -1467,7 +1466,7 @@ async function postJobPayload(payload) {
       if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
       return;
     }
-    toast('Save failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Save failed', exc);
   }
 }
 
@@ -1475,7 +1474,7 @@ async function submitJobDialog(ev) {
   ev.preventDefault();
   let payload;
   try { payload = buildJobPayload(); } catch (exc) {
-    toast(String(exc.message || exc), 'error');
+    apiFailToast('', exc);
     return;
   }
   clearPreflightProblems();
@@ -1567,7 +1566,7 @@ export async function fetchJobs() {
     state.jobs = body.jobs || [];
     patchRowsInPlace();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       console.warn('jobs fetch failed', exc);
     }
   }

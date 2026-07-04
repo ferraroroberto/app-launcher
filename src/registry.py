@@ -24,12 +24,12 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ._json_io import atomic_write_json
 from .scanner import (
     KIND_CLAUDE_CODE,
     KIND_STREAMLIT,
@@ -122,9 +122,7 @@ def load_registry(path: Optional[Path] = None) -> Registry:
 def save_registry(reg: Registry, path: Optional[Path] = None) -> Path:
     target = Path(path) if path is not None else DEFAULT_REGISTRY_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(json.dumps(reg.to_dict(), indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    atomic_write_json(target, reg.to_dict())
     return target
 
 

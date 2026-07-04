@@ -41,13 +41,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+from src._json_io import atomic_write_json
 from src.scanner import slugify
 
 logger = logging.getLogger(__name__)
@@ -722,9 +722,7 @@ def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     """Persist ``cfg`` to disk via an atomic ``.tmp`` swap."""
     target = Path(path) if path is not None else DEFAULT_JOBS_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(json.dumps(cfg.to_dict(), indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    atomic_write_json(target, cfg.to_dict())
     return target
 
 

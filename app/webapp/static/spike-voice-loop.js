@@ -34,7 +34,7 @@
  */
 
 import { VoiceLoop, STATE, INTENT } from './spike-voice-loop-fsm.js';
-import { tokenFromUrl, writeToken, readToken, jsonApi } from './api.js';
+import { consumeUrlParam, writeToken, readToken, jsonApi } from './api.js';
 import { ensureTerminalToken, readTerminalToken } from './webauthn.js';
 import { state } from './state.js';
 import {
@@ -366,7 +366,7 @@ async function start() {
 
   // 1) Auth, inside-or-around the gesture. Bearer from URL/localStorage; the
   //    passkey terminal token from the live store, or the passkey ceremony.
-  const urlTok = tokenFromUrl();
+  const urlTok = consumeUrlParam('token');
   if (urlTok) writeToken(urlTok);
   opts.token = readToken();
   try {

@@ -13,7 +13,7 @@
  * the target textarea for review — never straight into a PTY or a dispatch.
  */
 
-import { readToken, toast } from './api.js';
+import { apiFailToast, authHeaders, readToken, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 
 const _CHUNK_MS = 1000;
@@ -44,12 +44,7 @@ export function pickAudioMime() {
 // Auth headers for the transcribe endpoints (bearer + passkey terminal
 // token), mirroring sendImage.
 export function voiceHeaders() {
-  const headers = new Headers();
-  const bt = readToken();
-  if (bt) headers.set('Authorization', 'Bearer ' + bt);
-  const tt = readTerminalToken();
-  if (tt) headers.set('X-Terminal-Token', tt);
-  return headers;
+  return authHeaders({ terminalToken: readTerminalToken() });
 }
 
 // EventSource can't set headers, so the SSE stream carries auth in the
@@ -180,7 +175,7 @@ export function createDictation(opts) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (exc) {
-      toast('Microphone unavailable: ' + (exc.message || exc), 'error');
+      apiFailToast('Microphone unavailable', exc);
       return;
     }
     const mime = pickAudioMime();
@@ -190,7 +185,7 @@ export function createDictation(opts) {
         : new MediaRecorder(stream);
     } catch (exc) {
       stream.getTracks().forEach(function (tr) { tr.stop(); });
-      toast('Recorder failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Recorder failed', exc);
       return;
     }
     _activeInstance = api;
@@ -305,7 +300,7 @@ export function createDictation(opts) {
       }
       getTextarea().focus();
     } catch (exc) {
-      toast('Transcription failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Transcription failed', exc);
     } finally {
       closeVoiceEvents();
       _voiceSession = null;
@@ -350,7 +345,7 @@ export function createDictation(opts) {
       ta.focus();
       toast('🎤 Transcribed — review, then ➤ Send.', 'good');
     } catch (exc) {
-      toast('Transcription failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Transcription failed', exc);
     } finally {
       stopTimer();
       button.disabled = false;

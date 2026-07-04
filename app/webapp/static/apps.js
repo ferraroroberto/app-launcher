@@ -7,7 +7,8 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast, isDesktopClient } from './api.js';
+import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
+import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, fmtAgo } from './sessions.js';
 import { openTerminal, estimateTermSize } from './terminal.js';
 
@@ -142,9 +143,7 @@ async function toggleFavorite(a) {
     });
     await fetchApps();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
-      toast('Could not update favorite: ' + (exc.message || exc), 'error');
-    }
+    apiFailToast('Could not update favorite', exc);
   }
 }
 
@@ -198,9 +197,7 @@ export async function fetchGitStatus() {
     renderApps();
     openGitSummary();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
-      toast('Git status check failed: ' + (exc.message || exc), 'error');
-    }
+    apiFailToast('Git status check failed', exc);
   } finally {
     if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
   }
@@ -211,13 +208,13 @@ export async function fetchGitStatus() {
 // off its default branch, colour-matched to the list (red = dirty,
 // yellow = off-main). Anchored below the status button; closes on a
 // second tap or any tap outside, mirroring the terminal keys popover.
-let _gitSummaryOutsideHandler = null;
+let _disposeGitSummaryOutsideClick = null;
 
 function closeGitSummary() {
   if (els.gitStatusSummary) els.gitStatusSummary.hidden = true;
-  if (_gitSummaryOutsideHandler) {
-    document.removeEventListener('pointerdown', _gitSummaryOutsideHandler);
-    _gitSummaryOutsideHandler = null;
+  if (_disposeGitSummaryOutsideClick) {
+    _disposeGitSummaryOutsideClick();
+    _disposeGitSummaryOutsideClick = null;
   }
 }
 
@@ -261,15 +258,10 @@ function openGitSummary() {
   if (!box) return;
   buildGitSummary();
   box.hidden = false;
-  // The opening tap's pointerdown has already fired by now, so binding
-  // here won't catch it; the contains() guards cover a tap on the button.
-  if (!_gitSummaryOutsideHandler) {
-    _gitSummaryOutsideHandler = function (ev) {
-      if (box.contains(ev.target) ||
-          (els.gitStatusBtn && els.gitStatusBtn.contains(ev.target))) return;
-      closeGitSummary();
-    };
-    document.addEventListener('pointerdown', _gitSummaryOutsideHandler);
+  if (!_disposeGitSummaryOutsideClick) {
+    _disposeGitSummaryOutsideClick = bindOutsideClickToClose(
+      box, els.gitStatusBtn, closeGitSummary
+    );
   }
 }
 
@@ -446,7 +438,7 @@ async function launchApp(a, agentId) {
       }
     }
   } catch (exc) {
-    toast('Launch failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Launch failed', exc);
   }
 }
 
@@ -457,7 +449,7 @@ async function removeApp(a) {
     toast('Removed ' + a.name, 'good');
     await fetchApps();
   } catch (exc) {
-    toast('Remove failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Remove failed', exc);
   }
 }
 
@@ -477,7 +469,7 @@ export async function fetchAgents() {
       state.agents = body.agents;
     }
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       console.warn('agents fetch failed', exc);
     }
   }
@@ -581,7 +573,7 @@ async function stopAppInstance(r) {
     });
     renderRunningApps();
   } catch (exc) {
-    toast('Stop failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Stop failed', exc);
   }
 }
 
@@ -594,7 +586,7 @@ export async function fetchRunningApps() {
     state.runningApps = body.running || [];
     renderRunningApps();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       // Best-effort poll — don't spam toasts.
       console.warn('running apps fetch failed', exc);
     }
@@ -627,7 +619,7 @@ function wireRenameDialog() {
       if (els.renameDialog.close) els.renameDialog.close();
       await fetchApps();
     } catch (exc) {
-      toast('Rename failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Rename failed', exc);
     }
   });
 }
@@ -641,7 +633,7 @@ async function runScan() {
     if (els.scanDialog.showModal) els.scanDialog.showModal();
     else els.scanDialog.hidden = false;
   } catch (exc) {
-    toast('Scan failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Scan failed', exc);
   }
 }
 
@@ -708,7 +700,7 @@ function wireScanDialog() {
       if (els.scanDialog.close) els.scanDialog.close();
       await fetchApps();
     } catch (exc) {
-      toast('Save failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Save failed', exc);
     }
   });
 }
@@ -719,7 +711,7 @@ export async function fetchListeners() {
     const body = await jsonApi('/api/ports/probe');
     renderListeners(body.listeners || []);
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       // Best-effort poll — don't spam toasts.
       console.warn('listeners fetch failed', exc);
     }
@@ -780,7 +772,7 @@ function buildListenerRow(l, isChild) {
       toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
       fetchListeners();
     } catch (exc) {
-      toast('Kill failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Kill failed', exc);
     }
   });
   row.appendChild(kill);

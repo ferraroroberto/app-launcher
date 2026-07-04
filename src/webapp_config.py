@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src._json_io import atomic_write_json
+
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -475,9 +477,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "notify_failure_summary": cfg.notify_failure_summary,
     }
 
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    os.replace(tmp, target)
+    atomic_write_json(target, payload)
     logger.info(f"💾 Saved webapp_config to {target}")
     return target
 

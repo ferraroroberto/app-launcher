@@ -13,7 +13,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast, isDesktopClient } from './api.js';
+import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
 import { fetchSessions } from './sessions.js';
 import { openTerminal } from './terminal.js';
 
@@ -25,7 +25,7 @@ export async function fetchSkills() {
     state.lifeOsAvailable = !!body.available;
     renderSkills();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       console.warn('life-os skills fetch failed', exc);
     }
   }
@@ -89,7 +89,7 @@ export async function fetchRecapStatus() {
     state.lifeOsRecap = await jsonApi('/api/life-os/recap-status');
     renderRecap();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       console.warn('life-os recap-status fetch failed', exc);
     }
   }
@@ -150,7 +150,7 @@ async function launchRecap() {
       }
     }
   } catch (exc) {
-    toast('Recap launch failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Recap launch failed', exc);
   }
 }
 
@@ -194,7 +194,7 @@ async function launchSkill(s) {
       }
     }
   } catch (exc) {
-    toast('Launch failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Launch failed', exc);
   }
 }
 
@@ -296,7 +296,7 @@ async function deleteFile(f) {
     closeDoc();             // in case the deleted file was the open one
     await loadFileList();
   } catch (exc) {
-    toast('Delete failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Delete failed', exc);
   }
 }
 
@@ -328,7 +328,7 @@ async function renameFile(f) {
     closeDoc();             // name (and path) changed — back to the list
     await loadFileList();
   } catch (exc) {
-    toast('Rename failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Rename failed', exc);
   }
 }
 
