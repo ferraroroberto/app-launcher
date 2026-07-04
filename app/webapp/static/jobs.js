@@ -1,5 +1,4 @@
-/* Jobs tab: list registered jobs, fire run-now, view history, manage in
- * edit mode (issue #47).
+/* Jobs tab: list registered jobs, fire run-now, view history (issue #47).
  *
  * Expanded-panel model — runs list + one selected run's output:
  *   - Tap a job row → panel opens, defaults to the newest run selected.
@@ -10,11 +9,19 @@
  *     running/pending. A finalized run is a static log: no flicker.
  *   - Scroll position is preserved on update; auto-follow-bottom kicks
  *     in only when the user was already at the bottom (classic tail -f).
+ *
+ * This is the residual module after the audit #315 split: list render +
+ * poller + in-place patch + the expanded run-history panel. The edit/add
+ * dialog and the run-now dialog live in jobs-dialog.js; the foldable
+ * Schedule agenda panel lives in jobs-agenda.js. The two are wired in via
+ * wireJobDialogs()/wireJobsAgenda() from wireJobs() below.
  */
 
 import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, jsonApi, toast } from './api.js';
 import { fmtAgo } from './sessions.js';
+import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
+import { wireJobsAgenda } from './jobs-agenda.js';
 
 // --------------------------------------------------------------- render
 
@@ -26,7 +33,7 @@ export function renderJobs() {
   syncSortBtn();
 
   sortedJobs().forEach(function (job) {
-    host.appendChild(renderJobRow(job));
+    host.appendChild(renderJobRow(job).li);
     if (state.expandedJob === job.id) {
       host.appendChild(renderHistoryLi(job));
     }
@@ -97,119 +104,10 @@ function renderCountdownChip(job) {
   return chip;
 }
 
-// ----------------------------------------------------------- agenda panel
-//
-// The foldable 🗓️ Schedule panel (issue #230) — a mobile-native, day-grouped
-// list of upcoming fires (the deliberate alternative to a 2D calendar grid).
-// Backed by GET /api/jobs/agenda, fetched lazily when the panel opens.
-
-const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function _dayKey(epoch) {
-  const d = new Date(epoch * 1000);
-  return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
-}
-
-function _dayHeader(epoch) {
-  const d = new Date(epoch * 1000);
-  const now = new Date();
-  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const b = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diff = Math.round((b - a) / 86400000);
-  if (diff === 0) return 'Today';
-  if (diff === 1) return 'Tomorrow';
-  return _DOW[d.getDay()] + ' ' + d.getDate() + ' ' + _MON[d.getMonth()];
-}
-
-function _clock(epoch) {
-  const d = new Date(epoch * 1000);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return hh + ':' + mm;
-}
-
-function renderAgenda(data) {
-  const host = els.jobsAgendaBody;
-  if (!host) return;
-  host.innerHTML = '';
-  const occ = (data && data.occurrences) || [];
-  const frequent = (data && data.frequent) || [];
-  if (!occ.length && !frequent.length) {
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    p.textContent = 'No scheduled runs in the next ' +
-      ((data && data.days) || 7) + ' days.';
-    host.appendChild(p);
-    return;
-  }
-
-  let currentKey = null;
-  occ.forEach(function (o) {
-    const key = _dayKey(o.fire_epoch);
-    if (key !== currentKey) {
-      currentKey = key;
-      const h = document.createElement('div');
-      h.className = 'jobs-agenda-day';
-      h.textContent = _dayHeader(o.fire_epoch);
-      host.appendChild(h);
-    }
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'jobs-agenda-row';
-    row.dataset.jobId = o.job_id;
-
-    const time = document.createElement('span');
-    time.className = 'jobs-agenda-time';
-    time.textContent = _clock(o.fire_epoch);
-    row.appendChild(time);
-
-    const name = document.createElement('span');
-    name.className = 'jobs-agenda-name';
-    name.textContent = o.name;
-    row.appendChild(name);
-
-    if (o.cadence) {
-      const chip = document.createElement('span');
-      chip.className = 'kind-pill';
-      chip.textContent = o.cadence;
-      row.appendChild(chip);
-    }
-    row.addEventListener('click', function () { revealJob(o.job_id); });
-    host.appendChild(row);
-  });
-
-  if (frequent.length) {
-    const foot = document.createElement('div');
-    foot.className = 'jobs-agenda-frequent muted small';
-    foot.textContent = 'Also frequent: ' + frequent.map(function (f) {
-      return f.name + ' (' + f.cadence + ')';
-    }).join(' · ');
-    host.appendChild(foot);
-  }
-}
-
-async function fetchAgenda() {
-  const host = els.jobsAgendaBody;
-  try {
-    const data = await jsonApi('/api/jobs/agenda?days=7');
-    renderAgenda(data);
-  } catch (exc) {
-    if (exc instanceof AuthRequiredError) return;
-    if (host) {
-      host.innerHTML = '';
-      const p = document.createElement('p');
-      p.className = 'muted small';
-      p.textContent = 'Could not load schedule.';
-      host.appendChild(p);
-    }
-  }
-}
-
-// Tapping an agenda row jumps to that job in the Registered-jobs list and
-// expands it — the agenda is a lens, not a second control surface.
-function revealJob(jobId) {
+// Tapping an agenda row (jobs-agenda.js) jumps to that job in the
+// Registered-jobs list and expands it — the agenda is a lens, not a
+// second control surface.
+export function revealJob(jobId) {
   const job = state.jobs.find(function (j) { return j.id === jobId; });
   if (!job) return;
   if (state.expandedJob !== jobId) {
@@ -226,6 +124,12 @@ function revealJob(jobId) {
   }
 }
 
+// A row's DOM handle — the fields patchRowsInPlace needs to mutate on a
+// poll tick, stashed on the <li> itself at build time. Single source of
+// truth for "what this row looks like": renderJobRow builds it once,
+// patchRowNodes only ever mutates through it — it never re-derives the
+// row's structure independently (issue #315; this bit sparkClass once
+// already when the two paths silently drifted apart).
 function renderJobRow(job) {
   const li = document.createElement('li');
   li.className = 'app-item job-item';
@@ -393,7 +297,21 @@ function renderJobRow(job) {
   }
 
   li.appendChild(actions);
-  return li;
+
+  const nodes = {
+    li: li,
+    dotEl: dot,
+    nameEl: name,
+    pillsEl: pills,
+    loadEl: load,
+    metaEl: meta,
+    runBtnEl: runBtn,
+    countdownEl: countdown,
+    durationEl: durationChip,
+    sparkEl: sparkline,
+  };
+  li._rowNodes = nodes;
+  return nodes;
 }
 
 function setRunBtnState(btn, job) {
@@ -403,22 +321,41 @@ function setRunBtnState(btn, job) {
   btn.disabled = !!job.running;
 }
 
-function statusClass(job) {
-  if (job.stuck) return 'stuck';
-  if (job.running || (job.last_run && job.last_run.status === 'running')) return 'up';
-  if (job.last_run && job.last_run.status === 'success') return 'up';
-  if (job.last_run && job.last_run.status === 'failed') return 'down';
-  return '';
+// Single source of truth for every status → {dot class, run icon, spark
+// class} mapping (issue #315) — these used to be three independent
+// lookups that quietly diverged (e.g. a status landing a class in one
+// and dropping out of another). A new status is now one entry here.
+const STATUS_META = {
+  running: { class: 'up', icon: '⏳', spark: 'live' },
+  pending: { class: '', icon: '⏳', spark: 'live' },
+  success: { class: 'up', icon: '✅', spark: 'up' },
+  failed: { class: 'down', icon: '❌', spark: 'down' },
+  skipped: { class: '', icon: '⏭', spark: 'unknown' },
+  queued: { class: '', icon: '🪢', spark: 'live' },
+  dry_run_success: { class: '', icon: '🧪', spark: 'unknown' },
+  dry_run_failed: { class: '', icon: '🧪', spark: 'unknown' },
+};
+const DEFAULT_STATUS_META = { class: '', icon: '•', spark: 'unknown' };
+
+function statusMeta(status) {
+  return STATUS_META[status] || DEFAULT_STATUS_META;
 }
 
 function statusIcon(status) {
-  if (status === 'running' || status === 'pending') return '⏳';
-  if (status === 'success') return '✅';
-  if (status === 'failed') return '❌';
-  if (status === 'skipped') return '⏭';
-  if (status === 'queued') return '🪢';
-  if (status === 'dry_run_success' || status === 'dry_run_failed') return '🧪';
-  return '•';
+  return statusMeta(status).icon;
+}
+
+function sparkClass(status) {
+  return statusMeta(status).spark;
+}
+
+// The job-level health dot: stuck/running are job flags (not part of any
+// single run's status), so they're checked first; otherwise the dot
+// reflects the last run's status via the shared table above.
+function statusClass(job) {
+  if (job.stuck) return 'stuck';
+  if (job.running) return 'up';
+  return job.last_run ? statusMeta(job.last_run.status).class : '';
 }
 
 function formatDuration(seconds) {
@@ -481,15 +418,6 @@ function renderSparkline(job) {
     span.appendChild(dot);
   });
   return span;
-}
-
-function sparkClass(status) {
-  if (status === 'success') return 'up';
-  if (status === 'failed') return 'down';
-  if (status === 'running' || status === 'pending') return 'live';
-  if (status === 'queued') return 'live';
-  // skipped + dry-run records are neutral — they aren't real outcomes.
-  return 'unknown';
 }
 
 function describeLastRun(job) {
@@ -868,7 +796,7 @@ async function togglePause(job) {
   }
 }
 
-async function runJobNow(job, options) {
+export async function runJobNow(job, options) {
   // Issue #67: jobs with declared params open a small typed form so the
   // user supplies values. Parameter-less jobs keep their one-tap fire.
   const params = (job && job.params) || [];
@@ -939,556 +867,48 @@ async function runJobNow(job, options) {
   }
 }
 
-// --------------------------------------------------- chain checklist (dialog)
-//
-// Two <ul>s in the job dialog, one for on_success and one for on_failure.
-// Each list is populated from state.jobs minus the currently-edited job
-// (a job can't chain to itself — the server validates this too, but the UI
-// just hides the row so the user can't even try). The cycle check is
-// strictly server-side; the toast surfaces the server's precise error.
-
-function populateChainList(host, selected, currentId, kind) {
-  if (!host) return;
-  host.innerHTML = '';
-  const want = new Set(selected || []);
-  const all = (state.jobs || []).slice().sort(function (a, b) {
-    return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
-  });
-  let rendered = 0;
-  all.forEach(function (j) {
-    if (currentId && j.id === currentId) return;
-    const li = document.createElement('li');
-    li.className = 'job-chain-row';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = j.id;
-    cb.checked = want.has(j.id);
-    cb.dataset.role = 'chain-' + kind;
-    const label = document.createElement('label');
-    label.className = 'job-chain-row-label';
-    label.appendChild(cb);
-    const text = document.createElement('span');
-    text.textContent = j.name + '  ·  ' + j.id;
-    label.appendChild(text);
-    li.appendChild(label);
-    host.appendChild(li);
-    rendered += 1;
-  });
-  if (rendered === 0) {
-    const li = document.createElement('li');
-    li.className = 'job-chain-row muted small';
-    li.textContent = '(no other jobs to choose from)';
-    host.appendChild(li);
-  }
-}
-
-function readChainList(host, kind) {
-  if (!host) return [];
-  const selector = 'input[type="checkbox"][data-role="chain-' + kind + '"]:checked';
-  const checked = Array.from(host.querySelectorAll(selector));
-  return checked.map(function (cb) { return cb.value; });
-}
-
-// -------------------------------------------------- params editor (dialog)
-
-const PARAM_KINDS = ['string', 'int', 'enum', 'bool', 'date'];
-
-function renderParamRow(param) {
-  const li = document.createElement('li');
-  li.className = 'job-param-row';
-  li.dataset.role = 'job-param-row';
-
-  const head = document.createElement('div');
-  head.className = 'job-param-row-head';
-
-  const nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.className = 'input-native';
-  nameInput.placeholder = 'name (snake_case)';
-  nameInput.dataset.role = 'param-name';
-  nameInput.value = (param && param.name) || '';
-  head.appendChild(nameInput);
-
-  const kindSel = document.createElement('select');
-  kindSel.className = 'input-native';
-  kindSel.dataset.role = 'param-kind';
-  PARAM_KINDS.forEach(function (k) {
-    const opt = document.createElement('option');
-    opt.value = k;
-    opt.textContent = k;
-    kindSel.appendChild(opt);
-  });
-  kindSel.value = (param && param.kind) || 'string';
-  head.appendChild(kindSel);
-
-  const rmBtn = document.createElement('button');
-  rmBtn.type = 'button';
-  rmBtn.className = 'icon-btn danger';
-  rmBtn.textContent = '✕';
-  rmBtn.title = 'Remove parameter';
-  rmBtn.setAttribute('aria-label', 'Remove parameter');
-  rmBtn.addEventListener('click', function () { li.remove(); });
-  head.appendChild(rmBtn);
-
-  li.appendChild(head);
-
-  const grid = document.createElement('div');
-  grid.className = 'job-param-row-grid';
-
-  function makeField(role, placeholder, value) {
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.className = 'input-native';
-    inp.placeholder = placeholder;
-    inp.dataset.role = role;
-    inp.value = value == null ? '' : String(value);
-    return inp;
-  }
-
-  grid.appendChild(makeField('param-flag', '--flag (optional)',
-    param && param.flag));
-  grid.appendChild(makeField('param-env', 'ENV_VAR (optional)',
-    param && param.env));
-  grid.appendChild(makeField('param-default', 'default (optional)',
-    param && (param.default == null ? '' : param.default)));
-  grid.appendChild(makeField('param-options',
-    'enum options, comma-separated',
-    param && param.options ? param.options.join(', ') : ''));
-
-  li.appendChild(grid);
-  return li;
-}
-
-function setParamsEditor(params) {
-  if (!els.jobParamsList) return;
-  els.jobParamsList.innerHTML = '';
-  (params || []).forEach(function (p) {
-    els.jobParamsList.appendChild(renderParamRow(p));
-  });
-}
-
-function readParamsEditor() {
-  if (!els.jobParamsList) return [];
-  const rows = Array.from(els.jobParamsList.querySelectorAll('[data-role="job-param-row"]'));
-  const seen = new Set();
-  return rows.map(function (row) {
-    const name = (row.querySelector('[data-role="param-name"]').value || '').trim();
-    if (!name) throw new Error('Parameter name is required');
-    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
-      throw new Error('Parameter name ' + JSON.stringify(name) + ' must be snake_case');
-    }
-    if (seen.has(name)) throw new Error('Duplicate parameter name: ' + name);
-    seen.add(name);
-    const kind = row.querySelector('[data-role="param-kind"]').value;
-    const flag = (row.querySelector('[data-role="param-flag"]').value || '').trim();
-    const env = (row.querySelector('[data-role="param-env"]').value || '').trim();
-    const defaultRaw = (row.querySelector('[data-role="param-default"]').value || '').trim();
-    const optionsRaw = (row.querySelector('[data-role="param-options"]').value || '').trim();
-    if (flag && env) {
-      throw new Error('Parameter ' + name + ': flag and env are mutually exclusive');
-    }
-    const out = { name: name, kind: kind };
-    if (flag) out.flag = flag;
-    if (env) out.env = env;
-    if (kind === 'enum') {
-      const options = optionsRaw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-      if (!options.length) {
-        throw new Error('Parameter ' + name + ': enum needs at least one option');
-      }
-      out.options = options;
-    }
-    if (defaultRaw !== '') {
-      if (kind === 'int') {
-        const n = parseInt(defaultRaw, 10);
-        if (!Number.isFinite(n) || String(n) !== defaultRaw) {
-          throw new Error('Parameter ' + name + ': default must be an integer');
-        }
-        out.default = n;
-      } else if (kind === 'bool') {
-        if (defaultRaw !== 'true' && defaultRaw !== 'false') {
-          throw new Error('Parameter ' + name + ': default must be true or false');
-        }
-        out.default = defaultRaw === 'true';
-      } else {
-        out.default = defaultRaw;
-      }
-    }
-    return out;
-  });
-}
-
-// ------------------------------------------------ run-now dialog (#67)
-
-let runDialogJob = null;
-
-function openRunDialog(job, prefill, staleKeys) {
-  runDialogJob = job;
-  els.jobRunDialogTitle.textContent = '▶ ' + job.name;
-  if (staleKeys && staleKeys.length) {
-    els.jobRunDialogStaleNote.hidden = false;
-    els.jobRunDialogStaleNote.textContent =
-      'Note: ' + staleKeys.join(', ') + ' from the previous run ' +
-      (staleKeys.length === 1 ? 'was' : 'were') +
-      ' dropped (no longer declared on this job).';
-  } else {
-    els.jobRunDialogStaleNote.hidden = true;
-    els.jobRunDialogStaleNote.textContent = '';
-  }
-
-  const host = els.jobRunDialogFields;
-  host.innerHTML = '';
-  (job.params || []).forEach(function (p) {
-    host.appendChild(renderRunDialogField(p, prefill));
-  });
-
-  if (els.jobRunDialogDryRun) els.jobRunDialogDryRun.checked = false;
-  if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
-}
-
-function renderRunDialogField(param, prefill) {
-  const label = document.createElement('label');
-  label.className = 'stacked';
-
-  const span = document.createElement('span');
-  let title = param.name;
-  if (param.flag) title += ' (' + param.flag + ')';
-  else if (param.env) title += ' ($' + param.env + ')';
-  if (param.required && (param.default === undefined || param.default === null)) {
-    title += ' *';
-  }
-  span.textContent = title;
-  label.appendChild(span);
-
-  const initial = (prefill && Object.prototype.hasOwnProperty.call(prefill, param.name))
-    ? prefill[param.name]
-    : (param.default !== undefined && param.default !== null ? param.default : null);
-
-  let input;
-  if (param.kind === 'enum') {
-    input = document.createElement('select');
-    input.className = 'input-native';
-    (param.options || []).forEach(function (opt) {
-      const o = document.createElement('option');
-      o.value = opt;
-      o.textContent = opt;
-      input.appendChild(o);
-    });
-    if (initial != null) input.value = String(initial);
-  } else if (param.kind === 'bool') {
-    input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = initial === true || initial === 'true';
-  } else {
-    input = document.createElement('input');
-    input.type = param.kind === 'date' ? 'date'
-      : param.kind === 'int' ? 'number'
-      : 'text';
-    input.className = 'input-native';
-    if (initial != null) input.value = String(initial);
-    if (param.required) input.required = true;
-  }
-  input.dataset.paramName = param.name;
-  input.dataset.paramKind = param.kind;
-  label.appendChild(input);
-  return label;
-}
-
-function readRunDialogValues() {
-  const out = {};
-  const inputs = els.jobRunDialogFields.querySelectorAll('[data-param-name]');
-  inputs.forEach(function (el) {
-    const name = el.dataset.paramName;
-    const kind = el.dataset.paramKind;
-    if (kind === 'bool') {
-      out[name] = !!el.checked;
-      return;
-    }
-    const raw = (el.value || '').trim();
-    if (raw === '') return;  // server applies defaults / enforces required
-    if (kind === 'int') {
-      const n = parseInt(raw, 10);
-      if (!Number.isFinite(n)) throw new Error(name + ' must be an integer');
-      out[name] = n;
-    } else {
-      out[name] = raw;
-    }
-  });
-  return out;
-}
-
-async function submitRunDialog(ev) {
-  ev.preventDefault();
-  if (!runDialogJob) return;
-  let values;
-  try { values = readRunDialogValues(); } catch (exc) {
-    apiFailToast('', exc);
-    return;
-  }
-  const job = runDialogJob;
-  const dry = !!(els.jobRunDialogDryRun && els.jobRunDialogDryRun.checked);
-  if (els.jobRunDialog.close) els.jobRunDialog.close();
-  runDialogJob = null;
-  await runJobNow(job, {
-    params: values,
-    skipDialog: true,
-    dryRun: dry ? 'execute' : undefined,
-  });
-}
-
-async function removeJob(job) {
-  if (!confirm('Remove ' + job.name + ' from the jobs registry?')) return;
-  try {
-    await jsonApi('/api/jobs/' + encodeURIComponent(job.id), { method: 'DELETE' });
-    toast('Removed ' + job.name, 'good');
-    await fetchJobs();
-  } catch (exc) {
-    apiFailToast('Remove failed', exc);
-  }
-}
-
-// ------------------------------------------------------------ dialog form
-
-let dialogTargetId = null;
-
-function openJobDialog(job) {
-  dialogTargetId = job ? job.id : null;
-  els.jobDialogTitle.textContent = job ? 'Edit job' : 'Add job';
-  els.jobIdField.value = job ? job.id : '';
-  els.jobNameInput.value = job ? job.name : '';
-  els.jobScriptInput.value = job ? job.script_path : '';
-  els.jobArgsInput.value = job ? (job.args || '') : '';
-
-  const sched = (job && job.schedule) || { type: 'none' };
-  els.jobScheduleType.value = sched.type || 'none';
-  if (sched.type === 'minutes' || sched.type === 'hourly') {
-    els.jobScheduleEvery.value = sched.every || 1;
-  } else {
-    els.jobScheduleEvery.value = 1;
-  }
-  if (sched.type === 'daily' || sched.type === 'weekly') {
-    els.jobScheduleAt.value = typeof sched.at === 'string' ? sched.at : '';
-  } else {
-    els.jobScheduleAt.value = '';
-  }
-  if (sched.type === 'daily_times' && Array.isArray(sched.at)) {
-    els.jobScheduleTimes.value = sched.at.join(', ');
-  } else {
-    els.jobScheduleTimes.value = '';
-  }
-  els.jobScheduleDay.value = sched.day || 'MON';
-  if (els.jobScheduleOnceAt) {
-    els.jobScheduleOnceAt.value =
-      (sched.type === 'once' && typeof sched.at === 'string') ? sched.at : '';
-  }
-  syncScheduleFields();
-
-  if (els.jobCooldownInput) {
-    const cd = job && Number.isFinite(job.cooldown_seconds) ? job.cooldown_seconds : 0;
-    els.jobCooldownInput.value = cd > 0 ? String(cd) : '';
-  }
-  if (els.jobMutexGroupInput) {
-    els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
-  }
-  if (els.jobConfirmInput) {
-    els.jobConfirmInput.checked = !!(job && job.confirm);
-  }
-  populateChainList(
-    els.jobOnSuccessList,
-    job ? (job.on_success || []) : [],
-    job ? job.id : null,
-    'on_success',
-  );
-  populateChainList(
-    els.jobOnFailureList,
-    job ? (job.on_failure || []) : [],
-    job ? job.id : null,
-    'on_failure',
-  );
-
-  setParamsEditor(job ? job.params : []);
-
-  clearPreflightProblems();
-  if (els.jobDialog.showModal) els.jobDialog.showModal();
-}
-
-function syncScheduleFields() {
-  const t = els.jobScheduleType.value;
-  els.jobScheduleEveryRow.hidden = !(t === 'minutes' || t === 'hourly');
-  els.jobScheduleAtRow.hidden = !(t === 'daily' || t === 'weekly');
-  els.jobScheduleTimesRow.hidden = t !== 'daily_times';
-  els.jobScheduleDayRow.hidden = t !== 'weekly';
-  if (els.jobScheduleOnceRow) els.jobScheduleOnceRow.hidden = t !== 'once';
-}
-
-function buildSchedule() {
-  const t = els.jobScheduleType.value;
-  if (t === 'none') return { type: 'none' };
-  if (t === 'minutes' || t === 'hourly') {
-    const every = parseInt(els.jobScheduleEvery.value, 10);
-    if (!Number.isFinite(every) || every <= 0) throw new Error('Every must be > 0');
-    return { type: t, every: every };
-  }
-  if (t === 'daily') {
-    const at = els.jobScheduleAt.value.trim();
-    if (!/^[0-2]\d:[0-5]\d$/.test(at)) throw new Error('At must be HH:MM');
-    return { type: 'daily', at: at };
-  }
-  if (t === 'daily_times') {
-    const list = els.jobScheduleTimes.value
-      .split(',')
-      .map(function (s) { return s.trim(); })
-      .filter(Boolean);
-    if (!list.length) throw new Error('Provide at least one HH:MM');
-    list.forEach(function (s) {
-      if (!/^[0-2]\d:[0-5]\d$/.test(s)) throw new Error('Each time must be HH:MM');
-    });
-    return { type: 'daily_times', at: list };
-  }
-  if (t === 'weekly') {
-    const at = els.jobScheduleAt.value.trim();
-    if (!/^[0-2]\d:[0-5]\d$/.test(at)) throw new Error('At must be HH:MM');
-    return { type: 'weekly', day: els.jobScheduleDay.value, at: at };
-  }
-  if (t === 'once') {
-    const at = (els.jobScheduleOnceAt && els.jobScheduleOnceAt.value || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}T[0-2]\d:[0-5]\d$/.test(at)) {
-      throw new Error('Once: pick a date and time');
-    }
-    return { type: 'once', at: at };
-  }
-  return { type: 'none' };
-}
-
-// Pre-flight problems (issue #69). The last-submitted payload is held so
-// "Save anyway" can re-POST it with acknowledge_warnings:true once the
-// user has seen the warnings.
-let lastJobPayload = null;
-
-function clearPreflightProblems() {
-  if (els.jobPreflightProblems) {
-    els.jobPreflightProblems.innerHTML = '';
-    els.jobPreflightProblems.hidden = true;
-  }
-  if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
-  if (els.jobSaveBtn) {
-    els.jobSaveBtn.textContent = dialogTargetId ? 'Save and verify' : 'Add and verify';
-  }
-}
-
-function renderPreflightProblems(problems) {
-  const host = els.jobPreflightProblems;
-  if (!host) return;
-  host.innerHTML = '';
-  (problems || []).forEach(function (p) {
-    const li = document.createElement('li');
-    li.className = 'job-preflight-problem ' + (p.level === 'error' ? 'error' : 'warning');
-    const tag = document.createElement('span');
-    tag.className = 'job-preflight-tag';
-    tag.textContent = p.level === 'error' ? '❌' : '⚠️';
-    li.appendChild(tag);
-    const text = document.createElement('span');
-    text.textContent = (p.field ? p.field + ': ' : '') + p.message;
-    li.appendChild(text);
-    host.appendChild(li);
-  });
-  host.hidden = (problems || []).length === 0;
-}
-
-function buildJobPayload() {
-  const schedule = buildSchedule();      // may throw
-  const params = readParamsEditor();     // may throw
-  const payload = {
-    name: els.jobNameInput.value.trim(),
-    script_path: els.jobScriptInput.value.trim(),
-    args: els.jobArgsInput.value,
-    schedule: schedule,
-    params: params,
-  };
-  // Empty → omit (server stores null). "0" → omit too (treated as off).
-  // Negative or non-numeric → tell the user; the server cap (>86400)
-  // we let the server reject so the limit lives in one place.
-  const cdRaw = els.jobCooldownInput ? els.jobCooldownInput.value.trim() : '';
-  if (cdRaw) {
-    const cd = parseInt(cdRaw, 10);
-    if (!Number.isFinite(cd) || cd < 0) {
-      throw new Error('Cooldown must be a non-negative integer');
-    }
-    if (cd > 0) payload.cooldown_seconds = cd;
-  }
-  // Empty → omit (server treats as null); the server validates the shape
-  // (lowercase alnum + _/-, starts with letter, <=32 chars) so the
-  // 400 surfaces here as a normal toast.
-  const mg = els.jobMutexGroupInput ? els.jobMutexGroupInput.value.trim() : '';
-  if (mg) payload.mutex_group = mg;
-  else if (dialogTargetId) payload.mutex_group = null;  // clear on edit
-  // Chain edges (issue #68 PR #3). Always send both keys on submit so a
-  // user un-checking the last entry actually clears it server-side.
-  payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
-  payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
-  // Confirm-on-fire (issue #69). Always send so unchecking clears it.
-  payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.checked);
-  return payload;
-}
-
-async function postJobPayload(payload) {
-  try {
-    const opts = {
-      method: dialogTargetId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    };
-    const path = dialogTargetId
-      ? '/api/jobs/' + encodeURIComponent(dialogTargetId)
-      : '/api/jobs';
-    const res = await jsonApi(path, opts);
-    // Warnings-only, not acknowledged: the server didn't save. Keep the
-    // dialog open, show the warnings, and offer "Save anyway".
-    if (res && res.saved === false) {
-      renderPreflightProblems(res.warnings || []);
-      if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = false;
-      return;
-    }
-    if (els.jobDialog.close) els.jobDialog.close();
-    clearPreflightProblems();
-    const warned = res && Array.isArray(res.warnings) && res.warnings.length;
-    toast(
-      (dialogTargetId ? 'Job updated.' : 'Job added.') +
-        (warned ? ' (saved with warnings)' : ''),
-      'good',
-    );
-    await fetchJobs();
-  } catch (exc) {
-    // Pre-flight errors come back as a 400 with a structured problems
-    // list — render them inline (red) and keep the dialog open.
-    const detail = exc && exc.body && exc.body.detail;
-    if (exc && exc.status === 400 && detail && detail.reason === 'preflight') {
-      renderPreflightProblems(detail.problems || []);
-      if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
-      return;
-    }
-    apiFailToast('Save failed', exc);
-  }
-}
-
-async function submitJobDialog(ev) {
-  ev.preventDefault();
-  let payload;
-  try { payload = buildJobPayload(); } catch (exc) {
-    apiFailToast('', exc);
-    return;
-  }
-  clearPreflightProblems();
-  lastJobPayload = payload;
-  await postJobPayload(payload);
-}
-
-async function saveJobAnyway() {
-  if (!lastJobPayload) return;
-  const payload = Object.assign({}, lastJobPayload, { acknowledge_warnings: true });
-  await postJobPayload(payload);
-}
-
 // ------------------------------------------------------ in-place row patch
+//
+// Swap `oldEl` for `freshEl` inside `container`, inserting before `anchor`
+// when there is no existing element to replace. The one place that knows
+// how to graft a chip into a row — countdown/duration/sparkline all reuse
+// it instead of three hand-rolled, independently-drifting copies (#315).
+function swapChip(container, oldEl, freshEl, anchor) {
+  if (oldEl && freshEl) { container.replaceChild(freshEl, oldEl); return freshEl; }
+  if (oldEl && !freshEl) { oldEl.remove(); return null; }
+  if (!oldEl && freshEl) {
+    if (anchor) container.insertBefore(freshEl, anchor); else container.appendChild(freshEl);
+    return freshEl;
+  }
+  return null;
+}
+
+// Mutate a row via its stashed RowNodes handle — never rebuilds the row's
+// structure independently of renderJobRow (issue #315).
+function patchRowNodes(nodes, job) {
+  nodes.dotEl.className = 'health-dot ' + statusClass(job);
+  nodes.metaEl.textContent = describeLastRun(job);
+  setRunBtnState(nodes.runBtnEl, job);
+
+  // The countdown ticks down between polls — swap it in place so the
+  // "in 3h" stays honest without re-rendering the whole row.
+  const freshCountdown = renderCountdownChip(job);
+  if (freshCountdown) freshCountdown.dataset.role = 'countdown-chip';
+  const mutexEl = nodes.pillsEl.querySelector('.job-mutex-pill');
+  nodes.countdownEl = swapChip(nodes.pillsEl, nodes.countdownEl, freshCountdown, mutexEl);
+
+  // Sparkline + duration chip can change between polls (new run finished,
+  // stats recomputed) — swap them in place so the rest of the row doesn't
+  // flash. Both live on the "load" sub-row; duration is anchored ahead of
+  // the (still-old, not-yet-swapped) sparkline element.
+  const freshDuration = renderDurationChip(job);
+  if (freshDuration) freshDuration.dataset.role = 'duration-chip';
+  nodes.durationEl = swapChip(nodes.loadEl, nodes.durationEl, freshDuration, nodes.sparkEl);
+
+  const freshSpark = renderSparkline(job);
+  if (freshSpark) freshSpark.dataset.role = 'sparkline';
+  nodes.sparkEl = swapChip(nodes.loadEl, nodes.sparkEl, freshSpark, null);
+}
 
 function patchRowsInPlace() {
   const host = els.jobsList;
@@ -1503,49 +923,9 @@ function patchRowsInPlace() {
     const li = existing[i];
     const job = ordered[i];
     if (!job || li.dataset.id !== job.id) { renderJobs(); return; }
-    const dot = li.querySelector('[data-role="status-dot"]');
-    if (dot) dot.className = 'health-dot ' + statusClass(job);
-    const meta = li.querySelector('[data-role="meta"]');
-    if (meta) meta.textContent = describeLastRun(job);
-    const runBtn = li.querySelector('[data-role="run-btn"]');
-    if (runBtn) setRunBtnState(runBtn, job);
-    // The countdown ticks down between polls — swap it in place so the
-    // "in 3h" stays honest without re-rendering the whole row.
-    const pills = li.querySelector('[data-role="job-pills"]');
-    if (pills) {
-      const oldCd = pills.querySelector('[data-role="countdown-chip"]');
-      const freshCd = renderCountdownChip(job);
-      if (freshCd) freshCd.dataset.role = 'countdown-chip';
-      if (oldCd && freshCd) pills.replaceChild(freshCd, oldCd);
-      else if (oldCd && !freshCd) oldCd.remove();
-      else if (!oldCd && freshCd) {
-        const mutex = pills.querySelector('.job-mutex-pill');
-        if (mutex) pills.insertBefore(freshCd, mutex);
-        else pills.appendChild(freshCd);
-      }
-    }
-    // Sparkline + duration chip can change between polls (new run
-    // finished, stats recomputed) — swap them in place so the rest of
-    // the row doesn't flash. Both live on the "load" sub-row.
-    const loadRow = li.querySelector('[data-role="job-load"]');
-    if (loadRow) {
-      const oldChip = loadRow.querySelector('[data-role="duration-chip"]');
-      const freshChip = renderDurationChip(job);
-      if (freshChip) freshChip.dataset.role = 'duration-chip';
-      if (oldChip && freshChip) loadRow.replaceChild(freshChip, oldChip);
-      else if (oldChip && !freshChip) oldChip.remove();
-      else if (!oldChip && freshChip) {
-        const ref = loadRow.querySelector('[data-role="sparkline"]');
-        if (ref) loadRow.insertBefore(freshChip, ref);
-        else loadRow.appendChild(freshChip);
-      }
-      const oldSpark = loadRow.querySelector('[data-role="sparkline"]');
-      const freshSpark = renderSparkline(job);
-      if (freshSpark) freshSpark.dataset.role = 'sparkline';
-      if (oldSpark && freshSpark) loadRow.replaceChild(freshSpark, oldSpark);
-      else if (oldSpark && !freshSpark) oldSpark.remove();
-      else if (!oldSpark && freshSpark) loadRow.appendChild(freshSpark);
-    }
+    const nodes = li._rowNodes;
+    if (!nodes) { renderJobs(); return; }
+    patchRowNodes(nodes, job);
   }
 }
 
@@ -1585,53 +965,6 @@ export function wireJobs() {
       toggleSort();
     });
   }
-  if (els.jobsAgendaCard) {
-    // Lazy + fresh: the agenda is collapsed by default and re-fetched on
-    // each open (mirrors the system-map panel). Nothing polls it.
-    els.jobsAgendaCard.addEventListener('toggle', function () {
-      if (els.jobsAgendaCard.open) fetchAgenda().catch(function () {});
-    });
-  }
-  if (els.jobsAddBtn) {
-    els.jobsAddBtn.addEventListener('click', function () { openJobDialog(null); });
-    // The ➕ Add job button lives in the Registered-jobs card's <summary>, so a
-    // click there would also toggle the <details>. Stop the click at the actions
-    // container — same trick the Running-sessions card uses (sessions.js).
-    const headerActions = els.jobsAddBtn.closest('.jobs-header-actions');
-    if (headerActions) {
-      headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
-    }
-  }
-  if (els.jobForm) {
-    els.jobForm.addEventListener('submit', submitJobDialog);
-  }
-  if (els.jobSaveAnyway) {
-    els.jobSaveAnyway.addEventListener('click', function () {
-      saveJobAnyway().catch(function () {});
-    });
-  }
-  if (els.jobCancel) {
-    els.jobCancel.addEventListener('click', function () {
-      if (els.jobDialog.close) els.jobDialog.close();
-    });
-  }
-  if (els.jobScheduleType) {
-    els.jobScheduleType.addEventListener('change', syncScheduleFields);
-  }
-  if (els.jobParamsAdd) {
-    els.jobParamsAdd.addEventListener('click', function () {
-      if (els.jobParamsList) {
-        els.jobParamsList.appendChild(renderParamRow(null));
-      }
-    });
-  }
-  if (els.jobRunForm) {
-    els.jobRunForm.addEventListener('submit', submitRunDialog);
-  }
-  if (els.jobRunCancel) {
-    els.jobRunCancel.addEventListener('click', function () {
-      if (els.jobRunDialog && els.jobRunDialog.close) els.jobRunDialog.close();
-      runDialogJob = null;
-    });
-  }
+  wireJobsAgenda();
+  wireJobDialogs();
 }

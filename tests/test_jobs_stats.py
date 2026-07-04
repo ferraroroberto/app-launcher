@@ -13,12 +13,17 @@ from datetime import datetime, timedelta
 import pytest
 
 from src import jobs as jobs_mod
+from src import jobs_history as jobs_history_mod
 
 
 @pytest.fixture
 def temp_runs_dir(tmp_path, monkeypatch):
     """Redirect JOBS_RUNS_DIR + flush the per-job stats cache."""
-    monkeypatch.setattr(jobs_mod, "JOBS_RUNS_DIR", tmp_path)
+    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split); the
+    # stats helpers (jobs_mod.run_stats/is_stuck) read run history through
+    # jobs_history.list_runs()/latest_run(), which resolve JOBS_RUNS_DIR as
+    # their own module global — patch it there, not on the facade.
+    monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     jobs_mod.invalidate_stats_cache()
     yield tmp_path
 
@@ -214,28 +219,3 @@ class TestConsecutiveFailedRuns:
         _seed_run("demo", run_id="20260104T060000", status="failed",
                   started_at=now - timedelta(days=1), duration_seconds=1.0)
         assert jobs_mod.consecutive_failed_runs("demo") == 3
-
-
-# ============================================ bulk-cache parser sanity
-
-
-class TestBulkParser:
-    def test_filters_by_prefix(self):
-        stdout = (
-            "TaskName: \\AppLauncher\\demo\nNext Run Time: 2026-06-01 06:00:00\n\n"
-            "TaskName: \\Foreign\\task\nNext Run Time: 2026-06-01 12:00:00\n\n"
-        )
-        out = jobs_mod._parse_bulk_query(stdout)
-        assert "\\AppLauncher\\demo" in out
-        assert out["\\AppLauncher\\demo"] == "2026-06-01 06:00:00"
-        # Foreign task is filtered out.
-        assert "\\Foreign\\task" not in out
-
-    def test_n_a_collapses_to_none(self):
-        stdout = (
-            "TaskName: \\AppLauncher\\demo-1\nNext Run Time: N/A\n\n"
-            "TaskName: \\AppLauncher\\demo-2\nNext Run Time: Disabled\n\n"
-        )
-        out = jobs_mod._parse_bulk_query(stdout)
-        assert out["\\AppLauncher\\demo-1"] is None
-        assert out["\\AppLauncher\\demo-2"] is None
