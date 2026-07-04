@@ -1,0 +1,167 @@
+%% docs/architecture.mmd — app-launcher's own internal structure.
+%% Hand-authored, not generated — this repo's internal shape is semantic and
+%% can't be crawled the way the fleet-wide map is. Update this diagram in the
+%% same PR as any material structural change (a new tab/router, a process
+%% split like session-host, a script relocated) — same anti-staleness
+%% contract as this repo's own `.fleet.toml` `description` field. See
+%% fleet-config's `CLAUDE.md` "Every repo carries a `.fleet.toml`" section
+%% for the general convention (companion to `ferraroroberto/fleet-config#256`).
+
+flowchart TB
+  ENTRY["launcher.py (root)\nputs repo root on sys.path"] --> CLIMAIN["app/cli/main.py"]
+
+  subgraph cli["app/cli/commands/"]
+    TRAYCMD["tray_cmd.py"]
+    WEBAPPCMD["webapp_cmd.py"]
+    HOSTCMD["session_host_cmd.py"]
+    SCANCMD["scan_cmd.py"]
+    RUNJOBCMD["run_job_cmd.py\n(job executor)"]
+  end
+  CLIMAIN --> TRAYCMD
+  CLIMAIN --> WEBAPPCMD
+  CLIMAIN --> HOSTCMD
+  CLIMAIN --> SCANCMD
+  CLIMAIN --> RUNJOBCMD
+
+  subgraph tray["app/tray/ — tray.py + single_instance.py"]
+    TRAY["tray.py\nmenu: open/copy URL, restart, status, quit"]
+  end
+  TRAYCMD --> TRAY
+
+  TRAY -->|spawns, owns subtree :T kill/T restart| WEBAPPPROC["webapp process :8445"]
+  TRAY -->|spawns DETACHED, re-adopts on start\nexcluded from tray reclaim sweep| HOSTPROC["session-host process :8446"]
+  TRAY -->|optional| TUNNEL["cloudflared tunnel"]
+
+  subgraph webapp["app/webapp/ — FastAPI, :8445"]
+    WSERVER["server.py\nlifespan, static mount, asset hashing"]
+    MW["middleware.py\nBearerTokenMiddleware"]
+    MGR["manager.py\nWebappManager (start/stop/status)"]
+    subgraph routers["routers/"]
+      R_MISC["misc.py — /, /healthz, /api/version"]
+      R_AUTH["auth.py — /api/login"]
+      R_CONFIG["config.py — /api/config, /api/status, /api/ports"]
+      R_APPS["apps.py — /api/apps (Apps tab)"]
+      R_SESS["sessions.py — /api/claude-code/sessions,\nWS + transcribe + ocr"]
+      R_CC["claude_code.py — flags, git-status, generate"]
+      R_JOBS["jobs.py — /api/jobs/* (Jobs tab)"]
+      R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
+      R_BOARD["board.py — /api/board (Board tab)"]
+      R_SYSMAP["system_map.py — fleet map section"]
+      R_WEBAUTHN["webauthn.py — passkey ceremonies"]
+    end
+  end
+  WEBAPPCMD --> MGR
+  WEBAPPPROC --> WSERVER
+  WSERVER --> MW
+  WSERVER --> routers
+  MGR --> WSERVER
+
+  subgraph static["app/webapp/static/ — vanilla JS PWA"]
+    STATICJS["index.html, tabs.js, state.js,\nterminal*.js, sessions.js, jobs*.js,\nboard.js, apps.js, life-os.js, voice.js"]
+  end
+  R_MISC --> STATICJS
+
+  subgraph sessionhost["app/session_host/ — loopback-only, :8446"]
+    HOSTSERVER["server.py\nHTTP + WebSocket surface\nPOST/GET /sessions, WS /sessions/{sid}/ws"]
+  end
+  HOSTCMD --> HOSTSERVER
+  HOSTPROC --> HOSTSERVER
+
+  subgraph srclib["src/ — shared library"]
+    SESSHOST["session_host.py\nPtySession + SessionManager\nConPTY via winpty (Windows-only)"]
+    AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi"]
+    SESSCLIENT["session_client.py\nHTTP client → session-host over loopback"]
+    REGISTRY["registry.py\nconfig/apps.json load/save/scan"]
+    SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]
+    JOBSFACADE["jobs.py (facade)"]
+    JOBSCFG["jobs_config.py"]
+    JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
+    JOBSQUEUE["jobs_queue.py\ncross-job mutex queue"]
+    JOBSHISTORY["jobs_history.py\nrun.json / output.log per run"]
+    JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
+    JOBSPREFLIGHT["jobs_preflight.py"]
+    JOBSARGV["jobs_argv.py"]
+    BOARD["board.py\npure assembly: sessions + jobs + GitHub"]
+    GHCLIENT["github_client.py\ngh CLI reads, cached snapshot"]
+    NOTIFY["notifications.py\nPushover on job failure"]
+    WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
+    APPCFG["app_config.py\nconfig/config.json"]
+    WEBAUTHNGATE["webauthn_gate.py"]
+    STATICVER["static_versioning.py\nasset content-hash stamping"]
+    DIAG["diagnostics.py\nring log buffer, port_owner"]
+    LLMCLIENT["llm_client.py"]
+    TTSCLIENT["tts_client.py"]
+    OCRCLIENT["photo_ocr_client.py"]
+    VOICECLIENT["voice_client.py"]
+    JSONIO["_json_io.py"]
+    LOOPHTTP["_loopback_http.py"]
+    AUDIT["audit.py\ntranscript_path"]
+  end
+
+  HOSTSERVER --> SESSHOST
+  SESSHOST --> AGENTS
+  R_SESS --> SESSCLIENT
+  SESSCLIENT -->|HTTP + WS, loopback| HOSTSERVER
+  R_APPS --> REGISTRY
+  R_APPS --> SCANNER
+  R_JOBS --> JOBSFACADE
+  RUNJOBCMD --> JOBSFACADE
+  RUNJOBCMD --> NOTIFY
+  JOBSFACADE --> JOBSSCHTASKS
+  JOBSFACADE --> JOBSQUEUE
+  JOBSFACADE --> JOBSHISTORY
+  JOBSFACADE --> JOBSSTATS
+  JOBSFACADE --> JOBSCFG
+  JOBSFACADE --> JOBSPREFLIGHT
+  JOBSFACADE --> JOBSARGV
+  R_BOARD --> BOARD
+  BOARD --> SESSCLIENT
+  BOARD --> JOBSFACADE
+  BOARD --> GHCLIENT
+  BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
+  R_CONFIG --> WEBAPPCFG
+  R_CONFIG --> APPCFG
+  R_WEBAUTHN --> WEBAUTHNGATE
+  WSERVER --> STATICVER
+  R_SESS --> OCRCLIENT
+  R_SESS --> VOICECLIENT
+  R_SESS --> LLMCLIENT
+  STATICJS -->|read-aloud, summarize| LLMCLIENT
+  STATICJS -->|dictation| VOICECLIENT
+  STATICJS -->|TTS| TTSCLIENT
+
+  subgraph external["External dependencies"]
+    SCHTASKS["Windows Task Scheduler\n(\\AppLauncher\\ folder)"]
+    GH["gh CLI / GitHub"]
+    LIFEOSREPO["life-os repo (sibling)\nskills invoked via claude session"]
+    PHOTOOCR["photo-ocr repo (sibling)\nsession API, loopback"]
+    VOICETRANS["voice-transcriber repo (sibling)\nsession API, loopback"]
+    LLMHUB["claude-local-calls hub\n127.0.0.1:8000, chat + TTS"]
+    CLOUDFLARE["Cloudflare named tunnel"]
+    TAILSCALE["Tailscale"]
+  end
+  JOBSSCHTASKS --> SCHTASKS
+  GHCLIENT --> GH
+  R_LIFEOS --> LIFEOSREPO
+  OCRCLIENT --> PHOTOOCR
+  VOICECLIENT --> VOICETRANS
+  TTSCLIENT --> LLMHUB
+  LLMCLIENT --> LLMHUB
+  TUNNEL --> CLOUDFLARE
+  TRAY -->|Copy Tailscale URL| TAILSCALE
+
+  subgraph config["config/ (gitignored, .sample.json committed)"]
+    CFGFILES["apps.json · config.json ·\njobs.json · webapp_config.json"]
+  end
+  REGISTRY --> CFGFILES
+  APPCFG --> CFGFILES
+  WEBAPPCFG --> CFGFILES
+  JOBSCFG --> CFGFILES
+
+  subgraph testing["tests/ + scripts/"]
+    TESTS["pytest (unit) + tests/e2e (Playwright)\nscripts/verify-before-ship.ps1 gate"]
+    SCRIPTS["scripts/gen_icons.py · gen_ssl_cert.py ·\ngen_token.py · run_named_tunnel.py · set_password.py"]
+  end
+  TESTS -.->|exercises| webapp
+  TESTS -.->|exercises| sessionhost
+  SCRIPTS -.->|setup for| tray
