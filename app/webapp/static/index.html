@@ -175,6 +175,10 @@
             </div>
           </div>
         </summary>
+        <div id="codingUsage" class="usage-badges" hidden>
+          <span id="codingUsageSession" class="usage-badge" hidden></span>
+          <span id="codingUsageWeekly" class="usage-badge" hidden></span>
+        </div>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
         <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
         <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
@@ -370,6 +374,10 @@
                 aria-label="Refresh GitHub data">↻</button>
       </div>
       <div id="boardStatus" class="board-status" hidden></div>
+      <div id="boardUsage" class="usage-badges" hidden>
+        <span id="boardUsageSession" class="usage-badge" hidden></span>
+        <span id="boardUsageWeekly" class="usage-badge" hidden></span>
+      </div>
       <div id="boardColumns" class="board-columns">
         <section class="board-col" data-col="backlog" aria-label="Backlog">
           <h3 class="board-col-title">Backlog</h3>

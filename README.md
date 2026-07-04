@@ -472,6 +472,7 @@ UI prefs + secrets, authored from the web UI:
 | `life_os_dir` | sibling `../life-os` | Root of the `life-os` checkout the Life OS tab surfaces (skills at `<life_os_dir>/.claude/skills`, identity at `<life_os_dir>/identity`). When the skills dir doesn't exist the tab shows disabled, the same way the Coding tab handles a missing `projects_dir`. |
 | `claude_config_dir` | sibling `../fleet-config` | Root of the `fleet-config` checkout whose `architecture/system-map.png` the Coding tab's 🗺️ System map section surfaces (issue #173). When the rendered PNG is absent the section hides. The image endpoint is bearer-token **and** Tailscale-only (refused over the Cloudflare tunnel). |
 | `sessions_state_file` | `~/.claude/hooks/state/sessions-state.json` | The sessions-state file fleet-config's `session_state` hook writes (fleet-config#91), read by the Board tab. Absent/corrupt/stale degrades to `unknown` session status, never an error. |
+| `rate_limits_file` | `~/.claude/hooks/state/rate-limits.json` | The Claude 5h/7d usage % cache a fleet-config statusline writer maintains (fleet-config#259, issue #326), read by the Board tab's usage badges. No writer exists yet as of this issue — absent/corrupt/stale degrades to the badges hiding, never an error. |
 | `github_owner` | `"ferraroroberto"` | GitHub owner whose repos the Board tab's `gh` searches span (Backlog / PRs / Done-today). |
 | `claude_model` | `"opus"` | Default `--model` for `claude` (Claude Code button only) |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |

@@ -80,15 +80,26 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
     return {"fetched_at": snap.get("fetched_at"), "error": snap.get("error")}
 
 
+def _rate_limits_section(rate_limits: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "available": rate_limits["available"],
+        "stale": rate_limits["stale"],
+        "updated_at": rate_limits["updated_at"],
+        "five_hour": rate_limits["five_hour"],
+        "seven_day": rate_limits["seven_day"],
+    }
+
+
 @router.get("/api/board")
 async def get_board(request: Request) -> Dict[str, Any]:
     """The four columns + source health, cheap enough for the 5s poll."""
     cfg: WebappConfig = request.app.state.webapp_config
 
-    live, state, job_cards = await asyncio.gather(
+    live, state, job_cards, rate_limits = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
         asyncio.to_thread(board.jobs_attention),
+        asyncio.to_thread(board.read_rate_limits, Path(cfg.rate_limits_file)),
     )
     github = github_client.snapshot()
 
@@ -106,7 +117,26 @@ async def get_board(request: Request) -> Dict[str, Any]:
             "stale": state["stale"],
             "updated_at": state["updated_at"],
         },
+        "rate_limits": _rate_limits_section(rate_limits),
     }
+
+
+@router.get("/api/rate-limits")
+async def get_rate_limits(request: Request) -> Dict[str, Any]:
+    """Claude 5h/7d usage % (issue #326), standalone from the Board tab.
+
+    The Coding tab's Running-sessions header shows the same usage badges as
+    the Board tab, but must not depend on the Board ever having been opened
+    — ``GET /api/board``'s own rate-limits read only happens as a side
+    effect of that endpoint being polled, which fetchBoard() self-gates to
+    "Board tab visible". This is the same cheap one-file read, exposed on
+    its own route so any tab can poll it independently.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    rate_limits = await asyncio.to_thread(
+        board.read_rate_limits, Path(cfg.rate_limits_file)
+    )
+    return _rate_limits_section(rate_limits)
 
 
 @router.post("/api/board/github/refresh")

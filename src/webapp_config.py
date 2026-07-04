@@ -172,6 +172,11 @@ def _default_sessions_state_file() -> str:
     return str(Path.home() / ".claude" / "hooks" / "state" / "sessions-state.json")
 
 
+def _default_rate_limits_file() -> str:
+    """Where fleet-config's statusline writer caches 5h/7d usage % (issue #326)."""
+    return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
+
+
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
@@ -210,6 +215,11 @@ class WebappConfig:
     # (fleet-config#91). The board reads it defensively — absent/corrupt/stale
     # degrades to unknown session status, never an error.
     sessions_state_file: str = field(default_factory=_default_sessions_state_file)
+    # The rate-limits cache a fleet-config statusline writer maintains
+    # (fleet-config#259 / issue #326) — 5h/7d Claude usage % + reset times.
+    # Read defensively like sessions_state_file: absent/corrupt/stale hides
+    # the Board's usage badges, never an error.
+    rate_limits_file: str = field(default_factory=_default_rate_limits_file)
     # GitHub owner whose repos the Board's gh searches span (backlog / PRs /
     # done-today). One owner covers the whole fleet.
     github_owner: str = "ferraroroberto"
@@ -374,6 +384,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         sessions_state_file=str(
             raw.get("sessions_state_file") or _default_sessions_state_file()
         ),
+        rate_limits_file=str(
+            raw.get("rate_limits_file") or _default_rate_limits_file()
+        ),
         github_owner=str(raw.get("github_owner", "ferraroroberto")),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
@@ -444,6 +457,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
         "sessions_state_file": cfg.sessions_state_file,
+        "rate_limits_file": cfg.rate_limits_file,
         "github_owner": cfg.github_owner,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,

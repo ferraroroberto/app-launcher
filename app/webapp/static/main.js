@@ -9,7 +9,7 @@ import { els, state, BOARD_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APP
 import { apiFailToast, consumeUrlParam, jsonApi, readToken, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
-import { fetchSessions, wireSessions } from './sessions.js';
+import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, wireLifeOs } from './life-os.js';
@@ -121,6 +121,7 @@ async function boot() {
   await fetchSkills();
   await fetchSystemMapStatus();
   await fetchSessions();
+  await fetchRateLimits();
   await fetchListeners();
   await fetchRunningApps();
   await fetchStatus();
@@ -147,6 +148,9 @@ async function boot() {
     // Pause the session poll while the terminal is open — it would
     // re-render the list under the overlay for no reason.
     if (!state.terminal) fetchSessions().catch(function () {});
+  }, SESSIONS_POLL_MS);
+  setInterval(function () {
+    fetchRateLimits().catch(function () {});
   }, SESSIONS_POLL_MS);
   setInterval(function () {
     fetchListeners().catch(function () {});
