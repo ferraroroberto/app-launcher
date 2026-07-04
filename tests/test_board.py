@@ -465,14 +465,20 @@ def _seed_job(overrides: dict, job_id: str, run: dict) -> None:
 def test_jobs_attention_failed_today(webapp_client):
     _client, _app, overrides = webapp_client
     # run_job_cmd writes naive local ISO timestamps — mirror that exactly.
-    local_now = datetime.now()
+    # Anchored at local midday rather than the bare datetime.now() (#323): the
+    # 1h/50min offsets below must never straddle a local-midnight calendar-day
+    # boundary, which a bare `now()` does whenever the test happens to run in
+    # the ~50 minutes after midnight. `now=local_now` is also passed explicitly
+    # to jobs_attention() so the assertion is fully clock-independent, matching
+    # how the rest of this file injects `now` into board functions.
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
     _seed_job(overrides, "pipeline", {
         "status": "failed",
         "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
         "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
         "exit_code": 1,
     })
-    cards = board.jobs_attention()
+    cards = board.jobs_attention(now=local_now)
     assert [(c["job_id"], c["state"]) for c in cards] == [("pipeline", "failed")]
 
 
