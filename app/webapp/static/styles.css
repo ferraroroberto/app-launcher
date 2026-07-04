@@ -2174,11 +2174,26 @@ body.terminal-open {
 .board-reply-send:active,
 .board-open-terminal:active { background: var(--bg-elev); }
 
-/* Desktop / wide: all four columns side by side; titles come back. */
+/* Desktop / wide: all four columns side by side; titles come back.
+   Board (only) also breaks out of the phone-first `.app` 720px cap —
+   full-bleed to the viewport, since `.app`'s horizontal centering makes
+   the standard breakout offsets cancel out exactly (issue #325). Every
+   other tab stays inside the 720px column unchanged. */
 @media (min-width: 700px) and (pointer: fine) {
+  #paneBoard {
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+    padding: 0 24px;
+    box-sizing: border-box;
+  }
   .board-columns {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 20px;
     overflow-x: visible;
     scroll-snap-type: none;
   }
