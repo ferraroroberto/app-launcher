@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 # matches the writer's own prune horizon in fleet-config's session_state hook.
 STATE_STALE_AFTER = timedelta(hours=24)
 
+# The rate-limits cache (issue #326) is meant to read as near-real-time — the
+# statusline that writes it re-renders on every assistant message — so this
+# is far shorter than STATE_STALE_AFTER's 24h (that one tolerates a cold
+# session; a usage percentage sitting stale for hours would be misleading).
+RATE_LIMITS_STALE_AFTER = timedelta(minutes=10)
+
 # Statuses the hook writer emits; anything else renders as "unknown".
 _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
 
@@ -123,6 +129,71 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
         "stale": bool(newest is not None and now - newest > STATE_STALE_AFTER),
         "updated_at": _iso_z(newest) if newest else None,
         "rows": rows,
+    }
+
+
+# ------------------------------------------------------- read_rate_limits
+
+
+def _rate_limit_window(raw: Any) -> Optional[Dict[str, Any]]:
+    """One ``five_hour``/``seven_day`` window, tolerant field-by-field.
+
+    ``raw`` may be absent, ``null``, or a dict with either sub-field missing
+    or ``null`` — a future writer may report a window before it has learned
+    ``resets_at``, say. Any shape short of "a dict" collapses to ``None``
+    (window not reported); within a dict, each sub-field is pulled
+    independently so one bad field doesn't blank the other.
+    """
+    if not isinstance(raw, dict):
+        return None
+    pct = raw.get("used_percentage")
+    used_percentage = pct if isinstance(pct, (int, float)) else None
+    resets_at: Optional[int] = None
+    raw_resets = raw.get("resets_at")
+    if isinstance(raw_resets, (int, float)):
+        resets_at = int(raw_resets)
+    return {"used_percentage": used_percentage, "resets_at": resets_at}
+
+
+def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """The cached 5h/7d Claude usage percentages a statusline writer maintains.
+
+    Mirrors :func:`read_sessions_state`'s degradation contract exactly:
+    absent/corrupt/non-dict file → ``available: False`` with both windows
+    ``None``, never an error. ``stale`` is driven by the file's own
+    ``captured_at`` stamp (when the writer last ran) against
+    :data:`RATE_LIMITS_STALE_AFTER` — *not* by either window's ``resets_at``,
+    which is the reset moment, not a freshness signal.
+    """
+    now = now or _now()
+    empty: Dict[str, Any] = {
+        "available": False,
+        "stale": False,
+        "updated_at": None,
+        "five_hour": None,
+        "seven_day": None,
+    }
+    try:
+        # utf-8-sig: the statusline writer is an external PowerShell script
+        # we don't fully control, and .NET's UTF8Encoding can default to
+        # emitting a BOM — utf-8-sig strips one if present and reads plain
+        # utf-8 identically otherwise, so a BOM never masquerades as a
+        # corrupt file.
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return empty
+    if not isinstance(data, dict):
+        return empty
+
+    captured_at = _parse_iso(data.get("captured_at"))
+    return {
+        "available": True,
+        "stale": bool(
+            captured_at is not None and now - captured_at > RATE_LIMITS_STALE_AFTER
+        ),
+        "updated_at": _iso_z(captured_at) if captured_at else None,
+        "five_hour": _rate_limit_window(data.get("five_hour")),
+        "seven_day": _rate_limit_window(data.get("seven_day")),
     }
 
 

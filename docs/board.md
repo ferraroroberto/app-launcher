@@ -33,7 +33,7 @@ All Board routes live in `app/webapp/routers/board.py`.
 | `POST /api/board/dispatch` | Tailscale + passkey | Spawn a new session and type an `/issue-*` goal into it (dispatch bar). |
 | `POST /api/board/issues/start` | Tailscale + passkey | One-tap `/issue-start` / `/issue-yolo <N>` on a Backlog card. |
 
-The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`.
+The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at}, rate_limits: {available, stale, updated_at, five_hour, seven_day} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`.
 
 ## The session-state file join
 
@@ -53,6 +53,16 @@ Join mechanics (`_claim_walk` / `_match_state_row`):
 **States** (`_KNOWN_STATUSES`): `working`, `needs-you`, `idle`. Anything else — including a missing row — renders `unknown`.
 
 **Degradation is total and silent.** `read_sessions_state()` returns `{available, stale, updated_at, rows}` and never raises: an absent, unreadable, or corrupt file yields `available: False` with empty rows, and every session card falls back to `unknown` while the GitHub and jobs columns render regardless. `stale: True` when the newest row is older than `STATE_STALE_AFTER` (24 h) — i.e. the hooks have stopped writing.
+
+## The Claude usage badges (#326)
+
+The strip above the columns can show two small dot+label badges — 5h and 7d Claude account usage % — sourced from a **rate-limits cache** a [`fleet-config`](https://github.com/ferraroroberto/fleet-config) statusline writer maintains ([fleet-config#259](https://github.com/ferraroroberto/fleet-config/issues/259)) — path `rate_limits_file`, default `~/.claude/hooks/state/rate-limits.json`. As of this writing that writer doesn't exist yet, so the badges render hidden until it lands; the Board only ever reads the file.
+
+**Schema** the writer is expected to produce: `{ "five_hour": {"used_percentage": N, "resets_at": epoch}, "seven_day": {...}, "captured_at": iso8601 }`. Either window, or any sub-field within a present window, may be `null`/absent — `src/board.py::read_rate_limits()` treats each independently and never raises on a missing/corrupt file (`available: False`, both windows `None`).
+
+**Freshness** is driven by `captured_at` against `RATE_LIMITS_STALE_AFTER` (10 minutes) — far shorter than the sessions-state file's 24 h, since a usage percentage is only useful near-real-time. A stale reading **dims** rather than disappears (`.board-usage-badge.stale`), unlike the sessions-state banner's all-or-nothing text.
+
+**Color thresholds match the terminal statusline exactly** — `>=80%` danger, `>=60%` warn, else the "good" tint — so the Board badge and a terminal's own statusline never disagree about what counts as "getting close." The reset countdown (`"resets in Xh Ym"`) is computed client-side from each window's `resets_at` epoch on every `renderBoard()` call, so it stays live between the 5 s polls with no extra timer.
 
 ## The transcript-activity overlay (#305, #309)
 

@@ -113,6 +113,9 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
                 # temp path so a test can never read the real hook-written
                 # ~/.claude/hooks/state/sessions-state.json.
                 "sessions_state_file": str(tmp_path / "sessions-state.json"),
+                # Same reasoning for the rate-limits cache (issue #326): never
+                # let a test touch ~/.claude/hooks/state/rate-limits.json.
+                "rate_limits_file": str(tmp_path / "rate-limits.json"),
                 "github_owner": "testowner",
             }
         ),

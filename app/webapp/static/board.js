@@ -37,6 +37,7 @@ import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
+import { renderUsageBadgeRow } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -375,6 +376,16 @@ function renderStatusLine(body) {
   els.boardStatus.hidden = parts.length === 0;
 }
 
+// Claude 5h/7d usage badges (issue #326) — a separate element from
+// boardStatus on purpose: that one is transient-problem text that vanishes
+// once the problem clears, while these are live content that should persist
+// (dimmed, not hidden) even when the cache is stale. Sourced from
+// fleet-config's statusline cache (fleet-config#259); hidden entirely until
+// that writer exists or the cache goes missing/corrupt (rate_limits.available
+// false) — the same degrade-to-nothing contract sessions_state already uses.
+// Rendering itself is shared with the Coding tab's own usage badges — see
+// dom-utils.js::renderUsageBadgeRow.
+
 export function renderBoard() {
   const body = state.board;
   if (!body || !els.boardColumns) return;
@@ -402,6 +413,7 @@ export function renderBoard() {
   });
 
   renderStatusLine(body);
+  renderUsageBadgeRow(els.boardUsage, els.boardUsageSession, els.boardUsageWeekly, body.rate_limits);
   // Keep the dispatch bar's repo list + mic visibility in step with state
   // that may land after the first render (/api/apps, /api/status).
   syncDispatchBar();

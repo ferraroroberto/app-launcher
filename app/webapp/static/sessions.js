@@ -11,6 +11,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, isDesktopClient, jsonApi, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
+import { renderUsageBadgeRow } from './dom-utils.js';
 
 export function fmtAgo(epochSeconds) {
   if (!epochSeconds) return '';
@@ -216,6 +217,22 @@ export async function fetchSessions() {
     if (!(exc instanceof AuthRequiredError)) {
       // Sessions polling is best-effort — don't spam toasts.
       console.warn('sessions fetch failed', exc);
+    }
+  }
+}
+
+// Claude 5h/7d usage badges (issue #326) in the Running-sessions header —
+// same data + rendering as the Board tab's badges (dom-utils.js), but on
+// its own endpoint so this tab never depends on the Board tab ever having
+// been opened (GET /api/board's own rate-limits read only happens as a
+// side effect of fetchBoard(), which self-gates to "Board tab visible").
+export async function fetchRateLimits() {
+  try {
+    const body = await jsonApi('/api/rate-limits');
+    renderUsageBadgeRow(els.codingUsage, els.codingUsageSession, els.codingUsageWeekly, body);
+  } catch (exc) {
+    if (!(exc instanceof AuthRequiredError)) {
+      console.warn('rate-limits fetch failed', exc);
     }
   }
 }
