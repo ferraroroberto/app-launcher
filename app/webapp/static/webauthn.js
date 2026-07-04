@@ -6,7 +6,7 @@
  */
 
 import { els, state, TT_KEY, TT_EXP_KEY } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { apiFailToast, jsonApi, toast } from './api.js';
 
 // ----------------------------------------------------------- b64url helpers
 function b64urlToBuf(s) {
@@ -141,7 +141,7 @@ async function removeDevice(d) {
     toast('Removed ' + d.label, 'good');
     fetchWebauthnStatus();
   } catch (exc) {
-    toast('Remove failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Remove failed', exc);
   }
 }
 
@@ -169,7 +169,7 @@ async function enrollDevice() {
     toast('✅ Device enrolled.', 'good');
     fetchWebauthnStatus();
   } catch (exc) {
-    toast('Enrollment failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Enrollment failed', exc);
   }
 }
 

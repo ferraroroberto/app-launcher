@@ -421,11 +421,13 @@ let _hubStreamDone = false;  // true once the PCM stream is fully read + schedul
 let _hubVisHandler = null;   // visibilitychange listener (removed on teardown)
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
-// the token plumbing; this module stays free of api.js / webauthn.js imports).
+// the token plumbing; this module stays free of api.js / webauthn.js
+// imports). Header casing (`X-Terminal-Token`) matches api.js's authHeaders()
+// — kept as a separate local copy here, not an import, by design.
 function authHeaders(opts) {
   const h = {};
   if (opts && opts.token) h['Authorization'] = 'Bearer ' + opts.token;
-  if (opts && opts.terminalToken) h['x-terminal-token'] = opts.terminalToken;
+  if (opts && opts.terminalToken) h['X-Terminal-Token'] = opts.terminalToken;
   return h;
 }
 

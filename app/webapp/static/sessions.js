@@ -9,7 +9,7 @@
  */
 
 import { els, state } from './state.js';
-import { isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, AuthRequiredError, isDesktopClient, jsonApi, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 
 export function fmtAgo(epochSeconds) {
@@ -176,7 +176,7 @@ export async function openSession(s) {
       }
       // Mirroring disabled server-side — fall through to the in-page terminal.
     } catch (exc) {
-      toast('Open window failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Open window failed', exc);
       return;
     }
   }
@@ -203,7 +203,7 @@ export async function stopSession(s) {
     }
     setTimeout(fetchSessions, 1500);
   } catch (exc) {
-    toast('Stop failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Stop failed', exc);
   }
 }
 
@@ -213,7 +213,7 @@ export async function fetchSessions() {
     state.sessions = body.sessions || [];
     renderSessions();
   } catch (exc) {
-    if (String(exc.message) !== 'auth required') {
+    if (!(exc instanceof AuthRequiredError)) {
       // Sessions polling is best-effort — don't spam toasts.
       console.warn('sessions fetch failed', exc);
     }

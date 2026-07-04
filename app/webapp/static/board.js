@@ -32,7 +32,7 @@
  */
 
 import { els, state } from './state.js';
-import { isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
@@ -116,12 +116,6 @@ function renderSessionCard(card) {
 
 // ------------------------------------------------------ drill-down drawer
 
-function terminalHeaders(tt, json) {
-  const h = json ? { 'Content-Type': 'application/json' } : {};
-  if (tt) h['x-terminal-token'] = tt;
-  return h;
-}
-
 // The same availability gate as the compose-bar mic (terminal.js): the
 // voice-transcriber must be configured server-side and the browser must
 // have MediaRecorder.
@@ -198,7 +192,7 @@ async function loadExchange(card, el) {
     const tt = await ensureTerminalToken();
     const body = await jsonApi(
       '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange',
-      { headers: terminalHeaders(tt, false) }
+      { headers: authHeaders({ terminalToken: tt }) }
     );
     el.replaceChildren();
     if (!body.available) {
@@ -233,7 +227,7 @@ async function sendReply(card, input, btn) {
       '/api/claude-code/sessions/' + encodeURIComponent(card.session_id) + '/input',
       {
         method: 'POST',
-        headers: terminalHeaders(tt, true),
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
         body: JSON.stringify({ data: text, submit: true }),
       }
     );
@@ -245,7 +239,7 @@ async function sendReply(card, input, btn) {
     renderBoard();
     fetchBoard().catch(function () {});
   } catch (exc) {
-    toast('Reply failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Reply failed', exc);
   } finally {
     btn.disabled = false;
   }
@@ -269,7 +263,7 @@ async function startIssue(card, mode, btn) {
     if (isDesktopClient()) payload.desktop = true;
     const body = await jsonApi('/api/board/issues/start', {
       method: 'POST',
-      headers: terminalHeaders(tt, true),
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify(payload),
     });
     toast(
@@ -281,7 +275,7 @@ async function startIssue(card, mode, btn) {
       openTerminal(body.session);
     }
   } catch (exc) {
-    toast('Issue start failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Issue start failed', exc);
   } finally {
     btn.disabled = false;
   }
@@ -601,7 +595,7 @@ async function dispatchGoal() {
     if (isDesktopClient()) payload.desktop = true;
     const body = await jsonApi('/api/board/dispatch', {
       method: 'POST',
-      headers: terminalHeaders(tt, true),
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify(payload),
     });
     toast('🚀 ' + (body.launched || dispatchMode) + ' → ' + (body.repo || repo), 'good');
@@ -609,7 +603,7 @@ async function dispatchGoal() {
     // ✕ clears it. The new card lands in Claude's turn on the next poll.
     fetchBoard().catch(function () {});
   } catch (exc) {
-    toast('Dispatch failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Dispatch failed', exc);
   } finally {
     stopTimer();
     btn.disabled = false;
@@ -664,7 +658,7 @@ export function wireBoard() {
   wireDispatch();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {
-      toast('GitHub refresh failed: ' + (exc.message || exc), 'error');
+      apiFailToast('GitHub refresh failed', exc);
     });
   });
   COLUMNS.forEach(function (col) {

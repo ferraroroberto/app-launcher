@@ -12,7 +12,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { apiFailToast, jsonApi } from './api.js';
 
 export async function fetchConfig() {
   const body = await jsonApi('/api/config');
@@ -206,7 +206,7 @@ export async function patchConfig(patch) {
     });
     await fetchConfig();
   } catch (exc) {
-    toast('Save failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Save failed', exc);
   }
 }
 

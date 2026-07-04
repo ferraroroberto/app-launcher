@@ -8,52 +8,43 @@
 import { els, state, TOKEN_KEY } from './state.js';
 
 // --------------------------------------------------------------- tokens
-export function tokenFromUrl() {
+// Read a `?<name>=<value>` deep-link param once, strip it from the visible
+// URL, and return its trimmed value (or null if absent/blank). Used for the
+// bearer ?token=, the PC-mirror ?terminal=<sid> deep link, and the Board
+// ?board=<sid> deep link (issue #301).
+export function consumeUrlParam(name) {
   const params = new URLSearchParams(window.location.search);
-  const t = (params.get('token') || '').trim();
-  if (!t) return null;
-  params.delete('token');
-  const newQuery = params.toString();
-  const newUrl =
-    window.location.pathname +
-    (newQuery ? '?' + newQuery : '') +
-    window.location.hash;
-  window.history.replaceState({}, '', newUrl);
-  return t;
+  const v = (params.get(name) || '').trim();
+  if (!v) return null;
+  params.delete(name);
+  const q = params.toString();
+  window.history.replaceState(
+    {}, '',
+    window.location.pathname + (q ? '?' + q : '') + window.location.hash
+  );
+  return v;
 }
 
 export function readToken() { return localStorage.getItem(TOKEN_KEY) || ''; }
 export function writeToken(t) { if (t) localStorage.setItem(TOKEN_KEY, t); }
 
-// ?terminal=<sid> deep-link — the PC mirror window opens straight into a
-// session's terminal. Read it once, strip it from the visible URL.
-export function terminalFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const sid = (params.get('terminal') || '').trim();
-  if (!sid) return null;
-  params.delete('terminal');
-  const q = params.toString();
-  window.history.replaceState(
-    {}, '',
-    window.location.pathname + (q ? '?' + q : '') + window.location.hash
-  );
-  return sid;
-}
-
-// ?board=<sid> deep-link (issue #301) — a Slack ping lands straight on that
-// session's Board card with its drawer open. Read once, strip from the URL,
-// exactly like ?terminal=.
-export function boardFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const sid = (params.get('board') || '').trim();
-  if (!sid) return null;
-  params.delete('board');
-  const q = params.toString();
-  window.history.replaceState(
-    {}, '',
-    window.location.pathname + (q ? '?' + q : '') + window.location.hash
-  );
-  return sid;
+// Build request headers: bearer token (always, when present) plus the
+// passkey terminal token, when the caller passes one — callers own how they
+// obtained it (readTerminalToken() for the cached value, or an awaited
+// ensureTerminalToken() when a fresh passkey ceremony may be needed), since
+// that plumbing lives in webauthn.js and this module never imports it.
+// `contentType`, when given, sets Content-Type (omit for multipart/FormData
+// bodies, where the browser must set its own boundary). Single source for
+// what used to be three differently-cased terminal-token header helpers
+// (X-Terminal-Token / x-terminal-token / terminalHeaders) — always
+// `X-Terminal-Token` now.
+export function authHeaders({ terminalToken, contentType } = {}) {
+  const h = {};
+  const bearer = readToken();
+  if (bearer) h['Authorization'] = 'Bearer ' + bearer;
+  if (terminalToken) h['X-Terminal-Token'] = terminalToken;
+  if (contentType) h['Content-Type'] = contentType;
+  return h;
 }
 
 // True when this browser is a desktop (a fine/mouse pointer), as opposed
@@ -71,6 +62,17 @@ export function isDesktopClient() {
   }
 }
 
+// A 401 means the login overlay just went up — callers that merely want to
+// swallow "not logged in yet" (rather than toast it as a real failure) check
+// `exc instanceof AuthRequiredError`, not a string message that a future
+// reword would silently break.
+export class AuthRequiredError extends Error {
+  constructor() {
+    super('auth required');
+    this.name = 'AuthRequiredError';
+  }
+}
+
 // --------------------------------------------------------------- fetch
 export async function api(path, opts) {
   opts = opts || {};
@@ -80,7 +82,7 @@ export async function api(path, opts) {
   const res = await fetch(path, Object.assign({}, opts, { headers }));
   if (res.status === 401) {
     showLogin();
-    throw new Error('auth required');
+    throw new AuthRequiredError();
   }
   return res;
 }
@@ -151,4 +153,14 @@ export function toast(msg, kind) {
   toastTimer = setTimeout(function () {
     els.toast.hidden = true;
   }, kind === 'error' ? 4500 : 2200);
+}
+
+// Toast a failed API call as "<prefix>: <message>" (error styling) — unless
+// exc is an AuthRequiredError, in which case the login overlay already went
+// up and a red toast on top of it would double-fire. `prefix` may be falsy
+// for the few sites that just toast the raw message.
+export function apiFailToast(prefix, exc) {
+  if (exc instanceof AuthRequiredError) return;
+  const msg = (exc && exc.message) || exc;
+  toast(prefix ? prefix + ': ' + msg : String(msg), 'error');
 }

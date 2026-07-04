@@ -90,7 +90,7 @@ A job can carry `"visible": true` (omitted / `false` is the default). It changes
 }
 ```
 
-- **Interpreter.** The scheduled task's `/TR` runs under `python.exe` (console subsystem) instead of the default silent `pythonw.exe`, so a console window appears when the task fires in the logged-on session. `src.jobs.task_run_command(job_id, visible=…)` picks the interpreter; `src.jobs._python_path()` resolves the launcher venv's `python.exe` with a PATH fallback that mirrors `_pythonw_path()`.
+- **Interpreter.** The scheduled task's `/TR` runs under `python.exe` (console subsystem) instead of the default silent `pythonw.exe`, so a console window appears when the task fires in the logged-on session. `src.jobs.task_run_command(job_id, visible=…)` picks the interpreter via `src.jobs._launcher_python(visible=…)`, which resolves the launcher venv's `python.exe`/`pythonw.exe` with a PATH fallback.
 - **Output tee.** The executor spawns the child with `stdout=PIPE` and streams its combined output to **both** `output.log` (the remote run-history record, unchanged) and the launcher's own console (`sys.stdout.buffer`, guarded). A pythonw / detached fire has no console, so the console half is silently dropped while the file half always works. A non-visible job keeps the original direct-to-file spawn — no pipe, no reader, byte-for-byte unchanged.
 
 `visible` round-trips through `POST`/`PUT` like `confirm` and is omitted from the stored row when false. It only affects **scheduled** fires meaningfully — a webapp/Stream-Deck fire spawns the executor detached with no console regardless, so the tee's console half no-ops there (the log half still works).

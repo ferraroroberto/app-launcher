@@ -11,7 +11,8 @@
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { jsonApi, readToken, toast } from './api.js';
+import { apiFailToast, authHeaders, jsonApi, readToken, toast } from './api.js';
+import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
@@ -340,7 +341,7 @@ function setTapToReconnect(t, label) {
       t.tt = tt;
       connectWs(t);
     }).catch(function (exc) {
-      toast('Passkey unlock failed: ' + (exc.message || exc), 'error');
+      apiFailToast('Passkey unlock failed', exc);
       setTapToReconnect(t, 'Tap to reconnect');
     });
   };
@@ -388,7 +389,7 @@ export async function openTerminal(session) {
   try {
     tt = await ensureTerminalToken();
   } catch (exc) {
-    toast('Passkey unlock failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Passkey unlock failed', exc);
     return;
   }
   closeTerminal();
@@ -745,15 +746,11 @@ async function sendImage(file) {
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   try {
-    const headers = new Headers();
-    const bt = readToken();
-    if (bt) headers.set('Authorization', 'Bearer ' + bt);
     const tt = readTerminalToken();
-    if (tt) headers.set('X-Terminal-Token', tt);
     const res = await fetch(
       '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image' +
         (inline ? '?inline=1' : ''),
-      { method: 'POST', headers: headers, body: fd }
+      { method: 'POST', headers: authHeaders({ terminalToken: tt }), body: fd }
     );
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });
@@ -774,7 +771,7 @@ async function sendImage(file) {
       if (t.term) t.term.focus();
     }
   } catch (exc) {
-    toast('Image failed: ' + (exc.message || exc), 'error');
+    apiFailToast('Image failed', exc);
   }
 }
 
@@ -798,7 +795,7 @@ const SHIFT_KEY_BYTES = {
   up: '\x1b[1;2A', down: '\x1b[1;2B', right: '\x1b[1;2C', left: '\x1b[1;2D',
 };
 
-let _keysOutsideHandler = null;
+let _disposeKeysOutsideClick = null;
 // Sticky-Shift state: stays engaged across taps (so ⇧ then Tab Tab Tab cycles
 // modes) until ⇧ is tapped again or the popover closes.
 let _shiftHeld = false;
@@ -817,26 +814,19 @@ function closeKeysPopover() {
   if (!els.terminalKeysPopover) return;
   els.terminalKeysPopover.hidden = true;
   setShiftHeld(false);
-  if (_keysOutsideHandler) {
-    document.removeEventListener('pointerdown', _keysOutsideHandler);
-    _keysOutsideHandler = null;
+  if (_disposeKeysOutsideClick) {
+    _disposeKeysOutsideClick();
+    _disposeKeysOutsideClick = null;
   }
 }
 
 function openKeysPopover() {
   if (!els.terminalKeysPopover) return;
   els.terminalKeysPopover.hidden = false;
-  // Close on any tap outside the popover or its toggle button. The
-  // opening tap's pointerdown has already fired by the time this click
-  // handler runs, so binding now won't catch it; the contains() guards
-  // cover a tap on the ⌨️ button itself.
-  if (!_keysOutsideHandler) {
-    _keysOutsideHandler = function (ev) {
-      if (els.terminalKeysPopover.contains(ev.target) ||
-          els.terminalKeys.contains(ev.target)) return;
-      closeKeysPopover();
-    };
-    document.addEventListener('pointerdown', _keysOutsideHandler);
+  if (!_disposeKeysOutsideClick) {
+    _disposeKeysOutsideClick = bindOutsideClickToClose(
+      els.terminalKeysPopover, els.terminalKeys, closeKeysPopover
+    );
   }
 }
 
@@ -1056,13 +1046,9 @@ async function runOcrExtraction() {
   els.terminalScreenshot.disabled = true;
   const stopTimer = startWorkTimer(btn, '📷 Extract text', '⏳ Reading ');
   try {
-    const headers = new Headers();
-    const bt = readToken();
-    if (bt) headers.set('Authorization', 'Bearer ' + bt);
     const tt = readTerminalToken();
-    if (tt) headers.set('X-Terminal-Token', tt);
     const res = await fetch('/api/ocr', {
-      method: 'POST', headers: headers, body: fd,
+      method: 'POST', headers: authHeaders({ terminalToken: tt }), body: fd,
     });
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });
@@ -1090,7 +1076,7 @@ async function runOcrExtraction() {
       'good'
     );
   } catch (exc) {
-    toast('OCR failed: ' + (exc.message || exc), 'error');
+    apiFailToast('OCR failed', exc);
   } finally {
     stopTimer();
     btn.disabled = false;
@@ -1152,30 +1138,24 @@ function wireSummaryModal() {
 // via the hub's claude_haiku first, for hands-free / driving listening. The
 // menu only appears when the summarize action is available (hub reachable);
 // otherwise the button keeps its original single-tap "read aloud" behaviour.
-let _speakOutsideHandler = null;
+let _disposeSpeakOutsideClick = null;
 
 function closeSpeakPopover() {
   if (!els.terminalSpeakPopover) return;
   els.terminalSpeakPopover.hidden = true;
-  if (_speakOutsideHandler) {
-    document.removeEventListener('pointerdown', _speakOutsideHandler);
-    _speakOutsideHandler = null;
+  if (_disposeSpeakOutsideClick) {
+    _disposeSpeakOutsideClick();
+    _disposeSpeakOutsideClick = null;
   }
 }
 
 function openSpeakPopover() {
   if (!els.terminalSpeakPopover) return;
   els.terminalSpeakPopover.hidden = false;
-  // Close on any tap outside the popover or its toggle button. The opening
-  // tap's pointerdown has already fired, so binding now won't catch it; the
-  // contains() guards cover a tap on the 🔊 button itself.
-  if (!_speakOutsideHandler) {
-    _speakOutsideHandler = function (ev) {
-      if (els.terminalSpeakPopover.contains(ev.target) ||
-          els.terminalSpeak.contains(ev.target)) return;
-      closeSpeakPopover();
-    };
-    document.addEventListener('pointerdown', _speakOutsideHandler);
+  if (!_disposeSpeakOutsideClick) {
+    _disposeSpeakOutsideClick = bindOutsideClickToClose(
+      els.terminalSpeakPopover, els.terminalSpeak, closeSpeakPopover
+    );
   }
 }
 
