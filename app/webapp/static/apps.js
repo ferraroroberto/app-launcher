@@ -89,9 +89,9 @@ function renderCodingList(host, items) {
     });
 
     // GitHub repo icon — opens the repo's open-issues list (sorted by last
-    // updated) in a new browser tab. Spawns no process and creates no
-    // session. Disabled with a hover hint when the project has no GitHub
-    // remote (a.repo_url is unset).
+    // updated, excluding audit-meta ledger/metadata issues — #341) in a new
+    // browser tab. Spawns no process and creates no session. Disabled with a
+    // hover hint when the project has no GitHub remote (a.repo_url is unset).
     const ghBtn = document.createElement('button');
     ghBtn.type = 'button';
     ghBtn.className = 'icon-btn agent-btn';
@@ -104,7 +104,7 @@ function renderCodingList(host, items) {
       ghBtn.title = 'Open GitHub issues';
       ghBtn.setAttribute('aria-label', 'Open GitHub issues');
       ghBtn.addEventListener('click', function () {
-        const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc';
+        const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
         window.open(issuesUrl, '_blank', 'noopener,noreferrer');
       });
     } else {
