@@ -393,7 +393,11 @@ def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
     expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
     expect(tile.locator(".board-card-title-compact")).to_contain_text("app-launcher #301")
 
+    # Same /api/apps-population race as test_backlog_start_button_posts_issue_start
+    # above: the ▶/⚡ actions only render once state.apps has landed, which can
+    # trail the first render on a loaded CI runner — give it a full poll cycle.
     actions = tile.locator(".board-issue-btn")
+    expect(actions.first).to_be_visible(timeout=15_000)
     expect(actions).to_have_count(2)
     expect(actions.nth(0)).to_have_text("▶")
     expect(actions.nth(1)).to_have_text("⚡")
