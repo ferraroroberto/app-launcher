@@ -18,7 +18,7 @@
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { apiFailToast, authHeaders, jsonApi, readToken, toast } from './api.js';
+import { apiFailToast, apiRaw, jsonApi, readToken, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
@@ -704,10 +704,10 @@ async function sendImage(file) {
   fd.append('file', file, file.name || 'image.png');
   try {
     const tt = readTerminalToken();
-    const res = await fetch(
+    const res = await apiRaw(
       '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image' +
         (inline ? '?inline=1' : ''),
-      { method: 'POST', headers: authHeaders({ terminalToken: tt }), body: fd }
+      { method: 'POST', terminalToken: tt, body: fd }
     );
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });

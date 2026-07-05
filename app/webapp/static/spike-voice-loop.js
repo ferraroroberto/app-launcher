@@ -34,7 +34,7 @@
  */
 
 import { VoiceLoop, STATE, INTENT } from './spike-voice-loop-fsm.js';
-import { consumeUrlParam, writeToken, readToken, jsonApi } from './api.js';
+import { consumeUrlParam, writeToken, readToken, jsonApi, apiRaw } from './api.js';
 import { ensureTerminalToken, readTerminalToken } from './webauthn.js';
 import { state } from './state.js';
 import {
@@ -230,13 +230,6 @@ function startCapture() {
   log('🎙️ capturing take…');
 }
 
-function authHeaders() {
-  const h = new Headers();
-  if (opts.token) h.set('Authorization', 'Bearer ' + opts.token);
-  if (opts.terminalToken) h.set('X-Terminal-Token', opts.terminalToken);
-  return h;
-}
-
 function transcribe() {
   if (!recorder) { apply(loop.onTranscript('', nowMs())); return; }
   const rec = recorder;
@@ -250,7 +243,9 @@ function transcribe() {
     const fd = new FormData();
     fd.append('file', blob, 'take.' + ext);
     try {
-      const res = await fetch('/api/transcribe', { method: 'POST', headers: authHeaders(), body: fd });
+      const res = await apiRaw('/api/transcribe', {
+        method: 'POST', terminalToken: opts.terminalToken, body: fd,
+      });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error((body && body.detail) || ('HTTP ' + res.status));
       const text = (body && body.transcript) || '';

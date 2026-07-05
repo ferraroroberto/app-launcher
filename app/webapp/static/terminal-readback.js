@@ -766,7 +766,15 @@ export async function speakHubInto(handle, text, opts) {
         }),
         signal: ac.signal,
       });
-      if (!res.ok) throw new Error('hub tts HTTP ' + res.status);
+      if (!res.ok) {
+        // .status lets a caller that imports api.js (e.g. terminal-readaloud.js)
+        // recognise a 401 and reopen the login overlay (issue #333) — this
+        // module stays free of api.js imports itself (see authHeaders() above),
+        // so it can only tag the Error, not call showLogin() directly.
+        const err = new Error('hub tts HTTP ' + res.status);
+        err.status = res.status;
+        throw err;
+      }
       if (!res.body || !res.body.getReader) throw new Error('hub tts stream unsupported');
       await pumpPcmStream(ctx, res, ac, {
         isFirst: i === 0, isLast: i === segments.length - 1,
@@ -808,7 +816,13 @@ export async function summarizeReply(text, opts) {
     ),
     body: JSON.stringify({ text: clean }),
   });
-  if (!res.ok) throw new Error('hub summarize HTTP ' + res.status);
+  if (!res.ok) {
+    // .status lets a caller that imports api.js recognise a 401 and reopen
+    // the login overlay (issue #333) — see the matching note in speakHubInto.
+    const err = new Error('hub summarize HTTP ' + res.status);
+    err.status = res.status;
+    throw err;
+  }
   const body = await res.json().catch(function () { return null; });
   const summary = body && typeof body.summary === 'string' ? body.summary.trim() : '';
   if (!summary) throw new Error('empty summary');

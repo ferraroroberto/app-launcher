@@ -101,6 +101,24 @@ export async function jsonApi(path, opts) {
   return body;
 }
 
+// A raw-Response counterpart to jsonApi() for callers that need the Response
+// itself (FormData uploads, streamed audio bodies) instead of jsonApi()'s
+// parsed-JSON contract (issue #333). Folds authHeaders() in so a caller
+// doesn't have to build the passkey terminal-token / content-type headers by
+// hand — pass them as `opts.terminalToken` / `opts.contentType` alongside the
+// usual fetch options — then goes through the exact same 401 → showLogin() +
+// AuthRequiredError path as jsonApi(), via api(). Callers still own res.ok /
+// res.json() beyond that, same as they did calling fetch() directly before.
+export async function apiRaw(path, opts) {
+  opts = opts || {};
+  const headers = Object.assign(
+    {},
+    authHeaders({ terminalToken: opts.terminalToken, contentType: opts.contentType }),
+    opts.headers || {}
+  );
+  return api(path, Object.assign({}, opts, { headers: headers }));
+}
+
 // --------------------------------------------------------------- login
 export function showLogin() {
   if (!els.loginOverlay) return;
@@ -159,8 +177,17 @@ export function toast(msg, kind) {
 // exc is an AuthRequiredError, in which case the login overlay already went
 // up and a red toast on top of it would double-fire. `prefix` may be falsy
 // for the few sites that just toast the raw message.
+//
+// A plain Error carrying `.status === 401` gets the same treatment (issue
+// #333): terminal-readback.js is kept free of api.js imports by design (it
+// receives credentials as parameters rather than reaching into this module's
+// token storage itself), so its own fetches can't throw AuthRequiredError —
+// they tag `.status` on their thrown Error instead, and this is the one place
+// that turns that into the same showLogin() the rest of the app gets for
+// free through api()/jsonApi()/apiRaw().
 export function apiFailToast(prefix, exc) {
   if (exc instanceof AuthRequiredError) return;
+  if (exc && exc.status === 401) { showLogin(); return; }
   const msg = (exc && exc.message) || exc;
   toast(prefix ? prefix + ': ' + msg : String(msg), 'error');
 }
