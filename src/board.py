@@ -230,7 +230,10 @@ def _claim_walk(
     The single source of the claim order — ``merge_sessions`` renders it and
     ``state_row_for_session`` resolves one session's row consistently with
     what the board displays. Returns ``(pairs, leftovers)`` where ``pairs``
-    is ``[(session, row-or-None), ...]`` and ``leftovers`` the unclaimed rows.
+    is ``[(session, row-or-None, sid-or-None), ...]`` (fleet-config#242's
+    ``state_sid`` — the claimed row's own key — rides alongside the row so
+    ``merge_sessions`` can put it on the card) and ``leftovers`` the unclaimed
+    rows.
     """
     unmatched = dict(state_rows)
     pairs: List[tuple] = []
@@ -240,7 +243,7 @@ def _claim_walk(
 
     for sess in sorted(live, key=started, reverse=True):
         sid = _match_state_row(_normalize_dir(sess.get("project_dir")), unmatched)
-        pairs.append((sess, unmatched.pop(sid) if sid else None))
+        pairs.append((sess, unmatched.pop(sid) if sid else None, sid))
     return pairs, unmatched
 
 
@@ -256,7 +259,7 @@ def state_row_for_session(
     never in the session-host record.
     """
     pairs, _ = _claim_walk(live, state_rows)
-    for sess, row in pairs:
+    for sess, row, _sid in pairs:
         if str(sess.get("session_id")) == str(session_id):
             return row
     return None
@@ -383,12 +386,18 @@ def merge_sessions(
     terminal): ``alive: False``, no ``session_id`` the terminal could attach to.
     Waiting statuses are checked against transcript activity — see
     :func:`_transcript_overlay` (#305).
+
+    Live-session cards also carry ``state_sid`` — the claimed state row's own
+    key (``None`` when unmatched) — so a Slack ping's deep link, which only
+    knows the hook's transcript UUID, can still resolve to the right card
+    (fleet-config#242 / #307). State-only cards don't get one: they have no
+    session-host id and no drawer target, so a deep link to one is out of scope.
     """
     now = now or _now()
     cards: List[Dict[str, Any]] = []
     pairs, unmatched = _claim_walk(live, state_rows)
 
-    for sess, row in pairs:
+    for sess, row, sid in pairs:
         project_dir = sess.get("project_dir")
 
         raw_status = (row or {}).get("status")
@@ -399,6 +408,7 @@ def merge_sessions(
         status, anchor = _transcript_overlay(row, status, anchor)
         cards.append({
             "session_id": sess.get("session_id"),
+            "state_sid": sid,
             "kind": sess.get("kind"),
             "agent": sess.get("agent"),
             "project_dir": project_dir,

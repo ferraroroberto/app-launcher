@@ -461,7 +461,10 @@ export async function fetchBoard() {
 }
 
 // ?board=<sid> deep-link (#301): land on the Board with that card's drawer
-// open, carousel on the card's column. Called from main.js at boot.
+// open, carousel on the card's column. Called from main.js at boot. `sid` may
+// be a card's own session_id OR its state_sid (#307) — a Slack ping only ever
+// knows the hook's transcript UUID (fleet-config#242), which is the card's
+// state_sid, not its session-host session_id.
 export async function openBoardCard(sid) {
   setTab('board');
   // Distinguish a failed fetch from a genuinely-missing sid (#316): a transient
@@ -483,17 +486,27 @@ export async function openBoardCard(sid) {
     return;
   }
   const columns = (state.board && state.board.columns) || {};
+  let matchedCard = null;
   const colKey = Object.keys(columns).find(function (key) {
-    return (columns[key] || []).some(function (c) { return c.session_id === sid; });
+    return (columns[key] || []).some(function (c) {
+      if (c.session_id === sid || c.state_sid === sid) {
+        matchedCard = c;
+        return true;
+      }
+      return false;
+    });
   });
-  if (!colKey) {
+  if (!colKey || !matchedCard) {
     // Fetch succeeded but the sid isn't there — session genuinely gone
     // (stopped between the ping and the tap). Leave the board browsable; an
     // expanded id with no card would pause the poll forever.
     toast('Session not on the board any more.', 'error');
     return;
   }
-  state.boardExpanded = sid;
+  // Expand by the card's real session_id — every other read of boardExpanded
+  // (the card-click toggle, the drawer-open check) compares against
+  // card.session_id, so expanding by a state_sid would never match.
+  state.boardExpanded = matchedCard.session_id;
   renderBoard();
   requestAnimationFrame(function () { showColumn(colKey, false); });
 }

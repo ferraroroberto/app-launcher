@@ -248,6 +248,22 @@ def test_merge_bad_status_is_unknown():
     assert cards[0]["status"] == "unknown"
 
 
+def test_merge_claimed_card_carries_state_sid():
+    """#307: the card threads through the claimed row's own key, so a Slack
+    ping (which only knows this transcript UUID) can resolve to the card."""
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/automation/photo-ocr", 30)],
+        {"t-uuid": _state_row("E:/automation/photo-ocr", status="needs-you")},
+        now=NOW,
+    )
+    assert cards[0]["state_sid"] == "t-uuid"
+
+
+def test_merge_unclaimed_live_session_state_sid_is_none():
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 10)], {}, now=NOW)
+    assert cards[0]["state_sid"] is None
+
+
 def test_merge_fresh_state_only_row_becomes_external_card():
     cards = board.merge_sessions(
         [], {"t": _state_row("E:/automation/reporting", status="needs-you")}, now=NOW
@@ -257,6 +273,9 @@ def test_merge_fresh_state_only_row_becomes_external_card():
     assert cards[0]["session_id"] is None
     assert cards[0]["kind"] == "external"
     assert cards[0]["status"] == "needs-you"
+    # #307: state-only cards have no session-host id and no drawer target —
+    # deep-linking to them is out of scope, so they carry no state_sid.
+    assert cards[0].get("state_sid") is None
 
 
 def test_merge_cold_state_only_row_dropped():

@@ -477,6 +477,22 @@ def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
     expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
 
 
+def test_board_deep_link_resolves_via_state_sid(authed_page: Page, base_url: str) -> None:
+    """#307: a Slack ping's ?board=<sid> carries the hook's transcript UUID,
+    not the card's session_id — resolve it via the card's state_sid instead,
+    and expand the drawer keyed by the card's real session_id."""
+    payload = copy.deepcopy(_FAKE_BOARD)
+    payload["columns"]["your_turn"][0]["state_sid"] = "t-uuid-wait"
+    _mock_board(authed_page, payload)
+    _mock_exchange(authed_page)  # keyed by the real session_id, s-wait
+
+    authed_page.goto(f"{base_url}/?board=t-uuid-wait", wait_until="domcontentloaded")
+    expect(authed_page.locator("#paneBoard")).to_be_visible(timeout=10_000)
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible(timeout=10_000)
+    expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
+
+
 def _mock_apps_with_app_launcher(page: Page) -> None:
     """state.apps with one claude-code entry, so the dispatch repo combobox
     (and the #301 ▶/⚡ buttons) have a launchable repo."""
