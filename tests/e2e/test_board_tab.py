@@ -575,7 +575,11 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
 
     repo_btn.click()
     expect(combo_list).to_be_visible()
-    expect(combo_list.locator("li[data-repo]")).to_have_count(5)  # "All" + 4 projects
+    # Same /api/apps-population race noted elsewhere in this file: the list
+    # is rendered fresh on open from whatever _repoNames holds at that
+    # instant, and the board's 5 s poll is what re-renders it once apps
+    # land if that lagged the click — give it a full poll-cycle budget.
+    expect(combo_list.locator("li[data-repo]")).to_have_count(5, timeout=15_000)  # "All" + 4 projects
 
     combo_list.locator('li[data-repo="app-launcher"]').click()
     expect(combo_list).to_be_hidden()
