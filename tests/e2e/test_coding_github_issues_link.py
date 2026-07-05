@@ -3,7 +3,8 @@
 The feature: the Coding tab's GitHub icon used to open the bare repo root
 (`a.repo_url`). It now opens that repo's open-issues list sorted by last
 updated instead, since that's the page actually worth a tap from the
-launcher.
+launcher. Issue #341 added `-label:audit-meta` to the query so codebase-audit
+ledger/metadata issues (not actionable work) don't head the list.
 """
 
 from __future__ import annotations
@@ -61,7 +62,10 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
     gh_btn.click()
 
     opened = authed_page.evaluate("window.__opened")
-    expected = repo_url + "/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc"
+    expected = (
+        repo_url
+        + "/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta"
+    )
     assert opened == [expected], f"window.open called with {opened!r}, expected [{expected!r}]"
 
 
