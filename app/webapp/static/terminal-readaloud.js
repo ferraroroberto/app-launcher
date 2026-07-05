@@ -13,7 +13,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, readToken, toast } from './api.js';
+import { apiFailToast, readToken, showLogin, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { readTerminalToken } from './webauthn.js';
 import {
@@ -127,8 +127,11 @@ async function readTextAloud(text, handle, quiet) {
       if (handle) await speakHubInto(handle, text, opts);
       else await speakHub(text, opts);
       return true;
-    } catch (_) {
-      // hub path failed — fall through to Web Speech below
+    } catch (exc) {
+      // A stale session (issue #333): reopen the login overlay, but still
+      // fall through to Web Speech below — losing the nicer hub voice is a
+      // fair trade for not breaking read-aloud outright on an expired token.
+      if (exc && exc.status === 401) showLogin();
     }
   }
   if (!speak(text)) {
@@ -169,9 +172,12 @@ async function summarizeAndReadLastReply() {
   let summary;
   try {
     summary = await summarizeReply(text, opts);
-  } catch (_) {
+  } catch (exc) {
     if (handle) cancelHub();   // release the armed context + reset the button
-    toast('Could not summarize the reply.', 'error');
+    // Routes a stale-session 401 to showLogin() instead of a generic toast
+    // (issue #333) — apiFailToast() already treats err.status === 401 that
+    // way; any other failure still gets this friendly prefixed message.
+    apiFailToast('Could not summarize the reply', exc);
     return;
   }
   // Show the summary on screen (readable on its own when audio is muted); it

@@ -24,7 +24,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, toast } from './api.js';
+import { apiFailToast, apiRaw, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer } from './voice.js';
 import { stopReading } from './terminal-readaloud.js';
@@ -190,8 +190,8 @@ async function runOcrExtraction() {
   const stopTimer = startWorkTimer(btn, '📷 Extract text', '⏳ Reading ');
   try {
     const tt = readTerminalToken();
-    const res = await fetch('/api/ocr', {
-      method: 'POST', headers: authHeaders({ terminalToken: tt }), body: fd,
+    const res = await apiRaw('/api/ocr', {
+      method: 'POST', terminalToken: tt, body: fd,
     });
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });

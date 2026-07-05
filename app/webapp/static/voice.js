@@ -13,7 +13,7 @@
  * the target textarea for review — never straight into a PTY or a dispatch.
  */
 
-import { apiFailToast, authHeaders, readToken, toast } from './api.js';
+import { apiFailToast, apiRaw, readToken, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 
 const _CHUNK_MS = 1000;
@@ -39,12 +39,6 @@ export function pickAudioMime() {
     if (MR.isTypeSupported(candidates[i])) return candidates[i];
   }
   return '';
-}
-
-// Auth headers for the transcribe endpoints (bearer + passkey terminal
-// token), mirroring sendImage.
-export function voiceHeaders() {
-  return authHeaders({ terminalToken: readTerminalToken() });
 }
 
 // EventSource can't set headers, so the SSE stream carries auth in the
@@ -148,10 +142,10 @@ export function createDictation(opts) {
       while (_chunkQueue.length && _voiceSession) {
         const blob = _chunkQueue.shift();
         try {
-          await fetch(
+          await apiRaw(
             '/api/transcribe/sessions/' + encodeURIComponent(_voiceSession) +
               '/chunk',
-            { method: 'POST', headers: voiceHeaders(), body: blob }
+            { method: 'POST', terminalToken: readTerminalToken(), body: blob }
           );
         } catch (_) { /* a dropped chunk is recoverable; finish reconciles */ }
       }
@@ -197,8 +191,8 @@ export function createDictation(opts) {
     // Try to open a streamed session (#168). On any failure, fall back to
     // the buffered single-shot path (#165) — _streaming stays false.
     try {
-      const res = await fetch('/api/transcribe/sessions', {
-        method: 'POST', headers: voiceHeaders(),
+      const res = await apiRaw('/api/transcribe/sessions', {
+        method: 'POST', terminalToken: readTerminalToken(),
       });
       if (res.ok) {
         const body = await res.json().catch(function () { return null; });
@@ -281,9 +275,9 @@ export function createDictation(opts) {
     const stopTimer = startWorkTimer(button, '🎤');
     try {
       await drainChunks();
-      const res = await fetch(
+      const res = await apiRaw(
         '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/finish',
-        { method: 'POST', headers: voiceHeaders() }
+        { method: 'POST', terminalToken: readTerminalToken() }
       );
       if (!res.ok) {
         const b = await res.json().catch(function () { return null; });
@@ -318,8 +312,8 @@ export function createDictation(opts) {
     button.disabled = true;
     const stopTimer = startWorkTimer(button, '🎤');
     try {
-      const res = await fetch('/api/transcribe', {
-        method: 'POST', headers: voiceHeaders(), body: fd,
+      const res = await apiRaw('/api/transcribe', {
+        method: 'POST', terminalToken: readTerminalToken(), body: fd,
       });
       if (!res.ok) {
         const b = await res.json().catch(function () { return null; });
