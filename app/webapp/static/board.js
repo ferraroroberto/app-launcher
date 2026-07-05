@@ -282,27 +282,32 @@ async function startIssue(card, mode, btn) {
   }
 }
 
-// Backlog issue tiles (#337 follow-up): one compact line — repo/#/title,
-// ellipsis-truncated — plus icon-only ▶/⚡ actions on the right, instead of
-// a stacked meta-line + title + full-width button row. Doesn't use
-// cardShell() (that's the 2-line stacked layout the other card kinds keep);
-// the <li> itself becomes the flex row so the title button and the action
-// icons sit side by side without nesting a <button> inside a <button>.
+// Backlog issue tiles (#337 follow-up, restyled #339): a flat separator
+// row — no card background/border, just a bottom-border divider between
+// rows (GitHub-issue-list style) — with repo/# on one line and the title on
+// the line below, each independently truncated, and icon-only ▶/⚡ actions
+// vertically centered against the whole row. Doesn't use cardShell() (that's
+// the bordered-box layout the other card kinds keep); the <li> itself is the
+// flex row so the text stack and the action icons sit side by side without
+// nesting a <button> inside a <button>.
 function renderIssueCard(card) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-issue';
 
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'launch-btn board-card board-card-compact';
-  const titleLine = document.createElement('span');
-  titleLine.className = 'board-card-title-compact';
+  btn.className = 'launch-btn board-card board-card-flat';
+  const textCol = document.createElement('span');
+  textCol.className = 'board-card-text';
   const meta = document.createElement('span');
   meta.className = 'board-card-meta-inline';
   meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  titleLine.appendChild(meta);
-  titleLine.appendChild(document.createTextNode(' ' + (card.title || '')));
-  btn.appendChild(titleLine);
+  const title = document.createElement('span');
+  title.className = 'board-card-title-compact';
+  title.textContent = card.title || '';
+  textCol.appendChild(meta);
+  textCol.appendChild(title);
+  btn.appendChild(textCol);
   li.appendChild(btn);
   if (card.url) {
     btn.addEventListener('click', function () {

@@ -377,12 +377,12 @@ def test_backlog_start_button_posts_issue_start(
     assert body.get("mode") == "start"
 
 
-def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
+def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337 follow-up: the backlog issue tile is a single truncating line
-    (repo/#/title) with icon-only ▶/⚡ actions (no "Start"/"YOLO" text) —
-    compact enough for one row on a phone."""
+    """#339: the backlog issue tile is a flat separator row (no card
+    background/border), repo/# and title on their own lines, with
+    icon-only ▶/⚡ actions (no "Start"/"YOLO" text) vertically centered."""
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
@@ -391,7 +391,22 @@ def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
     expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
-    expect(tile.locator(".board-card-title-compact")).to_contain_text("app-launcher #301")
+    expect(tile.locator(".board-card-meta-inline")).to_have_text("app-launcher #301")
+    expect(tile.locator(".board-card-title-compact")).to_have_text(
+        "Board tab 2/3: drill-down + reply"
+    )
+
+    # No card chrome left on the <li> itself — that's where .app-item's
+    # shared background/border/radius box actually lives (every other tab's
+    # tile uses it), so clearing only the button's own chrome isn't enough;
+    # a prior build regressed exactly this way.
+    li_radius = tile.evaluate("el => getComputedStyle(el).borderRadius")
+    assert li_radius in ("0px", "0"), f"expected no border-radius on the row <li>, got {li_radius!r}"
+    li_border = tile.evaluate("el => getComputedStyle(el).borderTopStyle")
+    assert li_border == "none", f"expected no top border on the row <li>, got {li_border!r}"
+    card = tile.locator(".board-card-flat")
+    radius = card.evaluate("el => getComputedStyle(el).borderRadius")
+    assert radius in ("0px", "0"), f"expected no border-radius on the flat row, got {radius!r}"
 
     # Same /api/apps-population race as test_backlog_start_button_posts_issue_start
     # above: the ▶/⚡ actions only render once state.apps has landed, which can
@@ -406,14 +421,16 @@ def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
 def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337 follow-up regression guard: a title too long to fit must be
-    ellipsis-truncated on one line, not wrapped onto a second line. A prior
-    build passed on Chromium/desktop widths (plenty of room to spare) and on
-    the short fixture title, but wrapped to two tall lines on a real phone
-    with a real long title — a flex ellipsis bug (`min-width: 0` missing on
-    the truncating element itself) that a short title or a wide viewport
-    can't surface. This pins a long title + a real phone-narrow viewport so
-    the regression can't silently return."""
+    """#337/#339 regression guard: a title too long to fit must be
+    ellipsis-truncated on its own line, not wrapped onto a second line
+    within that line (the tile itself is legitimately two lines tall now —
+    meta line + title line — by design). A prior build passed on
+    Chromium/desktop widths (plenty of room to spare) and on the short
+    fixture title, but wrapped the title text to two tall lines on a real
+    phone with a real long title — a flex ellipsis bug (`min-width: 0`
+    missing on the truncating element itself) that a short title or a wide
+    viewport can't surface. This pins a long title + a real phone-narrow
+    viewport so the regression can't silently return."""
     long_title = (
         "This is a deliberately very long issue title meant to overflow the "
         "available card width so the truncation behavior is actually exercised"
@@ -440,10 +457,11 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     overflowing = title_el.evaluate("el => el.scrollWidth > el.clientWidth")
     assert overflowing, "title box did not overflow — the long-title fixture isn't exercising truncation"
 
-    # Single line: bounded well under what two wrapped lines would need.
-    box = tile.bounding_box()
+    # The title's own line stays single-line height — bounded well under
+    # what two wrapped lines of 14px/1.3 text would need.
+    box = title_el.bounding_box()
     assert box is not None
-    assert box["height"] < 60, f"tile is {box['height']}px tall — looks like it wrapped to 2+ lines"
+    assert box["height"] < 26, f"title is {box['height']}px tall — looks like it wrapped to 2+ lines"
 
 
 def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
