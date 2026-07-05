@@ -95,6 +95,24 @@ A job can carry `"visible": true` (omitted / `false` is the default). It changes
 
 `visible` round-trips through `POST`/`PUT` like `confirm` and is omitted from the stored row when false. It only affects **scheduled** fires meaningfully — a webapp/Stream-Deck fire spawns the executor detached with no console regardless, so the tee's console half no-ops there (the log half still works).
 
+### Elevated (admin) jobs (issue #350)
+
+A job can carry `"elevated": true` (omitted / `false` is the default) for a script whose target needs admin rights to do its work — e.g. restarting an app whose manifest requires elevation (`Start-Process`/`subprocess.Popen` from a non-elevated context fails silently: "the operation was canceled by the user", the signature of a blocked UAC prompt with nothing present to click "Yes").
+
+```json
+{
+  "id": "hwinfo-restart",
+  "name": "HWiNFO restart",
+  "script_path": "E:\\automation\\automation\\system\\hwinfo_restart.py",
+  "schedule": { "type": "hourly", "every": 8 },
+  "elevated": true
+}
+```
+
+`sync_schtasks()` appends `/RL HIGHEST` to the `schtasks /Create` call — Task Scheduler's own elevation, which is **silent** (no interactive UAC prompt), unlike an ad-hoc `Start-Process`. The elevated token carries down to whatever the executor spawns next (a plain `subprocess.Popen` inherits its parent's token), so the job's actual script runs elevated with no further wiring needed. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
+
+**Caveat — the launcher cannot register or re-sync an elevated task itself.** `/RL HIGHEST` requires the *calling* process to already be elevated (empirically verified: an admin account running non-elevated gets `ERROR: Access is denied` on the `/Create` call — being in the Administrators group is not enough, the token itself must be elevated). The launcher's webapp runs non-elevated, so `sync_schtasks()` on an `elevated: true` job will fail its `/Create` call from the Jobs tab UI — logged with an explicit hint, not silently. Worse: `sync_schtasks()` unconditionally deletes the job's existing task(s) *before* recreating them, and delete doesn't need elevation — so editing an elevated job via the Jobs tab (schedule change, etc.) will successfully delete the working task and then fail to recreate it, leaving the job **unscheduled** until someone notices. Until a follow-up adds elevation-aware resync (e.g. a self-elevating helper for just the `/Create` call), register and update an elevated job's Task Scheduler entry manually from an elevated shell, and avoid editing it through the Jobs tab UI.
+
 ### Cooldown (issue #68)
 
 A job can declare a per-job `cooldown_seconds`: a debounce window that prevents rapid manual fires (phone double-tap, Stream Deck button mash) from spawning overlapping runs of the same script.
@@ -255,6 +273,8 @@ The `/TR` (task run) command stored in Task Scheduler is quoted so paths contain
 ```
 "E:\automation\app-launcher\.venv\Scripts\pythonw.exe" "E:\automation\app-launcher\launcher.py" run-job <job_id>
 ```
+
+An `elevated: true` job (see "Elevated (admin) jobs") adds `/RL HIGHEST` to the `/Create` call — the created task itself runs elevated, not just its `/TR` string.
 
 Scheduled runs use `pythonw.exe` (silent — no console window appears on schedule fire). The repo's own `.venv` is preferred; a missing `.venv` falls back to `pythonw.exe` on PATH. A job with `"visible": true` (see "Visible console") instead runs under `python.exe` so a window appears on fire.
 

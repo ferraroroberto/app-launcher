@@ -417,6 +417,12 @@ class Job:
     # fleet codebase-audit) while still capturing output for remote
     # run-history. See ``src.jobs.task_run_command`` and the executor tee.
     visible: bool = False
+    # When True, the job's scheduled Task Scheduler entry is created with
+    # ``/RL HIGHEST`` (Task Scheduler's silent elevation — no interactive
+    # UAC prompt, unlike ``Start-Process``), for a script that needs admin
+    # rights to do its work (e.g. restarting an app whose manifest requires
+    # elevation). See ``src.jobs_schtasks.sync_schtasks``.
+    elevated: bool = False
     # When non-None, ``schedule`` is the placeholder ``Schedule(type="none")``
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
@@ -449,6 +455,8 @@ class Job:
             payload["confirm"] = True
         if self.visible:
             payload["visible"] = True
+        if self.elevated:
+            payload["elevated"] = True
         if self.paused_schedule is not None:
             payload["paused_schedule"] = self.paused_schedule.to_dict()
         return payload
@@ -574,6 +582,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
         visible=bool(raw.get("visible", False)),
+        elevated=bool(raw.get("elevated", False)),
         paused_schedule=(
             schedule_from_dict(raw["paused_schedule"])
             if raw.get("paused_schedule") is not None
@@ -780,6 +789,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.confirm = bool(fields["confirm"])
     if "visible" in fields:
         job.visible = bool(fields["visible"])
+    if "elevated" in fields:
+        job.elevated = bool(fields["elevated"])
     # Snapshot the chain edges so we can revert atomically on cycle.
     prev_success, prev_failure = job.on_success, job.on_failure
     if "on_success" in fields:

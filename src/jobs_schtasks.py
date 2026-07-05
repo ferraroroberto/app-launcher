@@ -332,13 +332,26 @@ def sync_schtasks(
             "/TR",
             tr,
         ] + schedule_part
+        if job.elevated:
+            # Task Scheduler's own elevation (silent — no interactive UAC
+            # prompt) vs. an ad-hoc Start-Process, which blocks/cancels
+            # when nothing is present to click "Yes".
+            argv += ["/RL", "HIGHEST"]
         proc = runner(argv)
         if proc.returncode == 0:
             created.append(name)
         else:
+            hint = (
+                " — /RL HIGHEST requires the CALLING process to already be "
+                "elevated (an admin account running non-elevated is not "
+                "enough); this launcher process cannot self-elevate, so "
+                "register/update this task from an elevated shell instead"
+                if job.elevated
+                else ""
+            )
             logger.warning(
                 f"⚠️  schtasks create failed for {name}: "
-                f"rc={proc.returncode} stderr={proc.stderr!r}"
+                f"rc={proc.returncode} stderr={proc.stderr!r}{hint}"
             )
     invalidate_next_run_cache()
     return created
