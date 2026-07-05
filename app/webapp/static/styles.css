@@ -2154,40 +2154,57 @@ body.terminal-open {
 .board-item.is-idle .board-card { opacity: 0.7; }
 .board-empty { margin: 4px 0 12px; }
 
-/* Compact backlog issue tiles (#337 follow-up): one line — repo/#/title,
-   ellipsis-truncated — plus icon-only Start/YOLO, vertically centered,
-   instead of the stacked meta/title/button-row every other card kind keeps.
+/* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
+   background/border/radius, just a bottom-border divider between rows
+   (GitHub-issue-list style) — with repo/# and the title on their own lines
+   and the ▶/⚡ actions vertically centered against the full row height.
    .app-item is already a row flexbox by default; .board-item overrides that
-   to a column for the stacked layout, so this pairs both classes to opt
-   back into a row. The title button drops .launch-btn/.board-card's own
-   flex-column + 60px min-height in favor of a flex ROW, and — this is the
-   part that actually matters — the truncating span itself gets
-   `flex: 1; min-width: 0`, not just its ancestors. A flex item's default
+   to a column for the stacked layout the other card kinds use, so this
+   pairs both classes to opt back into a row. .app-item ALSO carries its own
+   background/border/border-radius (the shared box every other tab's tile
+   uses) — that box lives on the <li>, not the button, so clearing the
+   button's own chrome alone isn't enough; both need resetting here. The
+   title button drops .launch-btn/.board-card's own card chrome in favor of
+   a flex ROW holding a flex-COLUMN text stack; the truncating spans still
+   need `min-width: 0` on the flex item along the row axis
+   (.board-card-text), not just its ancestors — a flex item's default
    min-width is `auto` (content-based), which silently defeats
    overflow/ellipsis by letting the item grow to fit its content instead of
-   shrinking to the row's available space; `min-width: 0` on the item that
-   is doing the truncating is the fix, everywhere (this is the textbook
-   "ellipsis inside flex doesn't truncate" bug, not a mobile-Safari quirk —
-   a `width: 100%` on a block child inside a flex-column ancestor computed
-   to a runaway width instead in practice). */
+   shrinking to the row's available space (the textbook "ellipsis inside
+   flex doesn't truncate" bug, not a mobile-Safari quirk). */
 .board-item.board-item-issue {
   flex-direction: row;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
+  margin: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  border-bottom: 1px solid var(--border-color);
 }
-.board-card-compact {
+.board-item.board-item-issue:last-child { border-bottom: none; }
+.board-card-flat {
   display: flex;
   flex-direction: row;
   align-items: center;
   flex: 1;
   min-width: 0;
-  min-height: 44px;
-  padding: 11px 14px;
+  width: auto;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 10px 4px;
+}
+.board-card-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
 }
 .board-card-title-compact {
   display: block;
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -2199,10 +2216,16 @@ body.terminal-open {
   color: var(--muted);
   font-size: 12px;
   font-weight: 400;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .board-issue-actions-compact {
   flex: 0 0 auto;
-  padding: 0 10px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 0;
 }
 .board-issue-btn.icon-only {
   min-width: 36px;
