@@ -1932,27 +1932,70 @@ body.terminal-open {
   gap: 6px;
   flex-wrap: wrap;
 }
-.board-dispatch-repo {
-  flex: 1;
-  min-width: 80px;
-  min-height: 36px;
+/* Repo/project combobox (#337): a filterable dropdown, not a native <select>
+   (which only jump-to-letter typeaheads — it never narrows the list). The
+   visible text input drives filtering; the real selection lives in the
+   hidden #boardDispatchRepo input that dispatchGoal() reads. */
+.board-repo-combo { position: relative; }
+.board-repo-combo::after {
+  content: '▾';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+.board-repo-input {
+  width: 100%;
+  min-height: 40px;
   background: var(--bg-elev-2);
   color: var(--fg);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  padding: 0 8px;
+  padding: 0 28px 0 10px;
   font-size: 13px;
-  /* Native selects paint a white control on WebKit regardless of the
-     background above — tell the engine this control is dark. */
-  color-scheme: dark;
 }
+.board-repo-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.board-repo-list li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-repo-list li[data-repo]:hover,
+.board-repo-list li[aria-selected="true"] { background: var(--bg-elev); color: var(--accent); }
+.board-repo-empty { color: var(--muted); cursor: default; }
+.board-repo-empty:hover { background: none; }
 .board-dispatch-modes { display: flex; gap: 4px; }
+/* Same 10px radius as the rest of the row's controls (compose-send/record,
+   .detached-toggle) — a 999px pill here read as a different, more-rounded
+   style than its neighbors (#337). */
 .board-mode-btn {
   min-height: 36px;
   padding: 0 10px;
   background: var(--bg-elev);
   border: 1px solid var(--border-color);
-  border-radius: 999px;
+  border-radius: 10px;
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;

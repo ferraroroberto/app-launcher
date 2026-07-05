@@ -542,32 +542,86 @@ function syncStripActive() {
 
 let dispatchMode = 'add';
 
-// Repo <select> ← the same live claude-code listing the Coding tab renders
-// (state.apps). Re-synced on tab activation and on every board render (so a
-// boot /api/apps fetch that lands late still populates it), but the options
-// are only rebuilt when the list actually changed — a rebuild mid-tap would
-// dismiss an open native select popup. The current selection survives a
-// rebuild when the repo is still listed.
+// Repo combobox (#337) ← the same live claude-code listing the Coding tab
+// renders (state.apps). Re-synced on tab activation and on every board render
+// (so a boot /api/apps fetch that lands late still populates it), but the
+// underlying name list is only rebuilt when it actually changed — a rebuild
+// mid-filter would otherwise reset a dropdown the user has open. The real
+// selection lives in the hidden #boardDispatchRepo input; the visible
+// #boardDispatchRepoInput is just a filter box over #boardDispatchRepoList.
 let _repoSig = null;
+let _repoNames = [];
+
+function repoListOpen() {
+  const list = els.boardDispatchRepoList;
+  return !!list && !list.hidden;
+}
+
+function renderRepoList(filterText) {
+  const list = els.boardDispatchRepoList;
+  const hidden = els.boardDispatchRepo;
+  if (!list) return;
+  const q = (filterText || '').trim().toLowerCase();
+  const matches = q
+    ? _repoNames.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; })
+    : _repoNames.slice();
+  list.replaceChildren();
+  if (!matches.length) {
+    const li = document.createElement('li');
+    li.className = 'board-repo-empty';
+    li.textContent = _repoNames.length ? 'No matching project' : 'No projects found';
+    list.appendChild(li);
+    return;
+  }
+  matches.forEach(function (name) {
+    const li = document.createElement('li');
+    li.textContent = name;
+    li.dataset.repo = name;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', name === hidden.value ? 'true' : 'false');
+    list.appendChild(li);
+  });
+}
+
+function openRepoList(filterText) {
+  const list = els.boardDispatchRepoList;
+  const input = els.boardDispatchRepoInput;
+  if (!list || !input) return;
+  renderRepoList(filterText);
+  list.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+}
+
+function closeRepoList() {
+  const list = els.boardDispatchRepoList;
+  const input = els.boardDispatchRepoInput;
+  if (!list || !input) return;
+  list.hidden = true;
+  input.setAttribute('aria-expanded', 'false');
+}
+
+function selectRepo(name) {
+  els.boardDispatchRepo.value = name;
+  els.boardDispatchRepoInput.value = name;
+  closeRepoList();
+}
 
 function syncDispatchRepos() {
-  const sel = els.boardDispatchRepo;
-  if (!sel) return;
+  const hidden = els.boardDispatchRepo;
+  const input = els.boardDispatchRepoInput;
+  if (!hidden || !input) return;
   const repos = (state.apps || [])
     .filter(function (a) { return a.kind === 'claude-code'; })
     .map(function (a) { return String(a.name); });
   const sig = repos.join('\n');
   if (sig === _repoSig) return;
   _repoSig = sig;
-  const current = sel.value;
-  sel.replaceChildren();
-  repos.forEach(function (name) {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
-  });
-  if (current && repos.indexOf(current) >= 0) sel.value = current;
+  _repoNames = repos;
+  const current = hidden.value;
+  const next = (current && repos.indexOf(current) >= 0) ? current : (repos[0] || '');
+  hidden.value = next;
+  input.value = next;
+  if (repoListOpen()) renderRepoList(input.value);
 }
 
 function setDispatchMode(mode) {
@@ -629,8 +683,49 @@ function syncDispatchBar() {
   }
 }
 
+function wireRepoCombo() {
+  const input = els.boardDispatchRepoInput;
+  const list = els.boardDispatchRepoList;
+  const hidden = els.boardDispatchRepo;
+  if (!input || !list || !hidden) return;
+  input.addEventListener('focus', function () {
+    openRepoList('');
+    input.select();
+  });
+  input.addEventListener('input', function () {
+    openRepoList(input.value);
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      input.value = hidden.value;
+      closeRepoList();
+      input.blur();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const first = list.querySelector('li[data-repo]');
+      if (first) selectRepo(first.dataset.repo);
+    }
+  });
+  input.addEventListener('blur', function () {
+    // A tap on a <li> fires mousedown (which selects + closes) before this
+    // blur — the delay just lets that race resolve before we snap the text
+    // back to the current selection.
+    setTimeout(function () {
+      input.value = hidden.value;
+      closeRepoList();
+    }, 150);
+  });
+  list.addEventListener('mousedown', function (e) {
+    const li = e.target.closest('li[data-repo]');
+    if (!li) return;
+    e.preventDefault(); // keep the input focused; don't let blur race the tap
+    selectRepo(li.dataset.repo);
+  });
+}
+
 function wireDispatch() {
   if (!els.boardDispatchSend) return;
+  wireRepoCombo();
   els.boardDispatchModes.querySelectorAll('.board-mode-btn')
     .forEach(function (btn) {
       btn.addEventListener('click', function () {

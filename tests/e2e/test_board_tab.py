@@ -391,7 +391,7 @@ def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
 
 
 def _mock_apps_with_app_launcher(page: Page) -> None:
-    """state.apps with one claude-code entry, so the dispatch repo select
+    """state.apps with one claude-code entry, so the dispatch repo combobox
     (and the #301 ▶/⚡ buttons) have a launchable repo."""
     page.route(
         re.compile(r".*/api/apps$"),
@@ -432,11 +432,15 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
 
     _open_board(authed_page, base_url)
-    # The repo select fills once boot's /api/apps fetch lands; the board
-    # render re-syncs it, so a full poll cycle is the worst case.
+    # The repo combobox fills once boot's /api/apps fetch lands; the board
+    # render re-syncs it, so a full poll cycle is the worst case. The real
+    # selection lives in the hidden #boardDispatchRepo input.
     expect(
-        authed_page.locator('#boardDispatchRepo option[value="app-launcher"]')
-    ).to_have_count(1, timeout=15_000)
+        authed_page.locator('#boardDispatchRepo')
+    ).to_have_value("app-launcher", timeout=15_000)
+    expect(
+        authed_page.locator('#boardDispatchRepoInput')
+    ).to_have_value("app-launcher", timeout=15_000)
 
     authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
     authed_page.locator('.board-mode-btn[data-mode="yolo"]').click()
@@ -455,6 +459,48 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     )
     authed_page.locator("#boardDispatchClear").click()
     expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
+
+
+def test_dispatch_repo_combo_shows_all_by_default_and_filters_by_typed_text(
+    authed_page: Page, base_url: str
+) -> None:
+    """#337: the repo combobox shows every claude-code project on focus, and
+    typing a substring narrows the visible list to matching names only."""
+    authed_page.route(
+        re.compile(r".*/api/apps$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"scan_root": "", "apps": [
+                {"id": "cc-app-launcher", "kind": "claude-code",
+                 "name": "app-launcher", "project_dir": "E:/automation/app-launcher"},
+                {"id": "cc-voice", "kind": "claude-code",
+                 "name": "voice-transcriber", "project_dir": "E:/automation/voice-transcriber"},
+                {"id": "cc-photo", "kind": "claude-code",
+                 "name": "photo-ocr", "project_dir": "E:/automation/photo-ocr"},
+            ]}),
+        ),
+    )
+    _mock_board(authed_page)
+    _open_board(authed_page, base_url)
+
+    expect(authed_page.locator("#boardDispatchRepo")).to_have_value(
+        "app-launcher", timeout=15_000
+    )
+
+    combo_input = authed_page.locator("#boardDispatchRepoInput")
+    combo_list = authed_page.locator("#boardDispatchRepoList")
+    combo_input.click()
+    expect(combo_list).to_be_visible()
+    expect(combo_list.locator("li[data-repo]")).to_have_count(3)
+
+    combo_input.fill("voice")
+    expect(combo_list.locator("li[data-repo]")).to_have_count(1)
+    expect(combo_list.locator("li[data-repo]")).to_have_text("voice-transcriber")
+
+    combo_list.locator("li[data-repo]").click()
+    expect(authed_page.locator("#boardDispatchRepo")).to_have_value("voice-transcriber")
+    expect(combo_input).to_have_value("voice-transcriber")
+    expect(combo_list).to_be_hidden()
 
 
 def test_dispatch_and_reply_mics_render_when_voice_available(
