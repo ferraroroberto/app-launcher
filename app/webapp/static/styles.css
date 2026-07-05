@@ -1932,10 +1932,11 @@ body.terminal-open {
   gap: 6px;
   flex-wrap: wrap;
 }
-/* Repo/project combobox (#337): a filterable dropdown, not a native <select>
-   (which only jump-to-letter typeaheads — it never narrows the list). The
-   visible text input drives filtering; the real selection lives in the
-   hidden #boardDispatchRepo input that dispatchGoal() reads. */
+/* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable
+   field — a <button> trigger, not a native <select> (which paints its own
+   OS chrome) or a text input (which would invite typing). Doubles as the
+   dispatch target AND a live filter over the board's kanban cards; "All
+   projects" (the default) shows everything. */
 .board-repo-combo { position: relative; }
 .board-repo-combo::after {
   content: '▾';
@@ -1948,6 +1949,7 @@ body.terminal-open {
   pointer-events: none;
 }
 .board-repo-input {
+  display: block;
   width: 100%;
   min-height: 40px;
   background: var(--bg-elev-2);
@@ -1956,6 +1958,10 @@ body.terminal-open {
   border-radius: 10px;
   padding: 0 28px 0 10px;
   font-size: 13px;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
 }
 .board-repo-list {
   position: absolute;
@@ -2147,6 +2153,44 @@ body.terminal-open {
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
 .board-item.is-idle .board-card { opacity: 0.7; }
 .board-empty { margin: 4px 0 12px; }
+
+/* Compact backlog issue tiles (#337 follow-up): one line — repo/#/title,
+   ellipsis-truncated — plus icon-only Start/YOLO, instead of the stacked
+   meta/title/button-row every other card kind keeps. .app-item is already a
+   row flexbox by default; .board-item overrides that to a column for the
+   stacked layout, so this pairs both classes to opt back into a row. */
+.board-item.board-item-issue {
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+}
+.board-card-compact {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+}
+.board-card-title-compact {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.board-card-meta-inline {
+  color: var(--muted);
+  font-size: 12px;
+}
+.board-issue-actions-compact {
+  flex: 0 0 auto;
+  padding: 0 10px 0 0;
+}
+.board-issue-btn.icon-only {
+  min-width: 36px;
+  padding: 8px 10px;
+  font-size: 15px;
+  text-align: center;
+}
 
 /* Drill-down drawer (#301): last exchange + reply, inline under the card. */
 .board-drawer {

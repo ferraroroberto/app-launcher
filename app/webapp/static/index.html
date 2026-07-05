@@ -339,10 +339,9 @@
           placeholder="Speak or type a goal — ➤ dispatches an /issue-* session."
           enterkeyhint="enter"></textarea>
         <div class="board-repo-combo">
-          <input type="text" id="boardDispatchRepoInput" class="board-repo-input"
-                 placeholder="Project…" autocomplete="off" spellcheck="false"
-                 role="combobox" aria-expanded="false" aria-autocomplete="list"
-                 aria-controls="boardDispatchRepoList" aria-label="Target repo">
+          <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  aria-controls="boardDispatchRepoList" aria-label="Project filter / dispatch target">All projects</button>
           <input type="hidden" id="boardDispatchRepo">
           <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>

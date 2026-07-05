@@ -282,33 +282,53 @@ async function startIssue(card, mode, btn) {
   }
 }
 
+// Backlog issue tiles (#337 follow-up): one compact line — repo/#/title,
+// ellipsis-truncated — plus icon-only ▶/⚡ actions on the right, instead of
+// a stacked meta-line + title + full-width button row. Doesn't use
+// cardShell() (that's the 2-line stacked layout the other card kinds keep);
+// the <li> itself becomes the flex row so the title button and the action
+// icons sit side by side without nesting a <button> inside a <button>.
 function renderIssueCard(card) {
-  const top = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  const shell = cardShell(top, card.title || '', '');
+  const li = document.createElement('li');
+  li.className = 'app-item board-item board-item-issue';
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'launch-btn board-card board-card-compact';
+  const titleLine = document.createElement('span');
+  titleLine.className = 'board-card-title-compact';
+  const meta = document.createElement('span');
+  meta.className = 'board-card-meta-inline';
+  meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
+  titleLine.appendChild(meta);
+  titleLine.appendChild(document.createTextNode(' ' + (card.title || '')));
+  btn.appendChild(titleLine);
+  li.appendChild(btn);
   if (card.url) {
-    shell.btn.addEventListener('click', function () {
+    btn.addEventListener('click', function () {
       window.open(card.url, '_blank', 'noopener');
     });
   }
+
   // One-tap start (#301) — only for repos the Coding tab could launch in.
-  // Buttons live on the <li>, outside the card <button> (no nesting).
   if (card.number && repoInProjects(card.repo)) {
     const row = document.createElement('div');
-    row.className = 'board-issue-actions';
-    [['start', '▶ Start'], ['yolo', '⚡ YOLO']].forEach(function (pair) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'board-issue-btn';
-      btn.textContent = pair[1];
-      btn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
-      btn.addEventListener('click', function () {
-        startIssue(card, pair[0], btn);
+    row.className = 'board-issue-actions board-issue-actions-compact';
+    [['start', '▶', 'Start'], ['yolo', '⚡', 'YOLO']].forEach(function (pair) {
+      const actionBtn = document.createElement('button');
+      actionBtn.type = 'button';
+      actionBtn.className = 'board-issue-btn icon-only';
+      actionBtn.textContent = pair[1];
+      actionBtn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
+      actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
+      actionBtn.addEventListener('click', function () {
+        startIssue(card, pair[0], actionBtn);
       });
-      row.appendChild(btn);
+      row.appendChild(actionBtn);
     });
-    shell.li.appendChild(row);
+    li.appendChild(row);
   }
-  return shell.li;
+  return li;
 }
 
 function renderPrCard(card) {
@@ -390,9 +410,12 @@ export function renderBoard() {
   const body = state.board;
   if (!body || !els.boardColumns) return;
   const columns = body.columns || {};
+  const repoFilter = boardRepoFilter();
 
   COLUMNS.forEach(function (col) {
-    const cards = columns[col.key] || [];
+    const cards = (columns[col.key] || []).filter(function (card) {
+      return matchesRepoFilter(card, repoFilter);
+    });
     const btn = els[col.btn];
     if (btn) {
       const count = btn.querySelector('.board-count');
@@ -542,38 +565,43 @@ function syncStripActive() {
 
 let dispatchMode = 'add';
 
-// Repo combobox (#337) ← the same live claude-code listing the Coding tab
-// renders (state.apps). Re-synced on tab activation and on every board render
-// (so a boot /api/apps fetch that lands late still populates it), but the
-// underlying name list is only rebuilt when it actually changed — a rebuild
-// mid-filter would otherwise reset a dropdown the user has open. The real
-// selection lives in the hidden #boardDispatchRepo input; the visible
-// #boardDispatchRepoInput is just a filter box over #boardDispatchRepoList.
+// Repo/project dropdown (#337) ← the same live claude-code listing the
+// Coding tab renders (state.apps). It is a plain tap-to-open/tap-to-select
+// dropdown, not a typable field — a button trigger, not an <input>. It does
+// double duty: the real dispatch target lives in the hidden
+// #boardDispatchRepo input dispatchGoal() reads, AND the current selection
+// (or "All projects", the default) filters which cards renderBoard() shows
+// in every column via boardRepoFilter()/cardRepoOf() below.
+// Re-synced on tab activation and on every board render (so a boot /api/apps
+// fetch that lands late still populates it), but the underlying name list is
+// only rebuilt when it actually changed — a rebuild mid-browse would
+// otherwise reset a dropdown the user has open.
 let _repoSig = null;
 let _repoNames = [];
+
+const ALL_PROJECTS_LABEL = 'All projects';
 
 function repoListOpen() {
   const list = els.boardDispatchRepoList;
   return !!list && !list.hidden;
 }
 
-function renderRepoList(filterText) {
+function repoDisplayLabel(name) {
+  return name || ALL_PROJECTS_LABEL;
+}
+
+function renderRepoList() {
   const list = els.boardDispatchRepoList;
   const hidden = els.boardDispatchRepo;
   if (!list) return;
-  const q = (filterText || '').trim().toLowerCase();
-  const matches = q
-    ? _repoNames.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; })
-    : _repoNames.slice();
   list.replaceChildren();
-  if (!matches.length) {
-    const li = document.createElement('li');
-    li.className = 'board-repo-empty';
-    li.textContent = _repoNames.length ? 'No matching project' : 'No projects found';
-    list.appendChild(li);
-    return;
-  }
-  matches.forEach(function (name) {
+  const allLi = document.createElement('li');
+  allLi.textContent = ALL_PROJECTS_LABEL;
+  allLi.dataset.repo = '';
+  allLi.setAttribute('role', 'option');
+  allLi.setAttribute('aria-selected', hidden.value === '' ? 'true' : 'false');
+  list.appendChild(allLi);
+  _repoNames.forEach(function (name) {
     const li = document.createElement('li');
     li.textContent = name;
     li.dataset.repo = name;
@@ -583,33 +611,36 @@ function renderRepoList(filterText) {
   });
 }
 
-function openRepoList(filterText) {
+function openRepoList() {
   const list = els.boardDispatchRepoList;
-  const input = els.boardDispatchRepoInput;
-  if (!list || !input) return;
-  renderRepoList(filterText);
+  const btn = els.boardDispatchRepoBtn;
+  if (!list || !btn) return;
+  renderRepoList();
   list.hidden = false;
-  input.setAttribute('aria-expanded', 'true');
+  btn.setAttribute('aria-expanded', 'true');
 }
 
 function closeRepoList() {
   const list = els.boardDispatchRepoList;
-  const input = els.boardDispatchRepoInput;
-  if (!list || !input) return;
+  const btn = els.boardDispatchRepoBtn;
+  if (!list || !btn) return;
   list.hidden = true;
-  input.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-expanded', 'false');
 }
 
 function selectRepo(name) {
   els.boardDispatchRepo.value = name;
-  els.boardDispatchRepoInput.value = name;
+  els.boardDispatchRepoBtn.textContent = repoDisplayLabel(name);
   closeRepoList();
+  // The same selection scopes the visible kanban cards (#337) — apply it
+  // immediately rather than waiting for the next 5 s poll.
+  renderBoard();
 }
 
 function syncDispatchRepos() {
   const hidden = els.boardDispatchRepo;
-  const input = els.boardDispatchRepoInput;
-  if (!hidden || !input) return;
+  const btn = els.boardDispatchRepoBtn;
+  if (!hidden || !btn) return;
   const repos = (state.apps || [])
     .filter(function (a) { return a.kind === 'claude-code'; })
     .map(function (a) { return String(a.name); });
@@ -617,11 +648,31 @@ function syncDispatchRepos() {
   if (sig === _repoSig) return;
   _repoSig = sig;
   _repoNames = repos;
+  // '' ("All projects") is always a valid selection — only reset a specific
+  // repo pick back to "All" if that repo dropped out of the live list.
   const current = hidden.value;
-  const next = (current && repos.indexOf(current) >= 0) ? current : (repos[0] || '');
+  const next = (!current || repos.indexOf(current) >= 0) ? current : '';
   hidden.value = next;
-  input.value = next;
-  if (repoListOpen()) renderRepoList(input.value);
+  btn.textContent = repoDisplayLabel(next);
+  if (repoListOpen()) renderRepoList();
+}
+
+// The repo/project identity of a card, whatever kind it is — issue/PR/done
+// cards carry `repo`, live session cards carry `project`. Job cards carry
+// neither (they aren't tied to a coding project) and are hidden by a
+// specific-project filter, same as any other non-matching card.
+function cardRepoOf(card) {
+  return card.repo || card.project || null;
+}
+
+function boardRepoFilter() {
+  return els.boardDispatchRepo ? els.boardDispatchRepo.value : '';
+}
+
+function matchesRepoFilter(card, filter) {
+  if (!filter) return true;
+  const repo = cardRepoOf(card);
+  return !!repo && String(repo).toLowerCase() === String(filter).toLowerCase();
 }
 
 function setDispatchMode(mode) {
@@ -684,42 +735,26 @@ function syncDispatchBar() {
 }
 
 function wireRepoCombo() {
-  const input = els.boardDispatchRepoInput;
+  const btn = els.boardDispatchRepoBtn;
   const list = els.boardDispatchRepoList;
-  const hidden = els.boardDispatchRepo;
-  if (!input || !list || !hidden) return;
-  input.addEventListener('focus', function () {
-    openRepoList('');
-    input.select();
+  const combo = btn && btn.closest('.board-repo-combo');
+  if (!btn || !list || !combo) return;
+  btn.addEventListener('click', function () {
+    if (repoListOpen()) closeRepoList(); else openRepoList();
   });
-  input.addEventListener('input', function () {
-    openRepoList(input.value);
+  btn.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeRepoList();
   });
-  input.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      input.value = hidden.value;
-      closeRepoList();
-      input.blur();
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      const first = list.querySelector('li[data-repo]');
-      if (first) selectRepo(first.dataset.repo);
-    }
-  });
-  input.addEventListener('blur', function () {
-    // A tap on a <li> fires mousedown (which selects + closes) before this
-    // blur — the delay just lets that race resolve before we snap the text
-    // back to the current selection.
-    setTimeout(function () {
-      input.value = hidden.value;
-      closeRepoList();
-    }, 150);
-  });
-  list.addEventListener('mousedown', function (e) {
+  list.addEventListener('click', function (e) {
     const li = e.target.closest('li[data-repo]');
     if (!li) return;
-    e.preventDefault(); // keep the input focused; don't let blur race the tap
     selectRepo(li.dataset.repo);
+  });
+  // Tapping anywhere outside the trigger/list closes it — there's no text
+  // focus to lose (it's a button, not an input), so a plain outside-click
+  // check is enough; no blur-race handling needed.
+  document.addEventListener('click', function (e) {
+    if (repoListOpen() && !combo.contains(e.target)) closeRepoList();
   });
 }
 

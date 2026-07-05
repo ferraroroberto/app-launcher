@@ -377,6 +377,28 @@ def test_backlog_start_button_posts_issue_start(
     assert body.get("mode") == "start"
 
 
+def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
+    authed_page: Page, base_url: str
+) -> None:
+    """#337 follow-up: the backlog issue tile is a single truncating line
+    (repo/#/title) with icon-only ▶/⚡ actions (no "Start"/"YOLO" text) —
+    compact enough for one row on a phone."""
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page)
+    _open_board(authed_page, base_url)
+    authed_page.locator("#boardColBacklog").click()
+
+    tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
+    expect(tile).to_be_visible(timeout=15_000)
+    expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
+    expect(tile.locator(".board-card-title-compact")).to_contain_text("app-launcher #301")
+
+    actions = tile.locator(".board-issue-btn")
+    expect(actions).to_have_count(2)
+    expect(actions.nth(0)).to_have_text("▶")
+    expect(actions.nth(1)).to_have_text("⚡")
+
+
 def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
     """#301: ?board=<sid> lands on the Board with that card's drawer open —
     the target of the Slack-ping deep link."""
@@ -432,15 +454,16 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
 
     _open_board(authed_page, base_url)
-    # The repo combobox fills once boot's /api/apps fetch lands; the board
-    # render re-syncs it, so a full poll cycle is the worst case. The real
-    # selection lives in the hidden #boardDispatchRepo input.
+    # The repo dropdown fills once boot's /api/apps fetch lands; the board
+    # render re-syncs it, so a full poll cycle is the worst case. It defaults
+    # to "All projects" (empty target), so the send needs an explicit pick.
+    expect(authed_page.locator("#boardDispatchRepoBtn")).to_be_visible(timeout=15_000)
+    authed_page.locator("#boardDispatchRepoBtn").click()
+    authed_page.locator('#boardDispatchRepoList li[data-repo="app-launcher"]').click()
     expect(
         authed_page.locator('#boardDispatchRepo')
-    ).to_have_value("app-launcher", timeout=15_000)
-    expect(
-        authed_page.locator('#boardDispatchRepoInput')
-    ).to_have_value("app-launcher", timeout=15_000)
+    ).to_have_value("app-launcher")
+    expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
 
     authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
     authed_page.locator('.board-mode-btn[data-mode="yolo"]').click()
@@ -461,11 +484,14 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
 
 
-def test_dispatch_repo_combo_shows_all_by_default_and_filters_by_typed_text(
+def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337: the repo combobox shows every claude-code project on focus, and
-    typing a substring narrows the visible list to matching names only."""
+    """#337: the project selector is a tap-to-select dropdown (no typing —
+    a <button> trigger, not a text field), defaults to "All projects" (every
+    card visible), and picking a specific project filters every kanban
+    column down to that project's cards (job cards, which carry no
+    repo/project, drop out of any specific-project filter)."""
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -475,6 +501,8 @@ def test_dispatch_repo_combo_shows_all_by_default_and_filters_by_typed_text(
                  "name": "app-launcher", "project_dir": "E:/automation/app-launcher"},
                 {"id": "cc-voice", "kind": "claude-code",
                  "name": "voice-transcriber", "project_dir": "E:/automation/voice-transcriber"},
+                {"id": "cc-life-os", "kind": "claude-code",
+                 "name": "life-os", "project_dir": "E:/automation/life-os"},
                 {"id": "cc-photo", "kind": "claude-code",
                  "name": "photo-ocr", "project_dir": "E:/automation/photo-ocr"},
             ]}),
@@ -483,24 +511,47 @@ def test_dispatch_repo_combo_shows_all_by_default_and_filters_by_typed_text(
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    expect(authed_page.locator("#boardDispatchRepo")).to_have_value(
-        "app-launcher", timeout=15_000
-    )
-
-    combo_input = authed_page.locator("#boardDispatchRepoInput")
+    repo_btn = authed_page.locator("#boardDispatchRepoBtn")
     combo_list = authed_page.locator("#boardDispatchRepoList")
-    combo_input.click()
+
+    # No editable text field exists at all — it's a real <button>.
+    expect(authed_page.locator("#boardDispatchRepoInput")).to_have_count(0)
+    assert repo_btn.evaluate("el => el.tagName") == "BUTTON"
+
+    # Default: "All projects" — every _FAKE_BOARD card visible, unfiltered.
+    expect(repo_btn).to_have_text("All projects", timeout=15_000)
+    expect(authed_page.locator("#boardDispatchRepo")).to_have_value("")
+    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("3")
+    expect(authed_page.locator("#boardColDone .board-count")).to_have_text("1")
+
+    repo_btn.click()
     expect(combo_list).to_be_visible()
-    expect(combo_list.locator("li[data-repo]")).to_have_count(3)
+    expect(combo_list.locator("li[data-repo]")).to_have_count(5)  # "All" + 4 projects
 
-    combo_input.fill("voice")
-    expect(combo_list.locator("li[data-repo]")).to_have_count(1)
-    expect(combo_list.locator("li[data-repo]")).to_have_text("voice-transcriber")
-
-    combo_list.locator("li[data-repo]").click()
-    expect(authed_page.locator("#boardDispatchRepo")).to_have_value("voice-transcriber")
-    expect(combo_input).to_have_value("voice-transcriber")
+    combo_list.locator('li[data-repo="app-launcher"]').click()
     expect(combo_list).to_be_hidden()
+    expect(repo_btn).to_have_text("app-launcher")
+    expect(authed_page.locator("#boardDispatchRepo")).to_have_value("app-launcher")
+
+    # Filtered to app-launcher: backlog issue (repo=app-launcher) stays;
+    # Claude's turn (life-os session) and Done (voice-transcriber PR) empty
+    # out; Your turn keeps only the app-launcher PR, dropping the photo-ocr
+    # session and the job card (no project at all).
+    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("0")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColDone .board-count")).to_have_text("0")
+    yours = authed_page.locator('.board-list[data-col="your_turn"] li.board-item')
+    expect(yours).to_have_count(1)
+    expect(yours.first).to_contain_text("PR #158")
+
+    # Picking "All projects" again restores every column.
+    repo_btn.click()
+    combo_list.locator('li[data-repo=""]').click()
+    expect(repo_btn).to_have_text("All projects")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("3")
 
 
 def test_dispatch_and_reply_mics_render_when_voice_available(
