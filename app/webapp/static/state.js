@@ -123,6 +123,8 @@ export const els = {
   boardColDone: document.getElementById('boardColDone'),
   boardDispatchGoal: document.getElementById('boardDispatchGoal'),
   boardDispatchRepo: document.getElementById('boardDispatchRepo'),
+  boardDispatchRepoBtn: document.getElementById('boardDispatchRepoBtn'),
+  boardDispatchRepoList: document.getElementById('boardDispatchRepoList'),
   boardDispatchModes: document.getElementById('boardDispatchModes'),
   boardDispatchOpus: document.getElementById('boardDispatchOpus'),
   boardDispatchRecord: document.getElementById('boardDispatchRecord'),

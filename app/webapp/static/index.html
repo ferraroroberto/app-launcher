@@ -338,8 +338,14 @@
           rows="2"
           placeholder="Speak or type a goal — ➤ dispatches an /issue-* session."
           enterkeyhint="enter"></textarea>
+        <div class="board-repo-combo">
+          <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  aria-controls="boardDispatchRepoList" aria-label="Project filter / dispatch target">All projects</button>
+          <input type="hidden" id="boardDispatchRepo">
+          <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
+        </div>
         <div class="board-dispatch-row">
-          <select id="boardDispatchRepo" class="board-dispatch-repo" aria-label="Target repo"></select>
           <div id="boardDispatchModes" class="board-dispatch-modes" role="radiogroup" aria-label="Dispatch mode">
             <button type="button" class="board-mode-btn active" data-mode="add"
                     role="radio" aria-checked="true" title="/issue-add — file the issue only">add</button>
