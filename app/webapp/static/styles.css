@@ -2155,31 +2155,50 @@ body.terminal-open {
 .board-empty { margin: 4px 0 12px; }
 
 /* Compact backlog issue tiles (#337 follow-up): one line — repo/#/title,
-   ellipsis-truncated — plus icon-only Start/YOLO, instead of the stacked
-   meta/title/button-row every other card kind keeps. .app-item is already a
-   row flexbox by default; .board-item overrides that to a column for the
-   stacked layout, so this pairs both classes to opt back into a row. */
+   ellipsis-truncated — plus icon-only Start/YOLO, vertically centered,
+   instead of the stacked meta/title/button-row every other card kind keeps.
+   .app-item is already a row flexbox by default; .board-item overrides that
+   to a column for the stacked layout, so this pairs both classes to opt
+   back into a row. The title button drops .launch-btn/.board-card's own
+   flex-column + 60px min-height in favor of a flex ROW, and — this is the
+   part that actually matters — the truncating span itself gets
+   `flex: 1; min-width: 0`, not just its ancestors. A flex item's default
+   min-width is `auto` (content-based), which silently defeats
+   overflow/ellipsis by letting the item grow to fit its content instead of
+   shrinking to the row's available space; `min-width: 0` on the item that
+   is doing the truncating is the fix, everywhere (this is the textbook
+   "ellipsis inside flex doesn't truncate" bug, not a mobile-Safari quirk —
+   a `width: 100%` on a block child inside a flex-column ancestor computed
+   to a runaway width instead in practice). */
 .board-item.board-item-issue {
   flex-direction: row;
   align-items: center;
   gap: 2px;
 }
 .board-card-compact {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
   flex: 1;
   min-width: 0;
-  padding: 12px 14px;
+  min-height: 44px;
+  padding: 11px 14px;
 }
 .board-card-title-compact {
   display: block;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .board-card-meta-inline {
   color: var(--muted);
   font-size: 12px;
+  font-weight: 400;
 }
 .board-issue-actions-compact {
   flex: 0 0 auto;

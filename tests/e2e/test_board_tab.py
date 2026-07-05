@@ -399,6 +399,49 @@ def test_backlog_issue_tile_is_one_line_with_icon_only_actions(
     expect(actions.nth(1)).to_have_text("⚡")
 
 
+def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
+    authed_page: Page, base_url: str
+) -> None:
+    """#337 follow-up regression guard: a title too long to fit must be
+    ellipsis-truncated on one line, not wrapped onto a second line. A prior
+    build passed on Chromium/desktop widths (plenty of room to spare) and on
+    the short fixture title, but wrapped to two tall lines on a real phone
+    with a real long title — a flex ellipsis bug (`min-width: 0` missing on
+    the truncating element itself) that a short title or a wide viewport
+    can't surface. This pins a long title + a real phone-narrow viewport so
+    the regression can't silently return."""
+    long_title = (
+        "This is a deliberately very long issue title meant to overflow the "
+        "available card width so the truncation behavior is actually exercised"
+    )
+    payload = copy.deepcopy(_FAKE_BOARD)
+    payload["columns"]["backlog"] = [{
+        "kind": "issue", "repo": "app-launcher", "number": 999,
+        "title": long_title,
+        "url": "https://github.com/ferraroroberto/app-launcher/issues/999",
+        "updated_at": "2026-07-01T10:00:00Z", "labels": [],
+    }]
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page, payload)
+    _open_board(authed_page, base_url)
+    authed_page.locator("#boardColBacklog").click()
+
+    tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
+    title_el = tile.locator(".board-card-title-compact")
+    expect(title_el).to_be_visible(timeout=15_000)
+
+    # The full title can't possibly render on one line at this viewport width
+    # — scrollWidth exceeding clientWidth proves the box is actually clipping
+    # (truncating) rather than having silently grown/wrapped to fit it all.
+    overflowing = title_el.evaluate("el => el.scrollWidth > el.clientWidth")
+    assert overflowing, "title box did not overflow — the long-title fixture isn't exercising truncation"
+
+    # Single line: bounded well under what two wrapped lines would need.
+    box = tile.bounding_box()
+    assert box is not None
+    assert box["height"] < 60, f"tile is {box['height']}px tall — looks like it wrapped to 2+ lines"
+
+
 def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
     """#301: ?board=<sid> lands on the Board with that card's drawer open —
     the target of the Slack-ping deep link."""
