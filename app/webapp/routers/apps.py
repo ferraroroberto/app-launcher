@@ -51,10 +51,9 @@ from src.webapp_config import (
 )
 
 from app.webapp.routers._helpers import (
-    cert_present,
+    audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
-    should_mirror_to_pc,
 )
 
 logger = logging.getLogger(__name__)
@@ -277,31 +276,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         except OSError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         sid = str(session.get("session_id") or "")
-        audit.audit_event(
-            "session_start",
-            session=sid,
-            agent=agent,
-            name=entry.name,
-            project=entry.project_dir,
-            resume=resume,
-            client=client_ip(request),
+        await audit_session_start_and_maybe_mirror(
+            cfg, request, body,
+            sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
+            resume=resume, audit_mod=audit, mirror_fn=open_local_terminal_window,
         )
-        audit.session_log(
-            sid, "start", agent=agent, name=entry.name, project=entry.project_dir
-        )
-        # Mirror the session into a dedicated interactive terminal window on
-        # the PC for both phone and desktop-browser launches (issue #241 —
-        # see should_mirror_to_pc); only a non-desktop loopback launch renders
-        # in-page and skips it. The PC window connects over loopback,
-        # bypassing the Tailscale + passkey gate.
-        if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
-            scheme = "https" if cert_present() else "http"
-            pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
-            # Pass sid so launcher tracks the mirror window's HWND for
-            # Stop & Close to dismiss it later (issue #20).
-            asyncio.create_task(
-                asyncio.to_thread(open_local_terminal_window, pc_url, sid)
-            )
         return {
             "launched": entry.id,
             "name": entry.name,
