@@ -13,8 +13,13 @@ PyYAML>=6.0
 # Process introspection (port-owner lookup, smart kill)
 psutil>=5.9
 
-# Icon generation
+# Icon generation — dev-only: scripts/gen_icons.py calls project-scaffolding's
+# shared brand_gen.py, which rasterizes the vendored Lucide master SVGs with
+# resvg-py (prebuilt wheel, no system deps) and assembles the .ico/.png set
+# with Pillow. Generated assets are committed; the runtime webapp never
+# imports either.
 Pillow>=10.0
+resvg-py>=0.3.0
 
 # Webapp
 fastapi>=0.110
