@@ -4,10 +4,13 @@ lives here instead.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Callable, Dict, Optional
 
 from fastapi import Request, WebSocket
+
+from src.webapp_config import WebappConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -64,6 +67,63 @@ def should_mirror_to_pc(
     if not show_local_window:
         return False
     return bool(body.get("desktop")) or client_ip(request) not in LOOPBACK_HOSTS
+
+
+async def audit_session_start_and_maybe_mirror(
+    cfg: WebappConfig,
+    request: Request,
+    body: Dict[str, Any],
+    *,
+    sid: str,
+    agent: str,
+    name: str,
+    project: str,
+    audit_mod: Any,
+    mirror_fn: Callable[[str, str], Any],
+    resume: Optional[bool] = None,
+    skill: Optional[str] = None,
+) -> None:
+    """Audit a freshly spawned PTY session, then mirror it to a PC terminal
+    window if appropriate (issue #241) — the shared tail every PTY-launch
+    call site (Coding tab ``apps.py``, Board issue-start/dispatch
+    ``board.py``) needs right after ``spawn_claude_session`` (issue #334).
+
+    Life OS (``routers/life_os.py``) already has its own
+    ``_spawn_skill_session`` covering this same tail plus the "remote" kind
+    and response-shaping, so it isn't routed through here — this helper only
+    dedupes the three PTY call sites that don't have an equivalent.
+
+    ``audit_mod`` / ``mirror_fn`` must be the *caller's own* module-level
+    ``audit`` / ``open_local_terminal_window`` references (not this module's)
+    so ``tests/conftest.py``'s per-router monkeypatches — which stub the
+    audit writer and stub the mirror spawn to keep unit tests from spawning
+    real windows or writing real audit logs — still take effect when this
+    helper runs on the caller's behalf.
+    """
+    audit_mod.audit_event(
+        "session_start",
+        session=sid,
+        agent=agent,
+        skill=skill,
+        name=name,
+        project=project,
+        resume=resume,
+        client=client_ip(request),
+    )
+    audit_mod.session_log(
+        sid, "start", agent=agent, skill=skill, name=name, project=project,
+    )
+    # Mirror the session into a dedicated interactive terminal window on the
+    # PC for both phone and desktop-browser launches (issue #241 — see
+    # should_mirror_to_pc); only a non-desktop loopback launch renders
+    # in-page and skips it. The PC window connects over loopback, bypassing
+    # the Tailscale + passkey gate.
+    if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
+        scheme = "https" if cert_present() else "http"
+        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+        # Pass sid so launcher tracks the mirror window's HWND for Stop &
+        # Close to dismiss it later (issue #20).
+        asyncio.create_task(asyncio.to_thread(mirror_fn, pc_url, sid))
 
 
 def client_ip_ws(websocket: WebSocket) -> str:

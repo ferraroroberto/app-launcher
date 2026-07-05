@@ -56,10 +56,8 @@ from src.registry import live_claude_code_entries
 from src.webapp_config import WebappConfig, build_claude_flags
 
 from app.webapp.routers._helpers import (
-    cert_present,
-    client_ip,
+    audit_session_start_and_maybe_mirror,
     maybe_json,
-    should_mirror_to_pc,
 )
 
 logger = logging.getLogger(__name__)
@@ -227,25 +225,11 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc))
 
     sid = str(session.get("session_id") or "")
-    audit.audit_event(
-        "session_start",
-        session=sid,
-        agent="claude",
-        name=entry.name,
-        project=entry.project_dir,
-        skill=prompt,
-        client=client_ip(request),
+    await audit_session_start_and_maybe_mirror(
+        cfg, request, body,
+        sid=sid, agent="claude", name=entry.name, project=entry.project_dir,
+        skill=prompt, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
-    audit.session_log(
-        sid, "start", agent="claude", name=entry.name,
-        project=entry.project_dir, skill=prompt,
-    )
-    if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
-        scheme = "https" if cert_present() else "http"
-        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
-        asyncio.create_task(
-            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
-        )
     return {"launched": prompt, "repo": entry.name, "session": session}
 
 
@@ -397,23 +381,9 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
             raise
         raise HTTPException(status_code=exc.status, detail=str(exc))
 
-    audit.audit_event(
-        "session_start",
-        session=sid,
-        agent="claude",
-        name=entry.name,
-        project=entry.project_dir,
-        skill=command,
-        client=client_ip(request),
+    await audit_session_start_and_maybe_mirror(
+        cfg, request, body,
+        sid=sid, agent="claude", name=entry.name, project=entry.project_dir,
+        skill=command, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
-    audit.session_log(
-        sid, "start", agent="claude", name=entry.name,
-        project=entry.project_dir, skill=command,
-    )
-    if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
-        scheme = "https" if cert_present() else "http"
-        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
-        asyncio.create_task(
-            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
-        )
     return {"launched": command, "repo": entry.name, "session": session}
