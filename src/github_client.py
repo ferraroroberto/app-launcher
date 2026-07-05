@@ -102,7 +102,22 @@ def _norm_pr(row: Dict[str, Any]) -> Dict[str, Any]:
         "url": row.get("url"),
         "updated_at": row.get("updatedAt"),
         "is_draft": bool(row.get("isDraft")),
+        "labels": [
+            lab.get("name")
+            for lab in (row.get("labels") or [])
+            if isinstance(lab, dict) and lab.get("name")
+        ],
     }
+
+
+# The fleet's ``/codebase-audit`` skill files ledger/decision-log issues under
+# this label ("codebase-audit ledger / metadata — not actionable work") —
+# real bookkeeping, not dispatchable work, so the Board hides them entirely.
+_NON_ACTIONABLE_LABELS = {"audit-meta"}
+
+
+def _is_actionable(labels: Sequence[str]) -> bool:
+    return not any(str(lab).lower() in _NON_ACTIONABLE_LABELS for lab in labels)
 
 
 def search_open_issues(owner: str) -> List[Dict[str, Any]]:
@@ -114,7 +129,8 @@ def search_open_issues(owner: str) -> List[Dict[str, Any]]:
         "--limit", str(_ISSUE_LIMIT),
         "--json", _SEARCH_FIELDS + ",labels",
     ])
-    return [_norm_issue(r) for r in rows]
+    issues = [_norm_issue(r) for r in rows]
+    return [i for i in issues if _is_actionable(i["labels"])]
 
 
 def search_open_prs(owner: str) -> List[Dict[str, Any]]:
@@ -124,9 +140,10 @@ def search_open_prs(owner: str) -> List[Dict[str, Any]]:
         "--state", "open",
         "--sort", "updated",
         "--limit", str(_PR_LIMIT),
-        "--json", _SEARCH_FIELDS + ",isDraft",
+        "--json", _SEARCH_FIELDS + ",isDraft,labels",
     ])
-    return [_norm_pr(r) for r in rows]
+    prs = [_norm_pr(r) for r in rows]
+    return [p for p in prs if _is_actionable(p["labels"])]
 
 
 # GitHub's closing keywords, as they appear in PR bodies ("Closes #300",
@@ -169,7 +186,7 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         "--merged-at", f">={since}",
         "--sort", "updated",
         "--limit", str(_PR_LIMIT),
-        "--json", _SEARCH_FIELDS + ",body",
+        "--json", _SEARCH_FIELDS + ",body,labels",
     ])
     closed = _search_json([
         "search", "issues",
@@ -178,18 +195,24 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         "--closed", f">={since}",
         "--sort", "updated",
         "--limit", str(_ISSUE_LIMIT),
-        "--json", _SEARCH_FIELDS,
+        "--json", _SEARCH_FIELDS + ",labels",
     ])
     done: List[Dict[str, Any]] = []
     paired: Set[Tuple[str, int]] = set()
     for row in merged:
-        card = {**_norm_pr(row), "state": "merged"}
+        pr = _norm_pr(row)
+        if not _is_actionable(pr["labels"]):
+            continue
+        card = {**pr, "state": "merged"}
         card["closes"] = _closed_refs(card["repo"], str(row.get("body") or ""))
         for number in card["closes"]:
             paired.add((card["repo"].lower(), number))
         done.append(card)
     for row in closed:
-        card = {**_norm_issue(row), "state": "closed", "labels": []}
+        issue = _norm_issue(row)
+        if not _is_actionable(issue["labels"]):
+            continue
+        card = {**issue, "state": "closed", "labels": []}
         if (str(card["repo"]).lower(), card.get("number")) in paired:
             continue  # folded into its merged PR's card
         done.append(card)

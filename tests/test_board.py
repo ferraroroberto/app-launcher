@@ -560,6 +560,90 @@ def test_github_refresh_and_snapshot(monkeypatch):
     assert len(fake.calls) == calls_before
 
 
+def test_search_open_issues_filters_audit_meta_label(monkeypatch):
+    """Ledger/metadata issues from ``/codebase-audit`` (label ``audit-meta``)
+    are bookkeeping, not dispatchable work — the Board hides them."""
+    actionable = {
+        "repository": {"nameWithOwner": "ferraroroberto/voice-transcriber"},
+        "number": 95, "title": "Usage analytics", "url": "u95",
+        "updatedAt": "2026-07-02T10:00:00Z",
+        "labels": [{"name": "enhancement"}],
+    }
+    ledger = {
+        "repository": {"nameWithOwner": "ferraroroberto/voice-transcriber"},
+        "number": 37, "title": "codebase-audit ledger", "url": "u37",
+        "updatedAt": "2026-07-01T10:00:00Z",
+        "labels": [{"name": "audit-meta"}],
+    }
+
+    def fake_run(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=json.dumps([actionable, ledger]), stderr=""
+        )
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    issues = github_client.search_open_issues("ferraroroberto")
+    assert [i["number"] for i in issues] == [95]
+
+
+def test_search_open_prs_filters_audit_meta_label(monkeypatch):
+    actionable = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 158, "title": "keyboard-aware overlay", "url": "u158",
+        "updatedAt": "2026-07-02T09:00:00Z", "isDraft": False,
+        "labels": [{"name": "bug"}],
+    }
+    ledger_pr = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 200, "title": "audit ledger housekeeping", "url": "u200",
+        "updatedAt": "2026-07-02T09:00:00Z", "isDraft": False,
+        "labels": [{"name": "audit-meta"}],
+    }
+
+    def fake_run(argv, **kwargs):
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=json.dumps([actionable, ledger_pr]), stderr=""
+        )
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    prs = github_client.search_open_prs("ferraroroberto")
+    assert [p["number"] for p in prs] == [158]
+
+
+def test_done_today_filters_audit_meta_issue_and_pr(monkeypatch):
+    merged_ledger_pr = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 201, "title": "audit ledger sweep", "url": "u201",
+        "updatedAt": "2026-07-02T15:00:00Z",
+        "body": "Closes #202.",
+        "labels": [{"name": "audit-meta"}],
+    }
+    closed_ledger_issue = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 37, "title": "codebase-audit ledger", "url": "u37",
+        "updatedAt": "2026-07-02T14:00:00Z",
+        "labels": [{"name": "audit-meta"}],
+    }
+    closed_real_issue = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": 9, "title": "closed by hand", "url": "u9",
+        "updatedAt": "2026-07-02T14:30:00Z",
+        "labels": [{"name": "bug"}],
+    }
+
+    def fake_run(argv, **kwargs):
+        if "prs" in argv:
+            rows = [merged_ledger_pr]
+        else:
+            rows = [closed_ledger_issue, closed_real_issue]
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    done = github_client.search_done_today("ferraroroberto")
+    cards = {(d["kind"], d["repo"], d["number"]) for d in done}
+    assert cards == {("issue", "app-launcher", 9)}
+
+
 def test_done_pairs_closed_issue_with_merging_pr(monkeypatch):
     """One card per unit of work (#301 phone feedback): an issue closed by a
     merged PR ("Closes #N" in its body) folds into the PR card; issues
