@@ -315,7 +315,8 @@ Checks performed:
 1. **`script_path` exists** → *error* if the file is missing (the single most common authoring mistake).
 2. **`.py` venv walk-up** → *warning* when no ancestor `.venv\Scripts\python.exe` is found; the executor will fall back to `sys.executable`. Mirrors the executor's own `resolve_venv_python` (now living in `src/jobs.py`) so the check matches runtime behaviour exactly.
 3. **`.bat` embedded `.venv` reference** → *warning* when the wrapper names a `.venv` interpreter / `activate` path that doesn't resolve (best-effort text scan).
-4. **`args` lex** → *error* when `shlex.split(args, posix=False)` raises (e.g. an unbalanced quote), rather than letting the executor mangle a value silently.
+
+**Not a check** — `args` splitting: the executor uses plain `str.split()` (whitespace only, no shell quoting), so any non-empty string splits cleanly under that contract; there is nothing to validate at save time. Jobs that need arguments containing spaces should embed them in the `.bat` / `.py` wrapper instead — see the `build_invocation` docstring in `app/cli/commands/run_job_cmd.py`.
 
 ### Two-phase flow (errors block, warnings confirm)
 
@@ -325,7 +326,7 @@ Checks performed:
 - **Warnings only, not acknowledged** → `200 {"saved": false, "warnings": [...]}`. Nothing is persisted; the dialog stays open showing the warnings with a **Save anyway** button.
 - **Warnings acknowledged** (`"acknowledge_warnings": true` in the body) **or no problems** → the row is saved and the response is `{"job": ..., "saved": true, "warnings": [...]}` (the warnings are echoed back so the UI can still note them).
 
-Each `Problem` is `{level, field, message}` — `field` (`script_path` / `args`) lets the dialog place the message next to the offending input.
+Each `Problem` is `{level, field, message}` — `field` (currently always `script_path`) lets the dialog place the message next to the offending input.
 
 **Deferred** (issue #69, not implemented): the schtasks `/TR` round-trip check and the schtasks id-collision query. Both would require shelling out to `schtasks.exe` from the request path; the `/TR` string carries only launcher-internal paths (never user input), so the value is low and the cost — forcing schtasks mocking into every create test — is high.
 
