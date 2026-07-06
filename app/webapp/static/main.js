@@ -16,7 +16,7 @@ import { fetchSkills, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
-import { fetchWebauthnStatus, wireWebauthn } from './webauthn.js';
+import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
 
 // --------------------------------------------------------- settings panel
 function wireSettings() {
@@ -93,6 +93,11 @@ async function fetchVersion() {
 async function boot() {
   const fromUrl = consumeUrlParam('token');
   if (fromUrl) writeToken(fromUrl);
+  // A launcher-spawned PC mirror window on the ts.net URL carries a
+  // server-minted passkey terminal token (issue #356) — cache it like a
+  // ceremony-minted one. TTL mirrors the server's 12 h _TERMINAL_TOKEN_TTL.
+  const ttFromUrl = consumeUrlParam('tt');
+  if (ttFromUrl) writeTerminalToken(ttFromUrl, 12 * 3600);
   // THROWAWAY spike #246: bake the bearer token into the spike link so a full
   // page-load of /spike/voice-loop passes the gate over the tunnel (the
   // middleware accepts ?token=). Loopback bypasses the gate, so a tokenless

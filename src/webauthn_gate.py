@@ -279,6 +279,15 @@ class WebAuthnGate:
         self._terminal_tokens[token] = now + _TERMINAL_TOKEN_TTL
         return token
 
+    def mint_local_token(self) -> str:
+        """Mint a terminal token without a passkey ceremony — for windows the
+        webapp spawns itself (the PC mirror, issue #356). Trust-equivalent to
+        the loopback bypass: same server, same machine, same user. Never
+        callable from a route on behalf of a remote client.
+        """
+        with self._lock:
+            return self._mint_token_locked()
+
     def valid_terminal_token(self, token: str) -> bool:
         if not token:
             return False
