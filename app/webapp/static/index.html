@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/static/vendor/xterm.css">
   <link rel="stylesheet" href="/static/_vendored/card/card.css">
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
+  <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
   <script>
@@ -332,35 +333,40 @@
     <path d="M20 6 9 17l-5-5" />
   </symbol>
 </svg>
-  <main class="app">
-    <nav class="tabs" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
-      <button id="tabClaude" type="button" class="tab active" data-tab="claude"
-              role="tab" aria-selected="true" aria-controls="paneClaude">
-        <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg>
-        <span class="tab-label">Code</span>
-      </button>
-      <button id="tabApps" type="button" class="tab" data-tab="apps"
-              role="tab" aria-selected="false" aria-controls="paneApps" tabindex="-1">
-        <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
-        <span class="tab-label">Apps</span>
-      </button>
-      <button id="tabJobs" type="button" class="tab" data-tab="jobs"
-              role="tab" aria-selected="false" aria-controls="paneJobs" tabindex="-1">
-        <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
-        <span class="tab-label">Jobs</span>
-      </button>
-      <button id="tabLifeOS" type="button" class="tab" data-tab="lifeos"
-              role="tab" aria-selected="false" aria-controls="paneLifeOS" tabindex="-1">
-        <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
-        <span class="tab-label">Life</span>
-      </button>
-      <button id="tabBoard" type="button" class="tab" data-tab="board"
-              role="tab" aria-selected="false" aria-controls="paneBoard" tabindex="-1">
-        <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
-        <span class="tab-label">Board</span>
-      </button>
-    </nav>
+  <!-- Body-level nav, sibling of <main class="app"> — never nested inside it
+       (issue #355, _vendored/nav/README.md "Pinning the bar (iOS)"). An
+       installed iOS PWA can capture a fixed nav nested inside a momentum/
+       content scroller and anchor it to that scroller's content instead of
+       the physical viewport (home-automation#232). -->
+  <nav class="tabs" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
+    <button id="tabClaude" type="button" class="tab active" data-tab="claude"
+            role="tab" aria-selected="true" aria-controls="paneClaude">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg>
+      <span class="tab-label">Code</span>
+    </button>
+    <button id="tabApps" type="button" class="tab" data-tab="apps"
+            role="tab" aria-selected="false" aria-controls="paneApps" tabindex="-1">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
+      <span class="tab-label">Apps</span>
+    </button>
+    <button id="tabJobs" type="button" class="tab" data-tab="jobs"
+            role="tab" aria-selected="false" aria-controls="paneJobs" tabindex="-1">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
+      <span class="tab-label">Jobs</span>
+    </button>
+    <button id="tabLifeOS" type="button" class="tab" data-tab="lifeos"
+            role="tab" aria-selected="false" aria-controls="paneLifeOS" tabindex="-1">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
+      <span class="tab-label">Life</span>
+    </button>
+    <button id="tabBoard" type="button" class="tab" data-tab="board"
+            role="tab" aria-selected="false" aria-controls="paneBoard" tabindex="-1">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
+      <span class="tab-label">Board</span>
+    </button>
+  </nav>
 
+  <main class="app">
     <section id="paneClaude" class="pane" role="tabpanel" aria-labelledby="tabClaude">
       <details id="codingOptions" class="card card--collapsible">
         <summary class="collapse-summary">

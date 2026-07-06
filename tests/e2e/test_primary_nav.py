@@ -74,7 +74,11 @@ def test_primary_nav_is_responsive_and_accessible(
         )
         expect(tabs).to_be_hidden()
     else:
-        assert metrics["position"] in {"static", "relative"}
+        # sticky (issue #355): the vendored nav-tabs.css keeps the desktop
+        # segmented control pinned to the top of the scroll container —
+        # the fleet-standard behavior, not app-launcher's own prior static/
+        # in-flow placement.
+        assert metrics["position"] == "sticky"
         assert metrics["display"] == "flex"
         assert metrics["iconDisplay"] == "none"
         assert metrics["paddingBottom"] < 100

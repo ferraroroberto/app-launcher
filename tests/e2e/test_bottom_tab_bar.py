@@ -1,19 +1,23 @@
 """Regression pin for issue #267 — floating bottom tab bar polish.
 
-Follow-up to the #263 bar (see test_primary_nav.py). Pins the three fixes on
-the iPhone (WebKit) projection:
+Follow-up to the #263 bar (see test_primary_nav.py). Pins two fixes on the
+iPhone (WebKit) projection:
 
-1. **No scroll drift.** The bar is promoted to its own compositing layer and a
-   visualViewport pin keeps it glued to the visual viewport bottom. At a
-   settled steady state that pin is a no-op, so the bar carries no residual
-   translate — asserted via the computed transform being identity/none.
+1. **No scroll drift.** The bar is promoted to its own compositing layer and
+   the vendored nav-tabs.css/_vendored/nav/nav-tabs.js (issue #355) keep it
+   glued to the visual viewport bottom in a browser tab (standalone PWAs get
+   no measured translate at all — CSS owns the position there). At a settled
+   steady state that pin is a no-op, so the bar carries no residual translate
+   — asserted via the computed transform being identity/none.
 2. **Active pill is baseline-stable from first paint.** Every pill is a fixed
    height, centred in a fixed grid row, so the four pills share one height and
    one top edge and the active (filled) pill never protrudes above the bar's
    top edge — independent of when page content paints.
-3. **Bar sits lower.** The bar's `bottom` derives from a reduced safe-area
-   inset plus a 2 px gap (was 4 px), so it uses fuller vertical space while
-   still clearing the home indicator.
+
+The bar's `bottom` offset is now the vendored nav-tabs.css's canonical
+`--bottom-tabs-margin` (21px default, issue #355) rather than app-launcher's
+own prior #267 tuning (a reduced safe-area fraction + 2px gap) — the
+convergence trade-off of adopting the fleet-standard geometry verbatim.
 
 Desktop / fine-pointer projections keep the static top control unchanged, so
 the assertions are WebKit-only (matching test_primary_nav.py).
@@ -91,7 +95,8 @@ def test_bottom_tab_bar_is_stable_and_low(
     assert active["top"] >= metrics["navTop"]
     assert active["bottom"] <= metrics["navBottom"]
 
-    # 3. Bar sits low: bottom is the gap only in headless (safe-area inset 0),
-    #    and the 2 px gap is tighter than the old 4 px.
-    assert metrics["bottom"] <= 2
+    # 3. Bar sits at the vendored canonical --bottom-tabs-margin (21px
+    #    default) from the bottom edge — headless has 0 safe-area-inset, so
+    #    this is the margin alone, not app-launcher's old #267 tuning.
+    assert metrics["bottom"] == pytest.approx(21, abs=1)
     assert metrics["navBottom"] <= metrics["viewportHeight"]
