@@ -96,8 +96,11 @@ _DAY_CACHE = "public, max-age=86400"
 # JS-import rewrite if .js; otherwise served as-is with the long header.
 _HASHED_SUFFIXES = {".js", ".css"}
 # Lightly cached (a day) — these change rarely but we don't want stale
-# icons surviving for a year if we ever do swap them.
-_DAY_CACHE_SUFFIXES = {".webmanifest", ".png", ".ico"}
+# icons surviving for a year if we ever do swap them. .svg (the brand
+# icons) is also ?v=-stamped client-side (issue #372), so the day cap
+# only bounds an unstamped fetch; without it Safari's heuristic cache
+# held the pre-#361 icons past the deploy.
+_DAY_CACHE_SUFFIXES = {".webmanifest", ".png", ".ico", ".svg"}
 
 
 class _VersionedStatic(StaticFiles):

@@ -31,10 +31,14 @@ from typing import Dict, Iterable, Optional
 
 _HASH_LEN = 8
 
-# Files under static/ that get hashed + long-cached. Everything else
-# (icons, manifest, mobileconfig, the xterm vendor bundle) is cached
-# more conservatively by the static-files mount itself.
-_HASHED_SUFFIXES = (".js", ".css")
+# Files under static/ whose content feeds the fleet hash. .js/.css get
+# the hash stamped on their URLs server-side; .svg (the brand icons) is
+# stamped client-side via dom-utils.js iconUrl(), so an icon edit must
+# move the fleet hash too (issue #372 — stale icons survived a deploy
+# because SVG bytes never fed the hash). Everything else (manifest,
+# mobileconfig, the xterm vendor bundle) is cached more conservatively
+# by the static-files mount itself.
+_HASHED_SUFFIXES = (".js", ".css", ".svg")
 
 # Subdirectories under static/ to skip entirely (vendor xterm is huge
 # and immutable per upstream version — its URL never changes so it

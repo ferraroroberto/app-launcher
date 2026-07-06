@@ -11,7 +11,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, isDesktopClient, jsonApi, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { renderUsageBadgeRow } from './dom-utils.js';
+import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
 
 export function fmtAgo(epochSeconds) {
@@ -104,7 +104,7 @@ export function renderSessions() {
     const agentId = known ? known.id : 'claude';
     const agentIcon = document.createElement('img');
     agentIcon.className = 'session-agent-icon';
-    agentIcon.src = '/static/icons/' + agentId + '.svg';
+    agentIcon.src = iconUrl(agentId);
     agentIcon.alt = known ? known.label : 'Claude Code';
     agentIcon.title = agentIcon.alt;
     head.appendChild(agentIcon);

@@ -1,5 +1,15 @@
 /* Small, dependency-free DOM helpers shared across modules. */
 
+// Cache-busted URL for a brand-icon SVG (issue #372). The serve-time JS
+// import rewrite stamps ?v=<fleet hash> onto every module URL, so our own
+// import.meta.url already carries the hash — reuse it on the icon src so
+// an icon edit changes the cache key (iOS Safari held the pre-#361 icons
+// past the deploy). Falls back to the bare URL when served unstamped.
+const _ASSET_V = new URL(import.meta.url).searchParams.get('v');
+export function iconUrl(name) {
+  return '/static/icons/' + name + '.svg' + (_ASSET_V ? '?v=' + _ASSET_V : '');
+}
+
 // Bind a document-level pointerdown listener that closes a popover on any
 // tap outside `box` (and outside `toggle`, when given — so re-tapping the
 // button that opened the popover doesn't immediately re-close it; the

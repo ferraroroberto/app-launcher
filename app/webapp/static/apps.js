@@ -8,7 +8,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
-import { bindOutsideClickToClose } from './dom-utils.js';
+import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
 import { fetchSessions, fmtAgo } from './sessions.js';
 import { openTerminal, estimateTermSize } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -74,7 +74,7 @@ function renderCodingList(host, items) {
       btn.dataset.agent = agent.id;
       const icon = document.createElement('img');
       icon.className = 'agent-icon';
-      icon.src = '/static/icons/' + agent.id + '.svg';
+      icon.src = iconUrl(agent.id);
       icon.alt = agent.label;
       btn.appendChild(icon);
       if (agent.available) {
@@ -98,7 +98,7 @@ function renderCodingList(host, items) {
     ghBtn.className = 'icon-btn agent-btn';
     const ghIcon = document.createElement('img');
     ghIcon.className = 'agent-icon';
-    ghIcon.src = '/static/icons/github.svg';
+    ghIcon.src = iconUrl('github');
     ghIcon.alt = 'GitHub';
     ghBtn.appendChild(ghIcon);
     if (a.repo_url) {
