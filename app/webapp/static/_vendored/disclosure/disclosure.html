@@ -1,0 +1,16 @@
+<!-- Fleet disclosure row — markup skeleton (copy and adapt).
+     A collapsible card: the <details> IS the card (card + card--collapsible),
+     the <summary> owns the 52px closed box, the chevron pins right. -->
+<details class="card card--collapsible">
+  <summary class="collapse-summary">
+    <span class="collapse-main">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield-check"></use></svg>
+      <h3 class="collapse-title">Section title</h3>
+      <span class="collapse-count">3 hidden</span> <!-- optional -->
+    </span>
+    <span class="collapse-chevron" aria-hidden="true">›</span>
+  </summary>
+  <div class="collapse-body">
+    <!-- open-state content -->
+  </div>
+</details>

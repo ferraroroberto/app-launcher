@@ -1,0 +1,203 @@
+<!-- Lucide icon sprite — the single source for every app icon.
+     VENDORED VERBATIM from project-scaffolding (normalized from
+     home-automation#77). Paste this whole <svg> block once near the top of your
+     <body>, then reference a glyph anywhere with
+     <svg class="icon"><use href="#i-NAME"></use></svg> (or icon('NAME') from
+     icons.js). Add/remove <symbol> children to match the handful of glyphs your
+     app actually uses — do NOT bulk-import the whole Lucide library.
+
+     Glyphs vendored from lucide-static v1.21.0 (ISC), on the 24×24 / 2px-stroke
+     grid the fleet identity is modelled on.
+
+     LOAD-BEARING, do not "tidy":
+     - Inline, NOT an external /static/icons.svg — iOS Safari does not resolve
+       external <use href="file.svg#id"> references (they fail silently), so the
+       symbols must ship in-document. A future app must not move this to a file.
+     - Hidden via the 0-size / position:absolute idiom, NOT display:none, which
+       suppresses <use> rendering in some engines.
+     - fill="none" on each <symbol> so the rare filled sub-elements (e.g. the
+       palette dots) survive; stroke styling is inherited from the `.icon` CSS
+       class (see README → required CSS contract). -->
+<svg width="0" height="0" aria-hidden="true" focusable="false"
+     style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-house" viewBox="0 0 24 24" fill="none">
+    <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+    <path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+  </symbol>
+  <symbol id="i-snowflake" viewBox="0 0 24 24" fill="none">
+    <path d="m10 20-1.25-2.5L6 18" />
+    <path d="M10 4 8.75 6.5 6 6" />
+    <path d="m14 20 1.25-2.5L18 18" />
+    <path d="m14 4 1.25 2.5L18 6" />
+    <path d="m17 21-3-6h-4" />
+    <path d="m17 3-3 6 1.5 3" />
+    <path d="M2 12h6.5L10 9" />
+    <path d="m20 10-1.5 2 1.5 2" />
+    <path d="M22 12h-6.5L14 15" />
+    <path d="m4 10 1.5 2L4 14" />
+    <path d="m7 21 3-6-1.5-3" />
+    <path d="m7 3 3 6h4" />
+  </symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24" fill="none">
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+  </symbol>
+  <symbol id="i-plug-zap" viewBox="0 0 24 24" fill="none">
+    <path d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" />
+    <path d="m2 22 3-3" />
+    <path d="M7.5 13.5 10 11" />
+    <path d="M10.5 16.5 13 14" />
+    <path d="m18 3-4 4h6l-4 4" />
+  </symbol>
+  <symbol id="i-shield-check" viewBox="0 0 24 24" fill="none">
+    <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+    <path d="m9 12 2 2 4-4" />
+  </symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24" fill="none">
+    <path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4" />
+  </symbol>
+  <symbol id="i-droplets" viewBox="0 0 24 24" fill="none">
+    <path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z" />
+    <path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97" />
+  </symbol>
+  <symbol id="i-fan" viewBox="0 0 24 24" fill="none">
+    <path d="M10.827 16.379a6.082 6.082 0 0 1-8.618-7.002l5.412 1.45a6.082 6.082 0 0 1 7.002-8.618l-1.45 5.412a6.082 6.082 0 0 1 8.618 7.002l-5.412-1.45a6.082 6.082 0 0 1-7.002 8.618l1.45-5.412Z" />
+    <path d="M12 12v.01" />
+  </symbol>
+  <symbol id="i-refresh-cw" viewBox="0 0 24 24" fill="none">
+    <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+    <path d="M21 3v5h-5" />
+    <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+    <path d="M8 16H3v5" />
+  </symbol>
+  <symbol id="i-thermometer" viewBox="0 0 24 24" fill="none">
+    <path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z" />
+  </symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" />
+  </symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2" />
+    <path d="M12 20v2" />
+    <path d="m4.93 4.93 1.41 1.41" />
+    <path d="m17.66 17.66 1.41 1.41" />
+    <path d="M2 12h2" />
+    <path d="M20 12h2" />
+    <path d="m6.34 17.66-1.41 1.41" />
+    <path d="m19.07 4.93-1.41 1.41" />
+  </symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none">
+    <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+  </symbol>
+  <symbol id="i-cloud-sun" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2v2" />
+    <path d="m4.93 4.93 1.41 1.41" />
+    <path d="M20 12h2" />
+    <path d="m19.07 4.93-1.41 1.41" />
+    <path d="M15.947 12.65a4 4 0 0 0-5.925-4.128" />
+    <path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z" />
+  </symbol>
+  <symbol id="i-cloud-moon" viewBox="0 0 24 24" fill="none">
+    <path d="M13 16a3 3 0 0 1 0 6H7a5 5 0 1 1 4.9-6z" />
+    <path d="M18.376 14.512a6 6 0 0 0 3.461-4.127c.148-.625-.659-.97-1.248-.714a4 4 0 0 1-5.259-5.26c.255-.589-.09-1.395-.716-1.248a6 6 0 0 0-4.594 5.36" />
+  </symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24" fill="none">
+    <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />
+  </symbol>
+  <symbol id="i-cloud-fog" viewBox="0 0 24 24" fill="none">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+    <path d="M16 17H7" />
+    <path d="M17 21H9" />
+  </symbol>
+  <symbol id="i-cloud-drizzle" viewBox="0 0 24 24" fill="none">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+    <path d="M8 19v1" />
+    <path d="M8 14v1" />
+    <path d="M16 19v1" />
+    <path d="M16 14v1" />
+    <path d="M12 21v1" />
+    <path d="M12 16v1" />
+  </symbol>
+  <symbol id="i-cloud-rain" viewBox="0 0 24 24" fill="none">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+    <path d="M16 14v6" />
+    <path d="M8 14v6" />
+    <path d="M12 16v6" />
+  </symbol>
+  <symbol id="i-cloud-snow" viewBox="0 0 24 24" fill="none">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+    <path d="M8 15h.01" />
+    <path d="M8 19h.01" />
+    <path d="M12 17h.01" />
+    <path d="M12 21h.01" />
+    <path d="M16 15h.01" />
+    <path d="M16 19h.01" />
+  </symbol>
+  <symbol id="i-cloud-lightning" viewBox="0 0 24 24" fill="none">
+    <path d="M6 16.326A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 .5 8.973" />
+    <path d="m13 12-3 5h4l-3 5" />
+  </symbol>
+  <symbol id="i-utility-pole" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2v20" />
+    <path d="M2 5h20" />
+    <path d="M3 3v2" />
+    <path d="M7 3v2" />
+    <path d="M17 3v2" />
+    <path d="M21 3v2" />
+    <path d="m19 5-7 7-7-7" />
+  </symbol>
+  <symbol id="i-sprout" viewBox="0 0 24 24" fill="none">
+    <path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3" />
+    <path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4" />
+    <path d="M5 21h14" />
+  </symbol>
+  <symbol id="i-euro" viewBox="0 0 24 24" fill="none">
+    <path d="M4 10h12" />
+    <path d="M4 14h9" />
+    <path d="M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2" />
+  </symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24" fill="none">
+    <path d="M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z" />
+    <circle cx="13.5" cy="6.5" r=".5" fill="currentColor" />
+    <circle cx="17.5" cy="10.5" r=".5" fill="currentColor" />
+    <circle cx="6.5" cy="12.5" r=".5" fill="currentColor" />
+    <circle cx="8.5" cy="7.5" r=".5" fill="currentColor" />
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none">
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none">
+    <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+    <circle cx="12" cy="12" r="3" />
+  </symbol>
+  <symbol id="i-smartphone" viewBox="0 0 24 24" fill="none">
+    <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+    <path d="M12 18h.01" />
+  </symbol>
+  <symbol id="i-log-in" viewBox="0 0 24 24" fill="none">
+    <path d="m10 17 5-5-5-5" />
+    <path d="M15 12H3" />
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+  </symbol>
+  <symbol id="i-scroll-text" viewBox="0 0 24 24" fill="none">
+    <path d="M15 12h-5" />
+    <path d="M15 8h-5" />
+    <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+    <path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3" />
+  </symbol>
+  <symbol id="i-satellite-dish" viewBox="0 0 24 24" fill="none">
+    <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
+    <path d="m9 15 3-3" />
+    <path d="M17 13a6 6 0 0 0-6-6" />
+    <path d="M21 13A10 10 0 0 0 11 3" />
+  </symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none">
+    <path d="m9 18 6-6-6-6" />
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none">
+    <path d="M18 6 6 18" />
+    <path d="m6 6 12 12" />
+  </symbol>
+</svg>

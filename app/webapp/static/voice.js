@@ -14,6 +14,7 @@
  */
 
 import { apiFailToast, apiRaw, readToken, toast } from './api.js';
+import { icon } from './_vendored/icons/icons.js';
 import { readTerminalToken } from './webauthn.js';
 
 const _CHUNK_MS = 1000;
@@ -57,21 +58,22 @@ function voiceQuery() {
 // elapsed-seconds timer so a blind background wait — OCR, single-shot
 // transcribe, streamed finish — visibly shows progress instead of looking
 // stuck. ``workingLabel`` defaults to the hourglass glyph; pass a richer
-// label for wide buttons. Returns a stop() that restores ``restoreText``.
-export function startWorkTimer(btn, restoreText, workingLabel) {
-  const lbl = workingLabel || '⏳';
+// label for wide buttons. Labels are HTML (the Lucide icon() markup rides
+// them — issue #355 PR 3). Returns a stop() that restores ``restoreHtml``.
+export function startWorkTimer(btn, restoreHtml, workingLabel) {
+  const lbl = workingLabel || icon('hourglass') + ' ';
   const t0 = Date.now();
   btn.classList.add('working');
   function tick() {
     const s = Math.floor((Date.now() - t0) / 1000);
-    btn.textContent = lbl + s + 's';
+    btn.innerHTML = lbl + s + 's';
   }
   tick();
   const id = setInterval(tick, 500);
   return function stop() {
     clearInterval(id);
     btn.classList.remove('working');
-    btn.textContent = restoreText;
+    btn.innerHTML = restoreHtml;
   };
 }
 
@@ -112,7 +114,7 @@ export function createDictation(opts) {
     if (!button) return;
     button.classList.toggle('recording', on);
     button.setAttribute('aria-pressed', on ? 'true' : 'false');
-    button.textContent = on ? '⏹' : '🎤';
+    button.innerHTML = on ? icon('square') : icon('mic');
     button.title = on ? 'Stop recording' : 'Dictate (voice → text)';
   }
 
@@ -272,7 +274,7 @@ export function createDictation(opts) {
     const sid = _voiceSession;
     _recorder = null;
     button.disabled = true;
-    const stopTimer = startWorkTimer(button, '🎤');
+    const stopTimer = startWorkTimer(button, icon('mic'));
     try {
       await drainChunks();
       const res = await apiRaw(
@@ -310,7 +312,7 @@ export function createDictation(opts) {
     const fd = new FormData();
     fd.append('file', blob, 'recording.' + ext);
     button.disabled = true;
-    const stopTimer = startWorkTimer(button, '🎤');
+    const stopTimer = startWorkTimer(button, icon('mic'));
     try {
       const res = await apiRaw('/api/transcribe', {
         method: 'POST', terminalToken: readTerminalToken(), body: fd,

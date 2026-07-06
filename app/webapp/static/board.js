@@ -36,6 +36,7 @@ import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './ap
 import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
+import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { renderUsageBadgeRow } from './dom-utils.js';
 
@@ -152,7 +153,7 @@ function buildDrawer(card) {
       const mic = document.createElement('button');
       mic.type = 'button';
       mic.className = 'compose-record board-reply-record';
-      mic.textContent = '🎤';
+      mic.innerHTML = icon('mic');
       mic.title = 'Dictate (voice → text)';
       mic.setAttribute('aria-pressed', 'false');
       const dictation = createDictation({
@@ -165,7 +166,7 @@ function buildDrawer(card) {
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'board-reply-send';
-    send.textContent = '➤';
+    send.innerHTML = icon('send-horizontal');
     send.title = 'Send into the session';
     send.addEventListener('click', function () {
       sendReply(card, input, send);
@@ -718,7 +719,7 @@ async function dispatchGoal() {
   btn.disabled = true;
   // The server waits for the agent's first output before typing the goal
   // in (spawn-then-type), so this call legitimately takes seconds — tick.
-  const stopTimer = startWorkTimer(btn, '➤');
+  const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
   try {
     const tt = await ensureTerminalToken();
     const payload = {

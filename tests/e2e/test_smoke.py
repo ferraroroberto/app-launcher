@@ -45,9 +45,9 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     # geometric centre, which can land on a stopPropagation toggle now that
     # the row carries both ☁️ Detached and ↺ Resume — issue #151).
     # Scope to the Coding options card: the Running-sessions + Projects
-    # panels now share the .coding-summary-title class (issue #212), so a
+    # panels now share the .collapse-title class (issue #212), so a
     # bare class selector matches three titles.
-    authed_page.locator("#codingOptions .coding-summary-title").click()
+    authed_page.locator("#codingOptions .collapse-title").click()
     authed_page.wait_for_selector("#claudeModel > button", timeout=5_000)
     authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
     authed_page.wait_for_selector("#claudePermission > button", timeout=5_000)

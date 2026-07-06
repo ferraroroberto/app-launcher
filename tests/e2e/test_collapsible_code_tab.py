@@ -39,7 +39,7 @@ def test_sessions_and_projects_are_collapsible_open_by_default(
     assert _is_open(authed_page, "details.projects-card"), "projects panel should open by default"
 
     # Tapping the summary title collapses, then re-expands the projects panel.
-    title = authed_page.locator("details.projects-card .coding-summary-title")
+    title = authed_page.locator("details.projects-card .collapse-title")
     title.click()
     assert not _is_open(authed_page, "details.projects-card"), "title tap should collapse the panel"
     title.click()

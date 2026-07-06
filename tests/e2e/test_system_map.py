@@ -93,7 +93,7 @@ def test_map_loads_on_expand_and_zooms(
 
     # Lazy-load: the image only fetches once the panel is expanded.
     expect(img).to_be_hidden()
-    authed_page.locator("#systemMapCard .coding-summary-title").click()
+    authed_page.locator("#systemMapCard .collapse-title").click()
     expect(img).to_be_visible()
 
     # Tap the inline map → full-screen lightbox; tap it again → dismiss.
