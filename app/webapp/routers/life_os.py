@@ -43,8 +43,8 @@ from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, build_claude_flags, build_resume_flags
 
 from app.webapp.routers._helpers import (
-    cert_present,
     client_ip,
+    mirror_url,
     should_mirror_to_pc,
 )
 
@@ -218,10 +218,10 @@ async def _spawn_skill_session(
     if kind == "pty" and should_mirror_to_pc(
         cfg.claude_show_local_window, request, body
     ):
-        scheme = "https" if cert_present() else "http"
-        pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
         asyncio.create_task(
-            asyncio.to_thread(open_local_terminal_window, pc_url, sid)
+            asyncio.to_thread(
+                open_local_terminal_window, mirror_url(request, cfg, sid), sid
+            )
         )
 
     return {

@@ -256,7 +256,7 @@ One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin c
 
 **Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on a self-signed cert. No calendar entry needed.
 
-> **Before switching this instance:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning afterwards — and the **PC mirror windows connect over loopback**, so they would hit that warning too. Issue #356 tracks re-pointing the mirror windows at the ts.net URL; run the swap after it lands (or accept the interstitial on mirrors in the meantime). The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected.
+> **After switching:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically** (#356): with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with a self-signed cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way.
 
 ### Self-signed fallback (LAN-only / no Tailscale)
 

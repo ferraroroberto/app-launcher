@@ -39,10 +39,10 @@ from app.webapp.middleware import (
     via_cloudflare,
 )
 from app.webapp.routers._helpers import (
-    cert_present,
     client_ip,
     client_ip_ws,
     maybe_json,
+    mirror_url,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,8 +127,7 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     # the desktop client still skips the in-page terminal, but touch no window.
     if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
         return {"mirrored": True, "action": "skipped"}
-    scheme = "https" if cert_present() else "http"
-    pc_url = f"{scheme}://127.0.0.1:{cfg.port}/?terminal={sid}"
+    pc_url = mirror_url(request, cfg, sid)
     # Runs the win32 focus/spawn off the event loop; the spawn returns as soon
     # as Edge is launched (its HWND poll is a daemon thread), so this is quick.
     action = await asyncio.to_thread(
