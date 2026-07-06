@@ -15,7 +15,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
 import { fetchSessions } from './sessions.js';
-import { openTerminal } from './terminal.js';
+import { estimateTermSize, openTerminal } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- skills list
@@ -131,6 +131,15 @@ async function launchRecap() {
   // #241); the flag tells the server to mirror. Remote launches have no
   // terminal/mirror, so it only matters for pty.
   if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
+  // The phone carries its real terminal size so the PTY spawns at the
+  // width the overlay will fit() to — a skill that streams immediately
+  // otherwise pours 120-col output that re-wraps into garble on the first
+  // open (issue #374; same contract as the Coding tab, issue #126).
+  if (mode !== 'remote' && !isDesktopClient()) {
+    const sz = estimateTermSize();
+    payload.rows = sz.rows;
+    payload.cols = sz.cols;
+  }
   try {
     const body = await jsonApi('/api/life-os/recap/launch', {
       method: 'POST',
@@ -170,6 +179,14 @@ async function launchSkill(s) {
   // #241); the flag tells the server to mirror. Remote launches have no
   // terminal/mirror, so the flag only matters here.
   if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
+  // Phone PTY launches spawn at the phone's real terminal size (issue
+  // #374 — see launchRecap for why; the Coding tab has done this since
+  // issue #126).
+  if (mode !== 'remote' && !isDesktopClient()) {
+    const sz = estimateTermSize();
+    payload.rows = sz.rows;
+    payload.cols = sz.cols;
+  }
   try {
     const body = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',

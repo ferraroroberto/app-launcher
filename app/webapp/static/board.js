@@ -34,7 +34,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
-import { openTerminal } from './terminal.js';
+import { estimateTermSize, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
@@ -269,7 +269,16 @@ async function startIssue(card, mode, btn) {
     const tt = await ensureTerminalToken();
     const payload = { repo: card.repo, number: card.number, mode: mode };
     // Desktop browsers get the PC mirror window, like every launch (#241).
-    if (isDesktopClient()) payload.desktop = true;
+    // Phone launches carry the real terminal size so the PTY's early
+    // output is authored at the width the overlay will fit() to (issue
+    // #374); the route already accepts rows/cols.
+    if (isDesktopClient()) {
+      payload.desktop = true;
+    } else {
+      const sz = estimateTermSize();
+      payload.rows = sz.rows;
+      payload.cols = sz.cols;
+    }
     const body = await jsonApi('/api/board/issues/start', {
       method: 'POST',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
@@ -736,7 +745,14 @@ async function dispatchGoal() {
       mode: dispatchMode,
       opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.getAttribute('aria-checked') === 'true'),
     };
-    if (isDesktopClient()) payload.desktop = true;
+    // Same size contract as startIssue (issue #374).
+    if (isDesktopClient()) {
+      payload.desktop = true;
+    } else {
+      const sz = estimateTermSize();
+      payload.rows = sz.rows;
+      payload.cols = sz.cols;
+    }
     const body = await jsonApi('/api/board/dispatch', {
       method: 'POST',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),

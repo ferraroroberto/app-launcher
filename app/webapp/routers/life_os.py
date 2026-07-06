@@ -180,6 +180,13 @@ async def _spawn_skill_session(
     (issue #159) identically and returns the common response fields. The caller
     prepends its own ``launched`` id.
     """
+    # The phone passes its real terminal size (issue #374): a skill streams
+    # output the moment the PTY spawns, so spawning at the legacy 40×120
+    # poured 120-col text that re-wrapped into garble when the overlay's
+    # first fit() shrank the PTY to phone width. Same contract as the
+    # Coding-tab launch route (issue #126); ignored for kind="remote".
+    rows = int(body.get("rows") or 40)
+    cols = int(body.get("cols") or 120)
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
@@ -189,6 +196,8 @@ async def _spawn_skill_session(
             cfg.session_host_port,
             kind,
             "claude",
+            rows,
+            cols,
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))

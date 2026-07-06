@@ -210,6 +210,60 @@ def test_life_os_launch_posts_mode_and_opus(
     assert payload == {"mode": "remote", "opus": True, "resume": False}, payload
 
 
+def test_life_os_pty_launch_carries_terminal_size(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression pin for issue #374: a streamed (pty) skill launch sizes
+    the PTY at spawn. Skills stream output the moment the PTY exists, so a
+    40×120 spawn poured 120-col text that re-wrapped into first-paint
+    garble when the overlay's fit() shrank the PTY to phone width. A phone
+    launch must carry rows/cols (estimateTermSize, same contract as the
+    Coding tab, #126); a desktop client sends the mirror flag instead and
+    keeps the Edge-window default."""
+    _mock_skills(authed_page)
+
+    captured: dict = {}
+
+    def _capture_launch(route):
+        captured["body"] = route.request.post_data or ""
+        # Answer with kind=remote so the client skips opening the terminal
+        # overlay against the fake sid — only the request payload matters.
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "journal-daily", "name": "journal-daily",
+                "agent": "claude", "mode": "pty", "opus": False,
+                "session": {"session_id": "x", "kind": "remote"},
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
+        _capture_launch,
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+
+    # Detached stays OFF — this is the streamed pty path #374 is about.
+    tile = authed_page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
+    )
+    tile.locator(".lifeos-launch").click()
+
+    authed_page.wait_for_timeout(400)
+    assert "body" in captured, "launch POST was never intercepted"
+    payload = _json.loads(captured["body"])
+    assert payload.get("mode") == "pty"
+    if payload.get("desktop"):
+        assert "rows" not in payload and "cols" not in payload
+    else:
+        assert payload.get("rows", 0) >= 10 and payload.get("cols", 0) >= 20
+
+
 def test_life_os_detached_resume_posts_remote_console(
     authed_page: Page, base_url: str
 ) -> None:
