@@ -306,8 +306,18 @@ def sync_schtasks(
     then creates one task per schedule slot. Returns the list of task
     names created (empty for ``schedule.type == "none"`` after the
     pre-existing tasks are deleted).
+
+    ``job.elevated`` jobs are skipped entirely (issue #352): their real
+    ``/RL HIGHEST`` entry can only be created by an already-elevated
+    caller, which this webapp process never is. Deleting-then-failing-to
+    recreate on every edit/pause/resume silently strands a job that the
+    Jobs tab still shows as scheduled — so an elevated job's Task
+    Scheduler entry is treated as externally-managed and never touched
+    here; it must be registered/updated by hand from an elevated shell.
     """
     runner = runner or _run_schtasks
+    if job.elevated:
+        return []
     delete_schtasks(job.id, runner=runner)
     if job.schedule.type == "none":
         return []
@@ -332,26 +342,13 @@ def sync_schtasks(
             "/TR",
             tr,
         ] + schedule_part
-        if job.elevated:
-            # Task Scheduler's own elevation (silent — no interactive UAC
-            # prompt) vs. an ad-hoc Start-Process, which blocks/cancels
-            # when nothing is present to click "Yes".
-            argv += ["/RL", "HIGHEST"]
         proc = runner(argv)
         if proc.returncode == 0:
             created.append(name)
         else:
-            hint = (
-                " — /RL HIGHEST requires the CALLING process to already be "
-                "elevated (an admin account running non-elevated is not "
-                "enough); this launcher process cannot self-elevate, so "
-                "register/update this task from an elevated shell instead"
-                if job.elevated
-                else ""
-            )
             logger.warning(
                 f"⚠️  schtasks create failed for {name}: "
-                f"rc={proc.returncode} stderr={proc.stderr!r}{hint}"
+                f"rc={proc.returncode} stderr={proc.stderr!r}"
             )
     invalidate_next_run_cache()
     return created

@@ -1,9 +1,11 @@
-"""`elevated` job flag (issue #350).
+"""`elevated` job flag (issue #350) and the Task Scheduler skip (issue #352).
 
-An elevated job materialises its scheduled Task Scheduler entry with
-`/RL HIGHEST` so it fires with silent elevation (no interactive UAC prompt),
-for a script whose target needs admin rights to do its work. These tests
-cover the schema round-trip and the schtasks `/Create` argv.
+An elevated job's real Task Scheduler entry needs ``/RL HIGHEST``, which can
+only be created by an already-elevated caller — this webapp process never is.
+So `sync_schtasks()` treats an elevated job's schedule entry as
+externally-managed and never touches Task Scheduler for it at all; the entry
+must be registered/updated by hand from an elevated shell. These tests cover
+the schema round-trip and the skip behaviour.
 """
 
 from __future__ import annotations
@@ -56,8 +58,12 @@ class TestElevatedRoundTrip:
         assert jc.get_by_id(cfg, "j").elevated is False
 
 
-class TestSyncSchtasksHonoursElevated:
-    def test_elevated_job_create_includes_rl_highest(self):
+class TestSyncSchtasksSkipsElevated:
+    """Issue #352: sync_schtasks() must never touch Task Scheduler for an
+    elevated job — the delete-then-recreate pattern silently strands the job
+    (delete needs no elevation, recreate does) on every edit/pause/resume."""
+
+    def test_elevated_job_never_calls_runner(self):
         job = Job(
             id="hwinfo",
             name="HWiNFO restart",
@@ -69,17 +75,33 @@ class TestSyncSchtasksHonoursElevated:
 
         def runner(argv):
             calls.append(argv)
-            if argv[:2] == ["schtasks", "/Query"]:
-                return _mk_completed(stdout="", rc=0)
             return _mk_completed(rc=0)
 
         created = jobs_mod.sync_schtasks(job, runner=runner)
-        assert created == ["\\AppLauncher\\hwinfo"]
-        create = next(c for c in calls if c[:2] == ["schtasks", "/Create"])
-        assert "/RL" in create
-        assert create[create.index("/RL") + 1] == "HIGHEST"
+        assert created == []
+        assert calls == []
 
-    def test_default_job_create_omits_rl(self):
+    def test_elevated_job_skipped_even_when_paused(self):
+        # pause() parks the schedule as "none" before calling sync_schtasks —
+        # the elevated skip must win regardless of the schedule shape.
+        job = Job(
+            id="hwinfo",
+            name="HWiNFO restart",
+            script_path="C:\\stub\\hwinfo_restart.py",
+            schedule=Schedule(type="none"),
+            elevated=True,
+        )
+        calls: List[List[str]] = []
+
+        def runner(argv):
+            calls.append(argv)
+            return _mk_completed(rc=0)
+
+        created = jobs_mod.sync_schtasks(job, runner=runner)
+        assert created == []
+        assert calls == []
+
+    def test_default_job_still_syncs_normally(self):
         job = Job(
             id="plain",
             name="Plain",
@@ -94,27 +116,6 @@ class TestSyncSchtasksHonoursElevated:
                 return _mk_completed(stdout="", rc=0)
             return _mk_completed(rc=0)
 
-        jobs_mod.sync_schtasks(job, runner=runner)
-        create = next(c for c in calls if c[:2] == ["schtasks", "/Create"])
-        assert "/RL" not in create
-
-    def test_elevated_create_failure_logs_actionable_hint(self, caplog):
-        job = Job(
-            id="hwinfo",
-            name="HWiNFO restart",
-            script_path="C:\\stub\\hwinfo_restart.py",
-            schedule=Schedule(type="hourly", every=8),
-            elevated=True,
-        )
-
-        def runner(argv):
-            if argv[:2] == ["schtasks", "/Query"]:
-                return _mk_completed(stdout="", rc=0)
-            if argv[:2] == ["schtasks", "/Create"]:
-                return _mk_completed(rc=1, stdout="")
-            return _mk_completed(rc=0)
-
-        with caplog.at_level(logging.WARNING):
-            created = jobs_mod.sync_schtasks(job, runner=runner)
-        assert created == []
-        assert any("already be elevated" in r.message for r in caplog.records)
+        created = jobs_mod.sync_schtasks(job, runner=runner)
+        assert created == ["\\AppLauncher\\plain"]
+        assert any(c[:2] == ["schtasks", "/Create"] for c in calls)

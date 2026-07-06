@@ -185,6 +185,19 @@ function renderJobRow(job) {
     pills.appendChild(countdown);
   }
 
+  if (job.elevated) {
+    // Issue #352 — an elevated job's real Task Scheduler entry is
+    // externally-managed (the launcher's own sync always no-ops for it),
+    // so mark it clearly rather than let it look like every other job.
+    const ext = document.createElement('span');
+    ext.className = 'kind-pill job-elevated-pill';
+    ext.dataset.role = 'elevated-chip';
+    ext.textContent = '🔒 externally scheduled';
+    ext.title = 'Registered by hand via schtasks /RL HIGHEST — ' +
+      'this app never creates, edits, or deletes its Task Scheduler entry';
+    pills.appendChild(ext);
+  }
+
   if (job.mutex_group) {
     const mg = document.createElement('span');
     mg.className = 'kind-pill job-mutex-pill';
