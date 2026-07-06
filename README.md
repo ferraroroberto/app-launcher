@@ -191,7 +191,7 @@ default high → `--thinking`), and **project-trust** controls.
 .\webapp.bat         # uvicorn standalone, no tray (dev / headless)
 ```
 
-Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present (`scripts/gen_ssl_cert.py` generates it), the server is HTTPS — otherwise plain HTTP.
+Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP. Two provisioners can write that cert pair: `scripts/gen_tailscale_cert.py` (preferred — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale-preferred-self-signed-fallback)) and `scripts/gen_ssl_cert.py` (self-signed fallback for LAN-only setups).
 
 The tray icon menu has:
 
@@ -221,9 +221,9 @@ Backed by `GET /api/version`, which also returns the current `asset_hash` for qu
 
 ## Phone install (PWA)
 
-The launcher is a PWA — installs to the iPhone home screen, full-screen, no Safari chrome. First-time setup is two short detours because the webapp uses a self-signed cert.
+The launcher is a PWA — installs to the iPhone home screen, full-screen, no Safari chrome. With the [Tailscale cert](#https-certificate-tailscale-preferred-self-signed-fallback) there is no trust setup at all — open the ts.net URL and jump to step 6. The detour below applies only to the self-signed fallback.
 
-**One-time iPhone trust setup**
+**One-time iPhone trust setup (self-signed fallback only)**
 
 1. Open `https://<pc-hostname>:8445/install-ca` in Safari → tap **Allow** to download the profile.
 2. **Settings → General → VPN & Device Management** → tap "Launcher Local CA" → **Install** → enter passcode → confirm.
@@ -243,9 +243,24 @@ After that the launcher behaves like a native app — full-screen, no Safari chr
 
 ---
 
-## TLS cert: regenerate every ~13 months
+## HTTPS certificate: Tailscale preferred, self-signed fallback
 
-The leaf cert in `webapp/certificates/cert.pem` is capped at **396 days** because Apple/WebKit reject any server cert with a validity period > 398 days (since iOS 14), regardless of how thoroughly the issuing CA is trusted. After ~13 months, Safari will start showing "Not Secure" on the iPhone again — that is the leaf cert expiring, not a regression.
+Fleet standard: `ferraroroberto/project-scaffolding#89`. For a tailnet-reachable app, provision a **real Let's Encrypt cert** via `tailscale cert` instead of the self-signed CA + per-device trust dance:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\gen_tailscale_cert.py
+# then: tray.bat --restart
+```
+
+One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns). The script auto-detects the MagicDNS name and writes `webapp/certificates/cert.pem` + `key.pem`. Every device on the tailnet then trusts `https://<host>.<tailnet>.ts.net:8445` natively — no CA install, no `/install-ca` profile, no Certificate Trust toggle.
+
+**Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on a self-signed cert. No calendar entry needed.
+
+> **Before switching this instance:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning afterwards — and the **PC mirror windows connect over loopback**, so they would hit that warning too. Issue #356 tracks re-pointing the mirror windows at the ts.net URL; run the swap after it lands (or accept the interstitial on mirrors in the meantime). The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected.
+
+### Self-signed fallback (LAN-only / no Tailscale)
+
+The self-signed path below remains correct for a machine without Tailscale. Its leaf cert is capped at **396 days** because Apple/WebKit reject any server cert with a validity period > 398 days (since iOS 14), regardless of how thoroughly the issuing CA is trusted. After ~13 months, Safari will start showing "Not Secure" on the iPhone again — that is the leaf cert expiring, not a regression.
 
 **Routine renewal (no iPhone re-trust needed):**
 
@@ -409,7 +424,8 @@ app-launcher/
 │
 ├── scripts/
 │   ├── gen_icons.py           # thin caller onto project-scaffolding's shared brand_gen.py (rocket master)
-│   ├── gen_ssl_cert.py        # self-signed CA + leaf + iOS .mobileconfig
+│   ├── gen_ssl_cert.py        # self-signed CA + leaf + iOS .mobileconfig (LAN-only fallback)
+│   ├── gen_tailscale_cert.py  # tailscale cert (real LE) + --check auto-renew — preferred
 │   ├── gen_token.py           # bearer token rotate / clear
 │   ├── set_password.py        # login password set / clear
 │   └── run_named_tunnel.py    # uvicorn + cloudflared (headless)

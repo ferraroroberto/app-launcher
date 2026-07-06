@@ -78,6 +78,29 @@ def _probe_url(scheme: str, host: str, port: int) -> str:
     return f"{scheme}://{host if host != '0.0.0.0' else '127.0.0.1'}:{port}"
 
 
+def check_tailscale_cert() -> None:
+    """Auto-renew a Tailscale cert expiring within 30 days, before uvicorn
+    binds (project-scaffolding#89). No-op on a self-signed cert or when no
+    cert exists; best-effort — a cert problem must never block startup.
+    """
+    script = PROJECT_ROOT / "scripts" / "gen_tailscale_cert.py"
+    if not script.exists() or cert_paths() is None:
+        return
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--check"],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            cwd=str(PROJECT_ROOT),
+        )
+        out = (result.stdout or "").strip()
+        if out:
+            logger.info(f"🔐 tailscale cert check: {out}")
+    except Exception as exc:
+        logger.warning(f"⚠️  tailscale cert check failed (ignored): {exc}")
+
+
 class WebappManager:
     def __init__(self, config: Optional[WebappManagerConfig] = None) -> None:
         self.config = config or WebappManagerConfig()
@@ -166,6 +189,7 @@ class WebappManager:
                 logger.info(f"🔗 Adopting external webapp at {current.base_url}")
                 return current
 
+            check_tailscale_cert()
             cmd = self._build_command()
             logger.info(f"🚀 Starting webapp: {' '.join(cmd)}")
 
