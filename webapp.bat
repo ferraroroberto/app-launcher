@@ -22,6 +22,10 @@ set "CERT_DIR=%SCRIPT_DIR%webapp\certificates"
 set "CERT=%CERT_DIR%\cert.pem"
 set "KEY=%CERT_DIR%\key.pem"
 
+REM Auto-renew a Tailscale cert expiring within 30 days (no-op on a
+REM self-signed cert or when no cert exists) — project-scaffolding#89.
+"%VENV_PY%" "%SCRIPT_DIR%scripts\gen_tailscale_cert.py" --check
+
 if not exist "%CERT%" (
     echo [INFO] No HTTPS cert found, running HTTP-only on :8445.
     echo        Run scripts\gen_ssl_cert.py to enable HTTPS.
