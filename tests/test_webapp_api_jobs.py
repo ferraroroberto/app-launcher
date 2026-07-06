@@ -558,6 +558,124 @@ class TestPauseResume:
         assert resp.status_code == 404
 
 
+# ============================================ elevated jobs skip schtasks
+
+
+class TestElevatedJobsSkipTaskScheduler:
+    """Issue #352: create/edit/pause/resume on an ``elevated: true`` job
+    must never invoke the real schtasks runner — its Task Scheduler entry
+    is externally-managed. The same actions on a plain job still call it.
+
+    Unlike the other classes here, ``mocked_jobs_side_effects`` is *not*
+    used — it stubs ``sync_schtasks``/``delete_schtasks`` wholesale, which
+    would hide a regression in the real skip logic. Instead this patches
+    only the I/O boundary (``_run_schtasks`` on the module that owns it,
+    per ``src/jobs.py``'s own guidance) so the real ``sync_schtasks`` /
+    ``delete_schtasks`` run and their behaviour is what's under test.
+    """
+
+    @pytest.fixture
+    def real_schtasks_runner(self, monkeypatch):
+        import subprocess
+        from unittest.mock import MagicMock
+
+        from app.webapp.routers import jobs as jobs_router
+        from src import jobs_schtasks
+
+        runner = MagicMock(
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="", stderr=""
+            )
+        )
+        monkeypatch.setattr(jobs_schtasks, "_run_schtasks", runner)
+        # query_next_run is a read-only schtasks query unrelated to
+        # sync/delete — mock it out so it doesn't add noise to the
+        # runner-call assertions below.
+        monkeypatch.setattr(
+            jobs_router.jobs_mod, "query_next_run", MagicMock(return_value=None)
+        )
+        monkeypatch.setattr(
+            jobs_router.jobs_mod,
+            "run_stats",
+            MagicMock(
+                return_value={
+                    "p50": None,
+                    "p95": None,
+                    "success_rate_30d": None,
+                    "completed_count": 0,
+                    "last7": [],
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            jobs_router.jobs_mod, "is_stuck", MagicMock(return_value=False)
+        )
+        return runner
+
+    def test_elevated_job_never_calls_runner(
+        self, webapp_client, real_schtasks_runner
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Elevated",
+                "script_path": _stub_path("elevated.bat"),
+                "schedule": {"type": "hourly", "every": 8},
+                "elevated": True,
+            },
+        )
+        assert resp.status_code == 200
+        created = resp.json()["job"]
+        assert created["elevated"] is True
+        real_schtasks_runner.assert_not_called()
+
+        job_id = created["id"]
+        resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
+        assert resp.status_code == 200
+        real_schtasks_runner.assert_not_called()
+
+        resp = client.post(f"/api/jobs/{job_id}/pause")
+        assert resp.status_code == 200
+        real_schtasks_runner.assert_not_called()
+
+        resp = client.post(f"/api/jobs/{job_id}/resume")
+        assert resp.status_code == 200
+        real_schtasks_runner.assert_not_called()
+
+    def test_non_elevated_job_still_calls_runner(
+        self, webapp_client, real_schtasks_runner
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Plain",
+                "script_path": _stub_path("plain.bat"),
+                "schedule": {"type": "daily", "at": "06:00"},
+            },
+        )
+        assert resp.status_code == 200
+        created = resp.json()["job"]
+        assert real_schtasks_runner.called
+        real_schtasks_runner.reset_mock()
+
+        job_id = created["id"]
+        resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
+        assert resp.status_code == 200
+        assert real_schtasks_runner.called
+        real_schtasks_runner.reset_mock()
+
+        resp = client.post(f"/api/jobs/{job_id}/pause")
+        assert resp.status_code == 200
+        assert real_schtasks_runner.called
+        real_schtasks_runner.reset_mock()
+
+        resp = client.post(f"/api/jobs/{job_id}/resume")
+        assert resp.status_code == 200
+        assert real_schtasks_runner.called
+
+
 class TestOnceSchedule:
     """``once`` schedule end-to-end (admission + decorated response)."""
 
