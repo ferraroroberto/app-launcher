@@ -31,18 +31,25 @@ function populateChainList(host, selected, currentId, kind) {
     if (currentId && j.id === currentId) return;
     const li = document.createElement('li');
     li.className = 'job-chain-row';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.value = j.id;
-    cb.checked = want.has(j.id);
-    cb.dataset.role = 'chain-' + kind;
-    const label = document.createElement('label');
-    label.className = 'job-chain-row-label';
-    label.appendChild(cb);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'job-chain-row-btn';
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-checked', want.has(j.id) ? 'true' : 'false');
+    btn.dataset.value = j.id;
+    btn.dataset.role = 'chain-' + kind;
+    btn.addEventListener('click', function () {
+      const next = btn.getAttribute('aria-checked') !== 'true';
+      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
+    const checkBox = document.createElement('span');
+    checkBox.className = 'check-box';
+    checkBox.innerHTML = icon('check');
+    btn.appendChild(checkBox);
     const text = document.createElement('span');
     text.textContent = j.name + '  ·  ' + j.id;
-    label.appendChild(text);
-    li.appendChild(label);
+    btn.appendChild(text);
+    li.appendChild(btn);
     host.appendChild(li);
     rendered += 1;
   });
@@ -56,9 +63,9 @@ function populateChainList(host, selected, currentId, kind) {
 
 function readChainList(host, kind) {
   if (!host) return [];
-  const selector = 'input[type="checkbox"][data-role="chain-' + kind + '"]:checked';
+  const selector = '.job-chain-row-btn[data-role="chain-' + kind + '"][aria-checked="true"]';
   const checked = Array.from(host.querySelectorAll(selector));
-  return checked.map(function (cb) { return cb.value; });
+  return checked.map(function (btn) { return btn.dataset.value; });
 }
 
 // -------------------------------------------------- params editor (dialog)
@@ -213,7 +220,7 @@ export function openRunDialog(job, prefill, staleKeys) {
     host.appendChild(renderRunDialogField(p, prefill));
   });
 
-  if (els.jobRunDialogDryRun) els.jobRunDialogDryRun.checked = false;
+  if (els.jobRunDialogDryRun) els.jobRunDialogDryRun.setAttribute('aria-checked', 'false');
   if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
 }
 
@@ -247,9 +254,19 @@ function renderRunDialogField(param, prefill) {
     });
     if (initial != null) input.value = String(initial);
   } else if (param.kind === 'bool') {
-    input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = initial === true || initial === 'true';
+    input = document.createElement('button');
+    input.type = 'button';
+    input.className = 'toggle';
+    input.setAttribute('role', 'switch');
+    input.setAttribute('aria-checked', (initial === true || initial === 'true') ? 'true' : 'false');
+    const checkBox = document.createElement('span');
+    checkBox.className = 'check-box';
+    checkBox.innerHTML = icon('check');
+    input.appendChild(checkBox);
+    input.addEventListener('click', function () {
+      const next = input.getAttribute('aria-checked') !== 'true';
+      input.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
   } else {
     input = document.createElement('input');
     input.type = param.kind === 'date' ? 'date'
@@ -272,7 +289,7 @@ function readRunDialogValues() {
     const name = el.dataset.paramName;
     const kind = el.dataset.paramKind;
     if (kind === 'bool') {
-      out[name] = !!el.checked;
+      out[name] = el.getAttribute('aria-checked') === 'true';
       return;
     }
     const raw = (el.value || '').trim();
@@ -297,7 +314,7 @@ async function submitRunDialog(ev) {
     return;
   }
   const job = runDialogJob;
-  const dry = !!(els.jobRunDialogDryRun && els.jobRunDialogDryRun.checked);
+  const dry = !!(els.jobRunDialogDryRun && els.jobRunDialogDryRun.getAttribute('aria-checked') === 'true');
   if (els.jobRunDialog.close) els.jobRunDialog.close();
   runDialogJob = null;
   await runJobNow(job, {
@@ -362,7 +379,7 @@ export function openJobDialog(job) {
     els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
   }
   if (els.jobConfirmInput) {
-    els.jobConfirmInput.checked = !!(job && job.confirm);
+    els.jobConfirmInput.setAttribute('aria-checked', (job && job.confirm) ? 'true' : 'false');
   }
   populateChainList(
     els.jobOnSuccessList,
@@ -498,7 +515,7 @@ function buildJobPayload() {
   payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
   payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
   // Confirm-on-fire (issue #69). Always send so unchecking clears it.
-  payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.checked);
+  payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.getAttribute('aria-checked') === 'true');
   return payload;
 }
 
@@ -605,4 +622,13 @@ export function wireJobDialogs() {
       runDialogJob = null;
     });
   }
+  // Require-confirmation + Dry-run role="switch" buttons (issue #355) — no
+  // native checkbox toggling any more, so the click has to flip aria-checked.
+  [els.jobConfirmInput, els.jobRunDialogDryRun].forEach(function (btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      const next = btn.getAttribute('aria-checked') !== 'true';
+      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
+  });
 }

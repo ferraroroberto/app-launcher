@@ -137,9 +137,7 @@ def test_life_os_recap_launch_posts(
     authed_page.locator("#tabLifeOS").click()
     expect(authed_page.locator("#lifeOsRecap")).to_be_visible(timeout=5_000)
 
-    authed_page.evaluate(
-        "document.getElementById('lifeOsDetached').checked = true"
-    )
+    authed_page.locator("#lifeOsDetached").click()
     authed_page.locator("#lifeOsRecapLaunch").click()
 
     authed_page.wait_for_timeout(400)
@@ -196,10 +194,8 @@ def test_life_os_launch_posts_mode_and_opus(
 
     # Flip opus on + Detached on (so it launches detached → no terminal
     # overlay / WS to deal with in the assertion).
-    authed_page.evaluate("document.getElementById('lifeOsOpus').checked = true")
-    authed_page.evaluate(
-        "document.getElementById('lifeOsDetached').checked = true"
-    )
+    authed_page.locator("#lifeOsOpus").click()
+    authed_page.locator("#lifeOsDetached").click()
 
     tile = authed_page.locator(
         "#lifeOsList li.lifeos-item[data-id='journal-daily']"
@@ -250,12 +246,8 @@ def test_life_os_detached_resume_posts_remote_console(
 
     # Flip Detached + Resume both on. A remote launch has no terminal overlay
     # / WS, so the assertion stays clean.
-    authed_page.evaluate(
-        "document.getElementById('lifeOsDetached').checked = true"
-    )
-    authed_page.evaluate(
-        "document.getElementById('lifeOsResume').checked = true"
-    )
+    authed_page.locator("#lifeOsDetached").click()
+    authed_page.locator("#lifeOsResume").click()
 
     tile = authed_page.locator(
         "#lifeOsList li.lifeos-item[data-id='journal-daily']"
