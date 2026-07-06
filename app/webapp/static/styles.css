@@ -390,15 +390,11 @@ html, body {
      to the same height (the #212 uniformity, at the fleet's step). */
   min-height: 52px;
 }
+/* No leading ›/⌄ chevron on summaries: the disclosure contract is a
+   left-aligned title with the chevron pinned RIGHT — that affordance
+   arrives with the vendored disclosure (fleet-wide, #355 PR 3), never a
+   per-app leading arrow. */
 .coding-summary-title { font-size: var(--font-label); font-weight: 600; white-space: nowrap; }
-.coding-summary-title::before {
-  content: "\203A";          /* › — rotates to ⌄ when the panel is open */
-  display: inline-block;
-  margin-right: 8px;
-  color: var(--muted);
-  transition: transform 0.15s ease;
-}
-.coding-card[open] .coding-summary-title::before { transform: rotate(90deg); }
 /* Open state: the summary's bottom hairline is the ONLY divider between
    header and body (disclosure contract). The Coding-options card's first
    .opt-group used to bring its own top border — drop it so the two never
@@ -1210,16 +1206,6 @@ summary + .opt-group { border-top: 0; }
   /* Match the collapsed height of the Code-tab cards (disclosure contract). */
   min-height: 52px;
 }
-.settings-summary-title::before {
-  content: "\203A";          /* › — rotates to ⌄ when the panel is open */
-  display: inline-block;
-  margin-right: 8px;
-  transition: transform 0.15s ease;
-}
-.settings-card[open] .settings-summary-title::before {
-  transform: rotate(90deg);
-}
-
 /* Edit-mode toggle in the Settings summary — same button-style toggle
    as .detached-toggle. Right-aligned, button-like, no visible
    checkbox. Click is intercepted so flipping Edit mode doesn't also
