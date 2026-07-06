@@ -7,6 +7,7 @@
 
 import { els, state, TT_KEY, TT_EXP_KEY } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- b64url helpers
 function b64urlToBuf(s) {
@@ -123,7 +124,7 @@ function renderWebauthn() {
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'icon-btn danger';
-    rm.textContent = '🗑️';
+    rm.innerHTML = icon('trash-2');
     rm.title = 'Remove passkey';
     rm.addEventListener('click', function () { removeDevice(d); });
     li.appendChild(rm);

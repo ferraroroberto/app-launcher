@@ -159,6 +159,10 @@
   stroke-linejoin: round;
   vertical-align: -0.15em;
 }
+/* Icons are decorative (aria-hidden) and must never win hit-testing — taps
+   land on the owning button, the same rule .agent-icon already carries.
+   Belt-and-braces for iOS touch adjudication around svg <use> content. */
+.icon { pointer-events: none; }
 
 html, body {
   margin: 0;
@@ -1959,6 +1963,12 @@ body.terminal-open {
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
    bar closes it back to the list). Inside the reused .terminal-overlay. */
+/* The Life OS browser reuses .terminal-overlay for its full-screen shell,
+   but it is a READING surface, not a terminal screen — it follows the app
+   theme instead of the invariant --term-bg (issue #355 PR 3 on-device
+   review: dark background stuck in light theme). */
+#lifeOsBrowser.terminal-overlay { background: var(--bg); }
+
 .lifeos-browser-body {
   position: relative;
   flex: 1;

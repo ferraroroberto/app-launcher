@@ -177,7 +177,7 @@ function buildDrawer(card) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'board-open-terminal';
-    open.textContent = '⚡ Terminal';
+    open.innerHTML = icon('zap') + ' Terminal';
     open.title = 'Open the full terminal';
     open.addEventListener('click', function () {
       state.boardExpanded = null;
@@ -320,11 +320,11 @@ function renderIssueCard(card) {
   if (card.number && repoInProjects(card.repo)) {
     const row = document.createElement('div');
     row.className = 'board-issue-actions board-issue-actions-compact';
-    [['start', '▶', 'Start'], ['yolo', '⚡', 'YOLO']].forEach(function (pair) {
+    [['start', 'play', 'Start'], ['yolo', 'zap', 'YOLO']].forEach(function (pair) {
       const actionBtn = document.createElement('button');
       actionBtn.type = 'button';
       actionBtn.className = 'board-issue-btn icon-only';
-      actionBtn.textContent = pair[1];
+      actionBtn.innerHTML = icon(pair[1]);
       actionBtn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
       actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
       actionBtn.addEventListener('click', function () {

@@ -369,7 +369,7 @@ def test_life_os_browser_full_screen_doc_toggle(
         "#lifeOsList li.lifeos-item[data-id='journal-daily']"
     )
     expect(tile).to_be_visible(timeout=5_000)
-    tile.locator("button:has-text('📖')").click()
+    tile.locator("button[title^='Browse']").click()
 
     # File list full-screen; content layer + ✕ hidden.
     expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
@@ -445,7 +445,7 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] button:has-text('📖')"
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] button[title^='Browse']"
     ).click()
 
     # No delete control anywhere in the list, and the toolbar 🗑️ stays hidden.

@@ -11,6 +11,7 @@ import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, fmtAgo } from './sessions.js';
 import { openTerminal, estimateTermSize } from './terminal.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -44,7 +45,7 @@ function renderCodingList(host, items) {
   if (state.codingFavFilter && favs.length === 0) {
     const note = document.createElement('li');
     note.className = 'coding-fav-empty muted small';
-    note.textContent = 'No favorites yet — tap a project’s ☆ to star it.';
+    note.innerHTML = 'No favorites yet — tap a project’s ' + icon('star') + ' to star it.';
     host.appendChild(note);
     return;
   }
@@ -119,7 +120,7 @@ function renderCodingList(host, items) {
     const starBtn = document.createElement('button');
     starBtn.type = 'button';
     starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
-    starBtn.textContent = a.is_favorite ? '★' : '☆';
+    starBtn.innerHTML = icon('star');
     starBtn.title = a.is_favorite ? 'Unstar (remove from favorites)' : 'Star (add to favorites)';
     starBtn.setAttribute('aria-label', starBtn.title);
     starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
@@ -156,7 +157,7 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.textContent = (on ? '★' : '☆') + ' Favorites';
+  btn.innerHTML = icon('star') + ' Favorites';
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
@@ -336,7 +337,7 @@ function renderList(host, items) {
       const renameBtn = document.createElement('button');
       renameBtn.type = 'button';
       renameBtn.className = 'icon-btn';
-      renameBtn.textContent = '✏️';
+      renameBtn.innerHTML = icon('pencil');
       renameBtn.title = 'Rename';
       renameBtn.setAttribute('aria-label', 'Rename');
       renameBtn.addEventListener('click', function () { openRename(a); });
@@ -345,7 +346,7 @@ function renderList(host, items) {
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'icon-btn danger';
-      removeBtn.textContent = '🗑️';
+      removeBtn.innerHTML = icon('trash-2');
       removeBtn.title = 'Remove';
       removeBtn.setAttribute('aria-label', 'Remove');
       removeBtn.addEventListener('click', function () { removeApp(a); });
@@ -529,7 +530,7 @@ export function renderRunningApps() {
     const openBtn = document.createElement('button');
     openBtn.type = 'button';
     openBtn.className = 'icon-btn action-open';
-    openBtn.textContent = '🌐';
+    openBtn.innerHTML = icon('globe');
     openBtn.setAttribute('aria-label', 'Open app');
     if (r.url) {
       openBtn.title = 'Open ' + r.url;
@@ -547,7 +548,7 @@ export function renderRunningApps() {
     const stopBtn = document.createElement('button');
     stopBtn.type = 'button';
     stopBtn.className = 'icon-btn action-stop-close';
-    stopBtn.textContent = '⏹️';
+    stopBtn.innerHTML = icon('square');
     stopBtn.title = 'Stop ' + r.name;
     stopBtn.setAttribute('aria-label', 'Stop app');
     stopBtn.addEventListener('click', function () { stopAppInstance(r); });
@@ -763,7 +764,7 @@ function buildListenerRow(l, isChild) {
 
   const kill = document.createElement('button');
   kill.type = 'button';
-  kill.textContent = '🛑 Kill';
+  kill.innerHTML = icon('octagon-x') + ' Kill';
   kill.addEventListener('click', async function () {
     const label = (isChild ? l.service : l.app) || ('port ' + l.port);
     if (!confirm('Kill ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
