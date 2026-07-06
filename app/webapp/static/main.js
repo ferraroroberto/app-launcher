@@ -58,6 +58,23 @@ function wireSettings() {
   });
 }
 
+// --------------------------------------------------------- theme toggle
+function wireTheme() {
+  // The pre-paint boot script in index.html already stamped
+  // html[data-theme] (localStorage override, prefers-color-scheme
+  // fallback); the button just flips it. The sun/moon glyph swap is pure
+  // CSS keyed on the attribute, so there is nothing to re-render here —
+  // the xterm surface is theme-invariant (--term-bg/--term-fg).
+  els.themeToggle.addEventListener('click', function (ev) {
+    // Inside the ⚙️ options <summary> row: don't also expand/collapse it.
+    ev.stopPropagation();
+    ev.preventDefault();
+    const dark = document.documentElement.dataset.theme !== 'dark';
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
+  });
+}
+
 // --------------------------------------------------------- status readout
 async function fetchStatus() {
   try {
@@ -190,5 +207,6 @@ wireSystemMap();
 wireTerminal();
 wireWebauthn();
 wireSettings();
+wireTheme();
 
 boot();
