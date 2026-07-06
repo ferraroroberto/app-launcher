@@ -1,5 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Antigravity CLI">
-  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
   <defs>
     <linearGradient id="agLift" x1="0" y1="1" x2="0" y2="0">
       <stop offset="0" stop-color="#4285f4"/>
