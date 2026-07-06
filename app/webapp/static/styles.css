@@ -292,7 +292,7 @@ html, body {
   gap: 6px;
   font-size: 13px;
   white-space: nowrap;
-  padding: 6px 12px;
+  padding: 6px 10px;
   min-height: 36px;
   border: 1px solid var(--line-muted);
   border-radius: 10px;
@@ -308,6 +308,36 @@ html, body {
   background: rgb(from var(--accent) r g b / 0.18);
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
+
+/* Theme toggle (issue #355) — sun/moon ghost button in the ⚙️ options
+   summary row, the launcher's always-visible top slot (the counterpart of
+   home-automation's Home-tile toggle). Shows the glyph for the ACTION:
+   moon in light (tap → dark), sun in dark (tap → light). */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 36px;
+  padding: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.theme-toggle:active { background: var(--card-2); color: var(--fg); }
+.theme-toggle-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+:root[data-theme="dark"] .theme-icon-moon { display: none; }
+:root:not([data-theme="dark"]) .theme-icon-sun { display: none; }
 
 /* ---------- coding options (collapsible card) ---------- */
 .coding-card { padding: 0; }
@@ -331,7 +361,7 @@ html, body {
      or buttons (Coding options, Running sessions, Settings) — issue #212. */
   min-height: 36px;
 }
-.coding-summary-title { font-size: 15px; font-weight: 600; }
+.coding-summary-title { font-size: 15px; font-weight: 600; white-space: nowrap; }
 .coding-summary-title::before {
   content: "\203A";          /* › — rotates to ⌄ when the panel is open */
   display: inline-block;
@@ -1904,7 +1934,7 @@ body.terminal-open {
    this the Coding row's three children space-between and Detached floats in the
    center (issue #155). Shared by the Coding + Life OS option rows. */
 .coding-toggles,
-.lifeos-toggles { display: flex; gap: 8px; }
+.lifeos-toggles { display: flex; gap: 6px; }
 .lifeos-launch { font-size: 18px; }
 
 /* Weekly-recap tile (issue #167): title + a staleness badge on the left, the

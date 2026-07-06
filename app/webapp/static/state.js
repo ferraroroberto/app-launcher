@@ -100,6 +100,7 @@ export const state = {
 // ES modules are deferred — they execute after DOMContentLoaded, so
 // document.getElementById is safe to call at module top level.
 export const els = {
+  themeToggle: document.getElementById('themeToggle'),
   tabClaude: document.getElementById('tabClaude'),
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),

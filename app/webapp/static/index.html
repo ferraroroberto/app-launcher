@@ -79,6 +79,21 @@
           <div class="coding-summary-row">
             <span class="coding-summary-title">⚙️ options</span>
             <div class="coding-toggles">
+              <button type="button" id="themeToggle" class="theme-toggle"
+                      title="Toggle theme" aria-label="Toggle dark mode">
+                <!-- Lucide moon + sun (24-grid, 2px stroke); CSS shows the
+                     glyph for the *action* keyed on html[data-theme]. -->
+                <svg class="theme-toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path class="theme-icon-moon" d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+                  <g class="theme-icon-sun">
+                    <circle cx="12" cy="12" r="4"/>
+                    <path d="M12 2v2"/><path d="M12 20v2"/>
+                    <path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/>
+                    <path d="M2 12h2"/><path d="M20 12h2"/>
+                    <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+                  </g>
+                </svg>
+              </button>
               <label class="detached-toggle"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
                 <input type="checkbox" id="claudeDetached" hidden>
