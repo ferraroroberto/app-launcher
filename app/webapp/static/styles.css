@@ -1974,7 +1974,10 @@ body.terminal-open {
 /* ---------- Life OS tab (issue #102) ---------- */
 /* Single-line, non-collapsible options card: the title + two switches
    (opus + ☁️ Detached) on one row, reusing .detached-toggle styling. */
-.lifeos-options-card { padding: 12px 16px; }
+/* Single-row (non-collapsible) cards inherit the disclosure closed-box:
+   zero vertical padding, the 52px .coding-summary-row owns the height, so
+   they sit pixel-identical beside collapsed disclosure cards (#355). */
+.lifeos-options-card { padding: 0 14px; }
 .lifeos-options-title { font-size: var(--font-label); font-weight: 600; }
 /* Right-aligned toggle group: keeps a summary row's switches packed together
    as a single flex child so the row stays title-left / toggles-right. Without
@@ -1989,7 +1992,7 @@ body.terminal-open {
    colour tracks how stale the recap ledger is — green/accent fresh, amber
    (--attention) past 7 days, red (--danger) past 14, muted when never run. Mirrors
    the .health-dot colour vocabulary used elsewhere. */
-.lifeos-recap-card { padding: 12px 16px; }
+.lifeos-recap-card { padding: 0 14px; }
 .lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .lifeos-recap-title { font-size: var(--font-label); font-weight: 600; }
 .lifeos-recap-badge {
