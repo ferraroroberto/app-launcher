@@ -152,17 +152,24 @@ async function boot() {
     apiFailToast('Boot failed', exc);
     return;
   }
-  await fetchAgents();
-  await fetchApps();
-  await fetchSkills();
-  await fetchSystemMapStatus();
-  await fetchSessions();
-  await fetchRateLimits();
-  await fetchListeners();
-  await fetchRunningApps();
-  await fetchStatus();
-  await fetchVersion();
-  await fetchWebauthnStatus();
+  // Each remaining boot fetch fills one panel — none is load-bearing for
+  // the rest of the app, so a single failure must not abort boot() and take
+  // the deep-link branch below down with it: the PC mirror window's title
+  // marker + terminal connect depend on reaching it (issue #371).
+  const safe = function (fn) { return fn().catch(function (exc) {
+    console.warn('boot: non-critical fetch failed', exc);
+  }); };
+  await safe(fetchAgents);
+  await safe(fetchApps);
+  await safe(fetchSkills);
+  await safe(fetchSystemMapStatus);
+  await safe(fetchSessions);
+  await safe(fetchRateLimits);
+  await safe(fetchListeners);
+  await safe(fetchRunningApps);
+  await safe(fetchStatus);
+  await safe(fetchVersion);
+  await safe(fetchWebauthnStatus);
 
   // PC mirror window opened with ?terminal=<sid> — drop straight in.
   if (deepLinkSid) {

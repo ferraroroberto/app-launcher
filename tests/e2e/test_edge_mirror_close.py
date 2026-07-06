@@ -50,3 +50,41 @@ def test_mirror_page_keeps_close_marker_in_document_title(
         f"() => document.title.endsWith({marker!r})",
         timeout=5_000,
     )
+
+
+def test_mirror_marker_applies_on_tailnet_origin(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """Regression pin for issue #371: the ts.net-hosted mirror window.
+
+    With a Tailscale LE cert active, ``mirror_url`` spawns the Edge ``--app``
+    window on the ts.net host — where ``/api/status`` reports
+    ``{reachable: true, reason: 'tailnet'}``, not ``'loopback'``. The mirror
+    discriminator (``isMirrorWindowSession``) required ``'loopback'``
+    exactly, so every ts.net mirror window skipped ``announceMirrorWindow``:
+    no title marker (EnumWindows can't find it on Stop & Close) and no
+    shutdown-frame self-close — orphan windows piled up on the desktop.
+
+    The e2e webapp is loopback-bound, so simulate the ts.net origin by
+    rewriting ``/api/status``'s terminal reachability to the tailnet reason
+    — the exact field the discriminator reads.
+    """
+    sid = launched_pty_session
+
+    def to_tailnet(route):
+        resp = route.fetch()
+        body = resp.json()
+        term = dict(body.get("terminal") or {})
+        term.update({"reachable": True, "reason": "tailnet"})
+        body["terminal"] = term
+        route.fulfill(json=body)
+
+    authed_page.route("**/api/status", to_tailnet)
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+
+    marker = f"app-launcher-mirror-{sid}"
+    authed_page.wait_for_function(
+        f"() => document.title.endsWith({marker!r})",
+        timeout=5_000,
+    )
