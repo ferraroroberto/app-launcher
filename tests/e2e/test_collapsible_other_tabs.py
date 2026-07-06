@@ -1,8 +1,8 @@
 """Regression pin for issue #226 (collapsible Apps/Jobs/Life panels).
 
 The feature: the Apps, Jobs and Life tabs' top-level panels are each a
-collapsible ``<details>`` reusing the Code tab's ``.coding-card`` /
-``.coding-summary`` chrome — open by default, with the ``›``→``⌄`` chevron
+collapsible ``<details>`` reusing the Code tab's ``.card--collapsible`` /
+``.collapse-summary`` chrome — open by default, with the right-pinned chevron
 on the summary title, so the whole app shares one foldable-section idiom.
 
 Covered panels:
@@ -44,7 +44,7 @@ def test_apps_tab_panels_are_collapsible_open_by_default(
         assert _is_open(authed_page, sel), f"{sel} should open by default"
 
     # Tapping the Registered-apps summary title collapses, then re-expands it.
-    title = authed_page.locator("#paneApps details.apps-list-card .coding-summary-title")
+    title = authed_page.locator("#paneApps details.apps-list-card .collapse-title")
     title.click()
     assert not _is_open(authed_page, "#paneApps details.apps-list-card"), (
         "title tap should collapse the panel"
@@ -87,7 +87,7 @@ def test_life_skills_panel_is_collapsible(authed_page: Page, base_url: str) -> N
         "skills panel should open by default"
     )
 
-    title = authed_page.locator("#paneLifeOS details.lifeos-list-card .coding-summary-title")
+    title = authed_page.locator("#paneLifeOS details.lifeos-list-card .collapse-title")
     title.click()
     assert not _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
         "title tap should collapse the panel"

@@ -22,6 +22,7 @@ import { apiFailToast, AuthRequiredError, jsonApi, toast } from './api.js';
 import { fmtAgo } from './sessions.js';
 import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
 import { wireJobsAgenda } from './jobs-agenda.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------------- render
 
@@ -72,10 +73,10 @@ function syncSortBtn() {
   const btn = els.jobsSortBtn;
   if (!btn) return;
   if (state.jobsSort === 'name') {
-    btn.textContent = '↕ A–Z';
+    btn.innerHTML = icon('arrow-down-up') + ' A–Z';
     btn.title = 'Sorted A–Z — tap to sort by next run';
   } else {
-    btn.textContent = '⏱ Next run';
+    btn.innerHTML = icon('timer') + ' Next run';
     btn.title = 'Sorted by next run — tap to sort A–Z';
   }
 }
@@ -99,7 +100,7 @@ function renderCountdownChip(job) {
   if (!Number.isFinite(job.next_run_epoch)) return null;
   const chip = document.createElement('span');
   chip.className = 'kind-pill job-countdown-chip';
-  chip.textContent = '⏱ ' + fmtUntil(job.next_run_epoch);
+  chip.innerHTML = icon('timer') + ' ' + fmtUntil(job.next_run_epoch);
   if (job.next_run) chip.title = 'Next run: ' + job.next_run;
   return chip;
 }
@@ -192,7 +193,7 @@ function renderJobRow(job) {
     const ext = document.createElement('span');
     ext.className = 'kind-pill job-elevated-pill';
     ext.dataset.role = 'elevated-chip';
-    ext.textContent = '🔒 externally scheduled';
+    ext.innerHTML = icon('lock') + ' externally scheduled';
     ext.title = 'Registered by hand via schtasks /RL HIGHEST — ' +
       'this app never creates, edits, or deletes its Task Scheduler entry';
     pills.appendChild(ext);
@@ -202,8 +203,9 @@ function renderJobRow(job) {
     const mg = document.createElement('span');
     mg.className = 'kind-pill job-mutex-pill';
     const depth = Number.isFinite(job.queue_depth) ? job.queue_depth : 0;
-    mg.textContent = depth > 0 ? '🪢 ' + job.mutex_group + ' (' + depth + ')'
-                               : '🪢 ' + job.mutex_group;
+    mg.innerHTML = icon('link') + ' ';
+    mg.append(depth > 0 ? job.mutex_group + ' (' + depth + ')'
+                               : job.mutex_group);
     mg.title = 'Mutex group: ' + job.mutex_group +
       (depth > 0 ? ' — ' + depth + ' queued' : '');
     pills.appendChild(mg);
@@ -263,7 +265,7 @@ function renderJobRow(job) {
     pauseBtn.type = 'button';
     pauseBtn.className = 'icon-btn';
     pauseBtn.dataset.role = 'pause-btn';
-    pauseBtn.textContent = job.paused ? '▶' : '⏸';
+    pauseBtn.innerHTML = job.paused ? icon('play') : icon('pause');
     pauseBtn.title = job.paused
       ? 'Resume schedule for ' + job.name
       : 'Pause schedule for ' + job.name;
@@ -281,7 +283,7 @@ function renderJobRow(job) {
     const dryBtn = document.createElement('button');
     dryBtn.type = 'button';
     dryBtn.className = 'icon-btn';
-    dryBtn.textContent = '🧪';
+    dryBtn.innerHTML = icon('flask-conical');
     dryBtn.title = 'Dry-run check ' + job.name + ' (resolve only, no spawn)';
     dryBtn.setAttribute('aria-label', 'Dry-run check');
     dryBtn.addEventListener('click', function (ev) {
@@ -293,7 +295,7 @@ function renderJobRow(job) {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'icon-btn';
-    editBtn.textContent = '✏️';
+    editBtn.innerHTML = icon('pencil');
     editBtn.title = 'Edit ' + job.name;
     editBtn.setAttribute('aria-label', 'Edit');
     editBtn.addEventListener('click', function (ev) { ev.stopPropagation(); openJobDialog(job); });
@@ -302,7 +304,7 @@ function renderJobRow(job) {
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'icon-btn danger';
-    removeBtn.textContent = '🗑️';
+    removeBtn.innerHTML = icon('trash-2');
     removeBtn.title = 'Remove ' + job.name;
     removeBtn.setAttribute('aria-label', 'Remove');
     removeBtn.addEventListener('click', function (ev) { ev.stopPropagation(); removeJob(job); });
@@ -328,7 +330,7 @@ function renderJobRow(job) {
 }
 
 function setRunBtnState(btn, job) {
-  btn.textContent = job.running ? '⏳' : '▶';
+  btn.innerHTML = job.running ? icon('hourglass') : icon('play');
   btn.title = job.running ? 'A run is in progress' : ('Run ' + job.name + ' now');
   btn.setAttribute('aria-label', 'Run now');
   btn.disabled = !!job.running;
@@ -339,14 +341,14 @@ function setRunBtnState(btn, job) {
 // lookups that quietly diverged (e.g. a status landing a class in one
 // and dropping out of another). A new status is now one entry here.
 const STATUS_META = {
-  running: { class: 'up', icon: '⏳', spark: 'live' },
-  pending: { class: '', icon: '⏳', spark: 'live' },
-  success: { class: 'up', icon: '✅', spark: 'up' },
-  failed: { class: 'down', icon: '❌', spark: 'down' },
-  skipped: { class: '', icon: '⏭', spark: 'unknown' },
-  queued: { class: '', icon: '🪢', spark: 'live' },
-  dry_run_success: { class: '', icon: '🧪', spark: 'unknown' },
-  dry_run_failed: { class: '', icon: '🧪', spark: 'unknown' },
+  running: { class: 'up', icon: 'hourglass', spark: 'live' },
+  pending: { class: '', icon: 'hourglass', spark: 'live' },
+  success: { class: 'up', icon: 'circle-check', spark: 'up' },
+  failed: { class: 'down', icon: 'circle-x', spark: 'down' },
+  skipped: { class: '', icon: 'skip-forward', spark: 'unknown' },
+  queued: { class: '', icon: 'link', spark: 'live' },
+  dry_run_success: { class: '', icon: 'flask-conical', spark: 'unknown' },
+  dry_run_failed: { class: '', icon: 'flask-conical', spark: 'unknown' },
 };
 const DEFAULT_STATUS_META = { class: '', icon: '•', spark: 'unknown' };
 
@@ -476,7 +478,7 @@ function renderHistoryLi(job) {
   const close = document.createElement('button');
   close.type = 'button';
   close.className = 'jobs-history-close';
-  close.textContent = '✕ Close';
+  close.innerHTML = icon('x') + ' Close';
   close.addEventListener('click', function (ev) { ev.stopPropagation(); collapseExpanded(); });
   bar.appendChild(close);
   li.appendChild(bar);
@@ -550,10 +552,10 @@ function redrawRunsList(jobId, runs) {
         && state.selectedRun.runId === r.run_id) {
       btn.classList.add('selected');
     }
-    const icon = document.createElement('span');
-    icon.className = 'jobs-run-icon';
-    icon.textContent = statusIcon(r.status);
-    btn.appendChild(icon);
+    const iconEl = document.createElement('span');
+    iconEl.className = 'jobs-run-icon';
+    iconEl.innerHTML = icon(statusIcon(r.status));
+    btn.appendChild(iconEl);
     const meta = document.createElement('span');
     meta.className = 'jobs-run-meta';
     const ago = fmtAgo(toEpoch(r.started_at));
@@ -771,7 +773,7 @@ function renderKillButton(jobId, runId, status, extras) {
     killBtn.type = 'button';
     killBtn.className = 'icon-btn danger jobs-kill-btn';
     killBtn.dataset.role = 'kill-btn';
-    killBtn.textContent = '🛑 Kill stuck run';
+    killBtn.innerHTML = icon('octagon-x') + ' Kill stuck run';
     killBtn.addEventListener('click', function () { killRun(jobId, runId); });
     body.insertBefore(killBtn, body.querySelector('[data-role="output-label"]'));
   } else {

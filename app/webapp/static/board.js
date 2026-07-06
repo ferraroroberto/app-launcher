@@ -36,6 +36,7 @@ import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './ap
 import { setTab } from './tabs.js';
 import { openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
+import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { renderUsageBadgeRow } from './dom-utils.js';
 
@@ -152,7 +153,7 @@ function buildDrawer(card) {
       const mic = document.createElement('button');
       mic.type = 'button';
       mic.className = 'compose-record board-reply-record';
-      mic.textContent = '🎤';
+      mic.innerHTML = icon('mic');
       mic.title = 'Dictate (voice → text)';
       mic.setAttribute('aria-pressed', 'false');
       const dictation = createDictation({
@@ -165,7 +166,7 @@ function buildDrawer(card) {
     const send = document.createElement('button');
     send.type = 'button';
     send.className = 'board-reply-send';
-    send.textContent = '➤';
+    send.innerHTML = icon('send-horizontal');
     send.title = 'Send into the session';
     send.addEventListener('click', function () {
       sendReply(card, input, send);
@@ -176,7 +177,7 @@ function buildDrawer(card) {
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'board-open-terminal';
-    open.textContent = '⚡ Terminal';
+    open.innerHTML = icon('zap') + ' Terminal';
     open.title = 'Open the full terminal';
     open.addEventListener('click', function () {
       state.boardExpanded = null;
@@ -319,11 +320,11 @@ function renderIssueCard(card) {
   if (card.number && repoInProjects(card.repo)) {
     const row = document.createElement('div');
     row.className = 'board-issue-actions board-issue-actions-compact';
-    [['start', '▶', 'Start'], ['yolo', '⚡', 'YOLO']].forEach(function (pair) {
+    [['start', 'play', 'Start'], ['yolo', 'zap', 'YOLO']].forEach(function (pair) {
       const actionBtn = document.createElement('button');
       actionBtn.type = 'button';
       actionBtn.className = 'board-issue-btn icon-only';
-      actionBtn.textContent = pair[1];
+      actionBtn.innerHTML = icon(pair[1]);
       actionBtn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
       actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
       actionBtn.addEventListener('click', function () {
@@ -718,7 +719,7 @@ async function dispatchGoal() {
   btn.disabled = true;
   // The server waits for the agent's first output before typing the goal
   // in (spawn-then-type), so this call legitimately takes seconds — tick.
-  const stopTimer = startWorkTimer(btn, '➤');
+  const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
   try {
     const tt = await ensureTerminalToken();
     const payload = {

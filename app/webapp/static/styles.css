@@ -17,6 +17,7 @@
   --card-2: #f6f8fa;         /* elevation-2: hover/active + raised chrome */
   --card-off: #f6f8fa;       /* canvas-subtle: inset chips / code blocks */
   --fg: #1f2328;             /* primary text */
+  --ink: #1f2328;            /* vendored card.css token name (== --fg) */
   --muted: #656d76;          /* fg-muted (secondary text) */
   --line: #d1d9e0;           /* border — default hairline, the dominant border */
   --line-muted: #d8dee4;     /* border-muted — quieter ghost-toggle border */
@@ -93,6 +94,7 @@
   --card-2: #21262d;         /* elevation-2: hover/active + raised chrome */
   --card-off: #010409;       /* canvas-subtle: true-black inset */
   --fg: #e6edf3;
+  --ink: #e6edf3;
   --muted: #7d8590;
   --line: #30363d;
   --line-muted: #21262d;
@@ -142,6 +144,25 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* Lucide sprite glyphs (_vendored/icons required CSS contract — verbatim
+   from its README). Icons inherit currentColor; size via width/height or
+   the surrounding font-size (1em default). */
+.icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  flex: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: -0.15em;
+}
+/* Icons are decorative (aria-hidden) and must never win hit-testing — taps
+   land on the owning button, the same rule .agent-icon already carries.
+   Belt-and-braces for iOS touch adjudication around svg <use> content. */
+.icon { pointer-events: none; }
 
 html, body {
   margin: 0;
@@ -303,13 +324,9 @@ html, body {
 }
 
 /* ---------- card ---------- */
-.card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: var(--space-md);
-  margin: 0 0 var(--gap);
-}
+/* Surface/border/radius/padding come from the vendored card.css; the app
+   adds only the inter-card gutter. */
+.card { margin: 0 0 var(--gap); }
 /* Detached toggle — modelled on voice-transcriber's `.incognito-btn`:
    the checkbox is hidden, the <label> itself is the button. Opacity +
    accent border flip on `:has(input:checked)` so it reads as on/off
@@ -368,67 +385,23 @@ html, body {
 :root[data-theme="dark"] .theme-icon-moon { display: none; }
 :root:not([data-theme="dark"]) .theme-icon-sun { display: none; }
 
-/* ---------- coding options (collapsible card) ---------- */
-.coding-card { padding: 0; }
-.coding-summary {
-  padding: 0 14px;
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-}
-.coding-summary::-webkit-details-marker { display: none; }
-/* Flex an inner wrapper, not the <summary> itself — iOS Safari ignores
-   `display` on <summary>, which would stack the Detached toggle below
-   the title instead of beside it. */
-.coding-summary-row {
-  display: flex;
+/* ---------- collapsible cards (vendored disclosure) ---------- */
+/* Structure and closed-box geometry come from _vendored/disclosure — the
+   .card--collapsible modifier + .collapse-summary/.collapse-main/
+   .collapse-title/.collapse-chevron/.collapse-body classes. The app adds
+   only the action cluster that rides between title and chevron (git
+   status, favorites filter, sort/add, the option toggles, Edit mode). */
+.summary-actions {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  /* The disclosure contract's closed-state box (52px, issue #355): every
-     collapsible card — title-only or carrying toggles/buttons — collapses
-     to the same height (the #212 uniformity, at the fleet's step). */
-  min-height: 52px;
+  gap: 6px;
 }
-/* No leading ›/⌄ chevron on summaries: the disclosure contract is a
-   left-aligned title with the chevron pinned RIGHT — that affordance
-   arrives with the vendored disclosure (fleet-wide, #355 PR 3), never a
-   per-app leading arrow. */
-.coding-summary-title { font-size: var(--font-label); font-weight: 600; white-space: nowrap; }
-/* Open state: the summary's bottom hairline is the ONLY divider between
-   header and body (disclosure contract). The Coding-options card's first
-   .opt-group used to bring its own top border — drop it so the two never
-   double up. */
-.coding-card[open] > summary,
-.settings-card[open] > summary {
-  border-bottom: 1px solid var(--line-muted);
-}
+/* The Coding-options card keeps its .opt-group children as direct body
+   content (they bring their own padding + dividers); the [open] summary
+   hairline is the only divider under the header. */
 summary + .opt-group { border-top: 0; }
-
-/* Collapsible body panels reuse the coding-card chrome — `.coding-card
-   { padding: 0 }` plus the `.coding-summary` header — so their body content
-   needs the side padding added back. Started as Running-sessions + Projects
-   (issue #212); extended to the Apps (Running apps, Port listeners, Registered
-   apps), Jobs (Registered jobs) and Life (Skills) panels (issue #226) so every
-   tab shares one foldable-section idiom. The Coding-options card (`#codingOptions`)
-   is deliberately absent: its `.opt-group` children bring their own padding.
-   Bottom padding is gated on `[open]` so a collapsed card sits flush under its
-   summary with no dangling gap. */
-.sessions-card.coding-card > :not(summary),
-.projects-card.coding-card > :not(summary),
-.system-map-card.coding-card > :not(summary),
-.listeners-card.coding-card > :not(summary),
-.apps-list-card.coding-card > :not(summary),
-.lifeos-list-card.coding-card > :not(summary) {
-  padding-left: 14px;
-  padding-right: 14px;
-}
-.sessions-card.coding-card[open],
-.projects-card.coding-card[open],
-.system-map-card.coding-card[open],
-.listeners-card.coding-card[open],
-.apps-list-card.coding-card[open],
-.lifeos-list-card.coding-card[open] { padding-bottom: 14px; }
+/* Favorites filter: the star fills gold when the filter is active. */
+.fav-filter-btn.active .icon { fill: currentColor; }
 
 /* System map (issue #173): the inline PNG fills the card width and is
    tappable to open the full-screen lightbox for pan/zoom. */
@@ -963,7 +936,7 @@ summary + .opt-group { border-top: 0; }
 }
 
 /* ---------- jobs tab ---------- */
-/* The list lives inside a collapsible `.sessions-card.coding-card` (issue
+/* The list lives inside a collapsible `.sessions-card.card--collapsible` (issue
    #226). The ➕ Add job button sits in the summary row alongside the title,
    mirroring the Running-sessions card's ⎇ status button. */
 .jobs-header-actions {
@@ -1177,35 +1150,7 @@ summary + .opt-group { border-top: 0; }
 .toast.good  { border-color: var(--success); }
 
 /* ---------- settings ---------- */
-.settings-card { margin-top: 12px; padding: 0; }
-/* Same body-side-padding idiom as the .coding-card family above; the <hr>
-   stays full-bleed like the summary divider. */
-.settings-card > :not(summary) {
-  padding-left: 14px;
-  padding-right: 14px;
-}
-.settings-card[open] { padding-bottom: 14px; }
-.settings-card summary.settings-summary {
-  cursor: pointer;
-  user-select: none;
-  padding: 0 14px;
-  /* Same 15 px as .coding-summary-title — Settings used to read smaller
-     than the other card titles and looked downgraded. */
-  font-size: var(--font-label);
-  font-weight: 600;
-  list-style: none;
-}
-.settings-card summary.settings-summary::-webkit-details-marker { display: none; }
-/* Flex an inner wrapper, not <summary> itself — iOS Safari ignores
-   display on <summary>, which would stack the toggle below the title. */
-.settings-summary-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  /* Match the collapsed height of the Code-tab cards (disclosure contract). */
-  min-height: 52px;
-}
+.settings-card { margin-top: 12px; }
 /* Edit-mode toggle in the Settings summary — same button-style toggle
    as .detached-toggle. Right-aligned, button-like, no visible
    checkbox. Click is intercepted so flipping Edit mode doesn't also
@@ -1961,10 +1906,10 @@ body.terminal-open {
 /* Single-line, non-collapsible options card: the title + two switches
    (opus + ☁️ Detached) on one row, reusing .detached-toggle styling. */
 /* Single-row (non-collapsible) cards inherit the disclosure closed-box:
-   zero vertical padding, the 52px .coding-summary-row owns the height, so
-   they sit pixel-identical beside collapsed disclosure cards (#355). */
-.lifeos-options-card { padding: 0 14px; }
-.lifeos-options-title { font-size: var(--font-label); font-weight: 600; }
+   zero vertical padding, a 52px .card-head (vendored card.css) owns the
+   height, so they sit pixel-identical beside collapsed disclosure cards. */
+.card--row { padding: 0 14px; }
+.card--row .card-head { min-height: 52px; }
 /* Right-aligned toggle group: keeps a summary row's switches packed together
    as a single flex child so the row stays title-left / toggles-right. Without
    this the Coding row's three children space-between and Detached floats in the
@@ -1978,9 +1923,7 @@ body.terminal-open {
    colour tracks how stale the recap ledger is — green/accent fresh, amber
    (--attention) past 7 days, red (--danger) past 14, muted when never run. Mirrors
    the .health-dot colour vocabulary used elsewhere. */
-.lifeos-recap-card { padding: 0 14px; }
 .lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-.lifeos-recap-title { font-size: var(--font-label); font-weight: 600; }
 .lifeos-recap-badge {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: var(--font-caption); color: var(--muted); white-space: nowrap;
@@ -2020,6 +1963,12 @@ body.terminal-open {
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
    bar closes it back to the list). Inside the reused .terminal-overlay. */
+/* The Life OS browser reuses .terminal-overlay for its full-screen shell,
+   but it is a READING surface, not a terminal screen — it follows the app
+   theme instead of the invariant --term-bg (issue #355 PR 3 on-device
+   review: dark background stuck in light theme). */
+#lifeOsBrowser.terminal-overlay { background: var(--bg); }
+
 .lifeos-browser-body {
   position: relative;
   flex: 1;

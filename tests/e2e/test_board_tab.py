@@ -414,8 +414,8 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     actions = tile.locator(".board-issue-btn")
     expect(actions.first).to_be_visible(timeout=15_000)
     expect(actions).to_have_count(2)
-    expect(actions.nth(0)).to_have_text("▶")
-    expect(actions.nth(1)).to_have_text("⚡")
+    expect(actions.nth(0)).to_have_attribute("aria-label", re.compile(r"^Start issue"))
+    expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
 
 def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(

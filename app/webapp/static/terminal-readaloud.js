@@ -16,6 +16,7 @@ import { els, state } from './state.js';
 import { apiFailToast, readToken, showLogin, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { readTerminalToken } from './webauthn.js';
+import { icon } from './_vendored/icons/icons.js';
 import {
   cancelHub,
   cancelSpeech,
@@ -52,7 +53,7 @@ function setSpeakingUI(on) {
   if (!btn) return;
   btn.classList.toggle('speaking', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.textContent = on ? '⏹' : '🔊';
+  btn.innerHTML = on ? icon('square') : icon('volume-2');
   btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
 }
 

@@ -27,6 +27,7 @@ import { els, state } from './state.js';
 import { apiFailToast, apiRaw, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer } from './voice.js';
+import { icon } from './_vendored/icons/icons.js';
 import { stopReading } from './terminal-readaloud.js';
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
@@ -153,7 +154,7 @@ function renderOcrTray() {
     const rm = document.createElement('button');
     rm.type = 'button';
     rm.className = 'ocr-thumb-x';
-    rm.textContent = '✕';
+    rm.innerHTML = icon('x');
     rm.title = 'Remove';
     rm.addEventListener('click', function () {
       _ocrStaged.splice(idx, 1);
@@ -163,8 +164,8 @@ function renderOcrTray() {
     cell.appendChild(rm);
     strip.appendChild(cell);
   });
-  els.terminalOcrExtract.textContent =
-    '📷 Extract text (' + _ocrStaged.length + ')';
+  els.terminalOcrExtract.innerHTML =
+    icon('camera') + ' Extract text (' + _ocrStaged.length + ')';
 }
 
 function stageOcrImages(files) {
@@ -187,7 +188,7 @@ async function runOcrExtraction() {
   const btn = els.terminalOcrExtract;
   btn.disabled = true;
   els.terminalScreenshot.disabled = true;
-  const stopTimer = startWorkTimer(btn, '📷 Extract text', '⏳ Reading ');
+  const stopTimer = startWorkTimer(btn, icon('camera') + ' Extract text', icon('hourglass') + ' Reading ');
   try {
     const tt = readTerminalToken();
     const res = await apiRaw('/api/ocr', {

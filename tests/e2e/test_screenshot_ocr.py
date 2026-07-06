@@ -65,17 +65,17 @@ def test_screenshot_staging_accumulates_and_removes(
     _stage(page, "a.png")
     expect(tray).to_be_visible()
     expect(thumbs).to_have_count(1)
-    expect(extract).to_have_text("📷 Extract text (1)")
+    expect(extract).to_have_text("Extract text (1)")
 
     # Stage another (separate tap) → accumulates to 2, not sent per-image.
     _stage(page, "b.png")
     expect(thumbs).to_have_count(2)
-    expect(extract).to_have_text("📷 Extract text (2)")
+    expect(extract).to_have_text("Extract text (2)")
 
     # Remove one → back to 1.
     page.locator("#terminalOcrThumbs .ocr-thumb-x").first.click()
     expect(thumbs).to_have_count(1)
-    expect(extract).to_have_text("📷 Extract text (1)")
+    expect(extract).to_have_text("Extract text (1)")
 
 
 def test_screenshot_staging_cleared_when_compose_closes(

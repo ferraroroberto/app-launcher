@@ -16,6 +16,7 @@ import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
 import { fetchSessions } from './sessions.js';
 import { openTerminal } from './terminal.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- skills list
 export async function fetchSkills() {
@@ -58,7 +59,7 @@ export function renderSkills() {
     const browseBtn = document.createElement('button');
     browseBtn.type = 'button';
     browseBtn.className = 'icon-btn agent-btn';
-    browseBtn.textContent = '📖';
+    browseBtn.innerHTML = icon('book-open');
     browseBtn.title = 'Browse what this skill knows';
     browseBtn.setAttribute('aria-label', 'Browse ' + s.name);
     browseBtn.addEventListener('click', function () { openBrowser(s); });
@@ -68,7 +69,7 @@ export function renderSkills() {
     const launchBtn = document.createElement('button');
     launchBtn.type = 'button';
     launchBtn.className = 'icon-btn agent-btn lifeos-launch';
-    launchBtn.textContent = '🚀';
+    launchBtn.innerHTML = icon('rocket');
     launchBtn.title = 'Launch ' + s.name;
     launchBtn.setAttribute('aria-label', 'Launch ' + s.name);
     launchBtn.addEventListener('click', function () { launchSkill(s); });

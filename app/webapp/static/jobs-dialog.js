@@ -9,6 +9,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { fetchJobs, runJobNow } from './jobs.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------- chain checklist (dialog)
 //
@@ -95,7 +96,7 @@ function renderParamRow(param) {
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
   rmBtn.className = 'icon-btn danger';
-  rmBtn.textContent = '✕';
+  rmBtn.innerHTML = icon('x');
   rmBtn.title = 'Remove parameter';
   rmBtn.setAttribute('aria-label', 'Remove parameter');
   rmBtn.addEventListener('click', function () { li.remove(); });

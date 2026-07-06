@@ -12,6 +12,7 @@ import { els, state } from './state.js';
 import { apiFailToast, AuthRequiredError, isDesktopClient, jsonApi, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { renderUsageBadgeRow } from './dom-utils.js';
+import { icon } from './_vendored/icons/icons.js';
 
 export function fmtAgo(epochSeconds) {
   if (!epochSeconds) return '';
@@ -109,7 +110,7 @@ export function renderSessions() {
     head.appendChild(agentIcon);
     const kindTag = document.createElement('span');
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
-    kindTag.textContent = remote ? '☁️ detached' : '⚡ full control';
+    kindTag.innerHTML = remote ? icon('cloud') + ' detached' : icon('zap') + ' full control';
     head.appendChild(kindTag);
     if (!remote) {
       const chev = document.createElement('span');
@@ -140,7 +141,7 @@ export function renderSessions() {
     const stopBtn = document.createElement('button');
     stopBtn.type = 'button';
     stopBtn.className = 'icon-btn action-stop-close';
-    stopBtn.textContent = '✕';
+    stopBtn.innerHTML = icon('x');
     stopBtn.title = 'Stop and kill';
     stopBtn.setAttribute('aria-label', 'Stop and kill session');
     stopBtn.addEventListener('click', function () { stopSession(s); });
