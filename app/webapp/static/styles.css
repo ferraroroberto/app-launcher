@@ -817,6 +817,12 @@ summary + .opt-group { border-top: 0; }
   height: 24px;
   display: block;
   pointer-events: none;   /* clicks land on the button, not the img */
+  /* Brand-logo SVGs ship glyph-only (no baked tile, issue #361) — the chip
+     is CSS so it can be theme-aware; the internal glyph fill can't reach
+     page CSS vars (separate <img> document), so glyphs needing recolor use
+     a fixed mid-tone (#6e7781) that clears both --card-2 surfaces. */
+  background: var(--card-2);
+  border-radius: 22%;             /* matches the SVGs' original rx14/64 ratio */
 }
 .app-item .row-actions.agent-actions .icon-btn:disabled .agent-icon {
   filter: grayscale(1);
@@ -849,6 +855,7 @@ summary + .opt-group { border-top: 0; }
   height: 18px;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
+  background: var(--card-2);      /* theme-aware brand chip, issue #361 */
 }
 
 /* ---------- running sessions ---------- */
