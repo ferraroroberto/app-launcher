@@ -5,10 +5,13 @@
  *
  * The PC mirror window is the launcher-spawned Edge --app window: it is
  * opened via the ?terminal=<sid> deep-link (state.isMirrorWindow, set at
- * boot) AND connects over loopback. Both conditions are required — a
- * human's own desktop browser over loopback also reports reason 'loopback'
- * but is NOT a mirror, and treating it as one made Stop & Close
- * window.close() the user's actual Chrome window (issue #241).
+ * boot) AND connects on a terminal-reachable origin — loopback, or the
+ * ts.net host mirror_url targets when a Tailscale LE cert is active
+ * (issue #371; the loopback-only check orphaned every ts.net mirror).
+ * Both conditions are required — a human's own desktop browser over
+ * loopback also reports reason 'loopback' but is NOT a mirror, and
+ * treating it as one made Stop & Close window.close() the user's actual
+ * Chrome window (issue #241).
  */
 
 import { els, state } from './state.js';
@@ -28,10 +31,15 @@ export function mirrorDocTitle(sid, title) {
 // window, as opposed to a human's own desktop browser also reaching the
 // session over loopback (issue #241 — both report reason 'loopback', only
 // the mirror also carries state.isMirrorWindow from the ?terminal= deep-link).
+// 'tailnet' is equally a mirror origin: with a Tailscale LE cert, mirror_url
+// spawns the window on the ts.net host, whose reachability reason is
+// 'tailnet', not 'loopback' — requiring loopback here left every ts.net
+// mirror unmarked (no EnumWindows match) and un-self-closing (issue #371).
 export function isMirrorWindowSession() {
+  const reason = state.status && state.status.terminal &&
+    state.status.terminal.reason;
   return !!state.isMirrorWindow &&
-    !!(state.status && state.status.terminal &&
-       state.status.terminal.reason === 'loopback');
+    (reason === 'loopback' || reason === 'tailnet');
 }
 
 // Push the current title onto the open overlay header and, for a mirror
