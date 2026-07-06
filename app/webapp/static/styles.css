@@ -30,9 +30,11 @@
   --danger: #cf222e;
   --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
   --code-fg: #1f2328;        /* text inside a code/output inset */
-  /* Theme-invariant terminal screen: the xterm surface stays dark in both
-     themes (ANSI output is authored against dark), same model as
-     home-automation's --video-matte (#383). terminal.js reads these. */
+  /* Terminal screen: dark in both themes by default (ANSI output is
+     authored against dark), same model as home-automation's --video-matte
+     (#383). terminal.js reads these. The opt-in override after the dark
+     block (issue #359) flips them light when the user asks the terminal
+     to follow the app theme. */
   --term-bg: #0a0a0a;
   --term-fg: #f3f3f3;
   /* elevation — cards lean on surface + hairline; popovers/toasts share one
@@ -104,6 +106,17 @@
   --tabbar-bg: rgba(22, 27, 34, 0.86);
   --tabbar-border: rgba(255, 255, 255, 0.13);
   color-scheme: dark;
+}
+
+/* Opt-in light terminal screen (issue #359): html[data-term-theme="follow"]
+   is stamped by terminal.js from the "Terminal follows app theme" switch in
+   Settings (localStorage, like the theme itself). Only the light app theme
+   changes anything — dark keeps the same screen either way. The matching
+   ANSI palette rides terminal.js (xterm colors live in the renderer, not
+   CSS). Values are the spec's colors.canvas / colors.fg. */
+[data-term-theme="follow"]:not([data-theme="dark"]) {
+  --term-bg: #ffffff;
+  --term-fg: #1f2328;
 }
 
 /* P3 wide-gamut twins — on a wide-gamut display the saturated tokens render

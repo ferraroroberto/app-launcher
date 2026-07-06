@@ -921,6 +921,12 @@
         <span>Fleet-config dir (system map)</span>
         <input id="claudeConfigDir" type="text" class="input-native">
       </label>
+      <!-- Opt-in light terminal (issue #359): default keeps the dark screen
+           in both themes; ON makes the PTY terminal follow the app theme
+           with a light ANSI palette. Persisted client-side (localStorage,
+           like the theme toggle) — not part of the Save-button config. -->
+      <button type="button" id="termFollowTheme" class="toggle" role="switch" aria-checked="false"
+              title="Terminal follows the app theme: light terminal screen in light mode (default: always dark)"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Terminal follows app theme</span></button>
       <div class="row settings-actions">
         <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
         <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>

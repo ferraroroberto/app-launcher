@@ -241,6 +241,7 @@ export const els = {
   rescanBtn: document.getElementById('rescanBtn'),
   settingsPanel: document.getElementById('settingsPanel'),
   editMode: document.getElementById('editMode'),
+  termFollowTheme: document.getElementById('termFollowTheme'),
   projectsDir: document.getElementById('projectsDir'),
   projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),
