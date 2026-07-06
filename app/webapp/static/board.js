@@ -43,7 +43,7 @@ import { renderUsageBadgeRow } from './dom-utils.js';
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
   { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.' },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now. 🎉' },
+  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.' },
   { key: 'done', btn: 'boardColDone', empty: 'Nothing merged or closed today yet.' },
 ];
 
