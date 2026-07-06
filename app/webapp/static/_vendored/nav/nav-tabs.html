@@ -1,0 +1,73 @@
+<!-- Floating bottom-tab navigation — markup skeleton. Copy this into your PWA's
+     index.html and adapt the tabs to your app (rename data-tab / aria-controls,
+     swap the SVG icon + emoji + label). Keep the structure: a <nav class="tabs">
+     of <button class="tab"> elements, each pointing at a <section class="pane">
+     via aria-controls. nav-tabs.js discovers the tabs from this markup.
+
+     Wire it up once the DOM is ready:
+
+       import { initNavTabs } from '/static/_vendored/nav/nav-tabs.js';
+       initNavTabs({
+         storageKey: 'my-app.tab',          // omit to disable PWA persistence
+         onChange: (tab) => { ... },        // optional: react to a switch
+       });
+
+     The mobile pill grid auto-fits the declared tabs; the measured outer bar
+     geometry is stable for 4, 5, and 6 buttons.
+
+     Icons are app-launcher-style stroke SVGs (shown on mobile) + an emoji and a
+     text label (shown on desktop). Replace the <path> data with your own glyphs;
+     the icons below are placeholders.
+
+     IMPORTANT: keep <nav class="tabs"> as a direct <body> child, sibling to
+     <main class="app"> — never nested inside the content wrapper/scroller. iOS
+     installed PWAs can capture fixed-position descendants of scroll containers
+     and anchor them to scrolled content instead of the physical viewport. The
+     mobile stylesheet reserves bottom padding on `.app` so the fixed bar never
+     occludes content. -->
+
+<nav class="tabs" role="tablist" aria-label="Sections" data-active-tab="home">
+  <button id="tabHome" type="button" class="tab active" data-tab="home"
+          role="tab" aria-selected="true" aria-controls="paneHome">
+    <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+      <path d="M3.5 11.5 12 4l8.5 7.5" />
+      <path d="M5.5 10v9.5h13V10" />
+    </svg>
+    <span class="tab-emoji" aria-hidden="true">🏠</span>
+    <span class="tab-label">Home</span>
+  </button>
+  <button id="tabStats" type="button" class="tab" data-tab="stats"
+          role="tab" aria-selected="false" aria-controls="paneStats" tabindex="-1">
+    <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+      <path d="M5 19V10" />
+      <path d="M12 19V5" />
+      <path d="M19 19v-6" />
+    </svg>
+    <span class="tab-emoji" aria-hidden="true">📊</span>
+    <span class="tab-label">Stats</span>
+  </button>
+  <button id="tabSettings" type="button" class="tab" data-tab="settings"
+          role="tab" aria-selected="false" aria-controls="paneSettings" tabindex="-1">
+    <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
+      <path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 2h-4l-.3 2.6a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 2.4h4l.3-2.6a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .1-1z" />
+    </svg>
+    <span class="tab-emoji" aria-hidden="true">⚙️</span>
+    <span class="tab-label">Settings</span>
+  </button>
+</nav>
+
+<main class="app">
+<!-- One <section class="pane"> per tab; the active pane is visible, the rest
+     carry [hidden]. nav-tabs.js toggles `hidden` — start every non-default pane
+     hidden so there's no flash before JS runs. -->
+<section id="paneHome" class="pane" role="tabpanel" aria-labelledby="tabHome" aria-label="Home">
+  <!-- … home content … -->
+</section>
+<section id="paneStats" class="pane" role="tabpanel" aria-labelledby="tabStats" aria-label="Stats" hidden>
+  <!-- … stats content … -->
+</section>
+<section id="paneSettings" class="pane" role="tabpanel" aria-labelledby="tabSettings" aria-label="Settings" hidden>
+  <!-- … settings content … -->
+</section>
+</main>

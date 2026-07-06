@@ -58,7 +58,8 @@
   --space-xl: 32px;
   --gap: 12px;
   /* typography roles — system stack; the five sizes cover every text need
-     (nav labels keep their phone-validated 11px via --bottom-tabs-label) */
+     (nav labels keep the vendored nav-tabs.css's phone-validated 11px
+     default via --bottom-tabs-label) */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-heading-xl: 2rem;
   --font-heading-lg: 1.5rem;
@@ -72,20 +73,11 @@
   --icon-title: 18px;
   --icon-feature: 24px;
   color-scheme: light;
-  --bottom-tabs-height: 60px;
-  --bottom-tabs-label: 11px;
-  --bottom-tabs-gap: 2px;
-  /* How much of the iPhone home-indicator safe area the floating bottom
-     bar is allowed to sit within. 1 = clear the whole inset (the #263
-     original); < 1 lets the bar sit lower to use the screen's vertical
-     space while still clearing the ~5 pt home indicator (issue #267).
-     The bar's `bottom` and the `.app` bottom padding both derive from
-     this single knob so they stay in sync. */
-  --bottom-tabs-inset: calc(env(safe-area-inset-bottom, 0px) * 0.5);
-  /* Fixed pill height for the phone bottom bar — see the grid-auto-rows
-     note on `.tabs`. 60 px bar − 8 px padding = 52 px inner; a 48 px
-     centred pill leaves a 2 px breathing margin top and bottom. */
-  --bottom-tabs-pill-height: 48px;
+  /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
+     label) is intentionally undefined here (issue #355) — nav-tabs.css's
+     own canonical var(..., fallback) defaults (61/21/53/4/4/20/11px) are
+     the fleet-standard floating-bar geometry, phone-validated on
+     home-automation. Define one here only to deliberately diverge. */
 }
 
 [data-theme="dark"] {
@@ -185,137 +177,63 @@ html, body {
 .app {
   max-width: 772px;
   margin: 0 auto;
-  padding: env(safe-area-inset-top, 0) var(--gap) calc(env(safe-area-inset-bottom, 0) + 24px);
-  scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0) + 24px);
+  padding-top: env(safe-area-inset-top, 0);
+  padding-left: var(--gap);
+  padding-right: var(--gap);
 }
-
-/* ---------- tabs ---------- */
-.tabs {
-  display: flex;
-  gap: 4px;
-  margin: 12px 0 16px;
-  background: var(--card);
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-}
-.tab {
-  flex: 1;
-  background: transparent;
-  border: 0;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  font-size: var(--font-label);
-  font-weight: 500;
-  cursor: pointer;
-}
-.tab.active { background: var(--card-2); color: var(--fg); }
-.tab:active { color: var(--fg); }
-.tab-icon { display: none; }
-
-@media (pointer: coarse) and (max-width: 520px) {
+/* Bottom padding is desktop/wide-only, deliberately split out of the rule
+   above (issue #355): the coarse-pointer + narrow breakpoint below is where
+   nav-tabs.css reserves .app's bottom padding for the floating tab bar (its
+   own `.app { padding: ... }` in that same media condition) — a shorthand
+   `padding` here would win the cascade (equal specificity, later in source
+   order) and silently clobber that reservation. */
+@media (pointer: fine), (min-width: 521px) {
   .app {
-    padding-bottom: calc(
-      var(--bottom-tabs-inset) + var(--bottom-tabs-height) +
-      var(--bottom-tabs-gap) + 24px
-    );
-    scroll-padding-bottom: calc(
-      var(--bottom-tabs-inset) + var(--bottom-tabs-height) +
-      var(--bottom-tabs-gap) + 24px
-    );
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 24px);
+    scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0) + 24px);
   }
+}
 
-  .tabs {
-    position: fixed;
-    left: max(12px, env(safe-area-inset-left, 0));
-    right: max(12px, env(safe-area-inset-right, 0));
-    bottom: calc(var(--bottom-tabs-inset) + var(--bottom-tabs-gap));
-    z-index: 120;
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    /* Pin every pill to the same fixed row height instead of letting the
-       grid row stretch resolve against the bar height. The implicit auto
-       row settles a frame late as the page content paints, which let the
-       active (filled) pill briefly render taller — protruding above the
-       bar's top edge — before dropping level (issue #267). A fixed row +
-       centred pills make the geometry deterministic from first paint. */
-    grid-auto-rows: var(--bottom-tabs-pill-height);
-    align-content: center;
-    align-items: center;
-    gap: 4px;
-    height: var(--bottom-tabs-height);
-    max-width: 420px;
-    margin: 0 auto;
-    padding: 4px;
-    background: var(--tabbar-bg);
-    border-color: var(--tabbar-border);
-    border-radius: var(--radius-nav);
-    box-shadow: var(--shadow-nav);
-    backdrop-filter: blur(20px) saturate(1.25);
-    -webkit-backdrop-filter: blur(20px) saturate(1.25);
-    /* Keep the fixed bar on its own stable compositing layer. iOS Safari
-       repaints a plain `position: fixed` element on the main thread and
-       only snaps it to its final spot after a scroll / address-bar
-       transition settles — the visible "drift a few px then lock". A
-       promoted layer is pinned by the compositor instead; the
-       visualViewport pin in tabs.js handles the residual address-bar
-       case (issue #267). */
-    will-change: transform;
-    transform: translateZ(0);
-  }
+/* ---------- tabs ----------
+   Nav geometry + the desktop segmented control / mobile floating pill are
+   now owned by the vendored _vendored/nav/nav-tabs.css (issue #355) — see
+   its <link> in index.html. `.tab.active`, `.tab-icon` sizing, the
+   standalone fixed-inset .app shell, and the visualViewport pin all live
+   there; do not re-add them here.
 
-  .tab {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    min-width: 0;
-    height: var(--bottom-tabs-pill-height);
-    padding: 6px 4px 5px;
-    border-radius: var(--radius-pill);
-    border: 1px solid transparent;
-    font-size: var(--bottom-tabs-label);
-    line-height: 1.1;
-    color: rgb(from var(--fg) r g b / 0.62);
-    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
-  }
-
-  .tab.active {
-    background: rgb(from var(--fg) r g b / 0.14);
-    border-color: rgb(from var(--fg) r g b / 0.18);
-    color: var(--fg);
-  }
-
-  .tab-icon {
-    display: block;
-    width: 20px;
-    height: 20px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  .tab-label {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
+   The overlay-hide rule below is app-specific glue the vendored file
+   anticipates (its README: "a non-<dialog> overlay -> add the class
+   nav-hidden to <body>") — these five are hand-rolled [hidden]-toggled
+   overlays, not native <dialog>, which the vendored file already covers via
+   body:has(dialog[open]). visibility (not display) matches the vendored
+   technique — gentler on iOS fixed-layer repainting across show/hide. */
+@media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
   body:has(#lifeOsBrowser:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
-  body:has(dialog[open]) .tabs,
   body:has(#systemMapLightbox:not([hidden])) .tabs,
   body:has(#summaryModal:not([hidden])) .tabs {
-    display: none;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  /* In the standalone shell .app (not the document) is the real scroller
+     (home-automation#303, via nav-tabs.css). terminal.js's lockBodyScroll()
+     pins document.body during an overlay — a no-op there since body was
+     never the scroller in standalone — so without this, .app's own content
+     stays touch-scrollable behind a hand-rolled overlay. Mirrors
+     home-automation's `body:has(dialog[open]) .app { overflow: hidden }`;
+     the five app-specific overlays get the same treatment as the .tabs hide
+     rule above, plus native <dialog> for completeness (this app has both). */
+  @media (display-mode: standalone) {
+    body.terminal-open .app,
+    body:has(#lifeOsBrowser:not([hidden])) .app,
+    body:has(#loginOverlay:not([hidden])) .app,
+    body:has(#systemMapLightbox:not([hidden])) .app,
+    body:has(#summaryModal:not([hidden])) .app,
+    body:has(dialog[open]) .app {
+      overflow: hidden;
+    }
   }
 }
 

@@ -1,0 +1,307 @@
+/* Floating bottom-tab navigation — visual contract for the fleet's canonical
+ * primary nav. VENDORED VERBATIM from project-scaffolding; do NOT edit per-app.
+ *
+ * Every colour, radius, and spacing value is a design-system CSS custom property
+ * (see ~/.claude/design.md + design.dark.md). The consuming app MUST define
+ * these tokens (in its own :root / [data-theme] blocks); this file only
+ * *references* them so one spec drives every app's look. The required tokens are
+ * listed in this folder's README.md.
+ *
+ * Pairs with nav-tabs.js (behaviour) and nav-tabs.html (markup skeleton).
+ *
+ * Desktop (pointer: fine) renders a top segmented control; touch / installed-PWA
+ * (pointer: coarse, narrow) renders the floating bottom-tab pill — that pill is
+ * the fleet navigation contract every app must feel identical on. */
+
+/* ----------------------------------------------------------- tabs (desktop) */
+.tabs {
+  display: flex;
+  gap: var(--space-xs);
+  /* Body-level nav: match .app's content column (772px minus 2×--gap)
+     because the nav is intentionally outside .app on iOS PWA. */
+  width: calc(100% - var(--gap) - var(--gap));
+  max-width: calc(772px - var(--gap) - var(--gap));
+  margin: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)) auto 14px;
+  background: var(--card);
+  padding: var(--space-xs);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+.tab {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  padding: 9px 10px;
+  border-radius: var(--radius-pill);
+  color: var(--muted);
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab.active { background: var(--card-off); color: var(--accent); }
+.tab:active { transform: scale(0.97); }
+/* Desktop shows the emoji + label; the stroke SVG icon is mobile-only (revealed
+   in the coarse-pointer media query below). */
+.tab-icon { display: none; }
+.tab-emoji { margin-right: 0.35em; }
+@media (max-width: 430px) {
+  .tab {
+    min-width: 0;
+    font-size: var(--font-caption);
+    padding: 8px 2px;
+  }
+}
+/* Narrow non-touch windows (a squeezed desktop browser, fine-pointer tablets):
+   the row of emoji+label tabs no longer fits, and without a strategy the labels
+   collide with the next tab (home-automation #365). Collapse to emoji-only —
+   the label stays in the accessibility tree via the clip idiom (display:none
+   would strip the button's accessible name). The coarse-pointer pill below is
+   untouched: it matches (pointer: coarse) first and never reaches this state. */
+@media (pointer: fine) and (max-width: 520px) {
+  .tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .tab-emoji { margin-right: 0; }
+}
+
+/* ------------------------------------------- floating bottom tab bar (mobile) */
+/* Gated on touch + narrow width so desktop keeps the top segmented control
+   byte-for-byte unchanged. Colours adapt to the theme tokens so the glass bar
+   works in both light and dark. This block is the fleet navigation contract —
+   position, radius, blur, and the safe-area handling must stay identical across
+   apps (don't re-author it per-app). */
+@media (pointer: coarse) and (max-width: 520px) {
+  .app {
+    /* Keep the bar outside this content wrapper. home-automation#232 proved on a
+       real iPhone PWA that putting a fixed nav inside a momentum/content scroller
+       lets iOS anchor it to short-tab content rather than the viewport. Normal
+       document scroll keeps the physical screen filled; the +1px keeps short
+       tabs technically scrollable so iOS anchors fixed to the screen bottom. */
+    min-height: calc(100vh + 1px);
+    min-height: calc(100dvh + 1px);
+    padding: calc(env(safe-area-inset-top, 0px) + var(--gap)) var(--gap) calc(
+      env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
+      var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
+    );
+    scroll-padding-bottom: calc(
+      env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
+      var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
+    );
+  }
+
+  /* Standalone-PWA shell (home-automation#303): in the installed app the
+     *document* was the scroller, and the home-screen WKWebView's native
+     scroll bounce moves the visual viewport itself, dragging every
+     `position: fixed` element (the floating nav) with it — `overscroll-
+     behavior: none` above does not govern that native bounce the way it does
+     in a Safari tab. So in standalone the document must never scroll at all:
+     `.app` becomes the element scroller instead, whose bounce doesn't move
+     the visual viewport (and whose overscroll-behavior IS honored), so the
+     fixed nav stays put by construction rather than by after-the-fact
+     correction.
+
+     The load-bearing subtlety (home-automation#303 rounds 1-2, proven by
+     on-device nav-debug forensics): iOS standalone expands the layout
+     viewport to the full physical screen ONLY WHILE THE DOCUMENT IS
+     SCROLLABLE. With every body child out of flow the document has zero
+     scrollable overflow, and the fixed-positioning viewport contracts —
+     every fixed element (nav, .app) anchors above the physical bottom: the
+     home-automation#232 dead band again. The baseline's
+     `min-height: calc(100dvh + 1px)` forcer above exists to keep exactly this
+     expansion alive ("so position:fixed anchors to the screen rather than the
+     content"). So the shell re-creates that 1px overflow with an inert
+     body-level spacer: the document stays technically scrollable (viewport
+     expanded), but no touch can ever reach it — content gestures land on the
+     fixed .app scroller (its overscroll-behavior: none stops chaining), and
+     the nav declines pan gestures outright — so the WKWebView bounce that
+     moves `visualViewport.offsetTop` (home-automation#300) still has no entry
+     point. */
+  @media (display-mode: standalone) {
+    .app {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      /* Sized with the LARGE viewport unit, not bottom-anchored (`inset: 0`):
+         at cold launch iOS *animates* the layout-viewport expansion (1px per
+         vv:resize frame over ~2s — home-automation#303 round-3 on-device
+         log), so a bottom edge tied to the live viewport slides down with it.
+         lvh reports the final expanded height from the very first frame, and
+         the top edge is stable, so this box has its final geometry
+         immediately. Plain vh first: on iOS it equals the large viewport too
+         (that was the historic 100vh complaint) — fallback for engines
+         without lvh. */
+      height: 100vh;
+      height: 100lvh;
+      overflow-y: auto;
+      overscroll-behavior: none;
+      /* The in-flow document-scroll forcer above (100dvh + 1px) would push a
+         fixed box 1px past the bottom edge; the spacer below carries the
+         forcer role instead. */
+      min-height: 0;
+    }
+    /* Invisible 1px-past-viewport spacer behind the fixed .app: keeps the
+       document scrollable so the layout viewport stays expanded (see the
+       shell comment above). dvh on purpose (not lvh): it tracks the live
+       viewport, so the document's scrollable range is exactly 1px in every
+       state — contracted at boot, mid-animation, expanded — never more. vh
+       first as the no-dvh fallback. */
+    body::after {
+      content: '';
+      display: block;
+      height: calc(100vh + 1px);
+      height: calc(100dvh + 1px);
+    }
+  }
+
+  .tabs {
+    position: fixed;
+    top: auto;
+    left: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-left, 0));
+    right: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-right, 0));
+    bottom: var(--bottom-tabs-margin, 21px);
+    z-index: 120;
+    display: grid;
+    /* One equal column per tab. The measured outer geometry is stable for
+       4–6 tabs; cells widen/narrow while the bar itself stays identical. */
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+    grid-auto-rows: var(--bottom-tabs-pill-height, 53px);
+    align-content: center;
+    align-items: center;
+    gap: var(--bottom-tabs-gap, 4px);
+    height: var(--bottom-tabs-height, 61px);
+    width: auto;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: var(--bottom-tabs-padding, 4px);
+    background: var(--tabbar-bg);
+    border: 1px solid var(--tabbar-border);
+    border-radius: var(--radius-nav);
+    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    /* Keep the fixed bar on its own composited layer so iOS document scrolling is
+       less likely to repaint it a frame late after modal hide/show. Identity
+       transform only; nav-tabs.js still owns real toolbar translations in normal
+       Safari tabs and standalone PWAs receive no measured JS offset. */
+    transform: translateZ(0);
+    will-change: transform;
+    backdrop-filter: blur(20px) saturate(1.25);
+    -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  }
+
+  /* Standalone-PWA nav anchoring (home-automation#303, pairs with the shell
+     above; placed after the base rule so the cascade picks it). Two changes:
+     1. Anchor from the stable TOP edge via the large-viewport unit instead of
+        `bottom`: during the cold-launch viewport-expansion animation (see the
+        .app shell comment above) a bottom-anchored bar visibly "floats" down
+        for ~2s before locking. `100lvh` is the final height from frame one,
+        so this puts the bar at its physical-bottom resting spot immediately.
+        Same resting position as the base rule's
+        `bottom: var(--bottom-tabs-margin, 21px)` once the viewport settles —
+        geometry is unchanged, only the anchor.
+     2. Refuse pan gestures: the nav is the one fixed surface a drag could
+        still reach the 1px-scrollable document through (it sits outside
+        .app), and home-automation#300 proved the standalone bounce ignores
+        overscroll-behavior. Taps are unaffected. */
+  @media (display-mode: standalone) {
+    .tabs {
+      bottom: auto;
+      top: calc(100vh - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      top: calc(100lvh - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      touch-action: none;
+      /* Cold-launch cosmetics: iOS paints the region below the animating
+         layout-viewport edge only as the ~2s expansion sweeps past it, so the
+         bar (at its final spot from frame one) would look like it's being
+         un-curtained bottom-up. Stay transparent through the sweep, then
+         slide up into place. The bar's own strip is painted ~1.7s in, so a
+         1.8s delay clears it without waiting out the whole sweep. Pure CSS,
+         runs once per page load; `backwards` fill guarantees it always ends
+         fully visible. The translate lives only inside the animation
+         (computed, never inline style), so nav-tabs.js's home-automation#300
+         never-translate rule — which reads/writes nav.style.transform — is
+         untouched, and with no `forwards` fill the resting geometry after the
+         entrance is byte-identical to before. */
+      animation: nav-boot-reveal 0.35s ease-out 1.8s backwards;
+    }
+    @keyframes nav-boot-reveal {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: none; }
+    }
+  }
+
+  .tab {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    height: var(--bottom-tabs-pill-height, 53px);
+    padding: 7px 2px 6px;
+    border-radius: var(--radius-pill);
+    border: 1px solid transparent;
+    font-size: var(--bottom-tabs-label, 11px);
+    font-weight: 600;
+    line-height: 1.1;
+    color: var(--muted);
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+  }
+  .tab.active {
+    background: var(--card-off);
+    border-color: var(--line);
+    color: var(--accent);
+    box-shadow: none;
+  }
+  .tab:active { transform: scale(0.97); }
+
+  .tab-icon {
+    display: block;
+    width: var(--bottom-tabs-icon, 20px);
+    height: var(--bottom-tabs-icon, 20px);
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .tab-emoji { display: none; }
+  .tab-label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* Own compositing layer so the label glyphs are NOT rasterized into the
+       pill's backdrop-filter texture (the .tabs rule above: translateZ(0) +
+       will-change + backdrop-filter). On iOS WebKit, flipping the bar
+       visibility:hidden→visible when a <dialog> closes re-composites that
+       backdrop layer without re-rasterizing text baked into it — labels come
+       back blank until a class/theme change forces a repaint. An own layer
+       keeps the glyphs out of the stale texture so they repaint on show.
+       iOS-only; desktop WebKit composites differently and never reproduces it.
+       Validated on a real iPhone PWA (home-automation#381). */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  /* Never let the floating bar hover over a modal / overlay. Hide with
+     visibility (not display) so the fixed bar stays in the render tree across
+     modal open/close, which is gentler on iOS fixed-layer repainting. The
+     <dialog> rule covers native dialogs; add `nav-hidden` to <body> for non-
+     <dialog> overlays (e.g. a custom login screen). */
+  body:has(dialog[open]) .tabs,
+  body.nav-hidden .tabs {
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
