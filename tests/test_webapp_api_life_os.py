@@ -124,7 +124,8 @@ class TestLaunchSkill:
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured.update(
                 project_dir=str(project_dir), flags=flags, kind=kind, agent=agent
             )
@@ -144,13 +145,66 @@ class TestLaunchSkill:
         assert "--model sonnet" in captured["flags"]
         assert "--remote-control" in captured["flags"]
 
+    def test_launch_threads_phone_terminal_size(
+        self, life_os_client, monkeypatch
+    ):
+        """Issue #374: the phone's rows/cols must size the PTY at spawn.
+
+        A skill streams output the moment the PTY exists; spawning at the
+        legacy 40×120 poured 120-col text that re-wrapped into garble when
+        the overlay's first fit() shrank the PTY to phone width. Same
+        contract as the Coding-tab launch route (issue #126).
+        """
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
+            captured.update(rows=rows, cols=cols)
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"mode": "pty", "opus": False, "rows": 44, "cols": 54},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["rows"] == 44
+        assert captured["cols"] == 54
+
+    def test_launch_defaults_size_when_omitted(
+        self, life_os_client, monkeypatch
+    ):
+        """Desktop launches send no size — the legacy 40×120 still applies."""
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
+            captured.update(rows=rows, cols=cols)
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"mode": "pty", "opus": False},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["rows"] == 40
+        assert captured["cols"] == 120
+
     def test_launch_opus_overrides_model(self, life_os_client, monkeypatch):
         client, _, _ = life_os_client
         from app.webapp.routers import life_os as life_os_router
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind}
 
@@ -173,7 +227,8 @@ class TestLaunchSkill:
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
@@ -203,7 +258,8 @@ class TestLaunchSkill:
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
@@ -494,7 +550,8 @@ class TestLaunchRecap:
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured.update(flags=flags, kind=kind, name=name, agent=agent)
             return {"session_id": "r1", "kind": kind}
 
@@ -517,7 +574,8 @@ class TestLaunchRecap:
 
         captured = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent):
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120):
             captured.update(flags=flags, kind=kind)
             return {"session_id": "r1", "kind": kind}
 

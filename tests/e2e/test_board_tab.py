@@ -557,6 +557,13 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     assert body.get("goal") == "ship the goal bar"
     assert body.get("mode") == "yolo"
     assert body.get("opus") is False
+    # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
+    # streaming agent's first output is authored at the width the overlay
+    # will fit() to; a desktop client sends the mirror flag instead.
+    if body.get("desktop"):
+        assert "rows" not in body and "cols" not in body
+    else:
+        assert body.get("rows", 0) >= 10 and body.get("cols", 0) >= 20
     # Populated-but-clearable: the goal stays after a successful send.
     expect(authed_page.locator("#boardDispatchGoal")).to_have_value(
         "ship the goal bar"
