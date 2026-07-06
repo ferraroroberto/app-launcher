@@ -72,8 +72,8 @@ function renderClaudeSubsection() {
     });
     els.claudePermission.appendChild(b);
   });
-  els.claudeVerbose.checked = !!c.verbose;
-  els.claudeDebug.checked = !!c.debug;
+  els.claudeVerbose.setAttribute('aria-checked', c.verbose ? 'true' : 'false');
+  els.claudeDebug.setAttribute('aria-checked', c.debug ? 'true' : 'false');
   els.claudeFlagsPreview.textContent = 'claude ' + (c.computed_flags || '');
 }
 
@@ -115,8 +115,8 @@ function renderCodexSubsection() {
 function renderAntigravitySubsection() {
   const a = state.config && state.config.antigravity;
   if (!a) return;
-  els.antigravitySkipPerms.checked = !!a.skip_permissions;
-  els.antigravitySandbox.checked = !!a.sandbox;
+  els.antigravitySkipPerms.setAttribute('aria-checked', a.skip_permissions ? 'true' : 'false');
+  els.antigravitySandbox.setAttribute('aria-checked', a.sandbox ? 'true' : 'false');
   // The Antigravity CLI has no model/effort flags — the preview is just
   // the bare command plus whichever of the two toggles are on.
   els.antigravityFlagsPreview.textContent =
@@ -141,7 +141,7 @@ function renderCopilotSubsection() {
     els.copilotModel.appendChild(opt);
   });
   els.copilotModel.value = c.model || '';
-  els.copilotSkipPerms.checked = !!c.skip_permissions;
+  els.copilotSkipPerms.setAttribute('aria-checked', c.skip_permissions ? 'true' : 'false');
   els.copilotFlagsPreview.textContent =
     'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
 }
@@ -210,35 +210,38 @@ export async function patchConfig(patch) {
   }
 }
 
+// role="switch" buttons (issue #355): click reads the current aria-checked,
+// flips it, applies it optimistically, then patchConfig() round-trips
+// through GET /api/config, which re-renders from server truth anyway.
+function wireBoolSwitch(el, patchKey) {
+  el.addEventListener('click', function () {
+    const next = el.getAttribute('aria-checked') !== 'true';
+    el.setAttribute('aria-checked', next ? 'true' : 'false');
+    patchConfig({ [patchKey]: next });
+  });
+}
+
 export function wireClaudeOptions() {
-  els.claudeVerbose.addEventListener('change', function () {
-    patchConfig({ claude_verbose: els.claudeVerbose.checked });
-  });
-  els.claudeDebug.addEventListener('change', function () {
-    patchConfig({ claude_debug: els.claudeDebug.checked });
-  });
-  els.antigravitySkipPerms.addEventListener('change', function () {
-    patchConfig({ antigravity_skip_permissions: els.antigravitySkipPerms.checked });
-  });
-  els.antigravitySandbox.addEventListener('change', function () {
-    patchConfig({ antigravity_sandbox: els.antigravitySandbox.checked });
-  });
-  els.copilotSkipPerms.addEventListener('change', function () {
-    patchConfig({ copilot_skip_permissions: els.copilotSkipPerms.checked });
-  });
+  wireBoolSwitch(els.claudeVerbose, 'claude_verbose');
+  wireBoolSwitch(els.claudeDebug, 'claude_debug');
+  wireBoolSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');
+  wireBoolSwitch(els.antigravitySandbox, 'antigravity_sandbox');
+  wireBoolSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
   els.copilotModel.addEventListener('change', function () {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
   // Pi's model/effort/trust are segmented buttons that wire their own click
   // handlers in renderPiSubsection(), so there's no static listener here.
-  // The ☁️ Detached and ↺ Resume toggles live in the card's <summary> so
-  // they stay visible when the panel is collapsed — but a click there
-  // would also expand/collapse the <details>. Stop the click at each
-  // toggle so it only flips the checkbox.
-  [els.claudeDetached, els.claudeResume].forEach(function (input) {
-    const label = input && input.closest('.detached-toggle');
-    if (label) {
-      label.addEventListener('click', function (ev) { ev.stopPropagation(); });
-    }
+  // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
+  // (no server config — read at session-launch time in apps.js). They live
+  // in the card's <summary> so they stay visible when the panel is
+  // collapsed — but a click there would also expand/collapse the <details>,
+  // so stopPropagation lives alongside the flip.
+  [els.claudeDetached, els.claudeResume].forEach(function (btn) {
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      const next = btn.getAttribute('aria-checked') !== 'true';
+      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
   });
 }

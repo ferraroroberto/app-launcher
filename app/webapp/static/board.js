@@ -734,7 +734,7 @@ async function dispatchGoal() {
       repo: repo,
       goal: goal,
       mode: dispatchMode,
-      opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.checked),
+      opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.getAttribute('aria-checked') === 'true'),
     };
     if (isDesktopClient()) payload.desktop = true;
     const body = await jsonApi('/api/board/dispatch', {
@@ -794,6 +794,14 @@ function wireDispatch() {
         setDispatchMode(btn.dataset.mode);
       });
     });
+  // opus is a plain client-side switch (issue #355) — no server config,
+  // just read at dispatch time above.
+  if (els.boardDispatchOpus) {
+    els.boardDispatchOpus.addEventListener('click', function () {
+      const next = els.boardDispatchOpus.getAttribute('aria-checked') !== 'true';
+      els.boardDispatchOpus.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
+  }
   els.boardDispatchSend.addEventListener('click', function () {
     dispatchGoal();
   });

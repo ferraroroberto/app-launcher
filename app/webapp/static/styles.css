@@ -327,10 +327,10 @@ html, body {
 /* Surface/border/radius/padding come from the vendored card.css; the app
    adds only the inter-card gutter. */
 .card { margin: 0 0 var(--gap); }
-/* Detached toggle — modelled on voice-transcriber's `.incognito-btn`:
-   the checkbox is hidden, the <label> itself is the button. Opacity +
-   accent border flip on `:has(input:checked)` so it reads as on/off
-   instead of a tick that everyone misses on a phone. */
+/* Detached toggle — modelled on voice-transcriber's `.incognito-btn`: a
+   real button, role="switch" + aria-checked (issue #355). Opacity + accent
+   border flip on `[aria-checked="true"]` so it reads as on/off instead of
+   a tick that everyone misses on a phone. */
 .detached-toggle {
   display: inline-flex;
   align-items: center;
@@ -348,7 +348,7 @@ html, body {
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
 .detached-toggle:active { background: var(--card-2); }
-.detached-toggle:has(input:checked) {
+.detached-toggle[aria-checked="true"] {
   opacity: 1;
   border-color: var(--accent);
   background: rgb(from var(--accent) r g b / 0.18);
@@ -511,18 +511,43 @@ summary + .opt-group { border-top: 0; }
 }
 .segmented button.active { background: var(--card); color: var(--fg); }
 .toggles { display: flex; gap: 14px; margin-bottom: 10px; }
+/* role="switch" button (issue #355) — the box glyph replaces the native
+   checkbox's tick; .icon swap mirrors .theme-toggle's sun/moon pattern. */
 .toggle {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: var(--font-label);
+  background: none;
+  border: none;
+  padding: 0;
   cursor: pointer;
 }
-.toggle input[type="checkbox"] {
+/* Shared checkbox-glyph replacement for every role="switch" button that
+   still wants the checkbox-row look (.toggle, .job-confirm-row,
+   .job-run-dryrow) — issue #355. */
+.check-box {
   width: 18px;
   height: 18px;
-  accent-color: var(--accent);
-  cursor: pointer;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--line-muted);
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+}
+.check-box .icon { width: 16px; height: 16px; display: none; }
+.toggle[aria-checked="true"] .check-box,
+.job-confirm-row[aria-checked="true"] .check-box,
+.job-run-dryrow[aria-checked="true"] .check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle[aria-checked="true"] .check-box .icon,
+.job-confirm-row[aria-checked="true"] .check-box .icon,
+.job-run-dryrow[aria-checked="true"] .check-box .icon {
+  display: block;
 }
 .flags-preview {
   font-family: "SF Mono", "Fira Mono", monospace;
@@ -1152,9 +1177,9 @@ summary + .opt-group { border-top: 0; }
 /* ---------- settings ---------- */
 .settings-card { margin-top: 12px; }
 /* Edit-mode toggle in the Settings summary — same button-style toggle
-   as .detached-toggle. Right-aligned, button-like, no visible
-   checkbox. Click is intercepted so flipping Edit mode doesn't also
-   expand/collapse the Settings panel. */
+   as .detached-toggle: role="switch" + aria-checked (issue #355), no
+   visible checkbox. Click is intercepted so flipping Edit mode doesn't
+   also expand/collapse the Settings panel. */
 .edit-toggle {
   display: inline-flex;
   align-items: center;
@@ -1173,7 +1198,7 @@ summary + .opt-group { border-top: 0; }
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
 .edit-toggle:active { background: var(--card-2); }
-.edit-toggle:has(input:checked) {
+.edit-toggle[aria-checked="true"] {
   opacity: 1;
   border-color: var(--accent);
   background: rgb(from var(--accent) r g b / 0.18);
@@ -1307,22 +1332,26 @@ summary + .opt-group { border-top: 0; }
   color: var(--muted);
   margin: 12px 0 6px;
 }
-.scan-section label {
+/* role="switch" row (issue #355) — was a <label><input type=checkbox>. */
+.scan-section .scan-row {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
+  width: 100%;
   background: var(--card-off);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   margin-bottom: 4px;
   font-size: var(--font-caption);
+  text-align: left;
+  cursor: pointer;
 }
-.scan-section label input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
+.scan-section .scan-row[aria-checked="true"] .check-box {
+  background: var(--accent);
+  border-color: var(--accent);
 }
+.scan-section .scan-row[aria-checked="true"] .check-box .icon { display: block; }
 .scan-section .meta {
   color: var(--muted);
   font-size: var(--font-caption);
@@ -1332,7 +1361,8 @@ summary + .opt-group { border-top: 0; }
 .big-btn.warn { background: var(--attention); color: var(--attention-fg); }
 
 /* Dry-run toggle in the run-now dialog + confirm-on-fire toggle in the
-   job editor (issue #69) — same compact checkbox-row treatment. */
+   job editor (issue #69) — same compact checkbox-row treatment, now a real
+   role="switch" button (issue #355). */
 .job-run-dryrow,
 .job-confirm-row {
   display: flex;
@@ -1341,6 +1371,11 @@ summary + .opt-group { border-top: 0; }
   margin: 10px 0 4px;
   font-size: var(--font-caption);
   color: var(--muted);
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
 }
 .job-run-dryrow code {
   background: var(--card-off);
@@ -1377,6 +1412,27 @@ summary + .opt-group { border-top: 0; }
   border: 1px solid var(--attention);
 }
 .job-preflight-tag { flex: 0 0 auto; }
+
+/* Job chain checklist (on-success / on-failure) — role="switch" rows
+   (issue #355), was a <label><input type=checkbox>. */
+.job-chain-row-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.job-chain-row-btn[aria-checked="true"] .check-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.job-chain-row-btn[aria-checked="true"] .check-box .icon { display: block; }
 
 /* Job parameters editor (issue #67) — embedded inside #jobDialog. The
  * Run-now dialog uses the same stacked label pattern as the rest of

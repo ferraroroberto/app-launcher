@@ -328,6 +328,9 @@
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
   </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none">
+    <path d="M20 6 9 17l-5-5" />
+  </symbol>
 </svg>
   <main class="app">
     <nav class="tabs" role="tablist" aria-label="Primary navigation" data-active-tab="claude">
@@ -374,16 +377,14 @@
                 <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
                 <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
               </button>
-              <label class="detached-toggle"
+              <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-                <input type="checkbox" id="claudeDetached" hidden>
                 <span>Detached</span>
-              </label>
-              <label class="detached-toggle"
+              </button>
+              <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
                      title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
-                <input type="checkbox" id="claudeResume" hidden>
                 <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
-              </label>
+              </button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
@@ -404,8 +405,8 @@
             <div id="claudePermission" class="segmented" role="radiogroup" aria-label="Permission mode"></div>
           </div>
           <div class="toggles">
-            <label class="toggle"><input type="checkbox" id="claudeVerbose"><span>Verbose</span></label>
-            <label class="toggle"><input type="checkbox" id="claudeDebug"><span>Debug</span></label>
+            <button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Verbose</span></button>
+            <button type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Debug</span></button>
           </div>
           <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
         </div>
@@ -427,8 +428,8 @@
         <div class="opt-group">
           <h3 class="opt-group-title">Antigravity</h3>
           <div class="toggles">
-            <label class="toggle"><input type="checkbox" id="antigravitySkipPerms"><span>Skip permission prompts</span></label>
-            <label class="toggle"><input type="checkbox" id="antigravitySandbox"><span>Sandbox</span></label>
+            <button type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Skip permission prompts</span></button>
+            <button type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Sandbox</span></button>
           </div>
           <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
           <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
@@ -441,7 +442,7 @@
             <select id="copilotModel" class="select-native" aria-label="Copilot model"></select>
           </div>
           <div class="toggles">
-            <label class="toggle"><input type="checkbox" id="copilotSkipPerms"><span>Skip permission prompts</span></label>
+            <button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Skip permission prompts</span></button>
           </div>
           <p class="opt-hint">Sign in with <code>/login</code> inside the session. <strong>Default</strong> leaves the model to the Copilot CLI's own setting.</p>
           <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
@@ -622,21 +623,18 @@
         <div class="card-head">
           <h3 class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg> options</h3>
           <div class="lifeos-toggles">
-            <label class="detached-toggle"
+            <button type="button" id="lifeOsOpus" class="detached-toggle" role="switch" aria-checked="false"
                    title="opus model: off = Sonnet (default), on = Opus">
-              <input type="checkbox" id="lifeOsOpus" hidden>
               <span>opus</span>
-            </label>
-            <label class="detached-toggle"
+            </button>
+            <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
                    title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-              <input type="checkbox" id="lifeOsDetached" hidden>
               <span>Detached</span>
-            </label>
-            <label class="detached-toggle"
+            </button>
+            <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
                    title="Resume: reopen Claude's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-              <input type="checkbox" id="lifeOsResume" hidden>
               <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
-            </label>
+            </button>
           </div>
         </div>
       </section>
@@ -696,10 +694,9 @@
             <button type="button" class="board-mode-btn" data-mode="yolo"
                     role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
           </div>
-          <label class="detached-toggle" title="opus model: off = Sonnet (default), on = Opus">
-            <input type="checkbox" id="boardDispatchOpus" hidden>
+          <button type="button" id="boardDispatchOpus" class="detached-toggle" role="switch" aria-checked="false" title="opus model: off = Sonnet (default), on = Opus">
             <span>opus</span>
-          </label>
+          </button>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice → text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
           <button id="boardDispatchClear" type="button" class="compose-record"
@@ -834,10 +831,10 @@
           <input id="jobMutexGroupInput" type="text" class="input-native"
                  maxlength="32" placeholder="e.g. chrome-profile">
         </label>
-        <label class="job-confirm-row">
-          <input type="checkbox" id="jobConfirmInput">
+        <button type="button" id="jobConfirmInput" class="job-confirm-row" role="switch" aria-checked="false">
+          <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
-        </label>
+        </button>
         <fieldset class="job-chain-fieldset">
           <legend>Run on success (chain)</legend>
           <p class="muted small">Pick jobs to fire after a successful run.</p>
@@ -871,10 +868,10 @@
         <h2 id="jobRunDialogTitle">Run job</h2>
         <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
         <div id="jobRunDialogFields"></div>
-        <label class="job-run-dryrow">
-          <input type="checkbox" id="jobRunDialogDryRun">
+        <button type="button" id="jobRunDialogDryRun" class="job-run-dryrow" role="switch" aria-checked="false">
+          <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
-        </label>
+        </button>
         <div class="row dialog-actions">
           <button type="button" id="jobRunCancel" class="ghost-btn">Cancel</button>
           <button type="submit" class="big-btn">▶ Run</button>
@@ -889,11 +886,10 @@
           <h3 class="collapse-title">Settings</h3>
         </span>
         <span class="summary-actions">
-          <label class="edit-toggle"
+          <button type="button" id="editMode" class="edit-toggle" role="switch" aria-checked="false"
                  title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab">
-            <input type="checkbox" id="editMode" hidden>
             <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Edit mode</span>
-          </label>
+          </button>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </span>
       </summary>

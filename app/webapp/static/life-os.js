@@ -123,9 +123,9 @@ function renderRecap() {
 
 async function launchRecap() {
   // Reuse the Life OS options card's toggles: ☁️ Detached → remote, opus → model.
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.checked)
+  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
     ? 'remote' : 'pty';
-  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
+  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
   const payload = { mode: mode, opus: opus };
   // A desktop browser launch gets a dedicated PC Edge --app window (issue
   // #241); the flag tells the server to mirror. Remote launches have no
@@ -161,10 +161,10 @@ async function launchSkill(s) {
   // matching the Coding tab): Detached → 'remote' independent of Resume, so
   // a Detached+Resume launch renders the picker in the detached console
   // while Resume alone streams it to the phone over a PTY.
-  const resume = !!(els.lifeOsResume && els.lifeOsResume.checked);
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.checked)
+  const resume = !!(els.lifeOsResume && els.lifeOsResume.getAttribute('aria-checked') === 'true');
+  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
     ? 'remote' : 'pty';
-  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.checked);
+  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
   const payload = { mode: mode, opus: opus, resume: resume };
   // A desktop browser launch gets a dedicated PC Edge --app window (issue
   // #241); the flag tells the server to mirror. Remote launches have no
@@ -496,6 +496,15 @@ export function wireLifeOs() {
   if (els.lifeOsRecapLaunch) {
     els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
   }
+  // opus/Detached/Resume are plain client-side switches (issue #355) — no
+  // server config, just read at launch time above.
+  [els.lifeOsOpus, els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      const next = btn.getAttribute('aria-checked') !== 'true';
+      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+    });
+  });
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
   // directory scan + a single ledger stat).
   if (els.tabLifeOS) {

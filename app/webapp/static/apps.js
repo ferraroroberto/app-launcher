@@ -370,11 +370,11 @@ function renderList(host, items) {
 // Apps-tab bat launches.
 async function launchApp(a, agentId) {
   const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
-    els.claudeResume.checked);
+    els.claudeResume.getAttribute('aria-checked') === 'true');
   // Detached → 'remote', independent of Resume. The two combine: a
   // Detached+Resume launch renders the agent's picker in the console.
   const mode = (a.kind === 'claude-code' && els.claudeDetached &&
-    els.claudeDetached.checked) ? 'remote' : null;
+    els.claudeDetached.getAttribute('aria-checked') === 'true') ? 'remote' : null;
   try {
     const opts = { method: 'POST' };
     const payload = {};
@@ -658,12 +658,20 @@ function renderScanResults() {
     h.textContent = kind;
     section.appendChild(h);
     byKind[kind].forEach(function (c) {
-      const label = document.createElement('label');
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.value = c.id;
-      cb.checked = true;
-      label.appendChild(cb);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'scan-row';
+      row.setAttribute('role', 'switch');
+      row.setAttribute('aria-checked', 'true');
+      row.dataset.value = c.id;
+      row.addEventListener('click', function () {
+        const next = row.getAttribute('aria-checked') !== 'true';
+        row.setAttribute('aria-checked', next ? 'true' : 'false');
+      });
+      const checkBox = document.createElement('span');
+      checkBox.className = 'check-box';
+      checkBox.innerHTML = icon('check');
+      row.appendChild(checkBox);
       const body = document.createElement('div');
       const name = document.createElement('div');
       name.textContent = c.name;
@@ -672,8 +680,8 @@ function renderScanResults() {
       meta.textContent = c.bat_path || c.project_dir || '';
       body.appendChild(name);
       body.appendChild(meta);
-      label.appendChild(body);
-      section.appendChild(label);
+      row.appendChild(body);
+      section.appendChild(row);
     });
     els.scanResults.appendChild(section);
   });
@@ -685,8 +693,8 @@ function wireScanDialog() {
     if (els.scanDialog.close) els.scanDialog.close();
   });
   els.scanSave.addEventListener('click', async function () {
-    const checked = Array.from(els.scanResults.querySelectorAll('input[type="checkbox"]:checked'));
-    const ids = checked.map(function (cb) { return cb.value; });
+    const checked = Array.from(els.scanResults.querySelectorAll('.scan-row[aria-checked="true"]'));
+    const ids = checked.map(function (row) { return row.dataset.value; });
     if (!ids.length) {
       toast('Nothing selected.', 'error');
       return;

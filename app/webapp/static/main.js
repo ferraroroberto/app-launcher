@@ -21,24 +21,20 @@ import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------- settings panel
 function wireSettings() {
-  els.editMode.checked = state.editMode;
-  els.editMode.addEventListener('change', function () {
-    state.editMode = els.editMode.checked;
+  els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
+  els.editMode.addEventListener('click', function (ev) {
+    // ✏️ Edit mode lives inside the Settings <summary> (issue #47
+    // follow-up). Without stopPropagation, clicking the toggle would
+    // also bubble to <summary> and expand/collapse the whole panel.
+    ev.stopPropagation();
+    state.editMode = !state.editMode;
+    els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
     localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
     // Re-render apps lists to show/hide rename + remove buttons.
     fetchApps().catch(function () {});
     // Same toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
     renderJobs();
   });
-  // ✏️ Edit mode now lives inside the Settings <summary> (issue #47
-  // follow-up). Without stopPropagation, clicking the toggle would
-  // also bubble to <summary> and expand/collapse the whole panel.
-  const editLabel = els.editMode.closest('.edit-toggle');
-  if (editLabel) {
-    editLabel.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-    });
-  }
   els.saveSettings.addEventListener('click', async function () {
     const ignore = els.projectsIgnore.value
       .split('\n')
