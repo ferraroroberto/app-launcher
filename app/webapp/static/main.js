@@ -17,6 +17,7 @@ import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------- settings panel
 function wireSettings() {
@@ -76,16 +77,33 @@ function wireTheme() {
 }
 
 // --------------------------------------------------------- status readout
+// Appends a sprite-icon span + a trailing text node — data (tunnel_url,
+// etc.) always rides a text node, never innerHTML, even though it's
+// locally-sourced (issue #355 straggler fix).
+function appendStatusChunk(parts, iconName, text) {
+  if (parts.length) parts.push(document.createTextNode(' \u00b7 '));
+  if (iconName) {
+    const ic = document.createElement('span');
+    ic.className = 'inline-icon';
+    ic.innerHTML = icon(iconName);
+    parts.push(ic);
+  }
+  parts.push(document.createTextNode((iconName ? ' ' : '') + text));
+}
+
 async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
     state.status = body;
-    const tail = body.tunnel_url ? '📡 ' + body.tunnel_url : 'no tunnel';
-    let line = (body.tls ? '🔒 TLS · ' : 'http · ') + tail;
+    const parts = [];
+    appendStatusChunk(parts, body.tls ? 'shield-check' : null, body.tls ? 'TLS' : 'http');
+    appendStatusChunk(parts, body.tunnel_url ? 'satellite-dish' : null,
+      body.tunnel_url || 'no tunnel');
     if (body.terminal && body.terminal.reachable === false) {
-      line += ' · ⚠️ terminal needs the Tailscale URL';
+      appendStatusChunk(parts, 'triangle-alert', 'terminal needs the Tailscale URL');
     }
-    els.statusReadout.textContent = line;
+    els.statusReadout.innerHTML = '';
+    parts.forEach(function (p) { els.statusReadout.appendChild(p); });
   } catch (_) {
     els.statusReadout.textContent = '';
   }

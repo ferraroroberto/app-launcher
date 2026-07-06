@@ -66,15 +66,15 @@ function sessionLabel(card) {
 }
 
 const STATUS_META = {
-  working: { icon: '⚡', text: 'working', cls: 'is-working' },
-  'needs-you': { icon: '✳️', text: 'needs you', cls: 'is-needs-you' },
-  idle: { icon: '💤', text: 'idle', cls: 'is-idle' },
-  unknown: { icon: '·', text: '', cls: 'is-unknown' },
+  working: { icon: 'zap', text: 'working', cls: 'is-working' },
+  'needs-you': { icon: 'sparkle', text: 'needs you', cls: 'is-needs-you' },
+  idle: { icon: 'moon', text: 'idle', cls: 'is-idle' },
+  unknown: { icon: null, text: '', cls: 'is-unknown' },
 };
 
 // ----------------------------------------------------------------- cards
 
-function cardShell(topText, titleText, cls) {
+function cardShell(iconName, topText, titleText, cls) {
   const li = document.createElement('li');
   li.className = 'app-item board-item' + (cls ? ' ' + cls : '');
   const btn = document.createElement('button');
@@ -82,7 +82,14 @@ function cardShell(topText, titleText, cls) {
   btn.className = 'launch-btn board-card';
   const top = document.createElement('span');
   top.className = 'board-card-top';
-  top.textContent = topText;
+  if (iconName) {
+    const ic = document.createElement('span');
+    ic.className = 'board-card-top-icon';
+    ic.innerHTML = icon(iconName);
+    top.appendChild(ic);
+  }
+  // Data (repo/project/session names) rides a text node — never innerHTML.
+  top.appendChild(document.createTextNode(topText));
   const title = document.createElement('span');
   title.className = 'board-card-title';
   title.textContent = titleText;
@@ -95,7 +102,7 @@ function cardShell(topText, titleText, cls) {
 function renderSessionCard(card) {
   const meta = STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
-  const shell = cardShell(meta.icon + ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
+  const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
   if (card.session_id) {
     // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
     // the way into the full terminal now.
@@ -339,7 +346,7 @@ function renderIssueCard(card) {
 
 function renderPrCard(card) {
   const draft = card.is_draft ? ' · draft' : '';
-  const shell = cardShell('🔀 ' + [card.repo, 'PR #' + card.number].join(' ') + draft,
+  const shell = cardShell('git-pull-request', ' ' + [card.repo, 'PR #' + card.number].join(' ') + draft,
     card.title || '', '');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
@@ -350,22 +357,23 @@ function renderPrCard(card) {
 }
 
 function renderJobCard(card) {
-  const icon = card.state === 'stuck' ? '⚠️' : '❌';
-  const top = icon + ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtAge(card.age_seconds) : '');
-  const shell = cardShell(top, card.job_name || card.job_id || 'job', 'is-' + card.state);
+  const iconName = card.state === 'stuck' ? 'triangle-alert' : 'x';
+  const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtAge(card.age_seconds) : '');
+  const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
   shell.btn.addEventListener('click', function () { setTab('jobs'); });
   return shell.li;
 }
 
 function renderDoneCard(card) {
-  const icon = card.state === 'merged' ? '✅' : '☑️';
+  const iconName = card.state === 'merged' ? 'circle-check' : 'square-check';
   const noun = card.kind === 'pr' ? 'PR #' : '#';
   // A merged PR that closed issues absorbs their cards (server-side
   // pairing) and names them here, so Done stays one card per unit of work.
   const closes = (card.closes && card.closes.length)
     ? ' · closes #' + card.closes.join(' #') : '';
   const shell = cardShell(
-    icon + ' ' + [card.repo, noun + card.number].join(' ') + ' · ' +
+    iconName,
+    ' ' + [card.repo, noun + card.number].join(' ') + ' · ' +
       card.state + closes,
     card.title || '', '');
   if (card.url) {
