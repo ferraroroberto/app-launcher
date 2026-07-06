@@ -431,7 +431,9 @@ export async function openTerminal(session) {
   if (isMirror) announceMirrorWindow(sid, sessionTitle(session));
 
   // Source the terminal colours from the design tokens so they can't fork
-  // from the SPA's --bg / --fg (issue #314). Fallbacks equal the token values.
+  // from the stylesheet (issue #314). --term-bg/--term-fg are the
+  // theme-invariant terminal-screen tokens (issue #355): the xterm surface
+  // stays dark in both themes. Fallbacks equal the token values.
   const rootStyle = getComputedStyle(document.documentElement);
   const term = new window.Terminal({
     cursorBlink: true,
@@ -439,8 +441,8 @@ export async function openTerminal(session) {
     fontSize: 13,
     scrollback: 10000,
     theme: {
-      background: rootStyle.getPropertyValue('--bg').trim() || '#0a0a0a',
-      foreground: rootStyle.getPropertyValue('--fg').trim() || '#f3f3f3',
+      background: rootStyle.getPropertyValue('--term-bg').trim() || '#0a0a0a',
+      foreground: rootStyle.getPropertyValue('--term-fg').trim() || '#f3f3f3',
     },
   });
   let fit = null;

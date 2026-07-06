@@ -1,27 +1,51 @@
 /* Phone-first launcher hub.
- * Touch targets >= 56 px, dark theme tuned for one-thumb use.
+ * Touch targets >= 56 px, tuned for one-thumb use.
  */
 
+/* ============================================================ design tokens
+   Fleet design system (~/.claude/design.md + design.dark.md, canonical spec
+   ferraroroberto/fleet-config#178; this app's migration: issue #355). Token
+   *names* are this app's; their *values* are the spec's. Light = :root,
+   dark = [data-theme="dark"] (stamped pre-paint by the index.html boot
+   script — localStorage override, prefers-color-scheme fallback). P3
+   wide-gamut (oklch) twins override the saturated tokens behind
+   @media (color-gamut: p3) below. */
 :root {
-  --bg: #0a0a0a;
-  --bg-elev: #161616;
-  --bg-elev-2: #202020;
-  --fg: #f3f3f3;
-  --muted: #9a9a9a;
-  --accent: #4a8af3;
-  --good: #4caf50;
-  --warn: #f0a100;
-  --danger: #cc3344;
-  --border-color: #2a2f42;   /* default hairline — the dominant border */
-  --border-muted: #333;      /* quieter ghost-toggle border */
-  --surface-2: #0d0d0d;      /* inset code/output block background */
-  --code-fg: #d4d4d4;        /* text inside a code/output inset */
-  --star: #f4c430;           /* favorite-star gold */
+  /* colors — neutrals */
+  --bg: #ffffff;             /* canvas (page background) */
+  --card: #ffffff;           /* elevated card surface */
+  --card-2: #f6f8fa;         /* elevation-2: hover/active + raised chrome */
+  --card-off: #f6f8fa;       /* canvas-subtle: inset chips / code blocks */
+  --fg: #1f2328;             /* primary text */
+  --muted: #656d76;          /* fg-muted (secondary text) */
+  --line: #d1d9e0;           /* border — default hairline, the dominant border */
+  --line-muted: #d8dee4;     /* border-muted — quieter ghost-toggle border */
+  /* colors — accent + status (status colors signal state only) */
+  --accent: #0969da;
+  --accent-fg: #ffffff;      /* text/icon on an accent (or danger) fill */
+  --success: #1a7f37;
+  --attention: #9a6700;
+  --attention-fg: #ffffff;   /* text on an attention fill */
+  --danger: #cf222e;
+  --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
+  --code-fg: #1f2328;        /* text inside a code/output inset */
+  /* Theme-invariant terminal screen: the xterm surface stays dark in both
+     themes (ANSI output is authored against dark), same model as
+     home-automation's --video-matte (#383). terminal.js reads these. */
+  --term-bg: #0a0a0a;
+  --term-fg: #f3f3f3;
+  /* elevation — cards lean on surface + hairline; popovers/toasts share one
+     shadow token, the floating bottom bar its own (the only real shadow). */
+  --shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
+  --shadow-nav: 0 10px 34px rgba(31, 35, 40, 0.16);
+  --tabbar-bg: rgba(255, 255, 255, 0.85);
+  --tabbar-border: rgba(31, 35, 40, 0.12);
   /* Brand-colour alpha overlays derive from the tokens above via relative
      colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
      never forks from its base colour. */
   --radius: 14px;
-  --pad: 16px;
+  --space-md: 16px;
+  color-scheme: light;
   --bottom-tabs-height: 60px;
   --bottom-tabs-gap: 2px;
   /* How much of the iPhone home-indicator safe area the floating bottom
@@ -35,6 +59,50 @@
      note on `.tabs`. 60 px bar − 8 px padding = 52 px inner; a 48 px
      centred pill leaves a 2 px breathing margin top and bottom. */
   --bottom-tabs-pill-height: 48px;
+}
+
+[data-theme="dark"] {
+  --bg: #0d1117;             /* canvas (GitHub dark canvas) */
+  --card: #161b22;           /* elevated card surface */
+  --card-2: #21262d;         /* elevation-2: hover/active + raised chrome */
+  --card-off: #010409;       /* canvas-subtle: true-black inset */
+  --fg: #e6edf3;
+  --muted: #7d8590;
+  --line: #30363d;
+  --line-muted: #21262d;
+  --accent: #2f81f7;
+  --accent-fg: #ffffff;
+  --success: #3fb950;
+  --attention: #d29922;
+  --attention-fg: #181818;   /* the brighter dark amber carries dark text */
+  --danger: #f85149;
+  --star: #d29922;           /* spec tile-yellow, dark value */
+  --code-fg: #e6edf3;
+  /* Depth on a near-black canvas comes from surface lightness, not shadow. */
+  --shadow: 0 8px 24px rgba(1, 4, 9, 0.6);
+  --shadow-nav: 0 10px 34px rgba(0, 0, 0, 0.5);
+  --tabbar-bg: rgba(22, 27, 34, 0.86);
+  --tabbar-border: rgba(255, 255, 255, 0.13);
+  color-scheme: dark;
+}
+
+/* P3 wide-gamut twins — on a wide-gamut display the saturated tokens render
+   the richer oklch() value; sRGB displays keep the hex values above. Only
+   saturated tokens have twins; neutrals are sRGB-only by design. Values are
+   the fleet spec's exact oklch (design.md / design.dark.md). */
+@media (color-gamut: p3) {
+  :root {
+    --accent: oklch(0.52 0.18 256);
+    --success: oklch(0.55 0.14 150);
+    --danger: oklch(0.55 0.20 25);
+    --attention: oklch(0.55 0.11 80);
+  }
+  [data-theme="dark"] {
+    --accent: oklch(0.64 0.18 256);
+    --success: oklch(0.72 0.18 150);
+    --danger: oklch(0.68 0.20 25);
+    --attention: oklch(0.77 0.13 85);
+  }
 }
 
 * { box-sizing: border-box; }
@@ -59,7 +127,7 @@ html, body {
 .app {
   max-width: 720px;
   margin: 0 auto;
-  padding: env(safe-area-inset-top, 0) var(--pad) calc(env(safe-area-inset-bottom, 0) + 24px);
+  padding: env(safe-area-inset-top, 0) var(--space-md) calc(env(safe-area-inset-bottom, 0) + 24px);
   scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0) + 24px);
 }
 
@@ -76,9 +144,9 @@ html, body {
   display: flex;
   gap: 4px;
   margin: 12px 0 16px;
-  background: var(--bg-elev);
+  background: var(--card);
   padding: 4px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 12px;
 }
 .tab {
@@ -92,7 +160,7 @@ html, body {
   font-weight: 500;
   cursor: pointer;
 }
-.tab.active { background: var(--bg-elev-2); color: var(--fg); }
+.tab.active { background: var(--card-2); color: var(--fg); }
 .tab:active { color: var(--fg); }
 .tab-icon { display: none; }
 
@@ -130,10 +198,10 @@ html, body {
     max-width: 420px;
     margin: 0 auto;
     padding: 4px;
-    background: rgba(18, 18, 18, 0.86);
-    border-color: rgba(255, 255, 255, 0.13);
+    background: var(--tabbar-bg);
+    border-color: var(--tabbar-border);
     border-radius: 30px;
-    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--shadow-nav);
     backdrop-filter: blur(20px) saturate(1.25);
     -webkit-backdrop-filter: blur(20px) saturate(1.25);
     /* Keep the fixed bar on its own stable compositing layer. iOS Safari
@@ -167,8 +235,8 @@ html, body {
   }
 
   .tab.active {
-    background: rgba(255, 255, 255, 0.14);
-    border-color: rgba(255, 255, 255, 0.18);
+    background: rgb(from var(--fg) r g b / 0.14);
+    border-color: rgb(from var(--fg) r g b / 0.18);
     color: var(--fg);
   }
 
@@ -207,8 +275,8 @@ html, body {
 
 /* ---------- card ---------- */
 .card {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 14px 16px;
   margin: 0 0 14px;
@@ -226,14 +294,14 @@ html, body {
   white-space: nowrap;
   padding: 6px 12px;
   min-height: 36px;
-  border: 1px solid var(--border-muted);
+  border: 1px solid var(--line-muted);
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
   opacity: 0.55;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.detached-toggle:active { background: var(--bg-elev-2); }
+.detached-toggle:active { background: var(--card-2); }
 .detached-toggle:has(input:checked) {
   opacity: 1;
   border-color: var(--accent);
@@ -305,7 +373,7 @@ html, body {
   width: 100%;
   height: auto;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   cursor: zoom-in;
 }
 .system-map-status { margin: 6px 0 0; }
@@ -337,7 +405,7 @@ html, body {
   height: 40px;
   border-radius: 50%;
   border: none;
-  background: rgba(40, 44, 60, 0.9);
+  background: rgba(22, 27, 34, 0.9);
   color: #fff;
   font-size: 18px;
   cursor: pointer;
@@ -347,7 +415,7 @@ html, body {
 .projects-card .card-list { gap: 6px; }
 .opt-group {
   padding: 6px 16px 14px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--line);
 }
 .opt-group-title {
   font-size: 12px;
@@ -363,8 +431,8 @@ html, body {
   line-height: 1.45;
 }
 .opt-hint code {
-  background: var(--bg);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 11px;
@@ -387,8 +455,8 @@ html, body {
 .segmented {
   display: flex;
   flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 3px;
   gap: 2px;
@@ -404,7 +472,7 @@ html, body {
   color: var(--muted);
   cursor: pointer;
 }
-.segmented button.active { background: var(--bg-elev-2); color: var(--fg); }
+.segmented button.active { background: var(--card); color: var(--fg); }
 .toggles { display: flex; gap: 14px; margin-bottom: 10px; }
 .toggle {
   display: flex;
@@ -423,8 +491,8 @@ html, body {
   font-family: "SF Mono", "Fira Mono", monospace;
   font-size: 11px;
   color: var(--muted);
-  background: var(--bg);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px 10px;
   margin: 4px 0 0;
@@ -442,8 +510,8 @@ html, body {
   gap: 10px;
 }
 .app-item {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
   display: flex;
@@ -470,7 +538,7 @@ html, body {
   flex-direction: column;
   gap: 4px;
 }
-.launch-btn:active { background: var(--bg-elev-2); }
+.launch-btn:active { background: var(--card-2); }
 .launch-btn .meta {
   font-size: 11px;
   color: var(--muted);
@@ -483,7 +551,7 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
-  background: var(--bg);
+  background: var(--card-off);
   padding: 2px 6px;
   border-radius: 4px;
   margin-right: 6px;
@@ -493,7 +561,7 @@ html, body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 18px 10px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--line);
   font-size: 12px;
   color: var(--muted);
 }
@@ -506,7 +574,7 @@ html, body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-left: 1px solid var(--border-color);
+  border-left: 1px solid var(--line);
 }
 .app-item .row-actions .icon-btn {
   flex: 1;
@@ -525,10 +593,10 @@ html, body {
   min-height: 44px;
 }
 .app-item .row-actions .icon-btn + .icon-btn {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--line);
 }
 .app-item .row-actions .icon-btn:active {
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
 }
 .app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
@@ -546,13 +614,13 @@ html, body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #555;
+  background: var(--muted);
   margin-right: 6px;
   vertical-align: middle;
 }
-.app-item .health-dot.up { background: var(--good); }
+.app-item .health-dot.up { background: var(--success); }
 .app-item .health-dot.down { background: var(--danger); }
-.app-item .health-dot.stuck { background: var(--warn); }
+.app-item .health-dot.stuck { background: var(--attention); }
 
 /* Jobs tab action rail (issue #232): job tiles use the shared .app-item
    layout — info block on the left, a compact vertical action rail on the
@@ -613,12 +681,12 @@ html, body {
   white-space: nowrap;
 }
 .job-spark-dot {
-  color: #555;
+  color: var(--muted);
 }
-.job-spark-dot.up { color: var(--good); }
+.job-spark-dot.up { color: var(--success); }
 .job-spark-dot.down { color: var(--danger); }
-.job-spark-dot.live { color: var(--warn); }
-.job-spark-dot.unknown { color: #555; }
+.job-spark-dot.live { color: var(--attention); }
+.job-spark-dot.unknown { color: var(--muted); }
 
 .job-duration-chip {
   font-variant-numeric: tabular-nums;
@@ -672,10 +740,10 @@ html, body {
   flex-direction: column;
   gap: 5px;
   padding: 9px 11px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
 }
 .git-summary-row {
   display: flex;
@@ -686,10 +754,10 @@ html, body {
 }
 .git-summary-row .git-branch-tag { margin-left: 0; font-size: 11px; }
 .git-summary-name { font-weight: 600; word-break: break-all; }
-.git-summary-name.git-off-main { color: var(--warn); }
+.git-summary-name.git-off-main { color: var(--attention); }
 .git-summary-name.git-dirty { color: var(--danger); }
 .git-summary-empty { font-size: 13px; color: var(--muted); }
-.coding-name.git-off-main { color: var(--warn); }
+.coding-name.git-off-main { color: var(--attention); }
 .coding-name.git-dirty { color: var(--danger); }
 .git-branch-tag {
   display: inline-block;
@@ -698,8 +766,8 @@ html, body {
   border-radius: 7px;
   font-size: 12px;
   font-weight: 500;
-  color: var(--warn);
-  background: rgb(from var(--warn) r g b / 0.12);
+  color: var(--attention);
+  background: rgb(from var(--attention) r g b / 0.12);
   vertical-align: middle;
   word-break: break-all;
 }
@@ -718,7 +786,7 @@ html, body {
   margin-right: 2px;
   vertical-align: middle;
 }
-.git-swatch.off-main { background: var(--warn); }
+.git-swatch.off-main { background: var(--attention); }
 .git-swatch.dirty { background: var(--danger); }
 
 .row-actions.agent-actions { flex-direction: row; }
@@ -737,7 +805,7 @@ html, body {
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
   border-top: 0;
-  border-left: 1px solid var(--border-color);
+  border-left: 1px solid var(--line);
 }
 @media (max-width: 520px) {
   /* Stack: folder name on its own full-width line, agent icons on a
@@ -748,10 +816,10 @@ html, body {
     flex-wrap: wrap;
     justify-content: flex-end;
     border-left: 0;
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--line);
   }
   .coding-item .row-actions.agent-actions .icon-btn + .icon-btn {
-    border-left: 1px solid var(--border-color);
+    border-left: 1px solid var(--line);
   }
   /* Life OS tiles share the .coding-item class but only ever carry two
      actions (📖 + 🚀), which fit beside the name even on the narrowest
@@ -761,7 +829,7 @@ html, body {
      side border. The Code tab's five-icon stack is untouched. */
   .coding-item.lifeos-item { flex-direction: row; align-items: stretch; }
   .coding-item.lifeos-item .row-actions.agent-actions {
-    border-left: 1px solid var(--border-color);
+    border-left: 1px solid var(--line);
     border-top: 0;
   }
 }
@@ -862,7 +930,7 @@ html, body {
   letter-spacing: 0.06em;
   color: var(--muted);
   padding: 8px 16px 4px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--line);
   margin-top: 4px;
 }
 .jobs-agenda-day:first-child { border-top: 0; margin-top: 0; }
@@ -879,7 +947,7 @@ html, body {
   font: inherit;
   cursor: pointer;
 }
-.jobs-agenda-row:hover { background: rgba(255, 255, 255, 0.03); }
+.jobs-agenda-row:hover { background: rgb(from var(--fg) r g b / 0.04); }
 .jobs-agenda-time {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
@@ -894,7 +962,7 @@ html, body {
 }
 .jobs-agenda-frequent {
   padding: 8px 16px 2px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--line);
   margin-top: 4px;
 }
 
@@ -915,8 +983,8 @@ html, body {
    flex context. */
 .jobs-history-li {
   list-style: none;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-top: 0;
   border-radius: 0 0 var(--radius) var(--radius);
   margin-top: -1px;
@@ -930,8 +998,8 @@ html, body {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--bg-elev-2);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--card-2);
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -946,7 +1014,7 @@ html, body {
 }
 .jobs-history-bar .jobs-history-close {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   color: var(--fg);
   border-radius: 8px;
   padding: 6px 12px;
@@ -970,7 +1038,7 @@ html, body {
   gap: 8px;
   padding: 8px 10px;
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--fg);
   font: 13px/1.3 inherit;
@@ -998,8 +1066,8 @@ html, body {
 .jobs-output-tail {
   margin: 0;
   padding: 8px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--code-fg);
   font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
@@ -1013,8 +1081,8 @@ html, body {
 /* ---------- empty / toast ---------- */
 .empty {
   padding: 24px;
-  background: var(--bg-elev);
-  border: 1px dashed var(--border-color);
+  background: var(--card);
+  border: 1px dashed var(--line);
   border-radius: var(--radius);
   color: var(--muted);
   text-align: center;
@@ -1026,14 +1094,14 @@ html, body {
   left: 50%;
   bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
   transform: translateX(-50%);
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   color: var(--fg);
   padding: 10px 16px;
   border-radius: 10px;
   font-size: 14px;
   max-width: calc(100vw - 32px);
-  box-shadow: 0 10px 24px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow);
   /* Above the full-screen terminal overlay (z-index 300) — otherwise every
      toast raised while the terminal is open (read-aloud feedback #190, the
      🎤 dictation / 📷 OCR / paste results) renders behind it and is invisible
@@ -1041,7 +1109,7 @@ html, body {
   z-index: 400;
 }
 .toast.error { border-color: var(--danger); }
-.toast.good  { border-color: var(--good); }
+.toast.good  { border-color: var(--success); }
 
 /* ---------- settings ---------- */
 .settings-card { margin-top: 12px; }
@@ -1089,14 +1157,14 @@ html, body {
   white-space: nowrap;
   padding: 6px 12px;
   min-height: 36px;
-  border: 1px solid var(--border-muted);
+  border: 1px solid var(--line-muted);
   border-radius: 10px;
   cursor: pointer;
   user-select: none;
   opacity: 0.55;
   transition: opacity 0.15s, border-color 0.15s, background 0.15s;
 }
-.edit-toggle:active { background: var(--bg-elev-2); }
+.edit-toggle:active { background: var(--card-2); }
 .edit-toggle:has(input:checked) {
   opacity: 1;
   border-color: var(--accent);
@@ -1109,9 +1177,9 @@ html, body {
   margin: 10px 0;
 }
 .input-native, .select-native {
-  background: var(--bg);
+  background: var(--card-off);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 14px;
@@ -1123,7 +1191,7 @@ html, body {
   font-size: 15px;
   font-weight: 600;
   background: var(--accent);
-  color: white;
+  color: var(--accent-fg);
   border: 0;
   border-radius: 11px;
   cursor: pointer;
@@ -1133,7 +1201,7 @@ html, body {
 .ghost-btn {
   background: transparent;
   color: var(--muted);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   padding: 8px 12px;
   font-size: 13px;
   border-radius: 9px;
@@ -1142,11 +1210,11 @@ html, body {
 .ghost-btn:active { color: var(--fg); }
 .ghost-btn.accent-btn {
   background: var(--accent);
-  color: white;
+  color: var(--accent-fg);
   border-color: transparent;
   font-weight: 600;
 }
-.ghost-btn.accent-btn:active { color: white; filter: brightness(0.9); }
+.ghost-btn.accent-btn:active { color: var(--accent-fg); filter: brightness(0.9); }
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -1170,8 +1238,8 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 13px;
@@ -1206,8 +1274,8 @@ html, body {
 
 /* ---------- dialogs ---------- */
 .scan-dialog, .rename-dialog {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 14px;
   color: var(--fg);
   padding: 18px;
@@ -1236,8 +1304,8 @@ html, body {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border-color);
+  background: var(--card-off);
+  border: 1px solid var(--line);
   border-radius: 8px;
   margin-bottom: 4px;
   font-size: 13px;
@@ -1253,7 +1321,7 @@ html, body {
   word-break: break-all;
 }
 .dialog-actions { justify-content: flex-end; gap: 8px; }
-.big-btn.warn { background: var(--warn); color: #181818; }
+.big-btn.warn { background: var(--attention); color: var(--attention-fg); }
 
 /* Dry-run toggle in the run-now dialog + confirm-on-fire toggle in the
    job editor (issue #69) — same compact checkbox-row treatment. */
@@ -1267,7 +1335,7 @@ html, body {
   color: var(--muted);
 }
 .job-run-dryrow code {
-  background: var(--bg);
+  background: var(--card-off);
   padding: 1px 4px;
   border-radius: 4px;
 }
@@ -1297,8 +1365,8 @@ html, body {
   border: 1px solid var(--danger);
 }
 .job-preflight-problem.warning {
-  background: rgb(from var(--warn) r g b / 0.12);
-  border: 1px solid var(--warn);
+  background: rgb(from var(--attention) r g b / 0.12);
+  border: 1px solid var(--attention);
 }
 .job-preflight-tag { flex: 0 0 auto; }
 
@@ -1306,7 +1374,7 @@ html, body {
  * Run-now dialog uses the same stacked label pattern as the rest of
  * the form, so no extra styling is needed there. */
 .job-params-fieldset {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
   margin: 10px 0;
@@ -1327,10 +1395,10 @@ html, body {
   gap: 8px;
 }
 .job-param-row {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 8px;
-  background: var(--bg);
+  background: var(--card-off);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1360,8 +1428,8 @@ html, body {
   padding: 16px;
 }
 .login-card {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 14px;
   padding: 20px;
   width: 100%;
@@ -1372,9 +1440,9 @@ html, body {
 }
 .login-card h2 { margin: 0; font-size: 17px; }
 .login-card input {
-  background: var(--bg);
+  background: var(--card-off);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 12px;
   font-size: 15px;
@@ -1382,7 +1450,7 @@ html, body {
 .login-error {
   background: rgb(from var(--danger) r g b / 0.15);
   border: 1px solid var(--danger);
-  color: #ffb4b4;
+  color: var(--danger);
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 13px;
@@ -1426,8 +1494,8 @@ html, body {
   border-radius: 999px;
   white-space: nowrap;
 }
-.session-kind.pty { background: rgba(120, 200, 120, 0.16); color: #9fe09f; }
-.session-kind.remote { background: rgba(255, 255, 255, 0.08); color: var(--muted); }
+.session-kind.pty { background: rgb(from var(--success) r g b / 0.16); color: var(--success); }
+.session-kind.remote { background: rgb(from var(--fg) r g b / 0.08); color: var(--muted); }
 /* detached rows aren't tappable — they have no streamable terminal */
 .session-item .session-open.inert {
   cursor: default;
@@ -1448,7 +1516,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   border-radius: 9px;
   padding: 8px 10px;
   font-size: 13px;
@@ -1477,7 +1545,7 @@ body.terminal-open {
   position: fixed;
   inset: 0;
   z-index: 300;
-  background: #0a0a0a;
+  background: var(--term-bg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1501,8 +1569,8 @@ body.terminal-open {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  background: var(--bg-elev);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
 .terminal-title {
@@ -1515,9 +1583,9 @@ body.terminal-open {
 }
 .terminal-bar-actions { display: flex; gap: 6px; }
 .term-btn {
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 9px 12px;
   font-size: 14px;
@@ -1528,7 +1596,7 @@ body.terminal-open {
    state is unmistakable while speech is playing. */
 .term-btn.speaking {
   background: var(--accent);
-  color: #0a0a0a;
+  color: var(--accent-fg);
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
@@ -1557,11 +1625,11 @@ body.terminal-open {
   flex-direction: column;
   gap: 8px;
   padding: 10px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   border-radius: 12px;
   z-index: 30;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
 }
 .speak-action {
   min-height: 44px;
@@ -1569,13 +1637,13 @@ body.terminal-open {
   font-size: 15px;
   text-align: left;
   white-space: nowrap;
-  background: var(--bg-elev);
+  background: var(--card);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   cursor: pointer;
 }
-.speak-action:active { background: var(--bg-elev-2); }
+.speak-action:active { background: var(--card-2); }
 /* Read-aloud summary modal (issue #210): the hub summary shown on screen while
    it's read aloud (and readable on its own), auto-closing when the read ends or
    on a tap. Sits above the terminal overlay (300), below the toast (400). */
@@ -1593,11 +1661,11 @@ body.terminal-open {
   width: min(560px, 100%);
   max-height: 80vh;
   overflow-y: auto;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   border-radius: 16px;
   padding: 18px 20px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow);
 }
 .summary-head {
   display: flex;
@@ -1607,9 +1675,9 @@ body.terminal-open {
 }
 .summary-title { font-weight: 700; font-size: 16px; }
 .summary-close {
-  background: var(--bg-elev);
+  background: var(--card);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   min-width: 36px;
   min-height: 36px;
@@ -1633,27 +1701,27 @@ body.terminal-open {
   grid-template-columns: repeat(3, 56px);
   gap: 8px;
   padding: 10px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   border-radius: 12px;
   z-index: 30;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
 }
 .key-btn {
   min-height: 52px;
   font-size: 18px;
-  background: var(--bg-elev);
+  background: var(--card);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 8px;
   cursor: pointer;
 }
-.key-btn:active { background: var(--bg-elev-2); }
+.key-btn:active { background: var(--card-2); }
 /* Sticky-Shift engaged (issue #137): ⇧ stays lit until tapped off so the
    user can see Shift is being held for the next key. */
 .key-btn.active {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   border-color: var(--accent);
 }
 /* Empty grid cell to the right of ⇧ keeps the down-arrow centered in row 3. */
@@ -1662,7 +1730,7 @@ body.terminal-open {
   flex: 1;
   min-height: 0;
   padding: 6px 4px 4px 8px;
-  background: #0a0a0a;
+  background: var(--term-bg);
   overflow: hidden;
   /* xterm.js owns the inner scrollback; tell iOS the host is a
      vertical pan target so edge touches don't get hijacked by
@@ -1690,8 +1758,8 @@ body.terminal-open {
   align-items: stretch;
   gap: 8px;
   padding: 8px 10px;
-  background: var(--bg-elev);
-  border-top: 1px solid var(--border-color);
+  background: var(--card);
+  border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
 /* 🎤 + 📷 stack vertically in one narrow column so the textarea keeps the
@@ -1715,9 +1783,9 @@ body.terminal-open {
   font-size: 16px;
   line-height: 20px;
   padding: 10px 12px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 10px;
 }
 .compose-send {
@@ -1726,7 +1794,7 @@ body.terminal-open {
   padding: 0 16px;
   font-size: 18px;
   background: var(--accent);
-  color: #0a0a0a;
+  color: var(--accent-fg);
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -1738,9 +1806,9 @@ body.terminal-open {
   min-width: 44px;
   padding: 0 12px;
   font-size: 18px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 10px;
   cursor: pointer;
 }
@@ -1752,7 +1820,7 @@ body.terminal-open {
 /* Recording in progress — red pulse so the state is unmistakable. */
 .compose-record.recording {
   background: var(--danger, #d9534f);
-  color: #fff;
+  color: var(--accent-fg);
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
@@ -1767,8 +1835,8 @@ body.terminal-open {
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: var(--bg-elev);
-  border-top: 1px solid var(--border-color);
+  background: var(--card);
+  border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
 .ocr-thumbs {
@@ -1784,7 +1852,7 @@ body.terminal-open {
   width: 44px;
   object-fit: cover;
   border-radius: 6px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   display: block;
 }
 .ocr-thumb-x {
@@ -1796,7 +1864,7 @@ body.terminal-open {
   border-radius: 50%;
   border: none;
   background: var(--danger, #d9534f);
-  color: #fff;
+  color: var(--accent-fg);
   font-size: 11px;
   line-height: 18px;
   padding: 0;
@@ -1809,7 +1877,7 @@ body.terminal-open {
   font-size: 14px;
   font-weight: 600;
   background: var(--accent);
-  color: #0a0a0a;
+  color: var(--accent-fg);
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -1820,9 +1888,9 @@ body.terminal-open {
 .terminal-status {
   padding: 8px 12px;
   font-size: 13px;
-  color: var(--warn);
-  background: var(--bg-elev);
-  border-top: 1px solid var(--border-color);
+  color: var(--attention);
+  background: var(--card);
+  border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
 
@@ -1842,7 +1910,7 @@ body.terminal-open {
 /* Weekly-recap tile (issue #167): title + a staleness badge on the left, the
    🚀 review launch on the right. The badge is a coloured dot + label whose
    colour tracks how stale the recap ledger is — green/accent fresh, amber
-   (--warn) past 7 days, red (--danger) past 14, muted when never run. Mirrors
+   (--attention) past 7 days, red (--danger) past 14, muted when never run. Mirrors
    the .health-dot colour vocabulary used elsewhere. */
 .lifeos-recap-card { padding: 12px 16px; }
 .lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
@@ -1857,8 +1925,8 @@ body.terminal-open {
 }
 .lifeos-recap-badge.fresh { color: var(--muted); }
 .lifeos-recap-badge.fresh::before { background: var(--accent); }
-.lifeos-recap-badge.due { color: var(--warn); }
-.lifeos-recap-badge.due::before { background: var(--warn); }
+.lifeos-recap-badge.due { color: var(--attention); }
+.lifeos-recap-badge.due::before { background: var(--attention); }
 .lifeos-recap-badge.overdue { color: var(--danger); }
 .lifeos-recap-badge.overdue::before { background: var(--danger); }
 .lifeos-recap-badge.never::before { background: var(--muted); }
@@ -1879,7 +1947,7 @@ body.terminal-open {
   justify-content: center;
 }
 .lifeos-recap-card .icon-btn:active {
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
 }
 
@@ -1952,9 +2020,9 @@ body.terminal-open {
   display: block;
   width: 100%;
   min-height: 40px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0 28px 0 10px;
   font-size: 13px;
@@ -1974,10 +2042,10 @@ body.terminal-open {
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border-color);
+  background: var(--card-2);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow);
 }
 .board-repo-list li {
   padding: 8px 10px;
@@ -1989,7 +2057,7 @@ body.terminal-open {
   text-overflow: ellipsis;
 }
 .board-repo-list li[data-repo]:hover,
-.board-repo-list li[aria-selected="true"] { background: var(--bg-elev); color: var(--accent); }
+.board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
 .board-repo-empty { color: var(--muted); cursor: default; }
 .board-repo-empty:hover { background: none; }
 .board-dispatch-modes { display: flex; gap: 4px; }
@@ -1999,8 +2067,8 @@ body.terminal-open {
 .board-mode-btn {
   min-height: 36px;
   padding: 0 10px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 10px;
   color: var(--muted);
   font-size: 12px;
@@ -2009,7 +2077,7 @@ body.terminal-open {
 .board-mode-btn.active {
   color: var(--accent);
   border-color: var(--accent);
-  background: var(--bg-elev-2);
+  background: var(--card-2);
 }
 /* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
    height so the dispatch row lines up; same for the drawer reply mic. */
@@ -2036,8 +2104,8 @@ body.terminal-open {
 .board-strip-btn {
   flex: 1;
   min-width: 0;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 10px;
   color: var(--muted);
   padding: 8px 2px;
@@ -2048,18 +2116,18 @@ body.terminal-open {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.board-strip-btn.active { background: var(--bg-elev-2); color: var(--fg); }
+.board-strip-btn.active { background: var(--card-2); color: var(--fg); }
 .board-count {
   display: inline-block;
   min-width: 18px;
   padding: 1px 5px;
   border-radius: 999px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   font-size: 11px;
 }
 /* "Your turn" holding work is the one number that matters. State signal,
    not decoration — the warn color marks pending human action. */
-.board-strip-btn.attention .board-count { background: var(--warn); color: #000; }
+.board-strip-btn.attention .board-count { background: var(--attention); color: var(--attention-fg); }
 .board-refresh { flex: 0 0 auto; }
 .board-status { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
 
@@ -2078,10 +2146,10 @@ body.terminal-open {
   content: ''; width: 8px; height: 8px; border-radius: 50%;
   background: var(--muted); flex: 0 0 auto;
 }
-.usage-badge.good { color: var(--good); }
-.usage-badge.good::before { background: var(--good); }
-.usage-badge.warn { color: var(--warn); }
-.usage-badge.warn::before { background: var(--warn); }
+.usage-badge.good { color: var(--success); }
+.usage-badge.good::before { background: var(--success); }
+.usage-badge.warn { color: var(--attention); }
+.usage-badge.warn::before { background: var(--attention); }
 .usage-badge.danger { color: var(--danger); }
 .usage-badge.danger::before { background: var(--danger); }
 .usage-badge.stale { opacity: 0.6; }
@@ -2122,8 +2190,8 @@ body.terminal-open {
   gap: 3px;
   width: 100%;
   text-align: left;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px 14px;
   color: var(--fg);
@@ -2147,7 +2215,7 @@ body.terminal-open {
   -webkit-box-orient: vertical;
 }
 /* Status accents on the card's left edge — state colors signal state. */
-.board-item.is-needs-you .board-card { border-left: 3px solid var(--warn); }
+.board-item.is-needs-you .board-card { border-left: 3px solid var(--attention); }
 .board-item.is-working .board-card { border-left: 3px solid var(--accent); }
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
@@ -2181,7 +2249,7 @@ body.terminal-open {
   border: none;
   border-radius: 0;
   overflow: visible;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--line);
 }
 .board-item.board-item-issue:last-child { border-bottom: none; }
 .board-card-flat {
@@ -2238,7 +2306,7 @@ body.terminal-open {
 .board-drawer {
   margin: 6px 0 4px;
   padding: 10px 12px;
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   border-radius: 12px;
   display: flex;
   flex-direction: column;
@@ -2269,9 +2337,9 @@ body.terminal-open {
   flex: 1;
   min-width: 0;
   resize: vertical;
-  background: var(--bg);
+  background: var(--card-off);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 8px 10px;
   font-size: 14px;
@@ -2290,9 +2358,9 @@ body.terminal-open {
 .board-issue-btn,
 .board-reply-send,
 .board-open-terminal {
-  background: var(--bg-elev-2);
+  background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 8px 14px;
   font-size: 13px;
@@ -2301,7 +2369,7 @@ body.terminal-open {
 .board-reply-send { font-size: 16px; }
 .board-issue-btn:active,
 .board-reply-send:active,
-.board-open-terminal:active { background: var(--bg-elev); }
+.board-open-terminal:active { background: var(--card); }
 
 /* Desktop / wide: all four columns side by side; titles come back.
    Board (only) also breaks out of the phone-first `.app` 720px cap —
@@ -2339,9 +2407,9 @@ body.terminal-open {
   flex: 1;
   display: block;
   text-align: left;
-  background: var(--bg-elev);
+  background: var(--card);
   color: var(--fg);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--line);
   border-radius: 9px;
   padding: 10px 12px;
   font-size: 14px;
@@ -2367,15 +2435,15 @@ body.terminal-open {
 .lifeos-file-content p { line-height: 1.5; }
 .lifeos-file-content a { color: var(--accent); }
 .lifeos-file-content code {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 13px;
 }
 .lifeos-file-content pre.md-code {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-color);
+  background: var(--card);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 10px 12px;
   overflow-x: auto;
