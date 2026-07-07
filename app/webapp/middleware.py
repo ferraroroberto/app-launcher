@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 # non-loopback client IP and must present the token.
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
-AUTH_EXEMPT_PREFIXES = ("/static/", "/healthz", "/install-ca")
-AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/install-ca", "/api/login"})
+AUTH_EXEMPT_PREFIXES = ("/static/", "/healthz")
+AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/api/login"})
 
 # Tailscale hands every node an address in the CGNAT range. The
 # interactive terminal is gated to this range (plus loopback and an

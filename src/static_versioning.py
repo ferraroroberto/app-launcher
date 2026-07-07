@@ -36,8 +36,8 @@ _HASH_LEN = 8
 # stamped client-side via dom-utils.js iconUrl(), so an icon edit must
 # move the fleet hash too (issue #372 — stale icons survived a deploy
 # because SVG bytes never fed the hash). Everything else (manifest,
-# mobileconfig, the xterm vendor bundle) is cached more conservatively
-# by the static-files mount itself.
+# the xterm vendor bundle) is cached more conservatively by the
+# static-files mount itself.
 _HASHED_SUFFIXES = (".js", ".css", ".svg")
 
 # Subdirectories under static/ to skip entirely (vendor xterm is huge

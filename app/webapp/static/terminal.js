@@ -99,26 +99,9 @@ export function estimateTermSize() {
 }
 
 // ------------------------------------------------ terminal screen theme
-// Opt-in light terminal (issue #359). Default is the theme-invariant dark
-// screen; the "Terminal follows app theme" switch in Settings persists
-// 'follow-app' (localStorage, like the app theme itself) and stamps
-// html[data-term-theme="follow"], which is the single source both the CSS
-// token override and the JS palette key on.
-const _TERM_THEME_KEY = 'app-launcher.termTheme';
-
-export function terminalFollowsApp() {
-  try {
-    return localStorage.getItem(_TERM_THEME_KEY) === 'follow-app';
-  } catch (_) { return false; }
-}
-
-export function stampTermThemeAttr() {
-  if (terminalFollowsApp()) {
-    document.documentElement.dataset.termTheme = 'follow';
-  } else {
-    delete document.documentElement.dataset.termTheme;
-  }
-}
+// The terminal screen always follows the app theme (issue #383; supersedes
+// the #359 opt-in switch): html[data-theme] is the single source both the
+// CSS token override and the JS palette key on.
 
 // VS Code Light+ ANSI table: the hosted TUIs (Claude Code, Codex, Copilot)
 // author their colors for dark backgrounds, so a light screen needs a full
@@ -159,8 +142,7 @@ export function setUserTermThemes(themes) {
 }
 
 function _effectiveLight() {
-  return document.documentElement.dataset.termTheme === 'follow' &&
-    document.documentElement.dataset.theme !== 'dark';
+  return document.documentElement.dataset.theme !== 'dark';
 }
 
 function _userOverride() {
@@ -169,7 +151,7 @@ function _userOverride() {
 
 // Resolve the xterm theme for the *current* app state. background/foreground
 // come from the --term-bg/--term-fg tokens (the CSS override keyed on
-// html[data-term-theme] already flips them); the ANSI table joins only in
+// html[data-theme] already flips them); the ANSI table joins only in
 // the effective-light case; the user file wins last. Pure read — safe to
 // call on every theme flip.
 export function termScreenTheme() {
@@ -550,9 +532,9 @@ export async function openTerminal(session) {
 
   // Source the terminal colours from the design tokens so they can't fork
   // from the stylesheet (issue #314). --term-bg/--term-fg are the
-  // terminal-screen tokens (issue #355): dark in both themes by default,
-  // light under the opt-in follow-app pref (issue #359) — resolved by
-  // termScreenTheme(), which also carries the light ANSI palette.
+  // terminal-screen tokens (issue #355), following the app theme
+  // (issue #383) — resolved by termScreenTheme(), which also carries the
+  // light ANSI palette.
   const term = new window.Terminal({
     cursorBlink: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
@@ -957,27 +939,13 @@ function wireKeysPopover() {
 }
 
 export function wireTerminal() {
-  // Opt-in light terminal (issue #359): stamp the persisted pref onto
-  // <html> before any terminal opens, reflect it on the Settings switch,
-  // and live-restyle the open terminal whenever either the pref or the
-  // app theme flips — xterm colors live in the renderer, so CSS alone
-  // can't restyle an already-open screen; options.theme can.
-  stampTermThemeAttr();
-  if (els.termFollowTheme) {
-    els.termFollowTheme.setAttribute(
-      'aria-checked', terminalFollowsApp() ? 'true' : 'false');
-    els.termFollowTheme.addEventListener('click', function () {
-      const on = els.termFollowTheme.getAttribute('aria-checked') !== 'true';
-      els.termFollowTheme.setAttribute('aria-checked', on ? 'true' : 'false');
-      try {
-        localStorage.setItem(_TERM_THEME_KEY, on ? 'follow-app' : 'dark');
-      } catch (_) {}
-      stampTermThemeAttr();
-    });
-  }
+  // The terminal screen follows the app theme (issue #383): live-restyle
+  // the open terminal whenever the app theme flips — xterm colors live in
+  // the renderer, so CSS alone can't restyle an already-open screen;
+  // options.theme can.
   new MutationObserver(applyTermTheme).observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ['data-theme', 'data-term-theme'],
+    attributeFilter: ['data-theme'],
   });
   // User theme file (issue #381) — best-effort; the built-ins are already
   // a complete theme, so a missing/failed fetch changes nothing.

@@ -18,7 +18,7 @@ Sister project to [`photo-ocr`](https://github.com/) and [`voice-transcriber`](h
 
 ## What it does, in one screen
 
-The web UI has five tabs:
+The web UI has six tabs:
 
 - **Coding** — every project directory directly under your configured projects folder becomes a tile (no `.code-workspace` or `*-remote.bat` needed — the list is the directory listing, recomputed live; hide folders with a gitignore-style ignore list in Settings). The tile shows the **bare on-disk folder name** and carries **one launch button per coding agent**:
   - **Claude Code** (`claude`), **Codex CLI** (`codex`), **Antigravity CLI** (`agy`), **GitHub Copilot CLI** (`copilot`), and **Pi** (`pi`, on your Claude subscription via the Agent SDK) — each button bears the agent's icon. An agent's button is disabled with a hover hint when its CLI isn't installed (detection: the command resolves on `PATH`). See [Installing the Codex CLI](#installing-the-codex-cli), [Installing the Antigravity CLI](#installing-the-antigravity-cli), [Installing the GitHub Copilot CLI](#installing-the-github-copilot-cli), and [Installing Pi](#installing-pi) below.
@@ -32,7 +32,7 @@ The web UI has five tabs:
 
   Running sessions are listed above the project tiles, each marked with its agent's icon and tagged `⚡ full control` or `☁️ detached`. Each row carries a single **✕ Stop-and-kill** button (issue #253): one tap (no confirm) asks the agent to quit cleanly with its own command (`/quit`, Copilot's `/exit`) so its shutdown hooks run, waits briefly for the clean exit, then force-terminates as a fallback — and the window always closes. Tap a full-control one to re-attach; in the terminal view tap *‹* to come back, or the in-bar **✕** to stop and kill it right there without going back to the list first. The **⚙️ Coding options** card above the list (collapsible, collapsed by default) has a Claude Code subsection (model / effort / permission mode / verbose / debug), an Antigravity subsection (`--dangerously-skip-permissions` / `--sandbox` toggles), and a GitHub Copilot subsection (a `--model` picker plus the `--allow-all` toggle). Antigravity has no launch-time model flag — pick its model with `/model` in-session. See [Interactive terminal](#interactive-terminal-from-the-phone) for the security model.
 
-  A foldable **🗺️ System map** section (issue #173) sits below the project list, between Projects and Settings. It surfaces the fleet system map — `architecture/system-map.png`, rendered by [`fleet-config`](https://github.com/ferraroroberto/fleet-config)'s `/system-map` job — so *"see my whole system"* is one tap from the phone, any time, instead of waiting for the weekly Slack image. The PNG loads lazily on first expand and opens full-screen (pan/zoom) on tap. The section hides unless a rendered map exists under the **Fleet-config dir** set in Settings (default sibling `../fleet-config`). The image endpoint is gated like the live terminal **minus the passkey** — bearer-token **and** Tailscale-only (refused over the Cloudflare tunnel) — so the map never leaves the tailnet.
+  A foldable **🗺️ System map** section (issue #173) sits below the project list, at the bottom of the Coding tab. It surfaces the fleet system map — `architecture/system-map.png`, rendered by [`fleet-config`](https://github.com/ferraroroberto/fleet-config)'s `/system-map` job — so *"see my whole system"* is one tap from the phone, any time, instead of waiting for the weekly Slack image. The PNG loads lazily on first expand and opens full-screen (pan/zoom) on tap. The section hides unless a rendered map exists under the **Fleet-config dir** set in Settings (default sibling `../fleet-config`). The image endpoint is gated like the live terminal **minus the passkey** — bearer-token **and** Tailscale-only (refused over the Cloudflare tunnel) — so the map never leaves the tailnet.
 - **Apps** — every `*.bat` under your scan root that the classifier recognises as Streamlit, a FastAPI webapp, or a Cloudflare-tunnel script. Tap → fresh CMD window runs the bat. Tunnel rows surface a live `📡 <url>` under the launch button, refreshed every 4 s.
 - **Jobs** — one-shot Python scripts and scheduled jobs (`.py` or `.bat` targets). Every row reads as four fixed lines (name / type+schedule+countdown / duration percentiles + last-7 sparkline / last-run meta) so the same information lands in the same place across jobs. The list **defaults to Next-run order** (issue #229) — ascending by a next-fire time computed from each job's schedule, so the imminent dailies float above the weeklies and manual-only / paused jobs sink to the bottom — with a header toggle to flip to A–Z (the choice persists). Each scheduled row carries a relative **countdown chip** (`⏱ in 3h`) next to its cadence chip. A foldable **🗓️ Schedule** panel above the list (issue #230, collapsed by default) shows the next 7 days of fires as a day-grouped agenda (`Today` / `Tomorrow` / weekday, each row `HH:MM · name · cadence`) — the mobile-native alternative to a 2D calendar grid; dense minutes/hourly jobs collapse to a "frequent" footer, and tapping a row reveals that job in the list below. Tap the row to expand recent run history and the most recent output tail; CPU and peak RSS surface on the selected run's output label. Tap the output pane itself to copy the whole log to the clipboard (issue #97) — one tap to grab an error trace for pasting elsewhere. Stuck runs (running > `max(p95 × 3, 300 s)`) get a ⚠️ marker and a "Kill stuck run" button. Failures can fire a Pushover push — optionally with an LLM-generated root-cause line — via `notify_on_failure` in `config/webapp_config.json`. Schedules materialise as Windows Task Scheduler entries under the `\AppLauncher\` folder — same executor whether the run came from the phone, the Stream Deck, or the schedule. **Authoring safety** (issue #69): saving a job runs a pre-flight (missing script blocks the save; a `.py` with no `.venv` warns), edit mode adds a 🧪 dry-run check that resolves the invocation without spawning (plus a *Dry-run* checkbox in the run dialog that runs with `JOB_DRY_RUN=1`), and a job can be flagged to require confirmation before firing. A job can also be flagged **`visible`** (issue #91) so its scheduled fire runs in a real console window (under `python.exe` instead of the silent `pythonw.exe`) with the child's output teed to that console as well as `output.log` — for jobs you want to watch run on the PC while still capturing output for remote run-history. A job can be flagged **`elevated`** (issue #350) for a script whose target needs admin rights, e.g. restarting an app that requires elevation to launch — its real Task Scheduler entry (registered by hand with `/RL HIGHEST`, silent elevation, no UAC prompt) is treated as externally-managed and never touched by the launcher's own create/edit/pause/resume sync (issue #352), which would otherwise silently fail from this non-elevated webapp; the Jobs tab marks it with a `🔒 externally scheduled` pill. See [Jobs tab](docs/jobs-tab.md) for the full reference.
 
@@ -40,9 +40,9 @@ The web UI has five tabs:
 
 - **Board** (issue #164, complete: #300 + #301 + #302) — one screen answering *"what needs me now, across everything"*: a read-only kanban over four **computed** columns (a card moves because reality changed — there is deliberately no drag-and-drop). **Backlog** = open GitHub issues across the configured owner's repos; **Claude's turn** = live coding sessions that are working / idle / unknown; **Your turn** = sessions waiting on your input, open PRs, and today's failed or stuck job runs; **Done** = today's merged PRs + closed issues. On the phone the columns are a swipeable one-column-per-screen carousel with a count strip on top (the *Your turn* count highlights when nonzero); desktop shows all four side by side. Session status comes from [`fleet-config`](https://github.com/ferraroroberto/fleet-config)'s sessions-state file (joined to live sessions by normalized cwd, with a transcript-activity overlay so a hook-less resume still reads as *working*), while GitHub data is `gh`-fetched server-side and cached (refreshed only by the ↻ button or on tab open, never on the 5 s poll). Tapping a live session opens an inline **drill-down drawer** — the last exchange plus a reply box that types straight into the live PTY — while a pinned **dispatch bar** spawns a brand-new session from a spoken or typed goal (injection-safe by spawn-then-type); both are Tailscale-only + passkey-gated as terminal-grade content. See [Board tab](docs/board.md) for the full reference — the columns and their data sources, the session-state join, the transcript overlay (#305 + #309), the dispatch spawn-then-type contract (#302), and the drill-down drawer's PTY-write path (#301).
 
-The **Apps** tab is backed by a registry file (`config/apps.json`); the **Jobs** tab by `config/jobs.json`. The **Coding** and **Life OS** tabs need no registry — they list directories live. **Settings** (the panel at the bottom) holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist, and is where you set the Coding projects folder and its ignored-folders list. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows plus the **➕ Add job** button (in the Registered-jobs panel header) + 🧪 dry-run / ✏️ / 🗑️ controls on Jobs rows (▶ run and ⏸ pause stay in the normal view) — off by default, so the lists stay icon-free in normal use. Every top-level panel across the four original tabs is a **collapsible section** (issue #226) sharing the Code tab's chrome — same chevron, same collapsed height — so the Apps (Running apps / Port listeners / Registered apps), Jobs (Registered jobs) and Life (Skills) panels each fold away to cut scrolling on the phone. Open by default everywhere for now; per-platform defaults (all-open on desktop, fold-what-you-need on mobile) are future work.
+The **Apps** tab is backed by a registry file (`config/apps.json`); the **Jobs** tab by `config/jobs.json`. The **Coding** and **Life OS** tabs need no registry — they list directories live. The sixth tab, **Settings** (issue #383 — previously an always-visible panel at the bottom of every tab), holds the occasional-use actions: **🔎 Scan** walks the apps scan root and shows what's new in a checklist; it's where you set the Coding projects folder and its ignored-folders list, and it carries the light/dark **theme toggle** plus the passkey enrollment section. **Edit mode** there reveals per-row ✏️ rename and 🗑️ remove on Apps rows plus the **➕ Add job** button (in the Registered-jobs panel header) + 🧪 dry-run / ✏️ / 🗑️ controls on Jobs rows (▶ run and ⏸ pause stay in the normal view) — off by default, so the lists stay icon-free in normal use. Every top-level panel across the four original tabs is a **collapsible section** (issue #226) sharing the Code tab's chrome — same chevron, same collapsed height — so the Apps (Running apps / Port listeners / Registered apps), Jobs (Registered jobs) and Life (Skills) panels each fold away to cut scrolling on the phone. Open by default everywhere for now; per-platform defaults (all-open on desktop, fold-what-you-need on mobile) are future work.
 
-Smart-kill: the settings panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
+Smart-kill: the Apps tab's Port-listeners panel polls common app ports (8443, 8444, 8445, 8501, 5050) and lists what's actually listening. One tap stops the right PID — no hardcoded "kill :8501" buttons that fire blind.
 
 ---
 
@@ -191,7 +191,7 @@ default high → `--thinking`), and **project-trust** controls.
 .\webapp.bat         # uvicorn standalone, no tray (dev / headless)
 ```
 
-Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP. Two provisioners can write that cert pair: `scripts/gen_tailscale_cert.py` (preferred — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale-preferred-self-signed-fallback)) and `scripts/gen_ssl_cert.py` (self-signed fallback for LAN-only setups).
+Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
 
 The tray icon menu has:
 
@@ -206,7 +206,7 @@ The tray icon menu has:
 
 Every `/static/*.{js,css}` URL carries a content-hash query string (`?v=<8 hex>`) computed at boot, so editing any asset busts iOS Safari's cache automatically — no more "did the deploy take?" guessing. Hashed assets are served with `Cache-Control: public, max-age=31536000, immutable`; `index.html` itself stays `no-cache, must-revalidate`.
 
-To verify visually, the Settings panel (bottom of the launcher) shows a build line:
+To verify visually, the footer under every tab shows a build line:
 
 ```
 Build: 35caad4 · 2026-05-19 21:34
@@ -221,21 +221,12 @@ Backed by `GET /api/version`, which also returns the current `asset_hash` for qu
 
 ## Phone install (PWA)
 
-The launcher is a PWA — installs to the iPhone home screen, full-screen, no Safari chrome. With the [Tailscale cert](#https-certificate-tailscale-preferred-self-signed-fallback) there is no trust setup at all — open the ts.net URL and jump to step 6. The detour below applies only to the self-signed fallback.
+The launcher is a PWA — installs to the iPhone home screen, full-screen, no Safari chrome. With the [Tailscale cert](#https-certificate-tailscale) there is no trust setup at all:
 
-**One-time iPhone trust setup (self-signed fallback only)**
+1. Open `https://<host>.<tailnet>.ts.net:8445?token=…` in Safari (tray menu → **📋 Copy Tailscale URL**). Lock icon should be solid, no "Not Secure".
+2. **Share → Add to Home Screen**. The launcher rocket icon lands on your home screen.
 
-1. Open `https://<pc-hostname>:8445/install-ca` in Safari → tap **Allow** to download the profile.
-2. **Settings → General → VPN & Device Management** → tap "Launcher Local CA" → **Install** → enter passcode → confirm.
-3. **Settings → General → About → Certificate Trust Settings** (at the very bottom of the About list) → toggle **Launcher Local CA** ON → confirm the warning. *This step is easy to miss — the install in step 2 places the CA in the keychain but does not trust it for TLS.*
-4. **Force-quit Safari** (swipe up, dismiss the Safari card). Safari caches negative-trust decisions per-process; the toggle alone is not enough to flip an already-open page from "Not Secure" to trusted.
-
-**Then install the PWA**
-
-5. Reopen the launcher URL in Safari. Lock icon should be solid, no "Not Secure".
-6. **Share → Add to Home Screen**. The launcher rocket icon lands on your home screen.
-
-On Android, Chrome shows an "Install app" prompt the second visit; the icon goes on the home screen the same way. Android trusts the system store; for manual install the CA is also served as DER at `/static/ca.crt`.
+On Android, Chrome shows an "Install app" prompt the second visit; the icon goes on the home screen the same way.
 
 After that the launcher behaves like a native app — full-screen, no Safari chrome.
 
@@ -243,51 +234,20 @@ After that the launcher behaves like a native app — full-screen, no Safari chr
 
 ---
 
-## HTTPS certificate: Tailscale preferred, self-signed fallback
+## HTTPS certificate (Tailscale)
 
-Fleet standard: `ferraroroberto/project-scaffolding#89`. For a tailnet-reachable app, provision a **real Let's Encrypt cert** via `tailscale cert` instead of the self-signed CA + per-device trust dance:
+Fleet standard: `ferraroroberto/project-scaffolding#89`. Provision a **real Let's Encrypt cert** via `tailscale cert` — no self-signed CA, no per-device trust dance (the legacy self-signed generator and its `/install-ca` iOS-profile detour were removed in #383):
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\gen_tailscale_cert.py
 # then: tray.bat --restart
 ```
 
-One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns). The script auto-detects the MagicDNS name and writes `webapp/certificates/cert.pem` + `key.pem`. Every device on the tailnet then trusts `https://<host>.<tailnet>.ts.net:8445` natively — no CA install, no `/install-ca` profile, no Certificate Trust toggle.
+One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns). The script auto-detects the MagicDNS name and writes `webapp/certificates/cert.pem` + `key.pem`. Every device on the tailnet then trusts `https://<host>.<tailnet>.ts.net:8445` natively — no CA install, no profile, no Certificate Trust toggle.
 
-**Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on a self-signed cert. No calendar entry needed.
+**Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
 
-> **After switching:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically** (#356): with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with a self-signed cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way.
-
-### Self-signed fallback (LAN-only / no Tailscale)
-
-The self-signed path below remains correct for a machine without Tailscale. Its leaf cert is capped at **396 days** because Apple/WebKit reject any server cert with a validity period > 398 days (since iOS 14), regardless of how thoroughly the issuing CA is trusted. After ~13 months, Safari will start showing "Not Secure" on the iPhone again — that is the leaf cert expiring, not a regression.
-
-**Routine renewal (no iPhone re-trust needed):**
-
-```powershell
-.\.venv\Scripts\python.exe scripts\gen_ssl_cert.py --skip-install
-# then: tray menu → 🔄 Restart webapp   (or `tray.bat --restart` / `webapp.bat`)
-```
-
-The script reuses the existing `ca.pem` + `ca.key` if they exist, so the iPhone trust profile installed once stays valid. Only the leaf cert rotates. On the iPhone, force-quit Safari to clear its TLS cache and the next refresh is clean.
-
-**Force a fresh CA (rarely — e.g. CA key compromise):**
-
-```powershell
-.\.venv\Scripts\python.exe scripts\gen_ssl_cert.py --force-new-ca
-```
-
-After this you **must** re-install the trust profile on every device: delete the old "Launcher Local CA" profile in *VPN & Device Management*, then repeat the one-time setup above.
-
-**Troubleshooting "Not Secure" on iPhone despite the profile being installed:**
-
-| Symptom check | Fix |
-| --- | --- |
-| Full Trust toggle is OFF in *Certificate Trust Settings* | toggle it ON (step 3 above) |
-| Safari was already open before trust changed | force-quit Safari (step 4) |
-| Leaf cert > 398 days — `openssl x509 -in webapp/certificates/cert.pem -noout -dates` | regenerate with the script above |
-| Tailnet hostname or LAN IP changed — `openssl x509 -in webapp/certificates/cert.pem -noout -ext subjectAltName` doesn't list it | regenerate with the script above (it rescans hostnames + IPs) |
-| Still rejected after all of the above | reboot the iPhone — iOS occasionally caches negative-trust decisions device-wide |
+> **Loopback and LAN URLs:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning by design — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically** (#356): with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with no Tailscale cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way. With no cert at all the server runs plain HTTP on loopback — fine for a fresh clone, but iOS Safari needs HTTPS for the PWA + mic features, so provision the Tailscale cert before phone use.
 
 ---
 
@@ -424,8 +384,7 @@ app-launcher/
 │
 ├── scripts/
 │   ├── gen_icons.py           # thin caller onto project-scaffolding's shared brand_gen.py (rocket master)
-│   ├── gen_ssl_cert.py        # self-signed CA + leaf + iOS .mobileconfig (LAN-only fallback)
-│   ├── gen_tailscale_cert.py  # tailscale cert (real LE) + --check auto-renew — preferred
+│   ├── gen_tailscale_cert.py  # tailscale cert (real LE) + --check auto-renew
 │   ├── gen_token.py           # bearer token rotate / clear
 │   ├── set_password.py        # login password set / clear
 │   └── run_named_tunnel.py    # uvicorn + cloudflared (headless)
@@ -440,7 +399,7 @@ app-launcher/
 │   └── stream-deck/app-launcher-144.png  # Elgato Stream Deck button
 │
 └── webapp/                    # runtime state — all gitignored except samples
-    ├── certificates/          # ca.pem / cert.pem / key.pem from gen_ssl_cert
+    ├── certificates/          # cert.pem / key.pem from gen_tailscale_cert
     ├── cloudflared.sample.yml
     ├── cloudflared.yml        # your filled-in copy (gitignored)
     ├── terminal-themes.sample.json  # VS Code-style PTY terminal theme overrides (#381)
@@ -555,7 +514,7 @@ To test without a reboot: select the task → **Run** in the right-hand pane.
 - The session-host binds `127.0.0.1` only — the PTYs are never directly reachable; the webapp is the sole way in.
 - The launcher only ever runs bats from the registered list (id is checked against `config/apps.json`) or `claude` in a registered project_dir — it can't be coerced into running an arbitrary path.
 - The smart-kill endpoint accepts any port in range but only acts on PIDs LISTENing on that port — a port no one is using is a no-op.
-- Self-signed TLS is for loopback + tailnet. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert is intentionally not publicly trusted.
+- Local TLS is the Tailscale LE cert, issued for the ts.net name only. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert doesn't cover the public hostname.
 
 ---
 

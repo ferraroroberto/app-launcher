@@ -1,4 +1,4 @@
-"""Catch-all routes: index, healthz, install-ca, port probing + kill.
+"""Catch-all routes: index, healthz, port probing + kill.
 
 Port probe / kill live here because they're not about the app registry —
 they're a generic "what's listening on this machine" diagnostic. The
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import HTMLResponse
 
 from src.agents import detect_agents
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
@@ -172,24 +172,6 @@ async def agents() -> Dict[str, Any]:
 @router.get("/healthz")
 async def healthz() -> Dict[str, Any]:
     return {"ok": True, "service": "launcher"}
-
-
-@router.get("/install-ca")
-async def install_ca() -> FileResponse:
-    profile = STATIC_DIR / "launcher-ca.mobileconfig"
-    if not profile.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=(
-                "CA profile not generated yet. Run "
-                "`scripts/gen_ssl_cert.py` from the project root."
-            ),
-        )
-    return FileResponse(
-        str(profile),
-        media_type="application/x-apple-aspen-config",
-        filename="launcher-ca.mobileconfig",
-    )
 
 
 @router.get("/api/ports/probe")

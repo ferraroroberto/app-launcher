@@ -6,7 +6,6 @@ full per-family surface.  Top-level families:
     misc         GET  /                         → static/index.html
                  GET  /static/{file}            → CSS / JS / icons (static mount)
                  GET  /healthz                  → liveness probe
-                 GET  /install-ca               → iOS .mobileconfig
                  GET  /api/version              → git_sha + asset_hash
                  GET  /api/agents               → registered coding agents
 
@@ -108,8 +107,8 @@ class _VersionedStatic(StaticFiles):
 
     JS files get their ``import './foo.js'`` calls rewritten to
     ``import './foo.js?v=<hash>'`` at serve time. Hashed assets get
-    a year-long immutable cache; icons and manifest get a day; the
-    iOS mobileconfig and anything else falls back to defaults.
+    a year-long immutable cache; icons and manifest get a day;
+    anything else falls back to defaults.
     """
 
     def __init__(self, *, directory: str, asset_hashes: Dict[str, str]) -> None:

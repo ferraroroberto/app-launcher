@@ -1,5 +1,5 @@
 {
-  "_readme": "Copy to terminal-themes.json (machine-local, gitignored) to tune the PTY terminal like a VS Code theme (issue #381). Top-level keys 'light' and 'dark' override the built-in xterm palette for that mode; any xterm ITheme key works (background, foreground, cursor, selectionBackground, black..brightWhite), plus 'minimumContrastRatio' (1 = off; 4.5 = WCAG AA — the light-mode default) which auto-adjusts unreadable foregrounds per cell. Edit + reload the PWA to apply; no rebuild. 'light' only applies when Settings > 'Terminal follows app theme' is on and the app theme is light.",
+  "_readme": "Copy to terminal-themes.json (machine-local, gitignored) to tune the PTY terminal like a VS Code theme (issue #381). Top-level keys 'light' and 'dark' override the built-in xterm palette for that mode; any xterm ITheme key works (background, foreground, cursor, selectionBackground, black..brightWhite), plus 'minimumContrastRatio' (1 = off; 4.5 = WCAG AA — the light-mode default) which auto-adjusts unreadable foregrounds per cell. Edit + reload the PWA to apply; no rebuild. 'light' applies whenever the app theme is light — the terminal always follows the app theme.",
   "light": {
     "background": "#fdf6e3",
     "yellow": "#7a6a00",

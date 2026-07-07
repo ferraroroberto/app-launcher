@@ -28,7 +28,7 @@ REM self-signed cert or when no cert exists) — project-scaffolding#89.
 
 if not exist "%CERT%" (
     echo [INFO] No HTTPS cert found, running HTTP-only on :8445.
-    echo        Run scripts\gen_ssl_cert.py to enable HTTPS.
+    echo        Run scripts\gen_tailscale_cert.py to enable HTTPS.
     "%VENV_PY%" -m uvicorn app.webapp.server:app --host 0.0.0.0 --port 8445
 ) else (
     echo [INFO] HTTPS via %CERT%

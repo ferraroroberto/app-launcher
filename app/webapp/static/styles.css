@@ -115,13 +115,11 @@
   color-scheme: dark;
 }
 
-/* Opt-in light terminal screen (issue #359): html[data-term-theme="follow"]
-   is stamped by terminal.js from the "Terminal follows app theme" switch in
-   Settings (localStorage, like the theme itself). Only the light app theme
-   changes anything — dark keeps the same screen either way. The matching
+/* Light terminal screen: the terminal always follows the app theme
+   (issue #383; supersedes the #359 opt-in switch). The matching
    ANSI palette rides terminal.js (xterm colors live in the renderer, not
    CSS). Values are the spec's colors.canvas / colors.fg. */
-[data-term-theme="follow"]:not([data-theme="dark"]) {
+:root:not([data-theme="dark"]) {
   --term-bg: #ffffff;
   --term-fg: #1f2328;
 }
@@ -293,10 +291,10 @@ html, body {
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
-/* Theme toggle (issue #355) — sun/moon ghost button in the ⚙️ options
-   summary row, the launcher's always-visible top slot (the counterpart of
-   home-automation's Home-tile toggle). Shows the glyph for the ACTION:
-   moon in light (tap → dark), sun in dark (tap → light). */
+/* Theme toggle (issue #355) — sun/moon ghost button in the Settings tab's
+   head row (the counterpart of home-automation's Home-tile toggle).
+   Shows the glyph for the ACTION: moon in light (tap → dark), sun in
+   dark (tap → light). */
 .theme-toggle {
   display: inline-flex;
   align-items: center;
@@ -391,10 +389,12 @@ summary + .opt-group { border-top: 0; }
   padding: 6px 14px 14px;
   border-top: 1px solid var(--line);
 }
+/* Agent group headers read in the app font, normal case — the uppercase
+   spaced-caption treatment looked like a different typeface next to the
+   mixed-case option rows (issue #383). */
 .opt-group-title {
-  font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--font-label);
+  font-weight: 600;
   color: var(--muted);
   margin: 12px 0 10px;
 }
@@ -1126,11 +1126,21 @@ summary + .opt-group { border-top: 0; }
 .toast.good  { border-color: var(--success); }
 
 /* ---------- settings ---------- */
-.settings-card { margin-top: 12px; }
-/* Edit-mode toggle in the Settings summary — same button-style toggle
+/* Settings is its own tab (issue #383): a plain card whose head mirrors
+   the disclosure summary's box (52px, 0 14px, divider) without the
+   collapse behavior — a dedicated pane has nothing to collapse. */
+.settings-card { padding: 0; }
+.settings-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line-muted);
+}
+/* Edit-mode toggle in the Settings head — same button-style toggle
    as .detached-toggle: role="switch" + aria-checked (issue #355), no
-   visible checkbox. Click is intercepted so flipping Edit mode doesn't
-   also expand/collapse the Settings panel. */
+   visible checkbox. */
 .edit-toggle {
   display: inline-flex;
   align-items: center;

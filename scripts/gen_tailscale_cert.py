@@ -1,10 +1,10 @@
 """Provision a Tailscale HTTPS certificate for this machine.
 
-Use this instead of ``scripts/gen_ssl_cert.py`` when you want browsers to
-trust https://<machine>.tail*.ts.net:8445 without any manual certificate
-installation on any device — ``tailscale cert`` issues a real Let's Encrypt
-leaf for the tailnet MagicDNS name, so there is no CA install, no
-``/install-ca`` mobileconfig detour, no Certificate Trust toggle.
+The app's only HTTPS provisioner (issue #383 retired the self-signed-CA
+generator): browsers trust https://<machine>.tail*.ts.net:8445 without any
+manual certificate installation on any device — ``tailscale cert`` issues a
+real Let's Encrypt leaf for the tailnet MagicDNS name, so there is no CA
+install, no mobileconfig detour, no Certificate Trust toggle.
 Fleet standard: ferraroroberto/project-scaffolding#89.
 
 Prerequisites:
@@ -54,8 +54,8 @@ def _tailscale_hostname() -> str:
 def _tailscale_hostname_from_cert(cert_path: Path) -> Optional[str]:
     """Return the .ts.net DNS SAN from the cert, or None if not a Tailscale cert.
 
-    Keyed on the ISSUER (Let's Encrypt), not the SAN alone: this app's
-    self-signed leaf (scripts/gen_ssl_cert.py) also carries the ts.net
+    Keyed on the ISSUER (Let's Encrypt), not the SAN alone: a legacy
+    self-signed leaf (the retired gen_ssl_cert.py) also carried the ts.net
     hostname in its SAN, and a SAN-only test would make --check silently
     replace an expiring self-signed cert with a ts.net-only LE cert.
     """

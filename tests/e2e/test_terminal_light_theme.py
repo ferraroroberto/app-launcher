@@ -1,16 +1,15 @@
-"""Opt-in light terminal theme (issue #359).
+"""Terminal always follows the app theme (issue #383; supersedes #359).
 
 Contract under test:
-  * Default is unchanged — the terminal screen tokens stay dark in BOTH
-    app themes (the pre-#359 theme-invariant behavior).
-  * The "Terminal follows app theme" switch in Settings persists to
-    localStorage and stamps ``html[data-term-theme="follow"]``, which
-    flips ``--term-bg``/``--term-fg`` light — but only while the app
-    theme is light; dark theme keeps the same dark screen either way.
+  * The terminal screen tokens follow ``html[data-theme]`` directly:
+    light app theme → light ``--term-bg``/``--term-fg``, dark app theme →
+    the dark screen. No opt-in switch exists.
   * An already-open terminal restyles live on a theme flip: terminal.js's
     MutationObserver pushes a fresh ``options.theme`` into xterm (CSS
     alone cannot recolor the renderer), driving the ``.xterm-viewport``
     background.
+  * The machine-local terminal-themes.json (issue #381) still deep-merges
+    over the built-in palette for the active mode.
 """
 
 from __future__ import annotations
@@ -31,47 +30,21 @@ def _term_bg(page: Page) -> str:
     )
 
 
-def test_default_terminal_stays_dark_in_both_themes(
+def test_terminal_tokens_follow_app_theme(
     authed_page: Page, base_url: str
 ) -> None:
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
-    assert _term_bg(authed_page) == "#0a0a0a"
+    assert _term_bg(authed_page) == "#ffffff"
     authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")
     assert _term_bg(authed_page) == "#0a0a0a"
 
 
-def test_follow_app_switch_flips_tokens_and_persists(
-    authed_page: Page, base_url: str
-) -> None:
+def test_no_follow_switch_remains(authed_page: Page, base_url: str) -> None:
+    """The #359 opt-in switch is gone — following the theme is not a
+    setting any more."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.evaluate("document.getElementById('settingsPanel').open = true")
-    authed_page.locator("#termFollowTheme").click()
-    assert (
-        authed_page.locator("#termFollowTheme").get_attribute("aria-checked")
-        == "true"
-    )
-
-    # Light app theme + opt-in → light screen tokens.
-    authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
-    assert _term_bg(authed_page) == "#ffffff"
-    # Dark app theme keeps the dark screen even with the opt-in.
-    authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")
-    assert _term_bg(authed_page) == "#0a0a0a"
-
-    # Persisted like the theme itself: survives a reload.
-    authed_page.reload(wait_until="domcontentloaded")
-    assert (
-        authed_page.locator("#termFollowTheme").get_attribute("aria-checked")
-        == "true"
-    )
-    authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
-    assert _term_bg(authed_page) == "#ffffff"
-
-    # Switch off restores the invariant dark screen (and un-stamps the attr).
-    authed_page.evaluate("document.getElementById('settingsPanel').open = true")
-    authed_page.locator("#termFollowTheme").click()
-    assert _term_bg(authed_page) == "#0a0a0a"
+    assert authed_page.locator("#termFollowTheme").count() == 0
 
 
 def test_open_terminal_restyles_live_on_theme_flip(
@@ -84,9 +57,6 @@ def test_open_terminal_restyles_live_on_theme_flip(
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
     authed_page.wait_for_selector(".xterm-viewport", timeout=10_000)
-
-    # Opt in (the switch is behind the overlay — drive it directly).
-    authed_page.evaluate("document.getElementById('termFollowTheme').click()")
 
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
     authed_page.wait_for_function(
@@ -125,8 +95,7 @@ def test_user_theme_file_overrides_builtins(
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
     authed_page.wait_for_selector(".xterm-viewport", timeout=10_000)
 
-    # Opt in + light theme → the user background (not the built-in white).
-    authed_page.evaluate("document.getElementById('termFollowTheme').click()")
+    # Light theme → the user background (not the built-in white).
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
     authed_page.wait_for_function(
         "() => getComputedStyle(document.querySelector('.xterm-viewport'))"

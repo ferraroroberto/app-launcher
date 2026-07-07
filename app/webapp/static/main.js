@@ -22,11 +22,7 @@ import { icon } from './_vendored/icons/icons.js';
 // --------------------------------------------------------- settings panel
 function wireSettings() {
   els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
-  els.editMode.addEventListener('click', function (ev) {
-    // ✏️ Edit mode lives inside the Settings <summary> (issue #47
-    // follow-up). Without stopPropagation, clicking the toggle would
-    // also bubble to <summary> and expand/collapse the whole panel.
-    ev.stopPropagation();
+  els.editMode.addEventListener('click', function () {
     state.editMode = !state.editMode;
     els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
     localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
@@ -61,13 +57,10 @@ function wireTheme() {
   // html[data-theme] (localStorage override, prefers-color-scheme
   // fallback); the button just flips it. The sun/moon glyph swap is pure
   // CSS keyed on the attribute, so there is nothing to re-render here —
-  // the xterm surface is dark by default, and under the opt-in follow-app
-  // pref (issue #359) terminal.js's own data-theme observer restyles any
-  // open terminal.
-  els.themeToggle.addEventListener('click', function (ev) {
-    // Inside the ⚙️ options <summary> row: don't also expand/collapse it.
-    ev.stopPropagation();
-    ev.preventDefault();
+  // the terminal screen follows the app theme (issue #383) via
+  // terminal.js's own data-theme observer, which restyles any open
+  // terminal.
+  els.themeToggle.addEventListener('click', function () {
     const dark = document.documentElement.dataset.theme !== 'dark';
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
