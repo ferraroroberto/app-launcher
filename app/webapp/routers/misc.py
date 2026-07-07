@@ -132,6 +132,33 @@ async def version(request: Request) -> Dict[str, str]:
     }
 
 
+@router.get("/api/terminal-themes")
+async def terminal_themes() -> Dict[str, Any]:
+    """User-tunable xterm theme overrides (issue #381), VS Code-style.
+
+    Reads the machine-local ``webapp/terminal-themes.json`` — per-mode
+    xterm theme keys plus an optional ``minimumContrastRatio`` knob, e.g.
+    ``{"light": {"background": "#fbf5e9", "minimumContrastRatio": 5}}`` —
+    which terminal.js deep-merges over its built-in palettes at boot.
+    Missing or invalid file → empty overrides, never an error (the
+    built-ins are always a complete theme). See
+    ``webapp/terminal-themes.sample.json`` for the shape.
+    """
+    path = PROJECT_ROOT / "webapp" / "terminal-themes.json"
+    if not path.exists():
+        return {"themes": {}}
+    try:
+        import json as _json
+
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError("terminal-themes.json must be a JSON object")
+        return {"themes": data}
+    except (OSError, ValueError) as exc:
+        _log.warning("⚠️ terminal-themes.json unreadable — ignored: %s", exc)
+        return {"themes": {}}
+
+
 @router.get("/api/agents")
 async def agents() -> Dict[str, Any]:
     """Coding agents the launcher can spawn, each with a live PATH check.
