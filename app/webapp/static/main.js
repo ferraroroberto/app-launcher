@@ -61,7 +61,9 @@ function wireTheme() {
   // html[data-theme] (localStorage override, prefers-color-scheme
   // fallback); the button just flips it. The sun/moon glyph swap is pure
   // CSS keyed on the attribute, so there is nothing to re-render here —
-  // the xterm surface is theme-invariant (--term-bg/--term-fg).
+  // the xterm surface is dark by default, and under the opt-in follow-app
+  // pref (issue #359) terminal.js's own data-theme observer restyles any
+  // open terminal.
   els.themeToggle.addEventListener('click', function (ev) {
     // Inside the ⚙️ options <summary> row: don't also expand/collapse it.
     ev.stopPropagation();

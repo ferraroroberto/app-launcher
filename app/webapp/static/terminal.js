@@ -98,6 +98,71 @@ export function estimateTermSize() {
   }
 }
 
+// ------------------------------------------------ terminal screen theme
+// Opt-in light terminal (issue #359). Default is the theme-invariant dark
+// screen; the "Terminal follows app theme" switch in Settings persists
+// 'follow-app' (localStorage, like the app theme itself) and stamps
+// html[data-term-theme="follow"], which is the single source both the CSS
+// token override and the JS palette key on.
+const _TERM_THEME_KEY = 'app-launcher.termTheme';
+
+export function terminalFollowsApp() {
+  try {
+    return localStorage.getItem(_TERM_THEME_KEY) === 'follow-app';
+  } catch (_) { return false; }
+}
+
+export function stampTermThemeAttr() {
+  if (terminalFollowsApp()) {
+    document.documentElement.dataset.termTheme = 'follow';
+  } else {
+    delete document.documentElement.dataset.termTheme;
+  }
+}
+
+// VS Code Light+ ANSI table: the hosted TUIs (Claude Code, Codex, Copilot)
+// author their colors for dark backgrounds, so a light screen needs a full
+// 16-color override — flipping just background/foreground leaves unreadable
+// bright-yellow/bright-white output. Cursor + selection ride along; the
+// values live here, not in CSS, because xterm's renderer owns them.
+const _LIGHT_ANSI = {
+  cursor: '#1f2328',
+  cursorAccent: '#ffffff',
+  selectionBackground: '#0969da40',
+  black: '#000000',
+  red: '#cd3131',
+  green: '#00bc00',
+  yellow: '#949800',
+  blue: '#0451a5',
+  magenta: '#bc05bc',
+  cyan: '#0598bc',
+  white: '#555555',
+  brightBlack: '#666666',
+  brightRed: '#cd3131',
+  brightGreen: '#14ce14',
+  brightYellow: '#b5ba00',
+  brightBlue: '#0451a5',
+  brightMagenta: '#bc05bc',
+  brightCyan: '#0598bc',
+  brightWhite: '#a5a5a5',
+};
+
+// Resolve the xterm theme for the *current* app state. background/foreground
+// come from the --term-bg/--term-fg tokens (the CSS override keyed on
+// html[data-term-theme] already flips them); the ANSI table joins only in
+// the effective-light case. Pure read — safe to call on every theme flip.
+export function termScreenTheme() {
+  const rootStyle = getComputedStyle(document.documentElement);
+  const theme = {
+    background: rootStyle.getPropertyValue('--term-bg').trim() || '#0a0a0a',
+    foreground: rootStyle.getPropertyValue('--term-fg').trim() || '#f3f3f3',
+  };
+  const followsApp = document.documentElement.dataset.termTheme === 'follow';
+  const appDark = document.documentElement.dataset.theme === 'dark';
+  if (followsApp && !appDark) Object.assign(theme, _LIGHT_ANSI);
+  return theme;
+}
+
 // Given the layout-viewport height and the current visual-viewport
 // height, return the pixel height to pin the terminal overlay to so its
 // bottom edge sits at the top of the on-screen keyboard — or null to
@@ -432,18 +497,15 @@ export async function openTerminal(session) {
 
   // Source the terminal colours from the design tokens so they can't fork
   // from the stylesheet (issue #314). --term-bg/--term-fg are the
-  // theme-invariant terminal-screen tokens (issue #355): the xterm surface
-  // stays dark in both themes. Fallbacks equal the token values.
-  const rootStyle = getComputedStyle(document.documentElement);
+  // terminal-screen tokens (issue #355): dark in both themes by default,
+  // light under the opt-in follow-app pref (issue #359) — resolved by
+  // termScreenTheme(), which also carries the light ANSI palette.
   const term = new window.Terminal({
     cursorBlink: true,
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
     fontSize: 13,
     scrollback: 10000,
-    theme: {
-      background: rootStyle.getPropertyValue('--term-bg').trim() || '#0a0a0a',
-      foreground: rootStyle.getPropertyValue('--term-fg').trim() || '#f3f3f3',
-    },
+    theme: termScreenTheme(),
   });
   let fit = null;
   if (!isMirror) {
@@ -827,6 +889,33 @@ function wireKeysPopover() {
 }
 
 export function wireTerminal() {
+  // Opt-in light terminal (issue #359): stamp the persisted pref onto
+  // <html> before any terminal opens, reflect it on the Settings switch,
+  // and live-restyle the open terminal whenever either the pref or the
+  // app theme flips — xterm colors live in the renderer, so CSS alone
+  // can't restyle an already-open screen; options.theme can.
+  stampTermThemeAttr();
+  if (els.termFollowTheme) {
+    els.termFollowTheme.setAttribute(
+      'aria-checked', terminalFollowsApp() ? 'true' : 'false');
+    els.termFollowTheme.addEventListener('click', function () {
+      const on = els.termFollowTheme.getAttribute('aria-checked') !== 'true';
+      els.termFollowTheme.setAttribute('aria-checked', on ? 'true' : 'false');
+      try {
+        localStorage.setItem(_TERM_THEME_KEY, on ? 'follow-app' : 'dark');
+      } catch (_) {}
+      stampTermThemeAttr();
+    });
+  }
+  new MutationObserver(function () {
+    const t = state.terminal;
+    if (t && t.term) {
+      try { t.term.options.theme = termScreenTheme(); } catch (_) {}
+    }
+  }).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme', 'data-term-theme'],
+  });
   els.terminalBack.addEventListener('click', hideTerminal);
   // 🛑 Stop-and-kill the session straight from the terminal view (issue
   // #253) — no need to go back to the list first. Resolve the open
