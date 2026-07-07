@@ -70,6 +70,13 @@
   --font-caption: 0.78rem;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;
+  /* unified row-height scale for repeated list rows (issue #365): sm =
+     utility/action targets (iOS 44px tap minimum), md = single-line rows,
+     lg = the standard two-line row (name + meta). Every list row height
+     derives from these three — no more per-tab ad hoc values. */
+  --row-sm: 44px;
+  --row-md: 52px;
+  --row-lg: 60px;
   /* canonical icon-size steps — emoji glyph buttons size via font-size */
   --icon-inline: 16px;
   --icon-title: 18px;
@@ -380,7 +387,6 @@ summary + .opt-group { border-top: 0; }
 }
 /* Tighter inter-tile gap on the Projects list — part of the vertical
    compaction (issue #212); horizontal rhythm is left alone. */
-.projects-card .card-list { gap: 6px; }
 .opt-group {
   padding: 6px 14px 14px;
   border-top: 1px solid var(--line);
@@ -500,16 +506,19 @@ summary + .opt-group { border-top: 0; }
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
 }
+/* Repeated list rows render flat (issue #365, generalizing the Board
+   backlog's #337/#339 pattern app-wide): no per-row box — a hairline
+   separator between rows is the row boundary, GitHub-issue-list style.
+   The outer collapsible section containers (the vendored disclosure
+   component) keep their card look; only the rows inside them changed. */
 .app-item {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
   display: flex;
   align-items: stretch;
+  border-bottom: 1px solid var(--line);
 }
+.app-item:last-child { border-bottom: none; }
 .app-main {
   flex: 1;
   min-width: 0;
@@ -526,9 +535,10 @@ summary + .opt-group { border-top: 0; }
   border: 0;
   cursor: pointer;
   text-align: left;
-  min-height: 60px;
+  min-height: var(--row-lg);
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 4px;
 }
 .launch-btn:active { background: var(--card-2); }
@@ -567,12 +577,14 @@ summary + .opt-group { border-top: 0; }
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-left: 1px solid var(--line);
+  /* No border-left: the divider was part of the boxed-card look; flat
+     rows (issue #365) keep the action rail as plain glyphs. */
 }
 .app-item .row-actions .icon-btn {
   flex: 1;
   width: 52px;
-  min-height: 30px;
+  /* Two stacked rail buttons fit one standard two-line row exactly. */
+  min-height: calc(var(--row-lg) / 2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -583,7 +595,7 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .app-item .row-actions.session-actions .icon-btn {
-  min-height: 44px;
+  min-height: var(--row-sm);
 }
 .app-item .row-actions .icon-btn + .icon-btn {
   border-top: 1px solid var(--line);
@@ -790,9 +802,10 @@ summary + .opt-group { border-top: 0; }
    media query below) and the icon strip wraps as the final fallback. */
 .app-item .row-actions.agent-actions .icon-btn {
   width: 52px;
-  /* Shorter rows (was 60px) to fit more tiles per screen (issue #212);
-     40px stays a usable phone tap target around the 24px glyph. */
-  min-height: 40px;
+  /* Shorter than the two-line row to fit more tiles per screen (issue
+     #212); --row-sm keeps the iOS 44px tap minimum around the 24px glyph
+     (unified scale, issue #365). */
+  min-height: var(--row-sm);
   padding: 5px;
 }
 .app-item .row-actions.agent-actions .icon-btn + .icon-btn {
@@ -1201,25 +1214,25 @@ summary + .opt-group { border-top: 0; }
 .listeners {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   margin: 10px 0;
 }
+/* Flat separator rows (issue #365) — same treatment as .app-item. */
 .listener-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  background: var(--card-off);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  min-height: var(--row-md);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 12px;
   font-size: var(--font-caption);
 }
+.listener-row:last-child { border-bottom: none; }
 .listener-row > div { min-width: 0; }
 /* A helper service nested under its parent app's row (#224). */
 .listener-row.child {
   margin-left: 18px;
-  background: transparent;
   border-left: 2px solid var(--accent);
 }
 .listener-row strong { word-break: break-word; }
@@ -1233,7 +1246,7 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: var(--font-caption);
-  min-height: 40px;
+  min-height: var(--row-sm);
 }
 .listener-row button:active { background: rgb(from var(--danger) r g b / 0.15); }
 .launcher-note {
@@ -2188,20 +2201,24 @@ body.terminal-open {
    buttons must land BELOW the card, never split it horizontally (#301
    phone feedback). */
 .board-item {
-  margin: 0 0 8px;
+  margin: 0;
   flex-direction: column;
   align-items: stretch;
 }
+/* Flat separator row (issue #365 — the backlog's #337/#339 look extended
+   to Claude's/Yours/Done): no per-card box; the status accents below keep
+   signalling on the row's left edge. */
 .board-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 3px;
   width: 100%;
+  min-height: var(--row-lg);
   text-align: left;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  background: none;
+  border: none;
   padding: 12px 14px;
   color: var(--fg);
   cursor: pointer;
@@ -2237,30 +2254,21 @@ body.terminal-open {
    and the ▶/⚡ actions vertically centered against the full row height.
    .app-item is already a row flexbox by default; .board-item overrides that
    to a column for the stacked layout the other card kinds use, so this
-   pairs both classes to opt back into a row. .app-item ALSO carries its own
-   background/border/border-radius (the shared box every other tab's tile
-   uses) — that box lives on the <li>, not the button, so clearing the
-   button's own chrome alone isn't enough; both need resetting here. The
-   title button drops .launch-btn/.board-card's own card chrome in favor of
-   a flex ROW holding a flex-COLUMN text stack; the truncating spans still
-   need `min-width: 0` on the flex item along the row axis
-   (.board-card-text), not just its ancestors — a flex item's default
-   min-width is `auto` (content-based), which silently defeats
-   overflow/ellipsis by letting the item grow to fit its content instead of
-   shrinking to the row's available space (the textbook "ellipsis inside
-   flex doesn't truncate" bug, not a mobile-Safari quirk). */
+   pairs both classes to opt back into a row. Since issue #365 the flat
+   look IS the .app-item base (this pattern got generalized app-wide), so
+   the old box-resetting overrides are gone — only the row direction and
+   the flat button geometry remain. The truncating spans still need
+   `min-width: 0` on the flex item along the row axis (.board-card-text),
+   not just its ancestors — a flex item's default min-width is `auto`
+   (content-based), which silently defeats overflow/ellipsis by letting
+   the item grow to fit its content instead of shrinking to the row's
+   available space (the textbook "ellipsis inside flex doesn't truncate"
+   bug, not a mobile-Safari quirk). */
 .board-item.board-item-issue {
   flex-direction: row;
   align-items: center;
   gap: 4px;
-  margin: 0;
-  background: none;
-  border: none;
-  border-radius: 0;
-  overflow: visible;
-  border-bottom: 1px solid var(--line);
 }
-.board-item.board-item-issue:last-child { border-bottom: none; }
 .board-card-flat {
   display: flex;
   flex-direction: row;
@@ -2268,14 +2276,12 @@ body.terminal-open {
   flex: 1;
   min-width: 0;
   width: auto;
-  background: none;
-  border: none;
-  border-radius: 0;
   padding: 10px 4px;
 }
 .board-card-text {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   flex: 1;
   min-width: 0;
   gap: 2px;
