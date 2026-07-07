@@ -296,6 +296,7 @@ export const els = {
   summaryModalClose: document.getElementById('summaryModalClose'),
   terminalScreenshot: document.getElementById('terminalScreenshot'),
   terminalScreenshotInput: document.getElementById('terminalScreenshotInput'),
+  terminalComposeAttach: document.getElementById('terminalComposeAttach'),
   terminalOcrTray: document.getElementById('terminalOcrTray'),
   terminalOcrThumbs: document.getElementById('terminalOcrThumbs'),
   terminalOcrExtract: document.getElementById('terminalOcrExtract'),

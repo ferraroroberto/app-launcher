@@ -76,9 +76,14 @@ _REPAINT_TOGGLE_GAP = 0.05
 # reintroduce the query leak the #128/#270 strip removed.
 _CLEAR_FRAME = "\x1b[H\x1b[2J\x1b[3J"
 
-# Where uploaded images land inside the project so `claude` can read them.
+# Where uploaded files land inside the project so `claude` can read them.
+# Any file type is accepted (issue #366 — the compose-bar attach covers
+# documents, not just photos): the file is only ever *stored* here and its
+# path pasted into the user's own prompt, nothing executes it; the surface
+# is loopback-only and the size cap below still applies. A suffix that
+# doesn't look like a plain extension is dropped rather than trusted.
 _IMAGE_DIR_NAME = ".launcher-tmp"
-_SAFE_IMAGE_EXT = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
+_SAFE_SUFFIX_RE = re.compile(r"^\.[A-Za-z0-9]{1,10}$")
 _MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 manager = SessionManager()
@@ -315,14 +320,16 @@ async def _pump_from_client(
 
 
 async def _save_image(project_dir: str, file: UploadFile) -> str:
-    """Persist an uploaded image under ``<project>/.launcher-tmp`` and return
-    its absolute path. Rejects oversize files and non-image extensions."""
+    """Persist an uploaded file under ``<project>/.launcher-tmp`` and return
+    its absolute path. Any type is stored (issue #366); oversize and empty
+    uploads are rejected, and an odd-looking extension is stripped rather
+    than written."""
     suffix = Path(file.filename or "").suffix.lower()
-    if suffix not in _SAFE_IMAGE_EXT:
-        raise HTTPException(status_code=400, detail=f"unsupported image type {suffix!r}")
+    if not _SAFE_SUFFIX_RE.match(suffix):
+        suffix = ""
     data = await file.read()
     if len(data) > _MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="image exceeds 12 MB")
+        raise HTTPException(status_code=400, detail="file exceeds 12 MB")
     if not data:
         raise HTTPException(status_code=400, detail="empty upload")
     target_dir = Path(project_dir) / _IMAGE_DIR_NAME
