@@ -226,6 +226,15 @@
     <path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
     <circle cx="12" cy="13" r="3" />
   </symbol>
+  <symbol id="i-scan-text" viewBox="0 0 24 24" fill="none">
+    <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+    <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+    <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+    <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+    <path d="M7 8h8" />
+    <path d="M7 12h10" />
+    <path d="M7 16h6" />
+  </symbol>
   <symbol id="i-rotate-ccw" viewBox="0 0 24 24" fill="none">
     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
     <path d="M3 3v5h5" />
@@ -1024,7 +1033,7 @@
     <div id="terminalHost" class="terminal-host"></div>
     <div id="terminalOcrTray" class="ocr-tray" hidden>
       <div id="terminalOcrThumbs" class="ocr-thumbs"></div>
-      <button id="terminalOcrExtract" type="button" class="ocr-extract"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg> Extract text</button>
+      <button id="terminalOcrExtract" type="button" class="ocr-extract"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan-text"></use></svg> Extract text</button>
     </div>
     <div id="terminalComposeBar" class="compose-bar" hidden>
       <textarea
@@ -1035,12 +1044,20 @@
         enterkeyhint="enter"></textarea>
       <div class="compose-tools">
         <button id="terminalRecord" type="button" class="compose-record" title="Dictate (voice → text)" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
-        <button id="terminalScreenshot" type="button" class="compose-record" title="Add screenshot for OCR" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-camera"></use></svg></button>
+        <button id="terminalScreenshot" type="button" class="compose-record" title="Extract text from screenshots (OCR)" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan-text"></use></svg></button>
+        <!-- General attach (issue #366): same sendImage()/#terminalImageInput
+             flow as the outer-bar 🖼 button, reachable from the compose view;
+             the OCR control above carries the distinct scan-text glyph so the
+             two no longer both read as "photo". -->
+        <button id="terminalComposeAttach" type="button" class="compose-record" title="Attach image or file (path added to the prompt)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg></button>
       </div>
       <button id="terminalComposeSend" type="button" class="compose-send" title="Send (with Enter)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
     </div>
     <div id="terminalStatus" class="terminal-status" hidden></div>
-    <input id="terminalImageInput" type="file" accept="image/*" hidden>
+    <!-- No accept filter (issue #366): iOS then offers Photo Library / Take
+         Photo / Choose Files, so arbitrary files can be attached — the
+         session-host stores any type (size-capped) and returns the path. -->
+    <input id="terminalImageInput" type="file" hidden>
     <input id="terminalScreenshotInput" type="file" accept="image/*" multiple hidden>
   </div>
 

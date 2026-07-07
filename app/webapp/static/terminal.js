@@ -782,13 +782,22 @@ async function sendImage(file) {
       const path = body && body.path;
       if (path) {
         const ta = els.terminalComposeInput;
-        ta.setRangeText(path, ta.selectionStart, ta.selectionEnd, 'end');
+        // Always append at the very end as its own paragraph (issue #366)
+        // — never splice at the caret, which glued the path onto whatever
+        // the cursor happened to sit on. A blank line separates it from
+        // existing text, so sequential attachments stack cleanly:
+        // <text>\n\n<path1>\n\n<path2>. Applies to every inline trigger
+        // (compose attach, outer 🖼 button, paste/drop with the bar open).
+        const cur = ta.value;
+        const sep = cur ? (/\n\n$/.test(cur) ? '' : (/\n$/.test(cur) ? '\n' : '\n\n')) : '';
+        ta.value = cur + sep + path;
+        ta.selectionStart = ta.selectionEnd = ta.value.length;
         growComposeInput();
         ta.focus();
       }
-      toast('🖼️ Image uploaded — path added to the compose bar.', 'good');
+      toast('📎 Uploaded — path added to the compose bar.', 'good');
     } else {
-      toast('🖼️ Image sent — its path was pasted into the prompt.', 'good');
+      toast('📎 Sent — the file path was pasted into the prompt.', 'good');
       if (t.term) t.term.focus();
     }
   } catch (exc) {

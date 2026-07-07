@@ -238,6 +238,15 @@ export function wireCompose() {
   els.terminalScreenshot.addEventListener('click', function () {
     els.terminalScreenshotInput.click();
   });
+  // General attach (issue #366): second entry point into the existing
+  // sendImage()/#terminalImageInput flow (terminal.js owns the change
+  // handler) — reachable from the compose-bar view, unlike the outer-bar
+  // 🖼 button. No accept filter, so iOS offers Files as well as Photos.
+  if (els.terminalComposeAttach) {
+    els.terminalComposeAttach.addEventListener('click', function () {
+      els.terminalImageInput.click();
+    });
+  }
   els.terminalScreenshotInput.addEventListener('change', function () {
     const picked = els.terminalScreenshotInput.files;
     const list = picked && picked.length

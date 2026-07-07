@@ -173,3 +173,53 @@ def test_compose_image_inserts_path_into_bar(
     compose = authed_page.locator("#terminalComposeInput")
     expect(compose).to_have_value(_PATH_RE, timeout=10_000)
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+
+def test_compose_attach_appends_at_end_with_blank_line(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    r"""Issue #366: inline uploads always append at the very end as their own
+    paragraph — ``<text>\n\n<path1>\n\n<path2>`` — regardless of the caret,
+    and the compose-bar's own attach button drives the same input. Also pins
+    the accept-broadening: a non-image file (text/plain) uploads fine."""
+    sid = launched_pty_session
+    _open_terminal(authed_page, base_url, sid)
+
+    authed_page.evaluate(
+        "document.getElementById('terminalCompose').hidden = false"
+    )
+    authed_page.locator("#terminalCompose").click()
+    expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+    # Type text, then park the caret at position 0 — the append must ignore it.
+    compose = authed_page.locator("#terminalComposeInput")
+    compose.fill("look at this file")
+    authed_page.evaluate(
+        "() => { const ta = document.getElementById('terminalComposeInput');"
+        " ta.selectionStart = ta.selectionEnd = 0; }"
+    )
+
+    # First attach: a plain-text file through the compose-bar attach button's
+    # input (same #terminalImageInput the button clicks).
+    authed_page.locator("#terminalImageInput").set_input_files(
+        files=[{"name": "notes.txt", "mimeType": "text/plain",
+                "buffer": b"hello attach"}]
+    )
+    expect(compose).to_have_value(
+        re.compile(r"^look at this file\n\n.*\.launcher-tmp.*notes\.txt$"),
+        timeout=10_000,
+    )
+
+    # Second attach stacks below the first, blank-line separated.
+    authed_page.locator("#terminalImageInput").set_input_files(
+        files=[{"name": "shot.png", "mimeType": "image/png", "buffer": _PNG_1x1}]
+    )
+    expect(compose).to_have_value(
+        re.compile(
+            r"^look at this file\n\n.*notes\.txt\n\n.*\.launcher-tmp.*\.png$"
+        ),
+        timeout=10_000,
+    )
+
+    # The compose-bar's own attach button exists and is wired to the input.
+    expect(authed_page.locator("#terminalComposeAttach")).to_be_attached()
