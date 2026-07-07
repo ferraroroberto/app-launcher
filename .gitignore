@@ -36,6 +36,7 @@ config/webauthn_devices.json
 webapp/last_tunnel_url.txt
 webapp/certificates/
 webapp/cloudflared.yml
+webapp/terminal-themes.json
 webapp/sessions/
 webapp/jobs/
 app/webapp/static/launcher-ca.mobileconfig

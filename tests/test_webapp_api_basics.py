@@ -135,3 +135,54 @@ class TestClaudeFlags:
         assert "--model opus" in body["computed_flags"]
         assert "--effort high" in body["computed_flags"]
         assert "--permission-mode auto" in body["computed_flags"]
+
+
+class TestTerminalThemes:
+    """GET /api/terminal-themes — the user theme file (issue #381)."""
+
+    def test_missing_file_returns_empty(self, webapp_client, monkeypatch, tmp_path):
+        from app.webapp.routers import misc as misc_router
+
+        monkeypatch.setattr(misc_router, "PROJECT_ROOT", tmp_path)
+        client, _, _ = webapp_client
+        resp = client.get("/api/terminal-themes")
+        assert resp.status_code == 200
+        assert resp.json() == {"themes": {}}
+
+    def test_valid_file_is_served(self, webapp_client, monkeypatch, tmp_path):
+        from app.webapp.routers import misc as misc_router
+
+        (tmp_path / "webapp").mkdir()
+        (tmp_path / "webapp" / "terminal-themes.json").write_text(
+            '{"light": {"background": "#fdf6e3", "minimumContrastRatio": 5}}',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(misc_router, "PROJECT_ROOT", tmp_path)
+        client, _, _ = webapp_client
+        body = client.get("/api/terminal-themes").json()
+        assert body["themes"]["light"]["background"] == "#fdf6e3"
+        assert body["themes"]["light"]["minimumContrastRatio"] == 5
+
+    def test_invalid_json_is_ignored(self, webapp_client, monkeypatch, tmp_path):
+        from app.webapp.routers import misc as misc_router
+
+        (tmp_path / "webapp").mkdir()
+        (tmp_path / "webapp" / "terminal-themes.json").write_text(
+            "{not json", encoding="utf-8"
+        )
+        monkeypatch.setattr(misc_router, "PROJECT_ROOT", tmp_path)
+        client, _, _ = webapp_client
+        resp = client.get("/api/terminal-themes")
+        assert resp.status_code == 200
+        assert resp.json() == {"themes": {}}
+
+    def test_non_object_json_is_ignored(self, webapp_client, monkeypatch, tmp_path):
+        from app.webapp.routers import misc as misc_router
+
+        (tmp_path / "webapp").mkdir()
+        (tmp_path / "webapp" / "terminal-themes.json").write_text(
+            '["not", "an", "object"]', encoding="utf-8"
+        )
+        monkeypatch.setattr(misc_router, "PROJECT_ROOT", tmp_path)
+        client, _, _ = webapp_client
+        assert client.get("/api/terminal-themes").json() == {"themes": {}}

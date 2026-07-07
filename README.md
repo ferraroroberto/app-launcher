@@ -443,6 +443,8 @@ app-launcher/
     ├── certificates/          # ca.pem / cert.pem / key.pem from gen_ssl_cert
     ├── cloudflared.sample.yml
     ├── cloudflared.yml        # your filled-in copy (gitignored)
+    ├── terminal-themes.sample.json  # VS Code-style PTY terminal theme overrides (#381)
+    ├── terminal-themes.json   # your tuned copy (gitignored) — per-mode xterm colors + contrast
     ├── last_tunnel_url.txt    # tray + run_named_tunnel write here
     └── auth.log               # failed-login audit
 ```

@@ -15,6 +15,9 @@ Contract under test:
 
 from __future__ import annotations
 
+import json as _json
+import re
+
 import pytest
 from playwright.sync_api import Page
 
@@ -91,6 +94,52 @@ def test_open_terminal_restyles_live_on_theme_flip(
         ".backgroundColor === 'rgb(255, 255, 255)'",
         timeout=5_000,
     )
+    authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")
+    authed_page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('.xterm-viewport'))"
+        ".backgroundColor === 'rgb(10, 10, 10)'",
+        timeout=5_000,
+    )
+
+
+def test_user_theme_file_overrides_builtins(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """Issue #381: /api/terminal-themes (the machine-local
+    terminal-themes.json) deep-merges over the built-in palette for the
+    active mode — background here — and the overlay chrome follows."""
+    sid = launched_pty_session
+
+    # Serve a user theme before the SPA boots (wireTerminal fetches once).
+    authed_page.route(
+        re.compile(r".*/api/terminal-themes$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(
+                {"themes": {"light": {"background": "#123456"}}}
+            ),
+        ),
+    )
+
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector(".xterm-viewport", timeout=10_000)
+
+    # Opt in + light theme → the user background (not the built-in white).
+    authed_page.evaluate("document.getElementById('termFollowTheme').click()")
+    authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
+    authed_page.wait_for_function(
+        "() => getComputedStyle(document.querySelector('.xterm-viewport'))"
+        ".backgroundColor === 'rgb(18, 52, 86)'",
+        timeout=5_000,
+    )
+    # The overlay chrome follows the user background too.
+    authed_page.wait_for_function(
+        "() => document.getElementById('terminalOverlay')"
+        ".style.background !== ''",
+        timeout=5_000,
+    )
+    # Dark mode has no user override → the built-in dark screen.
     authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")
     authed_page.wait_for_function(
         "() => getComputedStyle(document.querySelector('.xterm-viewport'))"

@@ -147,20 +147,73 @@ const _LIGHT_ANSI = {
   brightWhite: '#a5a5a5',
 };
 
+// User theme overrides (issue #381) — the machine-local
+// webapp/terminal-themes.json served by GET /api/terminal-themes, fetched
+// once at wireTerminal(). Per-mode xterm ITheme keys merged over the
+// built-ins, plus the minimumContrastRatio knob. Empty until (and unless)
+// the fetch lands — the built-ins are always a complete theme.
+let _userTermThemes = {};
+
+export function setUserTermThemes(themes) {
+  _userTermThemes = themes && typeof themes === 'object' ? themes : {};
+}
+
+function _effectiveLight() {
+  return document.documentElement.dataset.termTheme === 'follow' &&
+    document.documentElement.dataset.theme !== 'dark';
+}
+
+function _userOverride() {
+  return _userTermThemes[_effectiveLight() ? 'light' : 'dark'] || {};
+}
+
 // Resolve the xterm theme for the *current* app state. background/foreground
 // come from the --term-bg/--term-fg tokens (the CSS override keyed on
 // html[data-term-theme] already flips them); the ANSI table joins only in
-// the effective-light case. Pure read — safe to call on every theme flip.
+// the effective-light case; the user file wins last. Pure read — safe to
+// call on every theme flip.
 export function termScreenTheme() {
   const rootStyle = getComputedStyle(document.documentElement);
   const theme = {
     background: rootStyle.getPropertyValue('--term-bg').trim() || '#0a0a0a',
     foreground: rootStyle.getPropertyValue('--term-fg').trim() || '#f3f3f3',
   };
-  const followsApp = document.documentElement.dataset.termTheme === 'follow';
-  const appDark = document.documentElement.dataset.theme === 'dark';
-  if (followsApp && !appDark) Object.assign(theme, _LIGHT_ANSI);
+  if (_effectiveLight()) Object.assign(theme, _LIGHT_ANSI);
+  const user = _userOverride();
+  Object.keys(user).forEach(function (k) {
+    if (k !== 'minimumContrastRatio') theme[k] = user[k];
+  });
   return theme;
+}
+
+// Per-cell contrast floor (issue #381) — xterm's minimumContrastRatio, the
+// same mechanism VS Code uses. The hosted TUIs emit dim/256-color/truecolor
+// output authored for dark backgrounds that no 16-color palette can catch;
+// on the light screen those rendered as near-invisible pale text. 4.5 is
+// WCAG AA. Dark keeps 1 (off) so authored colors render untouched.
+export function termContrastRatio() {
+  const user = _userOverride();
+  if (typeof user.minimumContrastRatio === 'number' &&
+      user.minimumContrastRatio >= 1) {
+    return user.minimumContrastRatio;
+  }
+  return _effectiveLight() ? 4.5 : 1;
+}
+
+// Push the current theme + contrast into the open terminal (xterm applies
+// options.* changes live) and keep the overlay chrome in step when the
+// user file overrides the background (the CSS only knows the tokens).
+function applyTermTheme() {
+  if (els.terminalOverlay) {
+    els.terminalOverlay.style.background = _userOverride().background || '';
+  }
+  const t = state.terminal;
+  if (t && t.term) {
+    try {
+      t.term.options.theme = termScreenTheme();
+      t.term.options.minimumContrastRatio = termContrastRatio();
+    } catch (_) { /* renderer mid-teardown; next open resolves fresh */ }
+  }
 }
 
 // Given the layout-viewport height and the current visual-viewport
@@ -506,6 +559,9 @@ export async function openTerminal(session) {
     fontSize: 13,
     scrollback: 10000,
     theme: termScreenTheme(),
+    // Per-cell contrast floor for the light screen (issue #381); 1 (off)
+    // on the default dark screen.
+    minimumContrastRatio: termContrastRatio(),
   });
   let fit = null;
   if (!isMirror) {
@@ -553,6 +609,9 @@ export async function openTerminal(session) {
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
   };
   state.terminal = t;
+  // Sync the overlay chrome with any user background override (#381) —
+  // the constructor already resolved theme + contrast for xterm itself.
+  applyTermTheme();
 
   // Live-refresh the title while the overlay is open (issue #266). The main
   // sessions poll is paused under the overlay (main.js), so without this an
@@ -916,15 +975,16 @@ export function wireTerminal() {
       stampTermThemeAttr();
     });
   }
-  new MutationObserver(function () {
-    const t = state.terminal;
-    if (t && t.term) {
-      try { t.term.options.theme = termScreenTheme(); } catch (_) {}
-    }
-  }).observe(document.documentElement, {
+  new MutationObserver(applyTermTheme).observe(document.documentElement, {
     attributes: true,
     attributeFilter: ['data-theme', 'data-term-theme'],
   });
+  // User theme file (issue #381) — best-effort; the built-ins are already
+  // a complete theme, so a missing/failed fetch changes nothing.
+  jsonApi('/api/terminal-themes').then(function (body) {
+    setUserTermThemes(body && body.themes);
+    applyTermTheme();
+  }).catch(function () { /* built-ins stand */ });
   els.terminalBack.addEventListener('click', hideTerminal);
   // 🛑 Stop-and-kill the session straight from the terminal view (issue
   // #253) — no need to go back to the list first. Resolve the open
