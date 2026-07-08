@@ -1,5 +1,10 @@
 """Pure assembly logic for the Board tab's kanban columns (issue #300 / #164).
 
+Five single-purpose columns (#399): Backlog and Done hold issues only;
+Claude's turn and Your turn hold session cards only; Other holds everything
+else that needs attention but isn't a terminal or an issue — open PRs and
+failed/stuck jobs. See :func:`build_board` for the exact routing.
+
 Three inputs, one board:
 
 * the **live session list** from the session-host (``session_client.list_sessions``),
@@ -663,18 +668,22 @@ def build_board(
     github: Dict[str, Any],
     job_cards: List[Dict[str, Any]],
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """Route the three sources into the four computed columns.
+    """Route the three sources into the five computed columns.
 
-    Backlog = open issues. Claude's turn = sessions working / unknown / idle
-    (idle is dimmed client-side, not hidden — an idle session is still Claude
-    holding a workspace). Your turn = needs-you sessions first, then open PRs,
-    then failed/stuck jobs. Done = today's merged PRs + closed issues.
+    Each column now holds one kind of card (#399): Backlog = open issues.
+    Claude's turn = sessions working / unknown / idle (idle is dimmed
+    client-side, not hidden — an idle session is still Claude holding a
+    workspace). Your turn = needs-you sessions only — a terminal that needs a
+    human. Other = everything else that needs attention but isn't a terminal:
+    open PRs, then failed/stuck jobs. Done = today's closed issues only — a
+    merged PR that closed one is already reflected by the issue itself.
     """
     claude_turn = [c for c in session_cards if c["status"] != "needs-you"]
     your_turn = [c for c in session_cards if c["status"] == "needs-you"]
     return {
         "backlog": list(github.get("issues") or []),
         "claude_turn": claude_turn,
-        "your_turn": your_turn + list(github.get("prs") or []) + job_cards,
+        "your_turn": your_turn,
+        "other": list(github.get("prs") or []) + job_cards,
         "done": list(github.get("done") or []),
     }

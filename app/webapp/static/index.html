@@ -736,6 +736,8 @@
                 role="tab" aria-selected="false">Claude's <span class="board-count">0</span></button>
         <button id="boardColYours" type="button" class="board-strip-btn active" data-col="your_turn"
                 role="tab" aria-selected="true">Yours <span class="board-count">0</span></button>
+        <button id="boardColOther" type="button" class="board-strip-btn" data-col="other"
+                role="tab" aria-selected="false">Other <span class="board-count">0</span></button>
         <button id="boardColDone" type="button" class="board-strip-btn" data-col="done"
                 role="tab" aria-selected="false">Done <span class="board-count">0</span></button>
         <button id="boardRefresh" type="button" class="icon-btn board-refresh"
@@ -762,6 +764,11 @@
           <h3 class="board-col-title">Your turn</h3>
           <ul class="card-list board-list" data-col="your_turn"></ul>
           <div class="empty board-empty" data-col="your_turn" hidden></div>
+        </section>
+        <section class="board-col" data-col="other" aria-label="Other">
+          <h3 class="board-col-title">Other</h3>
+          <ul class="card-list board-list" data-col="other"></ul>
+          <div class="empty board-empty" data-col="other" hidden></div>
         </section>
         <section class="board-col" data-col="done" aria-label="Done today">
           <h3 class="board-col-title">Done today</h3>

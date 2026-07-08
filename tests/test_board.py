@@ -721,14 +721,7 @@ def test_search_open_prs_filters_audit_meta_label(monkeypatch):
     assert [p["number"] for p in prs] == [158]
 
 
-def test_done_today_filters_audit_meta_issue_and_pr(monkeypatch):
-    merged_ledger_pr = {
-        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
-        "number": 201, "title": "audit ledger sweep", "url": "u201",
-        "updatedAt": "2026-07-02T15:00:00Z",
-        "body": "Closes #202.",
-        "labels": [{"name": "audit-meta"}],
-    }
+def test_done_today_filters_audit_meta_issue(monkeypatch):
     closed_ledger_issue = {
         "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
         "number": 37, "title": "codebase-audit ledger", "url": "u37",
@@ -743,10 +736,8 @@ def test_done_today_filters_audit_meta_issue_and_pr(monkeypatch):
     }
 
     def fake_run(argv, **kwargs):
-        if "prs" in argv:
-            rows = [merged_ledger_pr]
-        else:
-            rows = [closed_ledger_issue, closed_real_issue]
+        assert "prs" not in argv  # Done never fetches PRs (#399)
+        rows = [closed_ledger_issue, closed_real_issue]
         return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
@@ -755,40 +746,22 @@ def test_done_today_filters_audit_meta_issue_and_pr(monkeypatch):
     assert cards == {("issue", "app-launcher", 9)}
 
 
-def test_done_pairs_closed_issue_with_merging_pr(monkeypatch):
-    """One card per unit of work (#301 phone feedback): an issue closed by a
-    merged PR ("Closes #N" in its body) folds into the PR card; issues
-    closed by hand keep their own card; cross-repo refs don't pair here."""
-    merged_pr = {
-        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
-        "number": 306, "title": "fix: overlay", "url": "u306",
-        "updatedAt": "2026-07-02T15:00:00Z",
-        "body": "## Summary\n\nFixes the thing.\n\nCloses #305. "
-                "Also fixes other-repo#77 (their card, not ours).",
-    }
-    closed_paired = {
+def test_done_today_is_closed_issues_only(monkeypatch):
+    """Done holds closed issues only (#399) — no merged-PR fetch or pairing;
+    a PR that closed an issue is already reflected by the issue's own card."""
+    closed_issue = {
         "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
         "number": 305, "title": "status sticks", "url": "u305",
         "updatedAt": "2026-07-02T15:00:01Z",
     }
-    closed_alone = {
-        "repository": {"nameWithOwner": "ferraroroberto/reporting"},
-        "number": 9, "title": "closed by hand", "url": "u9",
-        "updatedAt": "2026-07-02T14:00:00Z",
-    }
 
     def fake_run(argv, **kwargs):
-        rows = [merged_pr] if "--merged" in argv else [closed_paired, closed_alone]
-        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+        assert "prs" not in argv
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([closed_issue]), stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
     done = github_client.search_done_today("ferraroroberto")
-    cards = {(d["kind"], d["repo"], d["number"]) for d in done}
-    assert ("pr", "app-launcher", 306) in cards
-    assert ("issue", "reporting", 9) in cards
-    assert ("issue", "app-launcher", 305) not in cards
-    pr = next(d for d in done if d["kind"] == "pr")
-    assert pr["closes"] == [305]
+    assert [(d["kind"], d["repo"], d["number"]) for d in done] == [("issue", "app-launcher", 305)]
 
 
 def test_github_refresh_failure_keeps_old_data(monkeypatch):
@@ -811,7 +784,7 @@ def test_github_refresh_failure_keeps_old_data(monkeypatch):
 def test_api_board_shape_with_everything_absent(webapp_client):
     client, _app, _overrides = webapp_client
     body = client.get("/api/board").json()
-    assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "done"}
+    assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "other", "done"}
     assert body["github"] == {"fetched_at": None, "error": None}
     assert body["sessions_state"]["available"] is False
     assert body["rate_limits"]["available"] is False
@@ -899,4 +872,5 @@ def test_api_refresh_endpoint_fills_cache(webapp_client, monkeypatch):
 
     body = client.get("/api/board").json()
     assert [c["number"] for c in body["columns"]["backlog"]] == [164]
-    assert [c["kind"] for c in body["columns"]["your_turn"]] == ["pr"]
+    assert body["columns"]["your_turn"] == []
+    assert [c["kind"] for c in body["columns"]["other"]] == ["pr"]

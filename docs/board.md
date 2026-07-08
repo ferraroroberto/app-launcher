@@ -1,25 +1,26 @@
 # Board tab — reference
 
-The launcher's fifth surface (issue #164, shipped in three steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over four **computed** columns. A card moves because reality changed; there is deliberately no drag-and-drop. It renders three independently-degrading live sources (the session-host's session list, fleet-config's sessions-state file, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
+The launcher's fifth surface (issue #164, shipped in four steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar, **#399** split into five single-purpose columns). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over five **computed** columns, each holding one kind of card. A card moves because reality changed; there is deliberately no drag-and-drop. It renders three independently-degrading live sources (the session-host's session list, fleet-config's sessions-state file, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
 
-On the phone the four columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all four side by side. The **Your turn** count is the number that matters — its strip button highlights when nonzero.
+On the phone the five columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all five side by side. The **Your turn** count is the number that matters — its strip button highlights when nonzero.
 
-## The four columns and their data sources
+## The five columns and their data sources
 
-Column assembly is pure logic in `src/board.py::build_board()`. The mapping:
+Column assembly is pure logic in `src/board.py::build_board()`. Each column holds one kind of card:
 
 | Column | What populates it |
 | --- | --- |
 | **Backlog** | Open GitHub issues across every repo of the configured owner (`github_owner`, default `ferraroroberto`). |
 | **Claude's turn** | Live session cards whose status is **not** `needs-you` — i.e. `working`, `unknown`, or `idle`. (An idle session is still Claude holding a workspace, so it is shown here — dimmed client-side, not hidden.) |
-| **Your turn** | The unified attention queue, in order: `needs-you` session cards first, then open PRs, then today's failed-or-stuck job runs. |
-| **Done** | Today's merged PRs + closed issues, since local midnight. |
+| **Your turn** | Session cards whose status **is** `needs-you`, and nothing else — a terminal-only column. |
+| **Other** | Open PRs, then today's failed-or-stuck job runs — everything else that needs attention but isn't a terminal. |
+| **Done** | Today's closed issues, since local midnight. |
 
 **Backlog** cards render thin (repo · #N · title · age) and link out to GitHub. A Backlog card whose repo is present in the projects folder additionally carries **▶ Start / ⚡ YOLO** (see "One-tap issue start" below).
 
-**Done** collapses work into one card per unit: a merged PR that closed issues (`Closes #N` in its body) **absorbs** those issue cards, so a PR and the issues it closed do not both appear. The pairing is server-side in `src/github_client.py::search_done_today()`; closed issues already folded into a merged PR are skipped.
+**Done is issues only** (#399): a merged PR that closed an issue is already reflected by that issue showing closed, so there is no PR/issue pairing step any more — `src/github_client.py::search_done_today()` is just the closed-issues search.
 
-The GitHub queries (`src/github_client.py`) are `gh search issues --state open` (limit 100, sorted by updated), `gh search prs --state open` (limit 50), and — for Done — merged PRs (`--merged-at >= <today>`) plus closed issues (`--closed >= <today>`), each with a 20 s per-call timeout.
+The GitHub queries (`src/github_client.py`) are `gh search issues --state open` (limit 100, sorted by updated) for Backlog, `gh search prs --state open` (limit 50) for Other, and `gh search issues --state closed --closed >= <today>` for Done, each with a 20 s per-call timeout.
 
 ## Data endpoints
 
@@ -27,8 +28,8 @@ All Board routes live in `app/webapp/routers/board.py`.
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/board` | bearer-token | The four columns — the **5 s poll target**. Cheap only: runs the live session list, one state-file read, and one jobs-runs walk concurrently, plus a pure in-memory read of the GitHub cache. **No `gh` subprocess ever runs on this path.** |
-| `POST /api/board/github/refresh` | bearer-token | Runs the four `gh` searches and replaces the cache. The **only** place `gh` is invoked. |
+| `GET /api/board` | bearer-token | The five columns — the **5 s poll target**. Cheap only: runs the live session list, one state-file read, and one jobs-runs walk concurrently, plus a pure in-memory read of the GitHub cache. **No `gh` subprocess ever runs on this path.** |
+| `POST /api/board/github/refresh` | bearer-token | Runs the three `gh` searches (open issues, open PRs, closed issues) and replaces the cache. The **only** place `gh` is invoked. |
 | `GET /api/board/sessions/{sid}/exchange` | Tailscale + passkey | The last user↔assistant exchange from a session's transcript (drill-down drawer). |
 | `POST /api/board/dispatch` | Tailscale + passkey | Spawn a new session and type an `/issue-*` goal into it (dispatch bar). |
 | `POST /api/board/issues/start` | Tailscale + passkey | One-tap `/issue-start` / `/issue-yolo <N>` on a Backlog card. |
@@ -126,7 +127,7 @@ Tapping a live session card opens an **inline drill-down drawer** on the card (`
 
 ## Refresh / cache contract
 
-GitHub data is fetched **server-side via `gh`** into a lock-guarded module-level cache in `src/github_client.py`. `snapshot()` is the pure in-memory read the 5 s poll hits for free; `refresh(owner)` runs the four `gh` subprocesses and replaces the cache. On failure the previous data is kept and only `error` is set — a flaky `gh` degrades to a badge, not an empty board.
+GitHub data is fetched **server-side via `gh`** into a lock-guarded module-level cache in `src/github_client.py`. `snapshot()` is the pure in-memory read the 5 s poll hits for free; `refresh(owner)` runs the three `gh` subprocesses and replaces the cache. On failure the previous data is kept and only `error` is set — a flaky `gh` degrades to a badge, not an empty board.
 
 The cache is refreshed **only** by:
 
@@ -141,4 +142,4 @@ The Board splits along the launcher's usual line. The **read-only board** (`GET 
 
 ## Verification
 
-The pre-ship gate (`pwsh -File scripts/verify-before-ship.ps1`) covers the Board via `tests/test_board.py` (column assembly, the cwd-join, the transcript overlay, the `gh` cache + Done-pairing), `tests/test_board_dispatch.py` (the spawn-then-type contract), `tests/test_board_drilldown.py` (the exchange read + reply path), and `tests/e2e/test_board_tab.py` (the read-only kanban, drill-down + reply + one-tap start, and dispatch bar in a real browser). All `gh` and session-host calls are mocked at their client seams so the unit suite never shells out.
+The pre-ship gate (`pwsh -File scripts/verify-before-ship.ps1`) covers the Board via `tests/test_board.py` (column assembly, the cwd-join, the transcript overlay, the `gh` cache), `tests/test_board_dispatch.py` (the spawn-then-type contract), `tests/test_board_drilldown.py` (the exchange read + reply path), and `tests/e2e/test_board_tab.py` (the read-only kanban, drill-down + reply + one-tap start, and dispatch bar in a real browser). All `gh` and session-host calls are mocked at their client seams so the unit suite never shells out.

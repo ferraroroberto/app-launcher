@@ -1,14 +1,14 @@
-"""Board tab e2e (issues #300 / #301 / #302 / #164).
+"""Board tab e2e (issues #300 / #301 / #302 / #164 / #399).
 
-Browser-side coverage: the fifth tab renders the four kanban columns from a
-route-mocked ``/api/board`` payload, the strip shows per-column counts (with
-the Your-turn attention highlight), the ↻ button POSTs the gh refresh, and
-the phone projection lays the columns out as a one-column-per-viewport
-carousel while desktop gets the four-column grid. The #302 dispatch bar
-POSTs {repo, goal, mode} and keeps its goal for rapid multi-dispatch, and
-the dictation mics (dispatch bar + drawer reply box) render when the server
-reports voice dictation available. Hermetic — the board API is route-mocked
-like the Jobs / Life OS e2e tests.
+Browser-side coverage: the fifth tab renders the five single-purpose kanban
+columns from a route-mocked ``/api/board`` payload, the strip shows
+per-column counts (with the Your-turn attention highlight), the ↻ button
+POSTs the gh refresh, and the phone projection lays the columns out as a
+one-column-per-viewport carousel while desktop gets the five-column grid.
+The #302 dispatch bar POSTs {repo, goal, mode} and keeps its goal for rapid
+multi-dispatch, and the dictation mics (dispatch bar + drawer reply box)
+render when the server reports voice dictation available. Hermetic — the
+board API is route-mocked like the Jobs / Life OS e2e tests.
 
 Server-side logic (cwd join, jobs scan, gh cache/degradation, the
 spawn-then-type dispatch endpoint) is covered by the in-process suite in
@@ -55,6 +55,8 @@ _FAKE_BOARD = {
              "alive": True, "started_at": "2026-07-02T11:30:00Z",
              "live_title": "chunk merge fix", "prompt_title": "",
              "project": "photo-ocr", "status": "needs-you", "age_seconds": 720},
+        ],
+        "other": [
             {"kind": "pr", "repo": "app-launcher", "number": 158,
              "title": "keyboard-aware overlay",
              "url": "https://github.com/ferraroroberto/app-launcher/pull/158",
@@ -64,11 +66,10 @@ _FAKE_BOARD = {
              "finished_at": "2026-07-02T09:02:00", "age_seconds": 10680},
         ],
         "done": [
-            {"kind": "pr", "repo": "voice-transcriber", "number": 88,
+            {"kind": "issue", "repo": "voice-transcriber", "number": 87,
              "title": "read-aloud segmentation",
-             "url": "https://github.com/ferraroroberto/voice-transcriber/pull/88",
-             "updated_at": "2026-07-02T08:00:00Z", "state": "merged",
-             "is_draft": False, "closes": [87]},
+             "url": "https://github.com/ferraroroberto/voice-transcriber/issues/87",
+             "updated_at": "2026-07-02T08:00:00Z", "state": "closed", "labels": []},
         ],
     },
     "github": {"fetched_at": "2026-07-02T11:00:00Z", "error": None},
@@ -124,33 +125,37 @@ def test_board_renders_columns_counts_and_cards(
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    # Per-column counts on the strip; Your turn (3) carries the attention mark.
+    # Per-column counts on the strip; Your turn (1) carries the attention mark.
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
-    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("3")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
     expect(authed_page.locator("#boardColDone .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColYours")).to_have_class(
         re.compile(r"\battention\b")
     )
 
-    # Your-turn cards: needs-you session, open PR, failed job — in that order.
+    # Your-turn holds the needs-you session only (#399: terminal-only column).
     yours = authed_page.locator('.board-list[data-col="your_turn"] li.board-item')
     expect(yours.first).to_be_visible(timeout=5_000)
-    assert yours.count() == 3
+    assert yours.count() == 1
     expect(yours.nth(0)).to_contain_text("photo-ocr")
     expect(yours.nth(0)).to_contain_text("needs you")
     expect(yours.nth(0)).to_contain_text("chunk merge fix")
-    expect(yours.nth(1)).to_contain_text("PR #158")
-    expect(yours.nth(2)).to_contain_text("failed")
 
-    # Backlog card is repo · #N · title; done card carries the merged state.
+    # Other holds the open PR + failed job, in that order.
+    other = authed_page.locator('.board-list[data-col="other"] li.board-item')
+    expect(other.first).to_be_visible(timeout=5_000)
+    assert other.count() == 2
+    expect(other.nth(0)).to_contain_text("PR #158")
+    expect(other.nth(1)).to_contain_text("failed")
+
+    # Backlog card is repo · #N · title; done card is a closed issue.
     backlog = authed_page.locator('.board-list[data-col="backlog"] li.board-item')
     expect(backlog.first).to_contain_text("app-launcher #301")
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
-    expect(done.first).to_contain_text("merged")
-    # A merged PR that closed an issue names it (server-side pairing) so
-    # Done never doubles PR + issue for one unit of work.
-    expect(done.first).to_contain_text("closes #87")
+    expect(done.first).to_contain_text("#87")
+    expect(done.first).to_contain_text("closed")
 
 
 def test_board_refresh_button_posts_gh_refresh(
@@ -579,7 +584,8 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     a <button> trigger, not a text field), defaults to "All projects" (every
     card visible), and picking a specific project filters every kanban
     column down to that project's cards (job cards, which carry no
-    repo/project, drop out of any specific-project filter)."""
+    repo/project, drop out of any specific-project filter). #399: Your turn
+    and Other are now separate single-purpose columns."""
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -611,7 +617,8 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardDispatchRepo")).to_have_value("")
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
-    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("3")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
     expect(authed_page.locator("#boardColDone .board-count")).to_have_text("1")
 
     repo_btn.click()
@@ -628,22 +635,24 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardDispatchRepo")).to_have_value("app-launcher")
 
     # Filtered to app-launcher: backlog issue (repo=app-launcher) stays;
-    # Claude's turn (life-os session) and Done (voice-transcriber PR) empty
-    # out; Your turn keeps only the app-launcher PR, dropping the photo-ocr
-    # session and the job card (no project at all).
+    # Claude's turn (life-os session) and Done (voice-transcriber issue) empty
+    # out; Your turn drops the photo-ocr session (no match); Other keeps only
+    # the app-launcher PR, dropping the job card (no project at all).
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("0")
-    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColDone .board-count")).to_have_text("0")
-    yours = authed_page.locator('.board-list[data-col="your_turn"] li.board-item')
-    expect(yours).to_have_count(1)
-    expect(yours.first).to_contain_text("PR #158")
+    other = authed_page.locator('.board-list[data-col="other"] li.board-item')
+    expect(other).to_have_count(1)
+    expect(other.first).to_contain_text("PR #158")
 
     # Picking "All projects" again restores every column.
     repo_btn.click()
     combo_list.locator('li[data-repo=""]').click()
     expect(repo_btn).to_have_text("All projects")
-    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("3")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
 
 def test_dispatch_and_reply_mics_render_when_voice_available(
@@ -687,8 +696,8 @@ def test_board_columns_layout_matches_projection(
 ) -> None:
     """Phone (WebKit / iPhone projection): the carousel shows one column per
     viewport — a column spans ~the full container width. Desktop (Chromium,
-    fine pointer ≥700px): the grid shows all four columns — each column is
-    at most ~a third of the container. Same DOM, projection-dependent CSS."""
+    fine pointer ≥700px): the grid shows all five columns — each column is
+    well under half the container. Same DOM, projection-dependent CSS."""
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
@@ -708,6 +717,6 @@ def test_board_columns_layout_matches_projection(
         )
     else:
         assert box_col["width"] <= box_container["width"] * 0.35, (
-            f"desktop column should sit in a 4-col grid: col={box_col['width']}, "
+            f"desktop column should sit in a 5-col grid: col={box_col['width']}, "
             f"container={box_container['width']}"
         )

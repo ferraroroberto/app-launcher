@@ -20,11 +20,10 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import subprocess
 import threading
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Sequence, Set, Tuple
+from typing import Any, Dict, List, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -146,48 +145,14 @@ def search_open_prs(owner: str) -> List[Dict[str, Any]]:
     return [p for p in prs if _is_actionable(p["labels"])]
 
 
-# GitHub's closing keywords, as they appear in PR bodies ("Closes #300",
-# "fixes owner/repo#12"). Used to pair a merged PR with the issues it closed
-# so Done shows one card per unit of work, not a PR + issue double.
-_CLOSES_RE = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+"
-    r"(?:([\w.-]+)/([\w.-]+))?#(\d+)",
-    re.IGNORECASE,
-)
-
-
-def _closed_refs(pr_repo: str, body: str) -> List[int]:
-    """Issue numbers this PR body declares closed, scoped to the PR's repo.
-
-    Bare ``#N`` references are same-repo by GitHub's rules; ``owner/repo#N``
-    counts only when the repo name matches (fleet cross-links close in the
-    named repo, which then isn't this card's pair).
-    """
-    numbers: List[int] = []
-    for owner_part, repo_part, number in _CLOSES_RE.findall(body or ""):
-        if repo_part and repo_part.lower() != pr_repo.lower():
-            continue
-        numbers.append(int(number))
-    return numbers
-
-
 def search_done_today(owner: str) -> List[Dict[str, Any]]:
-    """Merged PRs + closed issues since local midnight, newest first.
+    """Closed issues since local midnight, newest first (#399).
 
-    An issue closed by one of today's merged PRs (``Closes #N`` in the PR
-    body) is folded into that PR's card (``closes: [N, ...]``) instead of
-    doubling the column — one card per unit of work.
+    Merged PRs no longer get their own Done card — a PR that closed an issue
+    is already reflected by that issue showing closed, so this is just the
+    closed-issues search with no pairing/dedup step.
     """
     since = date.today().isoformat()
-    merged = _search_json([
-        "search", "prs",
-        "--owner", owner,
-        "--merged",
-        "--merged-at", f">={since}",
-        "--sort", "updated",
-        "--limit", str(_PR_LIMIT),
-        "--json", _SEARCH_FIELDS + ",body,labels",
-    ])
     closed = _search_json([
         "search", "issues",
         "--owner", owner,
@@ -198,24 +163,11 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         "--json", _SEARCH_FIELDS + ",labels",
     ])
     done: List[Dict[str, Any]] = []
-    paired: Set[Tuple[str, int]] = set()
-    for row in merged:
-        pr = _norm_pr(row)
-        if not _is_actionable(pr["labels"]):
-            continue
-        card = {**pr, "state": "merged"}
-        card["closes"] = _closed_refs(card["repo"], str(row.get("body") or ""))
-        for number in card["closes"]:
-            paired.add((card["repo"].lower(), number))
-        done.append(card)
     for row in closed:
         issue = _norm_issue(row)
         if not _is_actionable(issue["labels"]):
             continue
-        card = {**issue, "state": "closed", "labels": []}
-        if (str(card["repo"]).lower(), card.get("number")) in paired:
-            continue  # folded into its merged PR's card
-        done.append(card)
+        done.append({**issue, "state": "closed", "labels": []})
     done.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
     return done
 
