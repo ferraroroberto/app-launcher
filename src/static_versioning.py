@@ -25,6 +25,7 @@ Functions are pure and easy to unit-test in isolation.
 from __future__ import annotations
 
 import hashlib
+import posixpath
 import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional
@@ -45,12 +46,22 @@ _HASHED_SUFFIXES = (".js", ".css", ".svg")
 # doesn't benefit from a content hash).
 _SKIP_DIRS = ("vendor",)
 
+# ``import ... from './foo.js'`` or ``'../dir/foo.js'`` — captures the
+# whole quoted relative specifier (any number of ``./``/``../`` segments
+# and subdirectories) so ``?v=<hash>`` can be stamped onto it. Any
+# existing ``?v=…`` is captured too, so re-stamping an already-stamped
+# body is idempotent.
 _JS_IMPORT_RE = re.compile(
-    r"""(from\s*['"])\./([\w\-.]+\.js)(\?v=[^'"]*)?(['"])"""
+    r"""(from\s*['"])(\.\.?/(?:[\w\-.]+/)*[\w\-.]+\.js)(\?v=[^'"]*)?(['"])"""
 )
 
+# ``href``/``src`` pointing at a hashable ``/static/`` asset — including
+# subdirectories (e.g. ``/static/_vendored/nav/nav-tabs.css``). Same
+# idempotence rule as the JS import regex. ``/static/vendor/…`` paths
+# still pass through unstamped because ``vendor`` never appears in the
+# hash map (``_SKIP_DIRS``), not because the regex excludes them.
 _INDEX_ASSET_RE = re.compile(
-    r"""(href|src)=(['"])/static/([\w\-.]+\.(?:css|js))(\?v=[^'"]*)?(['"])"""
+    r"""(href|src)=(['"])/static/([\w\-./]+\.(?:css|js))(\?v=[^'"]*)?(['"])"""
 )
 
 
@@ -70,18 +81,20 @@ def _iter_hashable_files(static_dir: Path) -> Iterable[Path]:
 
 
 def compute_asset_hashes(static_dir: Path) -> Dict[str, str]:
-    """Return ``{filename: fleet_hash}`` for every hashable static file.
+    """Return ``{relpath: fleet_hash}`` for every hashable static file.
 
-    Same hash for every file (the fleet hash). Caller can still look
-    up by filename — useful for future per-file hashing if the import
-    graph ever loses its cycle. ``fleet_hash`` is the sha256-over-
-    sha256s described in the module docstring.
+    Every value is the same fleet hash (see the module docstring); the
+    dict is keyed by the file's static-dir-relative posix path (e.g.
+    ``_vendored/nav/nav-tabs.css``), not the bare filename, so the
+    rewriters can resolve subdirectory references and so two files
+    sharing a basename in different directories don't collide.
     """
     if not static_dir.exists():
         return {}
     per_file: Dict[str, str] = {}
     for path in _iter_hashable_files(static_dir):
-        per_file[path.name] = _short_hash(path.read_bytes())
+        relpath = path.relative_to(static_dir).as_posix()
+        per_file[relpath] = _short_hash(path.read_bytes())
     if not per_file:
         return {}
     fleet_input = "\n".join(
@@ -100,42 +113,61 @@ def fleet_hash_of(hashes: Dict[str, str]) -> str:
     return next(iter(hashes.values()))
 
 
-def rewrite_js_imports(body: str, hashes: Dict[str, str]) -> str:
-    """Stamp ``?v=<hash>`` onto every ``from './foo.js'`` import.
+def _resolve_specifier(from_dir: str, spec: str) -> str:
+    """Resolve a ``./``/``../`` import specifier against ``from_dir``.
 
-    Imports that don't have a matching entry in ``hashes`` are left as
-    they were — robust against new files that haven't been added to
-    the hash map yet (e.g. dynamic imports). Existing ``?v=…`` is
-    replaced so re-rewriting a server-stamped body is idempotent.
+    ``from_dir`` is the static-dir-relative posix directory of the file
+    doing the importing (empty string at the static root). Returns the
+    static-dir-relative posix path used as the ``hashes`` lookup key,
+    e.g. ``_resolve_specifier("_vendored/empty-state", "../icons/icons.js")
+    == "_vendored/icons/icons.js"``.
+    """
+    joined = posixpath.join(from_dir, spec) if from_dir else spec
+    return posixpath.normpath(joined)
+
+
+def rewrite_js_imports(body: str, hashes: Dict[str, str], from_dir: str = "") -> str:
+    """Stamp ``?v=<hash>`` onto every relative ``import`` in ``body``.
+
+    ``from_dir`` is the static-dir-relative posix directory of the file
+    being rewritten (empty string for a file at the static root) —
+    needed to resolve ``./`` and ``../`` specifiers (including into
+    subdirectories, e.g. ``./_vendored/icons/icons.js``) against
+    ``hashes``, which is keyed by static-dir-relative path. Imports with
+    no matching entry are left alone. Existing ``?v=…`` is replaced, so
+    re-rewriting a served body is idempotent.
     """
     if not hashes:
         return body
 
     def _sub(match: re.Match) -> str:
-        prefix, filename, _existing, quote_close = match.group(1, 2, 3, 4)
-        stamp = hashes.get(filename)
+        prefix, spec, _existing, quote_close = match.group(1, 2, 3, 4)
+        stamp = hashes.get(_resolve_specifier(from_dir, spec))
         if not stamp:
             return match.group(0)
-        return f"{prefix}./{filename}?v={stamp}{quote_close}"
+        return f"{prefix}{spec}?v={stamp}{quote_close}"
 
     return _JS_IMPORT_RE.sub(_sub, body)
 
 
 def rewrite_index_html(body: str, hashes: Dict[str, str]) -> str:
-    """Stamp ``?v=<hash>`` onto every ``/static/<file>.(css|js)`` href/src.
+    """Stamp ``?v=<hash>`` onto every ``/static/<relpath>.(css|js)`` href/src.
 
-    Same robustness rules as ``rewrite_js_imports`` — unknown files
-    pass through unchanged; existing version queries are replaced.
+    ``<relpath>`` may include subdirectories (e.g.
+    ``_vendored/nav/nav-tabs.css``) since it maps directly onto a
+    ``hashes`` key — no resolution needed, unlike a relative JS import.
+    Unknown files pass through unchanged — robust against a new asset
+    not yet in the hash map. Existing ``?v=…`` is replaced.
     """
     if not hashes:
         return body
 
     def _sub(match: re.Match) -> str:
-        attr, quote_open, filename, _existing, quote_close = match.group(1, 2, 3, 4, 5)
-        stamp = hashes.get(filename)
+        attr, quote_open, relpath, _existing, quote_close = match.group(1, 2, 3, 4, 5)
+        stamp = hashes.get(relpath)
         if not stamp:
             return match.group(0)
-        return f'{attr}={quote_open}/static/{filename}?v={stamp}{quote_close}'
+        return f'{attr}={quote_open}/static/{relpath}?v={stamp}{quote_close}'
 
     return _INDEX_ASSET_RE.sub(_sub, body)
 

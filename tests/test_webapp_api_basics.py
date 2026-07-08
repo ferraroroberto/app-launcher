@@ -44,11 +44,20 @@ class TestIndex:
         # valid 8-hex fleet hashes that happen to begin "18…" (the 8-hex
         # format itself is enforced by the loop below).
         assert '?v=18"' not in body
-        # Stamps are 8 hex chars.
-        stamps = re.findall(r"/static/[\w\-.]+\.(?:css|js)\?v=([a-f0-9]+)", body)
+        # Stamps are 8 hex chars — including subdirectory (_vendored/) URLs
+        # (issue #395: subdir assets used to be silently skipped).
+        stamps = re.findall(r"/static/[\w\-./]+\.(?:css|js)\?v=([a-f0-9]+)", body)
         assert stamps, "expected at least one stamped asset URL"
         for stamp in stamps:
             assert re.fullmatch(r"[a-f0-9]{8}", stamp), stamp
+
+    def test_index_stamps_vendored_subdir_css(self, webapp_client):
+        # Regression net for issue #395: /static/_vendored/**/*.css hrefs
+        # must get ?v=<hash> too, not just root-level /static/<file> ones.
+        client, _, _ = webapp_client
+        resp = client.get("/")
+        body = resp.text
+        assert "/static/_vendored/nav/nav-tabs.css?v=" in body
 
 
 class TestStaticCaching:
@@ -72,6 +81,17 @@ class TestStaticCaching:
         # main.js imports ./state.js, ./api.js, etc — all should be stamped.
         assert re.search(r"from\s+['\"]\./state\.js\?v=[a-f0-9]{8}['\"]", body)
         assert re.search(r"from\s+['\"]\./api\.js\?v=[a-f0-9]{8}['\"]", body)
+
+    def test_vendored_subdir_import_gets_stamped(self, webapp_client):
+        # Regression net for issue #395: main.js's `./_vendored/icons/
+        # icons.js` import used to be silently skipped because the old
+        # regex/hash-key only matched root-level filenames.
+        client, _, _ = webapp_client
+        resp = client.get("/static/main.js")
+        body = resp.text
+        assert re.search(
+            r"from\s+['\"]\./_vendored/icons/icons\.js\?v=[a-f0-9]{8}['\"]", body
+        )
 
 
 class TestVersion:
