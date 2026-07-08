@@ -54,6 +54,12 @@ Join mechanics (`_claim_walk` / `_match_state_row`):
 
 **Degradation is total and silent.** `read_sessions_state()` returns `{available, stale, updated_at, rows}` and never raises: an absent, unreadable, or corrupt file yields `available: False` with empty rows, and every session card falls back to `unknown` while the GitHub and jobs columns render regardless. `stale: True` when the newest row is older than `STATE_STALE_AFTER` (24 h) — i.e. the hooks have stopped writing.
 
+## Shared session title, cross-tab (#396)
+
+The state row also carries `name` / `name_source` — Claude Code's own live per-conversation title, copied in by fleet-config's `session_state` hook from `~/.claude/sessions/<pid>.json` (fleet-config#302). `merge_sessions()` copies those onto every card as `shared_name` / `shared_name_source` via the **same** `_claim_walk` cwd join described above, and `attach_shared_names()` runs the identical walk for `GET /api/claude-code/sessions` (the Coding tab's Running-sessions list) — so a live session resolves to the same state row, and therefore the same title, on both tabs. `name_source: "derived"` marks the generic `<project>-N` fallback (no real title assigned yet); anything else is a genuine title.
+
+The frontend precedence lives in one place — `sessions.js`'s `sessionTitle()` — which `board.js` imports rather than re-deriving a title: a genuine `shared_name` wins outright, the OSC-parsed `live_title` is kept as a same-poll-cycle-faster supplement (it updates sub-second inside an open terminal, ahead of the next state-file poll), then `prompt_title`, then a *derived* `shared_name`, then the launch name. See [Naming sessions from the conversation](#interactive-terminal-from-the-phone) in the README for the full precedence history (#266, extended #396).
+
 ## The Claude usage badges (#326)
 
 The strip above the columns can show two small dot+label badges — 5h and 7d Claude account usage % — sourced from a **rate-limits cache** a [`fleet-config`](https://github.com/ferraroroberto/fleet-config) statusline writer maintains ([fleet-config#259](https://github.com/ferraroroberto/fleet-config/issues/259)) — path `rate_limits_file`, default `~/.claude/hooks/state/rate-limits.json`. As of this writing that writer doesn't exist yet, so the badges render hidden until it lands; the Board only ever reads the file.

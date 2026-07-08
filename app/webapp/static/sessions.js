@@ -32,18 +32,37 @@ function projectBasename(s) {
   return (parts.length ? parts[parts.length - 1] : '').toLowerCase();
 }
 
-// Display title for a session, with smart precedence (issue #266). Only some
-// agents self-name per conversation: Claude emits a real summary, but Codex
-// emits "<folder> | <model>", Pi emits "π - <folder>", and Antigravity /
-// Copilot emit no title at all. So:
-//   1. a genuine live title (not just the project folder) wins — Claude's;
-//   2. else the first-prompt-derived title (prompt_title) — covers the agents
-//      that don't self-name, and de-genericizes the folder-only ones;
-//   3. else fall back to the folder-echo title, then the launch name.
+// Display title for a session, with smart precedence (issue #266, extended
+// #396). The single source of truth both the Coding tab and the Board tab
+// call, so a live session shows an identical title on both — do not
+// re-derive a title in board.js or anywhere else.
+//
+//   1. ``shared_name`` (fleet-config#302, joined by cwd server-side into
+//      every session dict as shared_name/shared_name_source) wins outright
+//      when it's a real Claude-assigned title (name_source !== 'derived') —
+//      the one cross-tab authoritative source: Claude's own /resume picker
+//      title, kept fresh on every UserPromptSubmit/Stop hook fire.
+//   2. else the OSC-parsed ``live_title`` — kept as a same-poll-cycle-faster
+//      supplement: it updates sub-second inside an open terminal (parsed
+//      straight off the PTY), while the shared source only refreshes on the
+//      next hook fire + sessions-state.json poll. Only some agents self-name
+//      per conversation this way: Claude emits a real summary, Codex emits
+//      "<folder> | <model>", Pi emits "π - <folder>", Antigravity/Copilot
+//      emit nothing — a short title that's just the folder name is a
+//      project echo, no more distinctive than the launch name, so it's
+//      skipped here in favor of prompt_title below.
+//   3. else the first-prompt-derived title (prompt_title) — covers agents
+//      that don't self-name, and de-genericizes the folder-only echoes.
+//   4. else the shared name even when it's the generic derived
+//      "<project>-N" fallback — still better than a bare project echo since
+//      it distinguishes sibling sessions in the same directory.
+//   5. else the folder-echo live title, then the launch name.
 // Coding agents prefix their live title with a brand glyph (Claude's green ✳);
 // the per-session agent icon already identifies the agent, so strip any
 // leading run of non-alphanumeric characters.
 export function sessionTitle(s) {
+  const shared = String((s && s.shared_name) || '').trim();
+  const sharedDerived = !!(s && s.shared_name_source === 'derived');
   const live = String((s && s.live_title) || '')
     .replace(/^[^\p{L}\p{N}]+/u, '')
     .trim();
@@ -54,9 +73,11 @@ export function sessionTitle(s) {
   // and not folder-dominated, so the word-count guard lets it through.
   const projectEcho = !!live && !!base &&
     live.toLowerCase().includes(base) && live.split(/\s+/).length <= 4;
+  if (shared && !sharedDerived) return shared;
   if (live && !projectEcho) return live;
   if (prompt) return prompt;
-  return live || (s && s.name) || 'session';
+  if (shared) return shared;
+  return live || (s && s.name) || (s && s.project) || 'session';
 }
 
 export function renderSessions() {

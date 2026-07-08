@@ -264,6 +264,98 @@ def test_merge_unclaimed_live_session_state_sid_is_none():
     assert cards[0]["state_sid"] is None
 
 
+# ----------------------------------------- shared session title (#396)
+
+
+def test_merge_carries_shared_name_from_state_row():
+    """A matched state row's name/name_source (fleet-config#302) rides onto
+    the card as shared_name/shared_name_source, alongside the existing
+    live_title/prompt_title fields — the Coding tab reads the identical
+    fields via board.attach_shared_names()."""
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/automation/photo-ocr", 30)],
+        {"t": _state_row(
+            "E:/automation/photo-ocr", status="needs-you",
+            name="Fixing the chunk merge bug",
+        )},
+        now=NOW,
+    )
+    assert cards[0]["shared_name"] == "Fixing the chunk merge bug"
+    assert cards[0]["shared_name_source"] is None
+
+
+def test_merge_carries_shared_name_source_derived():
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/automation/photo-ocr", 30)],
+        {"t": _state_row(
+            "E:/automation/photo-ocr", status="working",
+            name="photo-ocr-2", name_source="derived",
+        )},
+        now=NOW,
+    )
+    assert cards[0]["shared_name"] == "photo-ocr-2"
+    assert cards[0]["shared_name_source"] == "derived"
+
+
+def test_merge_no_state_row_shared_name_is_none():
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 10)], {}, now=NOW)
+    assert cards[0]["shared_name"] is None
+    assert cards[0]["shared_name_source"] is None
+
+
+def test_merge_state_only_card_carries_shared_name():
+    cards = board.merge_sessions(
+        [], {"t": _state_row(
+            "E:/automation/reporting", status="needs-you", name="Recap run",
+        )}, now=NOW,
+    )
+    assert cards[0]["shared_name"] == "Recap run"
+
+
+# --------------------------------------------------- attach_shared_names
+
+
+def test_attach_shared_names_joins_by_cwd():
+    live = [_live("aaa", "E:/automation/photo-ocr", 30)]
+    state_rows = {"t": _state_row(
+        "E:/automation/photo-ocr", name="Chunk merge fix",
+    )}
+    joined = board.attach_shared_names(live, state_rows)
+    assert len(joined) == 1
+    assert joined[0]["shared_name"] == "Chunk merge fix"
+    assert joined[0]["shared_name_source"] is None
+    # Every original field survives the join.
+    assert joined[0]["session_id"] == "aaa"
+    assert joined[0]["project_dir"] == "E:/automation/photo-ocr"
+
+
+def test_attach_shared_names_no_match_returns_none():
+    live = [_live("aaa", "E:/x/y", 10)]
+    joined = board.attach_shared_names(live, {})
+    assert joined[0]["shared_name"] is None
+    assert joined[0]["shared_name_source"] is None
+
+
+def test_attach_shared_names_does_not_mutate_input():
+    live = [_live("aaa", "E:/automation/photo-ocr", 30)]
+    state_rows = {"t": _state_row("E:/automation/photo-ocr", name="X")}
+    board.attach_shared_names(live, state_rows)
+    assert "shared_name" not in live[0]
+
+
+def test_attach_shared_names_agrees_with_merge_sessions():
+    """The Coding tab and Board tab must resolve the same live session to the
+    same title source — same cwd claim walk, same result (#396 acceptance)."""
+    live = [_live("aaa", "E:/automation/photo-ocr", 30)]
+    state_rows = {"t": _state_row(
+        "E:/automation/photo-ocr", status="needs-you", name="Chunk merge fix",
+    )}
+    coding_tab = board.attach_shared_names(live, state_rows)
+    board_tab = board.merge_sessions(live, state_rows, now=NOW)
+    assert coding_tab[0]["shared_name"] == board_tab[0]["shared_name"]
+    assert coding_tab[0]["shared_name_source"] == board_tab[0]["shared_name_source"]
+
+
 def test_merge_fresh_state_only_row_becomes_external_card():
     cards = board.merge_sessions(
         [], {"t": _state_row("E:/automation/reporting", status="needs-you")}, now=NOW

@@ -1,14 +1,21 @@
 """Regression pin for #266 — name Coding windows & rows from the conversation.
+Extended #396: the same ``sessionTitle()`` now also carries the shared
+cross-tab title (fleet-config#302) that both the Coding tab and the Board
+tab read.
 
 Two pure-function contracts back the feature, pinned here via dynamic
 ``import()`` in the page (the same probe pattern as
 ``test_fullscreen_keyboard_pan.py``):
 
-1. ``sessions.js`` ``sessionTitle()`` smart precedence. Only Claude emits a
-   genuine per-conversation OSC title; Codex emits ``<folder> | <model>``, Pi
-   emits ``π - <folder>``, and Antigravity/Copilot emit nothing. So a real
-   summary wins, a folder-echo title yields to the first-prompt-derived
-   ``prompt_title``, and with neither we fall back to the launch name.
+1. ``sessions.js`` ``sessionTitle()`` smart precedence. A genuine shared
+   title (fleet-config#302, ``shared_name`` with ``shared_name_source`` !==
+   ``'derived'``) wins outright. Otherwise: only Claude emits a genuine
+   per-conversation OSC title; Codex emits ``<folder> | <model>``, Pi emits
+   ``π - <folder>``, and Antigravity/Copilot emit nothing. So a real live
+   summary wins next, a folder-echo title yields to the first-prompt-derived
+   ``prompt_title``, then a *derived* shared name (the generic
+   ``<project>-N`` fallback) beats a bare folder echo, and with nothing at
+   all we fall back to the launch name.
 
 2. ``terminal.js`` ``mirrorDocTitle()``. The PC mirror window's OS title must
    prepend the human title for the Windows/PTI title bar while still containing
@@ -58,6 +65,34 @@ async () => {
       live_title: 'app-launcher | gpt-5.5', prompt_title: '',
       project_dir: dir, name: 'app-launcher',
     }),
+    // #396: a genuine shared title (fleet-config#302) wins outright, even
+    // over a real live OSC summary — it's the cross-tab source of truth.
+    sharedNameWins: sessionTitle({
+      shared_name: 'Fixing the chunk merge bug', shared_name_source: null,
+      live_title: '✳ Some other in-terminal summary', prompt_title: 'x',
+      project_dir: dir, name: 'app-launcher',
+    }),
+    // A *derived* shared name ("<project>-N") is the generic hook fallback —
+    // a real live title still wins over it.
+    sharedDerivedYieldsToLive: sessionTitle({
+      shared_name: 'app-launcher-2', shared_name_source: 'derived',
+      live_title: '✳ Fixing the login flow bug', prompt_title: '',
+      project_dir: dir, name: 'app-launcher',
+    }),
+    // With no live/prompt title at all, a derived shared name still beats
+    // the bare project echo.
+    sharedDerivedBeatsBareFallback: sessionTitle({
+      shared_name: 'app-launcher-2', shared_name_source: 'derived',
+      live_title: '', prompt_title: '',
+      project_dir: dir, name: 'app-launcher',
+    }),
+    // No shared name at all (hooks not writing yet, or no match) → falls
+    // through to the pre-#396 precedence untouched.
+    noSharedNameFallsThrough: sessionTitle({
+      shared_name: null, shared_name_source: null,
+      live_title: '', prompt_title: 'wire up the API',
+      project_dir: dir, name: 'app-launcher',
+    }),
   };
 }
 """
@@ -100,6 +135,24 @@ def test_session_title_precedence(authed_page: Page, base_url: str) -> None:
     assert r["echoNoPrompt"] == "app-launcher | gpt-5.5", (
         f"a folder echo with no prompt yet returned {r['echoNoPrompt']!r} — it "
         "should keep the echo rather than collapse to a generic placeholder"
+    )
+    assert r["sharedNameWins"] == "Fixing the chunk merge bug", (
+        f"a genuine shared title returned {r['sharedNameWins']!r} — the "
+        "cross-tab shared name (fleet-config#302) must win outright"
+    )
+    assert r["sharedDerivedYieldsToLive"] == "Fixing the login flow bug", (
+        f"a derived shared name beat a real live title, got "
+        f"{r['sharedDerivedYieldsToLive']!r} — the generic <project>-N "
+        "fallback must yield to a genuine live OSC summary"
+    )
+    assert r["sharedDerivedBeatsBareFallback"] == "app-launcher-2", (
+        f"a derived shared name lost to the bare project fallback, got "
+        f"{r['sharedDerivedBeatsBareFallback']!r} — it should still beat "
+        "a bare project echo when nothing else is available"
+    )
+    assert r["noSharedNameFallsThrough"] == "wire up the API", (
+        f"with no shared name at all, precedence should be unchanged from "
+        f"pre-#396 behavior, got {r['noSharedNameFallsThrough']!r}"
     )
 
 

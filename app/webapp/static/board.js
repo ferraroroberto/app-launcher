@@ -34,6 +34,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
+import { sessionTitle } from './sessions.js';
 import { estimateTermSize, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -61,14 +62,14 @@ function fmtAge(seconds) {
   return Math.floor(seconds / 86400) + 'd';
 }
 
+// The exact same title resolution as the Coding tab's Running-sessions list
+// (#396) — board cards carry the same field names (shared_name/
+// shared_name_source, live_title, prompt_title, name, project) that
+// sessionTitle() reads, so a single shared function keeps both tabs
+// agreeing on one session's title instead of two independently-drifting
+// codepaths (#383 review round first duplicated a smaller version of this).
 function sessionLabel(card) {
-  // Coding agents prefix their live title with a brand glyph (Claude's
-  // green ✳) — the Code tab strips it in sessionTitle() (sessions.js);
-  // the Board card does the same (#383 review round).
-  const live = String(card.live_title || '')
-    .replace(/^[^\p{L}\p{N}]+/u, '')
-    .trim();
-  return live || card.prompt_title || card.name || card.project || 'session';
+  return sessionTitle(card) || card.project || 'session';
 }
 
 const STATUS_META = {

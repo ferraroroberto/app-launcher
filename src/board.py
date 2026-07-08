@@ -22,6 +22,15 @@ unit-tests without a webapp.
 Degradation contract (#164 acceptance): a missing/corrupt/stale state file
 must never error — session cards fall back to ``unknown`` status and the
 GitHub/jobs columns render regardless.
+
+Shared session title (#396): the state row also carries ``name``/``name_source``
+(fleet-config#302's live Claude Code session title). ``merge_sessions`` copies
+those onto every card as ``shared_name``/``shared_name_source``, and
+:func:`attach_shared_names` runs the identical cwd-based claim walk for the
+Coding tab's own ``/api/claude-code/sessions`` list — so a live session
+resolves to the same state row, and therefore the same title, on both tabs.
+The frontend's precedence lives in one place, ``sessions.js``'s
+``sessionTitle()``, which both tabs call.
 """
 
 from __future__ import annotations
@@ -265,6 +274,31 @@ def state_row_for_session(
     return None
 
 
+def attach_shared_names(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Join live session-host sessions with the state file's shared session
+    title (fleet-config#302's ``name``/``name_source``), for the Coding tab's
+    Running-sessions list (#396).
+
+    Uses the exact same cwd-based :func:`_claim_walk` as :func:`merge_sessions`
+    — both consumers must resolve a given live session to the same state row,
+    or the Board tab and the Coding tab could show two different titles for
+    the same session. Returns new dicts (each session's own fields plus
+    ``shared_name``/``shared_name_source``, both ``None`` on no match) — the
+    input dicts are never mutated.
+    """
+    pairs, _ = _claim_walk(live, state_rows)
+    return [
+        {
+            **sess,
+            "shared_name": (row or {}).get("name"),
+            "shared_name_source": (row or {}).get("name_source"),
+        }
+        for sess, row, _sid in pairs
+    ]
+
+
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
 
@@ -417,6 +451,8 @@ def merge_sessions(
             "started_at": sess.get("started_at"),
             "live_title": sess.get("live_title") or "",
             "prompt_title": sess.get("prompt_title") or "",
+            "shared_name": (row or {}).get("name"),
+            "shared_name_source": (row or {}).get("name_source"),
             "project": (row or {}).get("project") or Path(str(project_dir or "")).name,
             "status": status,
             "age_seconds": _age_seconds(anchor, now),
@@ -443,6 +479,8 @@ def merge_sessions(
             "started_at": None,
             "live_title": "",
             "prompt_title": "",
+            "shared_name": row.get("name"),
+            "shared_name_source": row.get("name_source"),
             "project": str(project),
             "status": status,
             "age_seconds": _age_seconds(anchor, now),
