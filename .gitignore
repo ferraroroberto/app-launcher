@@ -39,8 +39,6 @@ webapp/cloudflared.yml
 webapp/terminal-themes.json
 webapp/sessions/
 webapp/jobs/
-app/webapp/static/launcher-ca.mobileconfig
-app/webapp/static/ca.crt
 
 # --- Interactive-terminal scratch (image uploads land here) --------------
 .launcher-tmp/

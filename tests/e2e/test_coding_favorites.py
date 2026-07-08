@@ -86,6 +86,12 @@ def _order(page: Page) -> list:
     )
 
 
+def _open_projects(page: Page) -> None:
+    # Projects is collapsed by default (#383 review round) — expand it so
+    # the tile buttons are clickable.
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+
+
 def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> None:
     # Routes must be live before boot's first /api/apps fetch.
     _install_routes(authed_page)
@@ -95,6 +101,7 @@ def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> N
         "window.localStorage.setItem('launcher.codingFavFilter', '0');"
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
 
@@ -128,6 +135,7 @@ def test_star_toggle_reorders_and_persists(authed_page: Page, base_url: str) -> 
         "window.localStorage.setItem('launcher.codingFavFilter', '0');"
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
     assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]

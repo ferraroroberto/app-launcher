@@ -373,6 +373,11 @@
       <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
       <span class="tab-label">Board</span>
     </button>
+    <button id="tabSettings" type="button" class="tab" data-tab="settings"
+            role="tab" aria-selected="false" aria-controls="paneSettings" tabindex="-1">
+      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+      <span class="tab-label">Settings</span>
+    </button>
   </nav>
 
   <main class="app">
@@ -385,13 +390,6 @@
           </span>
           <span class="summary-actions">
             <div class="coding-toggles">
-              <button type="button" id="themeToggle" class="theme-toggle"
-                      title="Toggle theme" aria-label="Toggle dark mode">
-                <!-- Sprite moon + sun; CSS shows the glyph for the *action*
-                     keyed on html[data-theme]. -->
-                <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
-                <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
-              </button>
               <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
                 <span>Detached</span>
@@ -510,7 +508,9 @@
         </div>
       </details>
 
-      <details class="card card--collapsible projects-card" open>
+      <!-- Collapsed by default (#383 review round): the running-sessions
+           card above is the tab's working set; expand to reach the tiles. -->
+      <details class="card card--collapsible projects-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
@@ -565,7 +565,9 @@
         </div>
       </details>
 
-      <details class="card card--collapsible listeners-card" open>
+      <!-- Collapsed by default (#383 review round) — Running apps above is
+           the tab's working set. -->
+      <details class="card card--collapsible listeners-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
@@ -580,7 +582,7 @@
         </div>
       </details>
 
-      <details class="card card--collapsible apps-list-card" open>
+      <details class="card card--collapsible apps-list-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -762,6 +764,59 @@
       </div>
     </section>
 
+    <section id="paneSettings" class="pane" role="tabpanel" aria-labelledby="tabSettings" hidden>
+      <div id="settingsPanel" class="card settings-card">
+        <div class="settings-head">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+            <h3 class="collapse-title">Settings</h3>
+          </span>
+          <span class="summary-actions">
+            <button type="button" id="themeToggle" class="theme-toggle"
+                    title="Toggle theme" aria-label="Toggle dark mode">
+              <!-- Sprite moon + sun; CSS shows the glyph for the *action*
+                   keyed on html[data-theme]. -->
+              <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+              <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+            </button>
+            <button type="button" id="editMode" class="edit-toggle" role="switch" aria-checked="false"
+                   title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab">
+              <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Edit mode</span>
+            </button>
+          </span>
+        </div>
+        <div class="collapse-body">
+        <label class="stacked">
+          <span>Projects dir (Claude Code)</span>
+          <input id="projectsDir" type="text" class="input-native">
+        </label>
+        <label class="stacked">
+          <span>Ignored folders — one per line, names or <code>*</code> globs</span>
+          <textarea id="projectsIgnore" class="input-native" rows="3"
+                    placeholder="archive&#10;*-old&#10;scratch"></textarea>
+        </label>
+        <label class="stacked">
+          <span>Apps scan root</span>
+          <input id="appsScanRoot" type="text" class="input-native">
+        </label>
+        <label class="stacked">
+          <span>Life OS dir (life-os checkout)</span>
+          <input id="lifeOsDir" type="text" class="input-native">
+        </label>
+        <label class="stacked">
+          <span>Fleet-config dir (system map)</span>
+          <input id="claudeConfigDir" type="text" class="input-native">
+        </label>
+        <div class="row settings-actions">
+          <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
+          <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
+        </div>
+        <hr>
+        <p id="statusReadout" class="muted small"></p>
+        </div>
+      </div>
+    </section>
+
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>
       <div class="terminal-bar">
         <button id="lifeOsBrowserBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
@@ -893,72 +948,6 @@
         </div>
       </form>
     </dialog>
-
-    <details id="settingsPanel" class="card card--collapsible settings-card">
-      <summary class="collapse-summary">
-        <span class="collapse-main">
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
-          <h3 class="collapse-title">Settings</h3>
-        </span>
-        <span class="summary-actions">
-          <button type="button" id="editMode" class="edit-toggle" role="switch" aria-checked="false"
-                 title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab">
-            <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Edit mode</span>
-          </button>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </span>
-      </summary>
-      <div class="collapse-body">
-      <label class="stacked">
-        <span>Projects dir (Claude Code)</span>
-        <input id="projectsDir" type="text" class="input-native">
-      </label>
-      <label class="stacked">
-        <span>Ignored folders — one per line, names or <code>*</code> globs</span>
-        <textarea id="projectsIgnore" class="input-native" rows="3"
-                  placeholder="archive&#10;*-old&#10;scratch"></textarea>
-      </label>
-      <label class="stacked">
-        <span>Apps scan root</span>
-        <input id="appsScanRoot" type="text" class="input-native">
-      </label>
-      <label class="stacked">
-        <span>Life OS dir (life-os checkout)</span>
-        <input id="lifeOsDir" type="text" class="input-native">
-      </label>
-      <label class="stacked">
-        <span>Fleet-config dir (system map)</span>
-        <input id="claudeConfigDir" type="text" class="input-native">
-      </label>
-      <!-- Opt-in light terminal (issue #359): default keeps the dark screen
-           in both themes; ON makes the PTY terminal follow the app theme
-           with a light ANSI palette. Persisted client-side (localStorage,
-           like the theme toggle) — not part of the Save-button config. -->
-      <button type="button" id="termFollowTheme" class="toggle" role="switch" aria-checked="false"
-              title="Terminal follows the app theme: light terminal screen in light mode (default: always dark)"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Terminal follows app theme</span></button>
-      <div class="row settings-actions">
-        <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
-        <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
-      </div>
-      <hr>
-      <div class="webauthn-section">
-        <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Terminal access (passkey)</h3>
-        <p id="webauthnStatus" class="muted small">Checking…</p>
-        <ul id="webauthnDevices" class="webauthn-devices"></ul>
-        <button id="enrollDeviceBtn" type="button" class="big-btn" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
-        <p class="muted small">
-          Open the enrollment window from the tray menu
-          (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
-        </p>
-      </div>
-      <hr>
-      <p class="muted small">
-        First time on iPhone? Install the trust profile:
-        <a href="/install-ca">/install-ca</a>
-      </p>
-      <p id="statusReadout" class="muted small"></p>
-      </div>
-    </details>
 
     <!-- Build identity: plain footer line outside every card/block. -->
     <div class="page-foot">

@@ -2,11 +2,12 @@
 
 The feature: the Apps, Jobs and Life tabs' top-level panels are each a
 collapsible ``<details>`` reusing the Code tab's ``.card--collapsible`` /
-``.collapse-summary`` chrome — open by default, with the right-pinned chevron
-on the summary title, so the whole app shares one foldable-section idiom.
+``.collapse-summary`` chrome, with the right-pinned chevron on the summary
+title, so the whole app shares one foldable-section idiom.
 
 Covered panels:
-- Apps: 🟢 Running apps, 🔌 Port listeners, 📦 Registered apps.
+- Apps: 🟢 Running apps (open by default), 🔌 Port listeners and
+  📦 Registered apps (collapsed by default, #383 review round).
 - Jobs: 📋 Registered jobs — the ➕ Add job button sits in the summary row
   and a tap there must drive the button only (stopPropagation), never the
   collapse.
@@ -28,30 +29,32 @@ def _is_open(page: Page, selector: str) -> bool:
     return bool(page.locator(selector).evaluate("el => el.open"))
 
 
-def test_apps_tab_panels_are_collapsible_open_by_default(
+def test_apps_tab_panels_default_states(
     authed_page: Page, base_url: str
 ) -> None:
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabApps").click()
 
-    for sel in (
-        "#paneApps details.sessions-card",
-        "#paneApps details.listeners-card",
-        "#paneApps details.apps-list-card",
+    for sel, should_open in (
+        ("#paneApps details.sessions-card", True),
+        ("#paneApps details.listeners-card", False),
+        ("#paneApps details.apps-list-card", False),
     ):
         panel = authed_page.locator(sel)
         panel.wait_for(state="attached", timeout=10_000)
-        assert _is_open(authed_page, sel), f"{sel} should open by default"
+        assert _is_open(authed_page, sel) is should_open, (
+            f"{sel} default should be open={should_open} (#383 review round)"
+        )
 
-    # Tapping the Registered-apps summary title collapses, then re-expands it.
+    # Tapping the Registered-apps summary title expands, then re-collapses it.
     title = authed_page.locator("#paneApps details.apps-list-card .collapse-title")
     title.click()
-    assert not _is_open(authed_page, "#paneApps details.apps-list-card"), (
-        "title tap should collapse the panel"
+    assert _is_open(authed_page, "#paneApps details.apps-list-card"), (
+        "title tap should expand the panel"
     )
     title.click()
-    assert _is_open(authed_page, "#paneApps details.apps-list-card"), (
-        "second title tap should re-expand it"
+    assert not _is_open(authed_page, "#paneApps details.apps-list-card"), (
+        "second title tap should re-collapse it"
     )
 
 

@@ -30,7 +30,10 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
-TAB_IDS = ["#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS"]
+TAB_IDS = [
+    "#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard",
+    "#tabSettings",
+]
 
 
 def test_bottom_tab_bar_is_stable_and_low(

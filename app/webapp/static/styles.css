@@ -46,6 +46,11 @@
   /* Brand-colour alpha overlays derive from the tokens above via relative
      colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
      never forks from its base colour. */
+  /* Accent-ghost button recipe (home-automation's Net-tab .big-btn):
+     soft accent tint + accent text + soft accent border — no solid fills
+     (issue #383 review round). Derived from --accent so both themes ride. */
+  --accent-soft: rgb(from var(--accent) r g b / 0.16);
+  --accent-border-soft: rgb(from var(--accent) r g b / 0.24);
   /* radii (rounded scale) — theme-independent */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -115,13 +120,11 @@
   color-scheme: dark;
 }
 
-/* Opt-in light terminal screen (issue #359): html[data-term-theme="follow"]
-   is stamped by terminal.js from the "Terminal follows app theme" switch in
-   Settings (localStorage, like the theme itself). Only the light app theme
-   changes anything — dark keeps the same screen either way. The matching
+/* Light terminal screen: the terminal always follows the app theme
+   (issue #383; supersedes the #359 opt-in switch). The matching
    ANSI palette rides terminal.js (xterm colors live in the renderer, not
    CSS). Values are the spec's colors.canvas / colors.fg. */
-[data-term-theme="follow"]:not([data-theme="dark"]) {
+:root:not([data-theme="dark"]) {
   --term-bg: #ffffff;
   --term-fg: #1f2328;
 }
@@ -293,10 +296,10 @@ html, body {
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
-/* Theme toggle (issue #355) — sun/moon ghost button in the ⚙️ options
-   summary row, the launcher's always-visible top slot (the counterpart of
-   home-automation's Home-tile toggle). Shows the glyph for the ACTION:
-   moon in light (tap → dark), sun in dark (tap → light). */
+/* Theme toggle (issue #355) — sun/moon ghost button in the Settings tab's
+   head row (the counterpart of home-automation's Home-tile toggle).
+   Shows the glyph for the ACTION: moon in light (tap → dark), sun in
+   dark (tap → light). */
 .theme-toggle {
   display: inline-flex;
   align-items: center;
@@ -391,10 +394,12 @@ summary + .opt-group { border-top: 0; }
   padding: 6px 14px 14px;
   border-top: 1px solid var(--line);
 }
+/* Agent group headers read in the app font, normal case — the uppercase
+   spaced-caption treatment looked like a different typeface next to the
+   mixed-case option rows (issue #383). */
 .opt-group-title {
-  font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-size: var(--font-label);
+  font-weight: 600;
   color: var(--muted);
   margin: 12px 0 10px;
 }
@@ -1126,11 +1131,21 @@ summary + .opt-group { border-top: 0; }
 .toast.good  { border-color: var(--success); }
 
 /* ---------- settings ---------- */
-.settings-card { margin-top: 12px; }
-/* Edit-mode toggle in the Settings summary — same button-style toggle
+/* Settings is its own tab (issue #383): a plain card whose head mirrors
+   the disclosure summary's box (52px, 0 14px, divider) without the
+   collapse behavior — a dedicated pane has nothing to collapse. */
+.settings-card { padding: 0; }
+.settings-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  height: 52px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line-muted);
+}
+/* Edit-mode toggle in the Settings head — same button-style toggle
    as .detached-toggle: role="switch" + aria-checked (issue #355), no
-   visible checkbox. Click is intercepted so flipping Edit mode doesn't
-   also expand/collapse the Settings panel. */
+   visible checkbox. */
 .edit-toggle {
   display: inline-flex;
   align-items: center;
@@ -1174,9 +1189,9 @@ summary + .opt-group { border-top: 0; }
   padding: 14px 18px;
   font-size: var(--font-label);
   font-weight: 600;
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: 0;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
   min-height: 44px;
@@ -1193,12 +1208,12 @@ summary + .opt-group { border-top: 0; }
 }
 .ghost-btn:active { color: var(--fg); }
 .ghost-btn.accent-btn {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border-color: transparent;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent-border-soft);
   font-weight: 600;
 }
-.ghost-btn.accent-btn:active { color: var(--accent-fg); filter: brightness(0.9); }
+.ghost-btn.accent-btn:active { color: var(--accent); filter: brightness(0.9); }
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: var(--font-caption); }
@@ -1517,27 +1532,6 @@ summary + .opt-group { border-top: 0; }
   display: block;
 }
 
-/* ---------- webauthn / passkey settings ---------- */
-.webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
-.webauthn-devices {
-  list-style: none;
-  margin: 8px 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.webauthn-devices li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--card-2);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  font-size: var(--font-caption);
-}
-.webauthn-devices li span { flex: 1; word-break: break-word; }
-
 /* ---------- interactive terminal overlay ---------- */
 /* Stop iOS rubber-band / pull-to-refresh chrome from leaking through
    into the underlying page when the terminal overlay is open. Applied
@@ -1808,9 +1802,9 @@ body.terminal-open {
   min-height: 44px;
   padding: 0 16px;
   font-size: var(--icon-title);
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
 }
@@ -1891,9 +1885,9 @@ body.terminal-open {
   padding: 0 14px;
   font-size: var(--font-label);
   font-weight: 600;
-  background: var(--accent);
-  color: var(--accent-fg);
-  border: none;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
 }

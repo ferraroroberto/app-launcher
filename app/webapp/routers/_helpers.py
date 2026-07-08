@@ -44,8 +44,8 @@ def tsnet_host_from_cert(cert_path: Optional[Path] = None) -> Optional[str]:
     """The .ts.net hostname the active cert is issued for, or None.
 
     Returns a hostname only for a genuine ``tailscale cert`` leaf — keyed on
-    the ISSUER (Let's Encrypt), because the self-signed leaf
-    (scripts/gen_ssl_cert.py) also carries the ts.net name in its SAN and
+    the ISSUER (Let's Encrypt), because a legacy self-signed leaf (the
+    retired gen_ssl_cert.py) also carried the ts.net name in its SAN and
     must keep routing mirrors over loopback (same discriminator as
     scripts/gen_tailscale_cert.py, issue #354).
     """

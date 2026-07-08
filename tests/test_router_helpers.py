@@ -110,8 +110,8 @@ def _make_cert(path: Path, issuer_org: str, san_names: list) -> None:
 
 
 def test_tsnet_host_ignores_self_signed_cert_with_tsnet_san(tmp_path) -> None:
-    # The self-signed leaf (gen_ssl_cert.py) carries the ts.net SAN too —
-    # issuer keying is what stops it being treated as a Tailscale cert (#354).
+    # A legacy self-signed leaf (retired gen_ssl_cert.py) carried the ts.net
+    # SAN too — issuer keying stops it being treated as a Tailscale cert (#354).
     p = tmp_path / "cert.pem"
     _make_cert(p, "Launcher", ["localhost", "tower.tail1121fd.ts.net"])
     assert tsnet_host_from_cert(p) is None

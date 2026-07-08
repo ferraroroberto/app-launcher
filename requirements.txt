@@ -38,7 +38,7 @@ pywin32>=306; sys_platform == "win32"
 # WebAuthn passkey gate for the interactive terminal
 webauthn>=2.0
 
-# Self-signed cert + iOS .mobileconfig generation
+# Cert inspection for gen_tailscale_cert.py --check (issuer/SAN/expiry)
 cryptography>=42.0
 
 # Tray icon (optional surface — see app/tray/)
