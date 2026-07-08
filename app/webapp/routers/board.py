@@ -1,6 +1,6 @@
-"""Board tab — the fleet kanban's data plane (issues #300, #301, #302 / #164).
+"""Board tab — the fleet kanban's data plane (issues #300, #301, #302 / #164 / #399).
 
-    GET  /api/board                       → the four computed columns (token-gated)
+    GET  /api/board                       → the five computed columns (token-gated)
     POST /api/board/github/refresh        → run the gh searches now (token-gated)
     GET  /api/board/sessions/{sid}/exchange → last user↔assistant exchange
                                             (Tailscale + passkey — transcript text)
@@ -90,7 +90,7 @@ def _rate_limits_section(rate_limits: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/api/board")
 async def get_board(request: Request) -> Dict[str, Any]:
-    """The four columns + source health, cheap enough for the 5s poll."""
+    """The five columns + source health, cheap enough for the 5s poll."""
     cfg: WebappConfig = request.app.state.webapp_config
 
     live, state, job_cards, rate_limits = await asyncio.gather(

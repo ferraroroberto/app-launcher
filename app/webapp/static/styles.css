@@ -2385,7 +2385,7 @@ body.terminal-open {
 .board-reply-send:active,
 .board-open-terminal:active { background: var(--card); }
 
-/* Desktop / wide: all four columns side by side; titles come back.
+/* Desktop / wide: all five columns side by side; titles come back.
    Board (only) also breaks out of the phone-first `.app` 720px cap —
    full-bleed to the viewport, since `.app`'s horizontal centering makes
    the standard breakout offsets cancel out exactly (issue #325). Every
@@ -2403,7 +2403,7 @@ body.terminal-open {
   }
   .board-columns {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 20px;
     overflow-x: visible;
     scroll-snap-type: none;

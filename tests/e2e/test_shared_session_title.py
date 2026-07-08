@@ -65,6 +65,7 @@ _FAKE_BOARD = {
             },
         ],
         "your_turn": [],
+        "other": [],
         "done": [],
     },
     "github": {"fetched_at": "2026-07-08T11:00:00Z", "error": None},

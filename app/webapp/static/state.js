@@ -121,6 +121,7 @@ export const els = {
   boardColBacklog: document.getElementById('boardColBacklog'),
   boardColClaude: document.getElementById('boardColClaude'),
   boardColYours: document.getElementById('boardColYours'),
+  boardColOther: document.getElementById('boardColOther'),
   boardColDone: document.getElementById('boardColDone'),
   boardDispatchGoal: document.getElementById('boardDispatchGoal'),
   boardDispatchRepo: document.getElementById('boardDispatchRepo'),

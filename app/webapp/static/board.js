@@ -1,10 +1,11 @@
-/* Board tab (issues #300 / #301 / #302 / #164): the fleet kanban.
+/* Board tab (issues #300 / #301 / #302 / #164 / #399): the fleet kanban.
  *
- * Four computed columns from GET /api/board — Backlog (open issues),
- * Claude's turn (sessions working/unknown/idle), Your turn (needs-you
- * sessions + open PRs + failed/stuck jobs), Done (merged/closed today).
- * Phone-first: the columns container is a scroll-snap carousel (one column
- * per swipe) and the strip above it doubles as column switcher + counts.
+ * Five computed columns from GET /api/board, each single-purpose — Backlog
+ * (open issues), Claude's turn (sessions working/unknown/idle), Your turn
+ * (needs-you sessions only), Other (open PRs + failed/stuck jobs), Done
+ * (closed issues today). Phone-first: the columns container is a scroll-snap
+ * carousel (one column per swipe) and the strip above it doubles as column
+ * switcher + counts.
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
@@ -18,7 +19,7 @@
  * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
  * card with its drawer open. While a drawer is open the poll pauses, so a
  * re-render can never wipe a reply being typed. Issue/PR/done cards open
- * GitHub, job cards jump to the Jobs tab.
+ * GitHub, job cards (Other column) jump to the Jobs tab.
  *
  * Free-text dispatch (#302): the bar pinned above the columns speaks/types
  * a goal into a fresh /issue-add | /issue-add now | /issue-yolo session in
@@ -45,7 +46,8 @@ const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
   { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.' },
   { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing merged or closed today yet.' },
+  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.' },
+  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
@@ -381,16 +383,12 @@ function renderJobCard(card) {
 }
 
 function renderDoneCard(card) {
-  const iconName = card.state === 'merged' ? 'circle-check' : 'square-check';
-  const noun = card.kind === 'pr' ? 'PR #' : '#';
-  // A merged PR that closed issues absorbs their cards (server-side
-  // pairing) and names them here, so Done stays one card per unit of work.
-  const closes = (card.closes && card.closes.length)
-    ? ' · closes #' + card.closes.join(' #') : '';
+  // Done holds closed issues only (#399) — a merged PR that closed one is
+  // already reflected here by the issue itself, so there's no PR/pairing
+  // branch to render.
   const shell = cardShell(
-    iconName,
-    ' ' + [card.repo, noun + card.number].join(' ') + ' · ' +
-      card.state + closes,
+    'square-check',
+    ' ' + [card.repo, '#' + card.number].join(' ') + ' · ' + card.state,
     card.title || '', '');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
