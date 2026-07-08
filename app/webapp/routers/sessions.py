@@ -12,6 +12,7 @@ import hmac
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
@@ -23,6 +24,7 @@ from websockets.exceptions import InvalidHandshake
 
 from src import (
     audit,
+    board,
     launcher,
     llm_client,
     photo_ocr_client,
@@ -51,7 +53,14 @@ router = APIRouter()
 
 @router.get("/api/claude-code/sessions")
 async def claude_sessions(request: Request) -> Dict[str, Any]:
-    """List launcher-owned PTY sessions (public, token-gated)."""
+    """List launcher-owned PTY sessions (public, token-gated).
+
+    Each session is joined with the shared cross-tab title (fleet-config#302,
+    via app-launcher#396) as ``shared_name``/``shared_name_source`` — the same
+    cwd-based claim walk the Board tab's ``merge_sessions()`` uses
+    (``board.attach_shared_names``), so a live session resolves to the same
+    state row — and therefore shows the same title — on both tabs.
+    """
     cfg: WebappConfig = request.app.state.webapp_config
     try:
         sessions = await asyncio.to_thread(
@@ -60,6 +69,11 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     except session_client.SessionHostError as exc:
         logger.debug(f"session list failed: {exc}")
         sessions = []
+    if sessions:
+        state = await asyncio.to_thread(
+            board.read_sessions_state, Path(cfg.sessions_state_file)
+        )
+        sessions = board.attach_shared_names(sessions, state["rows"])
     return {"sessions": sessions}
 
 

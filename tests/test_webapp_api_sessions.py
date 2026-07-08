@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -41,6 +44,74 @@ class TestListSessions:
         sess.list_sessions.side_effect = sess.SessionHostError(
             "session-host unreachable", status=503
         )
+        resp = client.get("/api/claude-code/sessions")
+        assert resp.status_code == 200
+        assert resp.json() == {"sessions": []}
+
+
+class TestSharedSessionName:
+    """#396: the Coding tab's list is joined with the same cwd-keyed shared
+    title (fleet-config#302) the Board tab reads, so a live session shows
+    an identical title on both tabs."""
+
+    def test_matched_state_row_attaches_shared_name(self, webapp_client):
+        client, app, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {
+                "session_id": "abc-123",
+                "kind": "pty",
+                "name": "photo-ocr",
+                "project_dir": "E:/automation/photo-ocr",
+                "live_title": "",
+                "prompt_title": "",
+                "started_at": "2026-07-08T10:00:00Z",
+            }
+        ]
+        state_file = Path(app.state.webapp_config.sessions_state_file)
+        state_file.write_text(json.dumps({
+            "t-uuid": {
+                "project": "photo-ocr", "status": "needs-you",
+                "cwd": "E:/automation/photo-ocr",
+                "name": "Fixing the chunk merge bug",
+                "name_source": None,
+                "updated_at": (
+                    datetime.now(timezone.utc) - timedelta(minutes=3)
+                ).isoformat(timespec="seconds").replace("+00:00", "Z"),
+            },
+        }), encoding="utf-8")
+
+        resp = client.get("/api/claude-code/sessions")
+        assert resp.status_code == 200
+        sessions = resp.json()["sessions"]
+        assert len(sessions) == 1
+        assert sessions[0]["shared_name"] == "Fixing the chunk merge bug"
+        assert sessions[0]["shared_name_source"] is None
+        # The session-host's own fields still ride through untouched.
+        assert sessions[0]["session_id"] == "abc-123"
+        assert sessions[0]["live_title"] == ""
+
+    def test_no_state_file_shared_name_is_none(self, webapp_client):
+        """No sessions-state.json at all (hooks not writing yet) → the
+        join degrades gracefully, same contract as the Board tab."""
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {
+                "session_id": "abc-123",
+                "kind": "pty",
+                "name": "photo-ocr",
+                "project_dir": "E:/automation/photo-ocr",
+            }
+        ]
+        resp = client.get("/api/claude-code/sessions")
+        assert resp.status_code == 200
+        sessions = resp.json()["sessions"]
+        assert sessions[0]["shared_name"] is None
+        assert sessions[0]["shared_name_source"] is None
+
+    def test_empty_session_list_skips_state_read(self, webapp_client):
+        """No live sessions → nothing to join; must still return []."""
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = []
         resp = client.get("/api/claude-code/sessions")
         assert resp.status_code == 200
         assert resp.json() == {"sessions": []}
