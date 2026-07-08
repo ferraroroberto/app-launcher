@@ -2,10 +2,14 @@
 
 Two run modes:
 
-* **Default (ad-hoc).** Runs against a live tray the user already has up on
-  https://127.0.0.1:8445. The autouse `_require_live_tray` fixture skips the
-  whole module with a clear message if /healthz isn't reachable, so a
-  forgotten tray fails fast instead of hanging in browser.goto for 30 s.
+* **Live (dev loop).** Runs against a live tray the user already has up on
+  https://127.0.0.1:8445 — but only with the explicit `LAUNCHER_E2E_LIVE=1`
+  opt-in (`scripts/run-e2e.ps1` sets it). Without it the suite *exits* with a
+  guard message instead of running: a bare `pytest tests/e2e` used to silently
+  load-test the instance the phone was using (issue #386). The autouse
+  `_require_live_tray` fixture still skips the whole module with a clear
+  message if /healthz isn't reachable, so a forgotten tray fails fast instead
+  of hanging in browser.goto for 30 s.
 * **Autoboot (pre-ship gate).** Enabled with `--e2e-autoboot` or the
   `LAUNCHER_E2E_AUTOBOOT=1` env var. `_autoboot_server` spawns a disposable
   webapp on a free port (HTTPS, reusing webapp/certificates/) plus a
@@ -58,6 +62,11 @@ _LIVE_SESSION_HOST_PORT = 8446
 # the gate from the live :8446.
 _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
+# Explicit opt-in for targeting the LIVE tray on :8445 (issue #386). The
+# live mode is deliberate (run-e2e.ps1 dev loop), but it drives real login
+# flows and PTY sessions against the instance the user's phone is using —
+# an *accidental* bare `pytest tests/e2e` must not do that.
+_LIVE_ENV = "LAUNCHER_E2E_LIVE"
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -276,6 +285,16 @@ def _require_live_tray(request: pytest.FixtureRequest, base_url: str) -> None:
     # The guard only protects the default ad-hoc path against a forgotten tray.
     if _autoboot_enabled(request.config):
         return
+    if os.environ.get(_LIVE_ENV, "") != "1":
+        pytest.exit(
+            "Refusing to run the e2e suite against the LIVE tray on :8445 "
+            "without explicit opt-in (issue #386) — an ad-hoc run load-tests "
+            "the instance the phone is using. Either set LAUNCHER_E2E_LIVE=1 "
+            "(scripts/run-e2e.ps1 does) to target the live tray on purpose, "
+            "or use the disposable autoboot mode: --e2e-autoboot / "
+            "LAUNCHER_E2E_AUTOBOOT=1.",
+            returncode=2,
+        )
     try:
         res = requests.get(f"{base_url}/healthz", timeout=2, verify=False)
         res.raise_for_status()

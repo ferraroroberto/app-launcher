@@ -217,6 +217,12 @@ Build: 35caad4 · 2026-05-19 21:34
 
 Backed by `GET /api/version`, which also returns the current `asset_hash` for quick diff against the PC. The line updates only when the webapp module re-imports (i.e., tray restart or 🔄 Restart webapp) — a phone refresh alone won't move it.
 
+### If the webapp stops answering
+
+The tray runs a health watchdog: every 60 s it round-trips `GET /healthz` on its own webapp — a wedged uvicorn still *listens*, so only a real response proves it's alive. After 3 consecutive failed probes it raises a Windows toast and appends a timestamped line to `webapp/watchdog.log`; the first successful probe afterwards logs the recovery. Recovery stays manual and canonical: `tray.bat --restart`.
+
+The webapp itself leaves request-level breadcrumbs in `webapp/slow-requests.log` (its stdout is discarded by the tray, so these are file-only): a line for any request slower than 3 s (`LAUNCHER_SLOW_REQUEST_S`) with method, path, status, elapsed and in-flight count, plus a rate-limited warning whenever more than 16 requests (`LAUNCHER_INFLIGHT_WARN`) are in flight at once, naming the oldest. Together with the watchdog timestamps, the next hang can be classified (event-loop blocked vs deadlocked handler vs socket exhaustion) without a live repro.
+
 ---
 
 ## Phone install (PWA)
@@ -588,11 +594,13 @@ One-time setup:
 ```powershell
 .\scripts\run-e2e.ps1                       # both projections, ~60 s
 .\scripts\run-e2e.ps1 --browser chromium    # Chromium-only, ~15 s — dev loop
-# or directly:
-& .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
+# or directly — the env var is the explicit live-tray opt-in (see below):
+$env:LAUNCHER_E2E_LIVE = "1"; & .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
 ```
 
 The suite runs against the live tray on `https://127.0.0.1:8445` — it does not boot anything itself. If the tray isn't up, every test is skipped with a clear message instead of hanging. Loopback access auto-bypasses the bearer-token middleware and the passkey gate, so no credentials are needed.
+
+Because that live instance is the one the phone is using, targeting it is an **explicit opt-in**: `run-e2e.ps1` sets `LAUNCHER_E2E_LIVE=1` for you, and a bare `pytest tests/e2e` without it (and without autoboot) exits immediately with a guard message instead of silently load-testing the live webapp.
 
 The terminal-related regression tests (reconnect, paste, mirror-close) launch a real `claude` PTY via the `launched_pty_session` fixture and force-kill it in teardown — they don't require any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var). The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
 
