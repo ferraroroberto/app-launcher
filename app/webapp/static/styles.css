@@ -190,6 +190,11 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
   overscroll-behavior-y: contain;
+  /* No system double-tap-to-zoom on the page itself — pairs with the
+     viewport meta's maximum-scale=1/user-scalable=no zoom lock (design.md
+     Layout; fleet-config#296). Individual elements still opt into their own
+     gesture handling (e.g. touch-action: pan-y on scrollable lists). */
+  touch-action: manipulation;
   /* Reserve the scrollbar gutter so the centred .app container doesn't
      shift ~8 px sideways when one tab needs a vertical scrollbar and
      another doesn't — visible as a "tabs aren't aligned" jitter on
