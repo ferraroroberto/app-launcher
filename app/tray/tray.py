@@ -37,6 +37,7 @@ from src import AppConfig
 from src.webapp_config import append_auth_token, load_webapp_config
 
 from app.tray.single_instance import SingleInstance
+from app.tray.watchdog import HealthWatchdog
 from app.webapp.manager import (
     WebappManager,
     cert_paths,
@@ -51,6 +52,9 @@ TUNNEL_CONFIG_PATH = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 # The tray runs windowless (pythonw) with no console to log to, so the
 # Tailscale lookup leaves a breadcrumb here when it can't resolve a host.
 TS_DEBUG_LOG = PROJECT_ROOT / "webapp" / "tailscale_debug.log"
+# Same reason: the health watchdog (issue #386) leaves its wedge/recovery
+# breadcrumbs here — the only durable trail of *when* :8445 stopped answering.
+WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
 
 # The loopback PTY session-host. It is a *linked-but-independent* child
 # (project-scaffolding#35): it hosts the user's Coding PTYs and MUST survive a
@@ -145,6 +149,18 @@ def _ts_debug(msg: str) -> None:
         TS_DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().isoformat(timespec="seconds")
         with TS_DEBUG_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(f"{stamp} {msg}\n")
+    except OSError:
+        pass
+
+
+def _wd_log(msg: str) -> None:
+    """Append a breadcrumb to the watchdog log (best-effort)."""
+    logger.debug(f"watchdog: {msg}")
+    try:
+        WATCHDOG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().isoformat(timespec="seconds")
+        with WATCHDOG_LOG.open("a", encoding="utf-8") as fh:
             fh.write(f"{stamp} {msg}\n")
     except OSError:
         pass
@@ -353,6 +369,36 @@ def run_tray(app_config: AppConfig) -> int:
 
     threading.Thread(target=_start, daemon=True).start()
 
+    # Health watchdog (issue #386): a wedged uvicorn still LISTENs, so only a
+    # real /healthz round-trip can tell "up" from "hung". Alerting only —
+    # recovery stays manual (tray.bat --restart) until the failure mode is
+    # understood; no improvised process kills.
+    watchdog_stop = threading.Event()
+
+    def _on_webapp_wedge(failures: int) -> None:
+        msg = (
+            f"webapp on :{manager.config.port} stopped answering /healthz "
+            f"({failures} consecutive probes) — restart with tray.bat --restart"
+        )
+        logger.error(f"❌ {msg}")
+        _wd_log(f"WEDGE {msg}")
+        _notify("Launcher webapp unresponsive", msg)
+
+    def _on_webapp_recover() -> None:
+        msg = f"webapp on :{manager.config.port} answering /healthz again"
+        logger.info(f"✅ {msg}")
+        _wd_log(f"RECOVERED {msg}")
+        _notify("Launcher webapp recovered", msg)
+
+    watchdog = HealthWatchdog(
+        probe=manager.is_reachable,
+        on_wedge=_on_webapp_wedge,
+        on_recover=_on_webapp_recover,
+    )
+    threading.Thread(
+        target=watchdog.run, args=(watchdog_stop,), daemon=True
+    ).start()
+
     def _start_tunnel():
         if tunnel_hostname is None:
             return
@@ -538,6 +584,7 @@ def run_tray(app_config: AppConfig) -> int:
 
     def quit_app(icon, item):  # noqa: ARG001
         logger.info("👋 Tray quit requested")
+        watchdog_stop.set()
         _stop_tunnel()
         _stop_session_host()
         try:

@@ -72,6 +72,10 @@ from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.webauthn_gate import WebAuthnGate
 
 from app.webapp.middleware import BearerTokenMiddleware
+from app.webapp.observability import (
+    SlowRequestLogMiddleware,
+    ensure_slow_log_handler,
+)
 from app.webapp.routers import (
     apps,
     auth,
@@ -214,6 +218,7 @@ def create_app() -> FastAPI:
     webapp_cfg = load_webapp_config()
 
     auth.ensure_log_handler()
+    ensure_slow_log_handler()
 
     app = FastAPI(
         title="Launcher",
@@ -225,6 +230,9 @@ def create_app() -> FastAPI:
         BearerTokenMiddleware,
         get_token=lambda: getattr(app.state.webapp_config, "auth_token", ""),
     )
+    # Added last → outermost, so the timing covers the whole stack including
+    # the auth middleware (issue #386).
+    app.add_middleware(SlowRequestLogMiddleware)
 
     app.state.app_config = app_config
     app.state.webapp_config = webapp_cfg
