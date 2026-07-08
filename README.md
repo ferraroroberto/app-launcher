@@ -223,6 +223,8 @@ The tray runs a health watchdog: every 60 s it round-trips `GET /healthz` on its
 
 The webapp itself leaves request-level breadcrumbs in `webapp/slow-requests.log` (its stdout is discarded by the tray, so these are file-only): a line for any request slower than 3 s (`LAUNCHER_SLOW_REQUEST_S`) with method, path, status, elapsed and in-flight count, plus a rate-limited warning whenever more than 16 requests (`LAUNCHER_INFLIGHT_WARN`) are in flight at once, naming the oldest. Together with the watchdog timestamps, the next hang can be classified (event-loop blocked vs deadlocked handler vs socket exhaustion) without a live repro.
 
+The root cause of the recurring wedge (#388) was asyncio's default Windows proactor event loop closing its listening socket on any aborted client connection (WinError 64 — a dropped Wi-Fi handoff, a browser tab closed mid-handshake). Every `app.webapp.server:app` uvicorn invocation now runs on the selector event loop instead (`app/webapp/event_loop.py`), whose accept path doesn't have this failure mode — the webapp process spawns no in-process asyncio subprocesses, so the selector loop's lack of subprocess support doesn't apply here. The watchdog + breadcrumbs above remain the detection net in case this regresses.
+
 ---
 
 ## Phone install (PWA)
