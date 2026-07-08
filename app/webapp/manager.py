@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.tray.single_instance import cross_process_lock
+from app.webapp.event_loop import LOOP_FACTORY
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +276,8 @@ class WebappManager:
             str(self.config.port),
             "--log-level",
             "warning",
+            "--loop",
+            LOOP_FACTORY,
         ]
         certs = cert_paths()
         if certs is not None:

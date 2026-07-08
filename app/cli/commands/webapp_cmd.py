@@ -24,6 +24,7 @@ class WebappCommand(BaseCommand):
         # Lazy imports so a plain `webapp` subcommand doesn't drag pystray in.
         import uvicorn
 
+        from app.webapp.event_loop import LOOP_FACTORY
         from app.webapp.manager import cert_paths
         from src.webapp_config import load_webapp_config
 
@@ -36,6 +37,7 @@ class WebappCommand(BaseCommand):
             "host": host,
             "port": port,
             "log_level": "info",
+            "loop": LOOP_FACTORY,
         }
         if certs is not None:
             cert, key = certs

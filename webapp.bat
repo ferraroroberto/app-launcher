@@ -26,13 +26,18 @@ REM Auto-renew a Tailscale cert expiring within 30 days (no-op on a
 REM self-signed cert or when no cert exists) — project-scaffolding#89.
 "%VENV_PY%" "%SCRIPT_DIR%scripts\gen_tailscale_cert.py" --check
 
+REM --loop keeps uvicorn off the default Windows proactor loop, whose accept
+REM path dies on a single aborted client connection (WinError 64) -- #388.
+REM Keep in sync with app\webapp\event_loop.py:LOOP_FACTORY.
+set "LOOP_ARG=app.webapp.event_loop:selector_loop_factory"
+
 if not exist "%CERT%" (
     echo [INFO] No HTTPS cert found, running HTTP-only on :8445.
     echo        Run scripts\gen_tailscale_cert.py to enable HTTPS.
-    "%VENV_PY%" -m uvicorn app.webapp.server:app --host 0.0.0.0 --port 8445
+    "%VENV_PY%" -m uvicorn app.webapp.server:app --host 0.0.0.0 --port 8445 --loop "%LOOP_ARG%"
 ) else (
     echo [INFO] HTTPS via %CERT%
-    "%VENV_PY%" -m uvicorn app.webapp.server:app --host 0.0.0.0 --port 8445 --ssl-keyfile "%KEY%" --ssl-certfile "%CERT%"
+    "%VENV_PY%" -m uvicorn app.webapp.server:app --host 0.0.0.0 --port 8445 --ssl-keyfile "%KEY%" --ssl-certfile "%CERT%" --loop "%LOOP_ARG%"
 )
 
 exit /b %ERRORLEVEL%
