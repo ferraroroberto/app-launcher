@@ -508,7 +508,9 @@
         </div>
       </details>
 
-      <details class="card card--collapsible projects-card" open>
+      <!-- Collapsed by default (#383 review round): the running-sessions
+           card above is the tab's working set; expand to reach the tiles. -->
+      <details class="card card--collapsible projects-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
@@ -563,7 +565,9 @@
         </div>
       </details>
 
-      <details class="card card--collapsible listeners-card" open>
+      <!-- Collapsed by default (#383 review round) — Running apps above is
+           the tab's working set. -->
+      <details class="card card--collapsible listeners-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
@@ -578,7 +582,7 @@
         </div>
       </details>
 
-      <details class="card card--collapsible apps-list-card" open>
+      <details class="card card--collapsible apps-list-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -806,17 +810,6 @@
         <div class="row settings-actions">
           <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
           <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
-        </div>
-        <hr>
-        <div class="webauthn-section">
-          <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Terminal access (passkey)</h3>
-          <p id="webauthnStatus" class="muted small">Checking…</p>
-          <ul id="webauthnDevices" class="webauthn-devices"></ul>
-          <button id="enrollDeviceBtn" type="button" class="big-btn" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
-          <p class="muted small">
-            Open the enrollment window from the tray menu
-            (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
-          </p>
         </div>
         <hr>
         <p id="statusReadout" class="muted small"></p>

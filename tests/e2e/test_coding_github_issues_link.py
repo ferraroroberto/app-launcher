@@ -42,6 +42,12 @@ def _install_routes(page: Page, repo_url: str | None) -> None:
     page.route("**/api/apps", _apps)
 
 
+def _open_projects(page: Page) -> None:
+    # Projects is collapsed by default (#383 review round) — expand it so
+    # the tile buttons are clickable.
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+
+
 def test_github_icon_opens_open_issues_sorted_by_updated(
     authed_page: Page, base_url: str
 ) -> None:
@@ -53,6 +59,7 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
         "window.open = function (u) { window.__opened.push(u); return null; };"
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
     gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
@@ -72,6 +79,7 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
 def test_github_icon_disabled_without_repo_url(authed_page: Page, base_url: str) -> None:
     _install_routes(authed_page, None)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
     gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(

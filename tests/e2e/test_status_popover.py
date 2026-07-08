@@ -28,6 +28,13 @@ _BRANCH = "fix/regress-139"
 def test_status_button_opens_off_main_popover(authed_page: Page, base_url: str) -> None:
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
+    # Projects is collapsed by default (#383 review round) — expand it so
+    # the tiles are visible. (#gitStatusBtn + summary live in the always-
+    # visible sessions summary and are unaffected.)
+    authed_page.locator("details.projects-card").evaluate(
+        "el => { el.open = true; }"
+    )
+
     authed_page.wait_for_selector(
         ".coding-item, #claudeEmpty:not([hidden])", timeout=10_000
     )

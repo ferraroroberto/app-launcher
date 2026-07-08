@@ -27,6 +27,12 @@ _BRANCH = "feat/regress-115"
 def test_git_status_button_annotates_tiles(authed_page: Page, base_url: str) -> None:
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
+    # Projects is collapsed by default (#383 review round) — expand it so
+    # the tiles and legend are visible.
+    authed_page.locator("details.projects-card").evaluate(
+        "el => { el.open = true; }"
+    )
+
     # Wait for the Coding list to settle — tiles, or the empty-state note.
     authed_page.wait_for_selector(
         ".coding-item, #claudeEmpty:not([hidden])", timeout=10_000

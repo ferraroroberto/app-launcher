@@ -75,6 +75,9 @@ def _install_mocks(page: Page) -> None:
 
 def _open_coding(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # Projects is collapsed by default (#383 review round) — expand it so
+    # the tile buttons are clickable.
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     page.wait_for_selector(
         '#claudeList .coding-item[data-id="demo"] button.agent-btn[data-agent="claude"]',
         timeout=5_000,

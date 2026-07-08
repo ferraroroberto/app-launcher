@@ -62,7 +62,13 @@ function fmtAge(seconds) {
 }
 
 function sessionLabel(card) {
-  return card.live_title || card.prompt_title || card.name || card.project || 'session';
+  // Coding agents prefix their live title with a brand glyph (Claude's
+  // green ✳) — the Code tab strips it in sessionTitle() (sessions.js);
+  // the Board card does the same (#383 review round).
+  const live = String(card.live_title || '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .trim();
+  return live || card.prompt_title || card.name || card.project || 'session';
 }
 
 const STATUS_META = {

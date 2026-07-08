@@ -16,7 +16,7 @@ import { fetchSkills, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
-import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
+import { fetchWebauthnStatus, writeTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------- settings panel
@@ -221,7 +221,6 @@ wireLifeOs();
 wireBoard();
 wireSystemMap();
 wireTerminal();
-wireWebauthn();
 wireSettings();
 wireTheme();
 
