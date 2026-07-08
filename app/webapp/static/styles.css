@@ -488,8 +488,8 @@ summary + .opt-group { border-top: 0; }
 .toggle[aria-checked="true"] .check-box,
 .job-confirm-row[aria-checked="true"] .check-box,
 .job-run-dryrow[aria-checked="true"] .check-box {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--success);
+  border-color: var(--success);
 }
 .toggle[aria-checked="true"] .check-box .icon,
 .job-confirm-row[aria-checked="true"] .check-box .icon,
@@ -1319,8 +1319,8 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .scan-section .scan-row[aria-checked="true"] .check-box {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--success);
+  border-color: var(--success);
 }
 .scan-section .scan-row[aria-checked="true"] .check-box .icon { display: block; }
 .scan-section .meta {
@@ -1400,8 +1400,8 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .job-chain-row-btn[aria-checked="true"] .check-box {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--success);
+  border-color: var(--success);
 }
 .job-chain-row-btn[aria-checked="true"] .check-box .icon { display: block; }
 
@@ -1606,10 +1606,10 @@ body.terminal-open {
   min-height: 40px;
   cursor: pointer;
 }
-/* Reading the last reply aloud (issue #190) — accent pulse so the ⏹ stop
-   state is unmistakable while speech is playing. */
+/* Reading the last reply aloud (issue #190) — success-green pulse so the ⏹
+   stop state is unmistakable while speech is playing (on-state, #391). */
 .term-btn.speaking {
-  background: var(--accent);
+  background: var(--success);
   color: var(--accent-fg);
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
@@ -1734,8 +1734,8 @@ body.terminal-open {
 /* Sticky-Shift engaged (issue #137): ⇧ stays lit until tapped off so the
    user can see Shift is being held for the next key. */
 .key-btn.active {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--accent-soft);
+  color: var(--accent);
   border-color: var(--accent);
 }
 /* Empty grid cell to the right of ⇧ keeps the down-arrow centered in row 3. */
