@@ -389,6 +389,13 @@
             <h3 class="collapse-title">options</h3>
           </span>
           <span class="summary-actions">
+            <button type="button" id="themeToggle" class="theme-toggle"
+                    title="Toggle theme" aria-label="Toggle dark mode">
+              <!-- Sprite moon + sun; CSS shows the glyph for the *action*
+                   keyed on html[data-theme]. -->
+              <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+              <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+            </button>
             <div class="coding-toggles">
               <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
@@ -772,13 +779,6 @@
             <h3 class="collapse-title">Settings</h3>
           </span>
           <span class="summary-actions">
-            <button type="button" id="themeToggle" class="theme-toggle"
-                    title="Toggle theme" aria-label="Toggle dark mode">
-              <!-- Sprite moon + sun; CSS shows the glyph for the *action*
-                   keyed on html[data-theme]. -->
-              <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
-              <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
-            </button>
             <button type="button" id="editMode" class="edit-toggle" role="switch" aria-checked="false"
                    title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab">
               <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Edit mode</span>
@@ -813,6 +813,10 @@
         </div>
         <hr>
         <p id="statusReadout" class="muted small"></p>
+        <!-- THROWAWAY spike #246 link — token-bearing href set in main.js so a
+             full page-load passes the bearer gate over the tunnel. Settings-only
+             (not every tab) since it's a dev/spike link, not app chrome. -->
+        <p class="muted small"><a id="spikeVoiceLink" href="/spike/voice-loop">🎙️ Voice loop spike (#246)</a></p>
         </div>
       </div>
     </section>
@@ -952,9 +956,6 @@
     <!-- Build identity: plain footer line outside every card/block. -->
     <div class="page-foot">
       <p id="buildReadout" class="muted small"></p>
-      <!-- THROWAWAY spike #246 link — token-bearing href set in main.js so a
-           full page-load passes the bearer gate over the tunnel. -->
-      <p class="muted small"><a id="spikeVoiceLink" href="/spike/voice-loop">🎙️ Voice loop spike (#246)</a></p>
     </div>
 
     <div id="toast" class="toast" hidden></div>

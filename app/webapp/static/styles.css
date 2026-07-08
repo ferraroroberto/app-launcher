@@ -301,10 +301,10 @@ html, body {
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
-/* Theme toggle (issue #355) — sun/moon ghost button in the Settings tab's
-   head row (the counterpart of home-automation's Home-tile toggle).
-   Shows the glyph for the ACTION: moon in light (tap → dark), sun in
-   dark (tap → light). */
+/* Theme toggle (issue #355, relocated to the Coding tab's options card in
+   #392) — sun/moon ghost button in the always-visible options summary row
+   (the counterpart of home-automation's Home-tile toggle). Shows the glyph
+   for the ACTION: moon in light (tap → dark), sun in dark (tap → light). */
 .theme-toggle {
   display: inline-flex;
   align-items: center;
