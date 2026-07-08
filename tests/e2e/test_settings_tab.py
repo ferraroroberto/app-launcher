@@ -7,8 +7,9 @@ every tab into a sixth navigation tab. Contract under test:
     with the settings controls and hides the other panes.
   * The settings card no longer bleeds into the other tabs — on the
     default Coding tab the panel is hidden.
-  * The app theme toggle now lives in the Settings pane (moved out of
-    the Coding options header) and still flips ``html[data-theme]``.
+  * The app theme toggle lives in the Coding tab's options card (its
+    original home — issue #392 moved it back out of the Settings pane)
+    and still flips ``html[data-theme]``.
 """
 
 from __future__ import annotations
@@ -50,14 +51,17 @@ def test_settings_panel_absent_from_other_tabs(
     expect(authed_page.locator("#settingsPanel")).to_be_hidden()
 
 
-def test_theme_toggle_lives_in_settings_and_flips_theme(
+def test_theme_toggle_lives_in_coding_options_and_flips_theme(
     authed_page: Page, base_url: str
 ) -> None:
     authed_page.goto(base_url, wait_until="domcontentloaded")
     toggle = authed_page.locator("#themeToggle")
-    # Moved out of the Coding options header into the Settings pane.
-    expect(toggle).to_be_hidden()
+    # Lives in the Coding options card (the default tab) — visible on load.
+    expect(toggle).to_be_visible()
+    # Not duplicated into the Settings pane.
     authed_page.locator("#tabSettings").click()
+    expect(toggle).to_be_hidden()
+    authed_page.locator("#tabClaude").click()
     expect(toggle).to_be_visible()
 
     before = authed_page.evaluate(

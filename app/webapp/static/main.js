@@ -59,8 +59,10 @@ function wireTheme() {
   // CSS keyed on the attribute, so there is nothing to re-render here —
   // the terminal screen follows the app theme (issue #383) via
   // terminal.js's own data-theme observer, which restyles any open
-  // terminal.
-  els.themeToggle.addEventListener('click', function () {
+  // terminal. The button lives in the Coding options card's <summary>, so
+  // stopPropagation keeps a tap from also expanding/collapsing the card.
+  els.themeToggle.addEventListener('click', function (ev) {
+    ev.stopPropagation();
     const dark = document.documentElement.dataset.theme !== 'dark';
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
