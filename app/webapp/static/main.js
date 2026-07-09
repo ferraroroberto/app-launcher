@@ -20,17 +20,29 @@ import { fetchWebauthnStatus, writeTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------- settings panel
+// One edit-mode state, two switches: the Settings-head toggle and the
+// Registered-jobs summary toggle (the Jobs tab is where editing actually
+// happens, so it carries its own friendly entry point).
+function syncEditModeButtons() {
+  const val = state.editMode ? 'true' : 'false';
+  els.editMode.setAttribute('aria-checked', val);
+  if (els.jobsEditBtn) els.jobsEditBtn.setAttribute('aria-checked', val);
+}
+
+function toggleEditMode() {
+  state.editMode = !state.editMode;
+  syncEditModeButtons();
+  localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
+  // Re-render apps lists to show/hide rename + remove buttons.
+  fetchApps().catch(function () {});
+  // Same toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
+  renderJobs();
+}
+
 function wireSettings() {
-  els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
-  els.editMode.addEventListener('click', function () {
-    state.editMode = !state.editMode;
-    els.editMode.setAttribute('aria-checked', state.editMode ? 'true' : 'false');
-    localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
-    // Re-render apps lists to show/hide rename + remove buttons.
-    fetchApps().catch(function () {});
-    // Same toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
-    renderJobs();
-  });
+  syncEditModeButtons();
+  els.editMode.addEventListener('click', toggleEditMode);
+  if (els.jobsEditBtn) els.jobsEditBtn.addEventListener('click', toggleEditMode);
   els.saveSettings.addEventListener('click', async function () {
     const ignore = els.projectsIgnore.value
       .split('\n')

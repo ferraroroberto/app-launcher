@@ -118,7 +118,7 @@ class TestJobFromDict:
         )
         assert job.id == "demo"
         assert job.schedule.type == "none"
-        assert job.target_kind == "py"
+        assert job.target_kind == "python"
 
     def test_bat_target_kind(self):
         job = job_from_dict(
@@ -128,7 +128,7 @@ class TestJobFromDict:
                 "script_path": "C:\\stub\\launch_reporting.bat",
             }
         )
-        assert job.target_kind == "bat"
+        assert job.target_kind == "batch"
 
     def test_bad_suffix_rejected(self):
         with pytest.raises(ValueError, match=".py or .bat"):
@@ -916,7 +916,7 @@ class TestBuildInvocation:
         bat = tmp_path / "demo.bat"
         bat.write_text("@echo off")
         job = Job(id="demo", name="Demo", script_path=str(bat), args="auto")
-        argv, cwd, env = build_invocation(job)
+        argv, cwd, env = build_invocation(job, run_dir=tmp_path)
         assert argv == ["cmd.exe", "/c", str(bat), "auto"]
         assert cwd == bat.parent
         assert env == {}
@@ -931,7 +931,7 @@ class TestBuildInvocation:
         script.parent.mkdir()
         script.write_text("# stub")
         job = Job(id="ls", name="LS", script_path=str(script), args="")
-        argv, cwd, env = build_invocation(job)
+        argv, cwd, env = build_invocation(job, run_dir=tmp_path)
         assert argv == [str(venv_py), str(script)]
         # cwd is the project root (where the .venv lives).
         assert cwd == proj
@@ -941,7 +941,7 @@ class TestBuildInvocation:
     def test_bad_suffix_rejected(self, tmp_path):
         job = Job(id="x", name="X", script_path=str(tmp_path / "x.txt"))
         with pytest.raises(ValueError, match="unsupported"):
-            build_invocation(job)
+            build_invocation(job, run_dir=tmp_path)
 
 
 # ============================================================= run history

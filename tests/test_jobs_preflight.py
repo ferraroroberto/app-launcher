@@ -82,3 +82,51 @@ def test_well_formed_quoted_args_pass(tmp_path: Path):
     bat.write_text("@echo off\r\n", encoding="utf-8")
     problems = preflight(_job(str(bat), args='--name "two words" --flag'))
     assert [p for p in problems if p.field == "args"] == []
+
+
+# ---------------------------------------------------- job-kind delegation
+# (issue #70) — preflight() only owns the shared "script exists" check;
+# everything else is delegated to KINDS[resolve_kind(job)].validate().
+
+
+def test_shell_wsl_missing_wsl_exe_is_warning(tmp_path: Path, monkeypatch):
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    script = _write(tmp_path / "do.sh", "#!/bin/bash\necho hi\n")
+    job = Job(id="w", name="W", script_path=script, kind="shell-wsl")
+    problems = preflight(job)
+    assert not has_errors(problems)
+    assert any(p.level == "warning" and "wsl.exe" in p.message for p in problems)
+
+
+def test_inline_shell_missing_body_is_error():
+    job = Job(
+        id="i", name="I", script_path="", kind="inline-shell",
+        kind_config={"ext": ".bat"},
+    )
+    problems = preflight(job)
+    assert has_errors(problems)
+
+
+def test_http_check_missing_url_is_error():
+    job = Job(id="h", name="H", script_path="", kind="http-check", kind_config={})
+    problems = preflight(job)
+    assert has_errors(problems)
+
+
+def test_http_check_valid_url_is_clean():
+    job = Job(
+        id="h2", name="H2", script_path="", kind="http-check",
+        kind_config={"url": "https://example.com/health"},
+    )
+    assert preflight(job) == []
+
+
+def test_unresolvable_kind_is_error(tmp_path: Path):
+    # No explicit kind and a suffix that isn't .py/.bat — resolve_kind()
+    # falls through to "unknown". (job_from_dict would already reject this
+    # shape at save time; preflight defends anyway for a hand-built Job.)
+    script = _write(tmp_path / "do.txt", "not a script\n")
+    problems = preflight(_job(script))
+    assert has_errors(problems)

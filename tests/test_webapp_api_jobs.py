@@ -223,6 +223,109 @@ class TestDeleteJob:
         assert mocked_jobs_side_effects["delete_schtasks"].called
 
 
+# ========================================================== job-kind (#70)
+
+
+class TestJobKindRegistry:
+    def test_create_inline_shell(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Inline demo",
+                "kind": "inline-shell",
+                "kind_config": {"script_body": "echo hi", "ext": ".bat"},
+                "schedule": {"type": "none"},
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        job = resp.json()["job"]
+        assert job["kind"] == "inline-shell"
+        assert job["kind_config"] == {"script_body": "echo hi", "ext": ".bat"}
+        assert job["script_path"] == ""
+        assert job["target_kind"] == "inline-shell"
+
+    def test_create_http_check(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Health check",
+                "kind": "http-check",
+                "kind_config": {"url": "https://example.com/health"},
+                "schedule": {"type": "hourly", "every": 1},
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        job = resp.json()["job"]
+        assert job["kind"] == "http-check"
+        assert job["target_kind"] == "http-check"
+
+    def test_create_http_check_missing_url_is_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Health check",
+                "kind": "http-check",
+                "kind_config": {},
+                "schedule": {"type": "none"},
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_create_unknown_kind_is_400(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Bogus",
+                "kind": "bogus-kind",
+                "script_path": _stub_path("demo.bat"),
+                "schedule": {"type": "none"},
+            },
+        )
+        assert resp.status_code == 400
+
+    def test_switch_file_kind_to_inline_shell(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={
+                "kind": "inline-shell",
+                "script_path": "",
+                "kind_config": {"script_body": "echo hi", "ext": ".bat"},
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        job = resp.json()["job"]
+        assert job["kind"] == "inline-shell"
+        assert job["script_path"] == ""
+
+    def test_switch_to_inline_shell_without_clearing_script_path_is_400(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        # Switching kind without explicitly clearing script_path in the
+        # same PUT body is rejected — the dialog always sends the full
+        # payload (including an explicit clear), so this only happens on
+        # a malformed/partial PUT.
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        resp = client.put(
+            "/api/jobs/" + created["id"],
+            json={
+                "kind": "inline-shell",
+                "kind_config": {"script_body": "echo hi", "ext": ".bat"},
+            },
+        )
+        assert resp.status_code == 400
+
+
 # =================================================================== /run
 
 

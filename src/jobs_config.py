@@ -427,6 +427,18 @@ class Job:
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
     paused_schedule: Optional[Schedule] = None
+    # Job-kind registry (issue #70). Empty ``kind`` is the back-compat
+    # default: dispatch infers the kind from ``script_path``'s suffix
+    # (``.py``/``.bat``, exactly as before this field existed). An
+    # explicit kind (``"powershell"``, ``"shell-wsl"``, ``"inline-shell"``,
+    # ``"http-check"``, or explicitly ``"python"``/``"batch"``) opts into
+    # the matching module under ``src.jobs_kinds``. ``kind_config`` is a
+    # generic settings bag for whatever the active kind needs — inline-shell's
+    # ``script_body``/``ext``, http-check's ``url``/``method``/
+    # ``expect_status``/``timeout`` — so adding a future synthetic kind never
+    # requires touching this dataclass again.
+    kind: str = ""
+    kind_config: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -459,6 +471,13 @@ class Job:
             payload["elevated"] = True
         if self.paused_schedule is not None:
             payload["paused_schedule"] = self.paused_schedule.to_dict()
+        # kind / kind_config: omit when unset so legacy rows (and every
+        # explicit-.py/.bat row saved before this feature shipped) stay
+        # byte-for-byte after a load → save round-trip.
+        if self.kind:
+            payload["kind"] = self.kind
+        if self.kind_config:
+            payload["kind_config"] = dict(self.kind_config)
         return payload
 
     @property
@@ -467,13 +486,17 @@ class Job:
 
     @property
     def target_kind(self) -> str:
-        """``"py"`` or ``"bat"`` based on ``script_path`` suffix."""
-        suffix = Path(self.script_path).suffix.lower()
-        if suffix == ".py":
-            return "py"
-        if suffix == ".bat":
-            return "bat"
-        return "unknown"
+        """The effective job-kind name (registry name, or ``"unknown"``).
+
+        Explicit ``self.kind`` wins; otherwise inferred from
+        ``script_path``'s suffix. See :func:`src.jobs_kinds.resolve_kind`
+        for the exact fallback rule — imported locally to avoid a
+        ``jobs_config`` ↔ ``jobs_kinds`` import cycle (every kind module
+        imports :class:`Job` from here).
+        """
+        from src.jobs_kinds import resolve_kind  # local import avoids a cycle
+
+        return resolve_kind(self)
 
 
 def _validate_cooldown(raw: Any) -> Optional[int]:
@@ -558,16 +581,83 @@ def _validate_mutex_group(raw: Any) -> Optional[str]:
     return stripped
 
 
+def kind_config_from_dict(raw: Any) -> Dict[str, Any]:
+    """Parse ``kind_config``. Missing / ``None`` → ``{}``."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"kind_config must be an object, got {type(raw).__name__}")
+    return dict(raw)
+
+
+def validate_kind_shape(
+    kind: str, script_path: str, kind_config: Dict[str, Any]
+) -> None:
+    """Raise ``ValueError`` unless ``(kind, script_path, kind_config)`` is a
+    structurally valid combination (issue #70's job-kind registry).
+
+    Shared by :func:`job_from_dict`, :func:`update_job`, and the webapp's
+    ``PUT /api/jobs/<id>`` route so the three call sites can't drift.
+
+    * ``kind == ""`` (legacy / unset) — behaviour is byte-for-byte
+      unchanged from before this field existed: ``script_path`` is
+      required and must end ``.py`` or ``.bat``. A job opts into a new
+      kind by setting ``kind`` explicitly; suffix-inference never expands
+      beyond the two suffixes that already worked.
+    * ``kind == "inline-shell"`` — no ``script_path``; ``kind_config``
+      needs a non-empty ``script_body`` and an ``ext`` in
+      ``.ps1``/``.bat``/``.sh``.
+    * ``kind == "http-check"`` — no ``script_path``; ``kind_config`` needs
+      a non-empty ``url``.
+    * Any other explicit kind (``python``/``batch``/``powershell``/
+      ``shell-wsl``) — a file-kind, just needs a non-empty ``script_path``;
+      the kind's own ``validate()``/``build_argv()`` own the rest.
+    """
+    from src.jobs_kinds import KINDS  # local import avoids a cycle
+
+    if kind and kind not in KINDS:
+        raise ValueError(f"unknown kind: {kind!r}")
+
+    if not kind:
+        if not script_path:
+            raise ValueError("script_path is required")
+        suffix = Path(script_path).suffix.lower()
+        if suffix not in (".py", ".bat"):
+            raise ValueError(
+                f"script_path must end .py or .bat, got {script_path!r}"
+            )
+        return
+
+    if kind == "inline-shell":
+        if script_path:
+            raise ValueError("inline-shell jobs must not set script_path")
+        if not str(kind_config.get("script_body") or "").strip():
+            raise ValueError("inline-shell requires kind_config.script_body")
+        if kind_config.get("ext") not in (".ps1", ".bat", ".sh"):
+            raise ValueError(
+                "inline-shell requires kind_config.ext to be one of "
+                ".ps1/.bat/.sh"
+            )
+        return
+
+    if kind == "http-check":
+        if script_path:
+            raise ValueError("http-check jobs must not set script_path")
+        if not str(kind_config.get("url") or "").strip():
+            raise ValueError("http-check requires kind_config.url")
+        return
+
+    # An explicit file-kind (python/batch/powershell/shell-wsl).
+    if not script_path:
+        raise ValueError(f"kind {kind!r} requires script_path")
+
+
 def job_from_dict(raw: Dict[str, Any]) -> Job:
     """Build a :class:`Job` from one JSON row. Raises on invalid input."""
+    kind = str(raw.get("kind") or "").strip()
     script_path = str(raw.get("script_path") or "").strip()
-    if not script_path:
-        raise ValueError("script_path is required")
-    suffix = Path(script_path).suffix.lower()
-    if suffix not in (".py", ".bat"):
-        raise ValueError(
-            f"script_path must end .py or .bat, got {script_path!r}"
-        )
+    kind_config = kind_config_from_dict(raw.get("kind_config"))
+    validate_kind_shape(kind, script_path, kind_config)
     job = Job(
         id=str(raw.get("id") or "").strip(),
         name=str(raw.get("name") or "").strip(),
@@ -588,6 +678,8 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
             if raw.get("paused_schedule") is not None
             else None
         ),
+        kind=kind,
+        kind_config=kind_config,
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -764,17 +856,45 @@ def add_job(cfg: JobsConfig, job: Job) -> Job:
 
 
 def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
-    """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``, ``params``."""
+    """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``, ``params``,
+    ``kind``, ``kind_config``.
+    """
     job = get_by_id(cfg, job_id)
     if job is None:
         return None
     if "name" in fields and fields["name"]:
         job.name = str(fields["name"]).strip()
-    if "script_path" in fields and fields["script_path"]:
-        sp = str(fields["script_path"]).strip()
-        if Path(sp).suffix.lower() not in (".py", ".bat"):
-            raise ValueError(f"script_path must end .py or .bat, got {sp!r}")
-        job.script_path = sp
+    # kind / script_path / kind_config are validated together as the
+    # *effective* post-edit shape (issue #70) — an edit to any one of the
+    # three must still describe a structurally valid job, and validation
+    # runs before any of the three is mutated so a rejected edit leaves the
+    # job untouched.
+    if "kind" in fields or "script_path" in fields or "kind_config" in fields:
+        eff_kind = (
+            str(fields["kind"] or "").strip() if "kind" in fields else job.kind
+        )
+        if "script_path" in fields:
+            # Present-but-empty is meaningful here (clearing script_path
+            # when switching to inline-shell/http-check), not "no change".
+            eff_script_path = str(fields["script_path"] or "").strip()
+        else:
+            eff_script_path = job.script_path
+        eff_kind_config = (
+            kind_config_from_dict(fields["kind_config"])
+            if "kind_config" in fields
+            else job.kind_config
+        )
+        validate_kind_shape(eff_kind, eff_script_path, eff_kind_config)
+        if "kind" in fields:
+            job.kind = eff_kind
+        if "script_path" in fields:
+            # Unlike other fields, an explicit empty string here is
+            # meaningful (clearing script_path when switching to
+            # inline-shell/http-check) rather than "no change" — so this
+            # assigns whenever the key is present, not only when truthy.
+            job.script_path = eff_script_path
+        if "kind_config" in fields:
+            job.kind_config = eff_kind_config
     if "args" in fields:
         job.args = str(fields["args"] or "")
     if "schedule" in fields:
