@@ -23,7 +23,6 @@ export async function fetchSkills() {
   try {
     const body = await jsonApi('/api/life-os/skills');
     state.lifeOsSkills = body.skills || [];
-    state.lifeOsAvailable = !!body.available;
     renderSkills();
   } catch (exc) {
     if (!(exc instanceof AuthRequiredError)) {
