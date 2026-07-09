@@ -21,6 +21,15 @@ _BAT_VENV_RE = re.compile(
     re.IGNORECASE,
 )
 
+# .bat execution always goes through cmd.exe, whose own quote-state
+# re-parsing doesn't honour Python subprocess's argv-quoting convention —
+# a tail value containing one of these can break out of its argv slot and
+# have cmd.exe run additional commands (issue #409). A webhook-triggered
+# job can map an unsanitized payload field straight into a string param
+# value (src.jobs_webhook.resolve_mapping), so this has to be enforced
+# here, not just at the UI layer.
+_CMD_INJECTION_CHARS = frozenset('"&|^<>')
+
 
 class BatchKind:
     name = "batch"
@@ -58,5 +67,12 @@ class BatchKind:
         script = Path(job.script_path)
         if not script.is_file():
             raise OSError(f"BAT file not found: {script}")
+        for value in tail:
+            bad = _CMD_INJECTION_CHARS.intersection(value)
+            if bad:
+                raise ValueError(
+                    "batch job argument contains disallowed character(s) "
+                    f"{''.join(sorted(bad))!r}: {value!r}"
+                )
         argv = ["cmd.exe", "/c", str(script)] + tail
         return argv, script.parent, dict(param_env)

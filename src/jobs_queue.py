@@ -15,9 +15,15 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime
 from threading import Lock
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
+
+try:  # Windows-only interprocess file lock (this repo runs Windows-only).
+    import msvcrt
+except ImportError:  # pragma: no cover - non-Windows fallback
+    msvcrt = None  # type: ignore[assignment]
 
 from src._json_io import atomic_write_json
 from src.jobs_config import Job
@@ -35,7 +41,58 @@ from src.jobs_schtasks import spawn_run_job_detached
 logger = logging.getLogger(__name__)
 
 JOBS_QUEUE_PATH = JOBS_RUNS_DIR / "_queue.json"
+# In-process fast-path (cheap, avoids taking the file lock for same-process
+# contention); the file lock below is what actually serializes the
+# read-modify-write across processes.
 _queue_lock = Lock()
+
+
+@contextmanager
+def _queue_file_lock() -> Iterator[None]:
+    """Hold an exclusive interprocess lock for a queue-file read-modify-write.
+
+    Enqueues can originate from genuinely separate OS processes — the
+    webapp process and a spawned ``run-job`` executor process — so the
+    in-process :data:`_queue_lock` alone doesn't prevent two writers from
+    reading the same pre-write state and one clobbering the other's
+    ``os.replace`` (issue #409). Same ``msvcrt.locking`` byte-range sidecar
+    pattern as ``src.jobs_history._run_json_lock``: locked on a dedicated
+    ``.lock`` file, never on the JSON file itself (which ``os.replace``
+    swaps out from under any held handle).
+
+    Resolves the lock path from the current :data:`JOBS_QUEUE_PATH` value
+    on every call (rather than caching it at import time) so tests that
+    ``monkeypatch`` ``JOBS_QUEUE_PATH`` to a tmp dir redirect the lock file
+    too, instead of touching the real production runs dir.
+    """
+    if msvcrt is None:  # pragma: no cover - non-Windows fallback
+        yield
+        return
+    lock_path = JOBS_QUEUE_PATH.parent / (JOBS_QUEUE_PATH.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_path, "a+b")
+    locked = False
+    try:
+        for attempt in range(3):
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                locked = True
+                break
+            except OSError:
+                if attempt == 2:
+                    logger.warning(
+                        "⚠️  mutex queue lock contended — writing unlocked"
+                    )
+        yield
+    finally:
+        if locked:
+            try:
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+        handle.close()
 
 
 def _read_queue_file() -> Dict[str, List[Dict[str, Any]]]:
@@ -67,13 +124,14 @@ def _write_queue_file(state: Dict[str, List[Dict[str, Any]]]) -> None:
 
 
 def enqueue_mutex(group: str, entry: Dict[str, Any]) -> None:
-    """Append ``entry`` to the FIFO under ``group``. Holds a process lock
-    around the read-modify-write so two route handlers in the same
-    process can't race; the lock is process-local but ``os.replace`` is
-    OS-atomic, so cross-process races at worst dedupe via the spawn-time
-    ``is_running``/``status`` guards (see :func:`drain_mutex_queue`).
+    """Append ``entry`` to the FIFO under ``group``.
+
+    Holds the in-process lock (fast-path for same-process races) nested
+    inside the interprocess file lock (:func:`_queue_file_lock`), which is
+    what actually serializes the read-modify-write across the webapp
+    process and a spawned executor process (issue #409).
     """
-    with _queue_lock:
+    with _queue_lock, _queue_file_lock():
         state = _read_queue_file()
         state.setdefault(group, []).append(entry)
         _write_queue_file(state)
@@ -83,7 +141,7 @@ def pop_mutex_entry(group: str) -> Optional[Dict[str, Any]]:
     """Atomically pop and return the head of ``group``'s queue, or
     ``None`` when the queue is empty / missing.
     """
-    with _queue_lock:
+    with _queue_lock, _queue_file_lock():
         state = _read_queue_file()
         entries = state.get(group) or []
         if not entries:
@@ -96,13 +154,13 @@ def pop_mutex_entry(group: str) -> Optional[Dict[str, Any]]:
 
 def peek_mutex_queue(group: str) -> List[Dict[str, Any]]:
     """Read-only snapshot of ``group``'s queue. Defensive copy."""
-    with _queue_lock:
+    with _queue_lock, _queue_file_lock():
         return list(_read_queue_file().get(group) or [])
 
 
 def remove_queue_entry(group: str, run_id: str) -> bool:
     """Remove a queued entry by ``run_id``. Returns ``True`` when removed."""
-    with _queue_lock:
+    with _queue_lock, _queue_file_lock():
         state = _read_queue_file()
         entries = state.get(group) or []
         keep = [e for e in entries if e.get("run_id") != run_id]

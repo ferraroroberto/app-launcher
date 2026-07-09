@@ -164,7 +164,10 @@ def create_app() -> FastAPI:
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
-        session.write(str(body.get("data") or ""))
+        # write() blocks in real time between chunks over ~512 bytes (see
+        # PtySession.write) — offload it like .stop (issue #253) so a large
+        # paste doesn't stall every other live session's WS pump.
+        await asyncio.to_thread(session.write, str(body.get("data") or ""))
         return {"ok": True}
 
     @app.post("/sessions/{sid}/resize")
@@ -314,7 +317,9 @@ async def _pump_from_client(
             continue
         kind = msg.get("type")
         if kind == "input":
-            session.write(str(msg.get("data") or ""))
+            # Offload for the same reason as POST /sessions/{sid}/input —
+            # write() blocks in real time on large payloads.
+            await asyncio.to_thread(session.write, str(msg.get("data") or ""))
         elif kind == "resize" and role != "pc":
             session.resize(int(msg.get("rows") or 40), int(msg.get("cols") or 120))
 

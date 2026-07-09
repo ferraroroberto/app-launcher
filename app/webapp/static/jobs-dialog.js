@@ -674,9 +674,12 @@ function buildJobPayload() {
     schedule: schedule,
     params: params,
   };
-  // Empty → omit (server stores null). "0" → omit too (treated as off).
-  // Negative or non-numeric → tell the user; the server cap (>86400)
-  // we let the server reject so the limit lives in one place.
+  // Empty → omit on create (server stores null); on edit, send an explicit
+  // null so blanking the field actually clears a previously-set value —
+  // edit_job only patches keys present in the body, so omitting the key
+  // means "leave unchanged," not "clear" (issue #409). "0" → same as empty
+  // (treated as off). Negative or non-numeric → tell the user; the server
+  // cap (>86400) we let the server reject so the limit lives in one place.
   const cdRaw = els.jobCooldownInput ? els.jobCooldownInput.value.trim() : '';
   if (cdRaw) {
     const cd = parseInt(cdRaw, 10);
@@ -684,6 +687,9 @@ function buildJobPayload() {
       throw new Error('Cooldown must be a non-negative integer');
     }
     if (cd > 0) payload.cooldown_seconds = cd;
+    else if (dialogTargetId) payload.cooldown_seconds = null;  // clear on edit
+  } else if (dialogTargetId) {
+    payload.cooldown_seconds = null;  // clear on edit
   }
   // Empty → omit (server treats as null); the server validates the shape
   // (lowercase alnum + _/-, starts with letter, <=32 chars) so the

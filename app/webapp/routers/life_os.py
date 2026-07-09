@@ -44,6 +44,7 @@ from src.webapp_config import WebappConfig, build_claude_flags, build_resume_fla
 
 from app.webapp.routers._helpers import (
     client_ip,
+    maybe_json,
     mirror_url,
     should_mirror_to_pc,
 )
@@ -333,10 +334,7 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
             detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
         )
 
-    body = await request.json() if (
-        request.headers.get("content-type", "").startswith("application/json")
-    ) else {}
-    body = body if isinstance(body, dict) else {}
+    body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
     opus = bool(body.get("opus", False))
 
@@ -379,10 +377,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         )
     skill = _resolve_skill(cfg, skill_id)
 
-    body = await request.json() if (
-        request.headers.get("content-type", "").startswith("application/json")
-    ) else {}
-    body = body if isinstance(body, dict) else {}
+    body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
     opus = bool(body.get("opus", False))
     resume = bool(body.get("resume", False))
@@ -547,10 +542,7 @@ async def rename_file(request: Request) -> Dict[str, Any]:
     a crafted slug can't traverse out). Refuses to clobber an existing file.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    body = await request.json() if (
-        request.headers.get("content-type", "").startswith("application/json")
-    ) else {}
-    body = body if isinstance(body, dict) else {}
+    body = await maybe_json(request)
     rel = str(body.get("path") or "")
     slug = _sanitize_slug(body.get("slug") or "")
 

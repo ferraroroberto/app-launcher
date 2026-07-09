@@ -23,6 +23,8 @@ from src.webapp_config import (
     update_webapp_config,
 )
 
+from app.webapp.routers._helpers import maybe_json
+
 router = APIRouter()
 
 
@@ -37,7 +39,7 @@ async def toggle_favorite(request: Request) -> Dict[str, Any]:
     webapp_config and mirrored back into ``app.state`` so the next ``/api/apps``
     render reflects it without a reload.
     """
-    body = await request.json()
+    body = await maybe_json(request)
     project_id = str(body.get("id") or "").strip()
     if not project_id:
         raise HTTPException(status_code=400, detail="missing project id")

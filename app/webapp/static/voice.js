@@ -166,11 +166,18 @@ export function createDictation(opts) {
       toast('Another dictation is already recording', 'error');
       return;
     }
+    // Claim synchronously, before the first `await` — otherwise two taps
+    // (e.g. dispatch-bar mic then a drawer reply-box mic) can both read
+    // _activeInstance as falsy before either's getUserMedia() promise
+    // settles, and both proceed (issue #409). Released on every early-return
+    // below; the 'stop' listener clears it on the normal path.
+    _activeInstance = api;
     onStart();
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (exc) {
+      _activeInstance = null;
       apiFailToast('Microphone unavailable', exc);
       return;
     }
@@ -180,11 +187,11 @@ export function createDictation(opts) {
         ? new MediaRecorder(stream, { mimeType: mime })
         : new MediaRecorder(stream);
     } catch (exc) {
+      _activeInstance = null;
       stream.getTracks().forEach(function (tr) { tr.stop(); });
       apiFailToast('Recorder failed', exc);
       return;
     }
-    _activeInstance = api;
     _recordChunks = [];
     _chunkQueue = [];
     _voiceSession = null;

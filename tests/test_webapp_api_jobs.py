@@ -666,8 +666,12 @@ class TestPauseResume:
 
 class TestElevatedJobsSkipTaskScheduler:
     """Issue #352: create/edit/pause/resume on an ``elevated: true`` job
-    must never invoke the real schtasks runner — its Task Scheduler entry
-    is externally-managed. The same actions on a plain job still call it.
+    must never *create* a Task Scheduler entry via the real schtasks
+    runner — its ``/RL HIGHEST`` entry is externally-managed. Issue #409:
+    it must still *delete* any stale entry left behind by a prior
+    non-elevated schedule, so the runner is no longer never-called — only
+    never asked to ``/Create``. The same actions on a plain job still call
+    it (including create).
 
     Unlike the other classes here, ``mocked_jobs_side_effects`` is *not*
     used — it stubs ``sync_schtasks``/``delete_schtasks`` wholesale, which
@@ -715,10 +719,15 @@ class TestElevatedJobsSkipTaskScheduler:
         )
         return runner
 
-    def test_elevated_job_never_calls_runner(
+    def test_elevated_job_never_creates_schtasks_entry(
         self, webapp_client, real_schtasks_runner
     ):
         client, _, _ = webapp_client
+
+        def assert_no_create():
+            argvs = [c.args[0] for c in real_schtasks_runner.call_args_list]
+            assert not any(argv[:2] == ["schtasks", "/Create"] for argv in argvs)
+
         resp = client.post(
             "/api/jobs",
             json={
@@ -731,20 +740,20 @@ class TestElevatedJobsSkipTaskScheduler:
         assert resp.status_code == 200
         created = resp.json()["job"]
         assert created["elevated"] is True
-        real_schtasks_runner.assert_not_called()
+        assert_no_create()
 
         job_id = created["id"]
         resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
         assert resp.status_code == 200
-        real_schtasks_runner.assert_not_called()
+        assert_no_create()
 
         resp = client.post(f"/api/jobs/{job_id}/pause")
         assert resp.status_code == 200
-        real_schtasks_runner.assert_not_called()
+        assert_no_create()
 
         resp = client.post(f"/api/jobs/{job_id}/resume")
         assert resp.status_code == 200
-        real_schtasks_runner.assert_not_called()
+        assert_no_create()
 
     def test_non_elevated_job_still_calls_runner(
         self, webapp_client, real_schtasks_runner
