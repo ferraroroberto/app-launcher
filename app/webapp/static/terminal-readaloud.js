@@ -7,7 +7,7 @@
  *
  * The 🔊 button opens a small dropdown with two actions: "Read aloud" (the
  * verbatim path, #190/#203/#206) and "Summarize & read" — condense the reply
- * via the hub's claude_haiku first, for hands-free / driving listening. The
+ * via the hub's claude-haiku-4-5 first, for hands-free / driving listening. The
  * menu only appears when the summarize action is available (hub reachable);
  * otherwise the button keeps its original single-tap "read aloud" behaviour.
  */

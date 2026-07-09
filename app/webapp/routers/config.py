@@ -33,7 +33,7 @@ from src.webapp_config import (
 )
 
 from app.webapp.middleware import terminal_reachability
-from app.webapp.routers._helpers import PROJECT_ROOT, cert_present
+from app.webapp.routers._helpers import PROJECT_ROOT, cert_present, maybe_json
 
 router = APIRouter()
 
@@ -97,7 +97,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
-    body = await request.json()
+    body = await maybe_json(request)
     allowed = {
         "projects_dir",
         "projects_ignore",

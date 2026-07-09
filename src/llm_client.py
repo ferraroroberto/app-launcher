@@ -1,7 +1,7 @@
 """Thin HTTP client for the local-llm-hub chat endpoint (issue #210).
 
 The Coding terminal's read-aloud control offers a "summarize & read" action: the
-agent's last reply is condensed by the hub's cheap ``claude_haiku`` into a
+agent's last reply is condensed by the hub's cheap ``claude-haiku-4-5`` into a
 short, driving-oriented gist (the essence + any decision to take) before it is
 spoken. This module owns the single non-streaming chat call to the hub's
 OpenAI-shape ``POST /v1/chat/completions`` at ``http://127.0.0.1:8000``; the
@@ -23,8 +23,10 @@ from src import _loopback_http
 logger = logging.getLogger(__name__)
 
 # Cheap, fast model for a short summary — the hub routes this to the local
-# Claude Code subscription (see the home-stack local-llm-hub).
-DEFAULT_MODEL = "claude_haiku"
+# Claude Code subscription (see the home-stack local-llm-hub). Must be the
+# hyphenated, versioned hub id (issue #409) — the hub does exact-match
+# routing, no alias table.
+DEFAULT_MODEL = "claude-haiku-4-5"
 
 # Driving-mode system prompt: the listener is at the wheel and needs the gist
 # plus any decision, not a transcript. Kept terse so Haiku returns plain

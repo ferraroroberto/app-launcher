@@ -59,11 +59,14 @@ class TestElevatedRoundTrip:
 
 
 class TestSyncSchtasksSkipsElevated:
-    """Issue #352: sync_schtasks() must never touch Task Scheduler for an
-    elevated job — the delete-then-recreate pattern silently strands the job
-    (delete needs no elevation, recreate does) on every edit/pause/resume."""
+    """Issue #352: sync_schtasks() must never *create* a Task Scheduler entry
+    for an elevated job — the delete-then-recreate pattern silently strands
+    the job (delete needs no elevation, recreate does) on every edit/pause/
+    resume. Issue #409: it must still *delete* any stale entry left behind
+    by a prior non-elevated schedule, otherwise that old un-elevated task
+    keeps firing on its old schedule indefinitely."""
 
-    def test_elevated_job_never_calls_runner(self):
+    def test_elevated_job_deletes_stale_entry_but_never_creates(self):
         job = Job(
             id="hwinfo",
             name="HWiNFO restart",
@@ -75,15 +78,19 @@ class TestSyncSchtasksSkipsElevated:
 
         def runner(argv):
             calls.append(argv)
+            if argv[:2] == ["schtasks", "/Query"]:
+                return _mk_completed(stdout="", rc=0)
             return _mk_completed(rc=0)
 
         created = jobs_mod.sync_schtasks(job, runner=runner)
         assert created == []
-        assert calls == []
+        assert calls  # delete_schtasks still runs (issue #409)
+        assert not any(c[:2] == ["schtasks", "/Create"] for c in calls)
 
     def test_elevated_job_skipped_even_when_paused(self):
         # pause() parks the schedule as "none" before calling sync_schtasks —
-        # the elevated skip must win regardless of the schedule shape.
+        # the create-skip must win regardless of the schedule shape, but the
+        # stale-entry delete still runs either way (issue #409).
         job = Job(
             id="hwinfo",
             name="HWiNFO restart",
@@ -95,11 +102,14 @@ class TestSyncSchtasksSkipsElevated:
 
         def runner(argv):
             calls.append(argv)
+            if argv[:2] == ["schtasks", "/Query"]:
+                return _mk_completed(stdout="", rc=0)
             return _mk_completed(rc=0)
 
         created = jobs_mod.sync_schtasks(job, runner=runner)
         assert created == []
-        assert calls == []
+        assert calls  # delete_schtasks still runs (issue #409)
+        assert not any(c[:2] == ["schtasks", "/Create"] for c in calls)
 
     def test_default_job_still_syncs_normally(self):
         job = Job(

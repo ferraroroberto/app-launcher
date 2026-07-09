@@ -118,6 +118,16 @@ class TestBatchKind:
         problems = BatchKind().validate(_job(script_path=str(bat)))
         assert len(problems) == 1 and problems[0].level == "warning"
 
+    @pytest.mark.parametrize(
+        "bad_value", ['"&calc"', "a|b", "a&b", "a^b", "<a", "a>b"]
+    )
+    def test_build_argv_rejects_cmd_injection_chars(self, tmp_path, bad_value):
+        bat = tmp_path / "demo.bat"
+        bat.write_text("@echo off")
+        job = _job(script_path=str(bat))
+        with pytest.raises(ValueError):
+            BatchKind().build_argv(job, [bad_value], {}, tmp_path)
+
 
 # ------------------------------------------------------------- powershell
 

@@ -317,6 +317,11 @@ def sync_schtasks(
     """
     runner = runner or _run_schtasks
     if job.elevated:
+        # Still delete any stale entry from a prior non-elevated schedule
+        # (issue #409) — otherwise it keeps firing un-elevated on its old
+        # schedule indefinitely. We just never *create* the elevated entry
+        # ourselves (see docstring): that still needs an elevated shell.
+        delete_schtasks(job.id, runner=runner)
         return []
     delete_schtasks(job.id, runner=runner)
     if job.schedule.type == "none":
