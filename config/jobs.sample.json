@@ -67,6 +67,26 @@
       },
       "args": "",
       "schedule": { "type": "hourly", "every": 1 }
+    },
+    {
+      "id": "gh-push-deploy",
+      "name": "Deploy on GitHub push (sample, webhook-target)",
+      "script_path": "E:\\automation\\automation\\deploy\\deploy.py",
+      "args": "",
+      "schedule": { "type": "none" },
+      "params": [
+        { "name": "repo", "kind": "string", "flag": "--repo" },
+        { "name": "branch", "kind": "string", "flag": "--branch" }
+      ],
+      "webhook": {
+        "provider": "github",
+        "secret": "$secret:gh_deploy",
+        "mapping": {
+          "repo": "$.repository.full_name",
+          "branch": "$.ref"
+        },
+        "events": ["push"]
+      }
     }
   ]
 }

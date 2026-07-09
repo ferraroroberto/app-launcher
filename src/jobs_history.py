@@ -145,6 +145,55 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
         atomic_write_json(target, existing)
 
 
+# Header names safe to persist verbatim alongside a webhook run — never the
+# secret or the raw signature value itself (only whether a signature header
+# was present at all).
+_WEBHOOK_SAFE_HEADERS = (
+    "content-type",
+    "x-github-event",
+    "x-github-delivery",
+)
+
+
+def write_webhook_payload(
+    run_dir: Path,
+    *,
+    provider: str,
+    event: Optional[str],
+    headers: Dict[str, str],
+    payload: Any,
+) -> None:
+    """Persist the triggering webhook's payload to ``run_dir / _webhook.json``
+    (issue #73) — so the run record is reproducible, mirroring ``run.json`` /
+    ``output.log``. Written before the child spawns (the executor never
+    touches this file), so it's present even for a run that lands in the
+    mutex queue.
+    """
+    safe_headers = {
+        name: headers[name] for name in _WEBHOOK_SAFE_HEADERS if name in headers
+    }
+    atomic_write_json(
+        run_dir / "_webhook.json",
+        {
+            "provider": provider,
+            "event": event,
+            "headers": safe_headers,
+            "payload": payload,
+        },
+    )
+
+
+def read_webhook_payload(run_dir: Path) -> Optional[Dict[str, Any]]:
+    """Read ``_webhook.json`` from ``run_dir``. Missing/malformed → ``None``."""
+    target = run_dir / "_webhook.json"
+    if not target.is_file():
+        return None
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def read_run(run_dir: Path) -> Dict[str, Any]:
     """Read ``run.json`` from ``run_dir``. Missing file → empty dict."""
     target = run_dir / "run.json"

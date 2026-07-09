@@ -196,6 +196,101 @@ function readParamsEditor() {
   });
 }
 
+// ------------------------------------------------------ webhook editor (#73)
+
+function renderMappingRow(name, path) {
+  const li = document.createElement('li');
+  li.className = 'job-param-row';
+  li.dataset.role = 'job-webhook-mapping-row';
+
+  const head = document.createElement('div');
+  head.className = 'job-param-row-head';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.className = 'input-native';
+  nameInput.placeholder = 'param name';
+  nameInput.dataset.role = 'mapping-name';
+  nameInput.value = name || '';
+  head.appendChild(nameInput);
+
+  const pathInput = document.createElement('input');
+  pathInput.type = 'text';
+  pathInput.className = 'input-native';
+  pathInput.placeholder = '$.repository.full_name';
+  pathInput.dataset.role = 'mapping-path';
+  pathInput.value = path || '';
+  head.appendChild(pathInput);
+
+  const rmBtn = document.createElement('button');
+  rmBtn.type = 'button';
+  rmBtn.className = 'icon-btn danger';
+  rmBtn.innerHTML = icon('x');
+  rmBtn.title = 'Remove mapping';
+  rmBtn.setAttribute('aria-label', 'Remove mapping');
+  rmBtn.addEventListener('click', function () { li.remove(); });
+  head.appendChild(rmBtn);
+
+  li.appendChild(head);
+  return li;
+}
+
+function setMappingEditor(mapping) {
+  if (!els.jobWebhookMappingList) return;
+  els.jobWebhookMappingList.innerHTML = '';
+  Object.keys(mapping || {}).forEach(function (name) {
+    els.jobWebhookMappingList.appendChild(renderMappingRow(name, mapping[name]));
+  });
+}
+
+function readMappingEditor() {
+  if (!els.jobWebhookMappingList) return {};
+  const rows = Array.from(
+    els.jobWebhookMappingList.querySelectorAll('[data-role="job-webhook-mapping-row"]'),
+  );
+  const out = {};
+  rows.forEach(function (row) {
+    const name = (row.querySelector('[data-role="mapping-name"]').value || '').trim();
+    const path = (row.querySelector('[data-role="mapping-path"]').value || '').trim();
+    if (!name && !path) return;  // ignore a fully-blank row
+    if (!name) throw new Error('Webhook mapping: parameter name is required');
+    if (!path) throw new Error('Webhook mapping ' + name + ': JSONPath is required');
+    out[name] = path;
+  });
+  return out;
+}
+
+// Show/hide provider-specific rows: secret applies to every provider;
+// the event allowlist and mapping editor only make sense once a provider
+// is chosen (mapping is meaningless with no payload shape to map from).
+function syncWebhookFields() {
+  if (!els.jobWebhookProvider) return;
+  const provider = els.jobWebhookProvider.value;
+  const enabled = !!provider;
+  if (els.jobWebhookSecretRow) els.jobWebhookSecretRow.hidden = !enabled;
+  if (els.jobWebhookEventsRow) els.jobWebhookEventsRow.hidden = provider !== 'github';
+  if (els.jobWebhookMappingSection) els.jobWebhookMappingSection.hidden = !enabled;
+}
+
+// Returns null when disabled (provider unset) so buildJobPayload can clear
+// the job's webhook on save; otherwise the {provider, secret, mapping,
+// events} object the server expects.
+function buildWebhookField() {
+  const provider = els.jobWebhookProvider ? els.jobWebhookProvider.value : '';
+  if (!provider) return null;
+  const secret = els.jobWebhookSecretInput ? els.jobWebhookSecretInput.value.trim() : '';
+  if (!secret) throw new Error('Webhook: secret is required');
+  const mapping = readMappingEditor();  // may throw
+  const out = { provider: provider, secret: secret, mapping: mapping };
+  if (provider === 'github') {
+    const eventsRaw = els.jobWebhookEventsInput ? els.jobWebhookEventsInput.value.trim() : '';
+    if (eventsRaw) {
+      out.events = eventsRaw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    }
+  }
+  return out;
+}
+
 // ------------------------------------------------------ run-now dialog (#67)
 
 let runDialogJob = null;
@@ -418,6 +513,15 @@ export function openJobDialog(job) {
 
   setParamsEditor(job ? job.params : []);
 
+  const webhook = job && job.webhook;
+  if (els.jobWebhookProvider) els.jobWebhookProvider.value = webhook ? webhook.provider : '';
+  if (els.jobWebhookSecretInput) els.jobWebhookSecretInput.value = webhook ? webhook.secret : '';
+  if (els.jobWebhookEventsInput) {
+    els.jobWebhookEventsInput.value = (webhook && webhook.events) ? webhook.events.join(', ') : '';
+  }
+  setMappingEditor(webhook ? webhook.mapping : {});
+  syncWebhookFields();
+
   clearPreflightProblems();
   if (els.jobDialog.showModal) els.jobDialog.showModal();
 }
@@ -593,6 +697,9 @@ function buildJobPayload() {
   payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
   // Confirm-on-fire (issue #69). Always send so unchecking clears it.
   payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.getAttribute('aria-checked') === 'true');
+  // Webhook trigger (issue #73). null clears an existing config when the
+  // provider is set back to "None" on edit.
+  payload.webhook = buildWebhookField();  // may throw
   return payload;
 }
 
@@ -690,6 +797,16 @@ export function wireJobDialogs() {
     els.jobParamsAdd.addEventListener('click', function () {
       if (els.jobParamsList) {
         els.jobParamsList.appendChild(renderParamRow(null));
+      }
+    });
+  }
+  if (els.jobWebhookProvider) {
+    els.jobWebhookProvider.addEventListener('change', syncWebhookFields);
+  }
+  if (els.jobWebhookMappingAdd) {
+    els.jobWebhookMappingAdd.addEventListener('click', function () {
+      if (els.jobWebhookMappingList) {
+        els.jobWebhookMappingList.appendChild(renderMappingRow(null, null));
       }
     });
   }

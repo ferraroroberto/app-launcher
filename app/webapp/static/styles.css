@@ -1118,6 +1118,32 @@ summary + .opt-group { border-top: 0; }
   word-break: break-all;
   cursor: pointer;
 }
+.jobs-webhook-payload {
+  margin-top: 8px;
+}
+.jobs-webhook-payload > summary {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  cursor: pointer;
+}
+.jobs-webhook-payload > summary .icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+.jobs-webhook-payload-body {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--code-fg);
+  font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  max-height: 30vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 /* ---------- empty / toast ---------- */
 .empty {
@@ -1305,10 +1331,15 @@ summary + .opt-group { border-top: 0; }
 }
 /* Editor dialogs are top-anchored (design modal contract) so a tall form
    never jumps vertically as conditional rows show/hide; the dialog itself
-   scrolls once it outgrows the viewport. */
+   scrolls once it outgrows the viewport. The native <dialog> renders in the
+   browser's top layer (outside .app's own safe-area padding), so its own
+   margin has to add env(safe-area-inset-top) explicitly — otherwise, in an
+   installed iOS PWA where the webview extends under the status bar, a
+   bare 16px anchors the dialog (and its × close button) right under the
+   clock/battery icons, unreachable to tap. */
 .rename-dialog {
-  margin-top: 16px;
-  max-height: calc(100dvh - 32px);
+  margin-top: calc(env(safe-area-inset-top, 0px) + 16px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
   overflow-y: auto;
 }
 /* Modal header (design modal contract): heading-lg title on the left, a

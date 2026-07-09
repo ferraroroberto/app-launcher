@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from src._json_io import atomic_write_json
+from src.jobs_webhook import WebhookConfig, webhook_from_dict
 from src.scanner import slugify
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,11 @@ class Job:
     # requires touching this dataclass again.
     kind: str = ""
     kind_config: Dict[str, Any] = field(default_factory=dict)
+    # Webhook trigger (issue #73): an external service (GitHub, Stripe, a
+    # generic POST) can fire this job over POST /api/jobs/<id>/hook, gated
+    # by the provider signature instead of the bearer token. See
+    # src.jobs_webhook for verification + payload-mapping.
+    webhook: Optional[WebhookConfig] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -478,6 +484,8 @@ class Job:
             payload["kind"] = self.kind
         if self.kind_config:
             payload["kind_config"] = dict(self.kind_config)
+        if self.webhook is not None:
+            payload["webhook"] = self.webhook.to_dict()
         return payload
 
     @property
@@ -680,6 +688,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         ),
         kind=kind,
         kind_config=kind_config,
+        webhook=webhook_from_dict(raw.get("webhook")),
     )
     if not job.id:
         raise ValueError("job id is required")
@@ -911,6 +920,8 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job.visible = bool(fields["visible"])
     if "elevated" in fields:
         job.elevated = bool(fields["elevated"])
+    if "webhook" in fields:
+        job.webhook = webhook_from_dict(fields["webhook"])
     # Snapshot the chain edges so we can revert atomically on cycle.
     prev_success, prev_failure = job.on_success, job.on_failure
     if "on_success" in fields:
