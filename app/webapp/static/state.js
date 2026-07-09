@@ -77,7 +77,6 @@ export const state = {
   // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
-  lifeOsAvailable: false,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   systemMapAvailable: false, // /api/system-map/status → show/hide the section
   systemMapObjectUrl: null,  // object URL of the loaded map blob (revoked on reload)
