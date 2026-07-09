@@ -288,6 +288,11 @@
     <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
     <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
   </symbol>
+  <symbol id="i-webhook" viewBox="0 0 24 24" fill="none">
+    <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2" />
+    <path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06" />
+    <path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8" />
+  </symbol>
   <symbol id="i-circle-check" viewBox="0 0 24 24" fill="none">
     <circle cx="12" cy="12" r="10" />
     <path d="m9 12 2 2 4-4" />
@@ -627,13 +632,13 @@
           </span>
           <span class="summary-actions">
             <div class="jobs-header-actions">
+              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
               <button type="button" id="jobsEditBtn" class="edit-toggle jobs-edit-btn" role="switch" aria-checked="false"
                      aria-label="Edit mode"
                      title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
               </button>
               <button id="jobsSortBtn" type="button" class="ghost-btn jobs-sort-btn" aria-label="Change job sort order"></button>
-              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
@@ -996,6 +1001,41 @@
           </p>
           <ol id="jobParamsList" class="job-params-list"></ol>
           <button type="button" id="jobParamsAdd" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Webhook</h3>
+          <p class="dialog-section-hint">
+            Fire this job from an external service (GitHub, Stripe, or a
+            generic POST) instead of a phone tap — gated by its own
+            signature, never the app's bearer token.
+          </p>
+          <label class="stacked">
+            <span>Provider</span>
+            <select id="jobWebhookProvider" class="input-native">
+              <option value="">None (disabled)</option>
+              <option value="github">GitHub</option>
+              <option value="stripe">Stripe</option>
+              <option value="generic">Generic</option>
+            </select>
+          </label>
+          <label class="stacked" id="jobWebhookSecretRow" hidden>
+            <span>Secret</span>
+            <input id="jobWebhookSecretInput" type="text" class="input-native"
+                   placeholder="literal value or $secret:key">
+          </label>
+          <label class="stacked" id="jobWebhookEventsRow" hidden>
+            <span>Event allowlist (comma-separated; empty = all)</span>
+            <input id="jobWebhookEventsInput" type="text" class="input-native"
+                   placeholder="push, pull_request">
+          </label>
+          <div id="jobWebhookMappingSection" hidden>
+            <p class="dialog-section-hint">
+              Map payload fields (JSONPath, e.g. <code>$.repository.full_name</code>)
+              to this job's parameter names above.
+            </p>
+            <ol id="jobWebhookMappingList" class="job-params-list"></ol>
+            <button type="button" id="jobWebhookMappingAdd" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
+          </div>
         </section>
         <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
         <div class="dialog-actions dialog-actions--stacked">

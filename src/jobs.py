@@ -46,8 +46,10 @@ from src.jobs_history import (
     prune_runs,
     read_output_tail,
     read_run,
+    read_webhook_payload,
     runs_dir,
     write_run_json,
+    write_webhook_payload,
 )
 from src.jobs_queue import (
     JOBS_QUEUE_PATH,
@@ -114,6 +116,8 @@ __all__ = [
     "is_running",
     "prune_runs",
     "read_output_tail",
+    "read_webhook_payload",
+    "write_webhook_payload",
     "enqueue_mutex",
     "pop_mutex_entry",
     "peek_mutex_queue",

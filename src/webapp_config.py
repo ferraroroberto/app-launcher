@@ -24,7 +24,7 @@ import logging
 import os
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from src._json_io import atomic_write_json
@@ -322,6 +322,13 @@ class WebappConfig:
     # "what went wrong" summary prepended to the push body. Default off
     # so the issue lands without a hard dependency on the hub.
     notify_failure_summary: bool = False
+    # --- Webhook-target jobs (issue #73) --------------------------------
+    # In-line analogue of the still-open #72 "per-job secrets" issue: a
+    # job's webhook.secret can be a literal string or a "$secret:<key>"
+    # reference resolved against this dict at fire time (src.jobs_webhook.
+    # resolve_secret), so a rotated secret lives in one gitignored place
+    # instead of jobs.json. Empty by default.
+    webhook_secrets: Dict[str, str] = field(default_factory=dict)
 
 
 def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
@@ -436,6 +443,9 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         notify_on_failure=bool(raw.get("notify_on_failure", False)),
         notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
         notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
+        webhook_secrets={
+            str(k): str(v) for k, v in (raw.get("webhook_secrets") or {}).items()
+        },
     )
     _apply_session_host_override(cfg)
     _validate(cfg)
@@ -489,6 +499,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "notify_on_failure": cfg.notify_on_failure,
         "notify_failure_streak": cfg.notify_failure_streak,
         "notify_failure_summary": cfg.notify_failure_summary,
+        "webhook_secrets": cfg.webhook_secrets,
     }
 
     atomic_write_json(target, payload)

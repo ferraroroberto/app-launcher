@@ -211,6 +211,18 @@ function renderJobRow(job) {
     pills.appendChild(mg);
   }
 
+  if (job.webhook) {
+    // Webhook-target job (issue #73) — fireable by an external service
+    // (GitHub/Stripe/generic) over POST /api/jobs/<id>/hook, gated by its
+    // own signature rather than the app's bearer token.
+    const wh = document.createElement('span');
+    wh.className = 'kind-pill job-webhook-pill';
+    wh.innerHTML = icon('webhook') + ' ' + job.webhook.provider;
+    wh.title = 'Webhook trigger (' + job.webhook.provider + ') — ' +
+      'POST /api/jobs/' + job.id + '/hook';
+    pills.appendChild(wh);
+  }
+
   info.appendChild(pills);
 
   // Row 3: load (duration percentiles) + sparkline. Same idea — its own
@@ -507,6 +519,21 @@ function renderHistoryLi(job) {
   tail.addEventListener('click', function () { copyOutputTail(tail); });
   body.appendChild(tail);
 
+  // Raw webhook payload (issue #73) — collapsed by default, only shown
+  // (and populated) for a run that was actually webhook-triggered.
+  const webhookDetails = document.createElement('details');
+  webhookDetails.className = 'jobs-webhook-payload';
+  webhookDetails.dataset.role = 'webhook-payload-details';
+  webhookDetails.hidden = true;
+  const webhookSummary = document.createElement('summary');
+  webhookSummary.innerHTML = icon('webhook') + ' Webhook payload';
+  webhookDetails.appendChild(webhookSummary);
+  const webhookPre = document.createElement('pre');
+  webhookPre.className = 'jobs-webhook-payload-body';
+  webhookPre.dataset.role = 'webhook-payload-body';
+  webhookDetails.appendChild(webhookPre);
+  body.appendChild(webhookDetails);
+
   li.appendChild(body);
   return li;
 }
@@ -642,6 +669,14 @@ function writeOutput(jobId, runId, text, status, extras) {
   } else {
     tail.scrollTop = prevScrollTop;
   }
+
+  const webhookDetails = panel.querySelector('[data-role="webhook-payload-details"]');
+  const webhookPre = panel.querySelector('[data-role="webhook-payload-body"]');
+  if (webhookDetails && webhookPre) {
+    const wh = extras && extras.webhook_payload;
+    webhookDetails.hidden = !wh;
+    webhookPre.textContent = wh ? JSON.stringify(wh, null, 2) : '';
+  }
 }
 
 // Tap-to-copy (issue #97). One tap on the run's output pane drops the whole
@@ -750,6 +785,7 @@ async function refreshOutputForRun(jobId, runId) {
     cpu_seconds: record.cpu_seconds,
     peak_rss_bytes: record.peak_rss_bytes,
     duration_seconds: record.duration_seconds,
+    webhook_payload: record.webhook_payload,
   });
 }
 

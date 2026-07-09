@@ -314,6 +314,117 @@ Bool params require either `flag` or `env` — they have no useful positional en
 
 A run record persists the typed payload as `params: {name: value}`. Each row in the runs list grows a small ↻ button that opens the run dialog **pre-filled** with that record's values. If the job's schema has changed since the run (a param was removed or renamed), the dialog drops the unknown keys and surfaces a yellow note before letting the user submit.
 
+## Webhook-target jobs (issue #73)
+
+Phone tap, Stream Deck, and schedule are all *pull* triggers — something the
+user owns decides to fire the job. A webhook is the *push* direction: an
+external service (GitHub, Stripe, IFTTT/Zapier/a custom script) POSTs
+straight into `POST /api/jobs/<id>/hook` and the job fires, with the payload
+turned into the same typed `params` a manual run would supply.
+
+### Security boundary — no bearer, ever
+
+`/hook` sits **outside** the bearer-token gate entirely (`app/webapp/middleware.py`'s
+`_is_webhook_hook_path`) — an external service can't be handed the SPA's
+all-powerful bearer, and baking it into a third-party integration's URL store
+would be the same blast radius as leaking the token outright. Instead the
+route trusts **only** the job's own provider-specific signature:
+
+- **`github`** — `X-Hub-Signature-256: sha256=<hex>`, an HMAC-SHA256 of the
+  raw request body, `hmac.compare_digest`-checked.
+- **`stripe`** — `Stripe-Signature: t=<epoch>,v1=<hex>`, HMAC-SHA256 of
+  `f"{t}.{body}"`; `t` must be within 300 s (Stripe's own SDK default) of
+  now, rejecting a replayed-but-otherwise-valid signature.
+- **`generic`** — `X-Webhook-Token: <secret>`, a plain constant-time
+  compare. The catch-all for IFTTT, Zapier, or any custom script.
+
+A request that fails signature verification (or names an unknown/missing
+provider secret) gets a `401` and **writes no run record at all** — nothing
+touches disk until the signature is verified. This means the `/hook` URL
+itself is safe to hand to the external service in plaintext.
+
+### Job shape
+
+```json
+{
+  "id": "gh-push-deploy",
+  "name": "Deploy on GitHub push",
+  "script_path": "E:\\automation\\automation\\deploy\\deploy.py",
+  "params": [
+    { "name": "repo", "kind": "string", "flag": "--repo" },
+    { "name": "branch", "kind": "string", "flag": "--branch" }
+  ],
+  "webhook": {
+    "provider": "github",
+    "secret": "$secret:gh_deploy",
+    "mapping": {
+      "repo": "$.repository.full_name",
+      "branch": "$.ref"
+    },
+    "events": ["push"]
+  }
+}
+```
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `provider` | `"github"` \| `"stripe"` \| `"generic"` | Selects the verification scheme above |
+| `secret` | string | A literal value, or `$secret:<key>` resolved against `webapp_config.json`'s `webhook_secrets` at fire time (see below) |
+| `mapping` | `{param_name: jsonpath}` | Keys **must match a name in this job's `params`** — resolution reuses the exact same `compose_argv` composition a manual run goes through, so there is no separate argv-building logic for a webhook fire |
+| `events` | list of strings, GitHub only | `X-GitHub-Event` allowlist; empty (or omitted) accepts every event. A filtered-out event returns `204` with no run record |
+
+### Payload → params mapping
+
+`mapping` values are a small JSONPath-lite dot-path: `$.repository.full_name`,
+with optional list indices (`$.commits[0].id`). A path that doesn't resolve
+against a *particular* event's shape is silently omitted from the mapped
+params — not fatal — so one job's mapping can list fields from several event
+types without erroring on whichever one didn't fire. A mapping key that
+doesn't match any declared `Param` name **does** fail (`400`, no run record)
+— the same "unknown param" rejection a manual run's bad payload gets.
+
+Two worked examples:
+
+- **GitHub `push`** — `{"repo": "$.repository.full_name", "branch": "$.ref"}`
+  against a standard push payload.
+- **Stripe `payment_intent.succeeded`** — `{"intent_id": "$.data.object.id"}`
+  pulls the PaymentIntent id out of the event envelope.
+
+### Secrets — in-line analogue of issue #72
+
+The fuller "per-job secrets / scoped bearer tokens / run-record provenance"
+issue (#72) is still open. Rather than block this issue on it, `webhook.secret`
+gets a small in-line analogue: `config/webapp_config.json` carries a
+`webhook_secrets: {key: value}` dict (gitignored, alongside the existing
+`pushover_*` secrets), and `$secret:<key>` in a job's `webhook.secret` resolves
+against it at fire time (`src.jobs_webhook.resolve_secret`). A literal string
+works too — `jobs.json` is already gitignored — but `$secret:` keeps the
+secret in one place instead of duplicated across every job that shares it, and
+lets it rotate without touching `jobs.json`. `run.json` also gains
+`trigger_source: "webhook:<provider>"` on a webhook-triggered run — the
+provenance signal #72 will eventually generalise across every trigger path.
+
+### Run record
+
+A verified webhook fire dispatches through the same admission path (cooldown
++ mutex-group check) as a manual run, then writes the run exactly like any
+other: `trigger: "webhook"`, `trigger_source: "webhook:<provider>"`, and the
+mapped `params`. The raw payload is additionally persisted to
+`_webhook.json` in the run's own directory — provider, the `X-GitHub-Event` /
+`content-type` headers (never the signature or secret), and the parsed JSON
+body — so the run is fully reproducible. `GET /api/jobs/<id>/runs/<run_id>`
+surfaces it as `webhook_payload`; the Jobs-tab UI renders it in a collapsed
+"🪝 Webhook payload" `<details>` under the output pane for the selected run.
+
+### UI
+
+A job with `webhook` configured shows a `🪝 <provider>` chip next to its
+schedule chip. The job editor's **Webhook** section has a provider picker
+(none/GitHub/Stripe/generic), a secret field, a GitHub-only event-allowlist
+field, and a mapping editor (param-name / JSONPath row pairs, `+ Add mapping`)
+— structurally identical to the Parameters editor just above it. Switching
+the provider back to "None" and saving clears the job's webhook.
+
 ## Task Scheduler — `\AppLauncher\` namespace
 
 All Jobs-tab schtasks entries live under the `\AppLauncher\` Task Scheduler folder. The naming rule:
@@ -342,12 +453,14 @@ schtasks /Query /FO CSV /NH | findstr "AppLauncher"
 
 ## Run history — `webapp/jobs/<job_id>/<run_id>/`
 
-Every run produces a directory with two files:
+Every run produces a directory with two files (three for a webhook-triggered
+run):
 
 | File | Content |
 | --- | --- |
 | `run.json` | One run's full metadata (schema below) |
 | `output.log` | Combined stdout+stderr, raw bytes |
+| `_webhook.json` | The triggering webhook's payload + a safe header subset (webhook-triggered runs only — see "Webhook-target jobs" below) |
 
 `run_id` is a sortable timestamp (`YYYYmmddTHHMMSS`); collisions within the same second append `-2`, `-3`, … Pruned to the most recent **20 runs per job** by the executor at the end of each run, so the directory never grows unbounded.
 
@@ -360,7 +473,8 @@ Every run produces a directory with two files:
 | `run_id` | str | webapp + executor | Sortable timestamp; matches the dir name |
 | `job_id` | str | both | FK to `config/jobs.json` |
 | `name` | str | both | Job name at the time of the run (denormalised on purpose — survives renames) |
-| `trigger` | `"manual"` \| `"scheduled"` | both | Where the run was fired from |
+| `trigger` | `"manual"` \| `"scheduled"` \| `"webhook"` \| `"chain:<upstream_id>"` | both | Where the run was fired from |
+| `trigger_source` | str, e.g. `"webhook:github"` | webapp | Only present on a webhook fire (issue #73) — the in-line analogue of the fuller provenance issue #72 will introduce |
 | `script_path` | str | both | Resolved at spawn time |
 | `args` | str | both | Whitespace-split into argv |
 | `params` | object | webapp + executor | Typed-parameter payload (issue #67); only written when non-empty |
@@ -434,8 +548,9 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 | `PUT /api/jobs/<id>` | bearer-token | Edit (re-syncs schtasks) |
 | `DELETE /api/jobs/<id>` | bearer-token | Remove + delete schtasks entries |
 | `POST /api/jobs/<id>/run` | bearer-token | Trigger now (returns `run_id`, spawns executor detached) |
+| `POST /api/jobs/<id>/hook` | **provider signature only — never the bearer** | Trigger from an external service; see "Webhook-target jobs" below |
 | `GET /api/jobs/<id>/runs` | bearer-token | Newest-first run history |
-| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) |
+| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) + `webhook_payload` (the run's `_webhook.json`, when present) |
 | `POST /api/jobs/<id>/runs/<run_id>/kill` | bearer-token | Terminate a stuck run's process tree, finalise `run.json` (`status: failed`, `exit_code: -9`, `killed: true`) |
 
 ## Operational signal (issue #66)
@@ -537,6 +652,7 @@ The notifier path is wrapped in a single `try`/`except` — credentials misconfi
 Jobs sit on the **Apps tab side** of the launcher's security model — not the interactive-terminal side:
 
 - `POST /api/jobs/<id>/run` is bearer-token gated and reachable over the Cloudflare tunnel. That is the whole point — a Stream Deck button hits the same HTTPS endpoint the phone uses.
+- `POST /api/jobs/<id>/hook` (issue #73) is the one exception — it is exempt from the bearer gate entirely and authenticates itself via the job's own provider signature instead. See "Webhook-target jobs" above.
 - There is **no** interactive stream to drive, so the Tailscale-only + passkey gate that the live terminal requires does not apply.
 - The `id` is checked against the registry on every call — the launcher cannot be coerced into running an arbitrary script path. Mutating `config/jobs.json` is the only way to register a new target.
 

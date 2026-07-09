@@ -32,6 +32,15 @@ LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 AUTH_EXEMPT_PREFIXES = ("/static/", "/healthz")
 AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/api/login"})
 
+
+def _is_webhook_hook_path(path: str) -> bool:
+    """``POST /api/jobs/<id>/hook`` (issue #73) authenticates itself via the
+    job's provider-specific signature, never the bearer token — an external
+    service (GitHub, Stripe, …) can't carry it, and the whole point is a URL
+    that's safe to hand to a third party in plaintext.
+    """
+    return path.startswith("/api/jobs/") and path.endswith("/hook")
+
 # Tailscale hands every node an address in the CGNAT range. The
 # interactive terminal is gated to this range (plus loopback and an
 # optional user allowlist) and is refused outright over the public tunnel.
@@ -210,6 +219,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             gate_err = terminal_http_gate(request)
             if gate_err is not None:
                 return gate_err
+
+        if _is_webhook_hook_path(path):
+            return await call_next(request)
 
         token = (self._get_token() or "").strip()
         if not token or is_loopback:

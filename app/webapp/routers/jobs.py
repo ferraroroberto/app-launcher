@@ -5,8 +5,9 @@ The Jobs tab's API mirrors the Apps tab's shape (see
 ``maybe_json`` body parsing, same ``HTTPException`` error model.
 
 Trigger funnel: every run — manual (phone tap / Stream Deck via
-``POST /api/jobs/<id>/run``) and scheduled (Task Scheduler) — goes
-through ``launcher.py run-job <id>``. The route pre-creates the run
+``POST /api/jobs/<id>/run``), webhook (an external service via
+``POST /api/jobs/<id>/hook``, issue #73), and scheduled (Task Scheduler) —
+goes through ``launcher.py run-job <id>``. The route pre-creates the run
 directory so it can return the new ``run_id`` immediately, then spawns
 the executor detached.
 """
@@ -14,12 +15,14 @@ the executor detached.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from src import jobs as jobs_mod
 from src.diagnostics import kill_process_tree
@@ -27,6 +30,7 @@ from src.jobs_argv import compose_argv
 from src.jobs_preflight import has_errors, preflight
 from src.jobs_config import (
     Job,
+    JobsConfig,
     Schedule,
     add_job,
     get_by_id,
@@ -41,6 +45,12 @@ from src.jobs_config import (
     schedule_from_dict,
     update_job,
     validate_kind_shape,
+)
+from src.jobs_webhook import (
+    event_allowed,
+    resolve_mapping,
+    resolve_secret,
+    verify_webhook,
 )
 
 from app.webapp.routers._helpers import maybe_json
@@ -250,6 +260,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "elevated": body.get("elevated"),
                 "kind": body.get("kind"),
                 "kind_config": body.get("kind_config"),
+                "webhook": body.get("webhook"),
             }
         )
     except ValueError as exc:
@@ -311,6 +322,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["kind"] = body["kind"]
     if "kind_config" in body:
         patch["kind_config"] = body["kind_config"]
+    if "webhook" in body:
+        patch["webhook"] = body["webhook"]
 
     # Save-time pre-flight (issue #69) on the *effective* post-edit job.
     # Synthesize a candidate from the existing job overlaid with this patch
@@ -495,6 +508,125 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
     return {"run_id": run_dir.name, "job_id": job.id, "dry_run": True}
 
 
+async def _admit_and_spawn(
+    job: Job,
+    cfg: JobsConfig,
+    raw_params: Dict[str, Any],
+    trigger: str,
+    *,
+    extra_run_meta: Optional[Dict[str, Any]] = None,
+    on_run_dir: Optional[Callable[[Any], None]] = None,
+) -> Dict[str, Any]:
+    """Cooldown + mutex admission, run_dir creation, spawn.
+
+    The shared tail of every *real* (non-dry-run) fire — reused by the
+    manual ``POST /run`` route (``trigger="manual"``) and the webhook
+    ``POST /hook`` route (``trigger="webhook"``, ``extra_run_meta`` carrying
+    ``trigger_source``) so cooldown/mutex/spawn logic lives in exactly one
+    place. ``on_run_dir`` fires right after the run directory is created
+    (before the queued-vs-spawn branch) so a caller can persist extra files
+    (e.g. ``_webhook.json``) alongside ``run.json`` regardless of which
+    branch this fire takes.
+    """
+    # Cooldown admission gate. Runs before we pre-create the run dir so a
+    # cooled-down mash-fire produces no on-disk record (the dir would
+    # otherwise be orphaned with status=pending). See jobs.cooldown_check
+    # for the anchor semantics — skipped records do not extend the window.
+    cooldown_state = await asyncio.to_thread(jobs_mod.cooldown_check, job)
+    if cooldown_state is not None:
+        remaining, cooldown_seconds, _anchor_id = cooldown_state
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "detail": "cooldown",
+                "retry_after_seconds": remaining,
+                "cooldown_seconds": cooldown_seconds,
+            },
+            headers={"Retry-After": str(remaining)},
+        )
+
+    # Mutex-group admission. If another job in the same group is running
+    # or pending, this fire is QUEUED (not rejected — that's cooldown's
+    # job). We still pre-create the run dir so the caller gets a real
+    # run_id back; the executor that finalises the in-flight head will
+    # pop this entry from the queue and spawn it detached. See
+    # src.jobs.drain_mutex_queue for the spawn-time guard.
+    holder = await asyncio.to_thread(
+        jobs_mod.mutex_collision, cfg.jobs, job
+    )
+
+    run_dir = await asyncio.to_thread(
+        jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
+    )
+    if on_run_dir is not None:
+        on_run_dir(run_dir)
+    started_at = datetime.now().isoformat(timespec="seconds")
+    base_meta: Dict[str, Any] = dict(
+        run_id=run_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger=trigger,
+        script_path=job.script_path,
+        args=job.args,
+        started_at=started_at,
+    )
+    if raw_params:
+        base_meta["params"] = raw_params
+    if extra_run_meta:
+        base_meta.update(extra_run_meta)
+
+    if holder is not None:
+        # Queue it. status=queued does not feed stats / streaks; the
+        # finalising executor of the holder job will flip it to running.
+        base_meta["status"] = "queued"
+        base_meta["mutex_group"] = job.mutex_group
+        base_meta["mutex_blocked_by"] = holder.id
+        jobs_mod.write_run_json(run_dir, **base_meta)
+        await asyncio.to_thread(
+            jobs_mod.enqueue_mutex,
+            job.mutex_group,
+            {
+                "job_id": job.id,
+                "run_id": run_dir.name,
+                "trigger": trigger,
+                "params": raw_params or None,
+            },
+        )
+        logger.info(
+            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
+            f"(mutex_group={job.mutex_group!r})"
+        )
+        return {
+            "run_id": run_dir.name,
+            "job_id": job.id,
+            "status": "queued",
+            "mutex_group": job.mutex_group,
+            "mutex_blocked_by": holder.id,
+        }
+
+    base_meta["status"] = "pending"
+    jobs_mod.write_run_json(run_dir, **base_meta)
+    try:
+        await asyncio.to_thread(
+            jobs_mod.spawn_run_job_detached,
+            job.id,
+            run_dir.name,
+            trigger,
+            raw_params or None,
+        )
+    except OSError as exc:
+        # Spawn failed → record the failure on the run we just created
+        # so the UI surfaces it instead of a stuck "pending".
+        jobs_mod.write_run_json(
+            run_dir,
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+            exit_code=-1,
+            status="failed",
+        )
+        raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
+    return {"run_id": run_dir.name, "job_id": job.id}
+
+
 @router.post("/api/jobs/{job_id}/run")
 async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     cfg = load_jobs()
@@ -545,99 +677,73 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     if dry_mode == "execute":
         return await _dry_run_execute(job, raw_params)
 
-    # Cooldown admission gate. Runs before we pre-create the run dir so a
-    # cooled-down mash-fire produces no on-disk record (the dir would
-    # otherwise be orphaned with status=pending). See jobs.cooldown_check
-    # for the anchor semantics — skipped records do not extend the window.
-    cooldown_state = await asyncio.to_thread(jobs_mod.cooldown_check, job)
-    if cooldown_state is not None:
-        remaining, cooldown_seconds, _anchor_id = cooldown_state
+    return await _admit_and_spawn(job, cfg, raw_params, "manual")
+
+
+# ----------------------------------------------------------- webhook trigger
+
+
+@router.post("/api/jobs/{job_id}/hook")
+async def run_job_webhook(job_id: str, request: Request) -> Response:
+    """Fire a job from an external service (issue #73).
+
+    Authenticated by the job's own ``webhook.provider`` signature — never
+    the bearer token (see ``app.webapp.middleware._is_webhook_hook_path``),
+    so this URL is safe to hand to a third party in plaintext. Anything
+    that fails signature/shape verification writes **no run record** — only
+    a verified fire ever touches disk.
+    """
+    cfg = load_jobs()
+    job = get_by_id(cfg, job_id)
+    if job is None or job.webhook is None:
         raise HTTPException(
-            status_code=429,
-            detail={
-                "detail": "cooldown",
-                "retry_after_seconds": remaining,
-                "cooldown_seconds": cooldown_seconds,
-            },
-            headers={"Retry-After": str(remaining)},
+            status_code=404, detail="unknown job or no webhook configured"
         )
 
-    # Mutex-group admission. If another job in the same group is running
-    # or pending, this fire is QUEUED (not rejected — that's cooldown's
-    # job). We still pre-create the run dir so the caller gets a real
-    # run_id back; the executor that finalises the in-flight head will
-    # pop this entry from the queue and spawn it detached. See
-    # src.jobs.drain_mutex_queue for the spawn-time guard.
-    holder = await asyncio.to_thread(
-        jobs_mod.mutex_collision, cfg.jobs, job
-    )
-
-    run_dir = await asyncio.to_thread(
-        jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
-    )
-    started_at = datetime.now().isoformat(timespec="seconds")
-    base_meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger="manual",
-        script_path=job.script_path,
-        args=job.args,
-        started_at=started_at,
-    )
-    if raw_params:
-        base_meta["params"] = raw_params
-
-    if holder is not None:
-        # Queue it. status=queued does not feed stats / streaks; the
-        # finalising executor of the holder job will flip it to running.
-        base_meta["status"] = "queued"
-        base_meta["mutex_group"] = job.mutex_group
-        base_meta["mutex_blocked_by"] = holder.id
-        jobs_mod.write_run_json(run_dir, **base_meta)
-        await asyncio.to_thread(
-            jobs_mod.enqueue_mutex,
-            job.mutex_group,
-            {
-                "job_id": job.id,
-                "run_id": run_dir.name,
-                "trigger": "manual",
-                "params": raw_params or None,
-            },
-        )
-        logger.info(
-            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
-            f"(mutex_group={job.mutex_group!r})"
-        )
-        return {
-            "run_id": run_dir.name,
-            "job_id": job.id,
-            "status": "queued",
-            "mutex_group": job.mutex_group,
-            "mutex_blocked_by": holder.id,
-        }
-
-    base_meta["status"] = "pending"
-    jobs_mod.write_run_json(run_dir, **base_meta)
+    body = await request.body()
     try:
-        await asyncio.to_thread(
-            jobs_mod.spawn_run_job_detached,
-            job.id,
-            run_dir.name,
-            "manual",
-            raw_params or None,
-        )
-    except OSError as exc:
-        # Spawn failed → record the failure on the run we just created
-        # so the UI surfaces it instead of a stuck "pending".
-        jobs_mod.write_run_json(
+        secret = resolve_secret(job.webhook.secret, request.app.state.webapp_config)
+    except ValueError:
+        logger.warning(f"⚠️  webhook {job_id}: secret reference did not resolve")
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    if not verify_webhook(job.webhook, secret, body, headers):
+        raise HTTPException(status_code=401, detail="invalid signature")
+
+    event_header = headers.get("x-github-event")
+    if not event_allowed(job.webhook, event_header):
+        return Response(status_code=204)
+
+    try:
+        payload = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        payload = {}
+
+    mapped = resolve_mapping(payload, job.webhook.mapping)
+    try:
+        compose_argv(job, mapped)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    def _persist_webhook_payload(run_dir: Any) -> None:
+        jobs_mod.write_webhook_payload(
             run_dir,
-            finished_at=datetime.now().isoformat(timespec="seconds"),
-            exit_code=-1,
-            status="failed",
+            provider=job.webhook.provider,
+            event=event_header,
+            headers=headers,
+            payload=payload,
         )
-        raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
-    return {"run_id": run_dir.name, "job_id": job.id}
+
+    result = await _admit_and_spawn(
+        job,
+        cfg,
+        mapped,
+        "webhook",
+        extra_run_meta={"trigger_source": f"webhook:{job.webhook.provider}"},
+        on_run_dir=_persist_webhook_payload,
+    )
+    return JSONResponse(content=result)
 
 
 # ----------------------------------------------------------- kill stuck run
@@ -721,5 +827,10 @@ async def get_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     record.setdefault("run_id", run_id)
     record["output_tail"] = await asyncio.to_thread(
         jobs_mod.read_output_tail, run_dir
+    )
+    # Raw webhook payload (issue #73), when this run was webhook-triggered —
+    # surfaced alongside the output tail for the run's expanded panel.
+    record["webhook_payload"] = await asyncio.to_thread(
+        jobs_mod.read_webhook_payload, run_dir
     )
     return {"run": record}
