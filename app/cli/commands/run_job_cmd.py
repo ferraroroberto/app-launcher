@@ -10,21 +10,16 @@ Every Jobs-tab trigger funnels through this one entry point:
 Both paths produce identical run records under ``webapp/jobs/<id>/<rid>/``
 — ``run.json`` (metadata) plus ``output.log`` (combined stdout+stderr).
 
-Target dispatch:
-
-* ``.py`` — walks up from ``script_path.parent`` looking for a sibling
-  ``.venv\\Scripts\\python.exe``; falls back to ``sys.executable``. The
-  subprocess runs with ``cwd = <project root>`` and ``PYTHONPATH =
-  <project root>`` so the script can ``from project.module import …``
-  exactly as it would when invoked from a CMD window at the root (see
-  the global CLAUDE.md "PYTHONPATH for out-of-tree Python scripts"
-  gotcha — Task Scheduler does not inherit user env by default).
-* ``.bat`` — invoked via ``cmd.exe /c <script_path> <args>`` with
-  ``cwd = script_path.parent``.
+Target dispatch (issue #70) goes through the job-kind registry in
+:mod:`src.jobs_kinds` — one module per kind (``python``, ``batch``,
+``powershell``, ``shell-wsl``, ``inline-shell``, ``http-check``), each
+contributing a ``build_argv()``. ``build_invocation`` here just resolves
+which kind a job is (:func:`src.jobs_kinds.resolve_kind`) and delegates;
+see that package's docstring for the dispatch shape each kind produces.
 
 ``args`` is split on whitespace before being appended to argv. Jobs that
 need arguments containing spaces should put the argument inside the
-``.bat`` / ``.py`` wrapper itself rather than relying on shell quoting.
+script/wrapper itself rather than relying on shell quoting.
 """
 
 from __future__ import annotations
@@ -41,6 +36,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src import jobs_kinds
 from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
@@ -53,7 +49,6 @@ from src.jobs import (
     new_run_id,
     prune_runs,
     read_output_tail,
-    resolve_venv_python,
     runs_dir,
     write_run_json,
 )
@@ -76,21 +71,24 @@ _RESOURCE_SAMPLE_INTERVAL_SECONDS = 1.0
 
 
 def build_invocation(
-    job: Job, values: Optional[Dict[str, Any]] = None
+    job: Job, values: Optional[Dict[str, Any]] = None, run_dir: Optional[Path] = None
 ) -> Tuple[List[str], Path, Dict[str, str]]:
-    """Resolve how to spawn ``job``.
+    """Resolve how to spawn ``job`` by dispatching through the job-kind
+    registry (:mod:`src.jobs_kinds`, issue #70).
 
     Returns ``(argv, cwd, extra_env)``:
 
     * ``argv`` — list passed to :func:`subprocess.Popen`.
     * ``cwd`` — working directory for the spawn.
-    * ``extra_env`` — env-var overlay merged onto ``os.environ``. For
-      ``.py`` targets includes ``PYTHONPATH = <project root>``; both
-      target kinds also carry any ``env``-mapped typed params (issue #67).
+    * ``extra_env`` — env-var overlay merged onto ``os.environ``. Every
+      kind carries any ``env``-mapped typed params (issue #67); ``python``
+      additionally sets ``PYTHONPATH = <project root>``.
 
     ``values`` is the typed-parameter payload (issue #67). When empty,
     composition collapses to today's behaviour: argv = [script] +
-    job.args.split() with no extra env.
+    job.args.split() with no extra env. ``run_dir`` is the run's own
+    directory — required so ``inline-shell`` can write its temp script
+    there; every other kind ignores it.
     """
     # Typed parameters compose first; the legacy free-form ``args`` field
     # is whitespace-split and appended as a tail, so parameter-less jobs
@@ -99,34 +97,13 @@ def build_invocation(
     legacy_args = job.args.split() if job.args else []
     tail = param_argv + legacy_args
 
-    script = Path(job.script_path)
-    suffix = script.suffix.lower()
-
-    if suffix == ".bat":
-        if not script.is_file():
-            raise OSError(f"BAT file not found: {script}")
-        argv = ["cmd.exe", "/c", str(script)] + tail
-        return argv, script.parent, dict(param_env)
-
-    if suffix == ".py":
-        if not script.is_file():
-            raise OSError(f"Python script not found: {script}")
-        venv_py = resolve_venv_python(script)
-        if venv_py is not None:
-            python_exe = str(venv_py)
-            # <root>/.venv/Scripts/python.exe → <root>
-            cwd = venv_py.parent.parent.parent
-        else:
-            python_exe = sys.executable
-            cwd = script.parent
-        argv = [python_exe, str(script)] + tail
-        extra_env: Dict[str, str] = {"PYTHONPATH": str(cwd)}
-        # User-declared env-mapped params override PYTHONPATH only if the
-        # user explicitly named the collision — that is their call.
-        extra_env.update(param_env)
-        return argv, cwd, extra_env
-
-    raise ValueError(f"unsupported script_path suffix: {suffix!r}")
+    kind_name = jobs_kinds.resolve_kind(job)
+    kind_impl = jobs_kinds.KINDS.get(kind_name)
+    if kind_impl is None:
+        raise ValueError(f"unsupported job kind: {kind_name!r} (job {job.id})")
+    if run_dir is None:
+        raise ValueError("run_dir is required to build a job invocation")
+    return kind_impl.build_argv(job, tail, param_env, run_dir)
 
 
 def _tee_pipe_to_file_and_console(pipe: Any, fh: Any) -> None:
@@ -387,20 +364,47 @@ class RunJobCommand(BaseCommand):
                 )
                 return 0
 
-        try:
-            argv, cwd, extra_env = build_invocation(job, values)
-        except (OSError, ValueError) as exc:
-            logger.error(f"❌ cannot run job {job.id}: {exc}")
-            return 2
-
         # Webapp-spawned runs pre-create the run dir so the API can
         # return the run id immediately. Scheduled runs (Task Scheduler)
-        # arrive without --run-id and create a fresh one.
+        # arrive without --run-id and create a fresh one. This has to
+        # happen before build_invocation: the inline-shell kind (issue #70)
+        # writes its temp script into run_dir so it's preserved alongside
+        # run.json / output.log.
         if args.run_id:
             run_dir = runs_dir(job.id) / args.run_id
             run_dir.mkdir(parents=True, exist_ok=True)
         else:
             run_dir = new_run_dir(job.id, new_run_id())
+
+        try:
+            argv, cwd, extra_env = build_invocation(job, values, run_dir)
+        except (OSError, ValueError) as exc:
+            logger.error(f"❌ cannot run job {job.id}: {exc}")
+            # run_dir already exists at this point (created above so
+            # inline-shell can write its temp script into it) — leaving it
+            # empty on a build failure would silently strand a directory
+            # on every fire of a misconfigured job. Finalise it as a
+            # visible failed record instead, matching the Popen-spawn
+            # failure path further down.
+            stamped = datetime.now().isoformat(timespec="seconds")
+            write_run_json(
+                run_dir,
+                run_id=run_dir.name,
+                job_id=job.id,
+                name=job.name,
+                trigger=args.trigger,
+                script_path=job.script_path,
+                args=job.args,
+                started_at=stamped,
+                finished_at=stamped,
+                status="failed",
+                exit_code=-1,
+                note=f"invocation error: {exc}",
+            )
+            prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+            invalidate_stats_cache(job.id)
+            return 2
+
         started_at = datetime.now().isoformat(timespec="seconds")
         dry_run = bool(getattr(args, "dry_run", False))
         run_meta: Dict[str, Any] = dict(

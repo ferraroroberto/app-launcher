@@ -1,0 +1,62 @@
+"""``batch`` job-kind — today's ``.bat`` dispatch, lifted out of the old
+suffix switch in ``app/cli/commands/run_job_cmd.py::build_invocation``
+unchanged.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+from src.jobs_config import Job
+from src.jobs_kinds.base import Problem
+
+# A ``.venv\Scripts\python(w).exe`` (or ``activate``) reference embedded in
+# a ``.bat`` wrapper. Best-effort: we only flag a reference that clearly
+# points at a venv and whose target doesn't resolve, so a hand-rolled
+# launcher that forgot to create its venv gets caught at save time.
+_BAT_VENV_RE = re.compile(
+    r"([A-Za-z]:\\[^\"'\r\n]*?\.venv\\Scripts\\(?:python\.exe|pythonw\.exe|activate(?:\.bat)?))",
+    re.IGNORECASE,
+)
+
+
+class BatchKind:
+    name = "batch"
+
+    def validate(self, job: Job) -> List[Problem]:
+        script = Path(job.script_path)
+        if not script.is_file():
+            return []  # existence is checked once, generically, by preflight()
+        try:
+            text = script.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return []
+        for m in _BAT_VENV_RE.finditer(text):
+            ref = m.group(1)
+            try:
+                ref_ok = Path(ref).is_file()
+            except OSError:
+                ref_ok = False
+            if not ref_ok:
+                return [
+                    Problem(
+                        level="warning",
+                        field="script_path",
+                        message=(
+                            f"The .bat references a venv path that doesn't "
+                            f"resolve: {ref}"
+                        ),
+                    )
+                ]  # one warning is enough; don't spam per reference
+        return []
+
+    def build_argv(
+        self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
+    ) -> Tuple[List[str], Path, Dict[str, str]]:
+        script = Path(job.script_path)
+        if not script.is_file():
+            raise OSError(f"BAT file not found: {script}")
+        argv = ["cmd.exe", "/c", str(script)] + tail
+        return argv, script.parent, dict(param_env)

@@ -35,6 +35,38 @@
       "schedule": { "type": "weekly", "day": "SUN", "at": "21:00" },
       "visible": true,
       "cooldown_seconds": 3600
+    },
+    {
+      "id": "hwinfo-refresh",
+      "name": "HWiNFO refresh (sample, powershell kind)",
+      "script_path": "E:\\automation\\automation\\system\\hwinfo_refresh.ps1",
+      "kind": "powershell",
+      "args": "",
+      "schedule": { "type": "none" }
+    },
+    {
+      "id": "disk-cleanup-inline",
+      "name": "Disk cleanup (sample, inline-shell kind)",
+      "kind": "inline-shell",
+      "kind_config": {
+        "script_body": "Get-ChildItem -Path $env:TEMP -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue\n",
+        "ext": ".ps1"
+      },
+      "args": "",
+      "schedule": { "type": "weekly", "day": "SUN", "at": "03:00" }
+    },
+    {
+      "id": "launcher-health-check",
+      "name": "Launcher health check (sample, http-check kind)",
+      "kind": "http-check",
+      "kind_config": {
+        "url": "https://127.0.0.1:8445/api/version",
+        "method": "GET",
+        "expect_status": 200,
+        "timeout": 10
+      },
+      "args": "",
+      "schedule": { "type": "hourly", "every": 1 }
     }
   ]
 }

@@ -17,7 +17,6 @@ import asyncio
 import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -32,6 +31,7 @@ from src.jobs_config import (
     add_job,
     get_by_id,
     job_from_dict,
+    kind_config_from_dict,
     load_jobs,
     make_job_id,
     params_from_dict,
@@ -40,6 +40,7 @@ from src.jobs_config import (
     resume_job,
     schedule_from_dict,
     update_job,
+    validate_kind_shape,
 )
 
 from app.webapp.routers._helpers import maybe_json
@@ -205,12 +206,14 @@ async def get_jobs_agenda(request: Request, days: int = 7) -> Dict[str, Any]:
 async def create_job(request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     name = str(body.get("name") or "").strip()
+    # script_path requiredness is kind-dependent (issue #70: inline-shell /
+    # http-check carry no script_path at all) — job_from_dict's
+    # validate_kind_shape is the single place that owns this now, so it is
+    # deliberately not hard-checked here.
     script_path = str(body.get("script_path") or "").strip()
     args = str(body.get("args") or "")
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
-    if not script_path:
-        raise HTTPException(status_code=400, detail="script_path is required")
     try:
         schedule = schedule_from_dict(body.get("schedule"))
     except ValueError as exc:
@@ -245,6 +248,8 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "confirm": body.get("confirm"),
                 "visible": body.get("visible"),
                 "elevated": body.get("elevated"),
+                "kind": body.get("kind"),
+                "kind_config": body.get("kind_config"),
             }
         )
     except ValueError as exc:
@@ -302,28 +307,42 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
         patch["visible"] = body["visible"]
     if "elevated" in body:
         patch["elevated"] = body["elevated"]
+    if "kind" in body:
+        patch["kind"] = body["kind"]
+    if "kind_config" in body:
+        patch["kind_config"] = body["kind_config"]
 
     # Save-time pre-flight (issue #69) on the *effective* post-edit job.
-    # Pre-flight only inspects script_path + args, so synthesize a
-    # candidate from the existing job overlaid with this patch and gate on
-    # it before update_job persists. Suffix is validated here (mirroring
-    # update_job) so a .txt edit fails with its own clear message rather
-    # than a misleading "script not found" from pre-flight.
-    eff_script = (
-        str(patch["script_path"]).strip()
-        if patch.get("script_path")
-        else existing.script_path
-    )
+    # Synthesize a candidate from the existing job overlaid with this patch
+    # and gate on it before update_job persists. kind/script_path/kind_config
+    # are validated together here (mirroring update_job's own effective-shape
+    # check, issue #70) so a bad combination fails with its own clear message
+    # rather than a misleading "script not found" from pre-flight.
+    eff_kind = str(patch["kind"] or "").strip() if "kind" in patch else existing.kind
+    if "script_path" in patch:
+        eff_script = str(patch["script_path"] or "").strip()
+    else:
+        eff_script = existing.script_path
     if "args" in patch:
         eff_args = str(patch["args"] or "")
     else:
         eff_args = existing.args
-    if Path(eff_script).suffix.lower() not in (".py", ".bat"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"script_path must end .py or .bat, got {eff_script!r}",
+    try:
+        eff_kind_config = (
+            kind_config_from_dict(patch["kind_config"])
+            if "kind_config" in patch
+            else existing.kind_config
         )
-    candidate = replace(existing, script_path=eff_script, args=eff_args)
+        validate_kind_shape(eff_kind, eff_script, eff_kind_config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    candidate = replace(
+        existing,
+        kind=eff_kind,
+        script_path=eff_script,
+        args=eff_args,
+        kind_config=eff_kind_config,
+    )
     acknowledged = bool(body.get("acknowledge_warnings"))
     try:
         warnings = _preflight_gate(candidate, acknowledged=acknowledged)
@@ -413,7 +432,7 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
         meta["params"] = raw_params
     try:
         argv, _cwd, _env = await asyncio.to_thread(
-            build_invocation, job, raw_params
+            build_invocation, job, raw_params, run_dir
         )
         meta["status"] = "dry_run_success"
         meta["note"] = "resolved: " + " ".join(argv)

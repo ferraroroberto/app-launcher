@@ -49,16 +49,67 @@ Gitignored. Committed template at `config/jobs.sample.json`. Separate file from 
 }
 ```
 
-### `script_path` — `.py` or `.bat`
+### Job kinds (issue #70)
 
-The two cases dispatch differently:
+Dispatch goes through a small registry, `src/jobs_kinds/` — one module per kind, each contributing a `validate()` (save-time pre-flight) and a `build_argv()` (the actual invocation). `app/cli/commands/run_job_cmd.py::build_invocation` just resolves which kind a job is and delegates; there is no `if suffix == …` ladder anymore.
 
-| Suffix | How it runs | cwd | Notes |
-| --- | --- | --- | --- |
-| `.py` | `<venv>/python.exe <script> <args>`, with `PYTHONPATH = <project root>` | project root (= dir containing the resolved `.venv`) | The executor walks up from `script_path.parent` looking for `.venv\Scripts\python.exe`; falls back to `sys.executable`. The PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha — see global CLAUDE.md. |
-| `.bat` | `cmd.exe /c <script> <args>` | `script_path.parent` | The bat does its own venv dance; the executor doesn't intervene. |
+A job's `kind` field selects the module. **`kind` is optional** — when absent, the kind is inferred from `script_path`'s suffix (`.py` → `python`, `.bat` → `batch`), exactly the two cases that worked before this registry existed. Every pre-existing `jobs.json` row keeps dispatching identically with no migration. New kinds (`powershell`, `shell-wsl`, `inline-shell`, `http-check`) always require an explicit `kind` — suffix-inference never expands beyond `.py`/`.bat`.
 
-`args` is split on whitespace. If you need an argument containing spaces, put it inside the `.bat` / `.py` wrapper rather than relying on shell quoting.
+| `kind` | `script_path` | `kind_config` | How it runs | cwd |
+| --- | --- | --- | --- | --- |
+| `python` (or omitted, `.py` suffix) | required, `.py` | — | `<venv>/python.exe <script> <args>`, `PYTHONPATH = <project root>` | project root (dir containing the resolved `.venv`) |
+| `batch` (or omitted, `.bat` suffix) | required, `.bat` | — | `cmd.exe /c <script> <args>` | `script_path.parent` |
+| `powershell` | required, `.ps1` | — | `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File <script> <args>` (absolute pwsh-5.1 path) | `script_path.parent` |
+| `shell-wsl` | required, `.sh` | — | `wsl bash <script> <args>` | `script_path.parent` |
+| `inline-shell` | must be empty | `{script_body, ext}` | body written to `webapp/jobs/<id>/<run>/_inline<ext>`, then dispatched through whichever of the three shapes above matches `ext` (`.ps1`/`.bat`/`.sh`) | matches the delegated kind |
+| `http-check` | must be empty | `{url, method?, expect_status?, timeout?}` | `python -m src.jobs_kinds.http_check_probe --url … --method … --expect-status … --timeout …` — a tiny built-in probe, no external script | project root |
+
+`python`'s venv walk-up (`src.jobs_schtasks.resolve_venv_python`) starts from `script_path.parent` and falls back to `sys.executable` if no ancestor `.venv\Scripts\python.exe` is found — the PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha (see global CLAUDE.md). `shell-wsl` is opt-in: pre-flight surfaces a warning (not a blocking error) when `wsl.exe` isn't resolvable on PATH.
+
+`args` is split on whitespace and appended to every kind's argv tail except `http-check` (its probe takes fixed flags only). If you need an argument containing spaces, put it inside the script/wrapper rather than relying on shell quoting.
+
+#### `inline-shell` — a body instead of a file
+
+For a script small enough that a standalone file on disk is more ceremony than the job is worth. `kind_config.script_body` carries the literal contents; `kind_config.ext` (`.ps1` / `.bat` / `.sh`) picks which of the three native shapes runs it:
+
+```json
+{
+  "id": "disk-cleanup-inline",
+  "name": "Disk cleanup",
+  "kind": "inline-shell",
+  "kind_config": {
+    "script_body": "Get-ChildItem -Path $env:TEMP -Recurse | Remove-Item -Force -ErrorAction SilentlyContinue\n",
+    "ext": ".ps1"
+  },
+  "schedule": { "type": "weekly", "day": "SUN", "at": "03:00" }
+}
+```
+
+At fire time the body is written to `webapp/jobs/<id>/<run_id>/_inline<ext>` — inside the run's own directory, so it's preserved alongside `run.json` / `output.log` for reproducibility (not a throwaway temp file elsewhere) — then dispatched exactly like a `powershell`/`batch`/`shell-wsl` job pointed at that file.
+
+#### `http-check` — a synthetic kind, no script at all
+
+Polls a URL and succeeds/fails on the response status — the "executor" is `src/jobs_kinds/http_check_probe.py`, a tiny script invoked via `python -m` (no user-authored script needed):
+
+```json
+{
+  "id": "launcher-health-check",
+  "name": "Launcher health check",
+  "kind": "http-check",
+  "kind_config": { "url": "https://127.0.0.1:8445/api/version", "expect_status": 200 },
+  "schedule": { "type": "hourly", "every": 1 }
+}
+```
+
+`method` defaults to `GET`, `expect_status` to `200`, `timeout` to `10` seconds. The probe's stdout (status/timing/body-tail) lands in `output.log` exactly like any other job's script output — it reuses the executor's normal `subprocess.Popen`/tee/resource-sampler/exit-code machinery, nothing kind-specific.
+
+#### Adding a new kind
+
+1. Add a module under `src/jobs_kinds/` implementing the `JobKind` protocol (`base.py`): `name`, `validate(job) -> List[Problem]`, `build_argv(job, tail, param_env, run_dir) -> (argv, cwd, env_overlay)`.
+2. Register it in `src/jobs_kinds/__init__.py`'s `KINDS` dict.
+3. If it needs settings, read them from `job.kind_config` (a free-form dict) — no change to the `Job` dataclass required.
+
+That's the whole surface — the executor, pre-flight, and router never need to know a new kind exists.
 
 ### Schedule types
 
