@@ -51,6 +51,7 @@
      (issue #383 review round). Derived from --accent so both themes ride. */
   --accent-soft: rgb(from var(--accent) r g b / 0.16);
   --accent-border-soft: rgb(from var(--accent) r g b / 0.24);
+  --accent-border-strong: rgb(from var(--accent) r g b / 0.28);
   /* radii (rounded scale) — theme-independent */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -942,6 +943,22 @@ summary + .opt-group { border-top: 0; }
   padding: 6px 10px;
   white-space: nowrap;
 }
+/* Edit-mode toggle in the Registered-jobs summary — the same switch the
+   Settings tab exposes (one shared state), squeezed to the summary's
+   compact icon-button footprint (Add is icon-only too — three labelled
+   buttons overflow the 390px summary row). */
+.jobs-edit-btn {
+  min-height: 0;
+  padding: 6px 10px;
+}
+/* Never let the action cluster shove the title into a two-line wrap —
+   truncate the title instead (the vendored disclosure grid stays 1fr auto). */
+.jobs-card .collapse-main { min-width: 0; }
+.jobs-card .collapse-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Agenda panel (issue #230) — foldable 🗓️ Schedule list above Registered
    jobs. Day headers separate time-ordered rows; tapping a row reveals that
    job in the list below. */
@@ -1282,9 +1299,78 @@ summary + .opt-group { border-top: 0; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--fg);
-  padding: 18px;
+  padding: 16px;
   max-width: 560px;
   width: calc(100vw - 32px);
+}
+/* Editor dialogs are top-anchored (design modal contract) so a tall form
+   never jumps vertically as conditional rows show/hide; the dialog itself
+   scrolls once it outgrows the viewport. */
+.rename-dialog {
+  margin-top: 16px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+/* Modal header (design modal contract): heading-lg title on the left, a
+   34px square × close on the right — replaces the old footer Cancel. */
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.rename-dialog .dialog-head h2 {
+  margin: 0;
+  font-size: var(--font-heading-lg);
+  line-height: 1.2;
+}
+.dialog-close {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  cursor: pointer;
+}
+.dialog-close .icon { width: 18px; height: 18px; }
+.dialog-close:active { color: var(--fg); background: var(--card-off); }
+/* Stacked label/value rows (design modal contract): 12px 0 padding on a
+   border-muted top divider, caption label above a full-width control.
+   Scoped to dialogs — the Settings card keeps its own .stacked recipe. */
+.rename-dialog .stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  margin: 0;
+  border-top: 1px solid var(--line-muted);
+}
+.rename-dialog .stacked > span {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+/* Titled groups inside the job editor (chains, parameters) — a plain
+   divided section, not a browser <fieldset> box. */
+.dialog-section {
+  padding: 12px 0;
+  border-top: 1px solid var(--line-muted);
+}
+.dialog-section-title {
+  margin: 0;
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+.dialog-section-hint {
+  margin: 2px 0 8px;
+  font-size: var(--font-caption);
+  color: var(--muted);
 }
 .scan-dialog::backdrop, .rename-dialog::backdrop {
   background: rgba(0,0,0,0.65);
@@ -1328,23 +1414,46 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-caption);
   word-break: break-all;
 }
-.dialog-actions { justify-content: flex-end; gap: 8px; }
-.big-btn.warn { background: var(--attention); color: var(--attention-fg); }
+.dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+/* Editor-dialog footer (design modal contract): one full-width solid-accent
+   primary on a top divider; × in the header replaced the footer Cancel. */
+.dialog-actions--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  padding-top: 12px;
+  border-top: 1px solid var(--line-muted);
+}
+.rename-dialog .dialog-actions .big-btn:not(.warn) {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent-border-strong);
+  min-height: 48px;
+}
+/* Acknowledge-warnings alternative — the tint recipe restated on attention
+   (status colors never fill a non-status button solid). */
+.big-btn.warn {
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention);
+  border-color: rgb(from var(--attention) r g b / 0.24);
+}
 
 /* Dry-run toggle in the run-now dialog + confirm-on-fire toggle in the
-   job editor (issue #69) — same compact checkbox-row treatment, now a real
-   role="switch" button (issue #355). */
+   job editor (issue #69) — role="switch" rows (issue #355), styled as a
+   full modal row (44px tap target on a top divider). */
 .job-run-dryrow,
 .job-confirm-row {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin: 10px 0 4px;
-  font-size: var(--font-caption);
-  color: var(--muted);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 12px 0;
+  font-size: var(--font-label);
+  color: var(--fg);
   background: none;
   border: none;
-  padding: 0;
+  border-top: 1px solid var(--line-muted);
   text-align: left;
   cursor: pointer;
 }
@@ -1384,17 +1493,40 @@ summary + .opt-group { border-top: 0; }
 }
 .job-preflight-tag { flex: 0 0 auto; }
 
+/* Job-kind registry (issue #70) — inline-shell body + http-check config
+ * groups swapped in/out of #jobForm by kind (jobs-dialog.js syncKindFields). */
+.job-kind-group {
+  display: flex;
+  flex-direction: column;
+}
+.job-inline-body {
+  font: 12px/1.4 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  resize: vertical;
+}
+
 /* Job chain checklist (on-success / on-failure) — role="switch" rows
-   (issue #355), was a <label><input type=checkbox>. */
+   (issue #355) rendered per the list-row contract: flat full-bleed rows on
+   a hairline divider, capped with an inner scroll so a dozen registered
+   jobs don't triple the dialog's height. */
+.job-chain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.job-chain-row + .job-chain-row { border-top: 1px solid var(--line-muted); }
+.job-chain-row.muted { padding: 8px 0; }
 .job-chain-row-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
+  min-height: 44px;
   background: none;
   border: none;
-  padding: 4px 0;
-  font: inherit;
+  padding: 6px 0;
+  font-size: var(--font-label);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -1405,22 +1537,9 @@ summary + .opt-group { border-top: 0; }
 }
 .job-chain-row-btn[aria-checked="true"] .check-box .icon { display: block; }
 
-/* Job parameters editor (issue #67) — embedded inside #jobDialog. The
- * Run-now dialog uses the same stacked label pattern as the rest of
- * the form, so no extra styling is needed there. */
-.job-params-fieldset {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  margin: 10px 0;
-}
-.job-params-fieldset legend {
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
+/* Job parameters editor (issue #67) — embedded inside #jobDialog as a
+ * .dialog-section. The Run-now dialog uses the same stacked label pattern
+ * as the rest of the form, so no extra styling is needed there. */
 .job-params-list {
   list-style: none;
   padding: 0;

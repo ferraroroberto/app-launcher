@@ -627,8 +627,13 @@
           </span>
           <span class="summary-actions">
             <div class="jobs-header-actions">
+              <button type="button" id="jobsEditBtn" class="edit-toggle jobs-edit-btn" role="switch" aria-checked="false"
+                     aria-label="Edit mode"
+                     title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
+              </button>
               <button id="jobsSortBtn" type="button" class="ghost-btn jobs-sort-btn" aria-label="Change job sort order"></button>
-              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add job</button>
+              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
@@ -636,7 +641,7 @@
         <div class="collapse-body">
         <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
         <p id="jobsEmpty" class="muted small" hidden>
-          No jobs registered yet — turn on <strong>Edit mode</strong> in Settings, then tap <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add job</strong>.
+          No jobs registered yet — tap the <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></strong> edit toggle above, then <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></strong> to add one.
         </p>
         </div>
       </details>
@@ -847,18 +852,75 @@
 
     <dialog id="jobDialog" class="rename-dialog">
       <form id="jobForm">
-        <h2 id="jobDialogTitle">Add job</h2>
+        <div class="dialog-head">
+          <h2 id="jobDialogTitle">Add job</h2>
+          <button type="button" id="jobCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <input type="hidden" id="jobIdField">
         <label class="stacked">
           <span>Name</span>
           <input id="jobNameInput" type="text" class="input-native" required>
         </label>
         <label class="stacked">
-          <span>Script path (<code>.py</code> or <code>.bat</code>)</span>
-          <input id="jobScriptInput" type="text" class="input-native" required
+          <span>Kind</span>
+          <select id="jobKindInput" class="input-native">
+            <option value="">Auto (from extension)</option>
+            <option value="python">Python (.py)</option>
+            <option value="batch">Batch (.bat)</option>
+            <option value="powershell">PowerShell (.ps1)</option>
+            <option value="shell-wsl">Shell — WSL (.sh)</option>
+            <option value="inline-shell">Inline shell (body below, no file)</option>
+            <option value="http-check">HTTP check (poll a URL)</option>
+          </select>
+        </label>
+        <label class="stacked" id="jobScriptRow">
+          <span>Script path</span>
+          <input id="jobScriptInput" type="text" class="input-native"
                  placeholder="E:\automation\content-management\launch_reporting.bat">
         </label>
-        <label class="stacked">
+        <div class="job-kind-group" id="jobInlineShellFields" hidden>
+          <label class="stacked">
+            <span>Script type</span>
+            <select id="jobInlineExtInput" class="input-native">
+              <option value=".ps1">PowerShell (.ps1)</option>
+              <option value=".bat">Batch (.bat)</option>
+              <option value=".sh">Shell — WSL (.sh)</option>
+            </select>
+          </label>
+          <label class="stacked">
+            <span>Script body</span>
+            <textarea id="jobInlineBodyInput" class="input-native job-inline-body" rows="6"
+                      placeholder="Write-Host 'hi'"></textarea>
+          </label>
+        </div>
+        <div class="job-kind-group" id="jobHttpCheckFields" hidden>
+          <label class="stacked">
+            <span>URL</span>
+            <input id="jobHttpUrlInput" type="text" class="input-native"
+                   placeholder="https://example.com/health">
+          </label>
+          <label class="stacked">
+            <span>Method</span>
+            <select id="jobHttpMethodInput" class="input-native">
+              <option value="GET">GET</option>
+              <option value="HEAD">HEAD</option>
+              <option value="POST">POST</option>
+            </select>
+          </label>
+          <label class="stacked">
+            <span>Expected status</span>
+            <input id="jobHttpExpectStatusInput" type="number" class="input-native"
+                   min="100" max="599" placeholder="200">
+          </label>
+          <label class="stacked">
+            <span>Timeout (seconds)</span>
+            <input id="jobHttpTimeoutInput" type="number" class="input-native"
+                   min="1" max="120" placeholder="10">
+          </label>
+        </div>
+        <label class="stacked" id="jobArgsRow">
           <span>Arguments (optional)</span>
           <input id="jobArgsInput" type="text" class="input-native" placeholder="auto">
         </label>
@@ -916,28 +978,27 @@
           <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
         </button>
-        <fieldset class="job-chain-fieldset">
-          <legend>Run on success (chain)</legend>
-          <p class="muted small">Pick jobs to fire after a successful run.</p>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Run on success (chain)</h3>
+          <p class="dialog-section-hint">Pick jobs to fire after a successful run.</p>
           <ul id="jobOnSuccessList" class="job-chain-list"></ul>
-        </fieldset>
-        <fieldset class="job-chain-fieldset">
-          <legend>Run on failure (chain)</legend>
-          <p class="muted small">Pick jobs to fire after a failed run.</p>
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Run on failure (chain)</h3>
+          <p class="dialog-section-hint">Pick jobs to fire after a failed run.</p>
           <ul id="jobOnFailureList" class="job-chain-list"></ul>
-        </fieldset>
-        <fieldset class="job-params-fieldset">
-          <legend>Parameters (optional)</legend>
-          <p class="muted small">
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Parameters (optional)</h3>
+          <p class="dialog-section-hint">
             Typed inputs collected on Run-now. Add a row per parameter;
             empty list → one-tap fire as today.
           </p>
           <ol id="jobParamsList" class="job-params-list"></ol>
           <button type="button" id="jobParamsAdd" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
-        </fieldset>
+        </section>
         <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
-        <div class="row dialog-actions">
-          <button type="button" id="jobCancel" class="ghost-btn">Cancel</button>
+        <div class="dialog-actions dialog-actions--stacked">
           <button type="button" id="jobSaveAnyway" class="big-btn warn" hidden>Save anyway</button>
           <button type="submit" id="jobSaveBtn" class="big-btn">Add and verify</button>
         </div>
@@ -946,15 +1007,19 @@
 
     <dialog id="jobRunDialog" class="rename-dialog">
       <form id="jobRunForm">
-        <h2 id="jobRunDialogTitle">Run job</h2>
+        <div class="dialog-head">
+          <h2 id="jobRunDialogTitle">Run job</h2>
+          <button type="button" id="jobRunCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
         <div id="jobRunDialogFields"></div>
         <button type="button" id="jobRunDialogDryRun" class="job-run-dryrow" role="switch" aria-checked="false">
           <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
         </button>
-        <div class="row dialog-actions">
-          <button type="button" id="jobRunCancel" class="ghost-btn">Cancel</button>
+        <div class="dialog-actions dialog-actions--stacked">
           <button type="submit" class="big-btn">▶ Run</button>
         </div>
       </form>

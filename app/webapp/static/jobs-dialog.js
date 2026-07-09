@@ -347,6 +347,28 @@ export function openJobDialog(job) {
   els.jobScriptInput.value = job ? job.script_path : '';
   els.jobArgsInput.value = job ? (job.args || '') : '';
 
+  // Job-kind registry (issue #70). Empty kind = "auto (from extension)",
+  // the back-compat default every pre-existing job round-trips through.
+  const kindConfig = (job && job.kind_config) || {};
+  if (els.jobKindInput) els.jobKindInput.value = (job && job.kind) || '';
+  if (els.jobInlineExtInput) {
+    els.jobInlineExtInput.value = kindConfig.ext || '.ps1';
+  }
+  if (els.jobInlineBodyInput) {
+    els.jobInlineBodyInput.value = kindConfig.script_body || '';
+  }
+  if (els.jobHttpUrlInput) els.jobHttpUrlInput.value = kindConfig.url || '';
+  if (els.jobHttpMethodInput) {
+    els.jobHttpMethodInput.value = kindConfig.method || 'GET';
+  }
+  if (els.jobHttpExpectStatusInput) {
+    els.jobHttpExpectStatusInput.value = kindConfig.expect_status || '';
+  }
+  if (els.jobHttpTimeoutInput) {
+    els.jobHttpTimeoutInput.value = kindConfig.timeout || '';
+  }
+  syncKindFields();
+
   const sched = (job && job.schedule) || { type: 'none' };
   els.jobScheduleType.value = sched.type || 'none';
   if (sched.type === 'minutes' || sched.type === 'hourly') {
@@ -407,6 +429,22 @@ function syncScheduleFields() {
   els.jobScheduleTimesRow.hidden = t !== 'daily_times';
   els.jobScheduleDayRow.hidden = t !== 'weekly';
   if (els.jobScheduleOnceRow) els.jobScheduleOnceRow.hidden = t !== 'once';
+}
+
+// Job-kind registry (issue #70). "" (auto) and every file-kind
+// (python/batch/powershell/shell-wsl) show the plain script-path row;
+// inline-shell swaps it for a body textarea + extension picker; http-check
+// swaps it for url/method/expect-status/timeout. Args apply to every kind
+// except http-check (its build_argv never appends the composed tail).
+function syncKindFields() {
+  if (!els.jobKindInput) return;
+  const k = els.jobKindInput.value;
+  const isInline = k === 'inline-shell';
+  const isHttpCheck = k === 'http-check';
+  if (els.jobScriptRow) els.jobScriptRow.hidden = isInline || isHttpCheck;
+  if (els.jobInlineShellFields) els.jobInlineShellFields.hidden = !isInline;
+  if (els.jobHttpCheckFields) els.jobHttpCheckFields.hidden = !isHttpCheck;
+  if (els.jobArgsRow) els.jobArgsRow.hidden = isHttpCheck;
 }
 
 function buildSchedule() {
@@ -483,12 +521,51 @@ function renderPreflightProblems(problems) {
   host.hidden = (problems || []).length === 0;
 }
 
+// Job-kind registry (issue #70). Returns {kind, script_path, kind_config}
+// for whichever kind group is currently visible — the two non-file kinds
+// carry their settings in kind_config and leave script_path empty; every
+// other kind (including "" / auto) is the plain script_path path.
+function buildKindFields() {
+  const kind = els.jobKindInput ? els.jobKindInput.value : '';
+  if (kind === 'inline-shell') {
+    const ext = els.jobInlineExtInput ? els.jobInlineExtInput.value : '.ps1';
+    const body = els.jobInlineBodyInput ? els.jobInlineBodyInput.value : '';
+    if (!body.trim()) throw new Error('Inline-shell needs a script body');
+    return { kind: kind, script_path: '', kind_config: { script_body: body, ext: ext } };
+  }
+  if (kind === 'http-check') {
+    const url = els.jobHttpUrlInput ? els.jobHttpUrlInput.value.trim() : '';
+    if (!url) throw new Error('HTTP check needs a URL');
+    const kindConfig = { url: url };
+    const method = els.jobHttpMethodInput ? els.jobHttpMethodInput.value : '';
+    if (method && method !== 'GET') kindConfig.method = method;
+    const statusRaw = els.jobHttpExpectStatusInput ? els.jobHttpExpectStatusInput.value.trim() : '';
+    if (statusRaw) {
+      const status = parseInt(statusRaw, 10);
+      if (!Number.isFinite(status)) throw new Error('Expected status must be a number');
+      kindConfig.expect_status = status;
+    }
+    const timeoutRaw = els.jobHttpTimeoutInput ? els.jobHttpTimeoutInput.value.trim() : '';
+    if (timeoutRaw) {
+      const timeout = parseFloat(timeoutRaw);
+      if (!Number.isFinite(timeout)) throw new Error('Timeout must be a number');
+      kindConfig.timeout = timeout;
+    }
+    return { kind: kind, script_path: '', kind_config: kindConfig };
+  }
+  // "" (auto) or an explicit file-kind: plain script_path, no kind_config.
+  return { kind: kind, script_path: els.jobScriptInput.value.trim(), kind_config: {} };
+}
+
 function buildJobPayload() {
   const schedule = buildSchedule();      // may throw
   const params = readParamsEditor();     // may throw
+  const kindFields = buildKindFields();  // may throw
   const payload = {
     name: els.jobNameInput.value.trim(),
-    script_path: els.jobScriptInput.value.trim(),
+    script_path: kindFields.script_path,
+    kind: kindFields.kind,
+    kind_config: kindFields.kind_config,
     args: els.jobArgsInput.value,
     schedule: schedule,
     params: params,
@@ -605,6 +682,9 @@ export function wireJobDialogs() {
   }
   if (els.jobScheduleType) {
     els.jobScheduleType.addEventListener('change', syncScheduleFields);
+  }
+  if (els.jobKindInput) {
+    els.jobKindInput.addEventListener('change', syncKindFields);
   }
   if (els.jobParamsAdd) {
     els.jobParamsAdd.addEventListener('click', function () {
