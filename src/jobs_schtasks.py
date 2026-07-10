@@ -139,8 +139,20 @@ def spawn_run_job_detached(
     """Spawn ``launcher.py run-job <id> --run-id <rid> --trigger <t>`` detached.
 
     Used by the webapp's ``POST /api/jobs/<id>/run`` route to fire a job
-    without blocking the request. Returns the spawned PID — kept only
+    without blocking the request, plus the mutex-queue drain and DAG chain
+    dispatch (``src/jobs_queue.py``). Returns the spawned PID — kept only
     for diagnostics; the run record is tracked via the filesystem.
+
+    Re-parented via ``cmd /c start`` (issue #416) rather than
+    ``DETACHED_PROCESS``, mirroring ``app/tray/tray.py``'s
+    ``_start_session_host()``: that function's own comment documents,
+    empirically verified, that ``DETACHED_PROCESS``/``CREATE_NEW_PROCESS_GROUP``
+    do NOT escape ``taskkill /T`` (which ``tray.bat --restart`` uses to kill
+    the tray's whole subtree) — only re-parenting does. Without this, a job
+    fired here stays inside the tray's process subtree and can be silently
+    killed mid-run by a ``tray.bat --restart`` that happens anywhere during
+    its execution (including one the job's own work triggers, e.g. shipping
+    an app-launcher issue via ``/issue-finish``).
 
     ``params`` (issue #67) is the validated ``{name: value}`` payload from
     the run-now dialog. When present, it is JSON-encoded onto argv as
@@ -166,16 +178,16 @@ def spawn_run_job_detached(
         argv.extend(["--params", json.dumps(params)])
     if dry_run:
         argv.append("--dry-run")
-    creationflags = _CREATE_NO_WINDOW
-    detached = getattr(subprocess, "DETACHED_PROCESS", 0)
-    if detached:
-        creationflags |= detached
+    # `start` launches the child and cmd exits, orphaning it out of this
+    # tray's subtree; /b keeps it windowless. CREATE_NO_WINDOW hides the
+    # transient cmd.
+    cmd = ["cmd", "/c", "start", "", "/b"] + argv
     proc = subprocess.Popen(
-        argv,
+        cmd,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        creationflags=creationflags,
+        creationflags=_CREATE_NO_WINDOW,
         close_fds=True,
     )
     logger.info(f"🚀 spawned run-job {job_id} (rid={run_id}, pid={proc.pid})")
