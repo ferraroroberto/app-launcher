@@ -409,16 +409,22 @@ export function cancelSpeech() {
 // The AudioContext is created + resumed inside the click gesture (before the
 // first await) so iOS autoplay policy lets it make sound.
 
-let _hubCtx = null;          // the AudioContext currently rendering hub audio
-let _hubReader = null;       // the streaming-body reader (cancelled on stop)
-let _hubAbort = null;        // AbortController for the in-flight fetch
-let _hubEndTimer = null;     // fires finishHubNaturally once the last buffer ends
-let _hubAvailable = null;    // tri-state: null = unprobed, true / false
-let _hubQueue = [];          // scheduled buffers {buf,node,start,dur} for re-anchor
-let _hubPlayHead = 0;        // shared scheduling cursor (pump loop + re-anchor)
-let _hubHiddenAt = null;     // ctx.currentTime captured when the page went hidden
-let _hubStreamDone = false;  // true once the PCM stream is fully read + scheduled
-let _hubVisHandler = null;   // visibilitychange listener (removed on teardown)
+// Single state container for the hub-audio-streaming machine (was 9 loose
+// file-scoped `let`s) — still a module-level singleton (one read-aloud surface
+// today), but grouped so a future second surface has one object to carry
+// instead of a parallel set of globals to remember and keep in sync.
+const hub = {
+  ctx: null,           // the AudioContext currently rendering hub audio
+  reader: null,        // the streaming-body reader (cancelled on stop)
+  abort: null,         // AbortController for the in-flight fetch
+  endTimer: null,      // fires finishHubNaturally once the last buffer ends
+  available: null,     // tri-state: null = unprobed, true / false
+  queue: [],           // scheduled buffers {buf,node,start,dur} for re-anchor
+  playHead: 0,         // shared scheduling cursor (pump loop + re-anchor)
+  hiddenAt: null,      // ctx.currentTime captured when the page went hidden
+  streamDone: false,   // true once the PCM stream is fully read + scheduled
+  visHandler: null,    // visibilitychange listener (removed on teardown)
+};
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
 // the token plumbing; this module stays free of api.js / webauthn.js
@@ -436,41 +442,41 @@ function authHeaders(opts) {
 export async function probeHub(opts) {
   try {
     const res = await fetch('/api/tts/health', { headers: authHeaders(opts) });
-    if (!res.ok) { _hubAvailable = false; return false; }
+    if (!res.ok) { hub.available = false; return false; }
     const body = await res.json().catch(function () { return null; });
-    _hubAvailable = !!(body && body.available);
+    hub.available = !!(body && body.available);
   } catch (_) {
-    _hubAvailable = false;
+    hub.available = false;
   }
-  return _hubAvailable;
+  return hub.available;
 }
 
 /** True once a probe has confirmed the hub voice is reachable. */
-export function isHubAvailable() { return _hubAvailable === true; }
+export function isHubAvailable() { return hub.available === true; }
 
 // Tear down all hub-playback resources (timer, reader, fetch, AudioContext).
 // Closing the context silences any still-scheduled buffers immediately.
 function hubTeardown() {
-  if (_hubEndTimer) { clearTimeout(_hubEndTimer); _hubEndTimer = null; }
-  if (_hubVisHandler) {
-    try { document.removeEventListener('visibilitychange', _hubVisHandler); }
+  if (hub.endTimer) { clearTimeout(hub.endTimer); hub.endTimer = null; }
+  if (hub.visHandler) {
+    try { document.removeEventListener('visibilitychange', hub.visHandler); }
     catch (_) { /* best effort */ }
-    _hubVisHandler = null;
+    hub.visHandler = null;
   }
-  _hubQueue = [];
-  _hubHiddenAt = null;
-  _hubStreamDone = false;
-  if (_hubReader) {
-    try { _hubReader.cancel(); } catch (_) { /* best effort */ }
-    _hubReader = null;
+  hub.queue = [];
+  hub.hiddenAt = null;
+  hub.streamDone = false;
+  if (hub.reader) {
+    try { hub.reader.cancel(); } catch (_) { /* best effort */ }
+    hub.reader = null;
   }
-  if (_hubAbort) {
-    try { _hubAbort.abort(); } catch (_) { /* best effort */ }
-    _hubAbort = null;
+  if (hub.abort) {
+    try { hub.abort.abort(); } catch (_) { /* best effort */ }
+    hub.abort = null;
   }
-  if (_hubCtx) {
-    const ctx = _hubCtx;
-    _hubCtx = null;
+  if (hub.ctx) {
+    const ctx = hub.ctx;
+    hub.ctx = null;
     try { ctx.close(); } catch (_) { /* best effort */ }
   }
 }
@@ -491,31 +497,31 @@ function finishHubNaturally() {
 // hidden, and on resume re-anchor every buffer that hadn't finished playing by
 // then to `ctx.currentTime`, contiguously — so no scheduled buffer is lost.
 function installHubVisibility() {
-  if (_hubVisHandler) return;
-  _hubVisHandler = function () {
-    if (!_hubCtx) return;
+  if (hub.visHandler) return;
+  hub.visHandler = function () {
+    if (!hub.ctx) return;
     if (document.visibilityState === 'hidden') {
-      _hubHiddenAt = _hubCtx.currentTime;        // last audible position
+      hub.hiddenAt = hub.ctx.currentTime;        // last audible position
     } else if (document.visibilityState === 'visible') {
       reanchorHubQueue();
     }
   };
-  try { document.addEventListener('visibilitychange', _hubVisHandler); }
+  try { document.addEventListener('visibilitychange', hub.visHandler); }
   catch (_) { /* best effort */ }
 }
 
-// Re-schedule the un-played tail after an output suspension. `_hubHiddenAt` is
+// Re-schedule the un-played tail after an output suspension. `hub.hiddenAt` is
 // the clock position when output stopped; any buffer whose playback window
 // extended past it was dropped or cut short by the suspension and is replayed,
 // contiguously, from "now". A no-op when nothing was hidden / no buffer remains.
 function reanchorHubQueue() {
-  const ctx = _hubCtx;
+  const ctx = hub.ctx;
   if (!ctx) return;
-  const boundary = _hubHiddenAt;
-  _hubHiddenAt = null;
+  const boundary = hub.hiddenAt;
+  hub.hiddenAt = null;
   if (boundary == null) return;
   // Buffers that fully sounded before the suspension are done; keep the rest.
-  const pending = _hubQueue.filter(function (e) {
+  const pending = hub.queue.filter(function (e) {
     return e.start + e.dur > boundary;
   });
   if (!pending.length) return;
@@ -538,15 +544,15 @@ function reanchorHubQueue() {
     playHead += pending[i].dur;
     lastNode = node;
   }
-  _hubQueue = fresh;
-  _hubPlayHead = playHead;
+  hub.queue = fresh;
+  hub.playHead = playHead;
   // Re-arm the natural-finish only when the stream is fully read; if the pump
   // loop is still running it owns the finish on the true last buffer.
-  if (_hubEndTimer) { clearTimeout(_hubEndTimer); _hubEndTimer = null; }
-  if (_hubStreamDone && lastNode) {
+  if (hub.endTimer) { clearTimeout(hub.endTimer); hub.endTimer = null; }
+  if (hub.streamDone && lastNode) {
     lastNode.onended = function () { finishHubNaturally(); };
     const ms = Math.max(0, (playHead - ctx.currentTime) * 1000) + 1500;
-    _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
+    hub.endTimer = setTimeout(function () { finishHubNaturally(); }, ms);
   }
 }
 
@@ -582,17 +588,17 @@ async function pumpPcmStream(ctx, res, ac, seg) {
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
   if (isFirst) {
-    _hubPlayHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
-    _hubQueue = [];
-    _hubHiddenAt = null;
+    hub.playHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
+    hub.queue = [];
+    hub.hiddenAt = null;
     installHubVisibility();   // re-anchor the tail if iOS suspends output (lock)
   }
   // Not finished until the FINAL segment is fully scheduled; an intermediate
   // segment keeps the stream "open" so the lock re-anchor doesn't fire finish.
-  _hubStreamDone = false;
+  hub.streamDone = false;
   let leftover = new Uint8Array(0);
   const reader = res.body.getReader();
-  _hubReader = reader;
+  hub.reader = reader;
   for (;;) {
     const chunk = await reader.read();
     if (chunk.done) break;
@@ -616,23 +622,23 @@ async function pumpPcmStream(ctx, res, ac, seg) {
     node.buffer = buf;
     node.connect(ctx.destination);
     // Guard 1: never start in the past — keeps playHead == true end of audio.
-    if (_hubPlayHead < ctx.currentTime + 0.02) _hubPlayHead = ctx.currentTime + 0.02;
-    node.start(_hubPlayHead);
+    if (hub.playHead < ctx.currentTime + 0.02) hub.playHead = ctx.currentTime + 0.02;
+    node.start(hub.playHead);
     // Track every scheduled buffer so a screen-lock suspension (#248) can
     // re-anchor the un-played tail instead of losing it.
-    _hubQueue.push({ buf: buf, node: node, start: _hubPlayHead, dur: buf.duration });
-    _hubPlayHead += buf.duration;
+    hub.queue.push({ buf: buf, node: node, start: hub.playHead, dur: buf.duration });
+    hub.playHead += buf.duration;
   }
   if (!isLast) return;   // more segments still to stream onto this timeline
-  _hubStreamDone = true;
-  if (!_hubQueue.length) { finishHubNaturally(); return; }
+  hub.streamDone = true;
+  if (!hub.queue.length) { finishHubNaturally(); return; }
   // Guard 2: finish when the final buffer actually ends; the timer only backs
   // it up (with ample slack) in case onended doesn't fire. The true last buffer
   // is the tail of the shared queue (across all segments), not this segment's.
-  const finalNode = _hubQueue[_hubQueue.length - 1].node;
+  const finalNode = hub.queue[hub.queue.length - 1].node;
   finalNode.onended = function () { finishHubNaturally(); };
-  const ms = Math.max(0, (_hubPlayHead - ctx.currentTime) * 1000) + 1500;
-  _hubEndTimer = setTimeout(function () { finishHubNaturally(); }, ms);
+  const ms = Math.max(0, (hub.playHead - ctx.currentTime) * 1000) + 1500;
+  hub.endTimer = setTimeout(function () { finishHubNaturally(); }, ms);
 }
 
 // The hub's Orpheus engine hard-caps each synthesis request at n_predict:4096
@@ -717,7 +723,7 @@ export function prepareHub() {
   const AudioCtx = window.AudioContext || window.webkitAudioContext;
   if (!AudioCtx) throw new Error('Web Audio API unavailable');
   const ctx = new AudioCtx();
-  _hubCtx = ctx;
+  hub.ctx = ctx;
   try { ctx.resume(); } catch (_) { /* best effort */ }
   // iOS unlock: play one silent sample NOW, inside the gesture, so the context
   // is genuinely user-activated. iOS only "blesses" a context that produces
@@ -732,7 +738,7 @@ export function prepareHub() {
     src.start(0);
   } catch (_) { /* best effort */ }
   const ac = new AbortController();
-  _hubAbort = ac;
+  hub.abort = ac;
   setSpeaking(true);
   return { ctx, ac };
 }
@@ -786,7 +792,7 @@ export async function speakHubInto(handle, text, opts) {
         // to Web Speech for the whole reply (preserves the single-shot contract).
         // Only if this call still owns the shared state — a newer speakHub() may
         // have aborted us and taken over (don't clobber it).
-        if (_hubAbort === ac) cancelHub();
+        if (hub.abort === ac) cancelHub();
         throw err;
       }
       // A later segment failed AFTER earlier ones already sounded. Restarting the
