@@ -14,7 +14,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -72,64 +72,96 @@ def client_in_tailnet(client_host: str, allowlist: List[str]) -> bool:
     return False
 
 
+# Gated-endpoint inventory driving _terminal_guard_level, as a table of
+# ``(predicate, level, comment)`` instead of an accreting if-chain (one check
+# per feature/issue number) — a new gated endpoint is one row here, and the
+# full inventory stays scannable in one place instead of spread across prose
+# comments. Order matters only in that the first matching predicate wins;
+# in practice every predicate here targets a disjoint path shape.
+_TerminalGuardRule = Tuple[Callable[[str], bool], str, str]
+
+_TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
+    (
+        lambda p: p.startswith("/api/webauthn/"),
+        "tailnet",
+        "WebAuthn ceremony endpoints — Tailscale-only; no passkey check (that's what they issue).",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/image"),
+        "passkey",
+        "Coding-tab image paste into a live PTY.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/input"),
+        "passkey",
+        "Board drill-down (#301): reply proxy writes into a live PTY.",
+    ),
+    (
+        lambda p: p.startswith("/api/board/sessions/") and p.endswith("/exchange"),
+        "passkey",
+        "Board drill-down (#301): last-exchange surfaces transcript text (terminal-grade content).",
+    ),
+    (
+        lambda p: p == "/api/board/issues/start",
+        "passkey",
+        "Board drill-down (#301): issue-start spawns a coding session.",
+    ),
+    (
+        lambda p: p == "/api/board/dispatch",
+        "passkey",
+        "Board dispatch (#302): spawn + type — both terminal-grade.",
+    ),
+    (
+        lambda p: p == "/api/transcribe" or p.startswith("/api/transcribe/"),
+        "passkey",
+        "Voice dictation (#165/#168): the recording is as sensitive as terminal "
+        "input — covers the single-shot proxy and the streamed/SSE session proxy.",
+    ),
+    (
+        lambda p: p == "/api/ocr",
+        "passkey",
+        "Screenshot OCR (#171): extracted text drops straight into the terminal compose bar.",
+    ),
+    (
+        lambda p: p in ("/api/tts/speak", "/api/tts/summarize"),
+        "passkey",
+        "Read-aloud hub TTS (#203/#206) + summarize-&-read (#210): both POST the "
+        "agent's last reply — terminal content. /api/tts/health stays token-only "
+        "so the SPA can decide button visibility even off-tailnet.",
+    ),
+    (
+        lambda p: p == "/api/life-os/file" or p.startswith("/api/life-os/file/"),
+        "passkey",
+        "Life OS private-content browser (#102): file read/delete/rename surfaces "
+        "gitignored private knowledge. Skills list/launch stay public (token-gated).",
+    ),
+    (
+        lambda p: p.startswith("/api/life-os/skills/") and p.endswith("/files"),
+        "passkey",
+        "Life OS per-skill file tree (#102) — same sensitivity as the file endpoint above.",
+    ),
+    (
+        lambda p: p == "/api/system-map/image",
+        "tailnet",
+        "Fleet system map (#173): rendered PNG can carry fleet topology. No passkey "
+        "— /api/system-map/status stays token-only so the SPA can decide the "
+        "section's visibility off-tailnet, like /api/tts/health.",
+    ),
+)
+
+
 def _terminal_guard_level(path: str) -> Optional[str]:
     """Classify a request path's terminal-gating requirement.
 
     ``"passkey"`` — Tailscale-only **and** a valid passkey terminal token.
     ``"tailnet"`` — Tailscale-only (the WebAuthn ceremony endpoints).
     ``None``      — not a terminal endpoint; normal bearer-token rules apply.
+
+    Driven by :data:`_TERMINAL_GUARD_RULES` (issue #408).
     """
-    if path.startswith("/api/webauthn/"):
-        return "tailnet"
-    if path.startswith("/api/claude-code/sessions/") and path.endswith("/image"):
-        return "passkey"
-    # Board drill-down (issue #301) + dispatch (#302): the last-exchange
-    # endpoint surfaces transcript text (terminal-grade content), the reply
-    # proxy writes into a live PTY, issue-start spawns a coding session, and
-    # dispatch does both (spawn + type) — all four get the terminal's gate.
-    if path.startswith("/api/claude-code/sessions/") and path.endswith("/input"):
-        return "passkey"
-    if path.startswith("/api/board/sessions/") and path.endswith("/exchange"):
-        return "passkey"
-    if path == "/api/board/issues/start":
-        return "passkey"
-    if path == "/api/board/dispatch":
-        return "passkey"
-    # Voice dictation (issues #165 / #168): the recording is as sensitive
-    # as terminal input, so the single-shot proxy (/api/transcribe) and the
-    # streamed session proxy (/api/transcribe/sessions/*, incl. the SSE
-    # events stream) all get the terminal's gate.
-    if path == "/api/transcribe" or path.startswith("/api/transcribe/"):
-        return "passkey"
-    # Screenshot OCR (issue #171): the extracted text drops straight into
-    # the terminal compose bar, so /api/ocr is as sensitive as terminal
-    # input and gets the same gate as voice dictation.
-    if path == "/api/ocr":
-        return "passkey"
-    # Read-aloud hub TTS (issues #203, #206) and the "summarize & read" LLM
-    # condense (issue #210): both POST the agent's last reply — terminal
-    # content — to the hub, so /api/tts/speak and /api/tts/summarize get the
-    # terminal's gate. The /api/tts/health probe is innocuous (a bare up/down
-    # bool) and stays token-gated only, so the SPA can decide button visibility
-    # even over the public tunnel where the terminal itself is refused.
-    if path in ("/api/tts/speak", "/api/tts/summarize"):
-        return "passkey"
-    # Life OS private-content browser (issue #102): the file-content
-    # endpoint (read/delete/rename, all under /api/life-os/file*) and the
-    # per-skill file tree surface gitignored private knowledge, so they get
-    # the terminal's gate. The skills *list* and *launch* stay public
-    # (token-gated), like the Coding tab.
-    if path == "/api/life-os/file" or path.startswith("/api/life-os/file/"):
-        return "passkey"
-    if path.startswith("/api/life-os/skills/") and path.endswith("/files"):
-        return "passkey"
-    # Fleet system map (issue #173): the rendered PNG can carry fleet topology,
-    # so the image endpoint is Tailscale-only (refused over the Cloudflare
-    # tunnel) on top of the bearer token — no passkey. The companion
-    # /api/system-map/status probe stays token-only (returns None here) so the
-    # SPA can decide the section's visibility off-tailnet, like /api/tts/health.
-    if path == "/api/system-map/image":
-        return "tailnet"
+    for predicate, level, _comment in _TERMINAL_GUARD_RULES:
+        if predicate(path):
+            return level
     return None
 
 
