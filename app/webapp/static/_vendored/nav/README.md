@@ -13,7 +13,7 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
 ## How to vendor
 
 1. Copy this `nav/` folder **verbatim** into your app's static dir (e.g. `app/webapp/static/_vendored/nav/`). Do **not** edit `nav-tabs.js` / `nav-tabs.css` per-app — that is the drift this component removes. Per-app changes go in *your* markup and *your* token values only.
-2. Paste the `nav-tabs.html` skeleton into your `index.html` and adapt the tabs (rename `data-tab` / `aria-controls` / ids, swap the SVG icon + emoji + label, add/remove `<button class="tab">` + matching `<section class="pane">` pairs). **Keep `<nav class="tabs">` as a direct `<body>` child, sibling to `<main class="app">`, never nested inside the content wrapper/scroller.** iOS installed PWAs can capture fixed-position descendants of scroll containers and anchor them to scrolled content instead of the physical viewport. `<main class="app">` still wraps your page content because the mobile stylesheet reserves bottom padding there so the floating bar never occludes content.
+2. Paste the `nav-tabs.html` skeleton into your `index.html` and adapt the tabs (rename `data-tab` / `aria-controls` / ids, swap the SVG icon + label, add/remove `<button class="tab">` + matching `<section class="pane">` pairs). **Keep `<nav class="tabs">` as a direct `<body>` child, sibling to `<main class="app">`, never nested inside the content wrapper/scroller.** iOS installed PWAs can capture fixed-position descendants of scroll containers and anchor them to scrolled content instead of the physical viewport. `<main class="app">` still wraps your page content because the mobile stylesheet reserves bottom padding there so the floating bar never occludes content.
 3. Link the CSS and set the tab count:
    ```html
    <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
@@ -47,6 +47,12 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
 ```
 
 Each `.tab` carries `data-tab` (its name) and `aria-controls` (the id of the pane it shows). Start every non-default `.pane` with `hidden` so there's no flash before JS runs. A tab may omit its pane (e.g. an external link) — only its button state toggles.
+
+## Tab icons
+
+Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the pill uses `--bottom-tabs-icon`. Below 520px on a fine pointer the label is clipped to the accessibility tree and the icon stands alone.
+
+`.tab-emoji` is **legacy** — an emoji span the desktop control used to show instead of the icon, superseded by SVG glyphs fleet-wide (`home-automation#77`, fixed here in `project-scaffolding#142`). `nav-tabs.css` hides it at every width, so an app still shipping the span picks up its desktop icon by re-vendoring the CSS alone; delete the span from your markup when you next touch it. If your app kept a per-app `.tab-icon { display: … }` override to work around the old rule, drop that too — it now fights the vendored file.
 
 ## Required design tokens
 
@@ -99,4 +105,4 @@ Hard-won contract, validated extensively on a real iPhone (`home-automation` #20
 
 ## Don't diverge
 
-`nav-tabs.js` and `nav-tabs.css` are **vendored verbatim** — the same "copy byte-for-byte, never edit per-app" rule as the tray's `single_instance.py` / `tray_lifecycle.ps1`. If the contract needs to change, change it **here in `project-scaffolding`** and re-vendor downstream; don't fork it in a consuming app. Streamlit POC spikes are exempt — they don't serve this PWA shell.
+`nav-tabs.js` and `nav-tabs.css` are **vendored verbatim** — the same "copy byte-for-byte, never edit per-app" rule as the tray's `single_instance.py` / `tray_lifecycle.ps1`. If the contract needs to change, change it **here in `project-scaffolding`** and re-vendor downstream; don't fork it in a consuming app. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt — they don't serve this PWA shell.
