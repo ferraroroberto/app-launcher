@@ -11,11 +11,37 @@ from urllib.parse import urlencode
 
 from fastapi import Request, WebSocket
 
-from src.webapp_config import WebappConfig, append_auth_token
+from src.webapp_config import (
+    ALWAYS_ON_CLAUDE_FLAGS,
+    VALID_CLAUDE_EFFORTS,
+    VALID_CLAUDE_MODELS,
+    VALID_CLAUDE_PERMISSION_MODES,
+    WebappConfig,
+    append_auth_token,
+    build_claude_flags,
+)
 from src.webauthn_gate import WebAuthnGate
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    """The claude-code flags subtree shared by ``/api/config``'s embedded
+    ``"claude"`` section and ``/api/claude-code/flags``'s own response.
+    """
+    return {
+        "model": cfg.claude_model,
+        "effort": cfg.claude_effort,
+        "verbose": cfg.claude_verbose,
+        "debug": cfg.claude_debug,
+        "permission_mode": cfg.claude_permission_mode,
+        "models_available": list(VALID_CLAUDE_MODELS),
+        "efforts_available": list(VALID_CLAUDE_EFFORTS),
+        "permission_modes_available": list(VALID_CLAUDE_PERMISSION_MODES),
+        "always_on_flags": list(ALWAYS_ON_CLAUDE_FLAGS),
+        "computed_flags": build_claude_flags(cfg),
+    }
 
 
 async def maybe_json(request: Request) -> Dict[str, Any]:

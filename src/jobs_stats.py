@@ -23,6 +23,15 @@ _stats_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _stats_lock = Lock()
 
 
+def _parse_iso(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
 def cooldown_check(
     job: Job, *, now: Optional[datetime] = None
 ) -> Optional[Tuple[int, int, str]]:
@@ -63,12 +72,8 @@ def cooldown_check(
         break
     if anchor is None:
         return None
-    started_raw = anchor.get("started_at")
-    if not isinstance(started_raw, str) or not started_raw:
-        return None
-    try:
-        started = datetime.fromisoformat(started_raw)
-    except ValueError:
+    started = _parse_iso(anchor.get("started_at"))
+    if started is None:
         return None
     reference = now or datetime.now()
     elapsed = (reference - started).total_seconds()
@@ -76,15 +81,6 @@ def cooldown_check(
     if remaining <= 0:
         return None
     return int(math.ceil(remaining)), cooldown, str(anchor.get("run_id") or "")
-
-
-def _parse_iso(value: Any) -> Optional[datetime]:
-    if not isinstance(value, str) or not value:
-        return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError:
-        return None
 
 
 def _duration_for(record: Dict[str, Any]) -> Optional[float]:

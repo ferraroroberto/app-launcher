@@ -52,7 +52,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src import audit, board, github_client, session_client
 from src.launcher import open_local_terminal_window, spawn_claude_session
-from src.registry import live_claude_code_entries
+from src.registry import AppEntry, live_claude_code_entries
 from src.webapp_config import WebappConfig, build_claude_flags
 
 from app.webapp.routers._helpers import (
@@ -62,6 +62,26 @@ from app.webapp.routers._helpers import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:
+    """Resolve ``repo`` to a live claude-code entry, or 404.
+
+    Shared by ``start_issue`` and ``dispatch_goal`` — both take a bare repo
+    name from the client and need the same case-insensitive lookup against
+    the live projects-folder listing.
+    """
+    entries = live_claude_code_entries(
+        Path(cfg.projects_dir), list(cfg.projects_ignore)
+    )
+    entry = next(
+        (e for e in entries if e.name.lower() == repo.lower()), None
+    )
+    if entry is None or not entry.project_dir:
+        raise HTTPException(
+            status_code=404, detail=f"repo not in the projects folder: {repo}"
+        )
+    return entry
 
 
 def _safe_list_sessions(port: int) -> List[Dict[str, Any]]:
@@ -194,16 +214,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
 
-    entries = live_claude_code_entries(
-        Path(cfg.projects_dir), list(cfg.projects_ignore)
-    )
-    entry = next(
-        (e for e in entries if e.name.lower() == repo.lower()), None
-    )
-    if entry is None or not entry.project_dir:
-        raise HTTPException(
-            status_code=404, detail=f"repo not in the projects folder: {repo}"
-        )
+    entry = _resolve_repo_entry(cfg, repo)
 
     prompt = f"/issue-{mode} {number}"
     flags = f'{build_claude_flags(cfg)} "{prompt}"'
@@ -321,16 +332,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
 
-    entries = live_claude_code_entries(
-        Path(cfg.projects_dir), list(cfg.projects_ignore)
-    )
-    entry = next(
-        (e for e in entries if e.name.lower() == repo.lower()), None
-    )
-    if entry is None or not entry.project_dir:
-        raise HTTPException(
-            status_code=404, detail=f"repo not in the projects folder: {repo}"
-        )
+    entry = _resolve_repo_entry(cfg, repo)
 
     # Same per-launch model toggle as the Life OS tab (#102): opus forces
     # --model opus, off forces sonnet; everything else stays the shared

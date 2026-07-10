@@ -13,17 +13,9 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request
 
 from src.scanner import git_status, scan_project_dirs
-from src.webapp_config import (
-    ALWAYS_ON_CLAUDE_FLAGS,
-    VALID_CLAUDE_EFFORTS,
-    VALID_CLAUDE_MODELS,
-    VALID_CLAUDE_PERMISSION_MODES,
-    WebappConfig,
-    build_claude_flags,
-    update_webapp_config,
-)
+from src.webapp_config import WebappConfig, update_webapp_config
 
-from app.webapp.routers._helpers import maybe_json
+from app.webapp.routers._helpers import claude_flags_payload, maybe_json
 
 router = APIRouter()
 
@@ -59,18 +51,7 @@ async def toggle_favorite(request: Request) -> Dict[str, Any]:
 @router.get("/api/claude-code/flags")
 async def claude_flags(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
-    return {
-        "model": cfg.claude_model,
-        "effort": cfg.claude_effort,
-        "verbose": cfg.claude_verbose,
-        "debug": cfg.claude_debug,
-        "permission_mode": cfg.claude_permission_mode,
-        "models_available": list(VALID_CLAUDE_MODELS),
-        "efforts_available": list(VALID_CLAUDE_EFFORTS),
-        "permission_modes_available": list(VALID_CLAUDE_PERMISSION_MODES),
-        "always_on_flags": list(ALWAYS_ON_CLAUDE_FLAGS),
-        "computed_flags": build_claude_flags(cfg),
-    }
+    return claude_flags_payload(cfg)
 
 
 @router.get("/api/claude-code/git-status")

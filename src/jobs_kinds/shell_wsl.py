@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.jobs_config import Job
-from src.jobs_kinds.base import Problem
+from src.jobs_kinds.base import Problem, require_script
 
 
 class ShellWslKind:
@@ -34,8 +34,6 @@ class ShellWslKind:
     def build_argv(
         self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
     ) -> Tuple[List[str], Path, Dict[str, str]]:
-        script = Path(job.script_path)
-        if not script.is_file():
-            raise OSError(f"Shell script not found: {script}")
+        script = require_script(job, "Shell script")
         argv = ["wsl", "bash", str(script)] + tail
         return argv, script.parent, dict(param_env)

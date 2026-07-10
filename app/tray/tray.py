@@ -142,28 +142,27 @@ def _tailscale_binary() -> Optional[str]:
     return None
 
 
-def _ts_debug(msg: str) -> None:
-    """Append a breadcrumb to the Tailscale debug log (best-effort)."""
-    logger.debug(f"tailscale: {msg}")
+def _breadcrumb(path: Path, msg: str) -> None:
+    """Append a timestamped breadcrumb line to ``path`` (best-effort)."""
     try:
-        TS_DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().isoformat(timespec="seconds")
-        with TS_DEBUG_LOG.open("a", encoding="utf-8") as fh:
+        with path.open("a", encoding="utf-8") as fh:
             fh.write(f"{stamp} {msg}\n")
     except OSError:
         pass
+
+
+def _ts_debug(msg: str) -> None:
+    """Append a breadcrumb to the Tailscale debug log (best-effort)."""
+    logger.debug(f"tailscale: {msg}")
+    _breadcrumb(TS_DEBUG_LOG, msg)
 
 
 def _wd_log(msg: str) -> None:
     """Append a breadcrumb to the watchdog log (best-effort)."""
     logger.debug(f"watchdog: {msg}")
-    try:
-        WATCHDOG_LOG.parent.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.datetime.now().isoformat(timespec="seconds")
-        with WATCHDOG_LOG.open("a", encoding="utf-8") as fh:
-            fh.write(f"{stamp} {msg}\n")
-    except OSError:
-        pass
+    _breadcrumb(WATCHDOG_LOG, msg)
 
 
 def _run_tailscale(binary: str, args: list) -> subprocess.CompletedProcess:
@@ -330,25 +329,21 @@ def run_tray(app_config: AppConfig) -> int:
     def _stop_session_host():
         """Stop the session-host on an explicit Quit. It is detached (no Popen
         handle), so reclaim it by its owned port, scoped to this repo's .venv so
-        a sibling app's process is never touched.
+        a sibling app's process is never touched. Reuses the canonical
+        tray_lifecycle.ps1 `reclaim` action (same one tray.bat --restart uses
+        for the webapp port) instead of hand-rolling the venv-scoped kill.
         """
         if not _port_listening(SESSION_HOST_PORT):
             return
-        ps_cmd = (
-            "$v=$env:SH_VENV; "
-            f"Get-NetTCPConnection -LocalPort {SESSION_HOST_PORT} -State Listen "
-            "-ErrorAction SilentlyContinue | ForEach-Object { $opid=$_.OwningProcess; "
-            "$c=Get-CimInstance Win32_Process -Filter ('ProcessId = {0}' -f $opid) "
-            "-ErrorAction SilentlyContinue; if ($c -and $c.CommandLine -and "
-            "$c.CommandLine.IndexOf($v,[System.StringComparison]::OrdinalIgnoreCase) -ge 0) "
-            "{ Stop-Process -Id $opid -Force -ErrorAction SilentlyContinue } }"
-        )
         try:
             logger.info(f"🛑 Stopping session-host on :{SESSION_HOST_PORT}")
             subprocess.run(
                 [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                 "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
-                env={**os.environ, "SH_VENV": str(PROJECT_ROOT / ".venv")},
+                 "-NoProfile", "-NonInteractive", "-File",
+                 str(PROJECT_ROOT / "app" / "tray" / "tray_lifecycle.ps1"),
+                 "reclaim",
+                 "-VenvDir", str(PROJECT_ROOT / ".venv"),
+                 "-Ports", str(SESSION_HOST_PORT)],
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 timeout=10,
                 check=False,

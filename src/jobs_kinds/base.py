@@ -38,6 +38,20 @@ class Problem:
         return {"level": self.level, "field": self.field, "message": self.message}
 
 
+def require_script(job: Job, label: str) -> Path:
+    """Resolve ``job.script_path`` and existence-check it, or raise ``OSError``.
+
+    Every file-backed kind's ``build_argv`` needs this same fire-time guard
+    right before spawning (existence is checked once, generically, by
+    ``preflight()`` at save time — this is the re-check immediately before
+    the subprocess launch, in case the file moved/vanished since).
+    """
+    script = Path(job.script_path)
+    if not script.is_file():
+        raise OSError(f"{label} not found: {script}")
+    return script
+
+
 class JobKind(Protocol):
     """One entry in the job-kind registry.
 

@@ -18,7 +18,7 @@
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { apiFailToast, apiRaw, jsonApi, readToken, toast } from './api.js';
+import { apiFailToast, apiRaw, isDesktopClient, jsonApi, readToken, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
@@ -36,6 +36,7 @@ import {
   growComposeInput,
 } from './terminal-compose.js';
 import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
+import { voiceDictationAvailable } from './voice.js';
 import {
   clearTerminalToken,
   ensureTerminalToken,
@@ -95,6 +96,37 @@ export function estimateTermSize() {
     };
   } catch (_) {
     return { rows: 40, cols: 120 };
+  }
+}
+
+// Desktop-vs-phone launch-size contract, shared by every PTY-launch call
+// site (Coding tab, Board issue-start/dispatch, Life OS recap/skill launch,
+// issue #374): a desktop browser gets the dedicated PC mirror window sized
+// to its own default, a phone carries its real terminal size so the PTY's
+// first frame is painted at the right width. Mutates `payload` in place —
+// callers apply their own outer gate (e.g. "only for a streamed/pty launch")
+// before calling this.
+export function applyLaunchSizePayload(payload) {
+  if (isDesktopClient()) {
+    payload.desktop = true;
+  } else {
+    const sz = estimateTermSize();
+    payload.rows = sz.rows;
+    payload.cols = sz.cols;
+  }
+}
+
+// The post-launch tail shared by every PTY-launch response handler (Coding
+// tab's launchApp, Life OS's launchRecap/launchSkill): refresh the sessions
+// list, then drop straight into the in-page terminal for a full-control
+// (non-'remote') session on a phone — a desktop browser already got its
+// dedicated PC Edge window instead (issue #241), so it stays on the SPA.
+// No-op when the launch produced no session (a non-claude-code app launch).
+export function handleLaunchResponse(session) {
+  if (!session) return;
+  fetchSessions().catch(function () {});
+  if (session.kind !== 'remote' && !isDesktopClient()) {
+    openTerminal(session);
   }
 }
 
@@ -510,9 +542,7 @@ export async function openTerminal(session) {
   // configured *and* MediaRecorder support; hide it otherwise so the
   // compose bar degrades to type-only. (It lives inside the compose bar,
   // so the PC mirror — where the bar never opens — already won't show it.)
-  const voiceOn = !!(state.status && state.status.voice_dictation) &&
-    !!window.MediaRecorder;
-  els.terminalRecord.hidden = !voiceOn;
+  els.terminalRecord.hidden = !voiceDictationAvailable();
 
   // The 📷 screenshot-OCR button (issue #171) needs photo-ocr configured;
   // hide it otherwise. A plain file input, so no capability check beyond

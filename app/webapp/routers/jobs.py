@@ -58,6 +58,26 @@ from app.webapp.routers._helpers import maybe_json
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Job fields that are plain optional passthroughs on both create and edit —
+# ``create_job`` reads each via ``body.get(field)``, ``edit_job`` reads each
+# via ``if field in body: patch[field] = body[field]``. Kept as one list so
+# adding a field to the schema can't silently land on only one of the two
+# routes (issue #405). ``name``/``script_path``/``args``/``schedule``/``params``
+# are excluded — they get real validation/parsing on create that isn't a bare
+# passthrough, so they stay hand-written in each route.
+JOB_OPTIONAL_FIELDS = (
+    "cooldown_seconds",
+    "mutex_group",
+    "on_success",
+    "on_failure",
+    "confirm",
+    "visible",
+    "elevated",
+    "kind",
+    "kind_config",
+    "webhook",
+)
+
 
 def _truthy(value: Optional[str]) -> bool:
     """Interpret a query-string flag as a boolean (``1``/``true``/``yes``)."""
@@ -251,16 +271,7 @@ async def create_job(request: Request) -> Dict[str, Any]:
                 "schedule": schedule.to_dict(),
                 "added_at": datetime.now().isoformat(timespec="seconds"),
                 "params": params_raw or [],
-                "cooldown_seconds": body.get("cooldown_seconds"),
-                "mutex_group": body.get("mutex_group"),
-                "on_success": body.get("on_success"),
-                "on_failure": body.get("on_failure"),
-                "confirm": body.get("confirm"),
-                "visible": body.get("visible"),
-                "elevated": body.get("elevated"),
-                "kind": body.get("kind"),
-                "kind_config": body.get("kind_config"),
-                "webhook": body.get("webhook"),
+                **{field: body.get(field) for field in JOB_OPTIONAL_FIELDS},
             }
         )
     except ValueError as exc:
@@ -294,36 +305,12 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
     if existing is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     patch: Dict[str, Any] = {}
-    if "name" in body:
-        patch["name"] = body["name"]
-    if "script_path" in body:
-        patch["script_path"] = body["script_path"]
-    if "args" in body:
-        patch["args"] = body["args"]
-    if "schedule" in body:
-        patch["schedule"] = body["schedule"]
-    if "params" in body:
-        patch["params"] = body["params"]
-    if "cooldown_seconds" in body:
-        patch["cooldown_seconds"] = body["cooldown_seconds"]
-    if "mutex_group" in body:
-        patch["mutex_group"] = body["mutex_group"]
-    if "on_success" in body:
-        patch["on_success"] = body["on_success"]
-    if "on_failure" in body:
-        patch["on_failure"] = body["on_failure"]
-    if "confirm" in body:
-        patch["confirm"] = body["confirm"]
-    if "visible" in body:
-        patch["visible"] = body["visible"]
-    if "elevated" in body:
-        patch["elevated"] = body["elevated"]
-    if "kind" in body:
-        patch["kind"] = body["kind"]
-    if "kind_config" in body:
-        patch["kind_config"] = body["kind_config"]
-    if "webhook" in body:
-        patch["webhook"] = body["webhook"]
+    for field in ("name", "script_path", "args", "schedule", "params"):
+        if field in body:
+            patch[field] = body[field]
+    for field in JOB_OPTIONAL_FIELDS:
+        if field in body:
+            patch[field] = body[field]
 
     # Save-time pre-flight (issue #69) on the *effective* post-edit job.
     # Synthesize a candidate from the existing job overlaid with this patch

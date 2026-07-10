@@ -15,9 +15,19 @@
 
 import { apiFailToast, apiRaw, readToken, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
+import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 
 const _CHUNK_MS = 1000;
+
+// The mic-button availability gate shared by every dictation mount point
+// (compose bar, Board dispatch bar, Board drawer reply): the
+// voice-transcriber must be configured server-side and the browser must
+// support MediaRecorder.
+export function voiceDictationAvailable() {
+  return !!(state.status && state.status.voice_dictation) &&
+    !!window.MediaRecorder;
+}
 
 // Only one mic can own the microphone at a time — starting a second
 // instance while another records is refused, not silently hijacked.

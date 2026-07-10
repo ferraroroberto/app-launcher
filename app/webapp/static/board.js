@@ -36,11 +36,11 @@ import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { sessionTitle } from './sessions.js';
-import { estimateTermSize, openTerminal } from './terminal.js';
-import { createDictation, startWorkTimer } from './voice.js';
+import { applyLaunchSizePayload, openTerminal } from './terminal.js';
+import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { renderUsageBadgeRow } from './dom-utils.js';
+import { renderUsageBadgeRow, toggleAriaChecked } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -134,14 +134,6 @@ function renderSessionCard(card) {
 
 // ------------------------------------------------------ drill-down drawer
 
-// The same availability gate as the compose-bar mic (terminal.js): the
-// voice-transcriber must be configured server-side and the browser must
-// have MediaRecorder.
-function voiceAvailable() {
-  return !!(state.status && state.status.voice_dictation) &&
-    !!window.MediaRecorder;
-}
-
 function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
@@ -165,7 +157,7 @@ function buildDrawer(card) {
     actions.appendChild(input);
     // Voice-reply (#302): a per-drawer dictation instance — the drawer is
     // rebuilt on every render, so the mic and its state live and die with it.
-    if (voiceAvailable()) {
+    if (voiceDictationAvailable()) {
       const mic = document.createElement('button');
       mic.type = 'button';
       mic.className = 'compose-record board-reply-record';
@@ -281,13 +273,7 @@ async function startIssue(card, mode, btn) {
     // Phone launches carry the real terminal size so the PTY's early
     // output is authored at the width the overlay will fit() to (issue
     // #374); the route already accepts rows/cols.
-    if (isDesktopClient()) {
-      payload.desktop = true;
-    } else {
-      const sz = estimateTermSize();
-      payload.rows = sz.rows;
-      payload.cols = sz.cols;
-    }
+    applyLaunchSizePayload(payload);
     const body = await jsonApi('/api/board/issues/start', {
       method: 'POST',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
@@ -751,13 +737,7 @@ async function dispatchGoal() {
       opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.getAttribute('aria-checked') === 'true'),
     };
     // Same size contract as startIssue (issue #374).
-    if (isDesktopClient()) {
-      payload.desktop = true;
-    } else {
-      const sz = estimateTermSize();
-      payload.rows = sz.rows;
-      payload.cols = sz.cols;
-    }
+    applyLaunchSizePayload(payload);
     const body = await jsonApi('/api/board/dispatch', {
       method: 'POST',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
@@ -778,7 +758,7 @@ async function dispatchGoal() {
 function syncDispatchBar() {
   syncDispatchRepos();
   if (els.boardDispatchRecord) {
-    els.boardDispatchRecord.hidden = !voiceAvailable();
+    els.boardDispatchRecord.hidden = !voiceDictationAvailable();
   }
 }
 
@@ -819,8 +799,7 @@ function wireDispatch() {
   // just read at dispatch time above.
   if (els.boardDispatchOpus) {
     els.boardDispatchOpus.addEventListener('click', function () {
-      const next = els.boardDispatchOpus.getAttribute('aria-checked') !== 'true';
-      els.boardDispatchOpus.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(els.boardDispatchOpus);
     });
   }
   els.boardDispatchSend.addEventListener('click', function () {

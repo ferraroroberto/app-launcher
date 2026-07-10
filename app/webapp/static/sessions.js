@@ -9,7 +9,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, AuthRequiredError, isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -236,10 +236,8 @@ export async function fetchSessions() {
     state.sessions = body.sessions || [];
     renderSessions();
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      // Sessions polling is best-effort — don't spam toasts.
-      console.warn('sessions fetch failed', exc);
-    }
+    // Sessions polling is best-effort — don't spam toasts.
+    logPollFailure('sessions fetch failed', exc);
   }
 }
 
@@ -253,9 +251,7 @@ export async function fetchRateLimits() {
     const body = await jsonApi('/api/rate-limits');
     renderUsageBadgeRow(els.codingUsage, els.codingUsageSession, els.codingUsageWeekly, body);
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      console.warn('rate-limits fetch failed', exc);
-    }
+    logPollFailure('rate-limits fetch failed', exc);
   }
 }
 

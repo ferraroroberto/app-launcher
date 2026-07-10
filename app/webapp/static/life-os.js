@@ -13,10 +13,10 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
-import { fetchSessions } from './sessions.js';
-import { estimateTermSize, openTerminal } from './terminal.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
+import { toggleAriaChecked } from './dom-utils.js';
 
 // ----------------------------------------------------------- skills list
 export async function fetchSkills() {
@@ -25,9 +25,7 @@ export async function fetchSkills() {
     state.lifeOsSkills = body.skills || [];
     renderSkills();
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      console.warn('life-os skills fetch failed', exc);
-    }
+    logPollFailure('life-os skills fetch failed', exc);
   }
 }
 
@@ -89,9 +87,7 @@ export async function fetchRecapStatus() {
     state.lifeOsRecap = await jsonApi('/api/life-os/recap-status');
     renderRecap();
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      console.warn('life-os recap-status fetch failed', exc);
-    }
+    logPollFailure('life-os recap-status fetch failed', exc);
   }
 }
 
@@ -127,18 +123,10 @@ async function launchRecap() {
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
   const payload = { mode: mode, opus: opus };
   // A desktop browser launch gets a dedicated PC Edge --app window (issue
-  // #241); the flag tells the server to mirror. Remote launches have no
-  // terminal/mirror, so it only matters for pty.
-  if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
-  // The phone carries its real terminal size so the PTY spawns at the
-  // width the overlay will fit() to — a skill that streams immediately
-  // otherwise pours 120-col output that re-wraps into garble on the first
-  // open (issue #374; same contract as the Coding tab, issue #126).
-  if (mode !== 'remote' && !isDesktopClient()) {
-    const sz = estimateTermSize();
-    payload.rows = sz.rows;
-    payload.cols = sz.cols;
-  }
+  // #241); the phone carries its real terminal size so the PTY spawns at
+  // the width the overlay will fit() to (issue #374, #126). Remote
+  // launches have no terminal/mirror, so it only matters for pty.
+  if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
     const body = await jsonApi('/api/life-os/recap/launch', {
       method: 'POST',
@@ -150,14 +138,9 @@ async function launchRecap() {
         (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );
-    if (body.session) {
-      fetchSessions().catch(function () {});
-      // A desktop browser gets its terminal in a dedicated PC Edge window,
-      // not in-page (issue #241) — so it stays on the launcher SPA.
-      if (body.session.kind !== 'remote' && !isDesktopClient()) {
-        openTerminal(body.session);
-      }
-    }
+    // A desktop browser gets its terminal in a dedicated PC Edge window,
+    // not in-page (issue #241) — so it stays on the launcher SPA.
+    handleLaunchResponse(body.session);
   } catch (exc) {
     apiFailToast('Recap launch failed', exc);
   }
@@ -174,18 +157,9 @@ async function launchSkill(s) {
     ? 'remote' : 'pty';
   const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
   const payload = { mode: mode, opus: opus, resume: resume };
-  // A desktop browser launch gets a dedicated PC Edge --app window (issue
-  // #241); the flag tells the server to mirror. Remote launches have no
-  // terminal/mirror, so the flag only matters here.
-  if (mode !== 'remote' && isDesktopClient()) payload.desktop = true;
-  // Phone PTY launches spawn at the phone's real terminal size (issue
-  // #374 — see launchRecap for why; the Coding tab has done this since
-  // issue #126).
-  if (mode !== 'remote' && !isDesktopClient()) {
-    const sz = estimateTermSize();
-    payload.rows = sz.rows;
-    payload.cols = sz.cols;
-  }
+  // Same size contract as launchRecap (issue #374, #126, #241). Remote
+  // launches have no terminal/mirror, so it only matters for pty.
+  if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
     const body = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
@@ -200,16 +174,11 @@ async function launchSkill(s) {
         (opus ? ' (Opus)' : '') + (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );
-    if (body.session) {
-      fetchSessions().catch(function () {});
-      // Full-control sessions drop straight into the terminal; detached
-      // ones only appear in the Coding tab's running-sessions list. A
-      // desktop browser gets its terminal in a dedicated PC Edge window
-      // instead of in-page (issue #241), so it stays on the launcher SPA.
-      if (body.session.kind !== 'remote' && !isDesktopClient()) {
-        openTerminal(body.session);
-      }
-    }
+    // Full-control sessions drop straight into the terminal; detached
+    // ones only appear in the Coding tab's running-sessions list. A
+    // desktop browser gets its terminal in a dedicated PC Edge window
+    // instead of in-page (issue #241), so it stays on the launcher SPA.
+    handleLaunchResponse(body.session);
   } catch (exc) {
     apiFailToast('Launch failed', exc);
   }
@@ -517,8 +486,7 @@ export function wireLifeOs() {
   [els.lifeOsOpus, els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
     if (!btn) return;
     btn.addEventListener('click', function () {
-      const next = btn.getAttribute('aria-checked') !== 'true';
-      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(btn);
     });
   });
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
