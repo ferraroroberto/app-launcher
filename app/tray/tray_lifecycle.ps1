@@ -154,13 +154,61 @@ function Get-GitHead {
     return ([string] $head).Trim()
 }
 
-function Resolve-VersionUrl {
-    if ($VersionUrl) { return $VersionUrl }
+function Resolve-VersionUrls {
+    # Returns the ordered candidate URLs to probe. An explicit -VersionUrl is
+    # taken verbatim (the app knows its scheme + path — e.g. a non-standard
+    # /admin/api/version). With none given, the app didn't declare a scheme, so
+    # probe HTTPS *then* HTTP on the first owned port: fleet PWAs serve HTTPS
+    # (Service Workers + Web Push are HTTPS-only), so http-first would fail every
+    # PWA's verify leg unless it overrode -VersionUrl (project-scaffolding#147).
+    # Both candidates stay on 127.0.0.1 so an auth-gated endpoint takes its
+    # loopback auth-bypass and the leaf-cert name-mismatch is handled below.
+    if ($VersionUrl) { return @($VersionUrl) }
     $ownedPorts = @(Get-OwnedPorts)
     if ($ownedPorts.Count -eq 0) {
         throw "restart verification requires -VersionUrl or at least one owned port"
     }
-    return ("http://127.0.0.1:{0}/api/version" -f $ownedPorts[0])
+    return @(
+        ("https://127.0.0.1:{0}/api/version" -f $ownedPorts[0]),
+        ("http://127.0.0.1:{0}/api/version" -f $ownedPorts[0])
+    )
+}
+
+function Install-LoopbackCertBypass {
+    # A fleet PWA serves HTTPS under a leaf issued for its public name (a
+    # Tailscale .ts.net host, or a self-signed CA), never for 127.0.0.1 — so a
+    # loopback verify probe fails certificate validation on name mismatch. We
+    # must skip validation, but ONLY for loopback, and Windows PowerShell 5.1
+    # has no -SkipCertificateCheck. A PowerShell *scriptblock* callback throws
+    # "no Runspace available" on .NET's TLS validation thread; a *compiled*
+    # delegate does not. So install a C# callback scoped to loopback hosts
+    # (project-scaffolding#147). A 127.0.0.1 probe can never match a public-name
+    # leaf and a MITM on loopback is out of the threat model; every other host
+    # is still fully validated.
+    if (-not ([System.Management.Automation.PSTypeName]'LoopbackCertBypass').Type) {
+        Add-Type @"
+using System;
+using System.Net;
+using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
+public static class LoopbackCertBypass {
+    static bool IsLoopback(string h) { return h == "127.0.0.1" || h == "localhost" || h == "::1"; }
+    static bool Validate(object s, X509Certificate c, X509Chain ch, SslPolicyErrors e) {
+        HttpWebRequest r = s as HttpWebRequest;
+        return r != null && IsLoopback(r.RequestUri.Host);
+    }
+    public static RemoteCertificateValidationCallback Previous;
+    public static void Install() {
+        Previous = ServicePointManager.ServerCertificateValidationCallback;
+        ServicePointManager.ServerCertificateValidationCallback = Validate;
+    }
+    public static void Restore() { ServicePointManager.ServerCertificateValidationCallback = Previous; }
+}
+"@
+    }
+    [System.Net.ServicePointManager]::SecurityProtocol =
+        [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    [LoopbackCertBypass]::Install()
 }
 
 function Test-GitShaMatches {
@@ -174,36 +222,44 @@ function Test-GitShaMatches {
 }
 
 function Wait-VersionMatchesHead {
-    $url = Resolve-VersionUrl
+    $urls = @(Resolve-VersionUrls)
     $head = Get-GitHead
-    $deadline = (Get-Date).AddSeconds($VerifyTimeoutSeconds)
-    $lastError = $null
-    $lastSha = $null
+    Install-LoopbackCertBypass
+    try {
+        $deadline = (Get-Date).AddSeconds($VerifyTimeoutSeconds)
+        $lastError = $null
 
-    do {
-        try {
-            $response = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 3
-            $servedSha = $response.git_sha
-            if (-not $servedSha) { $servedSha = $response.gitSha }
-            $lastSha = [string] $servedSha
-            if (Test-GitShaMatches -ServedSha $lastSha -HeadSha $head) {
-                $assetHash = $response.asset_hash
-                if (-not $assetHash) { $assetHash = $response.assetHash }
-                if ($assetHash) {
-                    Write-Host ("Verified {0} serves git_sha {1} (asset_hash {2})." -f $url, $lastSha, $assetHash)
-                } else {
-                    Write-Host ("Verified {0} serves git_sha {1}." -f $url, $lastSha)
+        do {
+            foreach ($url in $urls) {
+                try {
+                    $response = Invoke-RestMethod -Uri $url -Method Get -TimeoutSec 3
+                    $servedSha = $response.git_sha
+                    if (-not $servedSha) { $servedSha = $response.gitSha }
+                    $lastSha = [string] $servedSha
+                    if (Test-GitShaMatches -ServedSha $lastSha -HeadSha $head) {
+                        $assetHash = $response.asset_hash
+                        if (-not $assetHash) { $assetHash = $response.assetHash }
+                        if ($assetHash) {
+                            Write-Host ("Verified {0} serves git_sha {1} (asset_hash {2})." -f $url, $lastSha, $assetHash)
+                        } else {
+                            Write-Host ("Verified {0} serves git_sha {1}." -f $url, $lastSha)
+                        }
+                        return
+                    }
+                    $lastError = "$url served git_sha '$lastSha', expected HEAD '$head'"
+                } catch {
+                    $lastError = "$url : $($_.Exception.Message)"
                 }
-                return
             }
-            $lastError = "served git_sha '$lastSha', expected HEAD '$head'"
-        } catch {
-            $lastError = $_.Exception.Message
-        }
-        Start-Sleep -Seconds 1
-    } while ((Get-Date) -lt $deadline)
+            Start-Sleep -Seconds 1
+        } while ((Get-Date) -lt $deadline)
 
-    throw ("restart verification failed for {0}: {1}" -f $url, $lastError)
+        throw ("restart verification failed: {0}" -f $lastError)
+    } finally {
+        if (([System.Management.Automation.PSTypeName]'LoopbackCertBypass').Type) {
+            [LoopbackCertBypass]::Restore()
+        }
+    }
 }
 
 switch ($Action) {
