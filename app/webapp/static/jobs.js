@@ -902,12 +902,13 @@ export async function runJobNow(job, options) {
     setTimeout(function () { fetchJobs().catch(function () {}); }, 1500);
   } catch (exc) {
     if (exc && exc.status === 429) {
-      // The server returns a structured body with retry_after_seconds.
-      // Fall back to the Retry-After-derived remaining if the body is
-      // unexpectedly absent so the toast still says something useful.
-      const detail = exc.body && exc.body.detail;
-      const remaining = exc.body && Number(exc.body.retry_after_seconds);
-      const cd = exc.body && Number(exc.body.cooldown_seconds);
+      // FastAPI wraps our raise HTTPException(detail={...}) in its own
+      // {"detail": ...} envelope, so the cooldown payload is nested one
+      // level deeper than a typical error body (#403).
+      const payload = exc.body && exc.body.detail;
+      const detail = payload && payload.detail;
+      const remaining = payload && Number(payload.retry_after_seconds);
+      const cd = payload && Number(payload.cooldown_seconds);
       if (detail === 'cooldown' && Number.isFinite(remaining)) {
         const suffix = (Number.isFinite(cd) && cd > 0) ? ' (cooldown ' + cd + 's)' : '';
         toast('⏭ Skipped — cooled down for ' + remaining + ' more s' + suffix + '.');
