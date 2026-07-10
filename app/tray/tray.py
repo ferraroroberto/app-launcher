@@ -259,35 +259,40 @@ def _notify(title: str, message: str) -> None:
         logger.debug(f"winotify failed: {exc}")
 
 
-def run_tray(app_config: AppConfig) -> int:
-    """Run the tray icon. Returns when the user picks Quit."""
-    try:
-        import pystray  # type: ignore
-        from pystray import Menu, MenuItem
-    except ImportError as exc:
-        logger.error(
-            f"❌ pystray not installed ({exc}); install via `pip install -r requirements.txt`"
+class TrayApp:
+    """Owns the webapp + tunnel + session-host lifecycle behind the tray icon.
+
+    Promoted from a pile of closures sharing mutable state via single-key
+    dict boxes (a workaround for closures' lack of `nonlocal` rebinding) to
+    a class with real instance attributes and bound methods — same
+    behavior, independently readable/testable state.
+    """
+
+    def __init__(self, app_config: AppConfig, instance: SingleInstance) -> None:
+        # `instance` is intentionally kept referenced for the tray's
+        # lifetime (released in quit_app); the OS frees the named mutex on
+        # process exit either way, but an early GC would free it sooner.
+        self.app_config = app_config
+        self.instance = instance
+        self.manager = WebappManager(load_config(app_config.webapp))
+        self.tunnel_hostname = _read_tunnel_hostname(TUNNEL_CONFIG_PATH)
+        self.tunnel_proc: Optional[subprocess.Popen] = None
+        self.starter_exc: Optional[Exception] = None
+
+        # Health watchdog (issue #386): a wedged uvicorn still LISTENs, so
+        # only a real /healthz round-trip can tell "up" from "hung".
+        # Alerting only — recovery stays manual (tray.bat --restart) until
+        # the failure mode is understood; no improvised process kills.
+        self.watchdog_stop = threading.Event()
+        self.watchdog = HealthWatchdog(
+            probe=self.manager.is_reachable,
+            on_wedge=self._on_webapp_wedge,
+            on_recover=self._on_webapp_recover,
         )
-        return 1
 
-    # In-process single-instance guard (project-scaffolding#39): the tray.bat CIM
-    # pre-check can let two near-simultaneous launches through, so the guarantee
-    # must live in the process. Held for the tray's lifetime; the OS frees the
-    # named mutex on exit. `instance` is intentionally kept referenced (quit).
-    instance = SingleInstance(r"Global\app-launcher-tray")
-    if not instance.acquired:
-        logger.info("ℹ️  Another app-launcher tray is already running; exiting.")
-        return 0
+    # -- session-host lifecycle -------------------------------------------
 
-    mgr_cfg = load_config(app_config.webapp)
-    manager = WebappManager(mgr_cfg)
-
-    tunnel_hostname = _read_tunnel_hostname(TUNNEL_CONFIG_PATH)
-    tunnel_state: dict = {"proc": None}
-
-    starter_error: dict = {"exc": None}
-
-    def _start_session_host():
+    def _start_session_host(self) -> None:
         """Bring up the loopback PTY session-host, ADOPTING one that already
         survived a tray restart instead of spawning a duplicate.
 
@@ -326,7 +331,7 @@ def run_tray(app_config: AppConfig) -> int:
             return
         logger.info(f"🧩 session-host spawned detached on :{SESSION_HOST_PORT}")
 
-    def _stop_session_host():
+    def _stop_session_host(self) -> None:
         """Stop the session-host on an explicit Quit. It is detached (no Popen
         handle), so reclaim it by its owned port, scoped to this repo's .venv so
         a sibling app's process is never touched. Reuses the canonical
@@ -351,51 +356,36 @@ def run_tray(app_config: AppConfig) -> int:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"session-host stop failed: {exc}")
 
-    threading.Thread(target=_start_session_host, daemon=True).start()
+    # -- webapp lifecycle ----------------------------------------------------
 
-    def _start():
+    def _start(self) -> None:
         try:
-            manager.start(wait=True)
-            _notify("Launcher webapp ready", manager.base_url)
+            self.manager.start(wait=True)
+            _notify("Launcher webapp ready", self.manager.base_url)
         except Exception as exc:  # noqa: BLE001
-            starter_error["exc"] = exc
+            self.starter_exc = exc
             logger.error(f"❌ webapp start failed: {exc}")
             _notify("Launcher start failed", str(exc))
 
-    threading.Thread(target=_start, daemon=True).start()
-
-    # Health watchdog (issue #386): a wedged uvicorn still LISTENs, so only a
-    # real /healthz round-trip can tell "up" from "hung". Alerting only —
-    # recovery stays manual (tray.bat --restart) until the failure mode is
-    # understood; no improvised process kills.
-    watchdog_stop = threading.Event()
-
-    def _on_webapp_wedge(failures: int) -> None:
+    def _on_webapp_wedge(self, failures: int) -> None:
         msg = (
-            f"webapp on :{manager.config.port} stopped answering /healthz "
+            f"webapp on :{self.manager.config.port} stopped answering /healthz "
             f"({failures} consecutive probes) — restart with tray.bat --restart"
         )
         logger.error(f"❌ {msg}")
         _wd_log(f"WEDGE {msg}")
         _notify("Launcher webapp unresponsive", msg)
 
-    def _on_webapp_recover() -> None:
-        msg = f"webapp on :{manager.config.port} answering /healthz again"
+    def _on_webapp_recover(self) -> None:
+        msg = f"webapp on :{self.manager.config.port} answering /healthz again"
         logger.info(f"✅ {msg}")
         _wd_log(f"RECOVERED {msg}")
         _notify("Launcher webapp recovered", msg)
 
-    watchdog = HealthWatchdog(
-        probe=manager.is_reachable,
-        on_wedge=_on_webapp_wedge,
-        on_recover=_on_webapp_recover,
-    )
-    threading.Thread(
-        target=watchdog.run, args=(watchdog_stop,), daemon=True
-    ).start()
+    # -- Cloudflare tunnel lifecycle ------------------------------------------
 
-    def _start_tunnel():
-        if tunnel_hostname is None:
+    def _start_tunnel(self) -> None:
+        if self.tunnel_hostname is None:
             return
         bin_path = shutil.which("cloudflared")
         if bin_path is None:
@@ -426,13 +416,13 @@ def run_tray(app_config: AppConfig) -> int:
             logger.warning(f"⚠️  cloudflared failed to launch: {exc}")
             _notify("Cloudflare tunnel", f"Failed to start: {exc}")
             return
-        tunnel_state["proc"] = proc
+        self.tunnel_proc = proc
         logger.info(
-            f"🌍 Cloudflare tunnel started → https://{tunnel_hostname} "
+            f"🌍 Cloudflare tunnel started → https://{self.tunnel_hostname} "
             f"(pid={proc.pid})"
         )
 
-        url = f"https://{tunnel_hostname}"
+        url = f"https://{self.tunnel_hostname}"
         token = (load_webapp_config().auth_token or "").strip()
         if token:
             url = append_auth_token(url, token)
@@ -442,9 +432,9 @@ def run_tray(app_config: AppConfig) -> int:
         except OSError as exc:
             logger.warning(f"⚠️  Could not write {TUNNEL_URL_FILE}: {exc}")
 
-    def _stop_tunnel():
-        proc = tunnel_state.get("proc")
-        tunnel_state["proc"] = None
+    def _stop_tunnel(self) -> None:
+        proc = self.tunnel_proc
+        self.tunnel_proc = None
         if proc is None:
             return
         try:
@@ -467,21 +457,20 @@ def run_tray(app_config: AppConfig) -> int:
         except OSError:
             pass
 
-    if tunnel_hostname is not None:
-        threading.Thread(target=_start_tunnel, daemon=True).start()
+    # -- menu actions ----------------------------------------------------
 
-    def open_local(icon, item):  # noqa: ARG001
-        webbrowser.open(manager.base_url)
+    def open_local(self, icon, item) -> None:  # noqa: ARG002
+        webbrowser.open(self.manager.base_url)
 
-    def copy_local(icon, item):  # noqa: ARG001
+    def copy_local(self, icon, item) -> None:  # noqa: ARG002
         webapp_cfg = load_webapp_config()
-        url = append_auth_token(manager.base_url, webapp_cfg.auth_token)
+        url = append_auth_token(self.manager.base_url, webapp_cfg.auth_token)
         if _clipboard_copy(url):
             _notify("Copied local URL", url)
         else:
             _notify("Local URL", url)
 
-    def copy_tailscale(icon, item):  # noqa: ARG001
+    def copy_tailscale(self, icon, item) -> None:  # noqa: ARG002
         host = _tailscale_hostname()
         if not host:
             reason = ""
@@ -499,7 +488,7 @@ def run_tray(app_config: AppConfig) -> int:
             )
             return
         scheme = "https" if cert_paths() else "http"
-        url = f"{scheme}://{host}:{manager.config.port}"
+        url = f"{scheme}://{host}:{self.manager.config.port}"
         webapp_cfg = load_webapp_config()
         url = append_auth_token(url, webapp_cfg.auth_token)
         if _clipboard_copy(url):
@@ -507,7 +496,7 @@ def run_tray(app_config: AppConfig) -> int:
         else:
             _notify("Tailscale URL", url)
 
-    def copy_tunnel(icon, item):  # noqa: ARG001
+    def copy_tunnel(self, icon, item) -> None:  # noqa: ARG002
         if not TUNNEL_URL_FILE.exists():
             _notify(
                 "No tunnel URL yet",
@@ -527,19 +516,19 @@ def run_tray(app_config: AppConfig) -> int:
         else:
             _notify("Cloudflare URL", url)
 
-    def restart_webapp(icon, item):  # noqa: ARG001
+    def restart_webapp(self, icon, item) -> None:  # noqa: ARG002
         def _do_restart():
             try:
                 _notify("Launcher", "Restarting webapp…")
-                manager.restart(wait=True)
-                _notify("Launcher webapp restarted", manager.base_url)
+                self.manager.restart(wait=True)
+                _notify("Launcher webapp restarted", self.manager.base_url)
             except Exception as exc:  # noqa: BLE001
                 logger.error(f"❌ webapp restart failed: {exc}")
                 _notify("Restart failed", str(exc))
 
         threading.Thread(target=_do_restart, daemon=True).start()
 
-    def enroll_device(icon, item):  # noqa: ARG001
+    def enroll_device(self, icon, item) -> None:  # noqa: ARG002
         """Open a one-time passkey enrollment window on the webapp.
 
         Opening it deliberately from the PC is what makes adding a new
@@ -548,7 +537,7 @@ def run_tray(app_config: AppConfig) -> int:
         def _do_enroll():
             scheme = "https" if cert_paths() else "http"
             url = (
-                f"{scheme}://127.0.0.1:{manager.config.port}"
+                f"{scheme}://127.0.0.1:{self.manager.config.port}"
                 "/api/webauthn/enroll/window"
             )
             try:
@@ -573,45 +562,82 @@ def run_tray(app_config: AppConfig) -> int:
 
         threading.Thread(target=_do_enroll, daemon=True).start()
 
-    def show_status(icon, item):  # noqa: ARG001
-        s = manager.status()
+    def show_status(self, icon, item) -> None:  # noqa: ARG002
+        s = self.manager.status()
         _notify("Launcher status", f"{s.detail} · {s.base_url}")
 
-    def quit_app(icon, item):  # noqa: ARG001
+    def quit_app(self, icon, item) -> None:  # noqa: ARG002
         logger.info("👋 Tray quit requested")
-        watchdog_stop.set()
-        _stop_tunnel()
-        _stop_session_host()
+        self.watchdog_stop.set()
+        self._stop_tunnel()
+        self._stop_session_host()
         try:
-            manager.stop()
+            self.manager.stop()
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"⚠️  stop failed: {exc}")
-        instance.release()
+        self.instance.release()
         icon.stop()
 
-    def on_left_click(icon, item):  # noqa: ARG001
-        webbrowser.open(manager.base_url)
+    def on_left_click(self, icon, item) -> None:  # noqa: ARG002
+        webbrowser.open(self.manager.base_url)
 
-    menu = Menu(
-        MenuItem("🚀 Open launcher", on_left_click, default=True),
-        MenuItem("📋 Copy local URL", copy_local),
-        MenuItem("📋 Copy Tailscale URL", copy_tailscale),
-        MenuItem("📋 Copy Cloudflare URL", copy_tunnel),
-        Menu.SEPARATOR,
-        MenuItem("🔄 Restart webapp", restart_webapp),
-        MenuItem("🔐 Enroll device (5 min)", enroll_device),
-        MenuItem("ℹ️ Status", show_status),
-        Menu.SEPARATOR,
-        MenuItem("🚪 Quit", quit_app),
-    )
+    # -- run ---------------------------------------------------------------
 
-    icon = pystray.Icon(
-        "launcher",
-        icon=_build_icon(),
-        title="Launcher",
-        menu=menu,
-    )
-    icon.run()
-    if starter_error["exc"] is not None:
+    def run(self) -> int:
+        """Start background threads, build the menu + icon, block until Quit."""
+        import pystray  # type: ignore
+        from pystray import Menu, MenuItem
+
+        threading.Thread(target=self._start_session_host, daemon=True).start()
+        threading.Thread(target=self._start, daemon=True).start()
+        threading.Thread(
+            target=self.watchdog.run, args=(self.watchdog_stop,), daemon=True
+        ).start()
+        if self.tunnel_hostname is not None:
+            threading.Thread(target=self._start_tunnel, daemon=True).start()
+
+        menu = Menu(
+            MenuItem("🚀 Open launcher", self.on_left_click, default=True),
+            MenuItem("📋 Copy local URL", self.copy_local),
+            MenuItem("📋 Copy Tailscale URL", self.copy_tailscale),
+            MenuItem("📋 Copy Cloudflare URL", self.copy_tunnel),
+            Menu.SEPARATOR,
+            MenuItem("🔄 Restart webapp", self.restart_webapp),
+            MenuItem("🔐 Enroll device (5 min)", self.enroll_device),
+            MenuItem("ℹ️ Status", self.show_status),
+            Menu.SEPARATOR,
+            MenuItem("🚪 Quit", self.quit_app),
+        )
+
+        icon = pystray.Icon(
+            "launcher",
+            icon=_build_icon(),
+            title="Launcher",
+            menu=menu,
+        )
+        icon.run()
+        if self.starter_exc is not None:
+            return 1
+        return 0
+
+
+def run_tray(app_config: AppConfig) -> int:
+    """Run the tray icon. Returns when the user picks Quit."""
+    try:
+        import pystray  # noqa: F401  (import-check only; TrayApp.run() re-imports)
+    except ImportError as exc:
+        logger.error(
+            f"❌ pystray not installed ({exc}); install via `pip install -r requirements.txt`"
+        )
         return 1
-    return 0
+
+    # In-process single-instance guard (project-scaffolding#39): the tray.bat CIM
+    # pre-check can let two near-simultaneous launches through, so the guarantee
+    # must live in the process. Held for the tray's lifetime; the OS frees the
+    # named mutex on exit.
+    instance = SingleInstance(r"Global\app-launcher-tray")
+    if not instance.acquired:
+        logger.info("ℹ️  Another app-launcher tray is already running; exiting.")
+        return 0
+
+    return TrayApp(app_config, instance).run()
