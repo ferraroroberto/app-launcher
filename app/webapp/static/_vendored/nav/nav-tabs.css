@@ -32,6 +32,10 @@
 }
 .tab {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
   background: transparent;
   border: 0;
   padding: 9px 10px;
@@ -44,10 +48,26 @@
 }
 .tab.active { background: var(--card-off); color: var(--accent); }
 .tab:active { transform: scale(0.97); }
-/* Desktop shows the emoji + label; the stroke SVG icon is mobile-only (revealed
-   in the coarse-pointer media query below). */
-.tab-icon { display: none; }
-.tab-emoji { margin-right: 0.35em; }
+/* The stroke SVG icon shows everywhere — desktop segmented control and mobile
+   pill alike (home-automation #77 made icon-as-SVG the fleet's direction; this
+   file hid it on desktop until project-scaffolding #142). Sized in `em` so it
+   tracks the label's font-size; the coarse-pointer block below re-sizes it to
+   the pill's --bottom-tabs-icon and stacks it above the label. */
+.tab-icon {
+  display: block;
+  flex: none;
+  width: 1.05em;
+  height: 1.05em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Legacy, superseded by .tab-icon. Hidden at every width so an app still
+   shipping a `.tab-emoji` span gets the icon back by re-vendoring this file
+   alone; drop the span from your markup when you next touch it. */
+.tab-emoji { display: none; }
 @media (max-width: 430px) {
   .tab {
     min-width: 0;
@@ -56,11 +76,13 @@
   }
 }
 /* Narrow non-touch windows (a squeezed desktop browser, fine-pointer tablets):
-   the row of emoji+label tabs no longer fits, and without a strategy the labels
-   collide with the next tab (home-automation #365). Collapse to emoji-only —
+   the row of icon+label tabs no longer fits, and without a strategy the labels
+   collide with the next tab (home-automation #365). Collapse to icon-only —
    the label stays in the accessibility tree via the clip idiom (display:none
-   would strip the button's accessible name). The coarse-pointer pill below is
-   untouched: it matches (pointer: coarse) first and never reaches this state. */
+   would strip the button's accessible name). An absolutely-positioned label is
+   no longer a flex item, so `.tab`'s gap leaves no phantom space beside the
+   icon. The coarse-pointer pill below is untouched: it matches
+   (pointer: coarse) first and never reaches this state. */
 @media (pointer: fine) and (max-width: 520px) {
   .tab-label {
     position: absolute;
@@ -70,7 +92,6 @@
     clip: rect(0 0 0 0);
     white-space: nowrap;
   }
-  .tab-emoji { margin-right: 0; }
 }
 
 /* ------------------------------------------- floating bottom tab bar (mobile) */
@@ -264,17 +285,13 @@
   }
   .tab:active { transform: scale(0.97); }
 
+  /* Fixed px, not the desktop rule's `em`: the pill's label is 11px, so an
+     em-relative icon would shrink to ~11px inside it. Stroke presentation is
+     inherited from the base rule. */
   .tab-icon {
-    display: block;
     width: var(--bottom-tabs-icon, 20px);
     height: var(--bottom-tabs-icon, 20px);
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
-  .tab-emoji { display: none; }
   .tab-label {
     display: block;
     max-width: 100%;

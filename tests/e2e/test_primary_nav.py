@@ -80,5 +80,8 @@ def test_primary_nav_is_responsive_and_accessible(
         # in-flow placement.
         assert metrics["position"] == "sticky"
         assert metrics["display"] == "flex"
-        assert metrics["iconDisplay"] == "none"
+        # icon shows (issue #421): the vendored nav-tabs.css now renders the
+        # desktop segmented control's SVG glyph, like the mobile pill does,
+        # per project-scaffolding#142 — no longer hidden outside coarse-pointer.
+        assert metrics["iconDisplay"] == "block"
         assert metrics["paddingBottom"] < 100
