@@ -780,6 +780,67 @@ class TestTaskNamesFor:
         ]
 
 
+class TestSpawnRunJobDetached:
+    """issue #416: DETACHED_PROCESS alone does not escape ``taskkill /T`` —
+    the spawn must re-parent via ``cmd /c start`` like the session-host does.
+    """
+
+    def test_wraps_argv_in_cmd_start_and_drops_detached_process_flag(
+        self, monkeypatch
+    ):
+        captured = {}
+
+        class _FakeProc:
+            pid = 4242
+
+        def fake_popen(argv, **kwargs):
+            captured["argv"] = argv
+            captured["kwargs"] = kwargs
+            return _FakeProc()
+
+        monkeypatch.setattr(jobs_schtasks_mod.subprocess, "Popen", fake_popen)
+
+        pid = jobs_schtasks_mod.spawn_run_job_detached("demo", "run-1", "manual")
+
+        assert pid == 4242
+        argv = captured["argv"]
+        assert argv[:5] == ["cmd", "/c", "start", "", "/b"]
+        # The real launcher invocation follows the cmd/start wrapper untouched.
+        assert "run-job" in argv
+        assert "demo" in argv
+        assert "run-1" in argv
+        # DETACHED_PROCESS must NOT be set — it doesn't escape taskkill /T
+        # (verified empirically, see app/tray/tray.py::_start_session_host).
+        detached_flag = getattr(subprocess, "DETACHED_PROCESS", 0)
+        creationflags = captured["kwargs"].get("creationflags", 0)
+        if detached_flag:
+            assert not (creationflags & detached_flag)
+
+    def test_params_and_dry_run_still_appended_before_the_wrapper(
+        self, monkeypatch
+    ):
+        captured = {}
+
+        class _FakeProc:
+            pid = 1
+
+        def fake_popen(argv, **kwargs):
+            captured["argv"] = argv
+            return _FakeProc()
+
+        monkeypatch.setattr(jobs_schtasks_mod.subprocess, "Popen", fake_popen)
+
+        jobs_schtasks_mod.spawn_run_job_detached(
+            "demo", "run-2", "manual", params={"x": 1}, dry_run=True
+        )
+
+        argv = captured["argv"]
+        assert argv[:5] == ["cmd", "/c", "start", "", "/b"]
+        assert "--params" in argv
+        assert json.dumps({"x": 1}) in argv
+        assert "--dry-run" in argv
+
+
 class TestSyncSchtasks:
     def test_daily_creates_one_task(self):
         job = Job(
