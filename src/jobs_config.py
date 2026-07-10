@@ -45,7 +45,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from src._json_io import atomic_write_json
 from src.jobs_webhook import WebhookConfig, webhook_from_dict
@@ -864,6 +864,28 @@ def add_job(cfg: JobsConfig, job: Job) -> Job:
     return job
 
 
+# Declarative spec for update_job's single-field edits: (attr name, transform
+# applied to the raw incoming value, "only set when truthy" flag). Each entry
+# drives one `setattr(job, attr, transform(fields[attr]))` in the loop below
+# — a new plain field only needs a row here, not another hand-written branch.
+# ``kind``/``script_path``/``kind_config`` (validated together as one
+# effective post-edit shape) and ``on_success``/``on_failure`` (validated
+# together with an atomic revert-on-cycle) don't fit this shape — both are
+# genuinely cross-field and stay as their own explicit blocks below.
+_SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
+    ("name", lambda v: str(v).strip(), True),
+    ("args", lambda v: str(v or ""), False),
+    ("schedule", schedule_from_dict, False),
+    ("params", params_from_dict, False),
+    ("cooldown_seconds", _validate_cooldown, False),
+    ("mutex_group", _validate_mutex_group, False),
+    ("confirm", bool, False),
+    ("visible", bool, False),
+    ("elevated", bool, False),
+    ("webhook", webhook_from_dict, False),
+)
+
+
 def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
     """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``, ``params``,
     ``kind``, ``kind_config``.
@@ -871,8 +893,15 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
     job = get_by_id(cfg, job_id)
     if job is None:
         return None
-    if "name" in fields and fields["name"]:
-        job.name = str(fields["name"]).strip()
+
+    for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
+        if attr not in fields:
+            continue
+        raw = fields[attr]
+        if only_if_truthy and not raw:
+            continue
+        setattr(job, attr, transform(raw))
+
     # kind / script_path / kind_config are validated together as the
     # *effective* post-edit shape (issue #70) — an edit to any one of the
     # three must still describe a structurally valid job, and validation
@@ -904,24 +933,7 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
             job.script_path = eff_script_path
         if "kind_config" in fields:
             job.kind_config = eff_kind_config
-    if "args" in fields:
-        job.args = str(fields["args"] or "")
-    if "schedule" in fields:
-        job.schedule = schedule_from_dict(fields["schedule"])
-    if "params" in fields:
-        job.params = params_from_dict(fields["params"])
-    if "cooldown_seconds" in fields:
-        job.cooldown_seconds = _validate_cooldown(fields["cooldown_seconds"])
-    if "mutex_group" in fields:
-        job.mutex_group = _validate_mutex_group(fields["mutex_group"])
-    if "confirm" in fields:
-        job.confirm = bool(fields["confirm"])
-    if "visible" in fields:
-        job.visible = bool(fields["visible"])
-    if "elevated" in fields:
-        job.elevated = bool(fields["elevated"])
-    if "webhook" in fields:
-        job.webhook = webhook_from_dict(fields["webhook"])
+
     # Snapshot the chain edges so we can revert atomically on cycle.
     prev_success, prev_failure = job.on_success, job.on_failure
     if "on_success" in fields:

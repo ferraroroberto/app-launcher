@@ -259,6 +259,302 @@ def _maybe_notify_failure(
         logger.warning(f"⚠️  notification path raised: {exc}")
 
 
+def _parse_run_params(
+    job: Job, params_raw: Optional[str]
+) -> Tuple[Dict[str, Any], Optional[int]]:
+    """Decode the ``--params`` JSON payload (issue #67).
+
+    Returns ``(values, error_exit_code)``. ``error_exit_code`` is ``None``
+    on success (``values`` may be an empty dict for parameter-less runs);
+    otherwise ``values`` is ``{}`` and the caller should return the code
+    immediately.
+    """
+    if not params_raw:
+        return {}, None
+    try:
+        values = json.loads(params_raw)
+    except json.JSONDecodeError as exc:
+        logger.error(f"❌ run-job {job.id}: --params is not JSON ({exc})")
+        return {}, 2
+    if not isinstance(values, dict):
+        logger.error(f"❌ run-job {job.id}: --params must encode a JSON object")
+        return {}, 2
+    return values, None
+
+
+def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]:
+    """Finalise a scheduled fire that lands inside the cooldown window as
+    a no-op ``skipped`` run record.
+
+    Manual fires are already 429'd at the route — by the time we get here
+    on the manual path either there was no overlap or the caller
+    deliberately bypassed the gate, so those are let through (``None``).
+    Returns ``0`` when the run was skipped and finalised; ``None`` when
+    there's no cooldown to apply and the caller should proceed with a
+    real invocation.
+    """
+    if args.trigger != "scheduled":
+        return None
+    cooldown_state = cooldown_check(job)
+    if cooldown_state is None:
+        return None
+    remaining, cooldown_seconds, anchor_id = cooldown_state
+    skip_run_id = args.run_id or new_run_id()
+    skip_dir = runs_dir(job.id) / skip_run_id
+    skip_dir.mkdir(parents=True, exist_ok=True)
+    stamped = datetime.now().isoformat(timespec="seconds")
+    write_run_json(
+        skip_dir,
+        run_id=skip_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger=args.trigger,
+        script_path=job.script_path,
+        args=job.args,
+        started_at=stamped,
+        finished_at=stamped,
+        status="skipped",
+        note="cooldown",
+        cooldown_seconds=cooldown_seconds,
+        cooldown_remaining_seconds=remaining,
+        cooldown_anchor_run_id=anchor_id or None,
+    )
+    prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+    invalidate_stats_cache(job.id)
+    logger.info(
+        f"⏭ run-job {job.id} skipped (cooldown: {remaining}s "
+        f"remaining of {cooldown_seconds}s; anchor={anchor_id!r})"
+    )
+    return 0
+
+
+def _build_invocation_or_record_failure(
+    job: Job,
+    args: argparse.Namespace,
+    values: Dict[str, Any],
+    run_dir: Path,
+) -> Optional[Tuple[List[str], Path, Dict[str, str]]]:
+    """Resolve the job's invocation, or finalise a ``failed`` run record
+    on a build error and return ``None``.
+
+    ``run_dir`` already exists at this point (created by the caller so
+    inline-shell can write its temp script into it) — leaving it empty on
+    a build failure would silently strand a directory on every fire of a
+    misconfigured job. Finalises it as a visible failed record instead,
+    matching the Popen-spawn failure path in :func:`_spawn_and_wait`.
+    """
+    try:
+        return build_invocation(job, values, run_dir)
+    except (OSError, ValueError) as exc:
+        logger.error(f"❌ cannot run job {job.id}: {exc}")
+        stamped = datetime.now().isoformat(timespec="seconds")
+        write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            job_id=job.id,
+            name=job.name,
+            trigger=args.trigger,
+            script_path=job.script_path,
+            args=job.args,
+            started_at=stamped,
+            finished_at=stamped,
+            status="failed",
+            exit_code=-1,
+            note=f"invocation error: {exc}",
+        )
+        prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+        invalidate_stats_cache(job.id)
+        return None
+
+
+def _spawn_and_wait(
+    job: Job,
+    argv: List[str],
+    cwd: Path,
+    env: Dict[str, str],
+    run_dir: Path,
+) -> Tuple[int, str, Optional[_ResourceSampler]]:
+    """Spawn the job's process, tee output for ``visible`` jobs, sample
+    resource usage, and wait for it to exit.
+
+    Returns ``(exit_code, status, sampler)`` — ``status`` is ``"success"``
+    or ``"failed"``; ``sampler`` is ``None`` when resource sampling
+    couldn't start. Persists the child's ``pid`` onto the run record as
+    soon as it's known so the kill endpoint can find the tree even if
+    this executor crashes before ``wait()`` returns.
+    """
+    output_log = run_dir / "output.log"
+    sampler: Optional[_ResourceSampler] = None
+    try:
+        with output_log.open("wb") as fh:
+            # A ``visible`` job streams the child's combined output to
+            # BOTH output.log (remote run-history) and the launcher's
+            # own console (the user watching on the PC). Non-visible
+            # jobs write straight to the file as before — no pipe, no
+            # reader, byte-for-byte unchanged behaviour.
+            stdout_target = subprocess.PIPE if job.visible else fh
+            proc = subprocess.Popen(
+                argv,
+                cwd=str(cwd),
+                env=env,
+                stdout=stdout_target,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+            )
+            # Persist the pid so the kill endpoint can find the tree
+            # even if the executor itself crashes before wait() returns.
+            write_run_json(run_dir, pid=proc.pid)
+            try:
+                sampler = _ResourceSampler(proc.pid)
+                sampler.start()
+            except Exception as exc:  # noqa: BLE001 — sampling optional
+                logger.warning(f"⚠️  resource sampler init failed: {exc}")
+                sampler = None
+            if job.visible and proc.stdout is not None:
+                _tee_pipe_to_file_and_console(proc.stdout, fh)
+            exit_code = proc.wait()
+        status = "success" if exit_code == 0 else "failed"
+    except OSError as exc:
+        logger.error(f"❌ run-job {job.id} spawn failed: {exc}")
+        exit_code = -1
+        status = "failed"
+        try:
+            with output_log.open("ab") as fh:
+                fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
+        except OSError:
+            pass
+    finally:
+        if sampler is not None:
+            sampler.stop()
+    return exit_code, status, sampler
+
+
+def _finalize_run(
+    job: Job,
+    run_dir: Path,
+    *,
+    exit_code: int,
+    status: str,
+    spawn_started: float,
+    sampler: Optional[_ResourceSampler],
+) -> None:
+    """Stamp the run's terminal fields, prune history, invalidate the
+    stats cache, and fire a failure notification if warranted.
+
+    Runs after the child process has exited (or failed to spawn) but
+    before chain dispatch / once-cleanup / mutex drain — those steps read
+    the finalised run record.
+    """
+    finished_at = datetime.now().isoformat(timespec="seconds")
+    duration_seconds = round(time.monotonic() - spawn_started, 3)
+    fields: Dict[str, object] = {
+        "finished_at": finished_at,
+        "exit_code": exit_code,
+        "status": status,
+        "duration_seconds": duration_seconds,
+    }
+    if sampler is not None:
+        fields["peak_rss_bytes"] = sampler.peak_rss_bytes
+        fields["cpu_seconds"] = round(sampler.cpu_seconds, 3)
+    write_run_json(run_dir, **fields)
+    prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+    invalidate_stats_cache(job.id)
+
+    # Failure notification — load the live webapp config so a user
+    # change between spawn and finalisation takes effect on the next
+    # run without needing a webapp restart.
+    try:
+        cfg = load_webapp_config()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"⚠️  notify: could not load webapp config: {exc}")
+    else:
+        _maybe_notify_failure(cfg, job, run_dir, status=status, exit_code=exit_code)
+
+
+def _dispatch_chain(job: Job, status: str) -> None:
+    """Fire configured downstream jobs (``on_success`` / ``on_failure``).
+
+    Runs BEFORE mutex drain so a chained downstream that shares the same
+    mutex group as a queued sibling lands in the same queue, in fire
+    order. Re-loads the registry so a user edit between spawn and
+    finalisation takes effect on the next chain hop without a webapp
+    restart.
+    """
+    downstream_ids: List[str] = []
+    if status == "success":
+        downstream_ids = list(job.on_success or [])
+    elif status == "failed":
+        downstream_ids = list(job.on_failure or [])
+    if not downstream_ids:
+        return
+    try:
+        chain_cfg = load_jobs()
+        for did in downstream_ids:
+            downstream = get_by_id(chain_cfg, did)
+            if downstream is None:
+                logger.warning(
+                    f"⚠️  chain: unknown downstream {did!r} from "
+                    f"{job.id} (skipping)"
+                )
+                continue
+            try:
+                dispatch_chain_run(chain_cfg.jobs, downstream, job.id)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"⚠️  chain: dispatch {did!r} failed: {exc}")
+    except Exception as exc:  # noqa: BLE001 — chain must not block finalise
+        logger.warning(f"⚠️  chain: outer dispatch raised: {exc}")
+
+
+def _cleanup_once_schedule(job: Job, args: argparse.Namespace) -> None:
+    """One-shot schedules clean themselves up.
+
+    A ``once`` job that has just been fired by Task Scheduler removes its
+    schtasks entry (and the in-memory schedule on the registry — leaving
+    it as ``type=once`` with an ``at`` in the past would let the user
+    re-fire by editing the dialog, but the operational expectation is
+    "fired, done"). Only on scheduled triggers; manual runs of a ``once``
+    job leave the schedule alone so a deferred future fire still works.
+    Skips if already paused (defensive — ``schedule.type`` is ``none``
+    then anyway).
+    """
+    if not (
+        args.trigger == "scheduled"
+        and job.schedule.type == "once"
+        and not job.is_paused
+    ):
+        return
+    try:
+        delete_schtasks(job.id)
+        # Mutate the registry so the row stops showing "once …"
+        # and surfaces as a plain manual job.
+        from src.jobs_config import (  # local import to avoid cycles
+            JobsConfig,
+            Schedule,
+            save_jobs,
+        )
+        fresh_cfg = load_jobs()
+        fresh_job = next((j for j in fresh_cfg.jobs if j.id == job.id), None)
+        if fresh_job is not None and fresh_job.schedule.type == "once":
+            fresh_job.schedule = Schedule(type="none")
+            save_jobs(fresh_cfg)
+    except Exception as exc:  # noqa: BLE001 — never block finalise
+        logger.warning(f"⚠️  once cleanup for {job.id} raised: {exc}")
+
+
+def _drain_mutex_queue_for(job: Job) -> None:
+    """Drain any queued sibling fire in this job's mutex group.
+
+    Runs after the head's status has finalised on disk so a parallel
+    route call doing ``mutex_collision`` sees this job as done.
+    """
+    if not job.mutex_group:
+        return
+    try:
+        drain_mutex_queue(job.mutex_group)
+    except Exception as exc:  # noqa: BLE001 — never block finalisation
+        logger.warning(f"⚠️  mutex drain {job.mutex_group!r} raised: {exc}")
+
+
 class RunJobCommand(BaseCommand):
     """Argparse subcommand: ``launcher.py run-job <id>``."""
 
@@ -313,56 +609,13 @@ class RunJobCommand(BaseCommand):
         # Older test scaffolding builds the args namespace by hand and may
         # not set --params; getattr keeps that path working without forcing
         # every caller to fake the new field.
-        values: Dict[str, Any] = {}
-        params_raw = getattr(args, "params", None)
-        if params_raw:
-            try:
-                values = json.loads(params_raw)
-            except json.JSONDecodeError as exc:
-                logger.error(f"❌ run-job {job.id}: --params is not JSON ({exc})")
-                return 2
-            if not isinstance(values, dict):
-                logger.error(
-                    f"❌ run-job {job.id}: --params must encode a JSON object"
-                )
-                return 2
+        values, params_error = _parse_run_params(job, getattr(args, "params", None))
+        if params_error is not None:
+            return params_error
 
-        # Scheduled fires that land inside the cooldown window finalise
-        # as a no-op `skipped` record. Manual fires are already 429'd at
-        # the route — by the time we get here on the manual path either
-        # there was no overlap or the caller deliberately bypassed the
-        # gate, so we let those through.
-        if args.trigger == "scheduled":
-            cooldown_state = cooldown_check(job)
-            if cooldown_state is not None:
-                remaining, cooldown_seconds, anchor_id = cooldown_state
-                skip_run_id = args.run_id or new_run_id()
-                skip_dir = runs_dir(job.id) / skip_run_id
-                skip_dir.mkdir(parents=True, exist_ok=True)
-                stamped = datetime.now().isoformat(timespec="seconds")
-                write_run_json(
-                    skip_dir,
-                    run_id=skip_dir.name,
-                    job_id=job.id,
-                    name=job.name,
-                    trigger=args.trigger,
-                    script_path=job.script_path,
-                    args=job.args,
-                    started_at=stamped,
-                    finished_at=stamped,
-                    status="skipped",
-                    note="cooldown",
-                    cooldown_seconds=cooldown_seconds,
-                    cooldown_remaining_seconds=remaining,
-                    cooldown_anchor_run_id=anchor_id or None,
-                )
-                prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
-                invalidate_stats_cache(job.id)
-                logger.info(
-                    f"⏭ run-job {job.id} skipped (cooldown: {remaining}s "
-                    f"remaining of {cooldown_seconds}s; anchor={anchor_id!r})"
-                )
-                return 0
+        skip_exit_code = _finalize_cooldown_skip(job, args)
+        if skip_exit_code is not None:
+            return skip_exit_code
 
         # Webapp-spawned runs pre-create the run dir so the API can
         # return the run id immediately. Scheduled runs (Task Scheduler)
@@ -376,34 +629,10 @@ class RunJobCommand(BaseCommand):
         else:
             run_dir = new_run_dir(job.id, new_run_id())
 
-        try:
-            argv, cwd, extra_env = build_invocation(job, values, run_dir)
-        except (OSError, ValueError) as exc:
-            logger.error(f"❌ cannot run job {job.id}: {exc}")
-            # run_dir already exists at this point (created above so
-            # inline-shell can write its temp script into it) — leaving it
-            # empty on a build failure would silently strand a directory
-            # on every fire of a misconfigured job. Finalise it as a
-            # visible failed record instead, matching the Popen-spawn
-            # failure path further down.
-            stamped = datetime.now().isoformat(timespec="seconds")
-            write_run_json(
-                run_dir,
-                run_id=run_dir.name,
-                job_id=job.id,
-                name=job.name,
-                trigger=args.trigger,
-                script_path=job.script_path,
-                args=job.args,
-                started_at=stamped,
-                finished_at=stamped,
-                status="failed",
-                exit_code=-1,
-                note=f"invocation error: {exc}",
-            )
-            prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
-            invalidate_stats_cache(job.id)
+        invocation = _build_invocation_or_record_failure(job, args, values, run_dir)
+        if invocation is None:
             return 2
+        argv, cwd, extra_env = invocation
 
         started_at = datetime.now().isoformat(timespec="seconds")
         dry_run = bool(getattr(args, "dry_run", False))
@@ -435,157 +664,20 @@ class RunJobCommand(BaseCommand):
         env.update(extra_env)
         if dry_run:
             env["JOB_DRY_RUN"] = "1"
-        output_log = run_dir / "output.log"
-        exit_code: int
-        status: str
-        sampler: Optional[_ResourceSampler] = None
         spawn_started = time.monotonic()
-        try:
-            with output_log.open("wb") as fh:
-                # A ``visible`` job streams the child's combined output to
-                # BOTH output.log (remote run-history) and the launcher's
-                # own console (the user watching on the PC). Non-visible
-                # jobs write straight to the file as before — no pipe, no
-                # reader, byte-for-byte unchanged behaviour.
-                stdout_target = subprocess.PIPE if job.visible else fh
-                proc = subprocess.Popen(
-                    argv,
-                    cwd=str(cwd),
-                    env=env,
-                    stdout=stdout_target,
-                    stderr=subprocess.STDOUT,
-                    stdin=subprocess.DEVNULL,
-                )
-                # Persist the pid so the kill endpoint can find the tree
-                # even if the executor itself crashes before wait() returns.
-                write_run_json(run_dir, pid=proc.pid)
-                try:
-                    sampler = _ResourceSampler(proc.pid)
-                    sampler.start()
-                except Exception as exc:  # noqa: BLE001 — sampling optional
-                    logger.warning(f"⚠️  resource sampler init failed: {exc}")
-                    sampler = None
-                if job.visible and proc.stdout is not None:
-                    _tee_pipe_to_file_and_console(proc.stdout, fh)
-                exit_code = proc.wait()
-            status = "success" if exit_code == 0 else "failed"
-        except OSError as exc:
-            logger.error(f"❌ run-job {job.id} spawn failed: {exc}")
-            exit_code = -1
-            status = "failed"
-            try:
-                with output_log.open("ab") as fh:
-                    fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
-            except OSError:
-                pass
-        finally:
-            if sampler is not None:
-                sampler.stop()
+        exit_code, status, sampler = _spawn_and_wait(job, argv, cwd, env, run_dir)
 
-        finished_at_dt = datetime.now()
-        finished_at = finished_at_dt.isoformat(timespec="seconds")
-        duration_seconds = round(time.monotonic() - spawn_started, 3)
-        fields: Dict[str, object] = {
-            "finished_at": finished_at,
-            "exit_code": exit_code,
-            "status": status,
-            "duration_seconds": duration_seconds,
-        }
-        if sampler is not None:
-            fields["peak_rss_bytes"] = sampler.peak_rss_bytes
-            fields["cpu_seconds"] = round(sampler.cpu_seconds, 3)
-        write_run_json(run_dir, **fields)
-        prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
-        invalidate_stats_cache(job.id)
-
-        # Failure notification — load the live webapp config so a user
-        # change between spawn and finalisation takes effect on the next
-        # run without needing a webapp restart.
-        try:
-            cfg = load_webapp_config()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"⚠️  notify: could not load webapp config: {exc}")
-        else:
-            _maybe_notify_failure(
-                cfg, job, run_dir, status=status, exit_code=exit_code
-            )
-
-        # DAG chain — fire configured downstream jobs (on_success /
-        # on_failure). Runs BEFORE mutex drain so a chained downstream
-        # that shares the same mutex group as a queued sibling lands in
-        # the same queue, in fire order. Re-load the registry so a user
-        # edit between spawn and finalisation takes effect on the next
-        # chain hop without a webapp restart.
-        downstream_ids: List[str] = []
-        if status == "success":
-            downstream_ids = list(job.on_success or [])
-        elif status == "failed":
-            downstream_ids = list(job.on_failure or [])
-        if downstream_ids:
-            try:
-                chain_cfg = load_jobs()
-                for did in downstream_ids:
-                    downstream = get_by_id(chain_cfg, did)
-                    if downstream is None:
-                        logger.warning(
-                            f"⚠️  chain: unknown downstream {did!r} from "
-                            f"{job.id} (skipping)"
-                        )
-                        continue
-                    try:
-                        dispatch_chain_run(chain_cfg.jobs, downstream, job.id)
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning(
-                            f"⚠️  chain: dispatch {did!r} failed: {exc}"
-                        )
-            except Exception as exc:  # noqa: BLE001 — chain must not block finalise
-                logger.warning(f"⚠️  chain: outer dispatch raised: {exc}")
-
-        # One-shot schedules clean themselves up: a `once` job that has
-        # just been fired by Task Scheduler removes its schtasks entry
-        # (and the in-memory schedule on the registry — leaving it as
-        # type=once with an at in the past would let the user re-fire by
-        # editing the dialog, but the operational expectation is "fired,
-        # done"). Only on scheduled triggers; manual runs of a `once`
-        # job leave the schedule alone so a deferred future fire still
-        # works. Skip if already paused (defensive — schedule.type is
-        # none then anyway).
-        if (
-            args.trigger == "scheduled"
-            and job.schedule.type == "once"
-            and not job.is_paused
-        ):
-            try:
-                delete_schtasks(job.id)
-                # Mutate the registry so the row stops showing "once …"
-                # and surfaces as a plain manual job.
-                from src.jobs_config import (  # local import to avoid cycles
-                    JobsConfig,
-                    Schedule,
-                    save_jobs,
-                )
-                fresh_cfg = load_jobs()
-                fresh_job = next(
-                    (j for j in fresh_cfg.jobs if j.id == job.id), None
-                )
-                if fresh_job is not None and fresh_job.schedule.type == "once":
-                    fresh_job.schedule = Schedule(type="none")
-                    save_jobs(fresh_cfg)
-            except Exception as exc:  # noqa: BLE001 — never block finalise
-                logger.warning(
-                    f"⚠️  once cleanup for {job.id} raised: {exc}"
-                )
-
-        # Drain any queued sibling fire in this mutex group. Runs after
-        # the head's status has finalised on disk so a parallel route
-        # call doing mutex_collision sees this job as done.
-        if job.mutex_group:
-            try:
-                drain_mutex_queue(job.mutex_group)
-            except Exception as exc:  # noqa: BLE001 — never block finalisation
-                logger.warning(
-                    f"⚠️  mutex drain {job.mutex_group!r} raised: {exc}"
-                )
+        _finalize_run(
+            job,
+            run_dir,
+            exit_code=exit_code,
+            status=status,
+            spawn_started=spawn_started,
+            sampler=sampler,
+        )
+        _dispatch_chain(job, status)
+        _cleanup_once_schedule(job, args)
+        _drain_mutex_queue_for(job)
 
         logger.info(
             f"🏁 run-job {job.id} {status} (exit={exit_code}, run={run_dir.name})"
