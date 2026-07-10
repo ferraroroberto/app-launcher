@@ -55,6 +55,15 @@ REM ============================================================================
 
 setlocal EnableDelayedExpansion
 set "SCRIPT_DIR=%~dp0"
+REM  `%~dp0` always ends in a trailing backslash, which is what the path joins
+REM  below want -- but NOT what a quoted argument can carry. Windows argv parsing
+REM  treats an odd run of backslashes before a closing quote as escaping that
+REM  quote, so `-ScriptDir "%SCRIPT_DIR%"` swallows the rest of the command line
+REM  and every later switch (-TrayMatch, -Ports, ...) arrives EMPTY -- detect
+REM  matches nothing, reclaim reclaims nothing, and --restart silently degrades
+REM  to the adopt-the-stale-build start this template exists to prevent
+REM  (project-scaffolding#145). Pass the de-slashed copy as the argument.
+set "SCRIPT_DIR_ARG=%SCRIPT_DIR:~0,-1%"
 
 cd /d "%SCRIPT_DIR%" || exit /b 1
 
@@ -87,5 +96,5 @@ set "VERSION_URL="
 set "RESTART_ARG="
 if defined WANT_RESTART set "RESTART_ARG=-Restart"
 
-%PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%APP_NAME%" -ScriptDir "%SCRIPT_DIR%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
+%PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%APP_NAME%" -ScriptDir "%SCRIPT_DIR_ARG%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
 exit /b %ERRORLEVEL%
