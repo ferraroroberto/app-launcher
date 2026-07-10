@@ -52,7 +52,11 @@ KIND_STREAMLIT = "streamlit"
 KIND_WEBAPP = "webapp"
 KIND_TUNNEL = "tunnel"
 
-VALID_KINDS = frozenset({KIND_CLAUDE_CODE, KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL})
+# ``claude-code`` rows are computed live (see registry.py's module
+# docstring) and never persisted in apps.json, so it is deliberately
+# excluded here — a stray/hand-edited row with that kind must be
+# rejected by :func:`src.registry.load_registry`, not silently kept.
+VALID_KINDS = frozenset({KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL})
 
 
 @dataclass(frozen=True)
