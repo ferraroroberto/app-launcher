@@ -22,8 +22,10 @@ REM  sister-app trays (PhotoOCR, VoiceTranscriber, local-llm-hub, ...) and any
 REM  other unrelated python processes are untouched.
 REM
 REM  The full detect -> kill -> reclaim -> start -> verify lifecycle lives in
-REM  app\tray\tray_lifecycle.ps1 (a committed helper shelled to with -File), NOT
-REM  in cmd-side `for /f` output capture or inline `powershell -Command "..."`.
+REM  the ONE shared, machine-local tray_lifecycle.ps1 owned by fleet-config
+REM  (project-scaffolding#153) -- exposed at %USERPROFILE%\.claude\tray\ by
+REM  fleet-config's install.ps1 junction, shelled to with -File, NOT in
+REM  cmd-side `for /f` output capture or inline `powershell -Command "..."`.
 REM  Both cmd shapes have failed under non-interactive nested callers (Git Bash
 REM  -> `cmd /c "tray.bat --restart"`, or a finisher skill's Bash tool): detect
 REM  output came back empty, nothing was killed, and --restart silently degraded
@@ -81,9 +83,13 @@ REM === ADAPT (3/4): in the -TrayMatch below, replace with a regex matching
 REM     THIS app's tray invocation, e.g. launcher\.py\s+tray  or  -m\s+tray
 set "PS=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "TRAY_VENV=%SCRIPT_DIR%.venv"
-set "TRAY_PS=%SCRIPT_DIR%app\tray\tray_lifecycle.ps1"
+REM  ONE shared, machine-local copy owned by fleet-config (project-scaffolding#153)
+REM  -- junctioned by fleet-config's install.ps1, never vendored per-app.
+set "TRAY_PS=%USERPROFILE%/.claude/tray/tray_lifecycle.ps1"
 if not exist "%TRAY_PS%" (
-    echo ERROR: missing tray helper "%TRAY_PS%" -- vendor app\tray\tray_lifecycle.ps1 from the scaffold.
+    echo ERROR: missing shared tray helper "%TRAY_PS%"
+    echo        Fix: install fleet-config and run its install.ps1, then retry.
+    echo        See ferraroroberto/fleet-config's README for details.
     exit /b 1
 )
 
