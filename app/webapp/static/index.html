@@ -1070,8 +1070,6 @@
       <p id="buildReadout" class="muted small"></p>
     </div>
 
-    <div id="toast" class="toast" hidden></div>
-
     <dialog id="scanDialog" class="scan-dialog">
       <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> New entries</h2>
       <div id="scanResults" class="scan-results"></div>
@@ -1092,6 +1090,13 @@
       </form>
     </dialog>
   </main>
+
+  <!-- Body-level toast, sibling of <main class="app"> — never nested inside
+       it (issue #404, mirrors the nav's own #355 fix above). A fixed
+       descendant of the standalone-PWA .app scroller (nav-tabs.css) can get
+       trapped/clipped behind the equally body-level floating nav bar on real
+       iOS WebKit instead of escaping to the physical viewport. -->
+  <div id="toast" class="toast" hidden></div>
 
   <div id="loginOverlay" class="login-overlay" hidden>
     <form id="loginForm" class="login-card" autocomplete="off">
