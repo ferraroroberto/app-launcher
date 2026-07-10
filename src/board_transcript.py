@@ -21,7 +21,7 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.board_state import _parse_iso
 
@@ -43,6 +43,28 @@ _WORKING_GHOST_AFTER = timedelta(minutes=15)
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
 
+def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
+    """Read the last ``n_bytes`` of ``path``, decoded and split into lines.
+
+    Also returns whether the read was truncated (the file is bigger than
+    ``n_bytes`` — the first returned line is then likely a torn partial
+    record, which callers that care skip). Best-effort: any OSError (missing
+    file, read failure) returns ``([], False)`` — callers degrade to "no
+    signal" the same way a parse failure would. Shared by
+    :func:`_last_activity` and :func:`last_exchange`, which differ only in
+    the byte window and what they do with the lines.
+    """
+    try:
+        with Path(str(path)).open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - n_bytes))
+            lines = fh.read().decode("utf-8", errors="replace").splitlines()
+            return lines, size > n_bytes
+    except OSError:
+        return [], False
+
+
 def _last_activity(transcript_path: Any) -> Optional[datetime]:
     """Timestamp of the newest real conversation event in the transcript tail.
 
@@ -54,14 +76,7 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
     unparseable lines are skipped (a line may be appended mid-read); no
     conversation event in the tail → ``None`` — callers keep the hook status.
     """
-    try:
-        with Path(str(transcript_path)).open("rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            fh.seek(max(0, size - _ACTIVITY_TAIL_BYTES))
-            lines = fh.read().decode("utf-8", errors="replace").splitlines()
-    except OSError:
-        return None
+    lines, _truncated = _tail_lines(transcript_path, _ACTIVITY_TAIL_BYTES)
     for raw in reversed(lines):
         raw = raw.strip()
         if not raw:
@@ -78,6 +93,21 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
         if stamp is not None:
             return stamp
     return None
+
+
+def _transcript_mtime(transcript_path: Any) -> Optional[datetime]:
+    """The transcript file's mtime as a UTC datetime, or ``None`` on any
+    OSError (missing file, permission, …). Shared by
+    :func:`_transcript_overlay` and :func:`_is_working_ghost` — both need
+    this same cheap stat probe before deciding whether a costlier tail read
+    (or, for the ghost check, a status flip) is warranted.
+    """
+    try:
+        return datetime.fromtimestamp(
+            Path(str(transcript_path)).stat().st_mtime, tz=timezone.utc
+        )
+    except OSError:
+        return None
 
 
 def _transcript_overlay(
@@ -109,11 +139,8 @@ def _transcript_overlay(
     transcript = row.get("transcript_path")
     if updated is None or not transcript:
         return status, anchor
-    try:
-        mtime = datetime.fromtimestamp(
-            Path(str(transcript)).stat().st_mtime, tz=timezone.utc
-        )
-    except OSError:
+    mtime = _transcript_mtime(transcript)
+    if mtime is None:
         return status, anchor
     if mtime - updated <= _RESUME_EPSILON:
         return status, anchor  # nothing written past the stamp — skip the read
@@ -137,11 +164,8 @@ def _is_working_ghost(row: Optional[Dict[str, Any]], status: str, now: datetime)
     transcript = row.get("transcript_path")
     if not transcript:
         return False
-    try:
-        mtime = datetime.fromtimestamp(
-            Path(str(transcript)).stat().st_mtime, tz=timezone.utc
-        )
-    except OSError:
+    mtime = _transcript_mtime(transcript)
+    if mtime is None:
         return False
     return now - mtime > _WORKING_GHOST_AFTER
 
@@ -188,15 +212,8 @@ def last_exchange(transcript_path: Any) -> Dict[str, Any]:
     unavailable: Dict[str, Any] = {"available": False, "user": None, "assistant": None}
     if not transcript_path:
         return unavailable
-    try:
-        with Path(str(transcript_path)).open("rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            fh.seek(max(0, size - _EXCHANGE_TAIL_BYTES))
-            lines = fh.read().decode("utf-8", errors="replace").splitlines()
-    except OSError:
-        return unavailable
-    if size > _EXCHANGE_TAIL_BYTES and lines:
+    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
+    if truncated and lines:
         lines = lines[1:]  # first line is almost certainly a partial record
 
     assistant: Optional[Dict[str, Any]] = None

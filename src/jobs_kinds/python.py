@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.jobs_config import Job
-from src.jobs_kinds.base import Problem
+from src.jobs_kinds.base import Problem, require_script
 from src.jobs_schtasks import resolve_venv_python
 
 
@@ -38,9 +38,7 @@ class PythonKind:
     def build_argv(
         self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
     ) -> Tuple[List[str], Path, Dict[str, str]]:
-        script = Path(job.script_path)
-        if not script.is_file():
-            raise OSError(f"Python script not found: {script}")
+        script = require_script(job, "Python script")
         venv_py = resolve_venv_python(script)
         if venv_py is not None:
             python_exe = str(venv_py)

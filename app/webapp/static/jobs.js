@@ -18,7 +18,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, AuthRequiredError, jsonApi, toast } from './api.js';
+import { apiFailToast, AuthRequiredError, jsonApi, logPollFailure, toast } from './api.js';
 import { fmtAgo } from './sessions.js';
 import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
 import { wireJobsAgenda } from './jobs-agenda.js';
@@ -998,9 +998,7 @@ export async function fetchJobs() {
     state.jobs = body.jobs || [];
     patchRowsInPlace();
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      console.warn('jobs fetch failed', exc);
-    }
+    logPollFailure('jobs fetch failed', exc);
   }
 }
 

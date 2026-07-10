@@ -13,6 +13,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi } from './api.js';
+import { toggleAriaChecked } from './dom-utils.js';
 
 export async function fetchConfig() {
   const body = await jsonApi('/api/config');
@@ -215,8 +216,7 @@ export async function patchConfig(patch) {
 // through GET /api/config, which re-renders from server truth anyway.
 function wireBoolSwitch(el, patchKey) {
   el.addEventListener('click', function () {
-    const next = el.getAttribute('aria-checked') !== 'true';
-    el.setAttribute('aria-checked', next ? 'true' : 'false');
+    const next = toggleAriaChecked(el);
     patchConfig({ [patchKey]: next });
   });
 }
@@ -240,8 +240,7 @@ export function wireClaudeOptions() {
   [els.claudeDetached, els.claudeResume].forEach(function (btn) {
     btn.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      const next = btn.getAttribute('aria-checked') !== 'true';
-      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(btn);
     });
   });
 }

@@ -7,10 +7,10 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, AuthRequiredError, jsonApi, toast, isDesktopClient } from './api.js';
-import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
-import { fetchSessions, fmtAgo } from './sessions.js';
-import { openTerminal, estimateTermSize } from './terminal.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { bindOutsideClickToClose, iconUrl, toggleAriaChecked } from './dom-utils.js';
+import { fmtAgo } from './sessions.js';
+import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- apps list
@@ -384,19 +384,11 @@ async function launchApp(a, agentId) {
     // Streamed (pty) coding launches need a starting PTY size. Detached
     // (remote) launches have no PTY, so skip it.
     if (a.kind === 'claude-code' && !mode) {
-      if (isDesktopClient()) {
-        // A desktop browser gets a dedicated PC Edge --app window, not an
-        // in-page terminal (issue #241). Size the PTY to that window (the
-        // session-host default 40×120 fits the 1024×720 --app window) — not
-        // to this browser's viewport, which would overflow the Edge window.
-        payload.desktop = true;
-      } else {
-        // The phone carries its real terminal size so the PTY's first frame
-        // is the right width for a ratatui TUI (issue #126).
-        const sz = estimateTermSize();
-        payload.rows = sz.rows;
-        payload.cols = sz.cols;
-      }
+      // A desktop browser gets a dedicated PC Edge --app window, not an
+      // in-page terminal (issue #241); a phone carries its real terminal
+      // size so the PTY's first frame is the right width for a ratatui
+      // TUI (issue #126) — see applyLaunchSizePayload.
+      applyLaunchSizePayload(payload);
     }
     if (Object.keys(payload).length) {
       opts.headers = { 'Content-Type': 'application/json' };
@@ -418,14 +410,11 @@ async function launchApp(a, agentId) {
       'good'
     );
     if (a.kind === 'claude-code' && body.session) {
-      fetchSessions().catch(function () {});
       // Full-control sessions drop straight into the terminal; detached
       // ones only appear in the running-sessions list. A desktop browser
       // gets its terminal in a dedicated PC Edge window instead of in-page,
       // so it stays on the launcher SPA (issue #241).
-      if (body.session.kind !== 'remote' && !isDesktopClient()) {
-        openTerminal(body.session);
-      }
+      handleLaunchResponse(body.session);
     } else if (a.kind !== 'claude-code') {
       // Non-claude-code: a bat was spawned and is now tracked. Port
       // discovery is racy (Streamlit takes 1-3 s to bind) so poll the
@@ -470,9 +459,7 @@ export async function fetchAgents() {
       state.agents = body.agents;
     }
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      console.warn('agents fetch failed', exc);
-    }
+    logPollFailure('agents fetch failed', exc);
   }
 }
 
@@ -587,10 +574,8 @@ export async function fetchRunningApps() {
     state.runningApps = body.running || [];
     renderRunningApps();
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      // Best-effort poll — don't spam toasts.
-      console.warn('running apps fetch failed', exc);
-    }
+    // Best-effort poll — don't spam toasts.
+    logPollFailure('running apps fetch failed', exc);
   }
 }
 
@@ -665,8 +650,7 @@ function renderScanResults() {
       row.setAttribute('aria-checked', 'true');
       row.dataset.value = c.id;
       row.addEventListener('click', function () {
-        const next = row.getAttribute('aria-checked') !== 'true';
-        row.setAttribute('aria-checked', next ? 'true' : 'false');
+        toggleAriaChecked(row);
       });
       const checkBox = document.createElement('span');
       checkBox.className = 'check-box';
@@ -720,10 +704,8 @@ export async function fetchListeners() {
     const body = await jsonApi('/api/ports/probe');
     renderListeners(body.listeners || []);
   } catch (exc) {
-    if (!(exc instanceof AuthRequiredError)) {
-      // Best-effort poll — don't spam toasts.
-      console.warn('listeners fetch failed', exc);
-    }
+    // Best-effort poll — don't spam toasts.
+    logPollFailure('listeners fetch failed', exc);
   }
 }
 

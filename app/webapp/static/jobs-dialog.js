@@ -10,6 +10,7 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { fetchJobs, runJobNow } from './jobs.js';
 import { icon } from './_vendored/icons/icons.js';
+import { toggleAriaChecked } from './dom-utils.js';
 
 // --------------------------------------------------- chain checklist (dialog)
 //
@@ -39,8 +40,7 @@ function populateChainList(host, selected, currentId, kind) {
     btn.dataset.value = j.id;
     btn.dataset.role = 'chain-' + kind;
     btn.addEventListener('click', function () {
-      const next = btn.getAttribute('aria-checked') !== 'true';
-      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(btn);
     });
     const checkBox = document.createElement('span');
     checkBox.className = 'check-box';
@@ -359,8 +359,7 @@ function renderRunDialogField(param, prefill) {
     checkBox.innerHTML = icon('check');
     input.appendChild(checkBox);
     input.addEventListener('click', function () {
-      const next = input.getAttribute('aria-checked') !== 'true';
-      input.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(input);
     });
   } else {
     input = document.createElement('input');
@@ -830,8 +829,7 @@ export function wireJobDialogs() {
   [els.jobConfirmInput, els.jobRunDialogDryRun].forEach(function (btn) {
     if (!btn) return;
     btn.addEventListener('click', function () {
-      const next = btn.getAttribute('aria-checked') !== 'true';
-      btn.setAttribute('aria-checked', next ? 'true' : 'false');
+      toggleAriaChecked(btn);
     });
   });
 }

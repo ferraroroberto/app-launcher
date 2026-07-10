@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.jobs_config import Job
-from src.jobs_kinds.base import Problem
+from src.jobs_kinds.base import Problem, require_script
 
 # A ``.venv\Scripts\python(w).exe`` (or ``activate``) reference embedded in
 # a ``.bat`` wrapper. Best-effort: we only flag a reference that clearly
@@ -64,9 +64,7 @@ class BatchKind:
     def build_argv(
         self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
     ) -> Tuple[List[str], Path, Dict[str, str]]:
-        script = Path(job.script_path)
-        if not script.is_file():
-            raise OSError(f"BAT file not found: {script}")
+        script = require_script(job, "BAT file")
         for value in tail:
             bad = _CMD_INJECTION_CHARS.intersection(value)
             if bad:

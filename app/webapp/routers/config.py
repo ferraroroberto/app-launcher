@@ -12,10 +12,6 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src.webapp_config import (
-    ALWAYS_ON_CLAUDE_FLAGS,
-    VALID_CLAUDE_EFFORTS,
-    VALID_CLAUDE_MODELS,
-    VALID_CLAUDE_PERMISSION_MODES,
     VALID_CODEX_EFFORTS,
     VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
@@ -33,7 +29,12 @@ from src.webapp_config import (
 )
 
 from app.webapp.middleware import terminal_reachability
-from app.webapp.routers._helpers import PROJECT_ROOT, cert_present, maybe_json
+from app.webapp.routers._helpers import (
+    PROJECT_ROOT,
+    cert_present,
+    claude_flags_payload,
+    maybe_json,
+)
 
 router = APIRouter()
 
@@ -49,18 +50,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
-        "claude": {
-            "model": cfg.claude_model,
-            "effort": cfg.claude_effort,
-            "verbose": cfg.claude_verbose,
-            "debug": cfg.claude_debug,
-            "permission_mode": cfg.claude_permission_mode,
-            "models_available": list(VALID_CLAUDE_MODELS),
-            "efforts_available": list(VALID_CLAUDE_EFFORTS),
-            "permission_modes_available": list(VALID_CLAUDE_PERMISSION_MODES),
-            "always_on_flags": list(ALWAYS_ON_CLAUDE_FLAGS),
-            "computed_flags": build_claude_flags(cfg),
-        },
+        "claude": claude_flags_payload(cfg),
         "codex": {
             "effort": cfg.codex_effort,
             "permission_mode": cfg.codex_permission_mode,
