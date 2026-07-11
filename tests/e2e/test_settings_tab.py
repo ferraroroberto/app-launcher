@@ -10,6 +10,10 @@ every tab into a sixth navigation tab. Contract under test:
   * The app theme toggle lives in the Coding tab's options card (its
     original home — issue #392 moved it back out of the Settings pane)
     and still flips ``html[data-theme]``.
+
+Issue #435 follow-up adds the terminal-scrollback-depth setting and removes
+the TLS-badge / tunnel-URL status readout (needless exposure of the tunnel
+hostname in the UI) — both covered below.
 """
 
 from __future__ import annotations
@@ -72,3 +76,41 @@ def test_theme_toggle_lives_in_coding_options_and_flips_theme(
         "document.documentElement.dataset.theme || 'light'"
     )
     assert after != before
+
+
+def test_terminal_history_lines_field_loads_and_saves(
+    authed_page: Page, base_url: str
+) -> None:
+    """The scrollback-depth field (issue #435 follow-up) loads pre-filled
+    from GET /api/config and a new value survives a Save + page reload."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    field = authed_page.locator("#terminalHistoryLines")
+    expect(field).to_be_visible()
+    # Pre-filled from the server default, not left blank.
+    expect(field).not_to_have_value("")
+
+    field.fill("5000")
+    authed_page.locator("#saveSettings").click()
+    # patchConfig() round-trips through GET /api/config on success.
+    expect(field).to_have_value("5000")
+
+    # Reload to confirm it actually persisted server-side, not just DOM.
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    expect(authed_page.locator("#terminalHistoryLines")).to_have_value("5000")
+
+
+def test_settings_status_readout_has_no_tls_or_tunnel_url(
+    authed_page: Page, base_url: str
+) -> None:
+    """The TLS badge + tunnel-URL status line was removed (issue #435
+    follow-up) — needless exposure of the tunnel hostname in the UI. Any
+    reachability warning may still render; TLS/tunnel text must not."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    readout = authed_page.locator("#statusReadout")
+    text = (readout.text_content() or "").lower()
+    assert "tls" not in text
+    assert "tunnel" not in text
+    assert "http" not in text

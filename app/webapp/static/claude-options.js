@@ -23,6 +23,15 @@ export async function fetchConfig() {
   els.appsScanRoot.value = body.apps_scan_root || '';
   if (els.lifeOsDir) els.lifeOsDir.value = body.life_os_dir || '';
   if (els.claudeConfigDir) els.claudeConfigDir.value = body.claude_config_dir || '';
+  if (els.terminalHistoryLines) {
+    if (body.terminal_history_lines_min != null) {
+      els.terminalHistoryLines.min = body.terminal_history_lines_min;
+    }
+    if (body.terminal_history_lines_max != null) {
+      els.terminalHistoryLines.max = body.terminal_history_lines_max;
+    }
+    els.terminalHistoryLines.value = body.terminal_history_lines || '';
+  }
   renderClaudeOptions();
 }
 

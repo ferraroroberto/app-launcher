@@ -199,6 +199,7 @@ async def _spawn_skill_session(
             "claude",
             rows,
             cols,
+            history_lines=cfg.terminal_history_lines,
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))

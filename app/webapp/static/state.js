@@ -269,6 +269,7 @@ export const els = {
   projectsDir: document.getElementById('projectsDir'),
   projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),
+  terminalHistoryLines: document.getElementById('terminalHistoryLines'),
   saveSettings: document.getElementById('saveSettings'),
   listenersList: document.getElementById('listenersList'),
   listenersEmpty: document.getElementById('listenersEmpty'),

@@ -55,6 +55,10 @@ function wireSettings() {
       life_os_dir: els.lifeOsDir.value.trim(),
       claude_config_dir: els.claudeConfigDir.value.trim(),
     };
+    if (els.terminalHistoryLines && els.terminalHistoryLines.value !== '') {
+      const lines = parseInt(els.terminalHistoryLines.value, 10);
+      if (Number.isFinite(lines)) patch.terminal_history_lines = lines;
+    }
     await patchConfig(patch);
     await fetchApps();
     await fetchSkills();
@@ -100,10 +104,12 @@ async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
     state.status = body;
+    // The TLS badge + tunnel URL used to render here too — dropped
+    // (Settings tab cleanup): needless exposure of the tunnel hostname in
+    // the UI, and not information the user needs day to day. The
+    // reachability warning stays; it's actionable (fix by switching to
+    // the Tailscale URL), not just informational.
     const parts = [];
-    appendStatusChunk(parts, body.tls ? 'shield-check' : null, body.tls ? 'TLS' : 'http');
-    appendStatusChunk(parts, body.tunnel_url ? 'satellite-dish' : null,
-      body.tunnel_url || 'no tunnel');
     if (body.terminal && body.terminal.reachable === false) {
       appendStatusChunk(parts, 'triangle-alert', 'terminal needs the Tailscale URL');
     }

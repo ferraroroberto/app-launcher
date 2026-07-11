@@ -12,6 +12,8 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src.webapp_config import (
+    MAX_TERMINAL_HISTORY_LINES,
+    MIN_TERMINAL_HISTORY_LINES,
     VALID_CODEX_EFFORTS,
     VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
@@ -50,6 +52,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
+        "terminal_history_lines": cfg.terminal_history_lines,
+        "terminal_history_lines_min": MIN_TERMINAL_HISTORY_LINES,
+        "terminal_history_lines_max": MAX_TERMINAL_HISTORY_LINES,
         "claude": claude_flags_payload(cfg),
         "codex": {
             "effort": cfg.codex_effort,
@@ -94,6 +99,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "apps_scan_root",
         "life_os_dir",
         "claude_config_dir",
+        "terminal_history_lines",
         "claude_model",
         "claude_effort",
         "claude_verbose",

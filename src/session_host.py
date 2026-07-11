@@ -781,6 +781,7 @@ class SessionManager:
         agent: str = DEFAULT_AGENT,
         rows: int = 40,
         cols: int = 120,
+        history_lines: Optional[int] = None,
     ) -> PtySession:
         """Spawn ``<agent> <flags>`` inside a fresh ConPTY in ``project_dir``.
 
@@ -793,6 +794,12 @@ class SessionManager:
         wrapped/cut on a portrait phone (issue #126). They are clamped to
         the same bounds as :meth:`PtySession.resize`; an omitted value
         falls back to the legacy default.
+
+        ``history_lines`` bounds the headless-VT scrollback a full-screen
+        agent's session mirrors for a (re)connect (issue #435 follow-up,
+        user-configurable via Settings). ``None`` falls back to
+        :class:`~src.vt_snapshot.VtSnapshot`'s own default. Ignored for a
+        non-fullscreen agent (no VT mirror is created at all).
         """
         if PtyProcess is None:
             raise RuntimeError("pywinpty is not available — cannot spawn a PTY")
@@ -813,6 +820,13 @@ class SessionManager:
         pty = PtyProcess.spawn(
             command, cwd=str(directory), dimensions=(rows, cols)
         )
+        vt: Optional[VtSnapshot] = None
+        if is_fullscreen(agent):
+            vt = (
+                VtSnapshot(rows, cols, history=history_lines)
+                if history_lines is not None
+                else VtSnapshot(rows, cols)
+            )
         session = PtySession(
             session_id=session_id,
             project_dir=str(directory),
@@ -824,7 +838,7 @@ class SessionManager:
             agent=agent,
             rows=rows,
             cols=cols,
-            _vt=VtSnapshot(rows, cols) if is_fullscreen(agent) else None,
+            _vt=vt,
         )
         session.start_reader()
         with self._lock:

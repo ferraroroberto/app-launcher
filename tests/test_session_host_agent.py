@@ -220,6 +220,29 @@ def test_create_attaches_vt_snapshot_for_fullscreen_agent(tmp_path, monkeypatch)
     assert claude_session._vt is None
 
 
+def test_create_threads_history_lines_override_to_vt_snapshot(tmp_path, monkeypatch):
+    """The Settings-tab-configurable scrollback depth (issue #435
+    follow-up) reaches the VT mirror's own bounded history cap; omitted
+    falls back to VtSnapshot's own default (pinned separately)."""
+    captured: dict = {}
+    from src import session_host
+
+    monkeypatch.setattr(session_host, "PtyProcess", _fake_pty_process(captured))
+    monkeypatch.setattr(session_host.PtySession, "start_reader", lambda self: None)
+
+    mgr = SessionManager()
+    mgr.attach_loop(MagicMock())
+
+    session = mgr.create(
+        str(tmp_path), "proj", "", "codex", rows=30, cols=90, history_lines=42,
+    )
+    assert session._vt._screen.history.size == 42
+    assert session._vt._screen.history.top.maxlen == 42
+
+    default_session = mgr.create(str(tmp_path), "proj", "", "codex", rows=30, cols=90)
+    assert default_session._vt._screen.history.size != 42
+
+
 def test_resize_forwards_to_vt_snapshot():
     session = PtySession(
         session_id="sid-test",

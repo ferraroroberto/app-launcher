@@ -245,10 +245,12 @@ class TestIssueStart:
         from app.webapp.routers import board as board_router
         captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind, agent, rows, cols):
+        def fake_spawn(project_dir, name, flags, port, kind, agent, rows, cols,
+                       history_lines=None):
             captured.update(
                 project_dir=project_dir, name=name, flags=flags,
                 port=port, kind=kind, agent=agent, rows=rows, cols=cols,
+                history_lines=history_lines,
             )
             return {"session_id": "spawned-1", "kind": "pty", "name": name}
 

@@ -148,11 +148,12 @@ class TestClaudeCodeDiscovery:
 
         def fake_spawn(
             project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120,
+            rows=40, cols=120, history_lines=None,
         ):
             captured["kind"] = kind
             captured["rows"] = rows
             captured["cols"] = cols
+            captured["history_lines"] = history_lines
             return {"session_id": "s1", "kind": kind, "agent": agent}
 
         monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
@@ -163,6 +164,10 @@ class TestClaudeCodeDiscovery:
         assert captured["kind"] == "pty"
         assert captured["rows"] == 50
         assert captured["cols"] == 42
+        # The Settings-tab scrollback-depth config (issue #435 follow-up)
+        # rides every PTY launch — the default conftest config's value,
+        # not a hardcoded/omitted one.
+        assert captured["history_lines"] == 10_000
 
     def test_launch_with_antigravity_agent(self, webapp_client, monkeypatch):
         """The Antigravity button posts agent=antigravity — it must be
@@ -309,7 +314,7 @@ class TestClaudeCodeDiscovery:
 
         def fake_spawn(
             project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120,
+            rows=40, cols=120, history_lines=None,
         ):
             captured["flags"] = flags
             captured["kind"] = kind
@@ -340,7 +345,7 @@ class TestClaudeCodeDiscovery:
 
         def fake_spawn(
             project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120,
+            rows=40, cols=120, history_lines=None,
         ):
             captured["flags"] = flags
             captured["kind"] = kind
@@ -374,7 +379,7 @@ class TestClaudeCodeDiscovery:
 
         def fake_spawn(
             project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120,
+            rows=40, cols=120, history_lines=None,
         ):
             captured["flags"] = flags
             captured["kind"] = kind
@@ -407,7 +412,7 @@ class TestClaudeCodeDiscovery:
 
         def fake_spawn(
             project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120,
+            rows=40, cols=120, history_lines=None,
         ):
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind, "agent": agent}
