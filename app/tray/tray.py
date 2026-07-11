@@ -337,15 +337,27 @@ class TrayApp:
         a sibling app's process is never touched. Reuses the canonical
         tray_lifecycle.ps1 `reclaim` action (same one tray.bat --restart uses
         for the webapp port) instead of hand-rolling the venv-scoped kill.
+
+        tray_lifecycle.ps1 is the ONE shared, machine-local copy owned by
+        fleet-config (project-scaffolding#153) — junctioned by fleet-config's
+        install.ps1 into %USERPROFILE%\\.claude\\tray, never vendored per-app.
+        Same resolved path as tray.bat's TRAY_PS (#433: this used to point at
+        a nonexistent repo-local path and silently no-op).
         """
         if not _port_listening(SESSION_HOST_PORT):
             return
+        tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
+        if not tray_ps.exists():
+            msg = f"missing shared tray helper {tray_ps} — session-host on :{SESSION_HOST_PORT} left running"
+            logger.warning(f"⚠️  {msg}")
+            _notify("Session host stop failed", msg)
+            return
         try:
             logger.info(f"🛑 Stopping session-host on :{SESSION_HOST_PORT}")
-            subprocess.run(
+            result = subprocess.run(
                 [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
                  "-NoProfile", "-NonInteractive", "-File",
-                 str(PROJECT_ROOT / "app" / "tray" / "tray_lifecycle.ps1"),
+                 str(tray_ps),
                  "reclaim",
                  "-VenvDir", str(PROJECT_ROOT / ".venv"),
                  "-Ports", str(SESSION_HOST_PORT)],
@@ -353,8 +365,14 @@ class TrayApp:
                 timeout=10,
                 check=False,
             )
+            if result.returncode != 0:
+                msg = f"tray_lifecycle.ps1 reclaim exited {result.returncode} — session-host on :{SESSION_HOST_PORT} may still be running"
+                logger.warning(f"⚠️  {msg}")
+                _notify("Session host stop failed", msg)
         except Exception as exc:  # noqa: BLE001
-            logger.debug(f"session-host stop failed: {exc}")
+            msg = f"session-host stop failed: {exc}"
+            logger.warning(f"⚠️  {msg}")
+            _notify("Session host stop failed", msg)
 
     # -- webapp lifecycle ----------------------------------------------------
 
