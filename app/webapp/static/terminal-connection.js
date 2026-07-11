@@ -12,6 +12,84 @@ import { clearTerminalToken, ensureTerminalToken } from './webauthn.js';
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
 
+// Repaint batching for full-screen differential agents (#430). Empirical
+// probe: Codex/ratatui re-emits its ENTIRE transcript on every winsize
+// change (~65 KB for a long conversation — same magnitude as a full
+// `codex resume` attach). The session-host deliberately fires such a
+// change on every (re)connect (the #128 width-toggle nudge), and a real
+// rotation fires one too. Written chunk-by-chunk into xterm that storm
+// renders as a visible scroll-through of the whole conversation. Instead,
+// buffer everything that arrives right after a (re)connect / resize and
+// write it in ONE term.write() — xterm renders once, landing directly on
+// the final frame. The batch closes on the first quiet gap (the storm is
+// a burst) or at a hard deadline, whichever comes first.
+const REPAINT_BATCH_QUIET_MS = 700;
+const REPAINT_BATCH_MAX_MS = 6000;
+
+export function beginRepaintBatch(terminal) {
+  if (!terminal || !terminal.isFullscreen) return;
+  if (!terminal.batchBuf) terminal.batchBuf = [];
+  terminal.batchDeadline = Date.now() + REPAINT_BATCH_MAX_MS;
+  // Conceal the storm (#430 round 2): even flushed as ONE write, xterm
+  // parses large writes in per-animation-frame slices, so the transcript
+  // still visibly scrolls through. Hide the canvas for the batch window
+  // and reveal on flush — the user lands directly on the final frame.
+  try {
+    if (terminal.term && terminal.term.element) {
+      terminal.term.element.style.visibility = 'hidden';
+    }
+  } catch (_) { /* best effort */ }
+  setTerminalStatus('⏳ Loading the current frame…');
+  if (terminal.batchTimer) clearTimeout(terminal.batchTimer);
+  terminal.batchTimer = setTimeout(function () {
+    flushRepaintBatch(terminal);
+  }, REPAINT_BATCH_MAX_MS);
+}
+
+function revealTerminal(terminal) {
+  try {
+    if (terminal.term && terminal.term.element) {
+      terminal.term.element.style.visibility = '';
+    }
+  } catch (_) { /* best effort */ }
+  // The status line is global chrome — only the ACTIVE terminal may clear
+  // it (a stashed terminal's late flush must not wipe another's message).
+  if (terminal === state.terminal &&
+      els.terminalStatus && !els.terminalStatus.hidden &&
+      els.terminalStatus.textContent.indexOf('Loading the current frame') !== -1) {
+    setTerminalStatus(null);
+  }
+}
+
+export function flushRepaintBatch(terminal) {
+  if (!terminal) return;
+  if (terminal.batchTimer) {
+    clearTimeout(terminal.batchTimer);
+    terminal.batchTimer = null;
+  }
+  if (terminal.batchQuietTimer) {
+    clearTimeout(terminal.batchQuietTimer);
+    terminal.batchQuietTimer = null;
+  }
+  const buf = terminal.batchBuf;
+  terminal.batchBuf = null;
+  terminal.batchDeadline = 0;
+  // A stashed (hidden but warm, #430) terminal still gets its batch
+  // written — its buffer must stay current for the instant re-open. Only
+  // a torn-down terminal is off-limits; disposeTerminal clears the batch
+  // timers before term.dispose(), so this can't fire post-dispose. The
+  // element check is belt-and-braces for a not-yet-opened xterm.
+  if (!terminal.term || !terminal.term.element) return;
+  if (!buf || !buf.length) {
+    revealTerminal(terminal);
+    return;
+  }
+  terminal.term.write(buf.join(''), function () {
+    try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
+    revealTerminal(terminal);
+  });
+}
+
 function termWsUrl(sid, terminalToken) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const params = new URLSearchParams();
@@ -68,6 +146,10 @@ export function connectTerminalWs(terminal) {
     setTerminalStatus(null);
     if (terminal.isFullscreen && terminal.term) {
       try { terminal.term.clear(); } catch (_) { /* best effort */ }
+      // The session-host answers every fullscreen (re)connect with a
+      // clear-frame + width-toggle nudge, which makes ratatui re-emit its
+      // whole transcript (#430) — batch it into a single paint.
+      beginRepaintBatch(terminal);
     }
     if (terminal.applySize) terminal.applySize();
     if (terminal.term) terminal.term.focus();
@@ -80,6 +162,20 @@ export function connectTerminalWs(terminal) {
       return;
     }
     if (route === 'swallow' || !terminal.term) return;
+    // Active repaint batch (#430): buffer the burst, flush on the first
+    // quiet gap or at the hard deadline — one write, one render.
+    if (terminal.batchBuf) {
+      terminal.batchBuf.push(event.data);
+      if (terminal.batchQuietTimer) clearTimeout(terminal.batchQuietTimer);
+      if (Date.now() >= terminal.batchDeadline) {
+        flushRepaintBatch(terminal);
+      } else {
+        terminal.batchQuietTimer = setTimeout(function () {
+          flushRepaintBatch(terminal);
+        }, REPAINT_BATCH_QUIET_MS);
+      }
+      return;
+    }
     const buffer = terminal.term.buffer.active;
     const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
     terminal.term.write(event.data, function () {
@@ -178,6 +274,25 @@ function setTapToReconnect(terminal, label) {
 
 export function clearTerminalReconnect(terminal) {
   if (!terminal) return;
+  // Drop any pending repaint batch without writing it (#430) — this runs
+  // on teardown and right before a fresh connect, where the next onopen
+  // starts a new batch against a cleared screen anyway. Un-hide the
+  // canvas so a give-up ("Tap to reconnect") never strands it invisible.
+  if (terminal.batchTimer) {
+    clearTimeout(terminal.batchTimer);
+    terminal.batchTimer = null;
+  }
+  if (terminal.batchQuietTimer) {
+    clearTimeout(terminal.batchQuietTimer);
+    terminal.batchQuietTimer = null;
+  }
+  terminal.batchBuf = null;
+  terminal.batchDeadline = 0;
+  try {
+    if (terminal.term && terminal.term.element) {
+      terminal.term.element.style.visibility = '';
+    }
+  } catch (_) { /* best effort */ }
   if (terminal.retryTimer) {
     clearTimeout(terminal.retryTimer);
     terminal.retryTimer = null;

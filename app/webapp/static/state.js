@@ -37,12 +37,17 @@ export const state = {
   // Coding agents — overwritten by /api/agents at boot. The fallback
   // keeps the Coding tab usable if that fetch fails: Claude Code is the
   // launcher's core agent so it's assumed present; the other agents
-  // stay disabled until detection confirms their CLI is on PATH.
+  // stay disabled until detection confirms their CLI is on PATH. The
+  // fullscreen flags mirror src/agents.py so a terminal opened while the
+  // fetch is degraded still takes the pan-not-reflow path (#264/#430) —
+  // without them a ratatui agent would silently fall onto Claude's
+  // reflow path and replay-scroll on every keyboard toggle.
   agents: [
-    { id: 'claude', label: 'Claude Code', available: true },
-    { id: 'antigravity', label: 'Antigravity CLI', available: false },
-    { id: 'copilot', label: 'GitHub Copilot CLI', available: false },
-    { id: 'pi', label: 'Pi', available: false },
+    { id: 'claude', label: 'Claude Code', available: true, fullscreen: false },
+    { id: 'codex', label: 'Codex CLI', available: false, fullscreen: true },
+    { id: 'antigravity', label: 'Antigravity CLI', available: false, fullscreen: true },
+    { id: 'copilot', label: 'GitHub Copilot CLI', available: false, fullscreen: true },
+    { id: 'pi', label: 'Pi', available: false, fullscreen: true },
   ],
   runningApps: [],
   // Coding tab git flags (issue #115). null until the user taps the

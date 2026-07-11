@@ -38,8 +38,10 @@ import {
 } from './terminal-compose.js';
 import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
 import {
+  beginRepaintBatch,
   clearTerminalReconnect,
   connectTerminalWs,
+  flushRepaintBatch,
   routeFrame,
   setTerminalStatus,
 } from './terminal-connection.js';
@@ -175,6 +177,74 @@ export function terminalPanY(contentHeight, visibleHeight) {
   return Math.max(0, Math.round(contentHeight - visibleHeight));
 }
 
+// Warm-terminal cache (#430 round 3): sid → the live terminal object.
+// Closing the overlay does NOT dispose the xterm or the WebSocket any
+// more — the painted frame and the stream stay warm so re-opening a
+// session shows its tail instantly, with no re-subscribe and therefore
+// no server-side repaint nudge (the nudge makes ratatui agents re-emit
+// their whole transcript, which also flashed the always-on PC mirror on
+// every phone re-open). Insertion order doubles as LRU; the cap bounds
+// WebGL contexts + scrollback memory on the phone.
+const _termCache = new Map();
+const _TERM_CACHE_MAX = 3;
+
+// Hide the active terminal without tearing it down: its WS, timers and
+// listeners keep running (guards on `state.terminal` make them inert),
+// its canvas is just display:none'd until the next openTerminal(sid).
+function stashActiveTerminal() {
+  const t = state.terminal;
+  state.terminal = null;
+  if (!t) return;
+  // Drop compose state so a re-open never shows a stale bar/draft.
+  resetComposeBar();
+  if (t.term && t.term.element) t.term.element.style.display = 'none';
+  // Release any keyboard-driven override (issue #135) so the next open
+  // starts from the CSS-driven full height and inset:0 origin.
+  if (els.terminalOverlay) {
+    els.terminalOverlay.style.height = '';
+    els.terminalOverlay.style.bottom = '';
+    els.terminalOverlay.style.top = '';
+  }
+}
+
+// Full teardown of one terminal (cache eviction, session gone, mirror
+// shutdown). The reconnect/batch cleanup runs BEFORE term.dispose() so a
+// pending repaint-batch timer can never write into a disposed xterm.
+function disposeTerminal(t) {
+  if (!t) return;
+  if (state.terminal === t) {
+    state.terminal = null;
+    resetComposeBar();
+  }
+  _termCache.delete(t.sid);
+  clearTerminalReconnect(t);
+  if (t.sizeTimer) clearInterval(t.sizeTimer);
+  if (t.titleTimer) clearInterval(t.titleTimer);
+  if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
+  if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
+  if (t.onVisualViewport && window.visualViewport) {
+    window.visualViewport.removeEventListener('resize', t.onVisualViewport);
+    window.visualViewport.removeEventListener('scroll', t.onVisualViewport);
+  }
+  try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
+  try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
+  const el = t.term ? t.term.element : null;
+  try { if (t.term) t.term.dispose(); } catch (_) {}
+  try { if (el && el.parentNode) el.parentNode.removeChild(el); } catch (_) {}
+}
+
+// Evict cached terminals whose session no longer exists (stopped from the
+// list, agent exited). Best-effort against the last sessions poll.
+function pruneTermCache() {
+  const entries = Array.from(_termCache.values());
+  for (const ct of entries) {
+    const alive = (state.sessions || []).some(function (x) {
+      return x.session_id === ct.sid;
+    });
+    if (!alive && ct !== state.terminal) disposeTerminal(ct);
+  }
+}
+
 export async function openTerminal(session) {
   const sid = session.session_id;
   if (!sid) return;
@@ -184,12 +254,11 @@ export async function openTerminal(session) {
   // front instead of opening a terminal that only says "Disconnected".
   if (state.status && state.status.terminal &&
       state.status.terminal.reachable === false) {
-    closeTerminal();
+    stashActiveTerminal();
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
     lockBodyScroll();
     els.terminalTitle.textContent = sessionTitle(session);
-    els.terminalHost.innerHTML = '';
     setTerminalStatus(
       '🔒 ' + (state.status.terminal.reason ||
         'The live terminal is Tailscale-only.')
@@ -204,7 +273,8 @@ export async function openTerminal(session) {
     apiFailToast('Passkey unlock failed', exc);
     return;
   }
-  closeTerminal();
+  stashActiveTerminal();
+  pruneTermCache();
   els.terminalOverlay.hidden = false;
   document.body.classList.add('terminal-open');
   lockBodyScroll();
@@ -248,6 +318,39 @@ export async function openTerminal(session) {
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20).
   if (isMirror) announceMirrorWindow(sid, sessionTitle(session));
+
+  // Warm re-open (#430): the session's terminal is still alive from a
+  // previous open — show its already-painted frame and reuse its WS.
+  // Nothing is re-subscribed, so the session-host never fires the repaint
+  // nudge and ratatui never re-emits the transcript. Only if the WS died
+  // while stashed (iOS killed it in the background) do we reconnect,
+  // which falls back to the concealed clear+repaint path.
+  const cached = _termCache.get(sid);
+  if (cached && cached.term) {
+    _termCache.delete(sid);
+    _termCache.set(sid, cached);
+    cached.tt = tt;
+    state.terminal = cached;
+    if (cached.term.element) cached.term.element.style.display = '';
+    applyTermTheme();
+    const wsAlive = cached.ws &&
+      (cached.ws.readyState === WebSocket.CONNECTING ||
+       cached.ws.readyState === WebSocket.OPEN);
+    if (wsAlive) {
+      if (cached.ws.readyState === WebSocket.OPEN) setTerminalStatus(null);
+      if (cached.applySize) cached.applySize();
+      try {
+        cached.term.refresh(0, cached.term.rows - 1);
+        cached.term.scrollToBottom();
+      } catch (_) { /* best effort */ }
+      cached.term.focus();
+    } else {
+      cached.retryCount = 0;
+      cached.giveUpAt = 0;
+      connectTerminalWs(cached);
+    }
+    return;
+  }
 
   // Source the terminal colours from the design tokens so they can't fork
   // from the stylesheet (issue #314). --term-bg/--term-fg are the
@@ -298,9 +401,16 @@ export async function openTerminal(session) {
   // pans the fixed canvas above the keyboard rather than resizing the PTY.
   // Resolved off the live /api/agents flag; an unknown/missing agent (or a
   // degraded fallback agents list) reads as non-fullscreen — Claude's
-  // inline reflow (#135), the safe default.
+  // inline reflow (#135), the safe default. Board drill-down and ?session=
+  // deep links pass a synthetic {session_id, name} with no agent field
+  // (#430) — resolve it from the sessions list so a Codex session opened
+  // from the Board still gets the fullscreen client handling.
+  const liveSession = (state.sessions || []).find(function (x) {
+    return x.session_id === sid;
+  });
+  const agentId = session.agent || (liveSession && liveSession.agent) || '';
   const knownAgent = (state.agents || []).find(function (a) {
-    return a.id === session.agent;
+    return a.id === agentId;
   });
   const t = {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
@@ -308,9 +418,22 @@ export async function openTerminal(session) {
     retryTimer: null, visibilityListener: null, tapHandler: null,
     disposeTouch: null, composeOpen: false,
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
+    // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
+    // same-size resize frames; fsSized gates the fullscreen pan path until
+    // the first real fit has run; batch* is owned by terminal-connection.js.
+    lastSentSize: null, fsSized: false,
+    batchBuf: null, batchTimer: null, batchQuietTimer: null, batchDeadline: 0,
     onShutdown: closeTerminal,
   };
   state.terminal = t;
+  // Register in the warm cache (#430) and evict the least-recently-used
+  // beyond the cap — a full teardown, so its WS/GL context are released.
+  _termCache.set(sid, t);
+  while (_termCache.size > _TERM_CACHE_MAX) {
+    const oldest = _termCache.values().next().value;
+    if (!oldest || oldest === t) break;
+    disposeTerminal(oldest);
+  }
   // Sync the overlay chrome with any user background override (#381) —
   // the constructor already resolved theme + contrast for xterm itself.
   applyTermTheme();
@@ -339,6 +462,10 @@ export async function openTerminal(session) {
   if (!isMirror) t.disposeTouch = enableNativeTouchScroll(term);
 
   function applySize() {
+    // A stashed warm terminal (#430) is inert: its resize listeners stay
+    // bound while hidden, but only the ACTIVE terminal may touch the
+    // shared overlay chrome or its own layout. Resume re-runs applySize.
+    if (t !== state.terminal) return;
     if (isMirror) {
       // Match the phone's PTY dimensions; never touch the PTY itself.
       const s = (state.sessions || []).find(function (x) {
@@ -375,25 +502,54 @@ export async function openTerminal(session) {
         els.terminalOverlay.style.top = '';
       }
     }
-    // Full-screen differential agent + keyboard up: PAN, don't reflow
-    // (issue #264). Keep the PTY at its stable size and translate the fixed
-    // canvas up so the bottom row (the agent's prompt) sits above the
-    // keyboard — no fit(), no resize frame, so ratatui is never SIGWINCHed
-    // into repainting its whole frame on a keyboard open/close. The host is
-    // overflow:hidden, so the panned-off top rows clip cleanly. Measuring
-    // .xterm-screen (the rendered grid) is translate-invariant, so the pan
-    // is stable across the repeated scroll/resize events iOS fires while the
-    // keyboard animates. Claude (inline) and the keyboard-down/rotation case
-    // fall through to the reflow path below, which also clears the pan.
-    if (t.isFullscreen && kbH != null) {
-      const screen = term.element &&
-        term.element.querySelector('.xterm-screen');
-      const contentH = screen ? screen.getBoundingClientRect().height : 0;
-      const panY = terminalPanY(contentH, kbH);
-      if (term.element) {
-        term.element.style.transform = 'translateY(-' + panY + 'px)';
+    // Full-screen differential agent: the PTY is resized ONLY when the
+    // available width (cols) actually changes — a real rotation. EVERY
+    // height-only change (keyboard up/down, compose bar, browser chrome,
+    // a PWA layout-viewport shrink) PANS the fixed canvas instead
+    // (#264, #430). Empirical (#430 probe): Codex/ratatui re-emits its
+    // ENTIRE transcript on any winsize change — rows or cols, either
+    // direction (~65 KB on a long conversation) — so a single stray
+    // SIGWINCH replays the whole conversation through the phone
+    // terminal. Same-size setwinsize emits nothing, and width is the one
+    // dimension the keyboard never changes, so cols is the only trigger
+    // that may reflow. proposeDimensions() measures without mutating.
+    // The host is overflow:hidden, so panned-off top rows clip cleanly;
+    // panning by the content-vs-box overflow also covers the keyboard-
+    // down case (overflow 0 → transform cleared). Claude (inline) and
+    // the fullscreen first-fit/rotation case fall through to the reflow
+    // path below, which also clears the pan.
+    // (The pan shortcut additionally requires a size to have been SENT —
+    // the pre-WS first fit sets fsSized, but the phone's authoritative
+    // size must still go out on the first open.)
+    if (t.isFullscreen && t.fsSized && t.lastSentSize) {
+      let proposed = null;
+      try {
+        proposed = (fit && fit.proposeDimensions) ?
+          fit.proposeDimensions() : null;
+      } catch (_) { /* hidden host — keep the stable size */ }
+      const colsChanged = !!(proposed && proposed.cols && term.cols &&
+        proposed.cols !== term.cols);
+      if (!colsChanged) {
+        const screen = term.element &&
+          term.element.querySelector('.xterm-screen');
+        const contentH = screen ? screen.getBoundingClientRect().height : 0;
+        // Pan against the HOST's real box, not the visual-viewport height
+        // (#430 round 2): the overlay also holds the header bar and the
+        // compose bar, so the viewport height over-states the terminal's
+        // visible box by their combined height — under-panning by exactly
+        // that much and hiding the bottom rows (the prompt echo) behind
+        // the compose bar whenever the native keyboard is up. The overlay
+        // pinning above already resized the flex layout, so the host rect
+        // is the box the canvas actually shows through.
+        const boxH = els.terminalHost ?
+          els.terminalHost.getBoundingClientRect().height : 0;
+        const panY = terminalPanY(contentH, boxH);
+        if (term.element) {
+          term.element.style.transform =
+            panY ? ('translateY(-' + panY + 'px)') : '';
+        }
+        return;
       }
-      return;
     }
     if (term.element) term.element.style.transform = '';
     try { if (fit) fit.fit(); } catch (_) {}
@@ -404,10 +560,20 @@ export async function openTerminal(session) {
       if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
     } catch (_) {}
     if (t.ws && t.ws.readyState === WebSocket.OPEN) {
-      t.ws.send(JSON.stringify({
-        type: 'resize', rows: term.rows, cols: term.cols,
-      }));
+      // Same-size dedupe (#430): a resize frame that changes nothing
+      // still costs a setwinsize round-trip; skip it. A real change on a
+      // fullscreen agent triggers the transcript re-emission — batch it
+      // into a single paint (terminal-connection.js).
+      const size = term.rows + 'x' + term.cols;
+      if (size !== t.lastSentSize) {
+        t.lastSentSize = size;
+        if (t.isFullscreen) beginRepaintBatch(t);
+        t.ws.send(JSON.stringify({
+          type: 'resize', rows: term.rows, cols: term.cols,
+        }));
+      }
     }
+    t.fsSized = true;
   }
   t.applySize = applySize;
 
@@ -437,6 +603,9 @@ export async function openTerminal(session) {
   }
 
   term.onData(function (d) {
+    // Typing during a repaint batch (#430): flush first so the echo isn't
+    // held back behind the batch's quiet-gap/deadline window.
+    flushRepaintBatch(t);
     if (t.ws && t.ws.readyState === WebSocket.OPEN) {
       t.ws.send(JSON.stringify({ type: 'input', data: d }));
     }
@@ -445,21 +614,13 @@ export async function openTerminal(session) {
   connectTerminalWs(t);
 }
 
+// Full teardown of the ACTIVE terminal — kept for the paths where the
+// session itself is over (mirror shutdown frame, stop-from-terminal): a
+// warm cache entry would only be a zombie there.
 export function closeTerminal() {
   const t = state.terminal;
-  state.terminal = null;
   if (!t) return;
-  // Drop compose state so a re-open never shows a stale bar/draft.
-  resetComposeBar();
-  clearTerminalReconnect(t);
-  if (t.sizeTimer) clearInterval(t.sizeTimer);
-  if (t.titleTimer) clearInterval(t.titleTimer);
-  if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
-  if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
-  if (t.onVisualViewport && window.visualViewport) {
-    window.visualViewport.removeEventListener('resize', t.onVisualViewport);
-    window.visualViewport.removeEventListener('scroll', t.onVisualViewport);
-  }
+  disposeTerminal(t);
   // Release any keyboard-driven override (issue #135) so the next open
   // starts from the CSS-driven full height and inset:0 origin.
   if (els.terminalOverlay) {
@@ -467,9 +628,6 @@ export function closeTerminal() {
     els.terminalOverlay.style.bottom = '';
     els.terminalOverlay.style.top = '';
   }
-  try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
-  try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
-  try { if (t.term) t.term.dispose(); } catch (_) {}
 }
 
 // iOS PWA rubber-band lets the user drag the whole body while the
@@ -507,13 +665,16 @@ export function hideTerminal() {
   // speech queue / hub audio is global and would otherwise keep talking
   // off-screen.
   stopReading();
-  closeTerminal();
+  // Stash, don't dispose (#430): the xterm keeps its painted frame and
+  // the WS keeps streaming, so re-opening this session is instant and
+  // never triggers the server's repaint nudge. The host's DOM is NOT
+  // cleared for the same reason.
+  stashActiveTerminal();
   closeKeysPopover();
   closeSpeakPopover();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
   unlockBodyScroll();
-  els.terminalHost.innerHTML = '';
   setTerminalStatus(null);
   fetchSessions().catch(function () {});
 }
