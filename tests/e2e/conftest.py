@@ -61,6 +61,13 @@ _LIVE_SESSION_HOST_PORT = 8446
 # src/webapp_config.py:SESSION_HOST_PORT_ENV) — the injection that isolates
 # the gate from the live :8446.
 _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
+# Env var the webapp honours to override its config file *path* (see
+# src/webapp_config.py:WEBAPP_CONFIG_PATH_ENV) — the injection that stops a
+# Settings-tab e2e Save from ever mutating the user's real
+# config/webapp_config.json (issue #441; the #438 port corruption was this
+# exact shared-file design biting). Autoboot points the disposable webapp at
+# a temp COPY of the real config so it still boots with realistic values.
+_WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Explicit opt-in for targeting the LIVE tray on :8445 (issue #386). The
 # live mode is deliberate (run-e2e.ps1 dev loop), but it drives real login
@@ -192,6 +199,22 @@ def _autoboot_server() -> Iterator[str]:
             except Exception:  # pragma: no cover
                 pass
 
+    # Config isolation (issue #441): the disposable webapp gets a temp COPY
+    # of the real config — realistic values (projects_dir, auth_token, …)
+    # without write access to the real file. Any e2e test that Saves settings
+    # mutates only the copy. Snapshot the real file's bytes so the isolation
+    # can be *asserted* after the run, not just assumed.
+    cfg_copy = logs_dir / "e2e-autoboot-webapp-config.json"
+    real_cfg_bytes = (
+        _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
+    )
+    if real_cfg_bytes is not None:
+        cfg_copy.write_bytes(real_cfg_bytes)
+    elif cfg_copy.exists():
+        # No real config (fresh checkout) — a stale copy from a prior run
+        # must not leak its values into this one.
+        cfg_copy.unlink()
+
     try:
         # Session-host: ALWAYS spawn our own on a free port — never adopt a
         # host already listening on the live :8446, which on a dev box owns
@@ -239,11 +262,15 @@ def _autoboot_server() -> Iterator[str]:
             cert, key = certs
             wa_cmd += ["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)]
         # Point the disposable webapp at our disposable session-host, not the
-        # config's :8446 — the env injection that isolates the gate.
+        # config's :8446, and at the temp config copy, not the real file —
+        # the two env injections that isolate the gate (issues #260, #441).
         wa_proc = _spawn(
             wa_cmd,
             _open_log("e2e-autoboot-webapp.log"),
-            extra_env={_SESSION_HOST_PORT_ENV: str(sh_port)},
+            extra_env={
+                _SESSION_HOST_PORT_ENV: str(sh_port),
+                _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
+            },
         )
 
         base = f"{scheme}://127.0.0.1:{port}"
@@ -257,6 +284,22 @@ def _autoboot_server() -> Iterator[str]:
         yield base
     finally:
         _teardown()
+        # Isolation regression check (issue #441): the real config must be
+        # byte-identical to the pre-run snapshot. A mismatch means some path
+        # wrote to the real file during the gate — the exact class of bug
+        # that corrupted session_host_port in #438 — or, rarely, that the
+        # user saved settings on the LIVE tray mid-run. Loud either way.
+        current = (
+            _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
+        )
+        if current != real_cfg_bytes:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: {_WEBAPP_CONFIG} changed "
+                "during the run. The disposable webapp must only ever write "
+                f"its temp copy ({cfg_copy}). If you changed settings on the "
+                "live tray while the gate ran, rerun the gate; otherwise a "
+                "test wrote to the real config — fix that before shipping."
+            )
 
 
 @pytest.fixture(scope="session")

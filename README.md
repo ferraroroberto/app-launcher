@@ -623,6 +623,7 @@ It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `test
 
 - A tray on `:8445` may be running or not. Autoboot picks a free port for its webapp and adopts the tray's session-host on `:8446` if one is up, otherwise spawns its own. The existing tray is left untouched.
 - The disposable instance serves HTTPS reusing `webapp/certificates/` (plain HTTP if no cert pair exists). Subprocess output is captured to `webapp/e2e-autoboot-*.log`.
+- The disposable webapp reads and writes a **temp copy** of `config/webapp_config.json` (`webapp/e2e-autoboot-webapp-config.json`, via `LAUNCHER_WEBAPP_CONFIG`), so an e2e test that saves settings can never mutate the real config file — the gate asserts the real file is byte-identical after the run and fails loud if not (issue #441).
 - It exits non-zero on the first failure and prints total wall time (~20–40 s typical).
 
 Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/session_host*.py` done. The same autoboot path is available to a plain pytest run with `--e2e-autoboot` (or `LAUNCHER_E2E_AUTOBOOT=1`).

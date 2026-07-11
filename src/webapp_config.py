@@ -46,6 +46,14 @@ DEFAULT_SESSION_HOST_PORT = 8446
 # sessions (issue #260). Not a user-facing knob; intentionally undocumented
 # in the config sample.
 SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
+# Env override for the config file *path* itself. Set ONLY by the e2e
+# pre-ship gate's autoboot (tests/e2e/conftest.py) so the disposable webapp
+# reads AND writes a temp copy of the config instead of the real, shared
+# config/webapp_config.json — a Settings-tab e2e test that clicks Save must
+# never mutate the user's real file (issue #441; the #438 port corruption
+# was this exact shared-file design biting). Not a user-facing knob;
+# intentionally undocumented in the config sample.
+WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 
 # Bounded scrollback for full-screen (ratatui) agent sessions (issue #435
 # follow-up) — how many lines of history the session-host retains and
@@ -377,6 +385,22 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
     return cfg
 
 
+def _resolve_config_path(path: Optional[Path]) -> Path:
+    """Resolve the config file path: explicit arg > ``LAUNCHER_WEBAPP_CONFIG``
+    env override (e2e-gate isolation, issue #441) > the repo default.
+
+    Consulted by both :func:`load_webapp_config` and
+    :func:`save_webapp_config` so the override is symmetric — a process
+    pointed at a temp copy reads and writes that copy, never half of each.
+    """
+    if path is not None:
+        return Path(path)
+    env = os.environ.get(WEBAPP_CONFIG_PATH_ENV, "").strip()
+    if env:
+        return Path(env)
+    return DEFAULT_CONFIG_PATH
+
+
 def load_webapp_config(
     path: Optional[Path] = None, *, apply_env_override: bool = True
 ) -> WebappConfig:
@@ -390,7 +414,7 @@ def load_webapp_config(
     ``config/webapp_config.json`` on save. Every other caller wants the
     override applied, hence the default.
     """
-    target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
+    target = _resolve_config_path(path)
     if not target.exists():
         logger.info(
             f"📂 webapp_config not found at {target}, using defaults "
@@ -457,6 +481,9 @@ def load_webapp_config(
         claude_show_local_window=bool(
             raw.get("claude_show_local_window", True)
         ),
+        terminal_history_lines=int(
+            raw.get("terminal_history_lines", DEFAULT_TERMINAL_HISTORY_LINES)
+        ),
         webauthn_rp_id=str(raw.get("webauthn_rp_id", "")),
         webauthn_rp_name=str(raw.get("webauthn_rp_name", "Launcher")),
         webauthn_origin=str(raw.get("webauthn_origin", "")),
@@ -486,7 +513,7 @@ def load_webapp_config(
 
 def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     """Atomically write the config back to disk."""
-    target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
+    target = _resolve_config_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
@@ -520,6 +547,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "session_host_port": cfg.session_host_port,
         "tailnet_allowlist": cfg.tailnet_allowlist,
         "claude_show_local_window": cfg.claude_show_local_window,
+        "terminal_history_lines": cfg.terminal_history_lines,
         "webauthn_rp_id": cfg.webauthn_rp_id,
         "webauthn_rp_name": cfg.webauthn_rp_name,
         "webauthn_origin": cfg.webauthn_origin,
