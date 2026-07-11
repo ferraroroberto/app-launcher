@@ -118,6 +118,24 @@ def spawn_claude_session(
     """
     if not project_dir.is_dir():
         raise OSError(f"Project directory not found: {project_dir}")
+    # Codex's Windows fallback paste-burst detector is designed for terminals
+    # that cannot identify a paste.  A launcher-owned PTY *can*: the browser
+    # explicitly wraps compose/paste payloads in DECSET 2004 bracketed-paste
+    # markers and PtySession paces large writes.  Leaving Codex's heuristic on
+    # makes it reclassify that already-framed bulk input as a synthetic burst
+    # and deliberately turn the first Enter into a newline (#436).  Disable
+    # only for streamed PTYs; a detached native console still owns its input
+    # path and may need Codex's fallback detector.
+    if (
+        agent == "codex"
+        and kind == "pty"
+        and "-c disable_paste_burst=true" not in flags
+    ):
+        flags = f"{flags} -c disable_paste_burst=true".strip()
+        logger.info(
+            "ℹ️ Codex PTY input: disabled fallback paste-burst detection; "
+            "launcher bracketed-paste framing is authoritative"
+        )
     session = session_client.create_session(
         session_host_port, str(project_dir), name, flags,
         kind=kind, agent=agent, rows=rows, cols=cols,
