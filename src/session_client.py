@@ -10,7 +10,7 @@ is handled separately in ``app/webapp/server.py``.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -70,23 +70,29 @@ def create_session(
     agent: str = "claude",
     rows: int = 40,
     cols: int = 120,
+    history_lines: Optional[int] = None,
 ) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "project_dir": project_dir,
+        "name": name,
+        "flags": flags,
+        "kind": kind,
+        "agent": agent,
+        # Phone's real terminal size, so the PTY's first frame is the
+        # right width for a ratatui TUI (issue #126).
+        "rows": rows,
+        "cols": cols,
+    }
+    # User-configurable scrollback depth for full-screen agents (issue
+    # #435 follow-up). Omitted → the session-host's own default.
+    if history_lines is not None:
+        payload["history_lines"] = history_lines
     return _request(
         "POST",
         port,
         "/sessions",
         timeout=_CREATE_TIMEOUT,
-        json={
-            "project_dir": project_dir,
-            "name": name,
-            "flags": flags,
-            "kind": kind,
-            "agent": agent,
-            # Phone's real terminal size, so the PTY's first frame is the
-            # right width for a ratatui TUI (issue #126).
-            "rows": rows,
-            "cols": cols,
-        },
+        json=payload,
     )
 
 

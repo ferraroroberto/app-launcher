@@ -132,6 +132,11 @@ def create_app() -> FastAPI:
         # Omitted → the manager's legacy 40×120 default.
         rows = int(body.get("rows") or 40)
         cols = int(body.get("cols") or 120)
+        # User-configurable scrollback depth for full-screen agents (issue
+        # #435 follow-up, Settings tab). Omitted/absent → SessionManager's
+        # own default (older webapp builds, or a caller that doesn't set it).
+        history_lines_raw = body.get("history_lines")
+        history_lines = int(history_lines_raw) if history_lines_raw else None
         if not project_dir:
             raise HTTPException(status_code=400, detail="project_dir is required")
         if agent not in AGENTS:
@@ -141,7 +146,8 @@ def create_app() -> FastAPI:
                 session = manager.create_remote(project_dir, name, flags, agent)
             else:
                 session = manager.create(
-                    project_dir, name, flags, agent, rows=rows, cols=cols
+                    project_dir, name, flags, agent, rows=rows, cols=cols,
+                    history_lines=history_lines,
                 )
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))

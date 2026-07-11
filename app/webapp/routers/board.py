@@ -229,6 +229,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
             "claude",
             rows,
             cols,
+            history_lines=cfg.terminal_history_lines,
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
@@ -349,6 +350,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
             "claude",
             rows,
             cols,
+            history_lines=cfg.terminal_history_lines,
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))

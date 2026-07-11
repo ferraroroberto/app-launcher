@@ -47,6 +47,19 @@ DEFAULT_SESSION_HOST_PORT = 8446
 # in the config sample.
 SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 
+# Bounded scrollback for full-screen (ratatui) agent sessions (issue #435
+# follow-up) — how many lines of history the session-host retains and
+# replays on a (re)connect. 10,000 is evidence-based, not a guess: a real,
+# tool-heavy Codex exchange was observed producing 3371-4447 total scrolled
+# lines and rendering to only ~216-283 KB even at that size (see
+# src/vt_snapshot.py's _HISTORY_LINES docstring for the full history). The
+# bounds keep a user-set value sane: too low reintroduces "can't see the
+# start of a real conversation"; too high risks a slow reconnect paint on
+# a weak mobile connection.
+DEFAULT_TERMINAL_HISTORY_LINES = 10_000
+MIN_TERMINAL_HISTORY_LINES = 200
+MAX_TERMINAL_HISTORY_LINES = 50_000
+
 VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku")
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
 DEFAULT_CLAUDE_MODEL = "opus"
@@ -274,6 +287,11 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
+    # Bounded scrollback (issue #435 follow-up): how many lines of a
+    # full-screen (ratatui) agent's history the session-host retains and
+    # replays on a (re)connect. See DEFAULT_TERMINAL_HISTORY_LINES for the
+    # real-session evidence behind the default.
+    terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
     # https origin the phone connects to. Empty disables the passkey gate.
@@ -692,6 +710,11 @@ def _validate(cfg: WebappConfig) -> None:
         )
     if cfg.session_host_port == cfg.port:
         raise ValueError("session_host_port must differ from the webapp port")
+    if not (MIN_TERMINAL_HISTORY_LINES <= cfg.terminal_history_lines <= MAX_TERMINAL_HISTORY_LINES):
+        raise ValueError(
+            f"terminal_history_lines must be between {MIN_TERMINAL_HISTORY_LINES} "
+            f"and {MAX_TERMINAL_HISTORY_LINES}; got {cfg.terminal_history_lines}"
+        )
     if cfg.claude_model not in VALID_CLAUDE_MODELS:
         raise ValueError(
             f"claude_model must be one of {VALID_CLAUDE_MODELS}; got {cfg.claude_model!r}"

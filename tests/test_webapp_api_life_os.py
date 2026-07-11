@@ -125,7 +125,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(
                 project_dir=str(project_dir), flags=flags, kind=kind, agent=agent
             )
@@ -161,7 +161,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(rows=rows, cols=cols)
             return {"session_id": "s1", "kind": kind}
 
@@ -184,7 +184,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(rows=rows, cols=cols)
             return {"session_id": "s1", "kind": kind}
 
@@ -204,7 +204,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind}
 
@@ -228,7 +228,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
@@ -259,7 +259,7 @@ class TestLaunchSkill:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
@@ -551,7 +551,7 @@ class TestLaunchRecap:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(flags=flags, kind=kind, name=name, agent=agent)
             return {"session_id": "r1", "kind": kind}
 
@@ -575,7 +575,7 @@ class TestLaunchRecap:
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120):
+                       rows=40, cols=120, history_lines=None):
             captured.update(flags=flags, kind=kind)
             return {"session_id": "r1", "kind": kind}
 

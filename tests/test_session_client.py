@@ -53,3 +53,37 @@ def test_create_session_defaults_dimensions(monkeypatch):
 
     assert captured["json"]["rows"] == 40
     assert captured["json"]["cols"] == 120
+
+
+def test_create_session_includes_history_lines_when_given(monkeypatch):
+    """The Settings-tab-configurable scrollback depth (issue #435
+    follow-up) rides the /sessions create body when the caller passes one."""
+    captured: dict = {}
+
+    def fake_request(method, url, timeout=None, **kwargs):
+        captured["json"] = kwargs.get("json")
+        return _Resp()
+
+    monkeypatch.setattr(session_client.requests, "request", fake_request)
+
+    session_client.create_session(
+        8446, r"C:\proj", "name", "", agent="codex", history_lines=5000,
+    )
+
+    assert captured["json"]["history_lines"] == 5000
+
+
+def test_create_session_omits_history_lines_when_not_given(monkeypatch):
+    """No override → the key is absent entirely, so the session-host falls
+    back to its own default rather than receiving a spurious null/zero."""
+    captured: dict = {}
+
+    def fake_request(method, url, timeout=None, **kwargs):
+        captured["json"] = kwargs.get("json")
+        return _Resp()
+
+    monkeypatch.setattr(session_client.requests, "request", fake_request)
+
+    session_client.create_session(8446, r"C:\proj", "name", "")
+
+    assert "history_lines" not in captured["json"]

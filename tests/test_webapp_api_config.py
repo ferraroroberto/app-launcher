@@ -19,6 +19,15 @@ class TestGetConfig:
         assert "apps_scan_root" in body
         assert "life_os_dir" in body
         assert "claude_config_dir" in body
+        assert "terminal_history_lines" in body
+        assert isinstance(body["terminal_history_lines"], int)
+        assert "terminal_history_lines_min" in body
+        assert "terminal_history_lines_max" in body
+        assert (
+            body["terminal_history_lines_min"]
+            <= body["terminal_history_lines"]
+            <= body["terminal_history_lines_max"]
+        )
         assert "claude" in body
         # auth_password_set is what the SPA shows in the login overlay
         # ("a password is required" vs not). Bool, not the password itself.
@@ -171,6 +180,26 @@ class TestPatchConfig:
         # And it survives a GET round-trip.
         body = client.get("/api/config").json()
         assert body["projects_ignore"] == ["archive", "*-old"]
+
+    def test_terminal_history_lines_round_trips(self, webapp_client):
+        """terminal_history_lines (issue #435 follow-up, Settings tab) is
+        in the allow-list — it patches through and surfaces on the next
+        GET."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"terminal_history_lines": 5000})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.terminal_history_lines == 5000
+        body = client.get("/api/config").json()
+        assert body["terminal_history_lines"] == 5000
+
+    def test_terminal_history_lines_rejects_out_of_range(self, webapp_client):
+        client, _, _ = webapp_client
+        too_low = client.post("/api/config", json={"terminal_history_lines": 1})
+        assert too_low.status_code == 400
+        too_high = client.post(
+            "/api/config", json={"terminal_history_lines": 1_000_000}
+        )
+        assert too_high.status_code == 400
 
     def test_claude_config_dir_round_trips(self, webapp_client):
         """claude_config_dir (system map, issue #173) is in the allow-list —

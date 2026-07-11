@@ -43,10 +43,12 @@ def _spawn(webapp_client, monkeypatch):
     """Capture the spawn call; the goal must never show up in ``flags``."""
     captured: dict = {}
 
-    def fake_spawn(project_dir, name, flags, port, kind, agent, rows, cols):
+    def fake_spawn(project_dir, name, flags, port, kind, agent, rows, cols,
+                    history_lines=None):
         captured.update(
             project_dir=project_dir, name=name, flags=flags,
             port=port, kind=kind, agent=agent, rows=rows, cols=cols,
+            history_lines=history_lines,
         )
         return {"session_id": "disp-1", "kind": "pty", "name": name}
 
