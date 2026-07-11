@@ -9,16 +9,17 @@
  * The body is `position:fixed`-pinned while the overlay is open so iOS
  * rubber-band doesn't drag the page under the status bar.
  *
- * This module owns the PTY WebSocket lifecycle + the xterm instance
- * (connect/reconnect, sizing/keyboard-pan, the on-screen keys D-pad, and
- * image paste/drop). Three related concerns split out (issue #315):
+ * This module coordinates the xterm instance, sizing/keyboard-pan, the
+ * on-screen keys D-pad, and image paste/drop. The WebSocket lifecycle lives
+ * in terminal-connection.js and theme resolution in terminal-theme.js.
+ * Three earlier concerns split out (issue #315):
  * the compose bar + dictation + OCR (terminal-compose.js), read-aloud UI
  * (terminal-readaloud.js, atop the terminal-readback.js engine), and the
  * PC-mirror-window title/guard logic (terminal-mirror.js).
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { apiFailToast, apiRaw, isDesktopClient, jsonApi, readToken, toast } from './api.js';
+import { apiFailToast, apiRaw, isDesktopClient, jsonApi, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
@@ -36,9 +37,20 @@ import {
   growComposeInput,
 } from './terminal-compose.js';
 import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
+import {
+  clearTerminalReconnect,
+  connectTerminalWs,
+  routeFrame,
+  setTerminalStatus,
+} from './terminal-connection.js';
+import {
+  applyTermTheme,
+  setUserTermThemes,
+  termContrastRatio,
+  termScreenTheme,
+} from './terminal-theme.js';
 import { voiceDictationAvailable } from './voice.js';
 import {
-  clearTerminalToken,
   ensureTerminalToken,
   readTerminalToken,
 } from './webauthn.js';
@@ -48,18 +60,15 @@ import {
 // (terminalPanY, keyboardOverlayHeight, sendSubmit, framePaste, routeFrame,
 // mirrorDocTitle). Re-export the ones that moved to a split module so those
 // imports keep working unchanged.
-export { mirrorDocTitle, framePaste, sendSubmit };
-
-function termWsUrl(sid, tt) {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const params = new URLSearchParams();
-  const bt = readToken();
-  if (bt) params.set('token', bt);
-  if (tt) params.set('tt', tt);
-  const q = params.toString();
-  return proto + '//' + location.host + '/api/claude-code/sessions/' +
-    encodeURIComponent(sid) + '/ws' + (q ? '?' + q : '');
-}
+export {
+  framePaste,
+  mirrorDocTitle,
+  routeFrame,
+  sendSubmit,
+  setUserTermThemes,
+  termContrastRatio,
+  termScreenTheme,
+};
 
 // Estimate the phone's terminal size (rows × cols) BEFORE a session
 // exists, so the launch request can spawn the PTY at the right width and
@@ -130,106 +139,6 @@ export function handleLaunchResponse(session) {
   }
 }
 
-// ------------------------------------------------ terminal screen theme
-// The terminal screen always follows the app theme (issue #383; supersedes
-// the #359 opt-in switch): html[data-theme] is the single source both the
-// CSS token override and the JS palette key on.
-
-// VS Code Light+ ANSI table: the hosted TUIs (Claude Code, Codex, Copilot)
-// author their colors for dark backgrounds, so a light screen needs a full
-// 16-color override — flipping just background/foreground leaves unreadable
-// bright-yellow/bright-white output. Cursor + selection ride along; the
-// values live here, not in CSS, because xterm's renderer owns them.
-const _LIGHT_ANSI = {
-  cursor: '#1f2328',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#0969da40',
-  black: '#000000',
-  red: '#cd3131',
-  green: '#00bc00',
-  yellow: '#949800',
-  blue: '#0451a5',
-  magenta: '#bc05bc',
-  cyan: '#0598bc',
-  white: '#555555',
-  brightBlack: '#666666',
-  brightRed: '#cd3131',
-  brightGreen: '#14ce14',
-  brightYellow: '#b5ba00',
-  brightBlue: '#0451a5',
-  brightMagenta: '#bc05bc',
-  brightCyan: '#0598bc',
-  brightWhite: '#a5a5a5',
-};
-
-// User theme overrides (issue #381) — the machine-local
-// webapp/terminal-themes.json served by GET /api/terminal-themes, fetched
-// once at wireTerminal(). Per-mode xterm ITheme keys merged over the
-// built-ins, plus the minimumContrastRatio knob. Empty until (and unless)
-// the fetch lands — the built-ins are always a complete theme.
-let _userTermThemes = {};
-
-export function setUserTermThemes(themes) {
-  _userTermThemes = themes && typeof themes === 'object' ? themes : {};
-}
-
-function _effectiveLight() {
-  return document.documentElement.dataset.theme !== 'dark';
-}
-
-function _userOverride() {
-  return _userTermThemes[_effectiveLight() ? 'light' : 'dark'] || {};
-}
-
-// Resolve the xterm theme for the *current* app state. background/foreground
-// come from the --term-bg/--term-fg tokens (the CSS override keyed on
-// html[data-theme] already flips them); the ANSI table joins only in
-// the effective-light case; the user file wins last. Pure read — safe to
-// call on every theme flip.
-export function termScreenTheme() {
-  const rootStyle = getComputedStyle(document.documentElement);
-  const theme = {
-    background: rootStyle.getPropertyValue('--term-bg').trim() || '#0a0a0a',
-    foreground: rootStyle.getPropertyValue('--term-fg').trim() || '#f3f3f3',
-  };
-  if (_effectiveLight()) Object.assign(theme, _LIGHT_ANSI);
-  const user = _userOverride();
-  Object.keys(user).forEach(function (k) {
-    if (k !== 'minimumContrastRatio') theme[k] = user[k];
-  });
-  return theme;
-}
-
-// Per-cell contrast floor (issue #381) — xterm's minimumContrastRatio, the
-// same mechanism VS Code uses. The hosted TUIs emit dim/256-color/truecolor
-// output authored for dark backgrounds that no 16-color palette can catch;
-// on the light screen those rendered as near-invisible pale text. 4.5 is
-// WCAG AA. Dark keeps 1 (off) so authored colors render untouched.
-export function termContrastRatio() {
-  const user = _userOverride();
-  if (typeof user.minimumContrastRatio === 'number' &&
-      user.minimumContrastRatio >= 1) {
-    return user.minimumContrastRatio;
-  }
-  return _effectiveLight() ? 4.5 : 1;
-}
-
-// Push the current theme + contrast into the open terminal (xterm applies
-// options.* changes live) and keep the overlay chrome in step when the
-// user file overrides the background (the CSS only knows the tokens).
-function applyTermTheme() {
-  if (els.terminalOverlay) {
-    els.terminalOverlay.style.background = _userOverride().background || '';
-  }
-  const t = state.terminal;
-  if (t && t.term) {
-    try {
-      t.term.options.theme = termScreenTheme();
-      t.term.options.minimumContrastRatio = termContrastRatio();
-    } catch (_) { /* renderer mid-teardown; next open resolves fresh */ }
-  }
-}
-
 // Given the layout-viewport height and the current visual-viewport
 // height, return the pixel height to pin the terminal overlay to so its
 // bottom edge sits at the top of the on-screen keyboard — or null to
@@ -264,226 +173,6 @@ export function keyboardOverlayHeight(layoutHeight, visualHeight) {
 export function terminalPanY(contentHeight, visibleHeight) {
   if (!(contentHeight > 0) || !(visibleHeight > 0)) return 0;
   return Math.max(0, Math.round(contentHeight - visibleHeight));
-}
-
-function setTerminalStatus(msg) {
-  if (!els.terminalStatus) return;
-  if (msg) {
-    els.terminalStatus.textContent = msg;
-    els.terminalStatus.hidden = false;
-  } else {
-    els.terminalStatus.hidden = true;
-  }
-}
-
-// Reconnect backoff: 1s, 2s, 4s, then 8s forever (capped). After
-// ~30s of failed attempts we stop retrying and swap the status line
-// into a tappable "Tap to reconnect" affordance.
-const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
-const RECONNECT_GIVE_UP_MS = 30000;
-
-// A server→client WS frame is normally raw terminal output, but the
-// session-host also multiplexes a cooperative {"type":"shutdown"} control
-// frame (issue #20 close fallback / #181). Detect it cheaply — only
-// JSON.parse frames that start with '{' so terminal throughput isn't taxed,
-// and a program printing a brace-leading non-JSON line (or any other JSON
-// shape) falls through to be rendered normally.
-function isShutdownFrame(data) {
-  if (typeof data !== 'string' || data.charCodeAt(0) !== 0x7b /* '{' */) {
-    return false;
-  }
-  try {
-    const msg = JSON.parse(data);
-    return !!msg && typeof msg === 'object' && msg.type === 'shutdown';
-  } catch (_) {
-    return false;
-  }
-}
-
-// Classify one server→client WS frame. Returns:
-//   'close-mirror' — shutdown frame in a mirror window → caller window.close()s
-//   'swallow'      — shutdown frame on the phone → drop, never render
-//   'write'        — ordinary terminal output → caller writes it to xterm
-// Pure + side-effect-free so the routing decision is unit-pinnable without a
-// live socket (mirrors framePaste; see tests/e2e/test_shutdown_frame.py).
-export function routeFrame(data, isMirror) {
-  if (isShutdownFrame(data)) return isMirror ? 'close-mirror' : 'swallow';
-  return 'write';
-}
-
-function connectWs(t) {
-  // Re-bind ws.onclose for the previous socket so a late close event
-  // from the dying connection doesn't interfere with the new one.
-  if (t.ws) {
-    try { t.ws.onopen = null; t.ws.onmessage = null;
-      t.ws.onerror = null; t.ws.onclose = null; } catch (_) {}
-  }
-  const ws = new WebSocket(termWsUrl(t.sid, t.tt));
-  t.ws = ws;
-
-  ws.onopen = function () {
-    if (t !== state.terminal) return;
-    t.retryCount = 0;
-    t.giveUpAt = 0;
-    clearReconnect(t);
-    setTerminalStatus(null);
-    // Full-screen TUI (re)connect: drop any stale buffer so the server's
-    // clean-frame repaint lands on an empty screen instead of crawling
-    // through the previous frame's history (#270 tail-jump). The xterm
-    // instance is reused across reconnects, so the old frame is still here.
-    // Inline agents (Claude) keep their replayed scrollback — untouched.
-    if (t.isFullscreen && t.term) { try { t.term.clear(); } catch (_) {} }
-    if (t.applySize) t.applySize();
-    if (t.term) t.term.focus();
-  };
-  ws.onmessage = function (ev) {
-    // The session-host multiplexes a cooperative {"type":"shutdown"} control
-    // frame onto the same stream as raw terminal output (issue #20 close
-    // fallback / #181). It must never reach xterm as junk text. On a mirror
-    // window it is the reliable self-close path for "Stop & Close" when the
-    // Win32 WM_CLOSE never captured an HWND; on the phone it's simply dropped
-    // (the server closes the socket with 4000 right after, which onclose
-    // surfaces as "Session ended.").
-    const route = routeFrame(ev.data, t.mirror);
-    if (route === 'close-mirror') {
-      closeTerminal();
-      try { window.close(); } catch (_) { /* may be blocked; teardown stands */ }
-      return;
-    }
-    if (route === 'swallow') return;
-    if (!t.term) return;
-    // tail -f follow: snap back to bottom on new output, but only
-    // if the user was already there. If they scrolled up to read
-    // history, leave them alone — they'll resume auto-follow by
-    // scrolling back to the bottom themselves. The -1 fudge handles
-    // iOS fractional touch-scroll states that would otherwise stick
-    // the view one row above the tail forever.
-    const b = t.term.buffer.active;
-    const wasAtBottom = b.viewportY >= b.baseY - 1;
-    t.term.write(ev.data, function () {
-      if (wasAtBottom) {
-        try { t.term.scrollToBottom(); } catch (_) {}
-      }
-    });
-  };
-  ws.onerror = function () { /* onclose drives UI */ };
-  ws.onclose = function (ev) {
-    if (t !== state.terminal) return;
-    const reason = (ev && ev.reason) ? ev.reason : '';
-
-    // Final, non-retriable close codes from the session-host.
-    if (ev.code === 4000) { setTerminalStatus('Session ended.'); return; }
-    if (ev.code === 4403) {
-      setTerminalStatus('🔒 ' + (reason || 'Terminal is Tailscale-only') +
-        ' — open the launcher over your Tailscale URL.');
-      return;
-    }
-    if (ev.code === 4404) {
-      setTerminalStatus('Session not found — it may have ended.');
-      return;
-    }
-
-    // Passkey rejected: clear the cached terminal token and route
-    // through the tap-to-reconnect affordance so the next attempt
-    // re-prompts via ensureTerminalToken().
-    if (ev.code === 4401) {
-      clearTerminalToken();
-      t.tt = '';
-      setTapToReconnect(t, '🔒 ' + (reason || 'Passkey unlock required'));
-      return;
-    }
-
-    // Everything else (1000/1001/1006, uvicorn ping timeout, 4502, …)
-    // is the iOS-suspend case in practice — retry with backoff.
-    if (!t.giveUpAt) t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
-    scheduleReconnect(t);
-  };
-}
-
-function scheduleReconnect(t) {
-  if (!t || t !== state.terminal) return;
-  if (t.retryTimer) return;
-
-  if (Date.now() >= t.giveUpAt) {
-    setTapToReconnect(t, 'Tap to reconnect');
-    return;
-  }
-
-  // iOS suspends background pages aggressively. Don't burn retries
-  // while hidden — wait for the page to come back to the foreground
-  // and try once at that moment, then resume the normal backoff.
-  if (document.visibilityState !== 'visible') {
-    setTerminalStatus('Reconnecting when visible…');
-    if (!t.visibilityListener) {
-      t.visibilityListener = function () {
-        if (document.visibilityState === 'visible') {
-          document.removeEventListener('visibilitychange', t.visibilityListener);
-          t.visibilityListener = null;
-          // Reset deadline and counter on wake so the user gets a
-          // fresh 30s window the first time they look at the phone.
-          t.retryCount = 0;
-          t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
-          scheduleReconnect(t);
-        }
-      };
-      document.addEventListener('visibilitychange', t.visibilityListener);
-    }
-    return;
-  }
-
-  const idx = Math.min(t.retryCount || 0, RECONNECT_DELAYS_MS.length - 1);
-  const delay = RECONNECT_DELAYS_MS[idx];
-  t.retryCount = (t.retryCount || 0) + 1;
-  setTerminalStatus('Reconnecting…');
-  t.retryTimer = setTimeout(function () {
-    t.retryTimer = null;
-    if (t !== state.terminal) return;
-    connectWs(t);
-  }, delay);
-}
-
-function setTapToReconnect(t, label) {
-  if (!t || t !== state.terminal || !els.terminalStatus) return;
-  clearReconnect(t);
-  setTerminalStatus(label || 'Tap to reconnect');
-  els.terminalStatus.style.cursor = 'pointer';
-  els.terminalStatus.style.textDecoration = 'underline';
-  t.tapHandler = function () {
-    if (t !== state.terminal) return;
-    els.terminalStatus.removeEventListener('click', t.tapHandler);
-    t.tapHandler = null;
-    els.terminalStatus.style.cursor = '';
-    els.terminalStatus.style.textDecoration = '';
-    t.retryCount = 0;
-    t.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
-    setTerminalStatus('Connecting…');
-    // Refresh the terminal token if we lost it (4401 path); otherwise
-    // ensureTerminalToken returns the cached value without prompting.
-    ensureTerminalToken().then(function (tt) {
-      if (t !== state.terminal) return;
-      t.tt = tt;
-      connectWs(t);
-    }).catch(function (exc) {
-      apiFailToast('Passkey unlock failed', exc);
-      setTapToReconnect(t, 'Tap to reconnect');
-    });
-  };
-  els.terminalStatus.addEventListener('click', t.tapHandler);
-}
-
-function clearReconnect(t) {
-  if (!t) return;
-  if (t.retryTimer) { clearTimeout(t.retryTimer); t.retryTimer = null; }
-  if (t.visibilityListener) {
-    document.removeEventListener('visibilitychange', t.visibilityListener);
-    t.visibilityListener = null;
-  }
-  if (t.tapHandler && els.terminalStatus) {
-    els.terminalStatus.removeEventListener('click', t.tapHandler);
-    t.tapHandler = null;
-    els.terminalStatus.style.cursor = '';
-    els.terminalStatus.style.textDecoration = '';
-  }
 }
 
 export async function openTerminal(session) {
@@ -619,6 +308,7 @@ export async function openTerminal(session) {
     retryTimer: null, visibilityListener: null, tapHandler: null,
     disposeTouch: null, composeOpen: false,
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
+    onShutdown: closeTerminal,
   };
   state.terminal = t;
   // Sync the overlay chrome with any user background override (#381) —
@@ -752,7 +442,7 @@ export async function openTerminal(session) {
     }
   });
 
-  connectWs(t);
+  connectTerminalWs(t);
 }
 
 export function closeTerminal() {
@@ -761,7 +451,7 @@ export function closeTerminal() {
   if (!t) return;
   // Drop compose state so a re-open never shows a stale bar/draft.
   resetComposeBar();
-  clearReconnect(t);
+  clearTerminalReconnect(t);
   if (t.sizeTimer) clearInterval(t.sizeTimer);
   if (t.titleTimer) clearInterval(t.titleTimer);
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
