@@ -377,15 +377,27 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
     return cfg
 
 
-def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
-    """Load the webapp config, falling back to defaults if the file is missing."""
+def load_webapp_config(
+    path: Optional[Path] = None, *, apply_env_override: bool = True
+) -> WebappConfig:
+    """Load the webapp config, falling back to defaults if the file is missing.
+
+    ``apply_env_override=False`` skips the ``LAUNCHER_SESSION_HOST_PORT``
+    override (see :func:`_apply_session_host_override`) — used by
+    :func:`update_webapp_config` so a config PATCH made against the e2e
+    gate's disposable autobooted webapp (which sets that env var) can never
+    bake the disposable session-host port into the real, shared
+    ``config/webapp_config.json`` on save. Every other caller wants the
+    override applied, hence the default.
+    """
     target = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     if not target.exists():
         logger.info(
             f"📂 webapp_config not found at {target}, using defaults "
             f"(file will be created when settings change)"
         )
-        return _apply_session_host_override(WebappConfig())
+        cfg = WebappConfig()
+        return _apply_session_host_override(cfg) if apply_env_override else cfg
 
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
@@ -393,7 +405,8 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
         logger.warning(
             f"⚠️  Could not read {target} ({exc}); falling back to defaults"
         )
-        return _apply_session_host_override(WebappConfig())
+        cfg = WebappConfig()
+        return _apply_session_host_override(cfg) if apply_env_override else cfg
 
     cfg = WebappConfig(
         host=str(raw.get("host", DEFAULT_HOST)),
@@ -465,7 +478,8 @@ def load_webapp_config(path: Optional[Path] = None) -> WebappConfig:
             str(k): str(v) for k, v in (raw.get("webhook_secrets") or {}).items()
         },
     )
-    _apply_session_host_override(cfg)
+    if apply_env_override:
+        _apply_session_host_override(cfg)
     _validate(cfg)
     return cfg
 
@@ -526,12 +540,23 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
 
 
 def update_webapp_config(**fields) -> WebappConfig:
-    """Read, patch, save — convenience for the API endpoint."""
-    current = load_webapp_config()
+    """Read, patch, save — convenience for the API endpoint.
+
+    Loads the *un-overridden* on-disk config (``apply_env_override=False``)
+    so a save can never bake the e2e gate's disposable
+    ``LAUNCHER_SESSION_HOST_PORT`` into the real, shared
+    ``config/webapp_config.json`` — that env var is a runtime-only override
+    for the disposable autobooted webapp, never something to persist. The
+    returned config still carries the override applied, so the caller's own
+    in-process state (e.g. the running webapp's ``app.state.webapp_config``)
+    keeps talking to the right session-host for the rest of that process's
+    life — only the on-disk file is protected.
+    """
+    current = load_webapp_config(apply_env_override=False)
     patched = replace(current, **fields)
     _validate(patched)
     save_webapp_config(patched)
-    return patched
+    return _apply_session_host_override(patched)
 
 
 def append_auth_token(url: str, token: Optional[str]) -> str:

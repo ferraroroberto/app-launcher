@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 
@@ -136,6 +138,34 @@ class TestPatchConfig:
         assert "--effort low" in resp.json()["claude_flags"]
         # And the in-memory cfg was swapped.
         assert app.state.webapp_config.claude_effort == "low"
+
+    def test_patch_never_persists_session_host_port_env_override(
+        self, webapp_client, monkeypatch
+    ):
+        """The e2e pre-ship gate's disposable webapp sets
+        LAUNCHER_SESSION_HOST_PORT to point at a disposable session-host
+        (issue #260) rather than the live :8446. A config PATCH against
+        that disposable webapp must never bake the override into the
+        real, shared config/webapp_config.json on save — only load it
+        for the running process's own in-memory use. Discovered live: a
+        Settings-tab e2e test triggered exactly this, overwriting the
+        user's real session_host_port with a disposable autoboot port
+        and taking the live session-host down until the file was
+        hand-repaired (issue #435 follow-up)."""
+        client, app, overrides = webapp_client
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert json.loads(cfg_path.read_text())["session_host_port"] == 8446
+
+        monkeypatch.setenv("LAUNCHER_SESSION_HOST_PORT", "59999")
+        resp = client.post("/api/config", json={"claude_effort": "low"})
+        assert resp.status_code == 200
+
+        # The running process's own state sees the override — it must keep
+        # talking to the disposable session-host for the rest of its life.
+        assert app.state.webapp_config.session_host_port == 59999
+        # But the shared on-disk file must be untouched.
+        on_disk = json.loads(cfg_path.read_text())
+        assert on_disk["session_host_port"] == 8446
 
     def test_rejects_invalid_value_with_400(self, webapp_client):
         client, _, _ = webapp_client
