@@ -384,6 +384,7 @@ app-launcher/
 │   ├── scanner.py             # bat classifier + project-dir + life-os skill discovery
 │   ├── launcher.py            # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py        # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
+│   ├── vt_snapshot.py         # headless pyte VT mirror per fullscreen session (reconnect snapshot)
 │   ├── _loopback_http.py      # shared loopback HTTP client base (session/voice/photo/tts)
 │   ├── session_client.py      # webapp → session-host loopback HTTP client
 │   ├── webauthn_gate.py       # passkey enrollment / assertion + terminal tokens
@@ -639,6 +640,7 @@ The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `tes
 - `app/session_host/server.py` — loopback PTY host (HTTP + WebSocket)
 - `app/tray/tray.py` — pystray icon + cloudflared + session-host lifecycle
 - `src/session_host.py` — `PtySession` + `SessionManager` (ConPTY via pywinpty)
+- `src/vt_snapshot.py` — headless pyte VT mirror per fullscreen session (reconnect snapshot, issue #432)
 - `src/session_client.py` — webapp → session-host loopback client
 - `src/webauthn_gate.py` — passkey enrollment / assertion + terminal tokens
 - `src/audit.py` — terminal audit + per-session logs/transcripts

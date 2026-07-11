@@ -225,17 +225,27 @@ def create_app() -> FastAPI:
                 # the raw scrollback ring. Replaying its stale move-cursor /
                 # clear deltas garbles a fresh xterm, and replaying the
                 # agent's startup terminal queries makes xterm re-answer them
-                # as input — the `[?1;2c` DA leak (issue #128). Force a clean
-                # repaint at the current size instead. Role-independent: the
-                # leak hits the PC mirror too.
+                # as input — the `[?1;2c` DA leak (issue #128).
                 #
                 # Wipe the client's buffer first (#270 tail-jump): the xterm
-                # instance is reused across a reconnect, so without this the
+                # instance is reused across a reconnect, so without this a
                 # repaint appends below the stale frame and crawls through it.
                 await websocket.send_text(_CLEAR_FRAME)
-                task = asyncio.create_task(_force_repaint(session))
-                _repaint_tasks.add(task)
-                task.add_done_callback(_repaint_tasks.discard)
+                # Serve the headless-VT current-frame snapshot (issue #432):
+                # no winsize toggle, no SIGWINCH, no agent re-emission — a
+                # ratatui agent re-emits its ENTIRE transcript on any resize
+                # (issue #430), which is exactly what the old toggle-based
+                # repaint nudge below used to trigger on every (re)connect,
+                # visible to every subscriber including the PC mirror.
+                frame = session.snapshot_frame()
+                if frame:
+                    await websocket.send_text(frame)
+                else:
+                    # No VT frame yet (nothing painted, or an older session
+                    # from before this build) — fall back to the toggle nudge.
+                    task = asyncio.create_task(_force_repaint(session))
+                    _repaint_tasks.add(task)
+                    task.add_done_callback(_repaint_tasks.discard)
             elif snapshot:
                 await websocket.send_text(snapshot)
             await asyncio.gather(
