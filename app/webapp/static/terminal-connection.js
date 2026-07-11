@@ -28,7 +28,23 @@ const REPAINT_BATCH_MAX_MS = 6000;
 
 export function beginRepaintBatch(terminal) {
   if (!terminal || !terminal.isFullscreen) return;
-  if (!terminal.batchBuf) terminal.batchBuf = [];
+  // Every caller (a fresh (re)connect's ws.onopen, or the first real size
+  // sent on a connection) means "start a clean concealment window" — never
+  // preserve a batch left over from a previous call. Without this, a
+  // connection that dropped mid-batch (e.g. after the server's _CLEAR_FRAME
+  // message but before its snapshot payload arrived) leaves batchBuf
+  // partially filled AND its batchQuietTimer still armed; the next
+  // reconnect's beginRepaintBatch only reset batchTimer, so that stale
+  // timer could later fire on its own old schedule and flush whatever
+  // happens to be in batchBuf at that moment — content from two different
+  // connections mixed or clobbered together. Reported as a live-session
+  // "conversation beginning visible, middle missing, latest lines visible"
+  // corruption (issue #435 follow-up).
+  if (terminal.batchQuietTimer) {
+    clearTimeout(terminal.batchQuietTimer);
+    terminal.batchQuietTimer = null;
+  }
+  terminal.batchBuf = [];
   terminal.batchDeadline = Date.now() + REPAINT_BATCH_MAX_MS;
   // Conceal the storm (#430 round 2): even flushed as ONE write, xterm
   // parses large writes in per-animation-frame slices, so the transcript
@@ -147,8 +163,9 @@ export function connectTerminalWs(terminal) {
     if (terminal.isFullscreen && terminal.term) {
       try { terminal.term.clear(); } catch (_) { /* best effort */ }
       // The session-host answers every fullscreen (re)connect with a
-      // clear-frame + width-toggle nudge, which makes ratatui re-emit its
-      // whole transcript (#430) — batch it into a single paint.
+      // clear-frame + a headless-VT snapshot (bounded scrollback history
+      // + current frame, #432/#435) sent as a couple of WS messages —
+      // batch them into a single paint so xterm doesn't visibly crawl in.
       beginRepaintBatch(terminal);
     }
     if (terminal.applySize) terminal.applySize();
