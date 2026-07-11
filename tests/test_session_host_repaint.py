@@ -86,8 +86,9 @@ class _FakeSession:
     rows = 40
     cols = 120
 
-    def __init__(self, agent: str) -> None:
+    def __init__(self, agent: str, vt_frame: "str | None" = None) -> None:
         self.agent = agent
+        self._vt_frame = vt_frame
 
     def subscribe(self):
         # _EOF pre-loaded so _pump_to_client closes (4000) right after the
@@ -96,24 +97,30 @@ class _FakeSession:
         q.put_nowait(_EOF)
         return "RAW-RING-SNAPSHOT", q
 
+    def snapshot_frame(self):
+        return self._vt_frame
+
     def unsubscribe(self, _q) -> None:
         pass
 
 
-def _connect(monkeypatch, agent: str):
-    # The repaint nudge is exercised separately — stub it so the scheduled
-    # task can't outlive the test.
+def _connect(monkeypatch, agent: str, vt_frame: "str | None" = None):
+    # The repaint nudge (fallback path, no VT frame available) is exercised
+    # separately — stub it so the scheduled task can't outlive the test.
     monkeypatch.setattr(server, "_force_repaint", _async_noop)
-    monkeypatch.setattr(server.manager, "get", lambda sid: _FakeSession(agent))
+    monkeypatch.setattr(
+        server.manager, "get", lambda sid: _FakeSession(agent, vt_frame)
+    )
     return TestClient(server.app)
 
 
-def test_ws_skips_ring_replay_for_fullscreen_agent(monkeypatch):
-    """Codex (fullscreen): the raw ring is NOT replayed. The only text frame
-    is the clean-frame preamble (#270 tail-jump) — never the stale ring — so
-    the DA-query leak can't happen (issue #128) and the reopened session lands
-    on a clean buffer instead of crawling through history."""
-    client = _connect(monkeypatch, "codex")
+def test_ws_skips_ring_replay_for_fullscreen_agent_no_vt_frame(monkeypatch):
+    """Codex (fullscreen), no VT frame yet (falls back to the toggle nudge):
+    the raw ring is NOT replayed. The only text frame is the clean-frame
+    preamble (#270 tail-jump) — never the stale ring — so the DA-query leak
+    can't happen (issue #128) and the reopened session lands on a clean
+    buffer instead of crawling through history."""
+    client = _connect(monkeypatch, "codex", vt_frame=None)
     with client.websocket_connect("/sessions/abc/ws?role=phone") as ws:
         first = ws.receive_text()
         assert first == server._CLEAR_FRAME
@@ -129,6 +136,33 @@ def test_clean_frame_preamble_is_csi_only():
     reintroduce the colour-query / DA leak the #128/#270 strip removed."""
     assert "\x1b]" not in server._CLEAR_FRAME  # no OSC introducer
     assert not server._CLEAR_FRAME.endswith("c")  # not a DA-shaped reply
+
+
+def test_ws_serves_vt_snapshot_when_available(monkeypatch):
+    """Codex (fullscreen) with a VT frame already painted: the snapshot is
+    sent right after the clean-frame preamble, and — critically — the
+    winsize-toggle nudge (``_force_repaint``) is never scheduled, since that
+    toggle is exactly what triggers a ratatui agent's full transcript
+    re-emission on every (re)connect (issue #430/#432)."""
+    repaint_calls: list = []
+
+    async def _tracking_repaint(_session):
+        repaint_calls.append(_session)
+
+    monkeypatch.setattr(server, "_force_repaint", _tracking_repaint)
+    monkeypatch.setattr(
+        server.manager,
+        "get",
+        lambda sid: _FakeSession("codex", vt_frame="RENDERED-VT-FRAME"),
+    )
+    client = TestClient(server.app)
+    with client.websocket_connect("/sessions/abc/ws?role=phone") as ws:
+        assert ws.receive_text() == server._CLEAR_FRAME
+        assert ws.receive_text() == "RENDERED-VT-FRAME"
+        with pytest.raises(WebSocketDisconnect):
+            ws.receive_text()
+
+    assert repaint_calls == []  # no SIGWINCH-triggering toggle fired
 
 
 def test_ws_replays_ring_for_inline_agent(monkeypatch):

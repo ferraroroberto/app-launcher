@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.session_host import PtySession, RemoteSession, SessionManager
+from src.vt_snapshot import VtSnapshot
 
 
 class _FakeCompleted:
@@ -195,6 +196,112 @@ def test_create_defaults_and_clamps_dimensions(tmp_path, monkeypatch):
     # Out-of-range values clamp to the same 1..1000 bounds as resize().
     mgr.create(str(tmp_path), "proj", "", rows=99999, cols=0)
     assert captured["dimensions"] == (1000, 1)
+
+
+def test_create_attaches_vt_snapshot_for_fullscreen_agent(tmp_path, monkeypatch):
+    """Codex (fullscreen) gets a headless VT mirror so a (re)connect can be
+    served a current-frame snapshot instead of a resize-triggered
+    re-emission (issue #432); Claude (inline, raw-ring replay) needs none."""
+    captured: dict = {}
+    from src import session_host
+
+    monkeypatch.setattr(session_host, "PtyProcess", _fake_pty_process(captured))
+    monkeypatch.setattr(session_host.PtySession, "start_reader", lambda self: None)
+
+    mgr = SessionManager()
+    mgr.attach_loop(MagicMock())
+
+    codex_session = mgr.create(str(tmp_path), "proj", "", "codex", rows=30, cols=90)
+    assert isinstance(codex_session._vt, VtSnapshot)
+    assert codex_session._vt._screen.lines == 30
+    assert codex_session._vt._screen.columns == 90
+
+    claude_session = mgr.create(str(tmp_path), "proj", "", "claude")
+    assert claude_session._vt is None
+
+
+def test_resize_forwards_to_vt_snapshot():
+    session = PtySession(
+        session_id="sid-test",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(),
+        agent="codex",
+        _vt=VtSnapshot(40, 120),
+    )
+    session.resize(20, 60)
+    assert session._vt._screen.lines == 20
+    assert session._vt._screen.columns == 60
+
+
+def test_snapshot_frame_none_without_vt():
+    session = PtySession(
+        session_id="sid-test",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(),
+        agent="claude",
+    )
+    assert session.snapshot_frame() is None
+
+
+def test_snapshot_frame_renders_current_vt_screen():
+    session = PtySession(
+        session_id="sid-test",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(),
+        agent="codex",
+        _vt=VtSnapshot(10, 40),
+    )
+    session._vt.feed("current frame text")
+    assert "current frame text" in session.snapshot_frame()
+
+
+class _OneShotPty:
+    """A fake PTY that yields one chunk, then EOFs — enough to drive
+    ``_read_loop`` synchronously without a background thread."""
+
+    def __init__(self, chunk: str) -> None:
+        self._chunk = chunk
+        self._sent = False
+
+    def read(self, _n):
+        if not self._sent:
+            self._sent = True
+            return self._chunk
+        raise EOFError
+
+    def isalive(self):
+        return False
+
+
+def test_read_loop_feeds_vt_snapshot():
+    """The reader thread's chunk pipeline must feed the VT mirror alongside
+    the raw scrollback ring — that's the only source of truth a snapshot
+    render has for the agent's current frame."""
+    session = PtySession(
+        session_id="sid-test",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=_OneShotPty("agent output here\r\n"),
+        agent="codex",
+        _vt=VtSnapshot(24, 80),
+    )
+    session._read_loop()
+    assert "agent output here" in session.snapshot_frame()
 
 
 def test_pty_session_to_api_carries_agent():

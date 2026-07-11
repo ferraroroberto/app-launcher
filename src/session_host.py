@@ -27,8 +27,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
-from src.agents import DEFAULT_AGENT, command_for, quit_command_for
+from src.agents import DEFAULT_AGENT, command_for, is_fullscreen, quit_command_for
 from src.audit import transcript_path
+from src.vt_snapshot import VtSnapshot
 
 try:  # Windows-only — ConPTY via pywinpty.
     from winpty import PtyProcess  # type: ignore
@@ -367,6 +368,10 @@ class PtySession:
     _color_osc_carry: str = ""
     _prompt_raw: str = ""
     _prompt_captured: bool = False
+    # Headless VT mirror for full-screen (ratatui) agents only (issue #432)
+    # — Claude's raw-ring replay path never needs one. None for a
+    # non-fullscreen agent, or before SessionManager wires it in.
+    _vt: Optional["VtSnapshot"] = None
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -412,6 +417,8 @@ class PtySession:
             )
             if not chunk:
                 continue
+            if self._vt is not None:
+                self._vt.feed(chunk)
             # Parse OSC window-title sequences and cache the latest title.
             self._osc_buffer += chunk
             self._osc_buffer, title = _parse_osc_title(self._osc_buffer)
@@ -549,10 +556,23 @@ class PtySession:
         cols = max(1, min(cols, 1000))
         self.rows = rows
         self.cols = cols
+        if self._vt is not None:
+            self._vt.resize(rows, cols)
         try:
             self._pty.setwinsize(rows, cols)
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} resize failed: {exc}")
+
+    def snapshot_frame(self) -> Optional[str]:
+        """Render the current headless-VT frame (fullscreen agents only).
+
+        ``None`` if this session has no VT mirror (non-fullscreen agent) or
+        nothing has been fed to it yet — the caller falls back to the
+        winsize-toggle repaint nudge in that case.
+        """
+        if self._vt is None:
+            return None
+        return self._vt.render()
 
     def stop(
         self, mode: str = STOP_QUIT, grace_seconds: float = _STOP_GRACE_SECONDS
@@ -804,6 +824,7 @@ class SessionManager:
             agent=agent,
             rows=rows,
             cols=cols,
+            _vt=VtSnapshot(rows, cols) if is_fullscreen(agent) else None,
         )
         session.start_reader()
         with self._lock:

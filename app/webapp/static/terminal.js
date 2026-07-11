@@ -502,54 +502,48 @@ export async function openTerminal(session) {
         els.terminalOverlay.style.top = '';
       }
     }
-    // Full-screen differential agent: the PTY is resized ONLY when the
-    // available width (cols) actually changes — a real rotation. EVERY
-    // height-only change (keyboard up/down, compose bar, browser chrome,
-    // a PWA layout-viewport shrink) PANS the fixed canvas instead
-    // (#264, #430). Empirical (#430 probe): Codex/ratatui re-emits its
+    // Full-screen differential agent: once sized, the PTY is PINNED for the
+    // rest of the session's lifetime — no further reflow, ever (#432b).
+    // EVERY change after the first real size (keyboard up/down, compose
+    // bar, browser chrome, a PWA layout-viewport shrink, OR a phone
+    // rotation) PANS/letterboxes the fixed-size canvas instead (#264,
+    // #430, #432). Empirical (#430 probe): Codex/ratatui re-emits its
     // ENTIRE transcript on any winsize change — rows or cols, either
     // direction (~65 KB on a long conversation) — so a single stray
-    // SIGWINCH replays the whole conversation through the phone
-    // terminal. Same-size setwinsize emits nothing, and width is the one
-    // dimension the keyboard never changes, so cols is the only trigger
-    // that may reflow. proposeDimensions() measures without mutating.
-    // The host is overflow:hidden, so panned-off top rows clip cleanly;
-    // panning by the content-vs-box overflow also covers the keyboard-
-    // down case (overflow 0 → transform cleared). Claude (inline) and
-    // the fullscreen first-fit/rotation case fall through to the reflow
-    // path below, which also clears the pan.
+    // SIGWINCH replays the whole conversation through the phone terminal.
+    // iOS supports neither the manifest `orientation` member nor
+    // `ScreenOrientation.lock()`, so rotation can't be blocked at the
+    // platform level — pinning cols makes it harmless instead: landscape
+    // just shows the same portrait-width canvas letterboxed (xterm sizes
+    // its own canvas off `cols`, not the host box, so no extra CSS is
+    // needed). The host is overflow:hidden, so panned-off top rows clip
+    // cleanly; panning by the content-vs-box overflow also covers the
+    // keyboard-down case (overflow 0 → transform cleared). Claude (inline)
+    // and the fullscreen first-fit case fall through to the reflow path
+    // below, which also clears the pan.
     // (The pan shortcut additionally requires a size to have been SENT —
     // the pre-WS first fit sets fsSized, but the phone's authoritative
     // size must still go out on the first open.)
     if (t.isFullscreen && t.fsSized && t.lastSentSize) {
-      let proposed = null;
-      try {
-        proposed = (fit && fit.proposeDimensions) ?
-          fit.proposeDimensions() : null;
-      } catch (_) { /* hidden host — keep the stable size */ }
-      const colsChanged = !!(proposed && proposed.cols && term.cols &&
-        proposed.cols !== term.cols);
-      if (!colsChanged) {
-        const screen = term.element &&
-          term.element.querySelector('.xterm-screen');
-        const contentH = screen ? screen.getBoundingClientRect().height : 0;
-        // Pan against the HOST's real box, not the visual-viewport height
-        // (#430 round 2): the overlay also holds the header bar and the
-        // compose bar, so the viewport height over-states the terminal's
-        // visible box by their combined height — under-panning by exactly
-        // that much and hiding the bottom rows (the prompt echo) behind
-        // the compose bar whenever the native keyboard is up. The overlay
-        // pinning above already resized the flex layout, so the host rect
-        // is the box the canvas actually shows through.
-        const boxH = els.terminalHost ?
-          els.terminalHost.getBoundingClientRect().height : 0;
-        const panY = terminalPanY(contentH, boxH);
-        if (term.element) {
-          term.element.style.transform =
-            panY ? ('translateY(-' + panY + 'px)') : '';
-        }
-        return;
+      const screen = term.element &&
+        term.element.querySelector('.xterm-screen');
+      const contentH = screen ? screen.getBoundingClientRect().height : 0;
+      // Pan against the HOST's real box, not the visual-viewport height
+      // (#430 round 2): the overlay also holds the header bar and the
+      // compose bar, so the viewport height over-states the terminal's
+      // visible box by their combined height — under-panning by exactly
+      // that much and hiding the bottom rows (the prompt echo) behind
+      // the compose bar whenever the native keyboard is up. The overlay
+      // pinning above already resized the flex layout, so the host rect
+      // is the box the canvas actually shows through.
+      const boxH = els.terminalHost ?
+        els.terminalHost.getBoundingClientRect().height : 0;
+      const panY = terminalPanY(contentH, boxH);
+      if (term.element) {
+        term.element.style.transform =
+          panY ? ('translateY(-' + panY + 'px)') : '';
       }
+      return;
     }
     if (term.element) term.element.style.transform = '';
     try { if (fit) fit.fit(); } catch (_) {}
