@@ -213,14 +213,27 @@ class TestPatchConfig:
 
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is
-        in the allow-list — it patches through and surfaces on the next
-        GET."""
-        client, app, _ = webapp_client
+        in the allow-list — it patches through, surfaces on the next GET,
+        AND actually reaches disk (issue #441: it originally shipped
+        missing from both load_webapp_config's constructor call and
+        save_webapp_config's payload, so a Save was in-memory only and
+        silently reverted on restart or on the next unrelated PATCH —
+        which the old in-memory-only assertions here couldn't catch)."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
         resp = client.post("/api/config", json={"terminal_history_lines": 5000})
         assert resp.status_code == 200
         assert app.state.webapp_config.terminal_history_lines == 5000
         body = client.get("/api/config").json()
         assert body["terminal_history_lines"] == 5000
+        # Persisted, not just process state: the on-disk JSON carries it and
+        # a fresh load (a webapp restart, or update_webapp_config's
+        # reload-before-save on any later PATCH) round-trips it.
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        on_disk = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert on_disk["terminal_history_lines"] == 5000
+        assert load_webapp_config(cfg_path).terminal_history_lines == 5000
 
     def test_terminal_history_lines_rejects_out_of_range(self, webapp_client):
         client, _, _ = webapp_client
