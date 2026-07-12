@@ -165,9 +165,14 @@ def test_ws_serves_vt_snapshot_when_available(monkeypatch):
     assert repaint_calls == []  # no SIGWINCH-triggering toggle fired
 
 
-def test_ws_replays_ring_for_inline_agent(monkeypatch):
-    """Claude (inline): the scrollback snapshot is replayed exactly as
-    before — its transcript is forgiving and worth keeping."""
+def test_ws_replays_ring_for_inline_agent_after_wipe(monkeypatch):
+    """Claude (inline): the scrollback snapshot is still replayed — but
+    prefixed with the clean-frame preamble in the SAME frame (#444). The
+    phone reuses one xterm across reconnects (#28 backoff, #430 warm
+    cache); without the wipe the full ring lands BELOW the stale buffer,
+    duplicating the conversation tail on every reconnect."""
     client = _connect(monkeypatch, "claude")
     with client.websocket_connect("/sessions/abc/ws?role=phone") as ws:
-        assert ws.receive_text() == "RAW-RING-SNAPSHOT"
+        first = ws.receive_text()
+        assert first == server._CLEAR_FRAME + "RAW-RING-SNAPSHOT"
+        assert "\x1b[3J" in first  # erase-scrollback, not just clear-screen

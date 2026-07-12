@@ -558,7 +558,7 @@ A `pytest-playwright` suite under `tests/e2e/` covers two things:
   | --- | --- | --- |
   | `test_cache_busting.py` | `35caad4` + `bf76d0d` (#30) | `?v=<hash>` stamps in served `index.html` diverge from on-disk asset bytes (forgot to restart tray after editing JS) |
   | `test_iphone_revalidate.py` | `696b723` | iOS Safari serves stale `index.html` and references a `?v=<old>` script that no longer exists → empty Model/Effort controls |
-  | `test_terminal_reconnect.py` | `142e2b4` (#28) | Live terminal WS drops on iOS suspend, overlay sticks on "Disconnected." until manual re-open |
+  | `test_terminal_reconnect.py` | `142e2b4` (#28), extended (#444) | Live terminal WS drops on iOS suspend, overlay sticks on "Disconnected." until manual re-open; or the reconnect's scrollback-ring replay stops arriving with the clear-frame preamble prepended — so on a long (ring-saturated) Claude session every reconnect appends the whole ring below the stale buffer, duplicating the conversation tail (#444) |
   | `test_paste_button.py` | (#29) | 📋 paste button in iOS PWA reaches `navigator.clipboard.readText()` but bytes never arrive at the session-host |
   | `test_paste_framing.py` | (#64, #111) | 📋 / compose ➤ Send stop wrapping a paste in bracketed-paste markers (DECSET 2004) — so a multi-KB block reaches the agent as a raw keystroke burst the Windows console input queue drops spans of, instead of one atomic paste |
   | `test_ports_probe.py` | `d564114` | Pywinpty's loopback ephemerals leak into the Running-apps panel under bogus high ports |
