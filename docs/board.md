@@ -38,26 +38,37 @@ The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, 
 
 ## The session-state file join
 
-The Board's session status comes from a **sessions-state file** written by [`fleet-config`](https://github.com/ferraroroberto/fleet-config)'s `session_state` hook (fleet-config#91) — path `sessions_state_file`, default `~/.claude/hooks/state/sessions-state.json`. The Board only ever reads it.
+Launcher-owned session **presence and agent identity** come from the session-host list. That is the authoritative process-liveness source: when a PTY/detached process leaves the host list, its live Board card leaves on the next 5 s poll, regardless of whether an agent shutdown hook fired. Semantic status comes from a **sessions-state file** written by [`fleet-config`](https://github.com/ferraroroberto/fleet-config)'s agent hooks/extensions (fleet-config#91) — path `sessions_state_file`, default `~/.claude/hooks/state/sessions-state.json`. The Board only ever reads it.
 
-**The join is by normalized cwd, never by id.** The hook records Claude Code's transcript UUID as its `session_id`; the session-host mints its own `uuid4().hex` — the two id spaces can never match. So `src/board.py` joins a live session to a hook row by comparing normalized working directories. Normalization (`_normalize_dir()`): forward-slash the separators, lowercase, strip the trailing slash — mirroring the hook side.
+**The join is agent-aware and exact-id-first.** A state writer may carry `agent` plus the launcher's own id as `launcher_session_id`; that exact id + agent pair wins. Rows predating #455 have neither field and are Claude Code rows by definition. They retain the normalized-cwd fallback (forward-slash separators, lowercase, trailing slash stripped), but only for a live Claude session. A Claude row can therefore never classify Codex, Pi, Antigravity, or Copilot.
 
 Join mechanics (`_claim_walk` / `_match_state_row`):
 
 - Live sessions are walked **newest-first** by `started_at`.
-- Each session claims the unmatched state row whose normalized `cwd` is **equal-or-under** the session's project dir.
-- Two candidate rows in one directory → the **most recently updated** wins.
+- Each session first claims an unmatched state row with the same `launcher_session_id` and `agent`.
+- Without exact identity, the session can claim only an agent-compatible row whose normalized `cwd` is **equal-or-under** the session's project dir. A row carrying a different launcher id is never allowed to fall back by cwd.
+- Two legacy candidate rows in one directory → the **most recently updated** wins.
 - Two live sessions in the same dir → the fresher one claims the row; the older renders `unknown`.
-- A fresh unmatched row with **no** live session becomes a **state-only card** (`kind: "external"`, `alive: false`) — a conversation running in a plain desktop terminal the session-host never spawned. Cold leftovers (stamp older than 24 h) are dropped.
-- **Working-ghost drop (#322):** headless / Agent-SDK-CLI invocations (`entrypoint: sdk-cli` — cron routines, sub-agent bootstraps) apparently never fire `Stop` or `SessionEnd`, so their row can stick at `working` long after the process is dead — the 24 h cold-drop above is the only other backstop, and 24 h is far too long to keep claiming "Claude is working." A state-only row whose status is `working` and whose transcript hasn't been written to in `_WORKING_GHOST_AFTER` (15 min) is dropped outright. Scoped to `working` only — a quiet transcript on `needs-you`/`idle` is the expected, correct shape of a real session genuinely waiting on the user, and there's no signal to tell that apart from a ghost in those statuses.
+- A fresh unmatched row with **no** live session becomes a state-only external card only when its declared transcript file exists and was written within the last 15 minutes. Hook status is semantic evidence, not process-liveness evidence: a missing cloud/bridge transcript or a quiet `working`/`needs-you`/`idle` row is suppressed rather than trusted for the state file's 24 h retention window. The first suppression per state id leaves an info-level breadcrumb with the distinct reason (missing path, unavailable file, or quiet transcript) without repeating on every poll.
 
 **States** (`_KNOWN_STATUSES`): `working`, `needs-you`, `idle`. Anything else — including a missing row — renders `unknown`.
+
+Agent capability matrix:
+
+| Agent | Presence | Semantic state in this release |
+|---|---|---|
+| Claude Code | Session host | Native `UserPromptSubmit`, `Stop`, `Notification`, and `SessionEnd` rows from fleet-config |
+| Codex | Session host | `unknown`; native semantic adapter tracked in fleet-config#349 |
+| Pi | Session host | `unknown`; native semantic adapter tracked in fleet-config#349 |
+| Antigravity / Copilot | Session host | `unknown`; no adapter in this release |
+
+`unknown` is an explicit capability limit, not silence interpreted as certainty. Native Codex/Pi status publication is independently shippable cross-agent work in [fleet-config#349](https://github.com/ferraroroberto/fleet-config/issues/349).
 
 **Degradation is total and silent.** `read_sessions_state()` returns `{available, stale, updated_at, rows}` and never raises: an absent, unreadable, or corrupt file yields `available: False` with empty rows, and every session card falls back to `unknown` while the GitHub and jobs columns render regardless. `stale: True` when the newest row is older than `STATE_STALE_AFTER` (24 h) — i.e. the hooks have stopped writing.
 
 ## Shared session title, cross-tab (#396)
 
-The state row also carries `name` / `name_source` — Claude Code's own live per-conversation title, copied in by fleet-config's `session_state` hook from `~/.claude/sessions/<pid>.json` (fleet-config#302). `merge_sessions()` copies those onto every card as `shared_name` / `shared_name_source` via the **same** `_claim_walk` cwd join described above, and `attach_shared_names()` runs the identical walk for `GET /api/claude-code/sessions` (the Coding tab's Running-sessions list) — so a live session resolves to the same state row, and therefore the same title, on both tabs. `name_source: "derived"` marks the generic `<project>-N` fallback (no real title assigned yet); anything else is a genuine title.
+The state row also carries `name` / `name_source` — Claude Code's own live per-conversation title, copied in by fleet-config's `session_state` hook from `~/.claude/sessions/<pid>.json` (fleet-config#302). `merge_sessions()` copies those onto every card as `shared_name` / `shared_name_source` via the **same** exact-id/agent-aware `_claim_walk` described above, and `attach_shared_names()` runs the identical walk for `GET /api/claude-code/sessions` (the Coding tab's Running-sessions list) — so a live session resolves to the same state row, and therefore the same title, on both tabs. `name_source: "derived"` marks the generic `<project>-N` fallback (no real title assigned yet); anything else is a genuine title.
 
 The frontend precedence lives in one place — `sessions.js`'s `sessionTitle()` — which `board.js` imports rather than re-deriving a title: a genuine `shared_name` wins outright, the OSC-parsed `live_title` is kept as a same-poll-cycle-faster supplement (it updates sub-second inside an open terminal, ahead of the next state-file poll), then `prompt_title`, then a *derived* `shared_name`, then the launch name. See [Naming sessions from the conversation](#interactive-terminal-from-the-phone) in the README for the full precedence history (#266, extended #396).
 

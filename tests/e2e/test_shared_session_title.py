@@ -1,8 +1,8 @@
 """#396: the Board tab's session cards and the Coding tab's Running-sessions
 list must show an identical title for the same live session, sourced from
 the shared ``shared_name`` field (fleet-config#302) both ``GET
-/api/claude-code/sessions`` and ``GET /api/board`` now carry (joined by cwd
-server-side — see ``src/board.py``'s ``attach_shared_names``/
+/api/claude-code/sessions`` and ``GET /api/board`` now carry (joined by the
+same agent-aware claim walk server-side — see ``src/board.py``'s ``attach_shared_names``/
 ``merge_sessions``).
 
 Hermetic like ``test_board_tab.py``: both endpoints are route-mocked with a
@@ -122,3 +122,8 @@ def test_board_and_coding_tab_show_identical_shared_title(
         '.board-list[data-col="claude_turn"] .board-card-title'
     ).first
     expect(board_card).to_have_text(_SHARED_NAME, timeout=10_000)
+    expect(
+        authed_page.locator(
+            '.board-list[data-col="claude_turn"] .board-agent-icon'
+        ).first
+    ).to_have_attribute("alt", "Claude Code")

@@ -839,7 +839,11 @@ class SessionManager:
         # off PATH the way a normal shell would; when the agent exits, cmd
         # exits, the PTY closes, and the reader thread sees EOF.
         exe = command_for(agent)
-        command = f"cmd /c {exe} {flags}".strip()
+        command = (
+            f'cmd /c set "APP_LAUNCHER_SESSION_ID={session_id}" && '
+            f'set "APP_LAUNCHER_AGENT={agent}" && '
+            f"{exe} {flags}"
+        ).strip()
         pty = PtyProcess.spawn(
             command, cwd=str(directory), dimensions=(rows, cols)
         )
@@ -897,7 +901,11 @@ class SessionManager:
         # `cmd /c` resolves the agent command (e.g. claude.cmd) off PATH and
         # closes the window when the agent exits — same shape as the PTY spawn.
         exe = command_for(agent)
-        inner = f"{exe} {flags}".strip()
+        inner = (
+            f'set "APP_LAUNCHER_SESSION_ID={session_id}" && '
+            f'set "APP_LAUNCHER_AGENT={agent}" && '
+            f"{exe} {flags}"
+        ).strip()
         ps_command = (
             "(Start-Process -FilePath 'cmd' "
             f"-ArgumentList '/c {_ps_quote(inner)}' "

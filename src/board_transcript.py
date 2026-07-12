@@ -5,8 +5,9 @@ state file can't tell you on its own:
 
 * whether a session that's stamped ``needs-you``/``idle`` has actually
   resumed working without any hook firing (:func:`_transcript_overlay`,
-  #305/#309), or gone quiet long enough to be a dead headless/sdk-cli ghost
-  still stamped ``working`` (:func:`_is_working_ghost`, #322);
+  #305/#309), and whether an unmatched hook row has recent transcript
+  activity that independently proves an external process still exists
+  (:func:`_external_row_liveness`, #322/#455);
 * the last completed user→assistant exchange, for the drill-down drawer
   (:func:`last_exchange`, #301).
 
@@ -33,12 +34,11 @@ logger = logging.getLogger(__name__)
 # couple of seconds apart in either order.
 _RESUME_EPSILON = timedelta(seconds=10)
 
-# Working-ghost detection (#322): headless / Agent-SDK-CLI invocations (cron
-# routines, sub-agent bootstraps) apparently never fire Stop or SessionEnd, so
-# their row sticks at "working" forever instead of being deleted or flipped to
-# needs-you. A transcript quiet this much longer than any real turn takes
-# means the process is dead, not working.
-_WORKING_GHOST_AFTER = timedelta(minutes=15)
+# External-row liveness (#322, tightened by #455): a hook state is semantic
+# evidence, not proof that its process still exists. Only recent transcript
+# activity lets an unmatched row render as an external session. Missing cloud
+# / bridge transcripts and quiet waiting rows otherwise linger for 24 hours.
+_EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=15)
 
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
@@ -98,7 +98,7 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
 def _transcript_mtime(transcript_path: Any) -> Optional[datetime]:
     """The transcript file's mtime as a UTC datetime, or ``None`` on any
     OSError (missing file, permission, …). Shared by
-    :func:`_transcript_overlay` and :func:`_is_working_ghost` — both need
+    :func:`_transcript_overlay` and :func:`_external_row_liveness` — both need
     this same cheap stat probe before deciding whether a costlier tail read
     (or, for the ghost check, a status flip) is warranted.
     """
@@ -150,24 +150,31 @@ def _transcript_overlay(
     return status, anchor
 
 
-def _is_working_ghost(row: Optional[Dict[str, Any]], status: str, now: datetime) -> bool:
-    """A state-only ``working`` row whose transcript has gone quiet for far
-    longer than any real turn takes is not still working (#322) — it is a
-    headless/sdk-cli invocation that finished without ever firing ``Stop`` or
-    ``SessionEnd``. Scoped to ``working`` only: a quiet transcript on
-    ``needs-you``/``idle`` is the expected, correct shape of a real session
-    genuinely waiting on the user, and there is no signal to tell that apart
-    from a ghost in those statuses, so they are left untouched.
+def _external_row_liveness(
+    row: Optional[Dict[str, Any]], now: datetime
+) -> Tuple[bool, str]:
+    """Whether an unmatched hook row has independent process-liveness proof.
+
+    A hook row can survive a hard kill or a cloud/bridge lifecycle gap for the
+    writer's whole 24-hour retention window. Its status says what the agent was
+    doing at the last event; it does not say the process is still alive. For a
+    row with no launcher-owned session-host match, only a transcript written in
+    the last 15 minutes is enough evidence to render an external card.
+
+    The reason string is deliberately condition-specific so the caller can
+    leave one useful info-level breadcrumb for the next recurrence (#455).
     """
-    if status != "working" or row is None:
-        return False
+    if row is None:
+        return False, "missing state row"
     transcript = row.get("transcript_path")
     if not transcript:
-        return False
+        return False, "missing transcript path"
     mtime = _transcript_mtime(transcript)
     if mtime is None:
-        return False
-    return now - mtime > _WORKING_GHOST_AFTER
+        return False, "transcript file unavailable"
+    if now - mtime > _EXTERNAL_ACTIVITY_AFTER:
+        return False, "transcript quiet past 15 minutes"
+    return True, "recent transcript activity"
 
 
 # Only the transcript's tail is read — a long session's JSONL runs to many

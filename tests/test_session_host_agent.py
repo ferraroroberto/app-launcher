@@ -46,7 +46,7 @@ def test_create_remote_uses_antigravity_command(tmp_path, monkeypatch):
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "", "antigravity")
 
-    assert "/c agy" in captured["argv"][-1]
+    assert "&& agy" in captured["argv"][-1]
     assert session.agent == "antigravity"
     assert session.to_api()["agent"] == "antigravity"
 
@@ -60,7 +60,7 @@ def test_create_remote_uses_copilot_command(tmp_path, monkeypatch):
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "", "copilot")
 
-    assert "/c copilot" in captured["argv"][-1]
+    assert "&& copilot" in captured["argv"][-1]
     assert session.agent == "copilot"
     assert session.to_api()["agent"] == "copilot"
 
@@ -74,7 +74,7 @@ def test_create_remote_defaults_to_claude(tmp_path, monkeypatch):
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "")
 
-    assert "/c claude" in captured["argv"][-1]
+    assert "&& claude" in captured["argv"][-1]
     assert session.agent == "claude"
 
 
@@ -99,7 +99,9 @@ def test_create_remote_orphans_console_via_start_process(tmp_path, monkeypatch):
     assert argv[0].lower().endswith("powershell.exe")
     ps_command = argv[-1]
     assert "Start-Process" in ps_command and "-PassThru" in ps_command
-    assert "/c claude --foo" in ps_command
+    assert 'set "APP_LAUNCHER_SESSION_ID=' in ps_command
+    assert 'set "APP_LAUNCHER_AGENT=claude"' in ps_command
+    assert "&& claude --foo" in ps_command
     assert session._pid == 4321
 
 
@@ -175,6 +177,8 @@ def test_create_spawns_pty_at_given_dimensions(tmp_path, monkeypatch):
     session = mgr.create(str(tmp_path), "proj", "", "codex", rows=55, cols=42)
 
     assert captured["dimensions"] == (55, 42)
+    assert f'APP_LAUNCHER_SESSION_ID={session.session_id}' in captured["command"]
+    assert 'APP_LAUNCHER_AGENT=codex' in captured["command"]
     assert session.rows == 55 and session.cols == 42
     assert session.to_api()["rows"] == 55 and session.to_api()["cols"] == 42
 

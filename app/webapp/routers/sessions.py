@@ -57,7 +57,7 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
 
     Each session is joined with the shared cross-tab title (fleet-config#302,
     via app-launcher#396) as ``shared_name``/``shared_name_source`` — the same
-    cwd-based claim walk the Board tab's ``merge_sessions()`` uses
+    agent-aware claim walk the Board tab's ``merge_sessions()`` uses
     (``board.attach_shared_names``), so a live session resolves to the same
     state row — and therefore shows the same title — on both tabs.
     """

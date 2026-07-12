@@ -2402,11 +2402,15 @@ body.terminal-open {
 .board-card-top {
   font-size: var(--font-caption);
   color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.board-agent-icon { width: 16px; height: 16px; }
 .board-card-title {
   font-size: var(--font-label);
   line-height: 1.3;
