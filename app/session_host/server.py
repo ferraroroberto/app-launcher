@@ -253,7 +253,18 @@ def create_app() -> FastAPI:
                     _repaint_tasks.add(task)
                     task.add_done_callback(_repaint_tasks.discard)
             elif snapshot:
-                await websocket.send_text(snapshot)
+                # Wipe the client's buffer before the raw-ring replay
+                # (#444). The phone reuses the same xterm instance across
+                # reconnects — the #28 backoff re-runs connectTerminalWs on
+                # the same terminal, and the #430 warm cache keeps it alive
+                # across overlay close/re-open — so without the wipe this
+                # full-ring replay is APPENDED below the stale buffer,
+                # duplicating the conversation tail on every reconnect
+                # (worst on iOS, which drops the WS each time the PWA is
+                # backgrounded). Same _CLEAR_FRAME the fullscreen branch
+                # sends; prepended into the same frame so wipe + replay
+                # render atomically.
+                await websocket.send_text(_CLEAR_FRAME + snapshot)
             await asyncio.gather(
                 _pump_to_client(websocket, queue),
                 _pump_from_client(websocket, session, role),

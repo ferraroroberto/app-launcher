@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 
 # How much terminal output to keep per session for scrollback-on-reconnect.
 _RING_MAX_CHARS = 256 * 1024
+# After a hard ring truncation, advance the head to the next newline within
+# this window so a replay never starts mid-escape-sequence (#444) — a cut
+# inside a CSI/OSC renders its tail as literal garbage at the top of the
+# replayed scrollback. One rendered line (with its SGR decoration) is far
+# shorter than this; if no newline appears in the window, keep the raw cut
+# rather than discard more history.
+_RING_TRIM_SCAN = 4096
 # Chunk size for the blocking PTY read in the reader thread.
 _READ_CHUNK = 4096
 # Sentinel pushed to subscribers when the session ends.
@@ -309,6 +316,22 @@ _OSC_COLOR_PARTIAL_RE = re.compile(
 _OSC_CARRY_MAX = 64
 
 
+def _trim_ring_head(ring: str) -> str:
+    """Advance a freshly hard-truncated ring to the next newline boundary.
+
+    Escape sequences never span a literal ``\\n`` (CSI parameter bytes are
+    printable; OSC titles carry no newlines), so resuming right after one
+    guarantees the replay head is not mid-sequence. Bounded by
+    ``_RING_TRIM_SCAN``: with no newline in the window (one enormous
+    unbroken line), the raw cut stands — better an approximate head than
+    throwing away more history.
+    """
+    nl = ring.find("\n", 0, _RING_TRIM_SCAN)
+    if nl == -1:
+        return ring
+    return ring[nl + 1 :]
+
+
 def _strip_color_osc(chunk: str, carry: str) -> Tuple[str, str]:
     """Strip OSC 10/11/12 colour query/reply sequences from ``chunk``.
 
@@ -427,7 +450,7 @@ class PtySession:
             with self._ring_lock:
                 self._ring += chunk
                 if len(self._ring) > _RING_MAX_CHARS:
-                    self._ring = self._ring[-_RING_MAX_CHARS:]
+                    self._ring = _trim_ring_head(self._ring[-_RING_MAX_CHARS:])
                 subscribers = list(self._subscribers)
             if self._transcript is not None:
                 try:
