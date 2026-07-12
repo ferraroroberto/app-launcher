@@ -25,11 +25,10 @@ unchanged:
   :func:`read_rate_limits`).
 * :mod:`src.board_sessions` — session-claim/merge logic
   (:func:`merge_sessions`, :func:`attach_shared_names`,
-  :func:`state_row_for_session`). The join is by **normalized cwd**, never by
-  id: the hook's ``session_id`` is Claude Code's transcript UUID while the
-  session-host mints its own ``uuid4().hex`` — they can never match.
+  :func:`state_row_for_session`). Writer-provided launcher id + agent wins;
+  legacy Claude rows use an agent-gated normalized-cwd fallback.
 * :mod:`src.board_transcript` — transcript-JSONL parsing
-  (:func:`last_exchange`, plus the activity-overlay/working-ghost helpers
+  (:func:`last_exchange`, plus the activity-overlay/external-liveness helpers
   ``merge_sessions`` calls internally).
 
 Degradation contract (#164 acceptance): a missing/corrupt/stale state file
@@ -39,7 +38,7 @@ GitHub/jobs columns render regardless.
 Shared session title (#396): the state row also carries ``name``/``name_source``
 (fleet-config#302's live Claude Code session title). ``merge_sessions`` copies
 those onto every card as ``shared_name``/``shared_name_source``, and
-:func:`attach_shared_names` runs the identical cwd-based claim walk for the
+:func:`attach_shared_names` runs the identical agent-aware claim walk for the
 Coding tab's own ``/api/claude-code/sessions`` list — so a live session
 resolves to the same state row, and therefore the same title, on both tabs.
 The frontend's precedence lives in one place, ``sessions.js``'s

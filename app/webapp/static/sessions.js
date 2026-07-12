@@ -37,7 +37,7 @@ function projectBasename(s) {
 // call, so a live session shows an identical title on both — do not
 // re-derive a title in board.js or anywhere else.
 //
-//   1. ``shared_name`` (fleet-config#302, joined by cwd server-side into
+//   1. ``shared_name`` (fleet-config#302, joined agent-aware server-side into
 //      every session dict as shared_name/shared_name_source) wins outright
 //      when it's a real Claude-assigned title (name_source !== 'derived') —
 //      the one cross-tab authoritative source: Claude's own /resume picker

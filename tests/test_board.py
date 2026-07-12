@@ -2,8 +2,8 @@
 
 Covers the three sources and their degradation contract:
   * ``board.read_sessions_state`` — absent / corrupt / fresh / stale files.
-  * ``board.merge_sessions`` — the normalized-cwd join (equal + subdir), the
-    two-sessions-one-dir recency tie-break, state-only cards, unknown fallback.
+  * ``board.merge_sessions`` — agent-aware state claims (exact launcher id,
+    normalized-cwd fallback), external-card freshness, unknown fallback.
   * ``board.jobs_attention`` — failed-today and stuck runs from run.json trees.
   * ``src.github_client`` — canned ``gh`` JSON via a monkeypatched
     ``subprocess.run``; missing binary → error surfaced, old data kept.
@@ -233,6 +233,70 @@ def test_merge_two_sessions_one_dir_recency_tiebreak():
     assert by_id["old"]["status"] == "unknown"
 
 
+def test_merge_non_claude_does_not_claim_legacy_claude_row():
+    """#455: legacy rows are Claude rows. A Codex session in the same cwd
+    must stay truthful/unknown instead of borrowing Claude's needs-you state."""
+    codex = _live(
+        "codex-live", "E:/automation/app-launcher", 5, agent="codex"
+    )
+    cards = board.merge_sessions(
+        [codex],
+        {"claude-transcript": _state_row(
+            "E:/automation/app-launcher", status="needs-you", updated_min_ago=240
+        )},
+        now=NOW,
+    )
+    assert len(cards) == 1
+    assert cards[0]["session_id"] == "codex-live"
+    assert cards[0]["agent"] == "codex"
+    assert cards[0]["status"] == "unknown"
+    assert cards[0]["state_sid"] is None
+
+
+def test_merge_exact_launcher_id_beats_same_cwd_recency():
+    """Agent writers can provide launcher_session_id for a deterministic
+    claim; a newer sibling row in the same cwd must not steal the session."""
+    live = [_live("launcher-aaa", "E:/automation/app-launcher", 30)]
+    state_rows = {
+        "right": _state_row(
+            "E:/automation/app-launcher", status="needs-you",
+            updated_min_ago=20, agent="claude",
+            launcher_session_id="launcher-aaa",
+        ),
+        "newer-other": _state_row(
+            "E:/automation/app-launcher", status="working",
+            updated_min_ago=1, agent="claude",
+            launcher_session_id="launcher-bbb",
+        ),
+    }
+    cards = board.merge_sessions(live, state_rows, now=NOW)
+    assert len(cards) == 1
+    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["state_sid"] == "right"
+
+
+def test_merge_duplicate_exact_launcher_ids_take_newest_row():
+    """A resume/transcript rollover may leave more than one hook row carrying
+    the inherited launcher id; exact identity still needs a deterministic
+    newest-event tie-break."""
+    live = [_live("launcher-aaa", "E:/automation/app-launcher", 30)]
+    state_rows = {
+        "older": _state_row(
+            "E:/automation/app-launcher", status="working",
+            updated_min_ago=20, agent="claude",
+            launcher_session_id="launcher-aaa",
+        ),
+        "newer": _state_row(
+            "E:/automation/app-launcher", status="needs-you",
+            updated_min_ago=1, agent="claude",
+            launcher_session_id="launcher-aaa",
+        ),
+    }
+    cards = board.merge_sessions(live, state_rows, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["state_sid"] == "newer"
+
+
 def test_merge_live_without_state_is_unknown():
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 10)], {}, now=NOW)
     assert cards[0]["status"] == "unknown"
@@ -303,15 +367,6 @@ def test_merge_no_state_row_shared_name_is_none():
     assert cards[0]["shared_name_source"] is None
 
 
-def test_merge_state_only_card_carries_shared_name():
-    cards = board.merge_sessions(
-        [], {"t": _state_row(
-            "E:/automation/reporting", status="needs-you", name="Recap run",
-        )}, now=NOW,
-    )
-    assert cards[0]["shared_name"] == "Recap run"
-
-
 # --------------------------------------------------- attach_shared_names
 
 
@@ -336,6 +391,16 @@ def test_attach_shared_names_no_match_returns_none():
     assert joined[0]["shared_name_source"] is None
 
 
+def test_attach_shared_names_does_not_cross_agent_boundary():
+    live = [_live("codex-live", "E:/automation/app-launcher", 10, agent="codex")]
+    state_rows = {"claude-row": _state_row(
+        "E:/automation/app-launcher", name="Claude title",
+    )}
+    joined = board.attach_shared_names(live, state_rows)
+    assert joined[0]["shared_name"] is None
+    assert joined[0]["shared_name_source"] is None
+
+
 def test_attach_shared_names_does_not_mutate_input():
     live = [_live("aaa", "E:/automation/photo-ocr", 30)]
     state_rows = {"t": _state_row("E:/automation/photo-ocr", name="X")}
@@ -356,18 +421,13 @@ def test_attach_shared_names_agrees_with_merge_sessions():
     assert coding_tab[0]["shared_name_source"] == board_tab[0]["shared_name_source"]
 
 
-def test_merge_fresh_state_only_row_becomes_external_card():
+def test_merge_unverifiable_state_only_row_is_suppressed():
+    """#455: a hook row without a live host match or an existing, recently
+    active transcript is not proof that a process exists."""
     cards = board.merge_sessions(
         [], {"t": _state_row("E:/automation/reporting", status="needs-you")}, now=NOW
     )
-    assert len(cards) == 1
-    assert cards[0]["alive"] is False
-    assert cards[0]["session_id"] is None
-    assert cards[0]["kind"] == "external"
-    assert cards[0]["status"] == "needs-you"
-    # #307: state-only cards have no session-host id and no drawer target —
-    # deep-linking to them is out of scope, so they carry no state_sid.
-    assert cards[0].get("state_sid") is None
+    assert cards == []
 
 
 def test_merge_cold_state_only_row_dropped():
@@ -377,7 +437,7 @@ def test_merge_cold_state_only_row_dropped():
     assert cards == []
 
 
-# --------------------------------- working-ghost drop (#322)
+# ----------------------- external-state liveness (#322 / #455)
 
 
 def test_merge_working_ghost_dropped(tmp_path: Path):
@@ -399,23 +459,21 @@ def test_merge_working_fresh_transcript_still_renders(tmp_path: Path):
     assert cards[0]["status"] == "working"
 
 
-def test_merge_working_no_transcript_path_still_renders():
-    """No transcript_path at all → nothing to check staleness against; keep
-    the existing (pre-#322) behavior of trusting the hook status."""
+def test_merge_working_no_transcript_path_is_suppressed():
+    """#455: missing cloud/bridge transcripts are no longer trusted as
+    external process-liveness evidence for up to 24 hours."""
     row = _state_row("E:/automation/local-llm-hub", status="working", updated_min_ago=40)
     cards = board.merge_sessions([], {"t": row}, now=NOW)
-    assert len(cards) == 1
-    assert cards[0]["status"] == "working"
+    assert cards == []
 
 
-def test_merge_needs_you_quiet_transcript_still_renders(tmp_path: Path):
-    """The ghost check is scoped to 'working' only — a quiet transcript on a
-    needs-you row is the expected shape of a real waiting session."""
+def test_merge_needs_you_quiet_transcript_is_suppressed(tmp_path: Path):
+    """A waiting hook state is semantic evidence, not process-liveness
+    evidence; once its external transcript is quiet, the card must clear."""
     row = _state_row("E:/automation/local-llm-hub", status="needs-you", updated_min_ago=40)
     row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=40))
     cards = board.merge_sessions([], {"t": row}, now=NOW)
-    assert len(cards) == 1
-    assert cards[0]["status"] == "needs-you"
+    assert cards == []
 
 
 # ------------------------------- transcript activity overlay (#305 / #309)

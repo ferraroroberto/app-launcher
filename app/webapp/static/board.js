@@ -40,7 +40,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { renderUsageBadgeRow, toggleAriaChecked } from './dom-utils.js';
+import { iconUrl, renderUsageBadgeRow, toggleAriaChecked } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -112,6 +112,18 @@ function renderSessionCard(card) {
   const meta = STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
   const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
+  // The Board now includes every launcher-owned agent, not only Claude Code
+  // (#455). Show the same registry-backed brand identity as the Coding tab so
+  // an unknown/degraded status never hides which terminal the card belongs to.
+  const known = state.agents.find(function (a) { return a.id === card.agent; });
+  const agentId = String(card.agent || 'claude');
+  const agentIcon = document.createElement('img');
+  agentIcon.className = 'session-agent-icon board-agent-icon';
+  agentIcon.src = iconUrl(agentId);
+  agentIcon.alt = known ? known.label : agentId;
+  agentIcon.title = agentIcon.alt;
+  const top = shell.btn.querySelector('.board-card-top');
+  top.insertBefore(agentIcon, top.firstChild);
   if (card.session_id) {
     // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
     // the way into the full terminal now.

@@ -2,16 +2,15 @@
 
 Joins the **live session list** from the session-host
 (``session_client.list_sessions``) with the hook-written state rows
-(:mod:`src.board_state`) into board cards. The join is by **normalized cwd**,
-never by id: the hook's ``session_id`` is Claude Code's transcript UUID while
-the session-host mints its own ``uuid4().hex`` — they can never match. Two
-live sessions in one directory tie-break by most recent ``started_at``; the
-rest show ``unknown``.
+(:mod:`src.board_state`) into board cards. The join is exact launcher id +
+agent when a writer supplies those fields; legacy Claude rows fall back to an
+agent-gated normalized-cwd claim. Two legacy live sessions in one directory
+tie-break by most recent ``started_at``; the rest show ``unknown``.
 
 Shared session title (#396): the state row also carries ``name``/``name_source``
 (fleet-config#302's live Claude Code session title). :func:`merge_sessions`
 copies those onto every card as ``shared_name``/``shared_name_source``, and
-:func:`attach_shared_names` runs the identical cwd-based claim walk for the
+:func:`attach_shared_names` runs the identical agent-aware claim walk for the
 Coding tab's own ``/api/claude-code/sessions`` list — so a live session
 resolves to the same state row, and therefore the same title, on both tabs.
 """
@@ -24,7 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
-from src.board_transcript import _is_working_ghost, _transcript_overlay
+from src.board_transcript import _external_row_liveness, _transcript_overlay
 
 logger = logging.getLogger(__name__)
 
@@ -33,25 +32,60 @@ _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
+# One breadcrumb per rejected state id per webapp process. GET /api/board polls
+# every five seconds; logging every rejection on every poll would bury the
+# useful diagnosis in noise. Bound the set so a very long-lived tray cannot
+# accumulate ids without limit.
+_LOGGED_SUPPRESSED_ROWS: set[str] = set()
+_SUPPRESSED_LOG_CAP = 512
+
 
 def _normalize_dir(raw: Any) -> str:
     """Forward slashes, lowercase, no trailing slash — the hook-side rule."""
     return str(raw or "").replace("\\", "/").rstrip("/").lower()
 
 
-def _match_state_row(
-    project_dir_norm: str, unmatched: Dict[str, Dict[str, Any]]
-) -> Optional[str]:
-    """The unmatched state row whose cwd is equal-or-under the project dir.
+def _row_agent(row: Dict[str, Any]) -> str:
+    """State rows predating #455 are Claude Code rows by definition."""
+    return str(row.get("agent") or "claude").strip().lower()
 
-    Multiple candidates (several conversations recorded in one directory)
-    resolve to the most recently updated row.
+
+def _session_agent(session: Dict[str, Any]) -> str:
+    return str(session.get("agent") or "claude").strip().lower()
+
+
+def _match_state_row(
+    session: Dict[str, Any], unmatched: Dict[str, Dict[str, Any]]
+) -> Optional[str]:
+    """Claim an agent-compatible state row for one live session.
+
+    A writer-provided ``launcher_session_id`` is exact and wins first. Legacy
+    Claude rows have neither that field nor ``agent`` and retain the normalized
+    cwd fallback. Rows carrying a different launcher id are never allowed to
+    fall back by cwd — that would reintroduce the same-session collision exact
+    identity exists to prevent (#455).
     """
+    session_id = str(session.get("session_id") or "")
+    agent = _session_agent(session)
+    exact_sid: Optional[str] = None
+    exact_stamp = _EPOCH
+    for sid, row in unmatched.items():
+        launcher_sid = str(row.get("launcher_session_id") or "")
+        if launcher_sid and launcher_sid == session_id and _row_agent(row) == agent:
+            stamp = _parse_iso(row.get("updated_at")) or _EPOCH
+            if exact_sid is None or stamp > exact_stamp:
+                exact_sid, exact_stamp = sid, stamp
+    if exact_sid is not None:
+        return exact_sid
+
+    project_dir_norm = _normalize_dir(session.get("project_dir"))
     if not project_dir_norm:
         return None
     best_sid: Optional[str] = None
     best_stamp = _EPOCH
     for sid, row in unmatched.items():
+        if _row_agent(row) != agent or row.get("launcher_session_id"):
+            continue
         row_cwd = _normalize_dir(row.get("cwd"))
         if row_cwd != project_dir_norm and not row_cwd.startswith(project_dir_norm + "/"):
             continue
@@ -81,7 +115,7 @@ def _claim_walk(
         return _parse_iso(sess.get("started_at")) or _EPOCH
 
     for sess in sorted(live, key=started, reverse=True):
-        sid = _match_state_row(_normalize_dir(sess.get("project_dir")), unmatched)
+        sid = _match_state_row(sess, unmatched)
         pairs.append((sess, unmatched.pop(sid) if sid else None, sid))
     return pairs, unmatched
 
@@ -111,7 +145,7 @@ def attach_shared_names(
     title (fleet-config#302's ``name``/``name_source``), for the Coding tab's
     Running-sessions list (#396).
 
-    Uses the exact same cwd-based :func:`_claim_walk` as :func:`merge_sessions`
+    Uses the exact same agent-aware :func:`_claim_walk` as :func:`merge_sessions`
     — both consumers must resolve a given live session to the same state row,
     or the Board tab and the Coding tab could show two different titles for
     the same session. Returns new dicts (each session's own fields plus
@@ -137,11 +171,11 @@ def merge_sessions(
 ) -> List[Dict[str, Any]]:
     """Join live session-host sessions with hook state rows into board cards.
 
-    Live sessions are walked newest-first so the freshest session in a shared
-    directory claims that directory's state row; later (older) sessions in the
-    same directory render ``unknown``. Fresh state rows with no live match
-    become state-only cards (a conversation running in a plain desktop
-    terminal): ``alive: False``, no ``session_id`` the terminal could attach to.
+    Live sessions are walked newest-first. Exact launcher-session id + agent
+    claims win; legacy Claude rows fall back to cwd recency. Later sessions in
+    the same directory render ``unknown``. A state row with no live match only
+    becomes an external card when recent transcript activity independently
+    proves the process still exists — hook state alone is not liveness (#455).
     Waiting statuses are checked against transcript activity — see
     :func:`src.board_transcript._transcript_overlay` (#305).
 
@@ -191,12 +225,21 @@ def merge_sessions(
         project = row.get("project") or Path(str(cwd or "")).name
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
         status, anchor = _transcript_overlay(row, status, stamp)
-        if _is_working_ghost(row, status, now):
-            continue  # dead headless/sdk-cli session — see #322
+        externally_live, reason = _external_row_liveness(row, now)
+        if not externally_live:
+            if sid not in _LOGGED_SUPPRESSED_ROWS:
+                if len(_LOGGED_SUPPRESSED_ROWS) >= _SUPPRESSED_LOG_CAP:
+                    _LOGGED_SUPPRESSED_ROWS.clear()
+                _LOGGED_SUPPRESSED_ROWS.add(sid)
+                logger.info(
+                    "ℹ️ Board suppressed unverifiable state row %s (%s, %s): %s",
+                    sid[:8], project, status, reason,
+                )
+            continue
         cards.append({
             "session_id": None,
             "kind": "external",
-            "agent": "claude",
+            "agent": _row_agent(row),
             "project_dir": cwd,
             "name": str(project),
             "alive": False,
