@@ -1919,7 +1919,15 @@ body.terminal-open {
    shrinks and xterm re-fits on the visualViewport resize. */
 .compose-bar {
   display: flex;
-  align-items: stretch;
+  /* flex-end, not stretch (issue #447): the textarea auto-grows on every
+     dictation partial, and its growth pushes the row's TOP edge up while
+     the bottom stays put. With align-items:stretch the mic/OCR/attach
+     column and the Send button stretched to match the taller row, moving
+     their buttons up with it — measured 46px of drift on a realistic
+     transcript, a moving-target race against a tap aimed at the pre-grow
+     position. flex-end keeps every button's own natural size, anchored to
+     the row's one stable edge (the bottom), so only the textarea grows. */
+  align-items: flex-end;
   gap: 8px;
   padding: 8px 10px;
   background: var(--card);

@@ -260,3 +260,59 @@ def test_compose_attach_multiple_images_in_one_pick(
         re.compile(r"^.*\.launcher-tmp.*shot1\.png\n\n.*\.launcher-tmp.*shot2\.png$"),
         timeout=10_000,
     )
+
+
+def test_compose_send_and_attach_stay_put_during_autogrow(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """Issue #447: the ➤ Send button (and the compose-tools column, e.g.
+    the 🖼 attach button) must not move when the textarea auto-grows on a
+    dictation transcript landing. `.compose-bar` used to be
+    `align-items: stretch`, so a taller textarea stretched every sibling
+    button to match — measured 46px of top-edge drift on a realistic
+    transcript on the WebKit/iPhone projection, a moving-target race
+    against a tap aimed at the pre-grow position (a second tap could land
+    on a shifted-away button, or on whatever the growing textarea now
+    covers, reading as "Send did nothing" or "the tap became a newline").
+    `align-items: flex-end` anchors every button to the row's one stable
+    edge (the bar's bottom never moves; only its top climbs), so only the
+    textarea itself grows."""
+    sid = launched_pty_session
+    _open_terminal(authed_page, base_url, sid)
+
+    authed_page.evaluate(
+        "document.getElementById('terminalCompose').hidden = false"
+    )
+    authed_page.locator("#terminalCompose").click()
+    expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+    send = authed_page.locator("#terminalComposeSend")
+    attach = authed_page.locator("#terminalComposeAttach")
+    send_before = send.bounding_box()
+    attach_before = attach.bounding_box()
+    assert send_before and attach_before
+
+    # A realistic dictated transcript length (~2-3 sentences) — long enough
+    # to push the textarea well past its resting min-height.
+    long_text = (
+        "Hey can you check the login flow again because yesterday I noticed "
+        "the button was not responding on the first tap and I had to tap it "
+        "twice before it actually submitted the form so please take a look."
+    )
+    authed_page.locator("#terminalComposeInput").fill(long_text)
+    authed_page.wait_for_timeout(200)
+
+    send_after = send.bounding_box()
+    attach_after = attach.bounding_box()
+    assert send_after and attach_after
+
+    # Sub-pixel rounding tolerance only — any real drift here is the #447 bug.
+    assert abs(send_after["y"] - send_before["y"]) < 1, (
+        f"Send button moved during autogrow: {send_before} -> {send_after}"
+    )
+    assert abs(send_after["height"] - send_before["height"]) < 1, (
+        f"Send button resized during autogrow: {send_before} -> {send_after}"
+    )
+    assert abs(attach_after["y"] - attach_before["y"]) < 1, (
+        f"Attach button moved during autogrow: {attach_before} -> {attach_after}"
+    )
