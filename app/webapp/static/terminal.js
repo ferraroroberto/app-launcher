@@ -226,6 +226,10 @@ function disposeTerminal(t) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
     window.visualViewport.removeEventListener('scroll', t.onVisualViewport);
   }
+  if (t.onOrientationChange) {
+    window.removeEventListener('orientationchange', t.onOrientationChange);
+  }
+  if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
   try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
   try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
   const el = t.term ? t.term.element : null;
@@ -594,6 +598,31 @@ export async function openTerminal(session) {
       // leaving a band of the page behind it above the keyboard (#135).
       window.visualViewport.addEventListener('scroll', applySize);
     }
+    // A portrait/landscape rotation cycle (issue #446) can leave
+    // window.innerHeight and visualViewport.height transiently mismatched
+    // while iOS's chrome bars settle, so a 'resize'/'visualViewport resize'
+    // event mid-rotation can sample keyboardOverlayHeight() at a bad
+    // moment and pin the overlay to a stale shrunk height — with no
+    // guaranteed later event to release it, leaving the session list/
+    // Projects grid bleeding through underneath. 'orientationchange' fires
+    // once per rotation regardless of that race: release any pin
+    // immediately so the overlay is never stuck small, then re-run
+    // applySize() once the viewport has settled so a keyboard that's
+    // genuinely still open gets correctly re-pinned.
+    t.onOrientationChange = function () {
+      // Stashed (warm-cached, #430) terminals keep this listener bound
+      // while hidden — same as applySize()'s own guard, only the ACTIVE
+      // terminal may touch the shared overlay chrome.
+      if (t !== state.terminal) return;
+      if (els.terminalOverlay) {
+        els.terminalOverlay.style.height = '';
+        els.terminalOverlay.style.bottom = '';
+        els.terminalOverlay.style.top = '';
+      }
+      if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
+      t.orientationSettleTimer = setTimeout(applySize, 350);
+    };
+    window.addEventListener('orientationchange', t.onOrientationChange);
   }
 
   term.onData(function (d) {
