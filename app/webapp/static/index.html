@@ -1167,8 +1167,10 @@
     <div id="terminalStatus" class="terminal-status" hidden></div>
     <!-- No accept filter (issue #366): iOS then offers Photo Library / Take
          Photo / Choose Files, so arbitrary files can be attached — the
-         session-host stores any type (size-capped) and returns the path. -->
-    <input id="terminalImageInput" type="file" hidden>
+         session-host stores any type (size-capped) and returns the path.
+         `multiple` (issue #448): one gallery tap can pick several photos at
+         once instead of a pick-upload-repeat loop. -->
+    <input id="terminalImageInput" type="file" multiple hidden>
     <input id="terminalScreenshotInput" type="file" accept="image/*" multiple hidden>
   </div>
 

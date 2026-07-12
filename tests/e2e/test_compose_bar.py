@@ -223,3 +223,40 @@ def test_compose_attach_appends_at_end_with_blank_line(
 
     # The compose-bar's own attach button exists and is wired to the input.
     expect(authed_page.locator("#terminalComposeAttach")).to_be_attached()
+
+
+def test_compose_attach_multiple_images_in_one_pick(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """Issue #448: picking several gallery images in ONE file-picker
+    interaction (a single ``set_input_files`` call with 2+ files, mirroring
+    a multi-select gallery pick on the phone) uploads all of them and lands
+    every path in the compose bar, in order, blank-line separated — the
+    same append shape as two sequential single-file attaches, but from one
+    picker action instead of a pick-upload-repeat loop."""
+    sid = launched_pty_session
+    _open_terminal(authed_page, base_url, sid)
+
+    authed_page.evaluate(
+        "document.getElementById('terminalCompose').hidden = false"
+    )
+    authed_page.locator("#terminalCompose").click()
+    expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+    # #terminalImageInput must accept a multi-select pick.
+    expect(authed_page.locator("#terminalImageInput")).to_have_attribute(
+        "multiple", re.compile(r".*")
+    )
+
+    authed_page.locator("#terminalImageInput").set_input_files(
+        files=[
+            {"name": "shot1.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+            {"name": "shot2.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+        ]
+    )
+
+    compose = authed_page.locator("#terminalComposeInput")
+    expect(compose).to_have_value(
+        re.compile(r"^.*\.launcher-tmp.*shot1\.png\n\n.*\.launcher-tmp.*shot2\.png$"),
+        timeout=10_000,
+    )

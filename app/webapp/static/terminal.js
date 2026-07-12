@@ -673,9 +673,15 @@ export function hideTerminal() {
   fetchSessions().catch(function () {});
 }
 
-async function sendImage(file) {
+// `opts.silent` (issue #448): suppress this call's own success toast so a
+// multi-file selection can fire one summary toast instead of N flickering
+// ones — toast() is a single-slot control, a rapid-fire second call just
+// cancels the first's timer. Errors are never silenced. Returns true on
+// success so the caller can count how many of a batch actually landed.
+async function sendImage(file, opts) {
   const t = state.terminal;
-  if (!t || !file) return;
+  if (!t || !file) return false;
+  const silent = !!(opts && opts.silent);
   // Compose bar open: ask the session-host to skip the paste-into-PTY
   // step (inline=1) and just return the stored path, so we can drop it
   // into the textarea for review-before-send — mirroring 📋 (issue #41).
@@ -711,13 +717,15 @@ async function sendImage(file) {
         growComposeInput();
         ta.focus();
       }
-      toast('📎 Uploaded — path added to the compose bar.', 'good');
+      if (!silent) toast('📎 Uploaded — path added to the compose bar.', 'good');
     } else {
-      toast('📎 Sent — the file path was pasted into the prompt.', 'good');
+      if (!silent) toast('📎 Sent — the file path was pasted into the prompt.', 'good');
       if (t.term) t.term.focus();
     }
+    return true;
   } catch (exc) {
     apiFailToast('Image failed', exc);
+    return false;
   }
 }
 
@@ -878,10 +886,31 @@ export function wireTerminal() {
       toast('Clipboard unavailable — paste manually', 'error');
     }
   });
-  els.terminalImageInput.addEventListener('change', function () {
-    const file = els.terminalImageInput.files && els.terminalImageInput.files[0];
+  els.terminalImageInput.addEventListener('change', async function () {
+    const picked = els.terminalImageInput.files;
+    const list = picked && picked.length
+      ? Array.prototype.slice.call(picked) : [];
     els.terminalImageInput.value = '';
-    if (file) sendImage(file);
+    if (!list.length) return;
+    // Issue #448: upload sequentially (never Promise.all) — sendImage's
+    // inline-append path reads then writes ta.value, so concurrent calls
+    // would race and corrupt the append order. Each call is silent; one
+    // summary toast fires at the end instead of N flickering ones.
+    const inline = !!(state.terminal && state.terminal.composeOpen);
+    let ok = 0;
+    for (let i = 0; i < list.length; i++) {
+      if (await sendImage(list[i], { silent: true })) ok++;
+    }
+    if (!ok) return;
+    const plural = ok > 1;
+    toast(
+      inline
+        ? '📎 Uploaded ' + ok + ' image' + (plural ? 's' : '') +
+            ' — path' + (plural ? 's' : '') + ' added to the compose bar.'
+        : '📎 Sent — ' + ok + ' file path' + (plural ? 's' : '') +
+            ' pasted into the prompt.',
+      'good'
+    );
   });
   els.terminalHost.addEventListener('paste', function (ev) {
     const items = (ev.clipboardData && ev.clipboardData.items) || [];
