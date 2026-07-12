@@ -1934,13 +1934,31 @@ body.terminal-open {
   border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
-/* 🎤 + 📷 stack vertically in one narrow column so the textarea keeps the
-   horizontal space (issue #171 UX). */
+/* 🎤 / 🔍 / 🖼 / ➤ sit in a 2x2 grid, anchored bottom-right of the bar, so
+   the textarea keeps the horizontal space (issue #171 UX) while all four
+   buttons read as one matched cluster (issue #453) instead of a tall 1x4
+   column. Fixed cell size + the size rule below give every button the same
+   canonical footprint and tap area. */
 .compose-tools {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  grid-template-rows: repeat(2, 44px);
   gap: 6px;
   flex-shrink: 0;
+}
+/* Override the base .compose-record/.compose-send padding (which differ
+   from each other, and are reused/re-sized by the board dispatch row) so
+   all four buttons in the terminal compose grid are identical squares. */
+.compose-tools .compose-record,
+.compose-tools .compose-send {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .compose-input {
   flex: 1;
