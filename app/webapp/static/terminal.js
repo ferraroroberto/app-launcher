@@ -926,6 +926,19 @@ export function wireTerminal() {
     // would race and corrupt the append order. Each call is silent; one
     // summary toast fires at the end instead of N flickering ones.
     const inline = !!(state.terminal && state.terminal.composeOpen);
+    // Issue #450: reopen the on-screen keyboard NOW, synchronously inside this
+    // `change` tick — the native photo picker dismissed it, and the `change`
+    // event is still a trusted continuation of the user's gesture. Same iOS
+    // rule the read-aloud/voice paths lean on: WebKit only honours
+    // .focus()→keyboard inside an active user-activation tick. sendImage's own
+    // post-upload ta.focus() (~line 747) lands *after* the upload `await`, i.e.
+    // outside the gesture — the caret shows but the keyboard stays down, so the
+    // whole compose bar (Send included) drops to the true screen bottom, out of
+    // thumb reach. Only meaningful when the compose bar is open (inline); the
+    // non-inline path pastes into the PTY and refocuses the terminal instead.
+    if (inline && els.terminalComposeInput) {
+      try { els.terminalComposeInput.focus(); } catch (_) {}
+    }
     let ok = 0;
     for (let i = 0; i < list.length; i++) {
       if (await sendImage(list[i], { silent: true })) ok++;
