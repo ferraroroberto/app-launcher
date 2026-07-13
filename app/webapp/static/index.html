@@ -828,6 +828,12 @@
           <span>Terminal scrollback (lines) — how much history a full-screen agent (Codex, etc.) keeps for a reconnect</span>
           <input id="terminalHistoryLines" type="number" class="input-native" step="100">
         </label>
+        <div class="toggles">
+          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false"
+                  title="Start app-launcher automatically at log on (Startup folder — no admin needed)">
+            <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Start app-launcher at log on</span>
+          </button>
+        </div>
         <div class="row settings-actions">
           <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
           <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>

@@ -101,6 +101,39 @@ def test_terminal_history_lines_field_loads_and_saves(
     expect(authed_page.locator("#terminalHistoryLines")).to_have_value("5000")
 
 
+def test_boot_autostart_toggle_writes_and_removes_startup_bat(
+    authed_page: Page, base_url: str
+) -> None:
+    """The "Start app-launcher at log on" switch (issue #456 part 1/2) is a
+    real filesystem side effect (a Startup-folder wrapper bat), not a plain
+    config field — click it on, reload, and confirm the switch survives from
+    a fresh GET /api/config (not just the optimistic click); then click it
+    off and confirm the same across a reload."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    toggle = authed_page.locator("#bootAutostartToggle")
+    expect(toggle).to_be_visible()
+    expect(toggle).to_have_attribute("aria-checked", "false")
+
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
+        "aria-checked", "true"
+    )
+
+    authed_page.locator("#bootAutostartToggle").click()
+    expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
+        "aria-checked", "false"
+    )
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
+        "aria-checked", "false"
+    )
+
+
 def test_settings_status_readout_has_no_tls_or_tunnel_url(
     authed_page: Page, base_url: str
 ) -> None:

@@ -270,6 +270,7 @@ export const els = {
   projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),
   terminalHistoryLines: document.getElementById('terminalHistoryLines'),
+  bootAutostartToggle: document.getElementById('bootAutostartToggle'),
   saveSettings: document.getElementById('saveSettings'),
   listenersList: document.getElementById('listenersList'),
   listenersEmpty: document.getElementById('listenersEmpty'),
