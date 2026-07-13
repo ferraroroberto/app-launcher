@@ -92,3 +92,8 @@ def session_input(session_id: str, data: str) -> None:
 def transcript_path(session_id: str) -> Path:
     """Where the session-host writes a session's full output transcript."""
     return _SESSIONS_DIR / f"{session_id}.transcript"
+
+
+def session_log_path(session_id: str) -> Path:
+    """Where the webapp records one session's exact input/lifecycle audit."""
+    return _SESSIONS_DIR / f"{session_id}.log"

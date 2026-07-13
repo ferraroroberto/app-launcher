@@ -30,7 +30,7 @@ All Board routes live in `app/webapp/routers/board.py`.
 | --- | --- | --- |
 | `GET /api/board` | bearer-token | The five columns — the **5 s poll target**. Cheap only: runs the live session list, one state-file read, and one jobs-runs walk concurrently, plus a pure in-memory read of the GitHub cache. **No `gh` subprocess ever runs on this path.** |
 | `POST /api/board/github/refresh` | bearer-token | Runs the three `gh` searches (open issues, open PRs, closed issues) and replaces the cache. The **only** place `gh` is invoked. |
-| `GET /api/board/sessions/{sid}/exchange` | Tailscale + passkey | The last user↔assistant exchange from a session's transcript (drill-down drawer). |
+| `GET /api/board/sessions/{sid}/exchange` | Tailscale + passkey | The last user↔assistant exchange from the agent-aware conversation-source hierarchy (drill-down drawer). |
 | `POST /api/board/dispatch` | Tailscale + passkey | Spawn a new session and type an `/issue-*` goal into it (dispatch bar). |
 | `POST /api/board/issues/start` | Tailscale + passkey | One-tap `/issue-start` / `/issue-yolo <N>` on a Backlog card. |
 
@@ -128,7 +128,13 @@ The bar is static markup the 5 s poll never re-renders, so a re-render cannot wi
 
 Tapping a live session card opens an **inline drill-down drawer** on the card (`board.js::buildDrawer`). It shows the last user↔assistant exchange plus a reply box, and while any drawer is open the **5 s poll pauses** (`fetchBoard()` self-gates on `state.boardExpanded`) so a re-render can never wipe a half-typed reply.
 
-**Reading the exchange.** `GET /api/board/sessions/{sid}/exchange` resolves the live session's state row via the same cwd-join, reads `transcript_path` off that row (the transcript UUID lives only in the hook row), and calls `board.last_exchange()`. That reads the **last 256 KB** of the transcript, walks in reverse, and pulls the newest assistant `text` reply (skipping `thinking` / `tool_use` blocks; joining sibling lines of the same `message.id`) and the nearest preceding plain-string `user` prompt (list-shaped user content is tool results and is skipped, as are harness wrappers like `<command-`, `<system-reminder`). Display caps: assistant 6000 chars, user 1500. No row or no transcript → `{available: False}`, never an error.
+**Reading the exchange (#457).** `GET /api/board/sessions/{sid}/exchange` first resolves the exact live session-host row; a missing session returns `reason: session_not_found`, so the endpoint never guesses by cwd. The source hierarchy is then:
+
+1. **Claude native JSONL** — when the claimed hook row declares an existing structured transcript, `board.last_exchange()` reads its last 256 KB and extracts the newest assistant text plus the nearest preceding plain-string user prompt, skipping thinking/tool-use and harness plumbing.
+2. **Codex native JSONL** — `board_exchange` selects a rollout only when cwd plus its filename start timestamp form one unambiguous match inside a narrow launch window, then reads a bounded tail of structured `user` / `assistant` messages. An ambiguous same-cwd match is rejected rather than risking another session's text.
+3. **Exact-id launcher capture** — the common fallback for Claude remote-control sessions whose hook path is missing, Codex ambiguity, and agents without a native adapter. The last 512 KB of `webapp/sessions/<launcher-session-id>.transcript` is replayed through `pyte`; assistant blocks are selected by the terminal's leading-bullet colour contract, while the matching `<id>.log` supplies the last submitted input. Raw ANSI and full-screen repaint bytes never reach the API.
+
+All reads happen only when the drawer opens — `GET /api/board`'s 5-second poll still performs no transcript parsing or LLM call. Display caps remain 6000 assistant characters and 1500 user characters. The response carries `source` (`native`, `codex`, or `launcher`) and a machine-readable unavailable `reason`; the drawer distinguishes a true `no_exchange` empty state from a sanitized source error. Source fallback/failure leaves an info-level log breadcrumb.
 
 **Replying to the live PTY.** The reply box is offered only for `alive && kind === 'pty'` cards (a detached console or state-only card has no reachable stdin). The reply proxies through `POST /api/claude-code/sessions/{sid}/input`, which wraps the text in bracketed paste when it contains a newline, then — on submit — sends `\r` as a **separate** write (the #166 rule again), forwarding to the session-host's `/sessions/{sid}/input`. On success the drawer closes (`boardExpanded = null`, poll resumes) and the card flips to *Claude's turn* within a cycle — the prompt-submit hook plus the transcript overlay both catch it. A **⚡** in the drawer opens the full-control terminal.
 
