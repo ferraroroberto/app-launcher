@@ -11,8 +11,8 @@ Covers the act-from-the-card loop server-side:
     for multi-line data and the two-write CR rule (#166).
   * ``POST /api/board/issues/start`` — server-built ``/issue-<mode> <N>``
     prompt, mode/number validation, repo resolution in the projects folder.
-  * ``GET /api/board/sessions/{sid}/exchange`` — cwd-join to the state row's
-    ``transcript_path``.
+  * ``GET /api/board/sessions/{sid}/exchange`` — agent-aware native history,
+    then the exact-id launcher capture fallback (#457).
   * passkey classification of all three new paths (gate refusal off-tailnet
     + ``_terminal_guard_level`` mapping).
 """
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from src import board
+from src import board, board_exchange
 
 
 def _iso(moment: datetime) -> str:
@@ -118,6 +118,144 @@ def test_last_exchange_no_assistant_text_in_tail(tmp_path: Path):
         _assistant_line([{"type": "tool_use", "name": "Bash"}]),
     ])
     assert board.last_exchange(target)["available"] is False
+
+
+# ------------------------------------------ agent-aware source fallbacks (#457)
+
+
+def test_launcher_exchange_ignores_coloured_tool_block_and_reads_input_log(
+    tmp_path: Path,
+):
+    capture = tmp_path / "s.transcript"
+    capture.write_text(
+        "\x1b[32m● Ran a tool command\r\n"
+        "  noisy tool result\r\n"
+        "\x1b[39m● The actual assistant answer\r\n"
+        "  continues on this line.\r\n",
+        encoding="utf-8",
+    )
+    input_log = tmp_path / "s.log"
+    input_log.write_text(
+        "2026-07-02T12:00:00 [input] '\\x1b[200~full prompt\\x1b[201~'\n"
+        "2026-07-02T12:00:01 [input] '\\r'\n",
+        encoding="utf-8",
+    )
+    result = board_exchange.launcher_last_exchange(
+        capture, launcher_input_path=input_log, rows=20, cols=80
+    )
+    assert result["source"] == "launcher"
+    assert result["user"]["text"] == "full prompt"
+    assert result["assistant"]["text"] == (
+        "The actual assistant answer continues on this line."
+    )
+
+
+def test_launcher_exchange_drops_grey_in_flight_tool_after_reply(tmp_path: Path):
+    capture = tmp_path / "s.transcript"
+    capture.write_text(
+        "\x1b[38;2;255;255;255m● Completed assistant reply.\r\n"
+        "\x1b[38;2;153;153;153m● Bash(pytest -q)\r\n"
+        "  running…\r\n",
+        encoding="utf-8",
+    )
+    result = board_exchange.launcher_last_exchange(
+        capture, prompt_fallback="run the tests", rows=20, cols=80
+    )
+    assert result["assistant"]["text"] == "Completed assistant reply."
+
+
+def test_launcher_exchange_new_session_is_true_empty(tmp_path: Path):
+    capture = tmp_path / "new.transcript"
+    capture.write_text("agent startup chrome only\r\n", encoding="utf-8")
+    result = board_exchange.launcher_last_exchange(capture, rows=10, cols=40)
+    assert result["available"] is False
+    assert result["reason"] == "no_exchange"
+
+
+def test_launcher_exchange_reads_only_the_bounded_capture_tail(
+    tmp_path: Path, monkeypatch,
+):
+    capture = tmp_path / "bounded.transcript"
+    capture.write_text(
+        "● Old reply must fall outside the read window.\r\n"
+        + ("x" * 200)
+        + "\r\n● New reply is inside the bounded tail.\r\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(board_exchange, "_CAPTURE_TAIL_BYTES", 96)
+    result = board_exchange.launcher_last_exchange(
+        capture, prompt_fallback="latest?", rows=10, cols=80
+    )
+    assert result["assistant"]["text"] == "New reply is inside the bounded tail."
+
+
+def test_codex_native_exchange_correlates_by_unique_start_and_cwd(
+    tmp_path: Path, monkeypatch,
+):
+    sessions = tmp_path / "sessions"
+    local_start = datetime.fromtimestamp(NOW.timestamp()).astimezone()
+    day = sessions / local_start.strftime("%Y/%m/%d")
+    day.mkdir(parents=True)
+    target_stamp = (local_start + timedelta(seconds=2)).strftime(
+        "%Y-%m-%dT%H-%M-%S"
+    )
+    target = day / f"rollout-{target_stamp}-correct.jsonl"
+    target.write_text("\n".join(json.dumps(item) for item in [
+        {"type": "session_meta", "payload": {
+            "timestamp": "2026-07-02T12:00:02Z", "cwd": "E:/proj/app",
+        }},
+        {"timestamp": "2026-07-02T12:01:00Z", "type": "response_item",
+         "payload": {"type": "message", "role": "user",
+                     "content": [{"type": "input_text", "text": "status?"}]}},
+        {"timestamp": "2026-07-02T12:02:00Z", "type": "response_item",
+         "payload": {"type": "message", "role": "assistant",
+                     "content": [{"type": "output_text", "text": "All green."}]}},
+    ]) + "\n", encoding="utf-8")
+    other_stamp = (local_start + timedelta(seconds=90)).strftime(
+        "%Y-%m-%dT%H-%M-%S"
+    )
+    other = day / f"rollout-{other_stamp}-other.jsonl"
+    other.write_text(
+        '{"type":"session_meta","payload":{"cwd":"E:/proj/app"}}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(board_exchange, "_CODEX_SESSIONS_DIR", sessions)
+    session = {
+        "agent": "codex", "project_dir": "E:/proj/app",
+        "started_at": NOW.timestamp(), "prompt_title": "status?",
+    }
+    result = board_exchange.resolve_exchange(
+        session, None, tmp_path / "missing.transcript"
+    )
+    assert result["source"] == "codex"
+    assert result["user"]["text"] == "status?"
+    assert result["assistant"]["text"] == "All green."
+
+
+def test_codex_ambiguous_native_match_degrades_to_exact_launcher_capture(
+    tmp_path: Path, monkeypatch,
+):
+    sessions = tmp_path / "sessions"
+    local_start = datetime.fromtimestamp(NOW.timestamp()).astimezone()
+    day = sessions / local_start.strftime("%Y/%m/%d")
+    day.mkdir(parents=True)
+    for offset in (-1, 1):
+        stamp = (local_start + timedelta(seconds=offset)).strftime(
+            "%Y-%m-%dT%H-%M-%S"
+        )
+        (day / f"rollout-{stamp}-candidate.jsonl").write_text(
+            '{"type":"session_meta","payload":{"cwd":"E:/proj/app"}}\n',
+            encoding="utf-8",
+        )
+    capture = tmp_path / "exact.transcript"
+    capture.write_text("● Exact session reply.\r\n", encoding="utf-8")
+    monkeypatch.setattr(board_exchange, "_CODEX_SESSIONS_DIR", sessions)
+    result = board_exchange.resolve_exchange({
+        "agent": "codex", "project_dir": "E:/proj/app",
+        "started_at": NOW.timestamp(), "prompt_title": "question",
+    }, None, capture)
+    assert result["source"] == "launcher"
+    assert result["assistant"]["text"] == "Exact session reply."
 
 
 # --------------------------------------------------- state_row_for_session
@@ -331,4 +469,51 @@ class TestExchangeEndpoint:
     def test_unknown_session_degrades(self, webapp_client, _bypass_gate):
         client, _, _ = webapp_client
         body = client.get("/api/board/sessions/ghost/exchange").json()
-        assert body == {"available": False, "user": None, "assistant": None}
+        assert body["available"] is False
+        assert body["reason"] == "session_not_found"
+
+    @pytest.mark.parametrize("agent, with_missing_native", [
+        ("claude", True),
+        ("codex", False),
+    ])
+    def test_launcher_capture_falls_back_when_native_exchange_is_unavailable(
+        self, webapp_client, _bypass_gate, tmp_path: Path, monkeypatch,
+        agent: str, with_missing_native: bool,
+    ):
+        """#457 repro: both a missing Claude hook transcript and a Codex
+        session with no hook row still have an exact-id launcher capture."""
+        from app.webapp.routers import board as board_router
+
+        client, app, overrides = webapp_client
+        capture = tmp_path / "sess1.transcript"
+        capture.write_text(
+            "\x1b[39m\u2022 The exact launcher capture has the latest reply.\r\n"
+            "  It remains linked by session id.\r\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            board_router.audit, "transcript_path", lambda _sid: capture
+        )
+
+        live = _live_sess("sess1", "E:/proj/app", 10)
+        live.update(agent=agent, prompt_title="show the latest exchange")
+        overrides["session"].list_sessions.return_value = [live]
+
+        if with_missing_native:
+            state_file = Path(app.state.webapp_config.sessions_state_file)
+            state_file.write_text(json.dumps({
+                "t-uuid": {
+                    "agent": "claude", "cwd": "E:/proj/app",
+                    "status": "needs-you", "updated_at": _iso(NOW),
+                    "transcript_path": str(tmp_path / "missing.jsonl"),
+                },
+            }), encoding="utf-8")
+
+        body = client.get("/api/board/sessions/sess1/exchange").json()
+        assert body["available"] is True
+        assert body["source"] == "launcher"
+        assert body["user"]["text"] == "show the latest exchange"
+        assert body["assistant"]["text"] == (
+            "The exact launcher capture has the latest reply. "
+            "It remains linked by session id."
+        )

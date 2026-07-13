@@ -152,7 +152,10 @@ function buildDrawer(card) {
 
   const exchange = document.createElement('div');
   exchange.className = 'board-exchange';
-  exchange.textContent = 'Loading last exchange…';
+  exchange.dataset.state = 'loading';
+  exchange.setAttribute('role', 'status');
+  exchange.setAttribute('aria-live', 'polite');
+  exchange.textContent = 'Reading last exchange…';
   drawer.appendChild(exchange);
   loadExchange(card, exchange);
 
@@ -218,9 +221,18 @@ async function loadExchange(card, el) {
     );
     el.replaceChildren();
     if (!body.available) {
-      el.textContent = 'No exchange yet — the transcript isn’t linked to this session.';
+      el.dataset.state = body.reason === 'no_exchange' ? 'empty' : 'error';
+      const reasons = {
+        no_exchange: 'No exchange yet.',
+        session_not_found: 'Session ended — refresh the Board.',
+        native_unavailable: 'Conversation preview unavailable — open the terminal.',
+        capture_unparseable: 'Conversation preview unavailable — open the terminal.',
+      };
+      el.textContent = reasons[body.reason] ||
+        'Conversation preview unavailable — open the terminal.';
       return;
     }
+    el.dataset.state = 'ready';
     if (body.user && body.user.text) {
       const u = document.createElement('div');
       u.className = 'board-exchange-user';
@@ -235,7 +247,8 @@ async function loadExchange(card, el) {
     }
     el.scrollTop = el.scrollHeight;
   } catch (exc) {
-    el.textContent = '⚠️ ' + (exc.message || exc);
+    el.dataset.state = 'error';
+    el.textContent = 'Conversation preview unavailable — try again.';
   }
 }
 

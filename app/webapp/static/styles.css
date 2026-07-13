@@ -2514,6 +2514,13 @@ body.terminal-open {
   overflow-y: auto;
   font-size: var(--font-caption);
 }
+.board-exchange[data-state="loading"],
+.board-exchange[data-state="empty"],
+.board-exchange[data-state="error"] {
+  color: var(--muted);
+  min-height: 44px;
+  justify-content: center;
+}
 .board-exchange-user {
   color: var(--muted);
   font-size: var(--font-caption);

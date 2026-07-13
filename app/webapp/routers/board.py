@@ -51,6 +51,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit, board, github_client, session_client
+from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
 from src.webapp_config import WebappConfig, build_claude_flags
@@ -169,22 +170,42 @@ async def refresh_github(request: Request) -> Dict[str, Any]:
 async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     """Last user↔assistant exchange for a live session (Tailscale + passkey).
 
-    The session-host knows nothing about transcripts — the path comes from
-    the hook state row the board's merge assigns to this session (same
-    cwd-join, same tiebreak, via :func:`board.state_row_for_session`), so the
-    drawer always shows the conversation the card's status came from. No row
-    or no transcript → ``{"available": False}``, never an error.
+    Structured Claude/Codex history wins when it correlates safely. A missing
+    hook JSONL or unsupported agent falls back to the launcher's exact-id PTY
+    capture + input audit, parsed on demand (never on the Board poll). Distinct
+    unavailable reasons let the client separate true-empty from source error.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     live, state = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
+    session = next(
+        (item for item in live if str(item.get("session_id")) == str(sid)), None
+    )
+    if session is None:
+        return unavailable("session_not_found")
     row = board.state_row_for_session(live, state["rows"], sid)
     transcript = (row or {}).get("transcript_path")
-    if not transcript:
-        return {"available": False, "user": None, "assistant": None}
-    return await asyncio.to_thread(board.last_exchange, transcript)
+    result = await asyncio.to_thread(
+        resolve_exchange,
+        session,
+        transcript,
+        audit.transcript_path(sid),
+        audit.session_log_path(sid),
+    )
+    if result.get("source") == "launcher":
+        logger.info(
+            "ℹ️ Board exchange %s (%s) used exact-id launcher capture; "
+            "native transcript unavailable",
+            sid[:8], session.get("agent") or "claude",
+        )
+    elif not result.get("available"):
+        logger.info(
+            "ℹ️ Board exchange %s (%s) unavailable: %s",
+            sid[:8], session.get("agent") or "claude", result.get("reason"),
+        )
+    return result
 
 
 @router.post("/api/board/issues/start")
