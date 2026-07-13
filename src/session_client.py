@@ -127,6 +127,13 @@ def stop(port: int, session_id: str, mode: str = "quit") -> Dict[str, Any]:
     )
 
 
+def rename(port: int, session_id: str, title: str) -> Dict[str, Any]:
+    """Set (empty ``title`` clears) a manual title override (issue #458)."""
+    return _request(
+        "POST", port, f"/sessions/{session_id}/rename", json={"title": title}
+    )
+
+
 def upload_image(
     port: int,
     session_id: str,

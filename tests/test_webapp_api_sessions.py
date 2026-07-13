@@ -252,6 +252,56 @@ class TestStopSessionMirrorClose:
         sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
 
+class TestRenameSession:
+    """Issue #458: a launcher-native rename that wins over every
+    auto-derived title source, proxied straight through to the session-host.
+    """
+
+    def test_title_forwarded_to_session_client(self, webapp_client):
+        client, _, overrides = webapp_client
+        sess = overrides["session"]
+        sess.rename.return_value = {"session_id": "abc-123", "manual_title": "custom"}
+        resp = client.post(
+            "/api/claude-code/sessions/abc-123/rename",
+            json={"title": "custom"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"session_id": "abc-123", "manual_title": "custom"}
+        sess.rename.assert_called_once_with(8446, "abc-123", "custom")
+
+    def test_empty_title_clears_override(self, webapp_client):
+        client, _, overrides = webapp_client
+        sess = overrides["session"]
+        sess.rename.return_value = {"session_id": "abc-123", "manual_title": ""}
+        resp = client.post(
+            "/api/claude-code/sessions/abc-123/rename",
+            json={"title": ""},
+        )
+        assert resp.status_code == 200
+        sess.rename.assert_called_once_with(8446, "abc-123", "")
+
+    def test_missing_body_defaults_to_empty_title(self, webapp_client):
+        client, _, overrides = webapp_client
+        sess = overrides["session"]
+        sess.rename.return_value = {"session_id": "abc-123", "manual_title": ""}
+        resp = client.post("/api/claude-code/sessions/abc-123/rename", json={})
+        assert resp.status_code == 200
+        sess.rename.assert_called_once_with(8446, "abc-123", "")
+
+    def test_session_host_error_maps_to_http_status(self, webapp_client):
+        client, _, overrides = webapp_client
+        sess = overrides["session"]
+        sess.rename.side_effect = sess.SessionHostError(
+            "no such session", status=404
+        )
+        resp = client.post(
+            "/api/claude-code/sessions/missing/rename",
+            json={"title": "x"},
+        )
+        assert resp.status_code == 404
+        assert "no such session" in resp.json()["detail"]
+
+
 class TestMirrorSession:
     """Issue #282: a desktop click on an existing session opens (or focuses)
     the same dedicated Edge mirror window the new-session launch opens, instead

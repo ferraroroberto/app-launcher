@@ -78,6 +78,15 @@ _PROMPT_TITLE_BUF_MAX = 400
 _PROMPT_TITLE_MAX_CHARS = 48
 _PROMPT_TITLE_MAX_WORDS = 6
 
+# Manual title override (issue #458): a launcher-native rename that wins over
+# every auto-derived title (live_title/prompt_title/shared_name — see
+# sessions.js::sessionTitle) and, unlike those, also reaches a detached
+# RemoteSession — the one rename channel that works identically across all
+# launcher-supported agents without depending on agent-native OSC support.
+# Kept in-memory on the session object (like live_title/prompt_title) rather
+# than persisted: it dies with the session, so it needs no cleanup/pruning.
+_MANUAL_TITLE_MAX_CHARS = 60
+
 # Stop modes accepted by SessionManager.stop / PtySession.stop.
 STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
 STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
@@ -387,6 +396,7 @@ class PtySession:
     _transcript: Optional[TextIO] = None
     live_title: str = ""
     prompt_title: str = ""
+    manual_title: str = ""
     _osc_buffer: str = ""
     _color_osc_carry: str = ""
     _prompt_raw: str = ""
@@ -699,6 +709,7 @@ class PtySession:
             "cols": self.cols,
             "live_title": self.live_title,
             "prompt_title": self.prompt_title,
+            "manual_title": self.manual_title,
             "output_chars": output_chars,
         }
 
@@ -735,6 +746,7 @@ class RemoteSession:
         self.started_at = started_at
         self._pid = pid
         self.agent = agent
+        self.manual_title = ""
 
     @property
     def alive(self) -> bool:
@@ -781,6 +793,7 @@ class RemoteSession:
             "started_at": self.started_at,
             "alive": self.alive,
             "live_title": "",
+            "manual_title": self.manual_title,
         }
 
 
@@ -958,6 +971,18 @@ class SessionManager:
             return False
         session.stop(mode, grace_seconds=grace_seconds)
         return True
+
+    def rename(self, session_id: str, title: str) -> Optional[Any]:
+        """Set (or, with an empty ``title``, clear) a manual title override.
+
+        Works identically for :class:`PtySession` and :class:`RemoteSession`
+        — the one title channel that reaches a detached session (issue #458).
+        """
+        session = self.get(session_id)
+        if session is None:
+            return None
+        session.manual_title = title.strip()[:_MANUAL_TITLE_MAX_CHARS]
+        return session
 
     def reap_dead(self) -> int:
         """Drop sessions whose process has exited. Returns the count reaped."""
