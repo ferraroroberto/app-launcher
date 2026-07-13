@@ -420,7 +420,7 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
-    disposeTouch: null, composeOpen: false,
+    disposeTouch: null, composeOpen: false, composeHasImage: false,
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
     // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
     // same-size resize frames; fsSized gates the fullscreen pan path until
@@ -745,6 +745,14 @@ async function sendImage(file, opts) {
         ta.selectionStart = ta.selectionEnd = ta.value.length;
         growComposeInput();
         ta.focus();
+        // #450: mark that this compose buffer now carries an attached image
+        // path, so the ➤ Send handler defers its submitting CR (see
+        // sendSubmit). Claude Code runs a pasted-path→image-attachment
+        // conversion on submit that swallows a CR arriving in the same burst
+        // as the path — deferring the CR lets the conversion settle first, so
+        // the prompt submits on the first tap instead of needing a second
+        // Enter. Cleared once the buffer is sent or reset.
+        t.composeHasImage = true;
       }
       if (!silent) toast('📎 Uploaded — path added to the compose bar.', 'good');
     } else {
