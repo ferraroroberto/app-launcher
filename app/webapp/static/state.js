@@ -262,6 +262,8 @@ export const els = {
   codingUsageWeekly: document.getElementById('codingUsageWeekly'),
   appsList: document.getElementById('appsList'),
   appsEmpty: document.getElementById('appsEmpty'),
+  registeredTraysList: document.getElementById('registeredTraysList'),
+  registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
 
   rescanBtn: document.getElementById('rescanBtn'),
   settingsPanel: document.getElementById('settingsPanel'),

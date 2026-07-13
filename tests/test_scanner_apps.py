@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.scanner import (
     KIND_STREAMLIT,
+    KIND_TRAY,
     KIND_TUNNEL,
     KIND_WEBAPP,
     classify_bat,
@@ -20,6 +21,28 @@ def _write_bat(path: Path, body: str) -> Path:
 
 
 class TestClassifyBat:
+    def test_tray(self, tmp_path: Path):
+        bat = _write_bat(
+            tmp_path / "tray.bat",
+            'set "TRAY_PS=%USERPROFILE%/.claude/tray/tray_lifecycle.ps1"',
+        )
+        assert classify_bat(bat) == KIND_TRAY
+
+    def test_tray_requires_exact_stem(self, tmp_path: Path):
+        """A differently-named bat that happens to reference
+        tray_lifecycle.ps1 must NOT classify as tray — the fixed ``tray.bat``
+        filename is part of the shared fleet convention, not incidental."""
+        bat = _write_bat(
+            tmp_path / "start_tray.bat", "call tray_lifecycle.ps1 launch"
+        )
+        assert classify_bat(bat) is None
+
+    def test_tray_requires_lifecycle_marker(self, tmp_path: Path):
+        """A bat literally named tray.bat that doesn't reference the shared
+        template (e.g. some unrelated per-project script) isn't misclassified."""
+        bat = _write_bat(tmp_path / "tray.bat", "echo not a real fleet tray")
+        assert classify_bat(bat) is None
+
     def test_streamlit(self, tmp_path: Path):
         bat = _write_bat(tmp_path / "x.bat", "streamlit run app.py")
         assert classify_bat(bat) == KIND_STREAMLIT

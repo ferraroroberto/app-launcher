@@ -38,6 +38,7 @@ from src.registry import (
     persist_additions,
     remove_by_id,
     rename_by_id,
+    set_autostart_by_id,
 )
 from src.scanner import KIND_CLAUDE_CODE, KIND_TUNNEL
 from src.webapp_config import (
@@ -134,14 +135,32 @@ async def save_apps(request: Request) -> Dict[str, Any]:
 
 @router.patch("/api/apps/{app_id}")
 async def patch_app(app_id: str, request: Request) -> Dict[str, Any]:
+    """Rename and/or flip the Registered Trays autostart flag.
+
+    Each field is independent — a Registered Trays autostart toggle posts
+    ``{"autostart": bool}`` alone, with no ``name`` in the body at all.
+    """
     body = await maybe_json(request)
-    new_name = str(body.get("name") or "").strip()
-    if not new_name:
-        raise HTTPException(status_code=400, detail="name is required")
     registry = load_registry()
-    entry = rename_by_id(registry, app_id, new_name)
+    entry = None
+
+    if "name" in body:
+        new_name = str(body.get("name") or "").strip()
+        if not new_name:
+            raise HTTPException(status_code=400, detail="name is required")
+        entry = rename_by_id(registry, app_id, new_name)
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
+
+    if "autostart" in body:
+        entry = set_autostart_by_id(registry, app_id, bool(body.get("autostart")))
+        if entry is None:
+            raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
+
     if entry is None:
-        raise HTTPException(status_code=404, detail=f"unknown app {app_id}")
+        raise HTTPException(
+            status_code=400, detail="name or autostart is required"
+        )
     return {"app": decorate_for_api(entry)}
 
 

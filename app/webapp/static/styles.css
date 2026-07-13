@@ -584,6 +584,13 @@ summary + .opt-group { border-top: 0; }
   text-decoration: none;
   word-break: break-all;
 }
+.app-item .tray-autostart-row {
+  padding: 8px 18px 10px;
+  border-top: 1px solid var(--line);
+}
+.app-item .tray-autostart-row .toggle {
+  font-size: var(--font-caption);
+}
 .app-item .row-actions {
   display: flex;
   flex-direction: column;

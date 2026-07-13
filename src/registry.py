@@ -57,6 +57,11 @@ class AppEntry:
     project_dir: Optional[str] = None
     repo_url: Optional[str] = None
     added_at: str = ""
+    # Registered Trays panel (issue #456 part 2/2) — whether the tray boots
+    # this ``kind == "tray"`` row automatically. Meaningless on every other
+    # kind; always serialized (like ``added_at``) rather than conditionally,
+    # since it's a plain bool with a real default, not an optional field.
+    autostart: bool = False
 
     def to_dict(self) -> Dict:
         payload: Dict[str, object] = {
@@ -64,6 +69,7 @@ class AppEntry:
             "name": self.name,
             "kind": self.kind,
             "added_at": self.added_at,
+            "autostart": self.autostart,
         }
         if self.bat_path is not None:
             payload["bat_path"] = self.bat_path
@@ -114,6 +120,7 @@ def load_registry(path: Optional[Path] = None) -> Registry:
                 project_dir=row.get("project_dir"),
                 repo_url=row.get("repo_url"),
                 added_at=str(row.get("added_at") or ""),
+                autostart=bool(row.get("autostart")),
             )
         )
     return Registry(scan_root=str(raw.get("scan_root") or ""), apps=apps)
@@ -229,6 +236,20 @@ def rename_by_id(reg: Registry, app_id: str, new_name: str) -> Optional[AppEntry
         if entry.id == app_id:
             entry.name = new_name
             reg.apps.sort(key=lambda a: a.name.lower())
+            save_registry(reg)
+            return entry
+    return None
+
+
+def set_autostart_by_id(
+    reg: Registry, app_id: str, autostart: bool
+) -> Optional[AppEntry]:
+    """Flip the Registered Trays autostart flag for ``app_id``. Meaningless
+    on a non-``tray`` entry, but not rejected — the API layer scopes which
+    rows offer the toggle."""
+    for entry in reg.apps:
+        if entry.id == app_id:
+            entry.autostart = autostart
             save_registry(reg)
             return entry
     return None

@@ -565,6 +565,70 @@ class TestRenameApp:
         assert resp.json()["app"]["name"] == "Renamed"
 
 
+class TestPatchAppAutostart:
+    """Registered Trays autostart toggle (issue #456 part 2/2) — an
+    independent field on the same PATCH endpoint, postable with no
+    ``name`` in the body at all."""
+
+    def _seed_tray(self, overrides):
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [
+                AppEntry(
+                    id="tray-app",
+                    name="Tray App",
+                    kind="tray",
+                    bat_path="C:\\stub\\tray.bat",
+                    added_at=datetime.now().isoformat(),
+                ),
+            ],
+        )
+
+    def test_defaults_to_false(self, webapp_client, overrides=None):
+        client, _, overrides = webapp_client
+        self._seed_tray(overrides)
+        resp = client.get("/api/apps")
+        app = next(a for a in resp.json()["apps"] if a["id"] == "tray-app")
+        assert app["autostart"] is False
+
+    def test_enable_round_trips(self, webapp_client, overrides=None):
+        client, _, overrides = webapp_client
+        self._seed_tray(overrides)
+        resp = client.patch("/api/apps/tray-app", json={"autostart": True})
+        assert resp.status_code == 200
+        assert resp.json()["app"]["autostart"] is True
+        # Survives a fresh GET, not just the response body.
+        apps = client.get("/api/apps").json()["apps"]
+        assert next(a for a in apps if a["id"] == "tray-app")["autostart"] is True
+
+    def test_disable_round_trips(self, webapp_client, overrides=None):
+        client, _, overrides = webapp_client
+        self._seed_tray(overrides)
+        client.patch("/api/apps/tray-app", json={"autostart": True})
+        resp = client.patch("/api/apps/tray-app", json={"autostart": False})
+        assert resp.status_code == 200
+        assert resp.json()["app"]["autostart"] is False
+
+    def test_404_on_unknown_id(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.patch("/api/apps/nope", json={"autostart": True})
+        assert resp.status_code == 404
+
+    def test_400_when_body_has_neither_field(self, webapp_client, overrides=None):
+        client, _, overrides = webapp_client
+        self._seed_tray(overrides)
+        resp = client.patch("/api/apps/tray-app", json={})
+        assert resp.status_code == 400
+
+    def test_autostart_does_not_require_name(self, webapp_client, overrides=None):
+        """The Registered Trays toggle never sends `name` — must not 400
+        the way a rename-only PATCH with a blank name does."""
+        client, _, overrides = webapp_client
+        self._seed_tray(overrides)
+        resp = client.patch("/api/apps/tray-app", json={"autostart": True})
+        assert resp.status_code == 200
+
+
 class TestLaunchAppTracksSpawn:
     """Non-claude-code launches must register the spawn with app_runtime
     so the Running apps panel can list + stop them (issue #35)."""
