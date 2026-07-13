@@ -213,12 +213,18 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey, #301).
 
     Body: ``{"repo": str, "number": int, "mode": "start"|"yolo",
-    "rows": int, "cols": int}``. The repo must resolve to a directory in the
-    projects folder (the same live listing the Coding tab launches from);
-    the prompt is built here as ``/issue-<mode> <number>`` — client text
-    never reaches the command line. Spawns a streamed PTY session exactly
-    like a Coding-tab launch (PC mirror rules included); the `/issue-*`
-    skills themselves handle branch + worktree claiming inside the session.
+    "rows": int, "cols": int, "title": str}``. The repo must resolve to a
+    directory in the projects folder (the same live listing the Coding tab
+    launches from); the prompt is built here as ``/issue-<mode> <number>`` —
+    client text never reaches the command line. Spawns a streamed PTY session
+    exactly like a Coding-tab launch (PC mirror rules included); the
+    `/issue-*` skills themselves handle branch + worktree claiming inside the
+    session.
+
+    The optional ``title`` (the Board card's issue title) auto-names the
+    session after the issue (#467) via the #458 manual-override path, so it is
+    recognizable in the Coding tab without waiting for the agent to self-name.
+    The title is display data — it never reaches the command line.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -234,6 +240,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="number must be positive")
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
+    title = str(body.get("title") or "").strip()
 
     entry = _resolve_repo_entry(cfg, repo)
 
@@ -263,6 +270,21 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         sid=sid, agent="claude", name=entry.name, project=entry.project_dir,
         skill=prompt, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
+    # Auto-name the session after the issue title (#467): a Board-started
+    # session is then recognizable in the Coding tab immediately, instead of
+    # inheriting the first-prompt/OSC-derived default. Reuses the #458 manual
+    # override (wins over the agent's later self-naming). Best-effort — a
+    # rename failure must never fail an otherwise-successful launch.
+    if sid and title:
+        try:
+            await asyncio.to_thread(
+                session_client.rename, cfg.session_host_port, sid, title
+            )
+        except session_client.SessionHostError as exc:
+            logger.warning(
+                "⚠️ Board issue-start could not auto-name session %s: %s",
+                sid[:8], exc,
+            )
     return {"launched": prompt, "repo": entry.name, "session": session}
 
 

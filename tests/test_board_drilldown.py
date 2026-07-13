@@ -439,6 +439,58 @@ class TestIssueStart:
         )
         assert resp.status_code == 404
 
+    def test_title_auto_names_the_spawned_session(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        """#467: a Board start carrying the issue title renames the spawned
+        session after it, via the #458 manual-override path."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={
+                "repo": "myrepo", "number": 42, "mode": "start",
+                "title": "Board tab: auto-name a started session",
+            },
+        )
+        assert resp.status_code == 200
+        overrides["session"].rename.assert_called_once_with(
+            8446, "spawned-1", "Board tab: auto-name a started session"
+        )
+
+    def test_blank_title_skips_rename(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        """No title (or whitespace-only) → no rename call; the session keeps
+        its automatic title precedence."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 42, "mode": "start", "title": "   "},
+        )
+        assert resp.status_code == 200
+        overrides["session"].rename.assert_not_called()
+
+    def test_rename_failure_does_not_fail_the_launch(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        """A rename error is best-effort — the launch still succeeds (#467)."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        overrides["session"].rename.side_effect = (
+            overrides["session"].SessionHostError("boom", 502)
+        )
+        resp = client.post(
+            "/api/board/issues/start",
+            json={
+                "repo": "myrepo", "number": 42, "mode": "yolo",
+                "title": "some issue title",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["session"]["session_id"] == "spawned-1"
+
 
 # -------------------------------------------------------- exchange endpoint
 
