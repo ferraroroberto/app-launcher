@@ -289,6 +289,11 @@ export const els = {
   renameInput: document.getElementById('renameInput'),
   renameCancel: document.getElementById('renameCancel'),
 
+  sessionRenameDialog: document.getElementById('sessionRenameDialog'),
+  sessionRenameForm: document.getElementById('sessionRenameForm'),
+  sessionRenameInput: document.getElementById('sessionRenameInput'),
+  sessionRenameCancel: document.getElementById('sessionRenameCancel'),
+
   toast: document.getElementById('toast'),
 
   loginOverlay: document.getElementById('loginOverlay'),

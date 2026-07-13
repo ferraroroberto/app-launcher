@@ -112,6 +112,30 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     return result
 
 
+@router.post("/api/claude-code/sessions/{sid}/rename")
+async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
+    """Set or clear a manual title override for a session (issue #458).
+
+    Wins over every auto-derived title (``live_title``/``prompt_title``/
+    ``shared_name``) in the client's precedence (``sessions.js::sessionTitle``)
+    — the one rename path that works identically across every launcher-
+    supported agent, including detached (``kind=remote``) sessions, since it
+    needs no agent-native OSC title support. An empty ``title`` clears the
+    override, reverting to the automatic precedence.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    title = str(body.get("title") or "").strip()
+    try:
+        result = await asyncio.to_thread(
+            session_client.rename, cfg.session_host_port, sid, title
+        )
+    except session_client.SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    audit.audit_event("session_rename", session=sid, client=client_ip(request))
+    return result
+
+
 @router.post("/api/claude-code/sessions/{sid}/mirror")
 async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     """Open (or focus) the PC mirror window for an existing session (issue #282).

@@ -1093,6 +1093,17 @@
         </div>
       </form>
     </dialog>
+
+    <dialog id="sessionRenameDialog" class="rename-dialog">
+      <form id="sessionRenameForm">
+        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename session</h2>
+        <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
+        <div class="row dialog-actions">
+          <button type="button" id="sessionRenameCancel" class="ghost-btn">Cancel</button>
+          <button type="submit" class="big-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
   </main>
 
   <!-- Body-level toast, sibling of <main class="app"> — never nested inside

@@ -13,6 +13,7 @@ Routes:
     POST   /sessions/{sid}/input      → write text to the PTY
     POST   /sessions/{sid}/resize     → resize the PTY
     POST   /sessions/{sid}/stop       → interrupt | quit | kill
+    POST   /sessions/{sid}/rename     → set/clear a manual title override
     POST   /sessions/{sid}/image      → save an uploaded image, type its path
     WS     /sessions/{sid}/ws?role=   → scrollback snapshot + live duplex stream
 
@@ -196,6 +197,15 @@ def create_app() -> FastAPI:
         # the event loop so the session-host stays responsive (issue #253).
         await asyncio.to_thread(session.stop, mode)
         return {"ok": True, "mode": mode}
+
+    @app.post("/sessions/{sid}/rename")
+    async def session_rename(sid: str, request: Request) -> Dict[str, Any]:
+        session = manager.get(sid)
+        if session is None:
+            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+        body = await _json(request)
+        manager.rename(sid, str(body.get("title") or ""))
+        return session.to_api()
 
     @app.post("/sessions/{sid}/image")
     async def session_image(

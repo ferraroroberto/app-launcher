@@ -35,7 +35,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
-import { sessionTitle } from './sessions.js';
+import { openSessionRename, sessionTitle } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -207,6 +207,26 @@ function buildDrawer(card) {
       openTerminal({ session_id: card.session_id, name: sessionLabel(card) });
     });
     actions.appendChild(open);
+  }
+  // Rename (issue #458) — same launcher-native override as the Coding tab's
+  // row rename button, reachable for detached sessions too (no PTY needed).
+  // The drawer stays open across a rename (unlike Terminal, which navigates
+  // away), so the completion callback patches this card in place rather than
+  // calling fetchBoard() — that would no-op under its own drawer-open
+  // self-gate (see fetchBoard()).
+  if (card.alive) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'board-rename-btn';
+    rename.innerHTML = icon('pencil') + ' Rename';
+    rename.title = 'Rename this session';
+    rename.addEventListener('click', function () {
+      openSessionRename(card, function (title) {
+        card.manual_title = title;
+        renderBoard();
+      });
+    });
+    actions.appendChild(rename);
   }
   if (actions.childElementCount) drawer.appendChild(actions);
   return drawer;

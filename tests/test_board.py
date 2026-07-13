@@ -367,6 +367,35 @@ def test_merge_no_state_row_shared_name_is_none():
     assert cards[0]["shared_name_source"] is None
 
 
+# ------------------------------------------ manual title override (#458)
+
+
+def test_merge_carries_manual_title_from_live_session():
+    """The session-host's manual_title (a launcher-native rename) rides onto
+    the card alongside live_title/prompt_title — the Board drawer's rename
+    button reads/writes the same field the Coding tab does."""
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/automation/photo-ocr", 30, manual_title="my rename")],
+        {}, now=NOW,
+    )
+    assert cards[0]["manual_title"] == "my rename"
+
+
+def test_merge_no_manual_title_defaults_empty_string():
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 10)], {}, now=NOW)
+    assert cards[0]["manual_title"] == ""
+
+
+def test_merge_external_card_manual_title_is_empty_string(tmp_path: Path):
+    """State-only (external) cards have no live session to hold an
+    override — always empty, never None (matches live_title/prompt_title)."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards[0]["kind"] == "external"
+    assert cards[0]["manual_title"] == ""
+
+
 # --------------------------------------------------- attach_shared_names
 
 

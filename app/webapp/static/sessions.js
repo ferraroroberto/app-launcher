@@ -33,10 +33,14 @@ function projectBasename(s) {
 }
 
 // Display title for a session, with smart precedence (issue #266, extended
-// #396). The single source of truth both the Coding tab and the Board tab
-// call, so a live session shows an identical title on both — do not
+// #396, #458). The single source of truth both the Coding tab and the Board
+// tab call, so a live session shows an identical title on both — do not
 // re-derive a title in board.js or anywhere else.
 //
+//   0. ``manual_title`` (issue #458) — a launcher-native rename always wins.
+//      It is the one title channel that works identically across every
+//      agent (including detached sessions) without depending on agent-native
+//      OSC support, so it overrides every auto-derived source below.
 //   1. ``shared_name`` (fleet-config#302, joined agent-aware server-side into
 //      every session dict as shared_name/shared_name_source) wins outright
 //      when it's a real Claude-assigned title (name_source !== 'derived') —
@@ -61,6 +65,8 @@ function projectBasename(s) {
 // the per-session agent icon already identifies the agent, so strip any
 // leading run of non-alphanumeric characters.
 export function sessionTitle(s) {
+  const manual = String((s && s.manual_title) || '').trim();
+  if (manual) return manual;
   const shared = String((s && s.shared_name) || '').trim();
   const sharedDerived = !!(s && s.shared_name_source === 'derived');
   const live = String((s && s.live_title) || '')
@@ -154,6 +160,18 @@ export function renderSessions() {
 
     const actions = document.createElement('div');
     actions.className = 'row-actions session-actions';
+
+    // Rename (issue #458) — a launcher-native override that always wins in
+    // sessionTitle()'s precedence, for both kinds. Submitting a blank title
+    // clears it, reverting to the automatic precedence.
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'icon-btn';
+    renameBtn.innerHTML = icon('pencil');
+    renameBtn.title = 'Rename';
+    renameBtn.setAttribute('aria-label', 'Rename session');
+    renameBtn.addEventListener('click', function () { openSessionRename(s); });
+    actions.appendChild(renameBtn);
 
     // Single Stop-and-kill button per row, both kinds (issue #253). The
     // session-host quits gracefully then force-falls-back; the window
@@ -255,6 +273,55 @@ export async function fetchRateLimits() {
   }
 }
 
+// --------------------------------------------------- rename dialog (#458)
+//
+// One dialog shared by the Coding tab's row rename button and the Board
+// tab's drawer rename button (board.js imports openSessionRename), the same
+// way #renameDialog is shared across the Apps tab's rename affordances.
+// ``onDone`` lets a caller optimistically patch its own view of the session
+// instead of always re-fetching (the Board drawer stays open across a
+// rename, so a plain re-fetch would no-op under fetchBoard()'s
+// drawer-open self-gate — see board.js).
+let renameSessionTarget = null;
+let renameSessionOnDone = null;
+
+export function openSessionRename(s, onDone) {
+  renameSessionTarget = s;
+  renameSessionOnDone = onDone || null;
+  els.sessionRenameInput.value = sessionTitle(s);
+  if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
+}
+
+function wireSessionRenameDialog() {
+  els.sessionRenameCancel.addEventListener('click', function () {
+    if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
+  });
+  els.sessionRenameForm.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    if (!renameSessionTarget) return;
+    const title = els.sessionRenameInput.value.trim();
+    try {
+      await jsonApi(
+        '/api/claude-code/sessions/' +
+          encodeURIComponent(renameSessionTarget.session_id) + '/rename',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        }
+      );
+      if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
+      if (renameSessionOnDone) {
+        renameSessionOnDone(title);
+      } else {
+        await fetchSessions();
+      }
+    } catch (exc) {
+      apiFailToast('Rename failed', exc);
+    }
+  });
+}
+
 export function wireSessions() {
   // The ⎇ status button (and the off-main popover) live in the Running-
   // sessions card's <summary>, so a click there would also toggle the
@@ -267,4 +334,5 @@ export function wireSessions() {
   if (headerActions) {
     headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
   }
+  wireSessionRenameDialog();
 }

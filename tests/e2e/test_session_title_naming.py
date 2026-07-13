@@ -93,6 +93,23 @@ async () => {
       live_title: '', prompt_title: 'wire up the API',
       project_dir: dir, name: 'app-launcher',
     }),
+    // #458: a manual (launcher-native) rename wins outright — over a genuine
+    // shared name, a real live OSC summary, everything. It is the one title
+    // channel that works identically for every agent (including detached
+    // sessions), so it sits above every auto-derived source.
+    manualTitleWinsOverEverything: sessionTitle({
+      manual_title: 'My custom rename',
+      shared_name: 'Fixing the chunk merge bug', shared_name_source: null,
+      live_title: '✳ Some other in-terminal summary', prompt_title: 'x',
+      project_dir: dir, name: 'app-launcher',
+    }),
+    // An empty manual_title (never set, or explicitly cleared) must not
+    // shadow the automatic precedence below it.
+    emptyManualTitleFallsThrough: sessionTitle({
+      manual_title: '',
+      live_title: '', prompt_title: 'wire up the API',
+      project_dir: dir, name: 'app-launcher',
+    }),
   };
 }
 """
@@ -153,6 +170,16 @@ def test_session_title_precedence(authed_page: Page, base_url: str) -> None:
     assert r["noSharedNameFallsThrough"] == "wire up the API", (
         f"with no shared name at all, precedence should be unchanged from "
         f"pre-#396 behavior, got {r['noSharedNameFallsThrough']!r}"
+    )
+    assert r["manualTitleWinsOverEverything"] == "My custom rename", (
+        f"a manual rename returned {r['manualTitleWinsOverEverything']!r} — "
+        "issue #458's launcher-native override must win over every "
+        "auto-derived source, including a genuine shared_name"
+    )
+    assert r["emptyManualTitleFallsThrough"] == "wire up the API", (
+        f"an unset manual_title returned "
+        f"{r['emptyManualTitleFallsThrough']!r} — it must not shadow the "
+        "automatic precedence beneath it"
     )
 
 

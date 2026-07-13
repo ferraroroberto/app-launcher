@@ -2558,7 +2558,8 @@ body.terminal-open {
 .board-refresh,
 .board-issue-btn,
 .board-reply-send,
-.board-open-terminal {
+.board-open-terminal,
+.board-rename-btn {
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--line);
@@ -2570,7 +2571,8 @@ body.terminal-open {
 .board-reply-send { font-size: var(--font-body); }
 .board-issue-btn:active,
 .board-reply-send:active,
-.board-open-terminal:active { background: var(--card); }
+.board-open-terminal:active,
+.board-rename-btn:active { background: var(--card); }
 
 /* Desktop / wide: all five columns side by side; titles come back.
    Board (only) also breaks out of the phone-first `.app` 720px cap —
