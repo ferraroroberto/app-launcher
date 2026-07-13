@@ -336,7 +336,12 @@ async function startIssue(card, mode, btn) {
   btn.disabled = true;
   try {
     const tt = await ensureTerminalToken();
-    const payload = { repo: card.repo, number: card.number, mode: mode };
+    // Carry the issue title so the server can auto-name the spawned session
+    // after it (#467) — display data, never reaches the command line.
+    const payload = {
+      repo: card.repo, number: card.number, mode: mode,
+      title: card.title || '',
+    };
     // Desktop browsers get the PC mirror window, like every launch (#241).
     // Phone launches carry the real terminal size so the PTY's early
     // output is authored at the width the overlay will fit() to (issue
