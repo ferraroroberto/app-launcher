@@ -35,6 +35,13 @@ import { stopReading } from './terminal-readaloud.js';
 // screen when the keyboard is up. The CSS min-height floors it at 2 rows.
 const _COMPOSE_MAX_ROWS = 8;
 
+// Delay (ms) before the submitting CR when the compose payload carries a
+// pasted image path (issue #450). Gives Claude Code's path→attachment
+// conversion time to finish so the CR isn't absorbed by it. On-device tunable:
+// too small and the first tap still needs a second Enter; larger only adds a
+// little submit latency on image sends, so this errs generous.
+const _IMAGE_SUBMIT_DELAY_MS = 350;
+
 export function growComposeInput() {
   // Auto-grow up to _COMPOSE_MAX_ROWS; the iOS return key adds newlines,
   // only ➤ Send forwards to the PTY.
@@ -51,6 +58,8 @@ export function resetComposeBar() {
   els.terminalComposeBar.hidden = true;
   els.terminalComposeInput.value = '';
   els.terminalComposeInput.style.height = '';
+  // #450: an emptied buffer no longer carries an attached image path.
+  if (state.terminal) state.terminal.composeHasImage = false;
   clearOcrStaging();
 }
 
@@ -107,10 +116,23 @@ export function framePaste(t, text) {
 // is literal pasted text by design, so the split is the only ordering that
 // reliably submits. With bracketed mode off there is no paste state machine
 // to race, but the two-frame path is harmless there, so it stays uniform.
-export function sendSubmit(t, text) {
+// `opts.submitDelayMs` (issue #450): hold the submitting CR back by this many
+// ms instead of sending it in the same burst as the text. Needed only when the
+// payload carries a pasted image path — Claude Code runs a path→attachment
+// conversion on submit that absorbs a CR arriving mid-conversion, so the prompt
+// lands unsubmitted and needs a second Enter. A short defer lets the conversion
+// settle before the CR arrives. Plain-text sends pass no delay and stay
+// instant (the CR still goes as its own frame, preserving #166's ordering fix).
+export function sendSubmit(t, text, opts) {
   if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
   t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
-  t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
+  const submit = function () {
+    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
+      t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
+    }
+  };
+  const delay = opts && opts.submitDelayMs;
+  if (delay > 0) setTimeout(submit, delay); else submit();
 }
 
 // Voice dictation instance mounted on the compose bar. Starting to talk
@@ -261,7 +283,12 @@ export function wireCompose() {
     if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
     const text = els.terminalComposeInput.value;
     if (!text) return;
-    sendSubmit(t, text);
+    // #450: when an image path was attached into this buffer, defer the
+    // submitting CR so Claude Code's attachment conversion doesn't swallow it.
+    const opts = t.composeHasImage
+      ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined;
+    sendSubmit(t, text, opts);
+    t.composeHasImage = false;
     els.terminalComposeInput.value = '';
     els.terminalComposeInput.style.height = '';
     els.terminalComposeInput.focus();
