@@ -504,7 +504,25 @@ Scan flow: tap **🔎 Scan** in Settings → `/api/apps/scan` returns a diff →
 
 ---
 
-## Auto-start at log on with Task Scheduler
+## Auto-start at log on
+
+Toggle **Start app-launcher at log on** in the **Settings** tab — it writes a
+tiny wrapper bat (`AppLauncher.bat`, calling `tray.bat`) into your Windows
+Startup folder (`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`).
+No admin rights needed: it's a plain file write under your own profile, the
+same mechanism most other auto-starting desktop apps use. Untoggling removes
+the file. `tray.bat` is idempotent, so a Startup-folder run racing an
+already-running tray is a safe no-op.
+
+(A Task Scheduler "At log on" trigger was tried first and reverted —
+`schtasks /Create /SC ONLOGON` returns Access Denied from the launcher's own
+unelevated process, the same reason `elevated` Jobs already require a manual
+elevated-shell registration. The Startup folder needs no such privilege.)
+
+### Manual fallback (Task Scheduler)
+
+If you'd rather use Task Scheduler directly (e.g. to add a startup delay or
+restart-on-failure policy the Startup-folder mechanism can't express):
 
 1. Open **Task Scheduler** → **Create Task…** (not Basic).
 2. **General**: name `Launcher`, **Run only when user is logged on** ✅ (required for visible CMD windows), Configure for Windows 10/11.
@@ -514,6 +532,10 @@ Scan flow: tap **🔎 Scan** in Settings → `/api/apps/scan` returns a diff →
 6. **Settings**: Allow on-demand ✅, restart on failure every 1 min × 3, "If already running: do not start a new instance".
 
 To test without a reboot: select the task → **Run** in the right-hand pane.
+
+Note: creating this task requires an elevated (Run as administrator) Task
+Scheduler / PowerShell session — the same constraint that keeps the
+Settings-tab toggle from using this mechanism itself.
 
 ---
 

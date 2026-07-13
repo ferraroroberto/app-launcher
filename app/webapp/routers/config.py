@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from src import boot_autostart
 from src.webapp_config import (
     MAX_TERMINAL_HISTORY_LINES,
     MIN_TERMINAL_HISTORY_LINES,
@@ -87,6 +88,10 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "computed_flags": build_pi_flags(cfg),
         },
         "auth_password_set": bool(cfg.auth_password),
+        # Boot-autostart toggle (issue #456): live-queried, not stored in
+        # webapp_config.json — the Startup-folder wrapper bat's presence
+        # *is* the state, so a stale cached bool can never drift from it.
+        "boot_autostart_enabled": boot_autostart.is_enabled(),
     }
 
 
@@ -132,6 +137,20 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "ok": True,
         "claude_flags": build_claude_flags(new_cfg),
     }
+
+
+@router.post("/api/settings/boot-autostart")
+async def set_boot_autostart(request: Request) -> Dict[str, Any]:
+    body = await maybe_json(request)
+    enabled = bool(body.get("enabled"))
+    try:
+        if enabled:
+            boot_autostart.enable()
+        else:
+            boot_autostart.disable()
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "boot_autostart_enabled": boot_autostart.is_enabled()}
 
 
 @router.get("/api/status")

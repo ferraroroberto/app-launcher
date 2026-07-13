@@ -3,8 +3,21 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
+
+import src.boot_autostart as boot_autostart_mod
+
+
+@pytest.fixture(autouse=True)
+def _isolated_startup_dir(tmp_path: Path, monkeypatch) -> Path:
+    """Point boot_autostart's Startup folder at a tmp dir for every test in
+    this module — the real per-user Startup folder must never be touched
+    by a test run."""
+    startup_dir = tmp_path / "Startup"
+    monkeypatch.setattr(boot_autostart_mod, "_startup_dir", lambda: startup_dir)
+    return startup_dir
 
 
 class TestGetConfig:
@@ -35,6 +48,7 @@ class TestGetConfig:
         # ("a password is required" vs not). Bool, not the password itself.
         assert isinstance(body["auth_password_set"], bool)
         assert body["auth_password_set"] is False  # default conftest config
+        assert body["boot_autostart_enabled"] is False  # nothing enabled yet
 
     def test_claude_block_carries_all_known_keys(self, webapp_client):
         client, _, _ = webapp_client
@@ -394,3 +408,44 @@ class TestPatchConfig:
         assert resp.status_code == 200
         # auth_token is NOT in the allow-list and must not be patched here.
         assert app.state.webapp_config.auth_token == ""
+
+
+class TestBootAutostart:
+    """POST /api/settings/boot-autostart — issue #456 part 1/2."""
+
+    def test_enable_then_get_config_reflects_it(
+        self, webapp_client, _isolated_startup_dir
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/settings/boot-autostart", json={"enabled": True}
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "boot_autostart_enabled": True}
+        assert client.get("/api/config").json()["boot_autostart_enabled"] is True
+        assert (
+            _isolated_startup_dir / boot_autostart_mod.STARTUP_BAT_NAME
+        ).is_file()
+
+    def test_disable_removes_it(self, webapp_client, _isolated_startup_dir):
+        client, _, _ = webapp_client
+        client.post("/api/settings/boot-autostart", json={"enabled": True})
+        resp = client.post(
+            "/api/settings/boot-autostart", json={"enabled": False}
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "boot_autostart_enabled": False}
+        assert client.get("/api/config").json()["boot_autostart_enabled"] is False
+        assert not (
+            _isolated_startup_dir / boot_autostart_mod.STARTUP_BAT_NAME
+        ).exists()
+
+    def test_disable_when_never_enabled_is_a_noop(
+        self, webapp_client, _isolated_startup_dir
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/settings/boot-autostart", json={"enabled": False}
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"ok": True, "boot_autostart_enabled": False}

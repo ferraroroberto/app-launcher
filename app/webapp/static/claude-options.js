@@ -32,6 +32,11 @@ export async function fetchConfig() {
     }
     els.terminalHistoryLines.value = body.terminal_history_lines || '';
   }
+  if (els.bootAutostartToggle) {
+    els.bootAutostartToggle.setAttribute(
+      'aria-checked', body.boot_autostart_enabled ? 'true' : 'false'
+    );
+  }
   renderClaudeOptions();
 }
 

@@ -39,10 +39,36 @@ function toggleEditMode() {
   renderJobs();
 }
 
+// Boot-autostart (issue #456 part 1/2) is its own dedicated endpoint, not a
+// patchConfig() field — enabling/disabling it writes/removes a Startup-folder
+// wrapper bat (a real filesystem side effect), so the click re-fetches
+// /api/config for the actual on-disk state rather than optimistically
+// flipping aria-checked.
+async function toggleBootAutostart() {
+  const next = els.bootAutostartToggle.getAttribute('aria-checked') !== 'true';
+  try {
+    await jsonApi('/api/settings/boot-autostart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: next }),
+    });
+    await fetchConfig();
+    toast(
+      next ? 'App-launcher will start at log on.' : 'Boot autostart disabled.',
+      'good'
+    );
+  } catch (exc) {
+    apiFailToast('Boot autostart failed', exc);
+  }
+}
+
 function wireSettings() {
   syncEditModeButtons();
   els.editMode.addEventListener('click', toggleEditMode);
   if (els.jobsEditBtn) els.jobsEditBtn.addEventListener('click', toggleEditMode);
+  if (els.bootAutostartToggle) {
+    els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);
+  }
   els.saveSettings.addEventListener('click', async function () {
     const ignore = els.projectsIgnore.value
       .split('\n')
