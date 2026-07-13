@@ -335,6 +335,49 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     assert captured.get("body") == {"data": "go ahead", "submit": True}
 
 
+def test_board_reply_optimistically_moves_card_off_your_turn(
+    authed_page: Page, base_url: str
+) -> None:
+    """#461: sending a reply relocates the card into Claude's turn right
+    away — no waiting on the next poll, and no reverting back once it's
+    mocked ``/api/board`` (which, unaware of the reply, still reports the
+    session as needs-you) resolves."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/input$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        ),
+    )
+
+    _open_board(authed_page, base_url)
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
+
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    authed_page.locator(".board-reply-input").fill("go ahead")
+    authed_page.locator(".board-reply-send").click()
+
+    # Immediate — no fetchBoard() round trip needed to see this.
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("2")
+    moved_card = authed_page.locator(
+        '.board-list[data-col="claude_turn"] li.board-item', has_text="photo-ocr"
+    )
+    expect(moved_card).to_be_visible()
+    expect(moved_card).to_have_class(re.compile(r"\bis-working\b"))
+
+    # Well under the 5 s poll interval, and the mocked /api/board still
+    # reports needs-you for s-wait — confirms nothing reverts the move.
+    authed_page.wait_for_timeout(1_000)
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("2")
+
+
 def test_board_codex_card_drawer_shows_agent_native_exchange(
     authed_page: Page, base_url: str
 ) -> None:

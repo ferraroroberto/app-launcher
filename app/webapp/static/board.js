@@ -252,6 +252,24 @@ async function loadExchange(card, el) {
   }
 }
 
+// Optimistic move for sendReply() (#461): relocate a card from Your turn into
+// Claude's turn client-side, ahead of the poll that will confirm it. A reply
+// just went into a live PTY sitting at its prompt, so there is no value in
+// making the Board visibly wait out the hook -> state-file -> poll round trip
+// for something already known. Only touches state.board.columns — the next
+// fetchBoard() replaces state.board wholesale as usual, so this is a
+// display-only shortcut, never a second source of truth.
+function moveCardToClaudeTurn(sessionId) {
+  const columns = state.board && state.board.columns;
+  if (!columns) return;
+  const yourTurn = columns.your_turn || [];
+  const idx = yourTurn.findIndex(function (c) { return c.session_id === sessionId; });
+  if (idx === -1) return;
+  const card = yourTurn.splice(idx, 1)[0];
+  card.status = 'working';
+  columns.claude_turn = [card].concat(columns.claude_turn || []);
+}
+
 async function sendReply(card, input, btn) {
   const text = input.value.trim();
   if (!text) return;
@@ -268,11 +286,16 @@ async function sendReply(card, input, btn) {
     );
     toast('➤ Sent to ' + (card.project || 'session'), 'good');
     input.value = '';
-    // Close the drawer and resume the poll — the prompt-submit hook plus
-    // the transcript overlay flip the card to working within a cycle.
+    // Close the drawer and optimistically flip the card to Claude's turn
+    // right away. Deliberately no immediate fetchBoard() here (#461): the
+    // hook that actually flips the server's status hasn't had time to run
+    // yet, so an immediate re-poll almost always still sees the pre-reply
+    // needs-you state and would revert this straight back — worse than the
+    // original lag. The regular 5 s poll (already running) reconciles with
+    // ground truth as always.
     state.boardExpanded = null;
+    moveCardToClaudeTurn(card.session_id);
     renderBoard();
-    fetchBoard().catch(function () {});
   } catch (exc) {
     apiFailToast('Reply failed', exc);
   } finally {
