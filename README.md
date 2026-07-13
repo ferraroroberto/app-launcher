@@ -493,14 +493,33 @@ UI prefs + secrets, authored from the web UI:
 Apps-tab registry — bat-based launchers only. Each row:
 
 ```json
-{ "id": "...", "name": "...", "kind": "streamlit | webapp | tunnel",
-  "bat_path": "...", "added_at": "2026-..." }
+{ "id": "...", "name": "...", "kind": "streamlit | webapp | tunnel | tray",
+  "bat_path": "...", "added_at": "2026-...", "autostart": false }
 ```
 
 `claude-code` projects are **not** stored here — the Coding tab
 discovers them live by scanning `projects_dir` (minus `projects_ignore`).
 
 Scan flow: tap **🔎 Scan** in Settings → `/api/apps/scan` returns a diff → checklist dialog → submit selections → `/api/apps/save` persists.
+
+### Registered Trays (Apps tab)
+
+A `tray` kind (issue #456) is surfaced by the same scan flow above — a
+`.bat` file named exactly `tray.bat` whose body references the shared
+`tray_lifecycle.ps1` helper (see `tray.bat`'s own header) is recognized as
+a sister project's tray, not a plain streamlit/webapp/tunnel launcher.
+
+Once scanned in, each `tray`-kind row gets an **Autostart at boot** switch
+in the collapsible **Registered Trays** panel. When app-launcher's own
+webapp comes up (see the Settings-tab boot toggle above), it walks every
+autostart-enabled tray one at a time — in the registry's existing
+alphabetical order, no reordering UI yet — waiting for each to report
+ready (via its `.fleet.toml`'s declared `port`, or a fixed delay if that's
+missing) before starting the next. This avoids a boot-time CPU/disk spike
+from launching several sister Python processes concurrently. One tray
+failing to start doesn't block the rest. A tray launched this way is
+started, not managed — `tray.bat --restart` on THIS machine never touches
+another repo's tray process.
 
 ---
 

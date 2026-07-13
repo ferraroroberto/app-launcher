@@ -16,12 +16,17 @@ import { icon } from './_vendored/icons/icons.js';
 // ----------------------------------------------------------- apps list
 export function renderApps() {
   const codingApps = state.apps.filter(function (a) { return a.kind === 'claude-code'; });
-  const otherApps = state.apps.filter(function (a) { return a.kind !== 'claude-code'; });
+  const trayApps = state.apps.filter(function (a) { return a.kind === 'tray'; });
+  const otherApps = state.apps.filter(function (a) {
+    return a.kind !== 'claude-code' && a.kind !== 'tray';
+  });
 
   renderCodingList(els.claudeList, codingApps);
+  renderList(els.registeredTraysList, trayApps);
   renderList(els.appsList, otherApps);
 
   els.claudeEmpty.hidden = codingApps.length !== 0;
+  els.registeredTraysEmpty.hidden = trayApps.length !== 0;
   els.appsEmpty.hidden = otherApps.length !== 0;
 }
 
@@ -145,6 +150,23 @@ async function toggleFavorite(a) {
     await fetchApps();
   } catch (exc) {
     apiFailToast('Could not update favorite', exc);
+  }
+}
+
+// Flip a Registered Trays entry's autostart flag (issue #456 part 2/2) via
+// the same PATCH /api/apps/{id} the rename dialog uses. Re-fetches
+// /api/apps on success so the switch reflects the authoritative persisted
+// state, not an optimistic local flip.
+async function toggleTrayAutostart(a) {
+  try {
+    await jsonApi('/api/apps/' + encodeURIComponent(a.id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ autostart: !a.autostart }),
+    });
+    await fetchApps();
+  } catch (exc) {
+    apiFailToast('Could not update autostart', exc);
   }
 }
 
@@ -322,6 +344,28 @@ function renderList(host, items) {
         tr.appendChild(span);
       }
       main.appendChild(tr);
+    }
+
+    // Registered Trays autostart switch (issue #456 part 2/2) — persists
+    // via the same PATCH /api/apps/{id} the rename dialog uses, just with
+    // `autostart` instead of `name`. stopPropagation keeps the click from
+    // also firing the row's own launch button underneath it.
+    if (a.kind === 'tray') {
+      const row = document.createElement('div');
+      row.className = 'tray-autostart-row';
+      const toggleBtn = document.createElement('button');
+      toggleBtn.type = 'button';
+      toggleBtn.className = 'toggle';
+      toggleBtn.setAttribute('role', 'switch');
+      toggleBtn.setAttribute('aria-checked', a.autostart ? 'true' : 'false');
+      toggleBtn.innerHTML =
+        '<span class="check-box">' + icon('check') + '</span><span>Autostart at boot</span>';
+      toggleBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        toggleTrayAutostart(a);
+      });
+      row.appendChild(toggleBtn);
+      main.appendChild(row);
     }
 
     li.appendChild(main);

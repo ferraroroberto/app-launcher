@@ -12,7 +12,7 @@ Two pieces of discovery share this module:
 - ``scan_app_bats(scan_root)`` — walks ``scan_root`` recursively
   looking at every ``*.bat``, classifies via ``classify_bat``, and
   returns ``(path, kind)`` pairs for kinds ``streamlit``, ``webapp``,
-  ``tunnel``.
+  ``tunnel``, ``tray``.
 
 The two scans run independently — a Claude Code project never collides
 with an Apps row because Claude Code rows have no ``bat_path`` (the
@@ -51,12 +51,13 @@ KIND_CLAUDE_CODE = "claude-code"
 KIND_STREAMLIT = "streamlit"
 KIND_WEBAPP = "webapp"
 KIND_TUNNEL = "tunnel"
+KIND_TRAY = "tray"
 
 # ``claude-code`` rows are computed live (see registry.py's module
 # docstring) and never persisted in apps.json, so it is deliberately
 # excluded here — a stray/hand-edited row with that kind must be
 # rejected by :func:`src.registry.load_registry`, not silently kept.
-VALID_KINDS = frozenset({KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL})
+VALID_KINDS = frozenset({KIND_STREAMLIT, KIND_WEBAPP, KIND_TUNNEL, KIND_TRAY})
 
 
 @dataclass(frozen=True)
@@ -471,10 +472,14 @@ def git_status(project_dir: Path) -> GitStatus:
 
 
 def classify_bat(bat_path: Path) -> Optional[str]:
-    """Return ``"streamlit"`` | ``"webapp"`` | ``"tunnel"`` | ``None``.
+    """Return ``"tray"`` | ``"streamlit"`` | ``"webapp"`` | ``"tunnel"`` | ``None``.
 
     Classification is mutually exclusive — the first match wins:
 
+    * ``tray`` — filename stem is ``tray`` AND the body references
+      ``tray_lifecycle.ps1`` (issue #456), the one shared marker every
+      fleet ``tray.bat`` carries (project-scaffolding's tray.bat.template).
+      Checked first: a tray.bat never also matches the other signatures.
     * ``streamlit`` — body contains ``streamlit run``. Bats that *also*
       embed ``cloudflared tunnel`` inline (e.g. hybrid ``launch_server.bat``)
       stay in this bucket; they don't write a URL file we can surface.
@@ -487,9 +492,11 @@ def classify_bat(bat_path: Path) -> Optional[str]:
         text = bat_path.read_text(encoding="utf-8", errors="ignore").lower()
     except OSError:
         return None
+    stem = bat_path.stem.lower()
+    if stem == "tray" and "tray_lifecycle.ps1" in text:
+        return KIND_TRAY
     if "streamlit run" in text:
         return KIND_STREAMLIT
-    stem = bat_path.stem.lower()
     has_tunnel_signal = any(
         token in text for token in ("uvicorn", "run_tunnel", "cloudflared")
     )

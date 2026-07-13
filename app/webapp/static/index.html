@@ -609,6 +609,25 @@
         </div>
         </div>
       </details>
+
+      <!-- Collapsed by default, matching Port listeners — a setup-once panel,
+           not the tab's working set (issue #456 part 2/2). -->
+      <details class="card card--collapsible registered-trays-card">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+            <h3 class="collapse-title">Registered Trays</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <ul id="registeredTraysList" class="card-list" aria-label="Registered Trays"></ul>
+        <div id="registeredTraysEmpty" class="empty" hidden>
+          No sister trays discovered yet — tap <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> in Settings to scan for <code>tray.bat</code> files.
+        </div>
+        <p class="launcher-note">Autostart-enabled trays launch one at a time, in order, once app-launcher's own webapp is up.</p>
+        </div>
+      </details>
     </section>
 
     <section id="paneJobs" class="pane" role="tabpanel" aria-labelledby="tabJobs" hidden>
