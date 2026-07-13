@@ -2531,6 +2531,7 @@ body.terminal-open {
 .board-exchange-assistant { white-space: pre-wrap; }
 .board-drawer-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: flex-end;
 }

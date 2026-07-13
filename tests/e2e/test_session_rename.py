@@ -168,3 +168,36 @@ def test_board_drawer_rename_patches_card_in_place(
     expect(card.locator(".board-card-title")).to_have_text(
         "Board custom title", timeout=5_000
     )
+
+
+@pytest.mark.parametrize("width", [700, 900, 1100])
+def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
+    authed_page: Page, base_url: str, width: int
+) -> None:
+    # Regression for #473: below ~1150px the desktop board grid
+    # (styles.css `@media (min-width: 700px) and (pointer: fine)`) let the
+    # drawer-actions row overflow past its own column — the empty "Your
+    # turn" column (stretched tall by CSS Grid's default row `align-items:
+    # stretch` once the drawer expands its sibling) then won by paint order
+    # and swallowed the click. `flex-wrap` on `.board-drawer-actions` keeps
+    # the row inside its own column at every width in this range.
+    captured: dict = {}
+    _mock_board(authed_page)
+    _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)
+    authed_page.set_viewport_size({"width": width, "height": 800})
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
+
+    card = authed_page.locator(
+        '.board-list[data-col="claude_turn"] li.board-item'
+    ).first.locator("button.board-card")
+    expect(card.locator(".board-card-title")).to_have_text(
+        "boardrenameproj", timeout=10_000
+    )
+    card.click()
+
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    drawer.locator("button.board-rename-btn").click()
+    expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
