@@ -639,6 +639,84 @@ def test_overlay_malformed_tail_keeps_hook_status(tmp_path: Path):
     assert cards[0]["status"] == "needs-you"
 
 
+# --------------------------------- pending background dispatch overlay (#464)
+
+
+def _tool_result_line(ts: datetime, result: dict) -> str:
+    """One tool_result line whose ``toolUseResult`` carries a background
+    dispatch's synchronous launch ack — the shape ``_launched_background_ids``
+    reads. ``toolUseResult`` is a sibling of ``message``, not inside it, per
+    live transcripts."""
+    return json.dumps({
+        "type": "user",
+        "timestamp": _iso(ts),
+        "message": {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "toolu_x", "content": "ack"}],
+        },
+        "toolUseResult": result,
+    })
+
+
+def _task_notification_line(ts: datetime, task_id: str) -> str:
+    """A completion notice in Claude Code's real ``queue-operation`` shape —
+    invisible to ``_last_activity`` since it carries no ``message`` field."""
+    return json.dumps({
+        "type": "queue-operation",
+        "operation": "enqueue",
+        "timestamp": _iso(ts),
+        "content": (
+            f"<task-notification>\n<task-id>{task_id}</task-id>\n"
+            "<status>completed</status>\n</task-notification>"
+        ),
+    })
+
+
+def test_overlay_pending_background_bash_keeps_working(tmp_path: Path):
+    """A backgrounded Bash command Claude is still waiting on must not render
+    as needs-you just because its own turn already ended — the parent
+    transcript stays quiet the whole time it's running, so this must not
+    depend on the mtime-past-stamp activity check."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_result_line(
+        stamp_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_pending_background_agent_keeps_working(tmp_path: Path):
+    """Same as above for an async sub-agent (Agent/Task tool) dispatch."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_result_line(
+        stamp_time,
+        {"isAsync": True, "status": "async_launched", "agentId": "agent1"},
+    ) + "\n"
+    row = _state_row("E:/x/y", status="idle", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
+    """Once the completion notice lands, a genuine needs-you still wins — the
+    pending check must not keep matching after the work actually finished."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _tool_result_line(
+            stamp_time - timedelta(minutes=1),
+            {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"},
+        ) + "\n"
+        + _task_notification_line(stamp_time - timedelta(seconds=30), "btask1") + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+
+
 # ------------------------------------------------------------ jobs_attention
 
 

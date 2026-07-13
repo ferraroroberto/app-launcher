@@ -1,6 +1,6 @@
 """Transcript-JSONL parsing for the Board tab (issue #408 split of ``board.py``).
 
-Claude Code's transcript files are the ground truth for two things the hook
+Claude Code's transcript files are the ground truth for three things the hook
 state file can't tell you on its own:
 
 * whether a session that's stamped ``needs-you``/``idle`` has actually
@@ -8,10 +8,14 @@ state file can't tell you on its own:
   #305/#309), and whether an unmatched hook row has recent transcript
   activity that independently proves an external process still exists
   (:func:`_external_row_liveness`, #322/#455);
+* whether a session stamped ``needs-you``/``idle`` is actually still waiting
+  on its *own* backgrounded work — a background sub-agent or shell dispatch
+  it hasn't heard back from yet (:func:`_has_pending_background_dispatch`,
+  #464);
 * the last completed user→assistant exchange, for the drill-down drawer
   (:func:`last_exchange`, #301).
 
-Both read only a bounded tail of the transcript (never the whole file — a
+All read only a bounded tail of the transcript (never the whole file — a
 long session's JSONL can run to many MB) and degrade to "no signal" on any
 IO/parse error; callers keep whatever status/state they already had.
 """
@@ -20,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -41,6 +46,10 @@ _RESUME_EPSILON = timedelta(seconds=10)
 _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=15)
 
 _ACTIVITY_TAIL_BYTES = 8 * 1024
+
+# Pending-background-dispatch detection (#464): the id a completed dispatch
+# is later referenced by, e.g. "<task-id>btvos2agp</task-id>".
+_TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
 
 
 def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
@@ -129,8 +138,15 @@ def _transcript_overlay(
     The probe is two-stage (#309): the mtime ``os.stat`` is only a cheap
     pre-filter — post-Stop metadata lines advance mtime with no real resume —
     so when mtime clears the epsilon, :func:`_last_activity` reads the tail
-    and only a real conversation line past the stamp flips the status. Any
-    failure keeps the hook status. Returns the (possibly overridden)
+    and only a real conversation line past the stamp flips the status.
+
+    Separately (#464), :func:`_has_pending_background_dispatch` always checks
+    the tail for an outstanding background sub-agent/shell dispatch launched
+    *before* Claude's own turn ended — a case the mtime pre-filter above
+    would otherwise skip, since nothing is written to this transcript past
+    the stamp until the background work's own completion notice lands.
+
+    Any failure keeps the hook status. Returns the (possibly overridden)
     ``(status, age-anchor)``.
     """
     if row is None or status not in ("needs-you", "idle"):
@@ -142,12 +158,87 @@ def _transcript_overlay(
     mtime = _transcript_mtime(transcript)
     if mtime is None:
         return status, anchor
-    if mtime - updated <= _RESUME_EPSILON:
-        return status, anchor  # nothing written past the stamp — skip the read
-    activity = _last_activity(transcript)
-    if activity is not None and activity - updated > _RESUME_EPSILON:
-        return "working", activity
+    if mtime - updated > _RESUME_EPSILON:
+        activity = _last_activity(transcript)
+        if activity is not None and activity - updated > _RESUME_EPSILON:
+            return "working", activity
+    if _has_pending_background_dispatch(transcript):
+        return "working", anchor
     return status, anchor
+
+
+def _launched_background_ids(obj: Dict[str, Any]) -> List[str]:
+    """Background-dispatch ids a transcript line's tool result evidences.
+
+    The synchronous ack for a backgrounded dispatch rides ``toolUseResult``
+    (a sibling of ``message``, not inside it, per live transcripts): a
+    backgrounded ``Bash`` command carries ``backgroundTaskId``; an async
+    sub-agent dispatch (the ``Agent``/``Task`` tool) carries ``isAsync: true``
+    plus ``agentId``. Both ids later reappear inside a completion's
+    ``<task-id>`` (see :func:`_notified_background_ids`).
+    """
+    result = obj.get("toolUseResult")
+    if not isinstance(result, dict):
+        return []
+    ids: List[str] = []
+    background_id = result.get("backgroundTaskId")
+    if isinstance(background_id, str) and background_id:
+        ids.append(background_id)
+    if result.get("isAsync"):
+        agent_id = result.get("agentId")
+        if isinstance(agent_id, str) and agent_id:
+            ids.append(agent_id)
+    return ids
+
+
+def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
+    """Background-dispatch ids a ``<task-notification>`` line marks complete.
+
+    Claude Code injects the completion notice as a ``queue-operation`` line's
+    plain ``content`` string, or an ``attachment`` line's
+    ``attachment.prompt`` — never as an ordinary ``assistant``/``user``
+    message, so it is invisible to :func:`_last_activity` (empirically
+    confirmed against live transcripts, app-launcher#464). Either shape
+    carries the same ``<task-id>ID</task-id>``.
+    """
+    text = obj.get("content")
+    if not isinstance(text, str) or "<task-notification>" not in text:
+        attachment = obj.get("attachment")
+        text = attachment.get("prompt") if isinstance(attachment, dict) else None
+    if not isinstance(text, str) or "<task-notification>" not in text:
+        return []
+    return _TASK_ID_RE.findall(text)
+
+
+def _has_pending_background_dispatch(transcript_path: Any) -> bool:
+    """Whether the tail shows a background dispatch with no completion yet.
+
+    A ``Stop`` hook fires (stamping ``needs-you``) the moment Claude's own
+    turn ends — even when that turn dispatched a background sub-agent or
+    shell command it is still waiting to hear back from. The parent
+    transcript then goes quiet until the eventual ``<task-notification>``
+    lands, so #305's activity check alone never catches this window (#464).
+    Unlike :func:`_last_activity` this runs unconditionally, not mtime-gated:
+    the dispatch's launch line sits *before* the hook's stamp, not after it,
+    so the mtime pre-filter that skips a quiet tail would otherwise hide it.
+    Any failure degrades to "nothing pending" — callers keep the hook status.
+    """
+    lines, _truncated = _tail_lines(transcript_path, _ACTIVITY_TAIL_BYTES)
+    launched: set = set()
+    completed: set = set()
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        launched.update(_launched_background_ids(obj))
+        completed.update(_notified_background_ids(obj))
+    return bool(launched - completed)
 
 
 def _external_row_liveness(
