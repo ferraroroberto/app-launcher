@@ -1479,6 +1479,19 @@ summary + .opt-group { border-top: 0; }
   border-color: var(--accent-border-strong);
   min-height: 48px;
 }
+/* Rename-dialog Cancel/Save footer (#484): an equal-width, equal-height pair
+   (home-automation's .confirm-actions grid) — .button-tint's own width:100%
+   would otherwise balloon Save while Cancel shrinks to its content box.
+   Scoped to .row so the stacked editor footers (.dialog-actions--stacked in
+   #jobDialog / #jobRunDialog, same .rename-dialog class) keep their column
+   layout. */
+.rename-dialog .row.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.rename-dialog .row.dialog-actions .button-ghost {
+  min-height: 48px;
+}
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {

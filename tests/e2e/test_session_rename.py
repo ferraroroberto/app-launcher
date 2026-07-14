@@ -170,6 +170,38 @@ def test_board_drawer_rename_patches_card_in_place(
     )
 
 
+def test_rename_dialog_buttons_render_as_equal_pair(
+    authed_page: Page, base_url: str
+) -> None:
+    # Regression for #484: .button-tint's global width:100% ballooned Save to
+    # ~the whole .dialog-actions flex row while Cancel (.button-ghost, no
+    # width/height rule) shrank to its caption-sized content box. The scoped
+    # `.rename-dialog .row.dialog-actions` grid (1fr 1fr) + ghost min-height
+    # must render the two actions as an equal-width, equal-height pair.
+    state = {"manual_title": ""}
+    _mock_sessions_list(authed_page, state)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    expect(row.locator(".name")).to_have_text("renameproj", timeout=10_000)
+
+    row.locator('button[aria-label="Rename session"]').click()
+    expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
+
+    cancel = authed_page.locator("#sessionRenameCancel").bounding_box()
+    save = authed_page.locator(
+        "#sessionRenameForm button[type='submit']"
+    ).bounding_box()
+    assert cancel and save
+    assert abs(cancel["width"] - save["width"]) <= 2, (
+        f"Cancel/Save widths diverge: {cancel['width']} vs {save['width']}"
+    )
+    assert abs(cancel["height"] - save["height"]) <= 2, (
+        f"Cancel/Save heights diverge: {cancel['height']} vs {save['height']}"
+    )
+    assert cancel["height"] >= 48 and save["height"] >= 48
+
+
 @pytest.mark.parametrize("width", [700, 900, 1100])
 def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     authed_page: Page, base_url: str, width: int
