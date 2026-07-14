@@ -367,6 +367,26 @@ def test_merge_no_state_row_shared_name_is_none():
     assert cards[0]["shared_name_source"] is None
 
 
+def test_merge_cwd_fallback_ignores_row_older_than_session_start():
+    """#482: a brand-new live session with no exact-id row yet must not
+    inherit an unrelated leftover same-cwd row's title. The leftover here was
+    last updated hours before this session even started, so it can only be
+    some earlier, unrelated conversation in the same directory — a row can
+    only be a session's own state if it was written at-or-after that
+    session's started_at."""
+    live = [_live("new-session", "E:/automation/app-launcher", 2)]
+    state_rows = {
+        "stale-leftover": _state_row(
+            "E:/automation/app-launcher", status="needs-you",
+            updated_min_ago=300, name="Vendor project-scaffolding's button component",
+        ),
+    }
+    cards = board.merge_sessions(live, state_rows, now=NOW)
+    assert cards[0]["shared_name"] is None
+    assert cards[0]["status"] == "unknown"
+    assert cards[0]["state_sid"] is None
+
+
 # ------------------------------------------ manual title override (#458)
 
 

@@ -64,6 +64,14 @@ def _match_state_row(
     cwd fallback. Rows carrying a different launcher id are never allowed to
     fall back by cwd — that would reintroduce the same-session collision exact
     identity exists to prevent (#455).
+
+    The cwd fallback also requires the row's ``updated_at`` to be at-or-after
+    the session's own ``started_at`` (#482) — a row genuinely written by this
+    session can never predate the session's existence, so an older row can
+    only be some other, unrelated conversation's leftover state in the same
+    directory (e.g. a race where this session's own row hasn't landed yet).
+    Without this guard the "most recently updated" tie-break could hand a
+    brand-new session an hours-old sibling's title.
     """
     session_id = str(session.get("session_id") or "")
     agent = _session_agent(session)
@@ -81,6 +89,7 @@ def _match_state_row(
     project_dir_norm = _normalize_dir(session.get("project_dir"))
     if not project_dir_norm:
         return None
+    session_started = _parse_iso(session.get("started_at")) or _EPOCH
     best_sid: Optional[str] = None
     best_stamp = _EPOCH
     for sid, row in unmatched.items():
@@ -90,6 +99,8 @@ def _match_state_row(
         if row_cwd != project_dir_norm and not row_cwd.startswith(project_dir_norm + "/"):
             continue
         stamp = _parse_iso(row.get("updated_at")) or _EPOCH
+        if stamp < session_started:
+            continue
         if best_sid is None or stamp > best_stamp:
             best_sid, best_stamp = sid, stamp
     return best_sid
