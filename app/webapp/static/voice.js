@@ -119,6 +119,14 @@ export function createDictation(opts) {
   // Each partial replaces exactly that span, preserving text typed before it.
   let _dictStart = 0;
   let _dictLen = 0;
+  // True from the moment recording stops until the canonical transcript has
+  // settled (issue #489). A long dictation gives the finalize network round
+  // trip a real window to still be in flight when the user taps Send; Send
+  // reading+clearing the textarea mid-window raced the late
+  // renderDictation() call, which writes into the tracked span with
+  // ``setRangeText`` — on an already-cleared textarea that clamps to offset
+  // 0, so the final transcript landed unsent instead of Send ever seeing it.
+  let _finishing = false;
 
   function setRecordingUI(on) {
     if (!button) return;
@@ -290,6 +298,7 @@ export function createDictation(opts) {
   async function finishStreaming() {
     const sid = _voiceSession;
     _recorder = null;
+    _finishing = true;
     button.disabled = true;
     const stopTimer = startWorkTimer(button, icon('mic'));
     try {
@@ -318,6 +327,7 @@ export function createDictation(opts) {
       closeVoiceEvents();
       _voiceSession = null;
       _streaming = false;
+      _finishing = false;
       stopTimer();
       button.disabled = false;
     }
@@ -328,6 +338,7 @@ export function createDictation(opts) {
     const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
     const fd = new FormData();
     fd.append('file', blob, 'recording.' + ext);
+    _finishing = true;
     button.disabled = true;
     const stopTimer = startWorkTimer(button, icon('mic'));
     try {
@@ -360,6 +371,7 @@ export function createDictation(opts) {
     } catch (exc) {
       apiFailToast('Transcription failed', exc);
     } finally {
+      _finishing = false;
       stopTimer();
       button.disabled = false;
     }
@@ -373,6 +385,11 @@ export function createDictation(opts) {
     stop: stopRecording,
     isRecording: function () {
       return !!(_recorder && _recorder.state === 'recording');
+    },
+    // True while actively recording OR while a stopped take is still
+    // finalizing (#489) — the window a caller like Send must not race.
+    isBusy: function () {
+      return !!(_recorder && _recorder.state === 'recording') || _finishing;
     },
   };
   return api;

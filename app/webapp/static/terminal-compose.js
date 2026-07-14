@@ -12,7 +12,10 @@
  * drops the transcript into the compose textarea for review — never
  * straight into the PTY. The recording pipeline itself (streamed partials
  * with the single-shot fallback) lives in the shared voice.js since #302 —
- * this is just the compose bar's mounted instance.
+ * this is just the compose bar's mounted instance. ➤ Send refuses to run
+ * while composeDictation.isBusy() (#489) — a stopped-but-still-finalizing
+ * dictation is still writing into the tracked span; Send racing that window
+ * cleared the buffer under it instead of ever seeing the settled transcript.
  *
  * Screenshot OCR (issue #171): the 📷 button *stages* one or more
  * screenshots into a tray; nothing is sent yet. Each tap accumulates more
@@ -281,6 +284,16 @@ export function wireCompose() {
   els.terminalComposeSend.addEventListener('click', function () {
     const t = state.terminal;
     if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+    // #489: a dictation that just stopped is still finalizing (POST
+    // /finish) until composeDictation settles the canonical transcript into
+    // the textarea. Reading+clearing the buffer mid-window raced that
+    // settle — the longer the recording, the wider the window. Wait it out
+    // instead of racing it; the transcript lands a beat later and Send works
+    // normally then.
+    if (composeDictation.isBusy()) {
+      toast('🎤 Still transcribing — wait for the transcript, then ➤ Send', 'error');
+      return;
+    }
     const text = els.terminalComposeInput.value;
     if (!text) return;
     // #450: when an image path was attached into this buffer, defer the
