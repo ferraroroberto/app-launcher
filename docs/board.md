@@ -47,7 +47,8 @@ Join mechanics (`_claim_walk` / `_match_state_row`):
 - Live sessions are walked **newest-first** by `started_at`.
 - Each session first claims an unmatched state row with the same `launcher_session_id` and `agent`.
 - Without exact identity, the session can claim only an agent-compatible row whose normalized `cwd` is **equal-or-under** the session's project dir. A row carrying a different launcher id is never allowed to fall back by cwd.
-- Two legacy candidate rows in one directory → the **most recently updated** wins.
+- The cwd fallback also requires the candidate row's `updated_at` to be **at-or-after** the session's own `started_at` (#482) — a row genuinely written by this session can never predate the session's existence, so an older row can only be some other, unrelated conversation's leftover state in the same directory. Without this guard, a brand-new live session with no exact-id row yet (its own hook write hasn't landed) could claim an hours-old sibling's row by "most recently updated" and show that sibling's `shared_name` on its card.
+- Two legacy candidate rows in one directory → the **most recently updated** (among those not older than the session itself) wins.
 - Two live sessions in the same dir → the fresher one claims the row; the older renders `unknown`.
 - A fresh unmatched row with **no** live session becomes a state-only external card only when its declared transcript file exists and was written within the last 15 minutes. Hook status is semantic evidence, not process-liveness evidence: a missing cloud/bridge transcript or a quiet `working`/`needs-you`/`idle` row is suppressed rather than trusted for the state file's 24 h retention window. The first suppression per state id leaves an info-level breadcrumb with the distinct reason (missing path, unavailable file, or quiet transcript) without repeating on every poll.
 
