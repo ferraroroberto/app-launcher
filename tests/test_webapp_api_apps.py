@@ -661,6 +661,39 @@ class TestLaunchAppTracksSpawn:
         assert resp.status_code == 200
         assert recorded == [("alpha", "Alpha", "streamlit", 54321)]
 
+    def test_launch_tray_does_not_record_spawn(self, webapp_client, monkeypatch):
+        """A tray.bat's real long-lived process detaches from spawn_bat's
+        PID via tray_lifecycle.ps1's Start-Process (issue #456 follow-up) —
+        tracking it in Running apps would offer a port that can never
+        resolve and a Stop button that can't reach the real process.
+        Port listeners already resolves it correctly once it's up."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [
+                AppEntry(
+                    id="home-automation-tray",
+                    name="Home Automation",
+                    kind="tray",
+                    bat_path="C:\\stub\\home-automation\\tray.bat",
+                    added_at=datetime.now().isoformat(),
+                ),
+            ],
+        )
+        monkeypatch.setattr(apps_router, "spawn_bat", lambda _path: 54321)
+        recorded: list[tuple] = []
+        monkeypatch.setattr(
+            apps_router.app_runtime,
+            "record_spawn",
+            lambda *a: recorded.append(a),
+        )
+
+        resp = client.post("/api/apps/home-automation-tray/launch")
+        assert resp.status_code == 200
+        assert recorded == []
+
 
 class TestDeleteApp:
     def test_404_on_unknown_id(self, webapp_client):
