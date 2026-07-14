@@ -1484,13 +1484,15 @@ summary + .opt-group { border-top: 0; }
    would otherwise balloon Save while Cancel shrinks to its content box.
    Scoped to .row so the stacked editor footers (.dialog-actions--stacked in
    #jobDialog / #jobRunDialog, same .rename-dialog class) keep their column
-   layout. The 12px top margin is the modal contract's rowPadding step
-   (design.md components.modal, same 12px as .dialog-actions--stacked and
-   .rename-dialog .stacked) — without it the footer sits flush against the
-   input above. */
+   layout. One 12px step — the modal contract's rowPadding (design.md
+   components.modal) and this dialog's own internal rhythm (h2 margin,
+   .stacked padding, .dialog-actions--stacked) — sets BOTH the field-to-footer
+   margin and the Cancel/Save gap, overriding .row's 8px so the dialog reads
+   as one uniform grid rather than three different gaps (#484 round 3). */
 .rename-dialog .row.dialog-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  gap: 12px;
   margin-top: 12px;
 }
 /* The rename forms' bare title field (#484 follow-up): .input-native has no
