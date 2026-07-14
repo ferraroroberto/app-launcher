@@ -11,13 +11,16 @@ actually exits the TUI.  It makes no model request.  Machines without Codex (CI
 included) skip cleanly.
 
 Codex 0.144.x adds a "Hooks need review" startup modal whenever ``~/.codex``
-carries new or changed lifecycle hooks (issue #462).  That interstitial paints
-over the composer and captures Enter, so the probe must clear it before the
-composer it is meant to test even exists.  The submit contract itself is
-unchanged — once the composer is reached, one bracketed paste plus one carriage
-return still submits.  We therefore dismiss the modal when present (a
-non-mutating "continue without trusting" choice) rather than adjusting the
-submit sequence.
+carries new or changed lifecycle hooks (issue #462), and a separate
+"Update available!" startup modal appears whenever a newer Codex CLI release
+exists (issue #485).  Either interstitial paints over the composer and
+captures Enter, so the probe must clear both before the composer it is meant
+to test even exists.  The submit contract itself is unchanged — once the
+composer is reached, one bracketed paste plus one carriage return still
+submits.  We therefore dismiss each modal when present (non-mutating choices:
+"Skip" for the update prompt, "esc to close" for the hooks panel — neither
+persists a preference or trusts anything) rather than adjusting the submit
+sequence.
 """
 
 from __future__ import annotations
@@ -36,37 +39,56 @@ pytestmark = pytest.mark.skipif(
     reason="Windows, pywinpty, and Codex CLI are required",
 )
 
-# Text that only appears once the composer banner has painted.  Reaching it is
-# how we know any startup interstitial is gone and input will land in the
-# composer rather than a modal.
+# Text that only appears once the composer banner has painted.  Note that the
+# composer box paints in the background even while an overlay modal/panel sits
+# on top of it, so this alone does not prove input will land in the composer —
+# the modal markers below must be checked first on every poll.
 _COMPOSER_MARKER = "OpenAI Codex"
-# The Codex 0.144.x startup interstitial (issue #462); its number-select list
-# offers "3. Continue without trusting", the least-side-effect, non-persisting
-# dismissal.
-_HOOKS_MODAL_MARKER = "Hooks need review"
+# The "Update available!" startup modal (issue #485) appears whenever a newer
+# Codex CLI release exists.  "2. Skip" dismisses it for this run only, without
+# running the update or persisting a "skip until next version" preference.
+# Matched on its "Press enter to continue" prompt rather than the "Update
+# available!" title: that title stays painted as a static banner above the
+# composer even after the modal itself is dismissed, so matching on it would
+# make this branch fire forever and starve the hooks/composer checks below.
+_UPDATE_MODAL_MARKER = "Press enter to continue"
+# The hooks-review startup panel (issue #462, reshaped since — issue #485)
+# whenever ``~/.codex`` carries new or changed lifecycle hooks.  Matched
+# case-insensitively since the exact phrasing/casing has already changed once
+# ("Hooks need review" -> "N hooks need review"). "esc to close" dismisses it
+# without trusting anything.
+_HOOKS_MODAL_MARKER = "hooks need review"
 
 
 async def _reach_composer(session: PtySession) -> bool:
-    """Poll until the Codex composer is up, clearing a startup interstitial.
+    """Poll until the Codex composer is up, clearing startup interstitials.
 
-    Returns ``True`` once the composer banner is visible.  If a "Hooks need
-    review" modal is on screen it is dismissed with ``3<Enter>`` ("continue
-    without trusting" — per-session, mutates nothing).  Bounded so a genuinely
-    stuck TUI fails the assertion instead of hanging.
+    Returns ``True`` once the composer banner is visible with no known modal
+    on top of it. The "Update available!" modal is dismissed with
+    ``2<Enter>`` ("Skip"); the hooks-review panel is dismissed with ``Esc``
+    ("close" without trusting). Modals are checked before the composer marker
+    on every poll, since the composer banner paints in the background even
+    while a modal overlays it. Bounded so a genuinely stuck TUI fails the
+    assertion instead of hanging.
     """
-    for _ in range(50):  # ~10 s ceiling at 0.2 s per poll
+    for _ in range(75):  # ~15 s ceiling at 0.2 s per poll, two modals to clear
         frame = session.snapshot_frame() or ""
-        if _COMPOSER_MARKER in frame:
+        if _UPDATE_MODAL_MARKER in frame:
+            # Numbered-select modal: digit moves the cursor, Enter confirms.
+            session.write("2\r")
+        elif _HOOKS_MODAL_MARKER in frame.lower():
+            session.write("\x1b")
+        elif _COMPOSER_MARKER in frame:
             return True
-        if _HOOKS_MODAL_MARKER in frame:
-            # Numbered-select modals accept the digit to move the cursor and
-            # Enter to confirm.  Only sent while the modal is actually up, so a
-            # composer-only run never receives these keystrokes.
-            session.write("3\r")
         if not session.alive:
             return False
         await asyncio.sleep(0.2)
-    return _COMPOSER_MARKER in (session.snapshot_frame() or "")
+    frame = session.snapshot_frame() or ""
+    return (
+        _UPDATE_MODAL_MARKER not in frame
+        and _HOOKS_MODAL_MARKER not in frame.lower()
+        and _COMPOSER_MARKER in frame
+    )
 
 
 async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
@@ -93,11 +115,13 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
         session.write("\x1b[?1;2c")
         session.write("\x1b[I")
 
-        # Clear any startup interstitial (Codex 0.144.x hooks-review modal,
-        # #462) so the paste lands in the composer, not a modal.
+        # Clear any startup interstitial (Codex 0.144.x hooks-review panel,
+        # #462; update-available modal, #485) so the paste lands in the
+        # composer, not a modal.
         assert await _reach_composer(session), (
             "Codex composer never became ready — a startup interstitial other "
-            "than the known hooks-review modal may be blocking input"
+            "than the known hooks-review or update-available modals may be "
+            "blocking input"
         )
         # Let the composer finish settling before pasting.  The banner paints a
         # beat before the input is ready to treat a trailing CR as Submit; on a
