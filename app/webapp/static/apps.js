@@ -743,6 +743,11 @@ function wireScanDialog() {
 }
 
 // ----------------------------------------------------------- listeners panel (Apps tab)
+// Parent rows with dependent children keep them collapsed behind a tap
+// (#480). Module-level so the expand state survives the poll's re-renders.
+const expandedListenerPorts = new Set();
+let lastListenerItems = [];
+
 export async function fetchListeners() {
   try {
     const body = await jsonApi('/api/ports/probe');
@@ -754,6 +759,7 @@ export async function fetchListeners() {
 }
 
 function renderListeners(items) {
+  lastListenerItems = items;
   const host = els.listenersList;
   host.innerHTML = '';
   els.listenersEmpty.hidden = items.length !== 0;
@@ -773,14 +779,17 @@ function renderListeners(items) {
   });
 
   topLevel.forEach(function (l) {
-    host.appendChild(buildListenerRow(l, false));
-    (childrenOf[l.port] || []).forEach(function (c) {
-      host.appendChild(buildListenerRow(c, true));
-    });
+    const kids = childrenOf[l.port] || [];
+    host.appendChild(buildListenerRow(l, false, kids.length > 0));
+    if (expandedListenerPorts.has(l.port)) {
+      kids.forEach(function (c) {
+        host.appendChild(buildListenerRow(c, true, false));
+      });
+    }
   });
 }
 
-function buildListenerRow(l, isChild) {
+function buildListenerRow(l, isChild, hasChildren) {
   const row = document.createElement('div');
   row.className = isChild ? 'listener-row child' : 'listener-row';
 
@@ -796,10 +805,29 @@ function buildListenerRow(l, isChild) {
   meta.appendChild(sub);
   row.appendChild(meta);
 
+  if (hasChildren) {
+    // Collapsed by default (#480): the whole parent row is the tap target;
+    // the chevron rotates open like the panel-level disclosure idiom.
+    row.classList.add('expandable');
+    row.setAttribute('aria-expanded', expandedListenerPorts.has(l.port) ? 'true' : 'false');
+    const chev = document.createElement('span');
+    chev.className = 'listener-chevron';
+    chev.setAttribute('aria-hidden', 'true');
+    chev.textContent = '›';
+    row.appendChild(chev);
+    row.addEventListener('click', function () {
+      if (expandedListenerPorts.has(l.port)) expandedListenerPorts.delete(l.port);
+      else expandedListenerPorts.add(l.port);
+      renderListeners(lastListenerItems);
+    });
+  }
+
   const kill = document.createElement('button');
   kill.type = 'button';
   kill.innerHTML = icon('octagon-x') + ' Kill';
-  kill.addEventListener('click', async function () {
+  kill.addEventListener('click', async function (ev) {
+    // Kill on a parent row must never toggle the collapse (#480).
+    ev.stopPropagation();
     const label = (isChild ? l.service : l.app) || ('port ' + l.port);
     if (!confirm('Kill ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
     try {

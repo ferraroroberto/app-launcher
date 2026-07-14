@@ -1308,6 +1308,17 @@ summary + .opt-group { border-top: 0; }
 }
 .listener-row strong { word-break: break-word; }
 .listener-row .meta { color: var(--muted); font-size: var(--font-caption); }
+/* Parent row whose dependent children are collapsed behind a tap (#480). */
+.listener-row.expandable { cursor: pointer; }
+.listener-chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.listener-row[aria-expanded="true"] .listener-chevron { transform: rotate(90deg); }
 .listener-row button {
   flex-shrink: 0;
   background: transparent;
