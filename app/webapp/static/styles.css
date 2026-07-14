@@ -1484,10 +1484,21 @@ summary + .opt-group { border-top: 0; }
    would otherwise balloon Save while Cancel shrinks to its content box.
    Scoped to .row so the stacked editor footers (.dialog-actions--stacked in
    #jobDialog / #jobRunDialog, same .rename-dialog class) keep their column
-   layout. */
+   layout. The 12px top margin is the modal contract's rowPadding step
+   (design.md components.modal, same 12px as .dialog-actions--stacked and
+   .rename-dialog .stacked) — without it the footer sits flush against the
+   input above. */
 .rename-dialog .row.dialog-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
+  margin-top: 12px;
+}
+/* The rename forms' bare title field (#484 follow-up): .input-native has no
+   width rule, so outside a .stacked flex column it rendered at the browser's
+   intrinsic <input> width — narrower than the button pair below it. Stacked
+   editor controls already stretch; this makes the bare case match. */
+.rename-dialog .input-native {
+  width: 100%;
 }
 .rename-dialog .row.dialog-actions .button-ghost {
   min-height: 48px;

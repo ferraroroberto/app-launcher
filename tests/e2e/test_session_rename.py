@@ -201,6 +201,18 @@ def test_rename_dialog_buttons_render_as_equal_pair(
     )
     assert cancel["height"] >= 48 and save["height"] >= 48
 
+    # #484 follow-up: the title field spans the same width as the button pair
+    # (Cancel's left edge to Save's right edge), and the footer keeps the
+    # modal contract's 12px row spacing instead of sitting flush against it.
+    field = authed_page.locator("#sessionRenameInput").bounding_box()
+    assert field
+    pair_width = (save["x"] + save["width"]) - cancel["x"]
+    assert abs(field["width"] - pair_width) <= 2, (
+        f"input width {field['width']} != actions row width {pair_width}"
+    )
+    gap = cancel["y"] - (field["y"] + field["height"])
+    assert gap >= 10, f"input-to-footer gap collapsed: {gap}px"
+
 
 @pytest.mark.parametrize("width", [700, 900, 1100])
 def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
