@@ -68,7 +68,7 @@ DEFAULT_TERMINAL_HISTORY_LINES = 10_000
 MIN_TERMINAL_HISTORY_LINES = 200
 MAX_TERMINAL_HISTORY_LINES = 50_000
 
-VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku")
+VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku", "fable")
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "high"

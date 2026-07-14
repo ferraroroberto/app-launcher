@@ -68,6 +68,13 @@ class TestGetConfig:
         ):
             assert key in claude, f"missing key {key} in /api/config claude block"
 
+    def test_claude_models_available_includes_fable(self, webapp_client):
+        client, _, _ = webapp_client
+        body = client.get("/api/config").json()
+        assert body["claude"]["models_available"] == [
+            "opus", "sonnet", "haiku", "fable"
+        ]
+
     def test_antigravity_block_shape(self, webapp_client):
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
@@ -152,6 +159,13 @@ class TestPatchConfig:
         assert "--effort low" in resp.json()["claude_flags"]
         # And the in-memory cfg was swapped.
         assert app.state.webapp_config.claude_effort == "low"
+
+    def test_patches_claude_model_to_fable(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"claude_model": "fable"})
+        assert resp.status_code == 200
+        assert "--model fable" in resp.json()["claude_flags"]
+        assert app.state.webapp_config.claude_model == "fable"
 
     def test_patch_never_persists_session_host_port_env_override(
         self, webapp_client, monkeypatch
