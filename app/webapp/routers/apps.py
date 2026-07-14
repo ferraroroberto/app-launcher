@@ -40,7 +40,7 @@ from src.registry import (
     rename_by_id,
     set_autostart_by_id,
 )
-from src.scanner import KIND_CLAUDE_CODE, KIND_TUNNEL
+from src.scanner import KIND_CLAUDE_CODE, KIND_TRAY, KIND_TUNNEL
 from src.webapp_config import (
     WebappConfig,
     build_antigravity_flags,
@@ -319,7 +319,17 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         pid = spawn_bat(Path(entry.bat_path))
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
+    # A tray.bat hands its real long-lived process off to
+    # tray_lifecycle.ps1's `Start-Process`, then that PowerShell hop exits —
+    # so the pythonw.exe tray is never a live descendant of spawn_bat's own
+    # PID by the time anything polls for it (verified empirically: Running
+    # apps showed "binding…" forever and duplicate ghost rows on repeat
+    # taps). Tracking it here would offer a port/URL that never resolves
+    # and a Stop button that can't reach the real process either — so a
+    # tray launch isn't tracked at all; Port listeners already resolves it
+    # correctly once it's actually up (issue #456 follow-up).
+    if entry.kind != KIND_TRAY:
+        app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
     return {"launched": entry.id, "name": entry.name, "kind": entry.kind}
 
 
