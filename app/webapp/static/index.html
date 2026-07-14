@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/static/_vendored/card/card.css">
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
+  <link rel="stylesheet" href="/static/_vendored/button/button.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
   <script>
@@ -500,7 +501,7 @@
           </span>
           <span class="summary-actions">
             <div class="sessions-header-actions">
-              <button id="gitStatusBtn" type="button" class="ghost-btn git-status-btn"
+              <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
                       title="Check each project's git branch + uncommitted changes"
                       aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> status</button>
               <div id="gitStatusSummary" class="git-summary" hidden
@@ -529,7 +530,7 @@
             <h3 class="collapse-title">Projects</h3>
           </span>
           <span class="summary-actions">
-            <button id="favFilterBtn" type="button" class="ghost-btn fav-filter-btn"
+            <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
                     aria-pressed="false" title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg> Favorites</button>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
@@ -651,13 +652,13 @@
           </span>
           <span class="summary-actions">
             <div class="jobs-header-actions">
-              <button id="jobsAddBtn" type="button" class="ghost-btn jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
+              <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
               <button type="button" id="jobsEditBtn" class="edit-toggle jobs-edit-btn" role="switch" aria-checked="false"
                      aria-label="Edit mode"
                      title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
               </button>
-              <button id="jobsSortBtn" type="button" class="ghost-btn jobs-sort-btn" aria-label="Change job sort order"></button>
+              <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
@@ -854,8 +855,8 @@
           </button>
         </div>
         <div class="row settings-actions">
-          <button id="saveSettings" type="button" class="ghost-btn accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
-          <button id="rescanBtn" type="button" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
+          <button id="saveSettings" type="button" class="button-ghost accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
+          <button id="rescanBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
         </div>
         <hr>
         <p id="statusReadout" class="muted small"></p>
@@ -1029,7 +1030,7 @@
             empty list → one-tap fire as today.
           </p>
           <ol id="jobParamsList" class="job-params-list"></ol>
-          <button type="button" id="jobParamsAdd" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
+          <button type="button" id="jobParamsAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
         </section>
         <section class="dialog-section">
           <h3 class="dialog-section-title">Webhook</h3>
@@ -1063,13 +1064,13 @@
               to this job's parameter names above.
             </p>
             <ol id="jobWebhookMappingList" class="job-params-list"></ol>
-            <button type="button" id="jobWebhookMappingAdd" class="ghost-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
+            <button type="button" id="jobWebhookMappingAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
           </div>
         </section>
         <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
         <div class="dialog-actions dialog-actions--stacked">
-          <button type="button" id="jobSaveAnyway" class="big-btn warn" hidden>Save anyway</button>
-          <button type="submit" id="jobSaveBtn" class="big-btn">Add and verify</button>
+          <button type="button" id="jobSaveAnyway" class="button-tint warn" hidden>Save anyway</button>
+          <button type="submit" id="jobSaveBtn" class="button-tint">Add and verify</button>
         </div>
       </form>
     </dialog>
@@ -1089,7 +1090,7 @@
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
         </button>
         <div class="dialog-actions dialog-actions--stacked">
-          <button type="submit" class="big-btn">▶ Run</button>
+          <button type="submit" class="button-tint">▶ Run</button>
         </div>
       </form>
     </dialog>
@@ -1103,8 +1104,8 @@
       <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> New entries</h2>
       <div id="scanResults" class="scan-results"></div>
       <div class="row dialog-actions">
-        <button id="scanCancel" type="button" class="ghost-btn">Cancel</button>
-        <button id="scanSave" type="button" class="big-btn">Add selected</button>
+        <button id="scanCancel" type="button" class="button-ghost">Cancel</button>
+        <button id="scanSave" type="button" class="button-tint">Add selected</button>
       </div>
     </dialog>
 
@@ -1113,8 +1114,8 @@
         <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename</h2>
         <input id="renameInput" type="text" class="input-native" required>
         <div class="row dialog-actions">
-          <button type="button" id="renameCancel" class="ghost-btn">Cancel</button>
-          <button type="submit" class="big-btn">Save</button>
+          <button type="button" id="renameCancel" class="button-ghost">Cancel</button>
+          <button type="submit" class="button-tint">Save</button>
         </div>
       </form>
     </dialog>
@@ -1124,8 +1125,8 @@
         <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename session</h2>
         <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
         <div class="row dialog-actions">
-          <button type="button" id="sessionRenameCancel" class="ghost-btn">Cancel</button>
-          <button type="submit" class="big-btn">Save</button>
+          <button type="button" id="sessionRenameCancel" class="button-ghost">Cancel</button>
+          <button type="submit" class="button-tint">Save</button>
         </div>
       </form>
     </dialog>
@@ -1143,7 +1144,7 @@
       <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Sign in</h2>
       <p class="muted small">Enter the password to use the launcher.</p>
       <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" required>
-      <button type="submit" class="big-btn">Unlock</button>
+      <button type="submit" class="button-tint">Unlock</button>
       <div id="loginError" class="login-error" hidden></div>
     </form>
   </div>
