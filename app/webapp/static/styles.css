@@ -52,6 +52,12 @@
   --accent-soft: rgb(from var(--accent) r g b / 0.16);
   --accent-border-soft: rgb(from var(--accent) r g b / 0.24);
   --accent-border-strong: rgb(from var(--accent) r g b / 0.28);
+  /* Vendored button.css's danger-tier token names (issue #477) — this app's
+     equivalent status color is --danger, so alias rather than fork a second
+     red. Lazily re-resolves per theme same as the accent-soft trio above. */
+  --deficit: var(--danger);
+  --deficit-soft: rgb(from var(--danger) r g b / 0.12);
+  --deficit-border-soft: rgb(from var(--danger) r g b / 0.30);
   /* radii (rounded scale) — theme-independent */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -1239,36 +1245,31 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-label);
   min-height: var(--control-h);
 }
-.big-btn {
+/* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
+   tiers (issue #477, project-scaffolding's button/ component) — fill,
+   border, radius, cursor and the shared :disabled recipe now come from
+   _vendored/button/button.css. What's left here is app-launcher's own
+   layout/size/weight/press-feedback, kept as-is so this migration doesn't
+   restyle any existing button. */
+.button-tint {
   width: 100%;
   padding: 14px 18px;
   font-size: var(--font-label);
   font-weight: 600;
-  background: var(--accent-soft);
-  color: var(--accent);
-  border: 1px solid var(--accent-border-soft);
-  border-radius: var(--radius-md);
-  cursor: pointer;
   min-height: 44px;
 }
-.big-btn:active { filter: brightness(0.9); }
-.ghost-btn {
-  background: transparent;
-  color: var(--muted);
-  border: 1px solid var(--line);
+.button-tint:active { filter: brightness(0.9); }
+.button-ghost {
   padding: 8px 12px;
-  font-size: var(--font-caption);
-  border-radius: var(--radius-md);
-  cursor: pointer;
 }
-.ghost-btn:active { color: var(--fg); }
-.ghost-btn.accent-btn {
+.button-ghost:active { color: var(--fg); }
+.button-ghost.accent-btn {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: var(--accent-border-soft);
   font-weight: 600;
 }
-.ghost-btn.accent-btn:active { color: var(--accent); filter: brightness(0.9); }
+.button-ghost.accent-btn:active { color: var(--accent); filter: brightness(0.9); }
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: var(--font-caption); }
@@ -1461,7 +1462,7 @@ summary + .opt-group { border-top: 0; }
   padding-top: 12px;
   border-top: 1px solid var(--line-muted);
 }
-.rename-dialog .dialog-actions .big-btn:not(.warn) {
+.rename-dialog .dialog-actions .button-tint:not(.warn) {
   background: var(--accent);
   color: var(--accent-fg);
   border-color: var(--accent-border-strong);
@@ -1469,7 +1470,7 @@ summary + .opt-group { border-top: 0; }
 }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
-.big-btn.warn {
+.button-tint.warn {
   background: rgb(from var(--attention) r g b / 0.16);
   color: var(--attention);
   border-color: rgb(from var(--attention) r g b / 0.24);
@@ -1771,6 +1772,10 @@ body.terminal-open {
   border-color: transparent;
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
+/* Every icon-only button in the terminal toolbar meets the 44x44pt HIG
+   minimum (issue #477) — the base .term-btn's 40px min-height had no
+   min-width, so an icon glyph (like ✕) sat in a ~40x40 hit area. */
+.terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
 /* ‹ Back button (issue #259) — wider tap target so it's harder to
    mis-tap the adjacent ✕ on a phone; the glyph stays centred. */
 #terminalBack { min-width: 56px; text-align: center; }
@@ -1878,6 +1883,8 @@ body.terminal-open {
   z-index: 30;
   box-shadow: var(--shadow);
 }
+/* Not migrated to the button tiers (issue #477 audit): this is a fixed 3-col
+   D-pad grid keyboard popover, not a standalone action button. */
 .key-btn {
   min-height: 52px;
   font-size: var(--icon-title);
@@ -2268,6 +2275,8 @@ body.terminal-open {
 /* Same 10px radius as the rest of the row's controls (compose-send/record,
    .detached-toggle) — a 999px pill here read as a different, more-rounded
    style than its neighbors (#337). */
+/* Not migrated to the button tiers (issue #477 audit): a segmented-control
+   toggle (has an .active state), not one of the four one-off action tiers. */
 .board-mode-btn {
   min-height: var(--control-h);
   padding: 0 10px;
@@ -2305,6 +2314,9 @@ body.terminal-open {
   gap: 6px;
   margin: 0 0 10px;
 }
+/* Not migrated to the button tiers (issue #477 audit): the column-switcher
+   strip is a segmented control (has an .active state), same case as
+   .board-mode-btn above. */
 .board-strip-btn {
   flex: 1;
   min-width: 0;

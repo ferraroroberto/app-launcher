@@ -1,0 +1,15 @@
+<!-- Fleet button — markup skeletons (copy and adapt).
+     Four tiers: one .button-primary per view, .button-tint for secondary
+     emphasis, .button-ghost for quiet tertiary actions, .button-surface for
+     toolbar/utility/icon buttons. Every tier takes the plain :disabled
+     attribute — no separate disabled class. -->
+<button type="button" class="button-primary">Save</button>
+<button type="button" class="button-tint">Run now</button>
+<button type="button" class="button-ghost">Cancel</button>
+<button type="button" class="button-surface">Options</button>
+
+<!-- Disabled: the shared card-off/line/muted recipe applies to any tier. -->
+<button type="button" class="button-primary" disabled>Save</button>
+
+<!-- Danger: restates the tint recipe on --deficit for a destructive action. -->
+<button type="button" class="button-tint danger">Delete</button>
