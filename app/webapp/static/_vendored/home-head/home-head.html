@@ -1,0 +1,16 @@
+<!-- Markup skeleton — copy and adapt. A `.card home-head` row: leading glyph +
+     title (+ optional inline .status) on the left, an icon-only theme toggle
+     pinned right. Link home-head.css AFTER card.css — it zeroes the card's own
+     padding for the 52px row, the same source-order convention the disclosure
+     card uses. Wire the toggle to your theme boot script (design.md v2 "Theme
+     switching"): swap the glyph and persist the `<app>.theme` key. -->
+<div class="card home-head">
+  <span class="home-title">
+    <svg class="icon" aria-hidden="true"><use href="#i-house"></use></svg>
+    App name
+  </span>
+  <span class="status">All systems normal</span>
+  <button type="button" class="home-toggle" aria-label="Toggle theme" title="Toggle theme">
+    <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+  </button>
+</div>

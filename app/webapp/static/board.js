@@ -35,7 +35,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
-import { openSessionRename, sessionTitle } from './sessions.js';
+import { openSessionRename, sessionTitle, stopSession } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -196,6 +196,54 @@ function buildDrawer(card) {
     });
     actions.appendChild(send);
   }
+  // Rename first, icon-only (#496 item 5 — was after Terminal, labelled).
+  // Same launcher-native override as the Coding tab's row rename button,
+  // reachable for detached sessions too (no PTY needed). The drawer stays
+  // open across a rename (unlike Terminal, which navigates away), so the
+  // completion callback patches this card in place rather than calling
+  // fetchBoard() — that would no-op under its own drawer-open self-gate
+  // (see fetchBoard()).
+  if (card.alive) {
+    const rename = document.createElement('button');
+    rename.type = 'button';
+    rename.className = 'board-rename-btn';
+    rename.innerHTML = icon('pencil');
+    rename.title = 'Rename this session';
+    rename.setAttribute('aria-label', 'Rename this session');
+    rename.addEventListener('click', function () {
+      openSessionRename(card, function (title) {
+        card.manual_title = title;
+        renderBoard();
+      });
+    });
+    actions.appendChild(rename);
+  }
+  // Stop (#496 item 5, ordered before Terminal in round 2): kill a live
+  // PTY session straight from the Board — the same unified stop path as
+  // the Coding tab (#253: the agent's own quit, force-fallback
+  // server-side), one tap, no confirm. Detached consoles keep going
+  // through the Coding tab's row button.
+  if (card.alive && card.kind === 'pty') {
+    const stop = document.createElement('button');
+    stop.type = 'button';
+    stop.className = 'board-stop-btn';
+    stop.innerHTML = icon('x');
+    stop.title = 'Stop and kill this session';
+    stop.setAttribute('aria-label', 'Stop and kill this session');
+    stop.addEventListener('click', async function () {
+      stop.disabled = true;
+      // Close the drawer first — fetchBoard() self-gates while it's open,
+      // so a stop with the drawer up would never see the card clear.
+      state.boardExpanded = null;
+      renderBoard();
+      await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
+      // The host stops gracefully (quit → force) — give it the same beat
+      // sessions.js gives fetchSessions before reconciling the board.
+      setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
+    });
+    actions.appendChild(stop);
+  }
+  // Terminal is deliberately the LAST button in the row (#496 round 2).
   if (card.alive && card.kind !== 'remote') {
     const open = document.createElement('button');
     open.type = 'button';
@@ -207,26 +255,6 @@ function buildDrawer(card) {
       openTerminal({ session_id: card.session_id, name: sessionLabel(card) });
     });
     actions.appendChild(open);
-  }
-  // Rename (issue #458) — same launcher-native override as the Coding tab's
-  // row rename button, reachable for detached sessions too (no PTY needed).
-  // The drawer stays open across a rename (unlike Terminal, which navigates
-  // away), so the completion callback patches this card in place rather than
-  // calling fetchBoard() — that would no-op under its own drawer-open
-  // self-gate (see fetchBoard()).
-  if (card.alive) {
-    const rename = document.createElement('button');
-    rename.type = 'button';
-    rename.className = 'board-rename-btn';
-    rename.innerHTML = icon('pencil') + ' Rename';
-    rename.title = 'Rename this session';
-    rename.addEventListener('click', function () {
-      openSessionRename(card, function (title) {
-        card.manual_title = title;
-        renderBoard();
-      });
-    });
-    actions.appendChild(rename);
   }
   if (actions.childElementCount) drawer.appendChild(actions);
   return drawer;
@@ -332,6 +360,21 @@ function repoInProjects(repo) {
   });
 }
 
+// Git state for a backlog card's repo (#496 item 4), read from the SAME
+// client-side cache the Coding tiles use (state.gitStatus, keyed by the
+// scanner's project id — resolved here via the repo-name → project match
+// repoInProjects uses). Null until the boot git fetch lands, or when the
+// repo isn't in the projects folder — the card just renders unannotated.
+function repoGitStatus(repo) {
+  if (!repo || !state.gitStatus) return null;
+  const app = (state.apps || []).find(function (a) {
+    return a.kind === 'claude-code' &&
+      String(a.name).toLowerCase() === String(repo).toLowerCase();
+  });
+  const gs = app && state.gitStatus[app.id];
+  return (gs && gs.is_git) ? gs : null;
+}
+
 async function startIssue(card, mode, btn) {
   btn.disabled = true;
   try {
@@ -390,6 +433,19 @@ function renderIssueCard(card) {
   const meta = document.createElement('span');
   meta.className = 'board-card-meta-inline';
   meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
+  // Repo-state colour (#496 item 4): red = dirty working tree, yellow =
+  // parked off the default branch — "don't start this issue right now".
+  // Same precedence as the Coding tiles: red wins when both apply.
+  const gs = repoGitStatus(card.repo);
+  if (gs) {
+    if (gs.dirty) meta.classList.add('git-dirty');
+    else if (gs.branch && !gs.on_default_branch) meta.classList.add('git-off-main');
+    if (gs.branch && !gs.on_default_branch) {
+      meta.title = 'repo on ' + gs.branch + (gs.dirty ? ' · uncommitted changes' : '');
+    } else if (gs.dirty) {
+      meta.title = 'repo has uncommitted changes';
+    }
+  }
   const title = document.createElement('span');
   title.className = 'board-card-title-compact';
   title.textContent = card.title || '';

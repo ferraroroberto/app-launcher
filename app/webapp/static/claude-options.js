@@ -248,9 +248,10 @@ export function wireClaudeOptions() {
   // handlers in renderPiSubsection(), so there's no static listener here.
   // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
   // (no server config — read at session-launch time in apps.js). They live
-  // in the card's <summary> so they stay visible when the panel is
-  // collapsed — but a click there would also expand/collapse the <details>,
-  // so stopPropagation lives alongside the flip.
+  // in the Projects card's <summary> (#496 — the launch surface) so they
+  // stay visible when the panel is collapsed — but a click there would
+  // also expand/collapse the <details>, so stopPropagation lives alongside
+  // the flip.
   [els.claudeDetached, els.claudeResume].forEach(function (btn) {
     btn.addEventListener('click', function (ev) {
       ev.stopPropagation();

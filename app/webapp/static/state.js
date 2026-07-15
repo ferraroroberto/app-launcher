@@ -29,6 +29,10 @@ export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
 export const JOBS_POLL_MS = 4000;         // refresh Jobs tab while it's visible
 export const BOARD_POLL_MS = 5000;        // refresh Board tab while it's visible
 export const WEBAUTHN_POLL_MS = 15000;
+// Git-status refresh (#496, reversing #115's tap-only contract): slow on
+// purpose — one git run per project per tick, gated to the tabs that show
+// the flags (Coding tiles, Board backlog) and to a foreground page.
+export const GIT_STATUS_POLL_MS = 45000;
 
 export const state = {
   tab: 'claude',
@@ -50,10 +54,12 @@ export const state = {
     { id: 'pi', label: 'Pi', available: false, fullscreen: true },
   ],
   runningApps: [],
-  // Coding tab git flags (issue #115). null until the user taps the
-  // git-status button; then a map of project id → { is_git, branch,
-  // default_branch, on_default_branch, dirty }. Cached: the 4 s apps
-  // poll re-renders tiles from this map but never re-runs the check.
+  // Git flags for the Coding tiles + Board backlog (issue #115, always-on
+  // since #496). null only until the boot fetch lands; then a map of
+  // project id → { is_git, branch, default_branch, on_default_branch,
+  // dirty }, refreshed by the GIT_STATUS_POLL_MS poll while the Coding or
+  // Board tab is visible. Cached: the 4-5 s tab polls re-render from this
+  // map but never re-run the git check themselves.
   gitStatus: null,
   // Coding-tab favorites filter (issue #250). false = show all projects
   // (favorites pinned to the top); true = show only starred projects. A
@@ -105,6 +111,7 @@ export const state = {
 // document.getElementById is safe to call at module top level.
 export const els = {
   themeToggle: document.getElementById('themeToggle'),
+  homeHeadStatus: document.getElementById('homeHeadStatus'),
   tabClaude: document.getElementById('tabClaude'),
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),
@@ -137,7 +144,6 @@ export const els = {
   boardDispatchClear: document.getElementById('boardDispatchClear'),
   boardDispatchSend: document.getElementById('boardDispatchSend'),
 
-  lifeOsOptions: document.getElementById('lifeOsOptions'),
   lifeOsOpus: document.getElementById('lifeOsOpus'),
   lifeOsDetached: document.getElementById('lifeOsDetached'),
   lifeOsResume: document.getElementById('lifeOsResume'),

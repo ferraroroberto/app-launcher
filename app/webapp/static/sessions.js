@@ -10,6 +10,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -90,6 +91,7 @@ export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
   els.sessionsEmpty.hidden = state.sessions.length !== 0;
+  renderHomeHead();
 
   state.sessions.forEach(function (s) {
     const li = document.createElement('li');
