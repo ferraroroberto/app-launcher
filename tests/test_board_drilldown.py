@@ -431,6 +431,89 @@ class TestIssueStart:
             "/api/board/issues/start", json={**base, "number": -3}
         ).status_code == 400
 
+    @pytest.mark.parametrize("model", ["sonnet", "opus", "fable"])
+    def test_model_overrides_persisted_coding_model(
+        self, webapp_client, _bypass_gate, _spawn, model
+    ):
+        """#505: the dispatch bar's selector governs one-tap starts too."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 9, "mode": "start",
+                  "model": model},
+        )
+        assert f"--model {model}" in _spawn["flags"]
+        assert _spawn["flags"].endswith(' "/issue-start 9"')
+        assert _spawn["agent"] == "claude"
+
+    def test_absent_model_keeps_persisted_coding_model(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        """No ``model`` (stale-cache client) → legacy behaviour: the
+        persisted Coding model (opus in the test config), unchanged."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 9, "mode": "start"},
+        )
+        assert "--model opus" in _spawn["flags"]
+        assert _spawn["agent"] == "claude"
+
+    def test_gpt56_starts_codex_with_positional_prompt(
+        self, webapp_client, _bypass_gate, _spawn, monkeypatch
+    ):
+        """#505: gpt5.6 spawns Codex — shared Codex flags, and the same
+        server-built ``/issue-*`` positional prompt appended (Codex takes
+        ``codex [OPTIONS] [PROMPT]`` like claude)."""
+        from app.webapp.routers import board as board_router
+        monkeypatch.setattr(
+            board_router.agents, "is_installed", lambda a: a == "codex"
+        )
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 7, "mode": "yolo",
+                  "model": "gpt5.6"},
+        )
+        assert resp.status_code == 200
+        assert _spawn["agent"] == "codex" and _spawn["kind"] == "pty"
+        assert "model_reasoning_effort=" in _spawn["flags"]
+        assert "--model" not in _spawn["flags"]
+        assert _spawn["flags"].endswith(' "/issue-yolo 7"')
+
+    def test_gpt56_without_codex_installed_400s(
+        self, webapp_client, _bypass_gate, _spawn, monkeypatch
+    ):
+        from app.webapp.routers import board as board_router
+        monkeypatch.setattr(
+            board_router.agents, "is_installed", lambda a: False
+        )
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 7, "mode": "start",
+                  "model": "gpt5.6"},
+        )
+        assert resp.status_code == 400
+        assert "not installed" in resp.json()["detail"]
+        assert not _spawn
+
+    def test_unknown_model_400s(self, webapp_client, _bypass_gate, _spawn):
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 7, "mode": "start",
+                  "model": "haiku"},
+        )
+        assert resp.status_code == 400
+        assert "unknown model" in resp.json()["detail"]
+        assert not _spawn
+
     def test_unknown_repo_is_404(self, webapp_client, _bypass_gate, _spawn):
         client, _, _ = webapp_client
         resp = client.post(

@@ -470,6 +470,9 @@ def test_backlog_start_button_posts_issue_start(
 
     _open_board(authed_page, base_url)
     authed_page.locator("#boardColBacklog").click()
+    # The dispatch bar's model selector governs one-tap starts too (#505) —
+    # pick a non-default value so the POST provably carries the selection.
+    authed_page.locator("#boardDispatchModel").select_option("fable")
     start_btn = authed_page.locator(
         '.board-list[data-col="backlog"] .board-issue-btn'
     ).first
@@ -485,6 +488,7 @@ def test_backlog_start_button_posts_issue_start(
     assert body.get("repo") == "app-launcher"
     assert body.get("number") == 301
     assert body.get("mode") == "start"
+    assert body.get("model") == "fable"
 
 
 def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(

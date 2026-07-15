@@ -46,7 +46,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -213,13 +213,18 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey, #301).
 
     Body: ``{"repo": str, "number": int, "mode": "start"|"yolo",
-    "rows": int, "cols": int, "title": str}``. The repo must resolve to a
-    directory in the projects folder (the same live listing the Coding tab
-    launches from); the prompt is built here as ``/issue-<mode> <number>`` —
-    client text never reaches the command line. Spawns a streamed PTY session
-    exactly like a Coding-tab launch (PC mirror rules included); the
-    `/issue-*` skills themselves handle branch + worktree claiming inside the
-    session.
+    "model": str, "rows": int, "cols": int, "title": str}``. The repo must
+    resolve to a directory in the projects folder (the same live listing the
+    Coding tab launches from); the prompt is built here as
+    ``/issue-<mode> <number>`` — client text never reaches the command line.
+    Spawns a streamed PTY session exactly like a Coding-tab launch (PC
+    mirror rules included); the `/issue-*` skills themselves handle branch +
+    worktree claiming inside the session.
+
+    ``model`` (#505) is the dispatch bar's selector applied to one-tap
+    starts: the #500 values override the shared Coding model (gpt5.6 →
+    Codex, which takes the same positional prompt). Absent (stale-cache
+    client) → the legacy persisted Coding model, exactly as before.
 
     The optional ``title`` (the Board card's issue title) auto-names the
     session after the issue (#467) via the #458 manual-override path, so it is
@@ -241,11 +246,16 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
     title = str(body.get("title") or "").strip()
+    model = str(body.get("model") or "").strip().lower()
+    if model:
+        agent, base_flags = _agent_and_flags(cfg, model)
+    else:
+        agent, base_flags = "claude", build_claude_flags(cfg)
 
     entry = _resolve_repo_entry(cfg, repo)
 
     prompt = f"/issue-{mode} {number}"
-    flags = f'{build_claude_flags(cfg)} "{prompt}"'
+    flags = f'{base_flags} "{prompt}"'
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
@@ -254,7 +264,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
             flags,
             cfg.session_host_port,
             "pty",
-            "claude",
+            agent,
             rows,
             cols,
             history_lines=cfg.terminal_history_lines,
@@ -267,7 +277,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     sid = str(session.get("session_id") or "")
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
-        sid=sid, agent="claude", name=entry.name, project=entry.project_dir,
+        sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
         skill=prompt, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
     # Auto-name the session after the issue title (#467): a Board-started
@@ -310,6 +320,27 @@ _DISPATCH_COMMANDS = {
 # configured effort", same as the Coding tab's Codex button.
 _DISPATCH_CLAUDE_MODELS = ("sonnet", "opus", "fable")
 _DISPATCH_CODEX_MODEL = "gpt5.6"
+
+
+def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
+    """Validated ``(agent, flags)`` for a Board per-launch ``model`` (#500/#505).
+
+    The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
+    ``gpt5.6`` selects Codex with the Coding tab's shared flags instead
+    (``apps.py``'s exact launch shape). The ``is_installed`` check is the
+    same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
+    Coding tab's already-disabled button.
+    """
+    if model not in _DISPATCH_CLAUDE_MODELS and model != _DISPATCH_CODEX_MODEL:
+        raise HTTPException(status_code=400, detail=f"unknown model: {model}")
+    if model == _DISPATCH_CODEX_MODEL:
+        if not agents.is_installed("codex"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{agents.AGENTS['codex'].label} is not installed",
+            )
+        return "codex", build_codex_flags(cfg)
+    return "claude", build_claude_flags(cfg, model)
 
 
 async def _await_dispatch_ready(port: int, sid: str) -> None:
@@ -381,32 +412,15 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
             status_code=400, detail="goal must be a non-empty string"
         )
     goal = goal.strip()
+    # Per-launch model (#500) — sonnet default when absent (stale-cache
+    # client). No positional prompt — see the module docstring.
     model = str(body.get("model") or "sonnet").strip().lower()
-    if model not in _DISPATCH_CLAUDE_MODELS and model != _DISPATCH_CODEX_MODEL:
-        raise HTTPException(status_code=400, detail=f"unknown model: {model}")
+    agent, flags = _agent_and_flags(cfg, model)
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
 
     entry = _resolve_repo_entry(cfg, repo)
 
-    # Per-launch model (#500): the Claude tiers force --model like the Life
-    # OS tab's toggle (#102); gpt5.6 spawns Codex with the Coding tab's
-    # shared flags instead (apps.py's exact launch shape). Everything else
-    # stays the shared Coding defaults. No positional prompt — see the
-    # module docstring.
-    if model == _DISPATCH_CODEX_MODEL:
-        # Defence-in-depth like apps.py: dispatch bypasses the Coding tab's
-        # already-disabled button, so re-check the CLI actually resolves.
-        if not agents.is_installed("codex"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{agents.AGENTS['codex'].label} is not installed",
-            )
-        agent = "codex"
-        flags = build_codex_flags(cfg)
-    else:
-        agent = "claude"
-        flags = build_claude_flags(cfg, model)
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
