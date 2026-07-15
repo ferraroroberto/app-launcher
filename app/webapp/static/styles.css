@@ -2751,6 +2751,12 @@ body.terminal-open {
     text-transform: none;
     color: var(--muted);
   }
+  /* #495: the phone tab-switcher strip duplicates the grid's own aligned
+     .board-col-title headers, with no shared width/gap math between the two
+     rows. Hide just the switcher buttons — .board-strip also hosts the gh
+     refresh button, which still needs a home on desktop. */
+  .board-strip-btn { display: none; }
+  .board-strip { justify-content: flex-end; }
 }
 .lifeos-file-btn {
   flex: 1;

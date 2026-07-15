@@ -119,6 +119,15 @@ def _open_board(page: Page, base_url: str) -> None:
     expect(page.locator("#paneBoard")).to_be_visible()
 
 
+def _switch_to_backlog(page: Page) -> None:
+    """Bring the backlog column into view. Phone-only: the strip button that
+    does this (#495) is hidden on the desktop grid, where every column
+    (backlog included) is already visible side by side."""
+    viewport = page.viewport_size or {"width": 0}
+    if viewport["width"] < 700:
+        page.locator("#boardColBacklog").click()
+
+
 def test_board_renders_columns_counts_and_cards(
     authed_page: Page, base_url: str
 ) -> None:
@@ -469,7 +478,7 @@ def test_backlog_start_button_posts_issue_start(
     authed_page.route(re.compile(r".*/api/board/issues/start$"), _capture_start)
 
     _open_board(authed_page, base_url)
-    authed_page.locator("#boardColBacklog").click()
+    _switch_to_backlog(authed_page)
     # The dispatch bar's model selector governs one-tap starts too (#505) —
     # pick a non-default value so the POST provably carries the selection.
     authed_page.locator("#boardDispatchModel").select_option("fable")
@@ -500,7 +509,7 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
-    authed_page.locator("#boardColBacklog").click()
+    _switch_to_backlog(authed_page)
 
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
@@ -559,7 +568,7 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
     _open_board(authed_page, base_url)
-    authed_page.locator("#boardColBacklog").click()
+    _switch_to_backlog(authed_page)
 
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     title_el = tile.locator(".board-card-title-compact")
@@ -930,7 +939,7 @@ def test_backlog_cards_color_coded_from_shared_git_cache(
     )
 
     _open_board(authed_page, base_url)
-    authed_page.locator("#boardColBacklog").click()
+    _switch_to_backlog(authed_page)
 
     meta = authed_page.locator(
         '.board-list[data-col="backlog"] .board-card-meta-inline'
