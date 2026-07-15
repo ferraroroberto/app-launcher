@@ -93,6 +93,10 @@
   --icon-inline: 16px;
   --icon-title: 18px;
   --icon-feature: 24px;
+  /* home-head's toggle fill (vendored home-head.css contract): a subtle-
+     contrast surface on the card — --card-2 here, not --card-off, because
+     this app's dark --card-off is true black and would vanish on the card. */
+  --close-bg: var(--card-2);
   color-scheme: light;
   /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
      label) is intentionally undefined here (issue #355) — nav-tabs.css's
@@ -185,6 +189,14 @@
    land on the owning button, the same rule .agent-icon already carries.
    Belt-and-braces for iOS touch adjudication around svg <use> content. */
 .icon { pointer-events: none; }
+
+/* Shared 44px hit-area expansion for an isolated compact control (design.md
+   "Touch targets"): keeps the compact visual (e.g. the home-head's 34px
+   toggle) while the invisible ::before inset grows the effective target to
+   44×44 (34 + 2×5). Only for controls with clearance on every side —
+   adjacent clusters need real geometry, never overlapping expansions. */
+.hit-target { position: relative; }
+.hit-target::before { content: ""; position: absolute; inset: -5px; }
 
 html, body {
   margin: 0;
@@ -308,24 +320,12 @@ html, body {
 }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
-/* Theme toggle (issue #355, relocated to the Coding tab's options card in
-   #392) — sun/moon ghost button in the always-visible options summary row
-   (the counterpart of home-automation's Home-tile toggle). Shows the glyph
+/* Theme toggle (issue #355; #392 put it in the options summary, #496 moved
+   it into the vendored home-head card's .home-toggle slot — the same
+   position as the other fleet apps). The button's box now comes from
+   home-head.css; only the sun/moon glyph pair lives here. Shows the glyph
    for the ACTION: moon in light (tap → dark), sun in dark (tap → light). */
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: var(--control-h);
-  min-width: 36px;
-  padding: 6px;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  cursor: pointer;
-}
-.theme-toggle:active { background: var(--card-2); color: var(--fg); }
+.home-head .home-toggle:active { background: var(--card-2); color: var(--fg); }
 .theme-toggle-icon {
   width: 18px;
   height: 18px;
@@ -894,6 +894,12 @@ summary + .opt-group { border-top: 0; }
    git-status button; gold outline + glyph when the filter is active. */
 .fav-filter-btn { font-size: var(--font-caption); padding: 6px 10px; }
 .fav-filter-btn.active { color: var(--star); border-color: var(--star); }
+/* Icon-only on narrow phones (#496): the Projects summary also carries the
+   Detached/Resume toggles now — four labelled controls overflow a 390px
+   row (same compaction precedent as the Registered-jobs summary). */
+@media (max-width: 520px) {
+  .fav-filter-btn .fav-filter-label { display: none; }
+}
 /* Shown in place of the list when the filter is on but nothing is starred. */
 .coding-fav-empty {
   list-style: none;
@@ -1798,7 +1804,10 @@ body.terminal-open {
   border-radius: var(--radius-md);
   padding: 9px 12px;
   font-size: var(--font-label);
-  min-height: 40px;
+  /* 44×44 effective minimum app-wide (#496 audit, extending #477 beyond the
+     terminal bar): the base class also dresses the Life OS browser bar. */
+  min-height: 44px;
+  min-width: 44px;
   cursor: pointer;
 }
 /* Reading the last reply aloud (issue #190) — success-green pulse so the ⏹
@@ -1810,12 +1819,15 @@ body.terminal-open {
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
 /* Every icon-only button in the terminal toolbar meets the 44x44pt HIG
-   minimum (issue #477) — the base .term-btn's 40px min-height had no
-   min-width, so an icon glyph (like ✕) sat in a ~40x40 hit area. */
+   minimum (issue #477) — restated here for clarity even though the base
+   .term-btn now carries 44×44 itself (#496). */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
-/* ‹ Back button (issue #259) — wider tap target so it's harder to
-   mis-tap the adjacent ✕ on a phone; the glyph stays centred. */
-#terminalBack { min-width: 56px; text-align: center; }
+/* ‹ Back button (issue #259, widened again #496) — the close-tap complaint:
+   a bigger real target at the bar's left edge, plus extra clearance before
+   the adjacent ✕ kill button so the two 44px rectangles don't share one
+   thumb zone (adjacent-cluster rule: real geometry, no overlap). */
+#terminalBack { min-width: 64px; text-align: center; }
+#terminalKill { margin-left: 4px; }
 /* ✕ Stop-and-kill in the terminal bar (issue #253) — a muted glyph that
    blends with the dark bar by default, flashing danger-red on press like
    the list row's stop button (so it doesn't shout a loud red emoji). */
@@ -2136,8 +2148,9 @@ body.terminal-open {
 }
 
 /* ---------- Life OS tab (issue #102) ---------- */
-/* Single-line, non-collapsible options card: the title + two switches
-   (opus + ☁️ Detached) on one row, reusing .detached-toggle styling. */
+/* The opus/Detached/Resume toggles live in the Skills card's summary
+   (#496 round 2 — no separate options card); the recap tile is the only
+   .card--row left on the tab. */
 /* Single-row (non-collapsible) cards inherit the disclosure closed-box:
    zero vertical padding, a 52px .card-head (vendored card.css) owns the
    height, so they sit pixel-identical beside collapsed disclosure cards. */
@@ -2336,11 +2349,43 @@ body.terminal-open {
   padding: 0 10px;
   font-size: var(--font-caption);
 }
+/* Phone (#496, from on-device feedback): iOS paints a native <select> with
+   its own pill chrome — a different control family than the flat rounded
+   buttons beside it. Flatten it to the row's exact shared recipe (36px
+   control height, 12px radius, hairline border, --card-2 fill — the mic/✕
+   .compose-record recipe) and let the wrapping .board-model-combo span draw
+   the ▾ affordance, the same pattern as .board-repo-combo. Mobile only —
+   desktop keeps the native select. */
+.board-model-combo { display: inline-flex; position: relative; }
+@media (pointer: coarse) {
+  .board-dispatch-row .select-native {
+    appearance: none;
+    -webkit-appearance: none;
+    height: var(--control-h);
+    min-height: var(--control-h);
+    background: var(--card-2);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0 24px 0 10px;
+  }
+  .board-model-combo::after {
+    content: '▾';
+    position: absolute;
+    right: 9px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: var(--font-caption);
+    pointer-events: none;
+  }
+}
 /* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
-   height so the dispatch row lines up; same for the drawer reply mic. */
+   height so the dispatch row lines up. (The drawer reply mic is NOT in
+   this shrink set any more — #496 round 2: inside the drawer every button
+   keeps the canonical 44px footprint.) */
 .board-dispatch-row .compose-record,
-.board-dispatch-row .compose-send,
-.board-drawer-actions .compose-record {
+.board-dispatch-row .compose-send {
   min-height: var(--control-h);
   min-width: 36px;
   padding: 0 10px;
@@ -2553,11 +2598,21 @@ body.terminal-open {
   padding: 0 4px 0 0;
 }
 .board-issue-btn.icon-only {
-  min-width: 36px;
+  /* Real 44px geometry (#496 audit): the ▶/⚡ pair is an adjacent cluster,
+     so the rectangles are grown for real, not via overlapping insets. */
+  min-width: 44px;
   padding: 8px 10px;
   font-size: var(--font-label);
   text-align: center;
 }
+
+/* Backlog repo-state annotation (#496 item 4): the meta line inherits the
+   Coding tab's git colour vocabulary — red = dirty tree, yellow = parked
+   off the default branch (red wins when both; same precedence as
+   annotateGitStatus). Fed from the shared state.gitStatus cache — the
+   board's own 5 s poll does no git work. */
+.board-card-meta-inline.git-dirty { color: var(--danger); }
+.board-card-meta-inline.git-off-main { color: var(--attention); }
 
 /* Drill-down drawer (#301): last exchange + reply, inline under the card. */
 .board-drawer {
@@ -2592,14 +2647,20 @@ body.terminal-open {
   padding-left: 8px;
 }
 .board-exchange-assistant { white-space: pre-wrap; }
+/* Drawer action layout (#496 round 2, on-device feedback): the reply box
+   takes a full line of its own, and the buttons form one right-aligned
+   row beneath it — canonical 44px footprints, leftover space on the left
+   is fine. flex-wrap keeps the row inside its own column at narrow
+   desktop grid widths too (#473). */
 .board-drawer-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: flex-end;
+  align-items: center;
+  justify-content: flex-end;
 }
 .board-reply-input {
-  flex: 1;
+  flex: 1 1 100%;
   min-width: 0;
   resize: vertical;
   background: var(--card-off);
@@ -2623,7 +2684,8 @@ body.terminal-open {
 .board-issue-btn,
 .board-reply-send,
 .board-open-terminal,
-.board-rename-btn {
+.board-rename-btn,
+.board-stop-btn {
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--line);
@@ -2637,6 +2699,26 @@ body.terminal-open {
 .board-reply-send:active,
 .board-open-terminal:active,
 .board-rename-btn:active { background: var(--card); }
+/* Drawer action row at the 44px floor (#496 audit) — these sit in an
+   adjacent cluster, so they get real height, not hit-target insets. The
+   icon-only Rename/Stop also need real width around their lone glyph. */
+.board-reply-send,
+.board-open-terminal,
+.board-rename-btn,
+.board-stop-btn {
+  min-height: var(--row-sm);
+}
+.board-reply-send,
+.board-rename-btn,
+.board-stop-btn { min-width: 44px; }
+/* Stop (#496 item 5): same unified stop path as the Coding tab's row ✕
+   (#253) — muted glyph at rest, danger-red on press. */
+.board-stop-btn { color: var(--muted); }
+.board-stop-btn:active {
+  background: rgb(from var(--danger) r g b / 0.2);
+  color: var(--danger);
+  border-color: var(--danger);
+}
 
 /* Desktop / wide: all five columns side by side; titles come back.
    Board (only) also breaks out of the phone-first `.app` 720px cap —

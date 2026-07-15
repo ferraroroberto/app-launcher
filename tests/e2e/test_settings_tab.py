@@ -7,9 +7,9 @@ every tab into a sixth navigation tab. Contract under test:
     with the settings controls and hides the other panes.
   * The settings card no longer bleeds into the other tabs — on the
     default Coding tab the panel is hidden.
-  * The app theme toggle lives in the Coding tab's options card (its
-    original home — issue #392 moved it back out of the Settings pane)
-    and still flips ``html[data-theme]``.
+  * The app theme toggle lives on the Coding tab (issue #392 moved it out
+    of the Settings pane; #496 moved it into the home-head summary card's
+    toggle slot) and still flips ``html[data-theme]``.
 
 Issue #435 follow-up adds the terminal-scrollback-depth setting and removes
 the TLS-badge / tunnel-URL status readout (needless exposure of the tunnel
@@ -55,12 +55,12 @@ def test_settings_panel_absent_from_other_tabs(
     expect(authed_page.locator("#settingsPanel")).to_be_hidden()
 
 
-def test_theme_toggle_lives_in_coding_options_and_flips_theme(
+def test_theme_toggle_lives_on_coding_tab_and_flips_theme(
     authed_page: Page, base_url: str
 ) -> None:
     authed_page.goto(base_url, wait_until="domcontentloaded")
     toggle = authed_page.locator("#themeToggle")
-    # Lives in the Coding options card (the default tab) — visible on load.
+    # Lives in the home-head card on the Coding tab (#496) — visible on load.
     expect(toggle).to_be_visible()
     # Not duplicated into the Settings pane.
     authed_page.locator("#tabSettings").click()

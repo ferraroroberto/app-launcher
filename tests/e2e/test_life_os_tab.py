@@ -158,9 +158,41 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(tiles.first).to_be_visible(timeout=5_000)
     assert tiles.count() == 2
     expect(tiles.first).to_contain_text("journal-daily")
-    # The opus + Detached toggles live in the options summary.
+    # The opus + Detached toggles live in the Skills card's summary (#496).
     expect(authed_page.locator("#lifeOsOpus")).to_be_attached()
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
+
+
+def test_life_os_toggles_live_in_skills_summary_without_options_card(
+    authed_page: Page, base_url: str
+) -> None:
+    """#496 round 2: the separate Life OS options card is gone — the
+    opus/Detached/Resume toggles sit in the Skills card's summary (same
+    structure as the Coding tab's Projects card), and tapping one flips
+    the switch without collapsing the panel."""
+    _mock_skills(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#paneLifeOS")).to_be_visible()
+
+    # The old standalone options card no longer exists.
+    expect(authed_page.locator("#lifeOsOptions")).to_have_count(0)
+
+    # All three toggles render inside the Skills <details> summary.
+    summary = authed_page.locator("details.lifeos-list-card summary")
+    for tid in ("#lifeOsOpus", "#lifeOsDetached", "#lifeOsResume"):
+        expect(summary.locator(tid)).to_be_visible()
+
+    # A toggle tap flips the switch but must not collapse the open panel.
+    skills_card = authed_page.locator("details.lifeos-list-card")
+    assert skills_card.evaluate("el => el.open") is True
+    authed_page.locator("#lifeOsOpus").click()
+    expect(authed_page.locator("#lifeOsOpus")).to_have_attribute(
+        "aria-checked", "true"
+    )
+    assert skills_card.evaluate("el => el.open") is True, (
+        "toggle tap must not collapse the Skills panel"
+    )
 
 
 def test_life_os_launch_posts_mode_and_opus(

@@ -56,12 +56,15 @@ async def claude_flags(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/claude-code/git-status")
 async def claude_git_status(request: Request) -> Dict[str, Any]:
-    """Per-project git state for the Coding tab's on-demand flags.
+    """Per-project git state for the Coding tiles + Board backlog flags.
 
     Runs ``git`` once per project (branch + clean/dirty + default
     branch) — fanned out across worker threads so a fleet of repos
-    resolves in well under a second. The SPA calls this only when the
-    user taps the check button; nothing here runs on render or poll.
+    resolves in well under a second. Always-on since #496 (reversing
+    #115's tap-only contract): the SPA calls this once at boot and on a
+    slow (~45 s) poll while the Coding or Board tab is visible in a
+    foreground page, plus a fresh fetch when the header status button
+    opens the off-main popover (#139).
     """
     cfg: WebappConfig = request.app.state.webapp_config
     projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))

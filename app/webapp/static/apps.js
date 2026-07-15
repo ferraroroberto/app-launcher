@@ -9,6 +9,8 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { bindOutsideClickToClose, iconUrl, toggleAriaChecked } from './dom-utils.js';
+import { renderBoard } from './board.js';
+import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -179,15 +181,17 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.innerHTML = icon('star') + ' Favorites';
+  // Label in its own span so narrow phones can drop it to icon-only (#496:
+  // the Projects summary now also carries the Detached/Resume toggles).
+  btn.innerHTML = icon('star') + '<span class="fav-filter-label"> Favorites</span>';
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
 // (issue #115): red when the working tree is dirty (needs cleaning),
 // yellow when parked on a non-default branch (not a fresh start). Red
 // wins the colour when both apply, but the branch tag still shows so the
-// "why" behind a yellow stays visible. No-op until the user has tapped
-// the git-status button (state.gitStatus is null before that).
+// "why" behind a yellow stays visible. No-op only until the boot fetch
+// lands (#496) — state.gitStatus fills automatically now, no tap needed.
 function annotateGitStatus(nameEl, id) {
   const gs = state.gitStatus && state.gitStatus[id];
   if (!gs || !gs.is_git) return;
@@ -204,13 +208,15 @@ function annotateGitStatus(nameEl, id) {
   }
 }
 
-// On-demand git-status check (issue #115). Runs git per project on the
-// server, fanned out across threads; caches the result in state and
-// re-renders. Triggered only by the Coding tab's status button — never
-// on render or poll.
-export async function fetchGitStatus() {
-  const btn = els.gitStatusBtn;
-  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+// Always-on git-status refresh (#496, deliberately reversing #115's
+// on-demand contract). Runs git per project on the server, fanned out
+// across threads; caches the result in state and re-renders every surface
+// that reads it (Coding tiles + legend, home-head aggregate, Board
+// backlog). Called at boot and on the GIT_STATUS_POLL_MS interval in
+// main.js (quiet — poll failures log, never toast), and by the header
+// status button below (loud).
+export async function refreshGitStatus(options) {
+  const quiet = !!(options && options.quiet);
   try {
     const body = await jsonApi('/api/claude-code/git-status');
     const map = {};
@@ -218,6 +224,24 @@ export async function fetchGitStatus() {
     state.gitStatus = map;
     if (els.gitStatusLegend) els.gitStatusLegend.hidden = false;
     renderApps();
+    renderHomeHead();
+    // The Board backlog reads the same cache (#496 item 4); repaint it if
+    // it's the visible tab — its own 5 s poll does no git work.
+    if (state.tab === 'board') renderBoard();
+  } catch (exc) {
+    if (!quiet) throw exc;
+    logPollFailure('git status refresh failed', exc);
+  }
+}
+
+// The header ⎇ status button: re-fetch fresh data, then open the off-main
+// drill-down popover (#139). The data is usually already warm from the
+// poll — the re-fetch just guarantees the popover never shows stale state.
+export async function fetchGitStatus() {
+  const btn = els.gitStatusBtn;
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+  try {
+    await refreshGitStatus();
     openGitSummary();
   } catch (exc) {
     apiFailToast('Git status check failed', exc);
@@ -514,6 +538,7 @@ export function renderRunningApps() {
   const host = els.runningAppsList;
   host.innerHTML = '';
   els.runningAppsEmpty.hidden = state.runningApps.length !== 0;
+  renderHomeHead();
 
   state.runningApps.forEach(function (r) {
     const li = document.createElement('li');

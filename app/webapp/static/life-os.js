@@ -482,10 +482,13 @@ export function wireLifeOs() {
     els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
   }
   // opus/Detached/Resume are plain client-side switches (issue #355) — no
-  // server config, just read at launch time above.
+  // server config, just read at launch time above. They live in the Skills
+  // card's <summary> (#496 round 2, mirroring the Coding tab's Projects
+  // card), so stopPropagation keeps a tap from also collapsing the panel.
   [els.lifeOsOpus, els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
     if (!btn) return;
-    btn.addEventListener('click', function () {
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
       toggleAriaChecked(btn);
     });
   });

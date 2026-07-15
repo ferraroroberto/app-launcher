@@ -5,12 +5,12 @@
  * each fetchX() refreshes its slice of state and re-renders.
  */
 
-import { els, state, BOARD_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
+import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { apiFailToast, consumeUrlParam, jsonApi, readToken, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
-import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, wireApps } from './apps.js';
+import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, refreshGitStatus, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, wireBoard } from './board.js';
@@ -101,10 +101,9 @@ function wireTheme() {
   // CSS keyed on the attribute, so there is nothing to re-render here —
   // the terminal screen follows the app theme (issue #383) via
   // terminal.js's own data-theme observer, which restyles any open
-  // terminal. The button lives in the Coding options card's <summary>, so
-  // stopPropagation keeps a tap from also expanding/collapsing the card.
-  els.themeToggle.addEventListener('click', function (ev) {
-    ev.stopPropagation();
+  // terminal. The button lives in the home-head card's toggle slot (#496)
+  // — no <summary> around it any more, so no stopPropagation needed.
+  els.themeToggle.addEventListener('click', function () {
     const dark = document.documentElement.dataset.theme !== 'dark';
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
     localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
@@ -211,6 +210,9 @@ async function boot() {
   await safe(fetchStatus);
   await safe(fetchVersion);
   await safe(fetchWebauthnStatus);
+  // Git flags fill without a tap (#496): one fetch at boot, then the slow
+  // poll below keeps them current while a git-reading tab is visible.
+  await safe(function () { return refreshGitStatus({ quiet: true }); });
 
   // PC mirror window opened with ?terminal=<sid> — drop straight in.
   if (deepLinkSid) {
@@ -254,6 +256,14 @@ async function boot() {
   setInterval(function () {
     fetchWebauthnStatus().catch(function () {});
   }, WEBAUTHN_POLL_MS);
+  setInterval(function () {
+    // Always-on git flags (#496): refresh only while a tab that shows them
+    // is visible (Coding tiles / Board backlog) and the page is foreground —
+    // a backgrounded PWA must not keep spawning git subprocesses.
+    if (document.hidden) return;
+    if (state.tab !== 'claude' && state.tab !== 'board') return;
+    refreshGitStatus({ quiet: true }).catch(function () {});
+  }, GIT_STATUS_POLL_MS);
 }
 
 // --------------------------------------------------------- wire + go

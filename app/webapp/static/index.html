@@ -14,6 +14,9 @@
   <link rel="icon" type="image/png" href="/static/icon-512.png">
   <link rel="stylesheet" href="/static/vendor/xterm.css">
   <link rel="stylesheet" href="/static/_vendored/card/card.css">
+  <!-- home-head.css must load AFTER card.css — it overrides the card's own
+       padding for the 52px header row (its README's load-order contract). -->
+  <link rel="stylesheet" href="/static/_vendored/home-head/home-head.css">
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
   <link rel="stylesheet" href="/static/_vendored/button/button.css">
@@ -388,20 +391,68 @@
 
   <main class="app">
     <section id="paneClaude" class="pane" role="tabpanel" aria-labelledby="tabClaude">
-      <details id="codingOptions" class="card card--collapsible">
+      <!-- Vendored home-head summary card (#496): one-line dashboard row —
+           app title + live stats (sessions / running apps / git aggregate)
+           + the theme toggle pinned right (home-head.css contract). The
+           toggle keeps its #themeToggle id so main.js's wireTheme and the
+           CSS-keyed sun/moon swap carry over unchanged. -->
+      <div class="card home-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg>
+          Launcher
+        </span>
+        <span id="homeHeadStatus" class="status"></span>
+        <button type="button" id="themeToggle" class="home-toggle hit-target"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+      </div>
+
+      <!-- Options moved below the launch surfaces (#496 item 2): the
+           per-agent option groups are configuration, not launch controls,
+           so the card sits last on the tab (see the bottom of this pane).
+           The launch-time Detached/Resume toggles moved into the Projects
+           card's summary — the surface sessions are actually started from. -->
+      <details class="card card--collapsible sessions-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
-            <h3 class="collapse-title">options</h3>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
+            <h3 class="collapse-title">Running sessions</h3>
           </span>
           <span class="summary-actions">
-            <button type="button" id="themeToggle" class="theme-toggle"
-                    title="Toggle theme" aria-label="Toggle dark mode">
-              <!-- Sprite moon + sun; CSS shows the glyph for the *action*
-                   keyed on html[data-theme]. -->
-              <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
-              <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
-            </button>
+            <div class="sessions-header-actions">
+              <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
+                      title="Check each project's git branch + uncommitted changes"
+                      aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> status</button>
+              <div id="gitStatusSummary" class="git-summary" hidden
+                   role="list" aria-label="Projects not on their default branch"></div>
+            </div>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </span>
+        </summary>
+        <div class="collapse-body">
+        <div id="codingUsage" class="usage-badges" hidden>
+          <span id="codingUsageSession" class="usage-badge" hidden></span>
+          <span id="codingUsageWeekly" class="usage-badge" hidden></span>
+        </div>
+        <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
+        <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
+        <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
+        </div>
+      </details>
+
+      <!-- Collapsed by default (#383 review round): the running-sessions
+           card above is the tab's working set; expand to reach the tiles.
+           Detached + Resume live here (#496 item 2): they are launch-time
+           controls, so they sit beside the tiles they modify. -->
+      <details class="card card--collapsible projects-card">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+            <h3 class="collapse-title">Projects</h3>
+          </span>
+          <span class="summary-actions">
             <div class="coding-toggles">
               <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
@@ -412,8 +463,44 @@
                 <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
               </button>
             </div>
+            <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
+                    aria-pressed="false" title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg> Favorites</button>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
+        </summary>
+        <div class="collapse-body">
+        <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
+        <div id="claudeEmpty" class="empty" hidden>
+          No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
+        </div>
+        <p id="gitStatusLegend" class="muted small git-legend" hidden>
+          <span class="git-swatch off-main"></span> not on main ·
+          <span class="git-swatch dirty"></span> uncommitted changes
+        </p>
+        </div>
+      </details>
+
+      <details id="systemMapCard" class="card card--collapsible system-map-card" hidden>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"></use></svg>
+            <h3 class="collapse-title">System map</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body system-map-body">
+          <img id="systemMapImage" class="system-map-img" alt="Fleet system map" hidden>
+          <p id="systemMapStatus" class="muted small system-map-status" hidden></p>
+        </div>
+      </details>
+
+      <details id="codingOptions" class="card card--collapsible">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+            <h3 class="collapse-title">options</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
 
         <div class="opt-group">
@@ -490,74 +577,6 @@
           </div>
           <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>GPT</strong> runs on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Effort maps to <code>--thinking</code>; switch models/effort in-session with <code>/model</code> / <code>Shift+Tab</code>. <strong>Trust</strong> loads project-local <code>.pi/</code> resources (not a tool-permission gate — pi has no sandbox).</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
-        </div>
-      </details>
-
-      <details class="card card--collapsible sessions-card" open>
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
-            <h3 class="collapse-title">Running sessions</h3>
-          </span>
-          <span class="summary-actions">
-            <div class="sessions-header-actions">
-              <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
-                      title="Check each project's git branch + uncommitted changes"
-                      aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> status</button>
-              <div id="gitStatusSummary" class="git-summary" hidden
-                   role="list" aria-label="Projects not on their default branch"></div>
-            </div>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
-        </summary>
-        <div class="collapse-body">
-        <div id="codingUsage" class="usage-badges" hidden>
-          <span id="codingUsageSession" class="usage-badge" hidden></span>
-          <span id="codingUsageWeekly" class="usage-badge" hidden></span>
-        </div>
-        <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
-        <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
-        <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
-        </div>
-      </details>
-
-      <!-- Collapsed by default (#383 review round): the running-sessions
-           card above is the tab's working set; expand to reach the tiles. -->
-      <details class="card card--collapsible projects-card">
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
-            <h3 class="collapse-title">Projects</h3>
-          </span>
-          <span class="summary-actions">
-            <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
-                    aria-pressed="false" title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg> Favorites</button>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
-        </summary>
-        <div class="collapse-body">
-        <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
-        <div id="claudeEmpty" class="empty" hidden>
-          No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
-        </div>
-        <p id="gitStatusLegend" class="muted small git-legend" hidden>
-          <span class="git-swatch off-main"></span> not on main ·
-          <span class="git-swatch dirty"></span> uncommitted changes
-        </p>
-        </div>
-      </details>
-
-      <details id="systemMapCard" class="card card--collapsible system-map-card" hidden>
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"></use></svg>
-            <h3 class="collapse-title">System map</h3>
-          </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div class="collapse-body system-map-body">
-          <img id="systemMapImage" class="system-map-img" alt="Fleet system map" hidden>
-          <p id="systemMapStatus" class="muted small system-map-status" hidden></p>
         </div>
       </details>
     </section>
@@ -673,26 +692,10 @@
     </section>
 
     <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
-      <section id="lifeOsOptions" class="card card--row lifeos-options-card">
-        <div class="card-head">
-          <h3 class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg> options</h3>
-          <div class="lifeos-toggles">
-            <button type="button" id="lifeOsOpus" class="detached-toggle" role="switch" aria-checked="false"
-                   title="opus model: off = Sonnet (default), on = Opus">
-              <span>opus</span>
-            </button>
-            <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
-                   title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-              <span>Detached</span>
-            </button>
-            <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
-                   title="Resume: reopen Claude's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-              <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
+      <!-- No separate options card (#496 round 2, mirroring the Coding tab):
+           the opus/Detached/Resume launch toggles live in the Skills card's
+           summary below — the surface skills are launched from. The recap
+           tile leads the tab. -->
       <section id="lifeOsRecap" class="card card--row lifeos-recap-card" hidden>
         <div class="card-head">
           <span class="lifeos-recap-main">
@@ -712,7 +715,23 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-library-big"></use></svg>
             <h3 class="collapse-title">Skills</h3>
           </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
+          <span class="summary-actions">
+            <div class="lifeos-toggles">
+              <button type="button" id="lifeOsOpus" class="detached-toggle" role="switch" aria-checked="false"
+                     title="opus model: off = Sonnet (default), on = Opus">
+                <span>opus</span>
+              </button>
+              <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
+                     title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
+                <span>Detached</span>
+              </button>
+              <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
+                     title="Resume: reopen Claude's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
+                <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
+              </button>
+            </div>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </span>
         </summary>
         <div class="collapse-body">
         <ul id="lifeOsList" class="card-list" aria-label="Life OS skills"></ul>
@@ -748,13 +767,18 @@
             <button type="button" class="board-mode-btn" data-mode="yolo"
                     role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
           </div>
-          <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
-                  title="model for dispatches and one-tap ▶/⚡ starts: Sonnet / Opus / Fable spawn Claude Code; GPT-5.6 spawns Codex CLI (high effort)">
-            <option value="sonnet" selected>Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="fable">Fable</option>
-            <option value="gpt5.6">GPT-5.6</option>
-          </select>
+          <!-- Wrapper span carries the ▾ affordance on the phone, where the
+               select is flattened to the row's shared button recipe (#496) —
+               same pattern as .board-repo-combo's ::after chevron. -->
+          <span class="board-model-combo">
+            <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
+                    title="model for dispatches and one-tap ▶/⚡ starts: Sonnet / Opus / Fable spawn Claude Code; GPT-5.6 spawns Codex CLI (high effort)">
+              <option value="sonnet" selected>Sonnet</option>
+              <option value="opus">Opus</option>
+              <option value="fable">Fable</option>
+              <option value="gpt5.6">GPT-5.6</option>
+            </select>
+          </span>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice → text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
           <button id="boardDispatchClear" type="button" class="compose-record"

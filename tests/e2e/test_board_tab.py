@@ -804,6 +804,177 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
     expect(drawer.locator(".board-reply-record")).to_be_visible()
 
 
+def test_board_drawer_rename_first_icon_only_and_stop_kills_session(
+    authed_page: Page, base_url: str
+) -> None:
+    """#496 item 5 (+ round-2 on-device feedback): the reply box takes a
+    full line of its own; the buttons form one right-aligned row of
+    canonical 44px targets ordered Rename → Stop → Terminal (Terminal
+    last); and the Stop button kills a live PTY session via the unified
+    stop path (#253: POST .../stop {mode: 'quit'}), closing the drawer."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+
+    captured: dict = {}
+
+    def _capture_stop(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "stopped": "s-wait"}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/stop$"), _capture_stop
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+
+    actions = drawer.locator(".board-drawer-actions")
+    rename = actions.locator(".board-rename-btn")
+    terminal = actions.locator(".board-open-terminal")
+    stop = actions.locator(".board-stop-btn")
+    expect(rename).to_be_visible()
+    expect(terminal).to_be_visible()
+    expect(stop).to_be_visible()
+
+    # Rename is icon-only (pencil glyph, no text label) but keeps its
+    # accessible name.
+    assert rename.inner_text().strip() == "", "Rename must be icon-only"
+    expect(rename).to_have_attribute("aria-label", "Rename this session")
+
+    # DOM order (#496 round 2): Rename → Stop → Terminal, Terminal LAST.
+    order = actions.evaluate(
+        "el => Array.from(el.children).map(c => c.className)"
+    )
+    idx_rename = next(i for i, c in enumerate(order) if "board-rename-btn" in c)
+    idx_terminal = next(i for i, c in enumerate(order) if "board-open-terminal" in c)
+    idx_stop = next(i for i, c in enumerate(order) if "board-stop-btn" in c)
+    assert idx_rename < idx_stop < idx_terminal, (
+        f"drawer action order wrong (want rename < stop < terminal): {order}"
+    )
+    assert "board-open-terminal" in order[-1], (
+        f"Terminal must be the last button in the row: {order}"
+    )
+
+    # The reply box owns a full line; every button sits BELOW it, and the
+    # row right-aligns (#496 round 2). The send button doubles as the
+    # left-most fixed reference for the 44px sweep below.
+    reply = actions.locator(".board-reply-input")
+    send = actions.locator(".board-reply-send")
+    box_actions = actions.bounding_box()
+    box_reply = reply.bounding_box()
+    assert box_actions and box_reply, "drawer actions not laid out"
+    assert box_reply["width"] >= box_actions["width"] * 0.9, (
+        f"reply box must span its own full line: {box_reply['width']} of "
+        f"{box_actions['width']}"
+    )
+    box_terminal = terminal.bounding_box()
+    assert box_terminal, "terminal button not laid out"
+    assert box_terminal["y"] >= box_reply["y"] + box_reply["height"] - 2, (
+        "buttons must sit on their own row below the reply box"
+    )
+    actions_right = box_actions["x"] + box_actions["width"]
+    terminal_right = box_terminal["x"] + box_terminal["width"]
+    assert actions_right - terminal_right <= 8, (
+        f"button row must right-align: row right {actions_right}, "
+        f"last button right {terminal_right}"
+    )
+
+    # 44px canonical footprint on every drawer button (#496 item 6 +
+    # round 2: the mic was the one visibly smaller straggler). The mic
+    # only renders when voice dictation is available, so probe it softly.
+    sized = [rename, terminal, stop, send]
+    mic = actions.locator(".board-reply-record")
+    if mic.count():
+        sized.append(mic)
+    for btn in sized:
+        box = btn.bounding_box()
+        assert box and box["height"] >= 44 and box["width"] >= 44, (
+            f"drawer button under the 44px floor: {box}"
+        )
+
+    stop.click()
+    authed_page.wait_for_timeout(500)
+    assert captured.get("method") == "POST"
+    assert captured.get("body") == {"mode": "quit"}
+    # The drawer closes (boardExpanded cleared + re-render).
+    expect(drawer).to_be_hidden()
+
+
+def test_backlog_cards_color_coded_from_shared_git_cache(
+    authed_page: Page, base_url: str
+) -> None:
+    """#496 item 4: a backlog card whose repo is dirty shows the red meta
+    annotation, fed from the boot-time /api/claude-code/git-status cache —
+    the route is mocked BEFORE navigation, and no board-poll git work is
+    involved (the board payload itself carries no git fields)."""
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page)
+    authed_page.route(
+        "**/api/claude-code/git-status",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"projects": [{
+                "id": "cc-app-launcher", "is_git": True,
+                "branch": "feat/496-wip", "default_branch": "main",
+                "on_default_branch": False, "dirty": True,
+            }]}),
+        ),
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.locator("#boardColBacklog").click()
+
+    meta = authed_page.locator(
+        '.board-list[data-col="backlog"] .board-card-meta-inline'
+    ).first
+    expect(meta).to_be_visible(timeout=15_000)
+    # Red (dirty) wins over yellow when the repo is both dirty and off-main.
+    expect(meta).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=15_000)
+
+
+def test_dispatch_model_select_matches_sibling_button_shape_on_phone(
+    authed_page: Page, base_url: str
+) -> None:
+    """#496 (on-device photo feedback): on the phone the model <select> must
+    present exactly the sibling buttons' geometry — same height as the ✕
+    clear button and the shared 12px control radius — instead of iOS's own
+    native pill chrome. Phone projection only; desktop keeps the native
+    select."""
+    viewport = authed_page.viewport_size or {"width": 0}
+    if viewport["width"] >= 700:
+        pytest.skip("flattened select is coarse-pointer-only; desktop keeps native chrome")
+
+    _mock_board(authed_page)
+    _open_board(authed_page, base_url)
+
+    select = authed_page.locator("#boardDispatchModel")
+    clear = authed_page.locator("#boardDispatchClear")
+    expect(select).to_be_visible()
+    box_select = select.bounding_box()
+    box_clear = clear.bounding_box()
+    assert box_select and box_clear, "dispatch row not laid out"
+    assert abs(box_select["height"] - box_clear["height"]) <= 1, (
+        f"model select height {box_select['height']} != sibling button "
+        f"height {box_clear['height']}"
+    )
+    radius = select.evaluate("el => getComputedStyle(el).borderRadius")
+    assert radius == "12px", f"model select radius {radius!r} != 12px"
+    appearance = select.evaluate(
+        "el => getComputedStyle(el).webkitAppearance || getComputedStyle(el).appearance"
+    )
+    assert appearance == "none", (
+        f"native select chrome still painting on the phone: {appearance!r}"
+    )
+
+
 def test_board_columns_layout_matches_projection(
     authed_page: Page, base_url: str
 ) -> None:
