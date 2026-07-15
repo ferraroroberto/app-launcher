@@ -136,6 +136,21 @@ def test_board_drawer_rename_patches_card_in_place(
     captured: dict = {}
     _mock_board(authed_page)
     _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)
+    # #510: the real /api/claude-code/git-status boot fetch is unmocked and
+    # non-deterministic in timing; its completion calls renderBoard() whenever
+    # the Board tab is active (apps.js), which rebuilds the open drawer's DOM
+    # (including this test's rename button) out from under it if the response
+    # lands mid-interaction — the same class of race test_board_tab.py's
+    # test_backlog_cards_color_coded_from_shared_git_cache mocks around.
+    # Mocked BEFORE navigation so the boot call resolves immediately, well
+    # before the drawer is even opened.
+    authed_page.route(
+        re.compile(r".*/api/claude-code/git-status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"projects": []}),
+        ),
+    )
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabBoard").click()
