@@ -1782,7 +1782,10 @@ body.terminal-open {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  /* (#514) 6px, matching .terminal-bar-actions' own gap, so all eight
+     buttons sit at one uniform distance — and the full row (8 × 44px
+     + gaps + bar padding = 420px) fits a 430px phone viewport at once. */
+  gap: 6px;
   padding: 8px 10px;
   background: var(--card);
   border-bottom: 1px solid var(--line);
@@ -1839,12 +1842,12 @@ body.terminal-open {
    minimum (issue #477) — restated here for clarity even though the base
    .term-btn now carries 44×44 itself (#496). */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
-/* ‹ Back button (issue #259, widened again #496) — the close-tap complaint:
-   a bigger real target at the bar's left edge, plus extra clearance before
-   the adjacent ✕ kill button so the two 44px rectangles don't share one
-   thumb zone (adjacent-cluster rule: real geometry, no overlap). */
-#terminalBack { min-width: 64px; text-align: center; }
-#terminalKill { margin-left: 4px; }
+/* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
+   the #259 close-tap complaint, but the extra 24px pushed the eight-button
+   row past the phone viewport (#514). Reverted to the uniform 44px HIG
+   target (#477) every other bar button uses, at the bar's uniform 6px gap,
+   so the whole row fits on-screen at once. */
+#terminalBack { text-align: center; }
 /* ✕ Stop-and-kill in the terminal bar (issue #253) — a muted glyph that
    blends with the dark bar by default, flashing danger-red on press like
    the list row's stop button (so it doesn't shout a loud red emoji). */
