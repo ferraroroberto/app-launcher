@@ -98,3 +98,73 @@ async def test_long_write_delivers_into_real_pty_losslessly(
         f"delivered {len(received)} of {len(sent)}"
     )
     assert received == sent, "delivered bytes diverge from the payload (dropped span)"
+
+
+async def _inject_rename_readback(
+    agent: str, title: str, tmp_path: Path
+) -> str:
+    """Spawn the raw-reading child in a real ConPTY, forward a rename via
+    ``PtySession.inject_rename``, then terminate the child's read with the
+    sentinel — returns the bytes the child actually received off the PTY."""
+    result = tmp_path / "rename_readback.bin"
+    ready = Path(str(result) + ".ready")
+    cmd = f"{sys.executable} {_CHILD} {result}"
+    pty = PtyProcess.spawn(cmd, cwd=str(_CHILD.parent), dimensions=(40, 120))
+    loop = asyncio.get_running_loop()
+    session = PtySession(
+        session_id="rename-readback",
+        project_dir=str(_CHILD.parent),
+        name="child",
+        flags="",
+        started_at=time.time(),
+        _loop=loop,
+        _pty=pty,
+        agent=agent,
+    )
+    session.start_reader()
+    try:
+        for _ in range(100):
+            if ready.exists():
+                break
+            await asyncio.sleep(0.05)
+        assert ready.exists(), "child never signalled raw-mode readiness"
+
+        session.inject_rename(title)
+        # The child reads until the sentinel — send it so the read loop ends
+        # and flushes everything it saw (the injected ESC + rename command).
+        session.write(_SENTINEL)
+
+        for _ in range(200):
+            await asyncio.sleep(0.05)
+            if result.exists():
+                break
+    finally:
+        try:
+            pty.close(force=True)
+        except Exception:
+            pass
+
+    return result.read_bytes().decode("utf-8", "replace") if result.exists() else ""
+
+
+async def test_inject_rename_delivers_native_command_into_real_pty(
+    tmp_path: Path,
+) -> None:
+    """The native-rename forward (#503) reaches a real ConPTY intact: ESC to
+    clear the prompt, then the agent's own `/rename <title>` + CR — the exact
+    bytes an agent's slash-command parser consumes."""
+    received = await _inject_rename_readback("claude", "verify title", tmp_path)
+    assert received == "\x1b/rename verify title\r", (
+        f"native rename bytes diverged at the PTY boundary: {received!r}"
+    )
+
+
+async def test_inject_rename_uses_pi_name_verb_over_real_pty(
+    tmp_path: Path,
+) -> None:
+    """Pi's native verb is `/name`, not `/rename` — verified at the real-PTY
+    boundary, not just against a mock (#503)."""
+    received = await _inject_rename_readback("pi", "pi thread", tmp_path)
+    assert received == "\x1b/name pi thread\r", (
+        f"pi rename bytes diverged at the PTY boundary: {received!r}"
+    )
