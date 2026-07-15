@@ -1790,13 +1790,30 @@ body.terminal-open {
 }
 .terminal-title {
   flex: 1;
+  min-width: 0;
   font-weight: 600;
   font-size: var(--font-label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.terminal-bar-actions { display: flex; gap: 6px; }
+/* (#514) .terminal-bar-actions is a flex item of the row-flex .terminal-bar;
+   without min-width: 0 a flex item's automatic minimum size is its content's
+   min-content width, so this group refused to shrink below the sum of its
+   six 44px buttons and pushed past the viewport edge once #496 widened the
+   adjacent Back/Kill buttons — same shrinkable-scroll-container contract as
+   design.md's grid minmax(0, 1fr) rule, applied to a flex row. overflow-x:
+   auto lets it scroll internally, within the bar's own padding, instead of
+   clipping the last button off-screen. */
+.terminal-bar-actions {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.terminal-bar-actions::-webkit-scrollbar { display: none; }
 .term-btn {
   background: var(--card-2);
   color: var(--fg);
