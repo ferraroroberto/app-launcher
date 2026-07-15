@@ -21,6 +21,11 @@ submits.  We therefore dismiss each modal when present (non-mutating choices:
 "Skip" for the update prompt, "esc to close" for the hooks panel — neither
 persists a preference or trusts anything) rather than adjusting the submit
 sequence.
+
+Timing (issue #493): the CR is sent only after the pasted text has visibly
+rendered in the composer, and the exit wait is a polled 15 s budget — a fixed
+3 s budget flaked ~2/20 under concurrent load (typical submit->exit is
+~870 ms, but the full pre-ship gate can push it past 3 s).
 """
 
 from __future__ import annotations
@@ -131,14 +136,39 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
         await asyncio.sleep(2.0)
 
         session.write("\x1b[200~/quit\x1b[201~")
+        # Only send the CR once the composer has visibly rendered the paste
+        # (issue #493): on a loaded host the CR can otherwise land while Codex
+        # is still processing the bracketed paste and be treated as a newline
+        # instead of Submit.  Typical render latency is ~65 ms (timing probe,
+        # #493); the ceiling only matters under heavy load.
+        for _ in range(100):  # 10 s ceiling
+            if "/quit" in (session.snapshot_frame() or ""):
+                break
+            if not session.alive:
+                pytest.fail("Codex died before the pasted /quit rendered")
+            await asyncio.sleep(0.1)
+        else:
+            pytest.fail(
+                "pasted /quit never rendered in the Codex composer within 10 s"
+            )
         session.write("\r")
 
-        for _ in range(30):
+        # Typical submit->exit latency is ~870 ms (timing probe, #493); the
+        # old fixed 3 s budget was only ~3.5x that and was exceeded under the
+        # full pre-ship gate's load.  Polled, so healthy runs still finish in
+        # under a second.
+        for _ in range(150):  # 15 s ceiling
             if not session.alive:
                 break
             await asyncio.sleep(0.1)
+        final_frame = session.snapshot_frame() or ""
         assert not session.alive, (
-            "one Enter left /quit in Codex's composer instead of submitting it"
+            "one Enter did not exit Codex within 15 s — "
+            + (
+                "/quit is still in the composer (Enter was swallowed)"
+                if "/quit" in final_frame
+                else "/quit left the composer (submitted, but exit overran the budget)"
+            )
         )
     finally:
         if session.alive:
