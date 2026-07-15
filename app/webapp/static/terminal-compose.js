@@ -45,6 +45,27 @@ const _COMPOSE_MAX_ROWS = 8;
 // little submit latency on image sends, so this errs generous.
 const _IMAGE_SUBMIT_DELAY_MS = 350;
 
+// Bulk-text CR settle watch (issue #499): a dictation-sized paste can outrun
+// Claude Code's bracketed-paste ingest when the machine is under load
+// (concurrent PTY sessions, gates, browsers — #493 measured 5× latency
+// spikes), so the immediately-following CR lands mid-ingest and becomes a
+// newline into the still-settling composer instead of Submit. For payloads
+// past the threshold, the CR is held until the session's output stream shows
+// the paste was ingested AND settled: some output arrived after the send
+// (Claude echoes the paste / collapses it into a "[Pasted text #N]" chip)
+// and that output has been quiet for _BULK_QUIET_MS — with a floor (never
+// sooner than _BULK_FLOOR_MS) and a cap (send anyway at _BULK_CAP_MS).
+// Calibrated with a real-Claude ConPTY probe under synthetic load (#499):
+// immediate CR submitted 1/20, fixed 350 ms 19/20, fixed 1000 ms 19/20, a
+// bare quiet-window 13/20 (under load the echo itself is deferred, so it
+// fires early) — this echo-then-quiet protocol was the only one to run
+// clean 20/20. Short sends stay instant. Threshold: dictations that
+// reproduced the swallow are ~1–2 KB; typed prompts stay well under this.
+const _BULK_SUBMIT_THRESHOLD_CHARS = 500;
+const _BULK_FLOOR_MS = 350;
+const _BULK_QUIET_MS = 350;
+const _BULK_CAP_MS = 3000;
+
 export function growComposeInput() {
   // Auto-grow up to _COMPOSE_MAX_ROWS; the iOS return key adds newlines,
   // only ➤ Send forwards to the PTY.
@@ -119,21 +140,40 @@ export function framePaste(t, text) {
 // is literal pasted text by design, so the split is the only ordering that
 // reliably submits. With bracketed mode off there is no paste state machine
 // to race, but the two-frame path is harmless there, so it stays uniform.
-// `opts.submitDelayMs` (issue #450): hold the submitting CR back by this many
-// ms instead of sending it in the same burst as the text. Needed only when the
-// payload carries a pasted image path — Claude Code runs a path→attachment
-// conversion on submit that absorbs a CR arriving mid-conversion, so the prompt
-// lands unsubmitted and needs a second Enter. A short defer lets the conversion
-// settle before the CR arrives. Plain-text sends pass no delay and stay
-// instant (the CR still goes as its own frame, preserving #166's ordering fix).
+// `opts.submitDelayMs` (issue #450): hold the submitting CR back by this
+// many ms instead of sending it in the same burst as the text. Needed when
+// the payload carries a pasted image path — Claude Code's path→attachment
+// conversion absorbs a CR arriving mid-conversion, so the prompt lands
+// unsubmitted and needs a second Enter. A short defer lets the conversion
+// settle before the CR arrives.
+// `opts.bulkSettle` (issue #499): hold the CR until the session's output
+// stream shows the paste was ingested and settled (echo seen after the send,
+// then quiet — floor/quiet/cap constants above). Used for dictation-sized
+// text payloads, whose ingest under machine load outlives any fixed delay.
+// Short plain-text sends pass no options and stay instant (the CR still
+// goes as its own frame, preserving #166's ordering fix).
 export function sendSubmit(t, text, opts) {
   if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+  const sentAt = Date.now();
   t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
   const submit = function () {
     if (t.ws && t.ws.readyState === WebSocket.OPEN) {
       t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
     }
   };
+  if (opts && opts.bulkSettle) {
+    const watch = setInterval(function () {
+      const now = Date.now();
+      const settled = now - sentAt >= _BULK_FLOOR_MS
+        && t.lastOutputAt > sentAt
+        && now - t.lastOutputAt >= _BULK_QUIET_MS;
+      if (settled || now - sentAt >= _BULK_CAP_MS) {
+        clearInterval(watch);
+        submit();
+      }
+    }, 50);
+    return;
+  }
   const delay = opts && opts.submitDelayMs;
   if (delay > 0) setTimeout(submit, delay); else submit();
 }
@@ -296,10 +336,15 @@ export function wireCompose() {
     }
     const text = els.terminalComposeInput.value;
     if (!text) return;
-    // #450: when an image path was attached into this buffer, defer the
-    // submitting CR so Claude Code's attachment conversion doesn't swallow it.
-    const opts = t.composeHasImage
-      ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined;
+    // #499: bulk text (a long dictation) holds the CR until the paste's
+    // ingest visibly settles — under machine load a fixed defer still lands
+    // mid-ingest and the CR becomes a newline instead of Submit. The settle
+    // watch also covers #450's image-conversion window when both apply.
+    // #450: an image path in a short buffer keeps its fixed conversion defer.
+    const opts = text.length >= _BULK_SUBMIT_THRESHOLD_CHARS
+      ? { bulkSettle: true }
+      : (t.composeHasImage
+        ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined);
     sendSubmit(t, text, opts);
     t.composeHasImage = false;
     els.terminalComposeInput.value = '';

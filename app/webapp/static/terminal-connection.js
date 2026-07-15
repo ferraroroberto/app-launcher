@@ -179,6 +179,10 @@ export function connectTerminalWs(terminal) {
       return;
     }
     if (route === 'swallow' || !terminal.term) return;
+    // #499: stamp every PTY output frame so the compose bar's bulk-send
+    // settle watch (terminal-compose.js) can tell "the agent echoed the
+    // paste and went quiet" from "the paste is still being ingested".
+    terminal.lastOutputAt = Date.now();
     // Active repaint batch (#430): buffer the burst, flush on the first
     // quiet gap or at the hard deadline — one write, one render.
     if (terminal.batchBuf) {
