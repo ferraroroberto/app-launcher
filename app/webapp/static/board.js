@@ -341,6 +341,9 @@ async function startIssue(card, mode, btn) {
     const payload = {
       repo: card.repo, number: card.number, mode: mode,
       title: card.title || '',
+      // The dispatch bar's model selector governs one-tap starts too
+      // (#505), overriding the shared Coding model per launch.
+      model: (els.boardDispatchModel && els.boardDispatchModel.value) || 'sonnet',
     };
     // Desktop browsers get the PC mirror window, like every launch (#241).
     // Phone launches carry the real terminal size so the PTY's early
