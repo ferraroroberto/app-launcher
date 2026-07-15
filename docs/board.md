@@ -102,7 +102,7 @@ Net cost per 5 s poll: one `os.stat` per session row, one ≤8 KB tail read for 
 
 ## The dispatch bar — injection-safe spawn-then-type (#302)
 
-Pinned above the columns, the **dispatch bar** speaks a new goal into existence: a goal box, a repo `<select>` (the same live claude-code listing the Coding tab launches from), an **add / build / yolo** mode pill, an **opus** toggle (off = Sonnet, on = Opus — the same per-launch toggle as the Life OS tab), a 🎤, and a ➤. Endpoint: `POST /api/board/dispatch`, body `{repo, goal, mode, opus, rows, cols, desktop}`.
+Pinned above the columns, the **dispatch bar** speaks a new goal into existence: a goal box, a repo `<select>` (the same live claude-code listing the Coding tab launches from), an **add / build / yolo** mode pill, a **model** `<select>` (#500: Sonnet default / Opus / Fable spawn a Claude Code session at that model; GPT-5.6 spawns a Codex CLI session with the Coding tab's shared Codex flags — Codex has no per-model flag, so it runs the account default at the configured effort; 400 if Codex isn't installed), a 🎤, and a ➤. Endpoint: `POST /api/board/dispatch`, body `{repo, goal, mode, model, rows, cols, desktop}`.
 
 The modes map to `/issue-*` commands:
 
@@ -112,7 +112,7 @@ The modes map to `/issue-*` commands:
 | `build` | `/issue-add now` |
 | `yolo` | `/issue-yolo` |
 
-**Why spawn-then-type.** The free-text goal must never touch the unquoted `cmd /c {exe} {flags}` string the session-host spawns with — that would be cmd-metacharacter injection. So dispatch spawns the session with **only the shared Claude flags and no positional prompt**, then delivers the goal over the PTY input path. (Contrast the sibling `/api/board/issues/start`, which *can* use a positional prompt because `/issue-<mode> <N>` is built server-side from an int-validated number — injection-safe by construction.)
+**Why spawn-then-type.** The free-text goal must never touch the unquoted `cmd /c {exe} {flags}` string the session-host spawns with — that would be cmd-metacharacter injection. So dispatch spawns the session with **only the selected agent's shared flags and no positional prompt**, then delivers the goal over the PTY input path. (Contrast the sibling `/api/board/issues/start`, which *can* use a positional prompt because `/issue-<mode> <N>` is built server-side from an int-validated number — injection-safe by construction.)
 
 **The readiness wait** (`_await_dispatch_ready()`): poll the session-host every 0.25 s, up to a 15 s cap. Ready = the session reports `output_chars > 0` (the session-host's first-paint signal); then wait a 2 s settle so the agent's TUI has its input box up. A session-host predating #302 exposes no `output_chars` key — the wait degrades to a fixed 5 s legacy grace with a warning log rather than refusing. If the session ever reports **not alive** during startup, the request raises 504 — typing into a dead PTY is the one forbidden outcome.
 

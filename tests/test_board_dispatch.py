@@ -126,14 +126,64 @@ class TestSpawnThenType:
         first_write = overrides["session"].send_input.call_args_list[0].args[2]
         assert first_write == "\x1b[200~" + command + " ship it\x1b[201~"
 
-    def test_opus_toggle_maps_to_model_flag(
+    @pytest.mark.parametrize("model", ["sonnet", "opus", "fable"])
+    def test_claude_models_map_to_model_flag(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _ready_session, model,
+    ):
+        client, _, overrides = webapp_client
+        _dispatch(client, overrides, model=model)
+        assert f"--model {model}" in _spawn["flags"]
+        assert _spawn["agent"] == "claude"
+
+    def test_model_defaults_to_sonnet(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session
     ):
         client, _, overrides = webapp_client
-        _dispatch(client, overrides, opus=True)
-        assert "--model opus" in _spawn["flags"]
-        _dispatch(client, overrides, opus=False)
+        _dispatch(client, overrides)
         assert "--model sonnet" in _spawn["flags"]
+        assert _spawn["agent"] == "claude"
+
+    def test_gpt56_spawns_codex_with_coding_tab_flags(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _ready_session, monkeypatch,
+    ):
+        """#500: gpt5.6 = the Coding tab's Codex launch — agent codex,
+        effort-only flags (Codex has no --model), same /issue-* typing."""
+        monkeypatch.setattr(
+            board_router.agents, "is_installed", lambda a: a == "codex"
+        )
+        client, _, overrides = webapp_client
+        resp = _dispatch(client, overrides, model="gpt5.6")
+        assert resp.status_code == 200
+        assert _spawn["agent"] == "codex" and _spawn["kind"] == "pty"
+        assert "model_reasoning_effort=" in _spawn["flags"]
+        assert "--model" not in _spawn["flags"]
+        # The goal still rides the PTY path, same two-frame contract.
+        calls = overrides["session"].send_input.call_args_list
+        assert calls[0].args[2].startswith("\x1b[200~/issue-add ")
+        assert calls[1].args == (8446, "disp-1", "\r")
+
+    def test_gpt56_without_codex_installed_400s_before_spawn(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn, monkeypatch
+    ):
+        monkeypatch.setattr(
+            board_router.agents, "is_installed", lambda a: False
+        )
+        client, _, overrides = webapp_client
+        resp = _dispatch(client, overrides, model="gpt5.6")
+        assert resp.status_code == 400
+        assert "not installed" in resp.json()["detail"]
+        assert not _spawn  # nothing ever spawned
+
+    def test_unknown_model_400s_before_spawn(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn
+    ):
+        client, _, overrides = webapp_client
+        resp = _dispatch(client, overrides, model="haiku")
+        assert resp.status_code == 400
+        assert "unknown model" in resp.json()["detail"]
+        assert not _spawn
 
     def test_validation_rejects_before_spawn(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn

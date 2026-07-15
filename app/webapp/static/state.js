@@ -132,7 +132,7 @@ export const els = {
   boardDispatchRepoBtn: document.getElementById('boardDispatchRepoBtn'),
   boardDispatchRepoList: document.getElementById('boardDispatchRepoList'),
   boardDispatchModes: document.getElementById('boardDispatchModes'),
-  boardDispatchOpus: document.getElementById('boardDispatchOpus'),
+  boardDispatchModel: document.getElementById('boardDispatchModel'),
   boardDispatchRecord: document.getElementById('boardDispatchRecord'),
   boardDispatchClear: document.getElementById('boardDispatchClear'),
   boardDispatchSend: document.getElementById('boardDispatchSend'),

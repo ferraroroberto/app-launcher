@@ -40,7 +40,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { iconUrl, renderUsageBadgeRow, toggleAriaChecked } from './dom-utils.js';
+import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -807,7 +807,7 @@ async function dispatchGoal() {
       repo: repo,
       goal: goal,
       mode: dispatchMode,
-      opus: !!(els.boardDispatchOpus && els.boardDispatchOpus.getAttribute('aria-checked') === 'true'),
+      model: (els.boardDispatchModel && els.boardDispatchModel.value) || 'sonnet',
     };
     // Same size contract as startIssue (issue #374).
     applyLaunchSizePayload(payload);
@@ -868,13 +868,8 @@ function wireDispatch() {
         setDispatchMode(btn.dataset.mode);
       });
     });
-  // opus is a plain client-side switch (issue #355) — no server config,
-  // just read at dispatch time above.
-  if (els.boardDispatchOpus) {
-    els.boardDispatchOpus.addEventListener('click', function () {
-      toggleAriaChecked(els.boardDispatchOpus);
-    });
-  }
+  // The model <select> (#500) is a plain client-side control (issue #355
+  // pattern) — no server config, just read at dispatch time above.
   els.boardDispatchSend.addEventListener('click', function () {
     dispatchGoal();
   });

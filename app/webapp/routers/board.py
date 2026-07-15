@@ -50,11 +50,11 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, board, github_client, session_client
+from src import agents, audit, board, github_client, session_client
 from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
-from src.webapp_config import WebappConfig, build_claude_flags
+from src.webapp_config import WebappConfig, build_claude_flags, build_codex_flags
 
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
@@ -303,6 +303,14 @@ _DISPATCH_COMMANDS = {
     "yolo": "/issue-yolo",
 }
 
+# Dispatch model selector (#500): three Claude tiers (each a valid
+# ``build_claude_flags`` override) plus "gpt5.6", which spawns a Codex CLI
+# session with the shared Coding-tab flags instead — Codex has no per-model
+# flag, so "gpt5.6" just means "the account's default model at the
+# configured effort", same as the Coding tab's Codex button.
+_DISPATCH_CLAUDE_MODELS = ("sonnet", "opus", "fable")
+_DISPATCH_CODEX_MODEL = "gpt5.6"
+
 
 async def _await_dispatch_ready(port: int, sid: str) -> None:
     """Block until the spawned agent is safe to type into, or raise 504.
@@ -355,10 +363,11 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     """Free-text goal → a fresh ``/issue-*`` session (Tailscale + passkey, #302).
 
     Body: ``{"repo": str, "goal": str, "mode": "add"|"build"|"yolo",
-    "opus": bool, "rows": int, "cols": int}``. Spawn-then-type per the module
-    docstring: the goal rides the PTY input path, never the command line.
-    The half-spawned session is killed on any failure past the spawn, so a
-    timeout can't strand an orphan the user never asked for.
+    "model": "sonnet"|"opus"|"fable"|"gpt5.6", "rows": int, "cols": int}``.
+    Spawn-then-type per the module docstring: the goal rides the PTY input
+    path, never the command line. The half-spawned session is killed on any
+    failure past the spawn, so a timeout can't strand an orphan the user
+    never asked for.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -372,16 +381,32 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
             status_code=400, detail="goal must be a non-empty string"
         )
     goal = goal.strip()
-    opus = bool(body.get("opus"))
+    model = str(body.get("model") or "sonnet").strip().lower()
+    if model not in _DISPATCH_CLAUDE_MODELS and model != _DISPATCH_CODEX_MODEL:
+        raise HTTPException(status_code=400, detail=f"unknown model: {model}")
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
 
     entry = _resolve_repo_entry(cfg, repo)
 
-    # Same per-launch model toggle as the Life OS tab (#102): opus forces
-    # --model opus, off forces sonnet; everything else stays the shared
-    # Coding defaults. No positional prompt — see the module docstring.
-    flags = build_claude_flags(cfg, "opus" if opus else "sonnet")
+    # Per-launch model (#500): the Claude tiers force --model like the Life
+    # OS tab's toggle (#102); gpt5.6 spawns Codex with the Coding tab's
+    # shared flags instead (apps.py's exact launch shape). Everything else
+    # stays the shared Coding defaults. No positional prompt — see the
+    # module docstring.
+    if model == _DISPATCH_CODEX_MODEL:
+        # Defence-in-depth like apps.py: dispatch bypasses the Coding tab's
+        # already-disabled button, so re-check the CLI actually resolves.
+        if not agents.is_installed("codex"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"{agents.AGENTS['codex'].label} is not installed",
+            )
+        agent = "codex"
+        flags = build_codex_flags(cfg)
+    else:
+        agent = "claude"
+        flags = build_claude_flags(cfg, model)
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
@@ -390,7 +415,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
             flags,
             cfg.session_host_port,
             "pty",
-            "claude",
+            agent,
             rows,
             cols,
             history_lines=cfg.terminal_history_lines,
@@ -430,7 +455,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
 
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
-        sid=sid, agent="claude", name=entry.name, project=entry.project_dir,
+        sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
         skill=command, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
     return {"launched": command, "repo": entry.name, "session": session}
