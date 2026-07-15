@@ -97,6 +97,10 @@
      contrast surface on the card — --card-2 here, not --card-off, because
      this app's dark --card-off is true black and would vanish on the card. */
   --close-bg: var(--card-2);
+  /* Vendored switch.css contract (project-scaffolding#120). */
+  --toggle-track: var(--line);
+  --toggle-knob: #ffffff;
+  --on: var(--success);
   color-scheme: light;
   /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
      label) is intentionally undefined here (issue #355) — nav-tabs.css's
@@ -128,6 +132,7 @@
   --shadow-nav: 0 10px 34px rgba(0, 0, 0, 0.5);
   --tabbar-bg: rgba(22, 27, 34, 0.86);
   --tabbar-border: rgba(255, 255, 255, 0.13);
+  --toggle-knob: var(--ink);
   color-scheme: dark;
 }
 
@@ -464,45 +469,23 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .segmented button.active { background: var(--card); color: var(--fg); }
-.toggles { display: flex; gap: 14px; margin-bottom: 10px; }
-/* role="switch" button (issue #355) — the box glyph replaces the native
-   checkbox's tick; .icon swap mirrors .theme-toggle's sun/moon pattern. */
-.toggle {
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-bottom: 10px;
+}
+/* App-level composition around the vendored track. The component owns the
+   button's geometry; callers own the adjacent human-readable label. */
+.switch-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--row-sm);
   font-size: var(--font-label);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
 }
-/* Shared checkbox-glyph replacement for every role="switch" button that
-   still wants the checkbox-row look (.toggle, .job-confirm-row,
-   .job-run-dryrow) — issue #355. */
-.check-box {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--line-muted);
-  border-radius: var(--radius-sm);
-  color: var(--accent-fg);
-}
-.check-box .icon { width: 16px; height: 16px; display: none; }
-.toggle[aria-checked="true"] .check-box,
-.job-confirm-row[aria-checked="true"] .check-box,
-.job-run-dryrow[aria-checked="true"] .check-box {
-  background: var(--success);
-  border-color: var(--success);
-}
-.toggle[aria-checked="true"] .check-box .icon,
-.job-confirm-row[aria-checked="true"] .check-box .icon,
-.job-run-dryrow[aria-checked="true"] .check-box .icon {
-  display: block;
-}
+.toggles .switch-row { flex: 1 1 180px; }
 .flags-preview {
   font-family: "SF Mono", "Fira Mono", monospace;
   font-size: var(--font-caption);
@@ -594,9 +577,7 @@ summary + .opt-group { border-top: 0; }
   padding: 8px 18px 10px;
   border-top: 1px solid var(--line);
 }
-.app-item .tray-autostart-row .toggle {
-  font-size: var(--font-caption);
-}
+.app-item .tray-autostart-row .switch-row { font-size: var(--font-caption); }
 .app-item .row-actions {
   display: flex;
   flex-direction: column;
@@ -962,14 +943,8 @@ summary + .opt-group { border-top: 0; }
   padding: 6px 10px;
   white-space: nowrap;
 }
-/* Edit-mode toggle in the Registered-jobs summary — the same switch the
-   Settings tab exposes (one shared state), squeezed to the summary's
-   compact icon-button footprint (Add is icon-only too — three labelled
-   buttons overflow the 390px summary row). */
-.jobs-edit-btn {
-  min-height: 0;
-  padding: 6px 10px;
-}
+/* Edit mode uses the canonical compact track here; its accessible name and
+   title carry the label so the three-control summary still fits a phone. */
 /* Never let the action cluster shove the title into a two-line wrap —
    truncate the title instead (the vendored disclosure grid stays 1fr auto). */
 .jobs-card .collapse-main { min-width: 0; }
@@ -1210,32 +1185,8 @@ summary + .opt-group { border-top: 0; }
   padding: 0 14px;
   border-bottom: 1px solid var(--line-muted);
 }
-/* Edit-mode toggle in the Settings head — same button-style toggle
-   as .detached-toggle: role="switch" + aria-checked (issue #355), no
-   visible checkbox. */
-.edit-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: var(--font-caption);
-  font-weight: 500;
-  white-space: nowrap;
-  padding: 6px 12px;
-  min-height: var(--control-h);
-  border: 1px solid var(--line-muted);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  user-select: none;
-  opacity: 0.55;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
-}
-.edit-toggle:active { background: var(--card-2); }
-.edit-toggle[aria-checked="true"] {
-  opacity: 1;
-  border-color: var(--accent);
-  background: rgb(from var(--accent) r g b / 0.18);
-}
+.settings-edit-row { min-height: 0; font-size: var(--font-caption); }
+.settings-switch-row { margin: 4px 0 10px; }
 .settings-card .stacked {
   display: flex;
   flex-direction: column;
@@ -1449,6 +1400,7 @@ summary + .opt-group { border-top: 0; }
 .scan-section .scan-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 8px 10px;
   width: 100%;
@@ -1458,13 +1410,8 @@ summary + .opt-group { border-top: 0; }
   margin-bottom: 4px;
   font-size: var(--font-caption);
   text-align: left;
-  cursor: pointer;
 }
-.scan-section .scan-row[aria-checked="true"] .check-box {
-  background: var(--success);
-  border-color: var(--success);
-}
-.scan-section .scan-row[aria-checked="true"] .check-box .icon { display: block; }
+.scan-section .scan-row > div { flex: 1; min-width: 0; }
 .scan-section .meta {
   color: var(--muted);
   font-size: var(--font-caption);
@@ -1534,10 +1481,8 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-label);
   color: var(--fg);
   background: none;
-  border: none;
   border-top: 1px solid var(--line-muted);
   text-align: left;
-  cursor: pointer;
 }
 .job-run-dryrow code {
   background: var(--card-off);
@@ -1602,6 +1547,7 @@ summary + .opt-group { border-top: 0; }
 .job-chain-row-btn {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   width: 100%;
   min-height: 44px;
@@ -1611,13 +1557,7 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-label);
   color: inherit;
   text-align: left;
-  cursor: pointer;
 }
-.job-chain-row-btn[aria-checked="true"] .check-box {
-  background: var(--success);
-  border-color: var(--success);
-}
-.job-chain-row-btn[aria-checked="true"] .check-box .icon { display: block; }
 
 /* Job parameters editor (issue #67) — embedded inside #jobDialog as a
  * .dialog-section. The Run-now dialog uses the same stacked label pattern

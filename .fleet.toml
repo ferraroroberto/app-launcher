@@ -6,3 +6,6 @@ layer       = "enabling"
 icon        = "🚀"
 port        = ":8445"
 description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs · Life OS · Board (fleet kanban) · Settings, all from the phone. Born from one goal: do <i>everything</i> on the PC from mobile. The entry point to it all."
+
+[vendored]
+switch = { src = "app/webapp/static/_vendored/switch", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/switch" }

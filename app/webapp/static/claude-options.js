@@ -14,6 +14,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi } from './api.js';
 import { toggleAriaChecked } from './dom-utils.js';
+import { setSwitch } from './_vendored/switch/switch.js';
 
 export async function fetchConfig() {
   const body = await jsonApi('/api/config');
@@ -33,9 +34,7 @@ export async function fetchConfig() {
     els.terminalHistoryLines.value = body.terminal_history_lines || '';
   }
   if (els.bootAutostartToggle) {
-    els.bootAutostartToggle.setAttribute(
-      'aria-checked', body.boot_autostart_enabled ? 'true' : 'false'
-    );
+    setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
   renderClaudeOptions();
 }
@@ -87,8 +86,8 @@ function renderClaudeSubsection() {
     });
     els.claudePermission.appendChild(b);
   });
-  els.claudeVerbose.setAttribute('aria-checked', c.verbose ? 'true' : 'false');
-  els.claudeDebug.setAttribute('aria-checked', c.debug ? 'true' : 'false');
+  setSwitch(els.claudeVerbose, !!c.verbose);
+  setSwitch(els.claudeDebug, !!c.debug);
   els.claudeFlagsPreview.textContent = 'claude ' + (c.computed_flags || '');
 }
 
@@ -130,8 +129,8 @@ function renderCodexSubsection() {
 function renderAntigravitySubsection() {
   const a = state.config && state.config.antigravity;
   if (!a) return;
-  els.antigravitySkipPerms.setAttribute('aria-checked', a.skip_permissions ? 'true' : 'false');
-  els.antigravitySandbox.setAttribute('aria-checked', a.sandbox ? 'true' : 'false');
+  setSwitch(els.antigravitySkipPerms, !!a.skip_permissions);
+  setSwitch(els.antigravitySandbox, !!a.sandbox);
   // The Antigravity CLI has no model/effort flags — the preview is just
   // the bare command plus whichever of the two toggles are on.
   els.antigravityFlagsPreview.textContent =
@@ -156,7 +155,7 @@ function renderCopilotSubsection() {
     els.copilotModel.appendChild(opt);
   });
   els.copilotModel.value = c.model || '';
-  els.copilotSkipPerms.setAttribute('aria-checked', c.skip_permissions ? 'true' : 'false');
+  setSwitch(els.copilotSkipPerms, !!c.skip_permissions);
   els.copilotFlagsPreview.textContent =
     'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
 }
@@ -230,7 +229,8 @@ export async function patchConfig(patch) {
 // through GET /api/config, which re-renders from server truth anyway.
 function wireBoolSwitch(el, patchKey) {
   el.addEventListener('click', function () {
-    const next = toggleAriaChecked(el);
+    const next = el.getAttribute('aria-checked') !== 'true';
+    setSwitch(el, next);
     patchConfig({ [patchKey]: next });
   });
 }

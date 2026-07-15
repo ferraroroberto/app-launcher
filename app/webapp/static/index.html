@@ -20,6 +20,7 @@
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
   <link rel="stylesheet" href="/static/_vendored/button/button.css">
+  <link rel="stylesheet" href="/static/_vendored/switch/switch.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
   <script>
@@ -347,9 +348,6 @@
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
   </symbol>
-  <symbol id="i-check" viewBox="0 0 24 24" fill="none">
-    <path d="M20 6 9 17l-5-5" />
-  </symbol>
 </svg>
   <!-- Body-level nav, sibling of <main class="app"> — never nested inside it
        (issue #355, _vendored/nav/README.md "Pinning the bar (iOS)"). An
@@ -518,8 +516,8 @@
             <div id="claudePermission" class="segmented" role="radiogroup" aria-label="Permission mode"></div>
           </div>
           <div class="toggles">
-            <button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Verbose</span></button>
-            <button type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Debug</span></button>
+            <span class="switch-row"><span>Verbose</span><button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Debug</span><button type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false" aria-label="Debug output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
         </div>
@@ -541,8 +539,8 @@
         <div class="opt-group">
           <h3 class="opt-group-title">Antigravity</h3>
           <div class="toggles">
-            <button type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Skip permission prompts</span></button>
-            <button type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Sandbox</span></button>
+            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Antigravity permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Sandbox</span><button type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false" aria-label="Antigravity sandbox"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
           <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
@@ -555,7 +553,7 @@
             <select id="copilotModel" class="select-native" aria-label="Copilot model"></select>
           </div>
           <div class="toggles">
-            <button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false"><span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Skip permission prompts</span></button>
+            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <p class="opt-hint">Sign in with <code>/login</code> inside the session. <strong>Default</strong> leaves the model to the Copilot CLI's own setting.</p>
           <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
@@ -672,10 +670,10 @@
           <span class="summary-actions">
             <div class="jobs-header-actions">
               <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
-              <button type="button" id="jobsEditBtn" class="edit-toggle jobs-edit-btn" role="switch" aria-checked="false"
+              <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
                      aria-label="Edit mode"
                      title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
+                <span class="knob"></span><span class="toggle-label">OFF</span>
               </button>
               <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
             </div>
@@ -844,10 +842,7 @@
             <h3 class="collapse-title">Settings</h3>
           </span>
           <span class="summary-actions">
-            <button type="button" id="editMode" class="edit-toggle" role="switch" aria-checked="false"
-                   title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab">
-              <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Edit mode</span>
-            </button>
+            <span class="switch-row settings-edit-row"><span>Edit mode</span><button type="button" id="editMode" class="toggle" role="switch" aria-checked="false" aria-label="Edit mode" title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </span>
         </div>
         <div class="collapse-body">
@@ -876,11 +871,9 @@
           <span>Terminal scrollback (lines) — how much history a full-screen agent (Codex, etc.) keeps for a reconnect</span>
           <input id="terminalHistoryLines" type="number" class="input-native" step="100">
         </label>
-        <div class="toggles">
-          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false"
-                  title="Start app-launcher automatically at log on (Startup folder — no admin needed)">
-            <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span><span>Start app-launcher at log on</span>
-          </button>
+        <div class="switch-row settings-switch-row">
+          <span>Start app-launcher at log on</span>
+          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="row settings-actions">
           <button id="saveSettings" type="button" class="button-ghost accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
@@ -1037,10 +1030,10 @@
           <input id="jobMutexGroupInput" type="text" class="input-native"
                  maxlength="32" placeholder="e.g. chrome-profile">
         </label>
-        <button type="button" id="jobConfirmInput" class="job-confirm-row" role="switch" aria-checked="false">
-          <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
+        <div class="job-confirm-row switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
-        </button>
+          <button type="button" id="jobConfirmInput" class="toggle" role="switch" aria-checked="false" aria-label="Require confirmation before running"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
         <section class="dialog-section">
           <h3 class="dialog-section-title">Run on success (chain)</h3>
           <p class="dialog-section-hint">Pick jobs to fire after a successful run.</p>
@@ -1113,10 +1106,10 @@
         </div>
         <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
         <div id="jobRunDialogFields"></div>
-        <button type="button" id="jobRunDialogDryRun" class="job-run-dryrow" role="switch" aria-checked="false">
-          <span class="check-box"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-check"></use></svg></span>
+        <div class="job-run-dryrow switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
-        </button>
+          <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry-run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
         <div class="dialog-actions dialog-actions--stacked">
           <button type="submit" class="button-tint">▶ Run</button>
         </div>

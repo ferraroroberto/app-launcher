@@ -120,6 +120,8 @@ def test_autostart_toggle_reflects_state_and_patches(
     toggle = authed_page.locator(
         "#registeredTraysList li.app-item .tray-autostart-row button"
     )
+    expect(toggle).to_have_class("toggle")
+    expect(toggle.locator(".knob")).to_have_count(1)
     expect(toggle).to_have_attribute("aria-checked", "false")
 
     toggle.click()
