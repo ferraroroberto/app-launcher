@@ -19,7 +19,7 @@ from src.session_host import (
 )
 
 
-def _make_pty_session(manager: SessionManager) -> PtySession:
+def _make_pty_session(manager: SessionManager, agent: str = "claude") -> PtySession:
     session = PtySession(
         session_id="sid-test",
         project_dir=r"C:\code\app-launcher",
@@ -28,6 +28,7 @@ def _make_pty_session(manager: SessionManager) -> PtySession:
         started_at=time.time(),
         _loop=MagicMock(),
         _pty=MagicMock(name="PtyProcess"),
+        agent=agent,
     )
     manager._sessions[session.session_id] = session
     return session
@@ -102,3 +103,70 @@ def test_manual_title_defaults_empty_in_to_api():
     mgr = SessionManager()
     session = _make_pty_session(mgr)
     assert session.to_api()["manual_title"] == ""
+
+
+# --- native-CLI rename forwarding (issue #503) --------------------------------
+
+
+def test_rename_forwards_native_command_into_pty():
+    """A pty-kind rename also types the agent's native command into the PTY —
+    ESC to clear the prompt, then `/rename <title>` + CR (Claude)."""
+    mgr = SessionManager()
+    session = _make_pty_session(mgr, agent="claude")
+
+    mgr.rename(session.session_id, "my custom title")
+
+    calls = [c.args for c in session._pty.write.call_args_list]
+    assert ("\x1b",) in calls
+    assert ("/rename my custom title\r",) in calls
+
+
+def test_rename_uses_pi_name_verb():
+    """Pi's built-in rename verb is /name, not /rename (#503)."""
+    mgr = SessionManager()
+    session = _make_pty_session(mgr, agent="pi")
+
+    mgr.rename(session.session_id, "pi thread")
+
+    calls = [c.args for c in session._pty.write.call_args_list]
+    assert ("/name pi thread\r",) in calls
+    assert ("/rename pi thread\r",) not in calls
+
+
+def test_rename_clear_does_not_write_to_pty():
+    """Clearing a title (empty string) sets manual_title but injects nothing —
+    a title clear has no sensible agent-side semantics."""
+    mgr = SessionManager()
+    session = _make_pty_session(mgr)
+
+    mgr.rename(session.session_id, "")
+
+    assert session.manual_title == ""
+    session._pty.write.assert_not_called()
+
+
+def test_rename_caps_injected_title_length():
+    """The injected command carries the same stripped/capped title as
+    manual_title — not the raw over-length input."""
+    mgr = SessionManager()
+    session = _make_pty_session(mgr)
+
+    mgr.rename(session.session_id, "  " + ("x" * (_MANUAL_TITLE_MAX_CHARS + 20)) + "  ")
+
+    expected = "x" * _MANUAL_TITLE_MAX_CHARS
+    calls = [c.args for c in session._pty.write.call_args_list]
+    assert (f"/rename {expected}\r",) in calls
+
+
+def test_rename_remote_session_attempts_no_pty_write(tmp_path, monkeypatch):
+    """A detached RemoteSession keeps today's manual_title-only behaviour —
+    the native-command injection is PtySession-only (no PTY to type into)."""
+    mgr = SessionManager()
+    session = _make_remote_session(mgr, tmp_path, monkeypatch)
+
+    mgr.rename(session.session_id, "detached rename")
+
+    assert session.manual_title == "detached rename"
+    # The injection path lives only on PtySession — a RemoteSession never
+    # exposes it, so the isinstance guard can never mis-route to it.
+    assert not hasattr(session, "inject_rename")

@@ -27,7 +27,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
-from src.agents import DEFAULT_AGENT, command_for, is_fullscreen, quit_command_for
+from src.agents import (
+    DEFAULT_AGENT,
+    command_for,
+    is_fullscreen,
+    quit_command_for,
+    rename_command_for,
+)
 from src.audit import transcript_path
 from src.vt_snapshot import VtSnapshot
 
@@ -662,6 +668,32 @@ class PtySession:
         # Every terminating stop closes the window — signal mirror page(s).
         self._signal_shutdown_to_subscribers()
 
+    def inject_rename(self, title: str) -> None:
+        """Forward a manual rename into the agent's own CLI (issue #503).
+
+        Types the agent's native rename command — Claude/Codex/Antigravity/
+        Copilot ``/rename <title>``, Pi ``/name <title>`` (see
+        :func:`rename_command_for`) — into the live PTY, prefixed with an ESC
+        that clears any partial prompt, exactly like :meth:`stop`'s graceful
+        quit. This keeps the agent's own ``--resume`` picker in sync with the
+        launcher-set name instead of the two silently diverging. Claude's
+        ``/rename`` persists through ``/clear``/compaction/``--resume`` and
+        works mid-response, so no busy-guard is needed. A no-op when the agent
+        has no native rename command or the title is empty — a title *clear*
+        has no sensible agent-side semantics, so nothing is typed. Writes go
+        straight to the raw PTY (not :meth:`write`) so the rename command is
+        never mistaken for the session's first-prompt title capture.
+        """
+        command = rename_command_for(self.agent)
+        title = title.strip()
+        if not command or not title:
+            return
+        try:
+            self._pty.write("\x1b")
+            self._pty.write(f"{command} {title}\r")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug(f"PTY {self.session_id[:8]} inject_rename failed: {exc}")
+
     def force_kill(self) -> None:
         try:
             self._pty.terminate(force=True)
@@ -975,13 +1007,23 @@ class SessionManager:
     def rename(self, session_id: str, title: str) -> Optional[Any]:
         """Set (or, with an empty ``title``, clear) a manual title override.
 
-        Works identically for :class:`PtySession` and :class:`RemoteSession`
-        — the one title channel that reaches a detached session (issue #458).
+        The ``manual_title`` override works identically for
+        :class:`PtySession` and :class:`RemoteSession` — the one title channel
+        that reaches a detached session (issue #458). For a live
+        :class:`PtySession` with a non-empty title, the rename is *also*
+        forwarded into the agent's own CLI via its native rename command
+        (issue #503) so the agent's ``--resume`` picker stays in sync. That
+        second leg is inherently PTY-only: a detached ``RemoteSession`` has no
+        PTY to type into, and an empty (clear) title has no agent-side
+        semantics — both keep today's ``manual_title``-only behaviour.
         """
         session = self.get(session_id)
         if session is None:
             return None
-        session.manual_title = title.strip()[:_MANUAL_TITLE_MAX_CHARS]
+        clean = title.strip()[:_MANUAL_TITLE_MAX_CHARS]
+        session.manual_title = clean
+        if clean and isinstance(session, PtySession):
+            session.inject_rename(clean)
         return session
 
     def reap_dead(self) -> int:
