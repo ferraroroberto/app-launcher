@@ -949,6 +949,59 @@ def test_backlog_cards_color_coded_from_shared_git_cache(
     expect(meta).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=15_000)
 
 
+def test_board_drawer_survives_git_status_poll_mid_interaction(
+    authed_page: Page, base_url: str
+) -> None:
+    """#512: refreshGitStatus() (apps.js) must self-gate on
+    state.boardExpanded the same way fetchBoard()'s own poll does
+    (board.js:598) — otherwise its unconditional renderBoard() call rebuilds
+    the whole column/card DOM, including an open drawer, out from under an
+    in-progress interaction. Reproduced with the #510 diagnostic technique:
+    tag the rename button's live DOM node, hold the boot-time
+    /api/claude-code/git-status fetch open until after the drawer is open
+    and tagged, then release it and confirm the tagged node (and the
+    drawer) survive untouched — held-open, not a fixed sleep, per the
+    convention in test_voice_dictation.py (a sleep can't reliably outlast
+    Playwright's own route-dispatch latency)."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+
+    held_git_status: dict = {}
+    authed_page.route(
+        re.compile(r".*/api/claude-code/git-status$"),
+        lambda route: held_git_status.__setitem__("route", route),
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    rename = drawer.locator(".board-rename-btn")
+    expect(rename).to_be_visible()
+
+    # Tag the live DOM node — if renderBoard() rebuilds the drawer, the tag
+    # is lost even though the drawer stays open (boardExpanded is preserved
+    # either way).
+    rename.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
+
+    for _ in range(100):
+        if "route" in held_git_status:
+            break
+        authed_page.wait_for_timeout(50)
+    assert "route" in held_git_status, "boot-time git-status fetch never fired"
+    held_git_status["route"].fulfill(
+        status=200, content_type="application/json",
+        body=_json.dumps({"projects": []}),
+    )
+    authed_page.wait_for_timeout(400)
+
+    expect(drawer).to_be_visible()
+    expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
+
+
 def test_dispatch_model_select_matches_sibling_button_shape_on_phone(
     authed_page: Page, base_url: str
 ) -> None:
