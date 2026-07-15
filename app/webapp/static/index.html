@@ -748,9 +748,13 @@
             <button type="button" class="board-mode-btn" data-mode="yolo"
                     role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
           </div>
-          <button type="button" id="boardDispatchOpus" class="detached-toggle" role="switch" aria-checked="false" title="opus model: off = Sonnet (default), on = Opus">
-            <span>opus</span>
-          </button>
+          <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
+                  title="model: Sonnet / Opus / Fable spawn Claude Code; GPT-5.6 spawns Codex CLI (high effort)">
+            <option value="sonnet" selected>Sonnet</option>
+            <option value="opus">Opus</option>
+            <option value="fable">Fable</option>
+            <option value="gpt5.6">GPT-5.6</option>
+          </select>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice → text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
           <button id="boardDispatchClear" type="button" class="compose-record"

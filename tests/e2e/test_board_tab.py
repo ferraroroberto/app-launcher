@@ -658,6 +658,10 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
 
     authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
     authed_page.locator('.board-mode-btn[data-mode="yolo"]').click()
+    # Model selector (#500): defaults to Sonnet; pick a non-default value so
+    # the POST provably carries the selection, not a hardcoded default.
+    expect(authed_page.locator("#boardDispatchModel")).to_have_value("sonnet")
+    authed_page.locator("#boardDispatchModel").select_option("gpt5.6")
     authed_page.locator("#boardDispatchSend").click()
     authed_page.wait_for_timeout(500)
 
@@ -666,7 +670,7 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     assert body.get("repo") == "app-launcher"
     assert body.get("goal") == "ship the goal bar"
     assert body.get("mode") == "yolo"
-    assert body.get("opus") is False
+    assert body.get("model") == "gpt5.6"
     # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
     # streaming agent's first output is authored at the width the overlay
     # will fit() to; a desktop client sends the mirror flag instead.
