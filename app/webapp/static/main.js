@@ -18,15 +18,15 @@ import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { fetchWebauthnStatus, writeTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
 // One edit-mode state, two switches: the Settings-head toggle and the
 // Registered-jobs summary toggle (the Jobs tab is where editing actually
 // happens, so it carries its own friendly entry point).
 function syncEditModeButtons() {
-  const val = state.editMode ? 'true' : 'false';
-  els.editMode.setAttribute('aria-checked', val);
-  if (els.jobsEditBtn) els.jobsEditBtn.setAttribute('aria-checked', val);
+  setSwitch(els.editMode, state.editMode);
+  if (els.jobsEditBtn) setSwitch(els.jobsEditBtn, state.editMode);
 }
 
 function toggleEditMode() {

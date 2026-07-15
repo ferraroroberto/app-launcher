@@ -18,6 +18,8 @@ hostname in the UI) — both covered below.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -132,6 +134,23 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
         "aria-checked", "false"
     )
+
+
+def test_settings_boolean_controls_use_vendored_switch(
+    authed_page: Page, base_url: str
+) -> None:
+    """Settings booleans use the fleet switch track + sliding thumb."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+
+    for selector in ("#editMode", "#bootAutostartToggle"):
+        toggle = authed_page.locator(selector)
+        expect(toggle).to_have_class(re.compile(r"(?:^|\s)toggle(?:\s|$)"))
+        expect(toggle.locator(".knob")).to_have_count(1)
+        box = toggle.bounding_box()
+        assert box is not None
+        assert round(box["width"]) == 44
+        assert round(box["height"]) == 26
 
 
 def test_settings_status_readout_has_no_tls_or_tunnel_url(

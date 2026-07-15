@@ -10,7 +10,7 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { fetchJobs, runJobNow } from './jobs.js';
 import { icon } from './_vendored/icons/icons.js';
-import { toggleAriaChecked } from './dom-utils.js';
+import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------- chain checklist (dialog)
 //
@@ -32,24 +32,19 @@ function populateChainList(host, selected, currentId, kind) {
     if (currentId && j.id === currentId) return;
     const li = document.createElement('li');
     li.className = 'job-chain-row';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'job-chain-row-btn';
-    btn.setAttribute('role', 'switch');
-    btn.setAttribute('aria-checked', want.has(j.id) ? 'true' : 'false');
-    btn.dataset.value = j.id;
-    btn.dataset.role = 'chain-' + kind;
-    btn.addEventListener('click', function () {
-      toggleAriaChecked(btn);
-    });
-    const checkBox = document.createElement('span');
-    checkBox.className = 'check-box';
-    checkBox.innerHTML = icon('check');
-    btn.appendChild(checkBox);
+    const row = document.createElement('div');
+    row.className = 'job-chain-row-btn switch-row';
     const text = document.createElement('span');
     text.textContent = j.name + '  ·  ' + j.id;
-    btn.appendChild(text);
-    li.appendChild(btn);
+    const btn = switchEl(want.has(j.id), {
+      label: 'Run ' + j.name + ' ' + kind.replace('_', ' '),
+      onToggle: function (next, switchBtn) { setSwitch(switchBtn, next); },
+    });
+    btn.dataset.value = j.id;
+    btn.dataset.role = 'chain-' + kind;
+    row.appendChild(text);
+    row.appendChild(btn);
+    li.appendChild(row);
     host.appendChild(li);
     rendered += 1;
   });
@@ -63,7 +58,7 @@ function populateChainList(host, selected, currentId, kind) {
 
 function readChainList(host, kind) {
   if (!host) return [];
-  const selector = '.job-chain-row-btn[data-role="chain-' + kind + '"][aria-checked="true"]';
+  const selector = '.job-chain-row .toggle[data-role="chain-' + kind + '"][aria-checked="true"]';
   const checked = Array.from(host.querySelectorAll(selector));
   return checked.map(function (btn) { return btn.dataset.value; });
 }
@@ -315,7 +310,7 @@ export function openRunDialog(job, prefill, staleKeys) {
     host.appendChild(renderRunDialogField(p, prefill));
   });
 
-  if (els.jobRunDialogDryRun) els.jobRunDialogDryRun.setAttribute('aria-checked', 'false');
+  if (els.jobRunDialogDryRun) setSwitch(els.jobRunDialogDryRun, false);
   if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
 }
 
@@ -349,17 +344,9 @@ function renderRunDialogField(param, prefill) {
     });
     if (initial != null) input.value = String(initial);
   } else if (param.kind === 'bool') {
-    input = document.createElement('button');
-    input.type = 'button';
-    input.className = 'toggle';
-    input.setAttribute('role', 'switch');
-    input.setAttribute('aria-checked', (initial === true || initial === 'true') ? 'true' : 'false');
-    const checkBox = document.createElement('span');
-    checkBox.className = 'check-box';
-    checkBox.innerHTML = icon('check');
-    input.appendChild(checkBox);
-    input.addEventListener('click', function () {
-      toggleAriaChecked(input);
+    input = switchEl(initial === true || initial === 'true', {
+      label: param.name,
+      onToggle: function (next, btn) { setSwitch(btn, next); },
     });
   } else {
     input = document.createElement('input');
@@ -495,7 +482,7 @@ export function openJobDialog(job) {
     els.jobMutexGroupInput.value = (job && job.mutex_group) || '';
   }
   if (els.jobConfirmInput) {
-    els.jobConfirmInput.setAttribute('aria-checked', (job && job.confirm) ? 'true' : 'false');
+    setSwitch(els.jobConfirmInput, !!(job && job.confirm));
   }
   populateChainList(
     els.jobOnSuccessList,
@@ -829,7 +816,7 @@ export function wireJobDialogs() {
   [els.jobConfirmInput, els.jobRunDialogDryRun].forEach(function (btn) {
     if (!btn) return;
     btn.addEventListener('click', function () {
-      toggleAriaChecked(btn);
+      setSwitch(btn, btn.getAttribute('aria-checked') !== 'true');
     });
   });
 }

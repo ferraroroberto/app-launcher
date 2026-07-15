@@ -8,12 +8,13 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
-import { bindOutsideClickToClose, iconUrl, toggleAriaChecked } from './dom-utils.js';
+import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
+import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -159,12 +160,12 @@ async function toggleFavorite(a) {
 // the same PATCH /api/apps/{id} the rename dialog uses. Re-fetches
 // /api/apps on success so the switch reflects the authoritative persisted
 // state, not an optimistic local flip.
-async function toggleTrayAutostart(a) {
+async function toggleTrayAutostart(a, next) {
   try {
     await jsonApi('/api/apps/' + encodeURIComponent(a.id), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ autostart: !a.autostart }),
+      body: JSON.stringify({ autostart: next }),
     });
     await fetchApps();
   } catch (exc) {
@@ -375,23 +376,27 @@ function renderList(host, items) {
 
     // Registered Trays autostart switch (issue #456 part 2/2) — persists
     // via the same PATCH /api/apps/{id} the rename dialog uses, just with
-    // `autostart` instead of `name`. stopPropagation keeps the click from
-    // also firing the row's own launch button underneath it.
+    // `autostart` instead of `name`. The switch is a sibling of the launch
+    // button, so its compact 44px target remains independent of launching.
     if (a.kind === 'tray') {
       const row = document.createElement('div');
       row.className = 'tray-autostart-row';
-      const toggleBtn = document.createElement('button');
-      toggleBtn.type = 'button';
-      toggleBtn.className = 'toggle';
-      toggleBtn.setAttribute('role', 'switch');
-      toggleBtn.setAttribute('aria-checked', a.autostart ? 'true' : 'false');
-      toggleBtn.innerHTML =
-        '<span class="check-box">' + icon('check') + '</span><span>Autostart at boot</span>';
-      toggleBtn.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        toggleTrayAutostart(a);
+      const switchRow = document.createElement('div');
+      switchRow.className = 'switch-row';
+      const label = document.createElement('span');
+      label.textContent = 'Autostart at boot';
+      const toggleBtn = switchEl(!!a.autostart, {
+        label: 'Autostart ' + a.name + ' at boot',
+        onToggle: function (next, btn) {
+          btn.disabled = true;
+          toggleTrayAutostart(a, next).finally(function () {
+            btn.disabled = false;
+          });
+        },
       });
-      row.appendChild(toggleBtn);
+      switchRow.appendChild(label);
+      switchRow.appendChild(toggleBtn);
+      row.appendChild(switchRow);
       main.appendChild(row);
     }
 
@@ -715,19 +720,8 @@ function renderScanResults() {
     h.textContent = kind;
     section.appendChild(h);
     byKind[kind].forEach(function (c) {
-      const row = document.createElement('button');
-      row.type = 'button';
+      const row = document.createElement('div');
       row.className = 'scan-row';
-      row.setAttribute('role', 'switch');
-      row.setAttribute('aria-checked', 'true');
-      row.dataset.value = c.id;
-      row.addEventListener('click', function () {
-        toggleAriaChecked(row);
-      });
-      const checkBox = document.createElement('span');
-      checkBox.className = 'check-box';
-      checkBox.innerHTML = icon('check');
-      row.appendChild(checkBox);
       const body = document.createElement('div');
       const name = document.createElement('div');
       name.textContent = c.name;
@@ -737,6 +731,12 @@ function renderScanResults() {
       body.appendChild(name);
       body.appendChild(meta);
       row.appendChild(body);
+      const toggleBtn = switchEl(true, {
+        label: 'Include ' + c.name,
+        onToggle: function (next, btn) { setSwitch(btn, next); },
+      });
+      toggleBtn.dataset.value = c.id;
+      row.appendChild(toggleBtn);
       section.appendChild(row);
     });
     els.scanResults.appendChild(section);
@@ -749,8 +749,10 @@ function wireScanDialog() {
     if (els.scanDialog.close) els.scanDialog.close();
   });
   els.scanSave.addEventListener('click', async function () {
-    const checked = Array.from(els.scanResults.querySelectorAll('.scan-row[aria-checked="true"]'));
-    const ids = checked.map(function (row) { return row.dataset.value; });
+    const checked = Array.from(
+      els.scanResults.querySelectorAll('.scan-row .toggle[aria-checked="true"]')
+    );
+    const ids = checked.map(function (btn) { return btn.dataset.value; });
     if (!ids.length) {
       toast('Nothing selected.', 'error');
       return;
