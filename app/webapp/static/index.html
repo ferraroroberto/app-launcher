@@ -670,17 +670,29 @@
           <span class="summary-actions">
             <div class="jobs-header-actions">
               <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
-              <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
-                     aria-label="Edit mode"
-                     title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
-                <span class="knob"></span><span class="toggle-label">OFF</span>
-              </button>
+              <span class="jobs-edit-control">
+                <span class="jobs-edit-label">Edit mode</span>
+                <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
+                       aria-label="Edit mode"
+                       title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
+                  <span class="knob"></span><span class="toggle-label">OFF</span>
+                </button>
+              </span>
               <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </span>
         </summary>
         <div class="collapse-body">
+        <div class="jobs-search-bar" role="search">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="jobsSearchInput" type="search" autocomplete="off"
+                 placeholder="Search run output" aria-label="Search run output">
+          <button id="jobsSearchClear" type="button" class="button-ghost hit-target"
+                  aria-label="Clear run search" title="Clear run search" hidden>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
         <p id="jobsEmpty" class="muted small" hidden>
           No jobs registered yet — tap the <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></strong> edit toggle above, then <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></strong> to add one.

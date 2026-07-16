@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -61,6 +62,7 @@ def new_run_dir(job_id: str, run_id: Optional[str] = None) -> Path:
         target = base / f"{rid}-{n}"
         n += 1
     target.mkdir()
+    (target / "artifacts").mkdir()
     return target
 
 
@@ -143,6 +145,14 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
                 incoming.pop(key, None)
         existing.update(incoming)
         atomic_write_json(target, existing)
+    # The index is derived and deliberately updated after the canonical file
+    # swap. A local import avoids a jobs_history <-> jobs_index import cycle.
+    try:
+        from src.jobs_index import sync_run
+
+        sync_run(run_dir, existing)
+    except Exception as exc:  # noqa: BLE001 — derived mirror never blocks canonical I/O
+        logger.warning("⚠️ Jobs index sync failed for %s: %s", run_dir, exc)
 
 
 # Header names safe to persist verbatim alongside a webhook run — never the
@@ -232,23 +242,25 @@ def is_running(job_id: str) -> bool:
 
 
 def prune_runs(job_id: str, keep: int = MAX_RUNS_PER_JOB) -> int:
-    """Delete the oldest run dirs beyond ``keep``. Returns count removed."""
+    """Delete old unpinned runs beyond ``keep``. Pinned runs survive forever."""
     base = runs_dir(job_id)
     if not base.is_dir():
         return 0
     children = [c for c in base.iterdir() if c.is_dir()]
     # Newest first by name — run ids are sortable timestamps.
     children.sort(key=lambda p: p.name, reverse=True)
+    unpinned = [child for child in children if not read_run(child).get("pinned")]
     removed = 0
-    for child in children[keep:]:
+    for child in unpinned[keep:]:
         try:
-            for f in child.iterdir():
-                try:
-                    f.unlink()
-                except OSError:
-                    pass
-            child.rmdir()
+            shutil.rmtree(child)
             removed += 1
+            try:
+                from src.jobs_index import remove_run
+
+                remove_run(job_id, child.name)
+            except Exception as exc:  # noqa: BLE001 — derived mirror is best-effort
+                logger.warning("⚠️ Jobs index prune sync failed for %s: %s", child, exc)
         except OSError as exc:
             logger.debug(f"prune_runs: could not remove {child}: {exc}")
     return removed
@@ -271,3 +283,28 @@ def read_output_tail(run_dir: Path, max_bytes: int = 64 * 1024) -> str:
     except OSError as exc:
         logger.debug(f"read_output_tail({target}) failed: {exc}")
         return ""
+
+
+def list_artifacts(run_dir: Path) -> List[Dict[str, Any]]:
+    """List immediate artifact files with stable download metadata."""
+    base = run_dir / "artifacts"
+    if not base.is_dir():
+        return []
+    artifacts: List[Dict[str, Any]] = []
+    for path in sorted(base.iterdir(), key=lambda item: item.name.lower()):
+        if not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        artifacts.append(
+            {
+                "name": path.name,
+                "size": stat.st_size,
+                "mtime": datetime.fromtimestamp(stat.st_mtime).isoformat(
+                    timespec="seconds"
+                ),
+            }
+        )
+    return artifacts

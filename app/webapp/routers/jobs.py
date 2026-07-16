@@ -18,7 +18,9 @@ here via ``include_router`` so ``app/webapp/server.py`` still registers
 one ``jobs.router``), and the two dry-run modes plus the shared
 cooldown+mutex admission/spawn tail live in
 :mod:`app.webapp.routers.jobs_run` (imported by both this module and
-the webhook one, so neither route module depends on the other).
+the webhook one, so neither route module depends on the other). Artifact
+downloads, pin updates, and the live-output WebSocket live in
+:mod:`app.webapp.routers.jobs_run_store_routes`.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
+from src import jobs_index
 from src.diagnostics import kill_process_tree
 from src.jobs_argv import compose_argv
 from src.jobs_preflight import has_errors, preflight
@@ -54,13 +57,14 @@ from src.jobs_config import (
 
 from app.webapp.routers._helpers import maybe_json
 from app.webapp.routers.jobs_run import _admit_and_spawn, _dry_run_check, _dry_run_execute
-from app.webapp.routers import jobs_webhook_routes
+from app.webapp.routers import jobs_run_store_routes, jobs_webhook_routes
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 # Webhook trigger route lives in its own module (see the module docstring);
 # mounted here so callers of ``app/webapp/server.py`` still see one router.
 router.include_router(jobs_webhook_routes.router)
+router.include_router(jobs_run_store_routes.router)
 
 # Job fields that are plain optional passthroughs on both create and edit —
 # ``create_job`` reads each via ``body.get(field)``, ``edit_job`` reads each
@@ -88,7 +92,9 @@ def _truthy(value: Optional[str]) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _decorate_job(job: Job) -> Dict[str, Any]:
+def _decorate_job(
+    job: Job, run_counts: Optional[tuple[int, int]] = None
+) -> Dict[str, Any]:
     """API shape for one job — base fields plus runtime decoration.
 
     ``next_run`` is queried from schtasks (best-effort, ``None`` on
@@ -109,6 +115,11 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
         payload["schedule_chip"] = job.schedule.chip()
     payload["paused"] = job.is_paused
     payload["target_kind"] = job.target_kind
+    # An elevated job is launched by an externally-created /RL HIGHEST task.
+    # This non-elevated webapp can show its history and validate its target,
+    # but cannot safely run it now or change the external task's state.
+    payload["manual_run_allowed"] = not job.elevated
+    payload["schedule_controls_allowed"] = not job.elevated
     payload["next_run"] = jobs_mod.query_next_run(job.id)
     # Computed next fire from the schedule shape (issue #229). Unlike the
     # schtasks string above, this is sortable + countdown-able. None for
@@ -136,6 +147,9 @@ def _decorate_job(job: Job) -> Dict[str, Any]:
     payload["stuck"] = jobs_mod.is_stuck(job.id)
     payload["queue_depth"] = (
         len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
+    )
+    payload["run_count"], payload["pinned_count"] = (
+        run_counts if run_counts is not None else jobs_index.run_counts(job.id)
     )
     return payload
 
@@ -179,10 +193,14 @@ class _PreflightWarnings(Exception):
 @router.get("/api/jobs")
 async def get_jobs(request: Request) -> Dict[str, Any]:
     cfg = load_jobs()
+    # The SQLite mirror is derived. Deleting it and reloading the tab rebuilds
+    # it transparently before the first decorated row queries its counts.
+    await asyncio.to_thread(jobs_index.ensure_index)
+    counts = await asyncio.to_thread(jobs_index.run_counts_by_job)
     # query_next_run shells out to schtasks per job — offload the whole
     # decoration to a worker thread so the event loop doesn't block.
     decorated = await asyncio.to_thread(
-        lambda: [_decorate_job(j) for j in cfg.jobs]
+        lambda: [_decorate_job(j, counts.get(j.id, (0, 0))) for j in cfg.jobs]
     )
     return {"jobs": decorated}
 
@@ -382,6 +400,14 @@ async def pause(job_id: str) -> Dict[str, Any]:
     schtasks (which removes the entries for this job).
     """
     cfg = load_jobs()
+    existing = get_by_id(cfg, job_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    if existing.elevated:
+        raise HTTPException(
+            status_code=409,
+            detail="schedule is externally managed and cannot be paused here",
+        )
     try:
         job = pause_job(cfg, job_id)
     except ValueError as exc:
@@ -397,6 +423,14 @@ async def pause(job_id: str) -> Dict[str, Any]:
 async def resume(job_id: str) -> Dict[str, Any]:
     """Restore the parked schedule and resync schtasks."""
     cfg = load_jobs()
+    existing = get_by_id(cfg, job_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    if existing.elevated:
+        raise HTTPException(
+            status_code=409,
+            detail="schedule is externally managed and cannot be resumed here",
+        )
     job = resume_job(cfg, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
@@ -437,6 +471,13 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     if dry_mode not in (None, "execute", "check"):
         raise HTTPException(
             status_code=400, detail="dry_run must be 'execute' or 'check'"
+        )
+    if job.elevated and dry_mode != "check":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "manual runs are unavailable for externally scheduled jobs"
+            ),
         )
 
     # Confirm-on-fire gate (issue #69). A job flagged ``confirm`` must
@@ -522,6 +563,35 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
 # ----------------------------------------------------------- run history
 
 
+@router.get("/api/jobs/runs/search")
+async def search_job_runs(
+    request: Request,
+    q: str,
+    job: Optional[str] = None,
+    status: Optional[str] = None,
+    since: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search indexed output across runs, newest matching run first."""
+    query = q.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="q is required")
+    if job and get_by_id(load_jobs(), job) is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job}")
+    if since:
+        try:
+            datetime.fromisoformat(since)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="since must be ISO-8601") from exc
+    matches = await asyncio.to_thread(
+        jobs_index.search_runs,
+        query,
+        job_id=job,
+        status=status,
+        since=since,
+    )
+    return {"matches": matches}
+
+
 @router.get("/api/jobs/{job_id}/runs")
 async def get_job_runs(job_id: str) -> Dict[str, Any]:
     cfg = load_jobs()
@@ -549,4 +619,5 @@ async def get_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     record["webhook_payload"] = await asyncio.to_thread(
         jobs_mod.read_webhook_payload, run_dir
     )
+    record["artifacts"] = await asyncio.to_thread(jobs_mod.list_artifacts, run_dir)
     return {"run": record}

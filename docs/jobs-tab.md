@@ -166,7 +166,7 @@ A job can carry `"elevated": true` (omitted / `false` is the default) for a scri
 schtasks /Create /F /TN "\AppLauncher\hwinfo-restart" /TR '"E:\automation\app-launcher\.venv\Scripts\pythonw.exe" "E:\automation\app-launcher\launcher.py" run-job hwinfo-restart' /SC HOURLY /MO 8 /RL HIGHEST
 ```
 
-(Single-quote the `/TR` value in PowerShell — double-quoted strings there don't pass embedded `"` through literally.) The Jobs tab marks an elevated job with a `🔒 externally scheduled` pill next to its schedule chip so it's visually obvious which jobs the app isn't managing the Task Scheduler side of. Editing it through the Jobs tab UI (name, args, cooldown, schedule cadence, pause/resume) is safe — those changes just never resync (recreate) the real schtasks entry, so hand-registering it once is durable across edits. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
+(Single-quote the `/TR` value in PowerShell — double-quoted strings there don't pass embedded `"` through literally.) The Jobs tab marks an elevated job with a `🔒 external schedule` pill next to its schedule chip so it's visually obvious which jobs the app isn't managing. The row remains tappable for run history, and edit mode still offers the side-effect-free dry-run check. Run-now and pause/resume are omitted and their API endpoints return `409`: the non-elevated launcher cannot honor those actions safely against an externally managed `/RL HIGHEST` task. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
 
 ### Cooldown (issue #68)
 
@@ -453,18 +453,21 @@ schtasks /Query /FO CSV /NH | findstr "AppLauncher"
 
 ## Run history — `webapp/jobs/<job_id>/<run_id>/`
 
-Every run produces a directory with two files (three for a webhook-triggered
-run):
+Every run produces a directory with two canonical files, an artifact directory,
+and one extra file for a webhook-triggered run:
 
 | File | Content |
 | --- | --- |
 | `run.json` | One run's full metadata (schema below) |
 | `output.log` | Combined stdout+stderr, raw bytes |
+| `artifacts/` | Files the child deliberately preserves through `JOB_ARTIFACT_DIR` |
 | `_webhook.json` | The triggering webhook's payload + a safe header subset (webhook-triggered runs only — see "Webhook-target jobs" below) |
 
-`run_id` is a sortable timestamp (`YYYYmmddTHHMMSS`); collisions within the same second append `-2`, `-3`, … Pruned to the most recent **20 runs per job** by the executor at the end of each run, so the directory never grows unbounded.
+`run_id` is a sortable timestamp (`YYYYmmddTHHMMSS`); collisions within the same second append `-2`, `-3`, … The executor exports the absolute artifact-directory path as `JOB_ARTIFACT_DIR`; a script copies or writes any CSV, JSON report, image, or other result it wants preserved there. The run detail API lists immediate files as `{name, size, mtime}`, and the guarded download route resolves the requested filename before serving it. Parent traversal and nested paths return HTTP 400.
 
-`status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`. The UI shows the live status by polling `/api/jobs` every 4 s while the tab is visible.
+Unpinned history is pruned to the most recent **20 runs per job** by the executor at the end of each run. A run with `pinned: true` is excluded from that quota and survives until explicitly unpinned; its artifacts follow the run directory, so there is no separate artifact-retention policy.
+
+`status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`. The runs list remains on the Jobs tab's lightweight 4 s refresh. Selecting a live run opens `/api/jobs/<id>/runs/<rid>/stream`: the server sends one current-tail snapshot, incremental output chunks, then a final status frame and closes. Finalized output is fetched once over JSON and never streamed.
 
 ### `run.json` schema
 
@@ -487,8 +490,9 @@ run):
 | `peak_rss_bytes` | int | executor | Peak resident-set size summed across the process tree (parent + recursive children) — sampled at ~1 Hz |
 | `cpu_seconds` | float | executor | Accumulated user + system CPU across the tree — sum of per-PID maxima |
 | `killed` | bool | kill endpoint | `True` only when finalised via `/kill` |
+| `pinned` | bool | run update endpoint | Keep-forever flag; omitted/false for normal retention |
 
-Plain files were a deliberate choice over a DB — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling.
+Plain files remain the canonical store — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling. `webapp/jobs/_index.sqlite` is only a derived mirror: `runs` stores queryable metadata and `output_fts` maps FTS5 rowids to run rowids for cross-run grep. `src/jobs_index.py` rebuilds it from every `run.json` / `output.log` pair when the file is missing, corrupt, or carries an older `PRAGMA user_version`; deleting it and reloading the Jobs tab is the supported repair path. Canonical writes update the mirror after the atomic JSON swap, and finalization captures the completed output plus artifact presence.
 
 ## Authoring safety — pre-flight on save (issue #69)
 
@@ -542,7 +546,7 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/jobs` | bearer-token | List jobs, decorated with `schedule_chip`, `target_kind`, `next_run`, `next_run_epoch` / `next_run_iso` (computed), `last_run`, `running` |
+| `GET /api/jobs` | bearer-token | List jobs, decorated with `schedule_chip`, `target_kind`, `next_run`, `next_run_epoch` / `next_run_iso` (computed), `last_run`, `running`, `run_count`, `pinned_count` |
 | `GET /api/jobs/agenda?days=7` | bearer-token | Upcoming fires over the next `days` (1..14), grouped client-side: `{occurrences, frequent, days, generated_epoch}` (issue #230) |
 | `POST /api/jobs` | bearer-token | Create — body `{name, script_path, args?, schedule?}` |
 | `PUT /api/jobs/<id>` | bearer-token | Edit (re-syncs schtasks) |
@@ -550,7 +554,11 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 | `POST /api/jobs/<id>/run` | bearer-token | Trigger now (returns `run_id`, spawns executor detached) |
 | `POST /api/jobs/<id>/hook` | **provider signature only — never the bearer** | Trigger from an external service; see "Webhook-target jobs" below |
 | `GET /api/jobs/<id>/runs` | bearer-token | Newest-first run history |
-| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) + `webhook_payload` (the run's `_webhook.json`, when present) |
+| `GET /api/jobs/runs/search?q=<text>&job=<id?>&status=<s?>&since=<iso?>` | bearer-token | FTS5 cross-run output search, newest first, with a concise snippet |
+| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) + artifact list + `webhook_payload` |
+| `PUT /api/jobs/<id>/runs/<run_id>` | bearer-token | Set `{pinned: true|false}` |
+| `GET /api/jobs/<id>/runs/<run_id>/artifacts/<filename>` | bearer-token | Download one strictly path-jailed artifact |
+| `WS /api/jobs/<id>/runs/<run_id>/stream` | bearer-token | Live-only snapshot → delta chunks → final status; token travels in the WS query string |
 | `POST /api/jobs/<id>/runs/<run_id>/kill` | bearer-token | Terminate a stuck run's process tree, finalise `run.json` (`status: failed`, `exit_code: -9`, `killed: true`) |
 
 ## Operational signal (issue #66)
@@ -653,7 +661,7 @@ Jobs sit on the **Apps tab side** of the launcher's security model — not the i
 
 - `POST /api/jobs/<id>/run` is bearer-token gated and reachable over the Cloudflare tunnel. That is the whole point — a Stream Deck button hits the same HTTPS endpoint the phone uses.
 - `POST /api/jobs/<id>/hook` (issue #73) is the one exception — it is exempt from the bearer gate entirely and authenticates itself via the job's own provider signature instead. See "Webhook-target jobs" above.
-- There is **no** interactive stream to drive, so the Tailscale-only + passkey gate that the live terminal requires does not apply.
+- The per-run WebSocket is an output-only tail, not an interactive terminal. It carries the same bearer-token boundary as the Jobs HTTP APIs and remains Cloudflare-reachable; the Tailscale-only + passkey terminal gate does not apply.
 - The `id` is checked against the registry on every call — the launcher cannot be coerced into running an arbitrary script path. Mutating `config/jobs.json` is the only way to register a new target.
 
 ## Stream Deck recipe
@@ -669,9 +677,9 @@ The token bakes into the URL the same way the tray menu's "Copy Cloudflare URL" 
 
 ## Why not …
 
-- **A DB for run history.** Files are simpler and consistent with the audit log / session transcripts. Twenty rows per job × dozens of jobs is no scaling concern.
+- **A DB as the canonical run store.** Files stay simpler and cold-reader friendly. SQLite is used only as a rebuildable metadata/FTS mirror so cross-run search and aggregate reads do not repeatedly walk the filesystem.
 - **A custom scheduler daemon / APScheduler.** Windows already has a scheduler; running a second one inside the launcher process couples job firing to the launcher's lifecycle. With Task Scheduler the schedules survive a tray restart, a reboot, and a launcher uninstall (until the user cleans up `\AppLauncher\` themselves).
-- **A live PTY per job.** One-shot scripts don't need a live terminal — captured output + tail is enough. The interactive-terminal infrastructure (session-host, WebSocket proxy, passkey gate, audit log) is reserved for the Coding tab where it earns its complexity.
+- **A live PTY per job.** One-shot scripts do not need input or terminal emulation. The lightweight output-only WebSocket tails `output.log`; interactive-terminal infrastructure remains reserved for Coding.
 - **Raw cron expressions.** The five presets cover real use without inviting the standard "did I get the day-of-week field right?" pitfall.
 
 ## Verification

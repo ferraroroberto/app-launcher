@@ -11,6 +11,7 @@ tests mock — no real ``schtasks.exe`` is invoked.
 from __future__ import annotations
 
 import json
+import sqlite3
 import subprocess
 from pathlib import Path
 from typing import List
@@ -21,6 +22,7 @@ import pytest
 from app.cli.commands.run_job_cmd import build_invocation
 from src import jobs as jobs_mod
 from src import jobs_history as jobs_history_mod
+from src import jobs_index as jobs_index_mod
 from src import jobs_queue as jobs_queue_mod
 from src import jobs_schtasks as jobs_schtasks_mod
 from src.jobs import resolve_venv_python
@@ -1087,8 +1089,65 @@ class TestRunHistory:
             "20260105T060000",
         ]
 
+    def test_prune_keeps_pinned_runs_outside_normal_limit(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        pinned = None
+        for i in range(5):
+            stamp = f"2026010{i + 1}T060000"
+            rd = jobs_mod.new_run_dir("demo", stamp)
+            jobs_mod.write_run_json(rd, status="success", pinned=(i == 0))
+            if i == 0:
+                pinned = rd
+        assert jobs_mod.prune_runs("demo", keep=2) == 2
+        survivors = {path.name for path in (tmp_path / "demo").iterdir()}
+        assert survivors == {
+            "20260101T060000",
+            "20260104T060000",
+            "20260105T060000",
+        }
+        assert pinned is not None and pinned.is_dir()
+
     def test_read_output_tail(self, tmp_path, monkeypatch):
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260523T060000")
         (rd / "output.log").write_text("hello\nworld\n", encoding="utf-8")
         assert "world" in jobs_mod.read_output_tail(rd)
+
+    def test_artifact_listing_reports_name_size_and_mtime(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        rd = jobs_mod.new_run_dir("demo", "20260523T060000")
+        artifact = rd / "artifacts" / "report.csv"
+        artifact.write_text("a,b\n1,2\n", encoding="utf-8")
+        listed = jobs_mod.list_artifacts(rd)
+        assert listed[0]["name"] == "report.csv"
+        assert listed[0]["size"] == artifact.stat().st_size
+        assert "T" in listed[0]["mtime"]
+
+    def test_index_search_is_newest_first_and_rebuilds_schema(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        for stamp in ("20260101T060000", "20260103T060000"):
+            rd = jobs_mod.new_run_dir("demo", stamp)
+            (rd / "output.log").write_text(
+                f"Traceback marker from {stamp}\n", encoding="utf-8"
+            )
+            jobs_mod.write_run_json(
+                rd,
+                job_id="demo",
+                run_id=stamp,
+                status="failed",
+                started_at=stamp,
+            )
+        hits = jobs_index_mod.search_runs("Traceback")
+        assert [hit["run_id"] for hit in hits] == [
+            "20260103T060000",
+            "20260101T060000",
+        ]
+
+        with sqlite3.connect(jobs_index_mod.index_path()) as conn:
+            conn.execute("PRAGMA user_version=0")
+        jobs_index_mod.ensure_index()
+        with sqlite3.connect(jobs_index_mod.index_path()) as conn:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == (
+                jobs_index_mod.SCHEMA_VERSION
+            )
+        assert len(jobs_index_mod.search_runs("marker", status="failed")) == 2

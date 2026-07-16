@@ -43,7 +43,7 @@ flowchart TB
       R_APPS["apps.py — /api/apps (Apps tab)"]
       R_SESS["sessions.py — /api/claude-code/sessions,\nWS + transcribe + ocr"]
       R_CC["claude_code.py — flags, git-status, generate"]
-      R_JOBS["jobs.py — /api/jobs/* (Jobs tab)"]
+      R_JOBS["jobs.py + jobs_run_store_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
       R_BOARD["board.py — /api/board (Board tab)"]
       R_SYSMAP["system_map.py — fleet map section"]
@@ -79,6 +79,7 @@ flowchart TB
     JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
     JOBSQUEUE["jobs_queue.py\ncross-job mutex queue"]
     JOBSHISTORY["jobs_history.py\nrun.json / output.log per run"]
+    JOBSINDEX["jobs_index.py\nderived SQLite + FTS5 run mirror"]
     JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
@@ -112,6 +113,8 @@ flowchart TB
   JOBSFACADE --> JOBSSCHTASKS
   JOBSFACADE --> JOBSQUEUE
   JOBSFACADE --> JOBSHISTORY
+  R_JOBS --> JOBSINDEX
+  JOBSINDEX --> JOBSHISTORY
   JOBSFACADE --> JOBSSTATS
   JOBSFACADE --> JOBSCFG
   JOBSFACADE --> JOBSPREFLIGHT

@@ -149,3 +149,8 @@ def test_static_boolean_controls_have_no_checkbox_markup(
     for selector in selectors:
         _assert_switch(authed_page, selector)
     expect(authed_page.locator(".check-box")).to_have_count(0)
+
+    authed_page.locator("#tabJobs").click()
+    edit_control = authed_page.locator(".jobs-edit-control")
+    expect(edit_control).to_contain_text("Edit mode")
+    expect(edit_control.locator("#jobsEditBtn")).to_have_count(1)
