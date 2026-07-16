@@ -1,10 +1,9 @@
 """Registered Trays sequential boot orchestration (issue #456 part 2/2).
 
-`_fleet_toml_port` is a pure function, tested directly. `TrayApp`'s
-constructor wires a full WebappManager/HealthWatchdog — heavier than this
-orchestration logic needs — so the three orchestration methods (none of
-which touch instance state besides calling each other) are exercised via
-`object.__new__(TrayApp)`, bypassing `__init__` entirely.
+``app.tray.registered_trays`` holds pure functions with no ``TrayApp``
+state (split off ``app/tray/tray.py``, a single-file god-module flagged by
+``/codebase-audit``), so every orchestration entry point is exercised
+directly at module scope — no ``TrayApp`` construction needed.
 """
 
 from __future__ import annotations
@@ -12,8 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import app.tray.tray as tray_mod
-from app.tray.tray import TrayApp, _fleet_toml_port
+import app.tray.registered_trays as rt_mod
+from app.tray.registered_trays import _fleet_toml_port
 from src.registry import AppEntry, Registry
 
 
@@ -57,15 +56,8 @@ class TestFleetTomlPort:
         assert _fleet_toml_port(tmp_path) is None
 
 
-def _bare_tray_app() -> TrayApp:
-    """A TrayApp instance with __init__ skipped — the orchestration methods
-    under test touch no instance state."""
-    return object.__new__(TrayApp)
-
-
 class TestLaunchRegisteredTrays:
     def test_no_autostart_entries_is_a_noop(self, monkeypatch, tmp_path: Path):
-        app = _bare_tray_app()
         registry = Registry(
             scan_root=str(tmp_path),
             apps=[
@@ -75,10 +67,10 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(tray_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
         spawn = MagicMock()
-        monkeypatch.setattr(TrayApp, "_spawn_tray_bat_detached", spawn)
-        app._launch_registered_trays()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        rt_mod.launch_all()
         spawn.assert_not_called()
 
     def test_launches_autostart_trays_in_registry_order(
@@ -100,16 +92,15 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(tray_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
         spawned: list = []
         monkeypatch.setattr(
-            TrayApp, "_spawn_tray_bat_detached",
-            lambda self, bat_path: spawned.append(bat_path),
+            rt_mod, "_spawn_tray_bat_detached",
+            lambda bat_path: spawned.append(bat_path),
         )
-        monkeypatch.setattr(TrayApp, "_wait_for_tray_ready", lambda self, repo_dir: True)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
 
-        app = _bare_tray_app()
-        app._launch_registered_trays()
+        rt_mod.launch_all()
 
         # Only the two kind=="tray" autostart entries, in registry order —
         # the streamlit row (wrong kind) is never touched even though its
@@ -131,21 +122,20 @@ class TestLaunchRegisteredTrays:
                 AppEntry(id="b", name="B", kind="tray", bat_path=str(bat_b), autostart=True),
             ],
         )
-        monkeypatch.setattr(tray_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
 
-        def _spawn(self, bat_path):
+        def _spawn(bat_path):
             if bat_path == bat_a:
                 raise OSError("boom")
 
         launched: list = []
-        monkeypatch.setattr(TrayApp, "_spawn_tray_bat_detached", _spawn)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", _spawn)
         monkeypatch.setattr(
-            TrayApp, "_wait_for_tray_ready",
-            lambda self, repo_dir: launched.append(repo_dir) or True,
+            rt_mod, "_wait_for_tray_ready",
+            lambda repo_dir: launched.append(repo_dir) or True,
         )
 
-        app = _bare_tray_app()
-        app._launch_registered_trays()
+        rt_mod.launch_all()
 
         # repo-a's spawn raised — its readiness wait is never reached — but
         # repo-b still launches.
@@ -158,11 +148,10 @@ class TestLaunchRegisteredTrays:
                 AppEntry(id="a", name="A", kind="tray", bat_path=None, autostart=True),
             ],
         )
-        monkeypatch.setattr(tray_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
         spawn = MagicMock()
-        monkeypatch.setattr(TrayApp, "_spawn_tray_bat_detached", spawn)
-        app = _bare_tray_app()
-        app._launch_registered_trays()  # must not raise
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        rt_mod.launch_all()  # must not raise
         spawn.assert_not_called()
 
     def test_nonexistent_bat_file_is_skipped_not_fatal(
@@ -178,30 +167,27 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(tray_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
         spawn = MagicMock()
-        monkeypatch.setattr(TrayApp, "_spawn_tray_bat_detached", spawn)
-        app = _bare_tray_app()
-        app._launch_registered_trays()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        rt_mod.launch_all()
         spawn.assert_not_called()
 
     def test_registry_load_failure_does_not_raise(self, monkeypatch):
         def _boom():
             raise OSError("disk on fire")
 
-        monkeypatch.setattr(tray_mod, "load_registry", _boom)
-        app = _bare_tray_app()
-        app._launch_registered_trays()  # must not raise
+        monkeypatch.setattr(rt_mod, "load_registry", _boom)
+        rt_mod.launch_all()  # must not raise
 
 
 class TestWaitForTrayReady:
     def test_no_fleet_toml_falls_back_to_delay(self, monkeypatch, tmp_path: Path):
         sleeps: list = []
-        monkeypatch.setattr(tray_mod.time, "sleep", lambda s: sleeps.append(s))
-        app = _bare_tray_app()
-        ready = app._wait_for_tray_ready(tmp_path)
+        monkeypatch.setattr(rt_mod.time, "sleep", lambda s: sleeps.append(s))
+        ready = rt_mod._wait_for_tray_ready(tmp_path)
         assert ready is False
-        assert sleeps == [tray_mod._TRAY_FALLBACK_DELAY_S]
+        assert sleeps == [rt_mod._TRAY_FALLBACK_DELAY_S]
 
     def test_polls_until_port_listening(self, monkeypatch, tmp_path: Path):
         _write_fleet_toml(tmp_path, "port = 8447")
@@ -212,22 +198,20 @@ class TestWaitForTrayReady:
             assert port == 8447
             return calls["n"] >= 3
 
-        monkeypatch.setattr(tray_mod, "_port_listening", fake_port_listening)
-        monkeypatch.setattr(tray_mod.time, "sleep", lambda s: None)
-        app = _bare_tray_app()
-        assert app._wait_for_tray_ready(tmp_path) is True
+        monkeypatch.setattr(rt_mod, "port_listening", fake_port_listening)
+        monkeypatch.setattr(rt_mod.time, "sleep", lambda s: None)
+        assert rt_mod._wait_for_tray_ready(tmp_path) is True
         assert calls["n"] == 3
 
     def test_times_out_when_port_never_listens(self, monkeypatch, tmp_path: Path):
         _write_fleet_toml(tmp_path, "port = 8447")
-        monkeypatch.setattr(tray_mod, "_port_listening", lambda port: False)
+        monkeypatch.setattr(rt_mod, "port_listening", lambda port: False)
         # Simulate the timeout clock without a real 30s wall-clock wait.
         clock = {"t": 0.0}
-        monkeypatch.setattr(tray_mod.time, "monotonic", lambda: clock["t"])
+        monkeypatch.setattr(rt_mod.time, "monotonic", lambda: clock["t"])
 
         def fake_sleep(s):
             clock["t"] += s
 
-        monkeypatch.setattr(tray_mod.time, "sleep", fake_sleep)
-        app = _bare_tray_app()
-        assert app._wait_for_tray_ready(tmp_path) is False
+        monkeypatch.setattr(rt_mod.time, "sleep", fake_sleep)
+        assert rt_mod._wait_for_tray_ready(tmp_path) is False

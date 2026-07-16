@@ -123,7 +123,7 @@ class TestTtsSpeak:
                     sample_rate="24000"):
         """Install a fake httpx.AsyncClient whose stream() yields `pcm` and
         carries an X-Sample-Rate header (matching the hub's PCM stream)."""
-        from app.webapp.routers import sessions as sessions_router
+        from app.webapp.routers import media_proxy as media_proxy_router
 
         captured = {}
 
@@ -157,7 +157,7 @@ class TestTtsSpeak:
                 captured["json"] = kwargs.get("json")
                 return _FakeStream()
 
-        monkeypatch.setattr(sessions_router.httpx, "AsyncClient", _FakeClient)
+        monkeypatch.setattr(media_proxy_router.httpx, "AsyncClient", _FakeClient)
         return captured
 
     def test_streams_pcm_with_orpheus_payload(self, webapp_client, monkeypatch):
