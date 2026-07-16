@@ -24,7 +24,7 @@ pytestmark = pytest.mark.smoke
 _NOW = int(time.time())
 
 
-def _job(name, *, job_id, next_epoch, chip, sched):
+def _job(name, *, job_id, next_epoch, chip, sched, elevated=False):
     """One decorated /api/jobs row with the fields renderJobRow reads."""
     return {
         "id": job_id,
@@ -37,6 +37,9 @@ def _job(name, *, job_id, next_epoch, chip, sched):
         "running": False,
         "stuck": False,
         "paused": False,
+        "elevated": elevated,
+        "manual_run_allowed": not elevated,
+        "schedule_controls_allowed": not elevated,
         "args": "",
         "schedule": sched,
         "params": [],
@@ -98,7 +101,7 @@ def test_jobs_default_to_next_run_order_with_countdown(
     zeta_chip = authed_page.locator(
         "#jobsList li[data-id='zeta'] [data-role='countdown-chip']"
     )
-    expect(zeta_chip).to_contain_text("in")
+    expect(zeta_chip).to_contain_text("next in")
     assert authed_page.locator(
         "#jobsList li[data-id='mango'] [data-role='countdown-chip']"
     ).count() == 0, "a job with no next fire must not show a countdown chip"
@@ -129,6 +132,71 @@ def test_sort_toggle_switches_to_alphabetical(
     assert _row_ids(authed_page) == ["alpha", "mango", "zeta"], (
         "A–Z order should be name-sorted regardless of next fire"
     )
+
+
+def test_external_schedule_card_only_offers_history(
+    authed_page: Page, base_url: str
+) -> None:
+    external = _job(
+        "HWiNFO restart",
+        job_id="hwinfo-restart",
+        next_epoch=_NOW + 3600,
+        chip="every 8 h",
+        sched={"type": "hourly", "every": 8},
+        elevated=True,
+    )
+    authed_page.route(
+        re.compile(r".*/api/jobs(\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=_json.dumps({"jobs": [external]}),
+        ),
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabJobs").click()
+    row = authed_page.locator("#jobsList li[data-id='hwinfo-restart']")
+    expect(row.locator("[data-role='elevated-chip']")).to_contain_text(
+        "external schedule"
+    )
+    expect(row.locator("button[aria-label^='View run history']")).to_have_count(1)
+    expect(row.locator("[data-role='run-btn']")).to_have_count(0)
+    expect(row.locator("[data-role='pause-btn']")).to_have_count(0)
+
+
+def test_manual_run_state_is_distinct_from_next_scheduled_fire(
+    authed_page: Page, base_url: str
+) -> None:
+    running = _job(
+        "LI scrape",
+        job_id="linkedin-scrape",
+        next_epoch=_NOW + 14 * 60,
+        chip="daily 06:15 12:00 18:00",
+        sched={"type": "daily_times", "at": ["06:15", "12:00", "18:00"]},
+    )
+    running["running"] = True
+    running["last_run"] = {
+        "run_id": "20260716T060156",
+        "status": "running",
+        "started_at": "2026-07-16T06:01:57",
+        "trigger": "manual",
+        "duration_seconds": None,
+    }
+    authed_page.route(
+        re.compile(r".*/api/jobs(\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=_json.dumps({"jobs": [running]}),
+        ),
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabJobs").click()
+    row = authed_page.locator("#jobsList li[data-id='linkedin-scrape']")
+    expect(row.locator("[data-role='meta']")).to_contain_text("running now")
+    expect(row.locator("[data-role='countdown-chip']")).to_contain_text("next in")
 
 
 def _is_open(page: Page) -> bool:

@@ -662,6 +662,9 @@ class RunJobCommand(BaseCommand):
 
         env = os.environ.copy()
         env.update(extra_env)
+        artifact_dir = run_dir / "artifacts"
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
         if dry_run:
             env["JOB_DRY_RUN"] = "1"
         spawn_started = time.monotonic()

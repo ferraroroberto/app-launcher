@@ -59,7 +59,14 @@ class TestInlineShellExecutor:
         job = Job(
             id="inline-demo", name="Inline demo", script_path="",
             kind="inline-shell",
-            kind_config={"script_body": "@echo off\r\necho hello-inline\r\n", "ext": ".bat"},
+            kind_config={
+                "script_body": (
+                    "@echo off\r\n"
+                    "echo hello-inline\r\n"
+                    "echo artifact-ok>\"%JOB_ARTIFACT_DIR%\\report.txt\"\r\n"
+                ),
+                "ext": ".bat",
+            },
         )
         rc = _fire(job)
         assert rc == 0
@@ -75,6 +82,9 @@ class TestInlineShellExecutor:
         assert "echo hello-inline" in temp_script.read_text(encoding="utf-8")
         output = (run_dir / "output.log").read_text(encoding="utf-8", errors="replace")
         assert "hello-inline" in output
+        assert (run_dir / "artifacts" / "report.txt").read_text(
+            encoding="utf-8"
+        ).strip() == "artifact-ok"
 
     def test_missing_script_file_fails_cleanly_with_run_record(
         self, isolated_jobs, monkeypatch

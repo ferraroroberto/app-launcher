@@ -20,8 +20,10 @@ function renderCountdownChip(job) {
   if (!Number.isFinite(job.next_run_epoch)) return null;
   const chip = document.createElement('span');
   chip.className = 'kind-pill job-countdown-chip';
-  chip.innerHTML = icon('timer') + ' ' + fmtUntil(job.next_run_epoch);
-  if (job.next_run) chip.title = 'Next run: ' + job.next_run;
+  chip.innerHTML = icon('timer') + ' next ' + fmtUntil(job.next_run_epoch);
+  chip.title = job.next_run
+    ? 'Next scheduled run: ' + job.next_run
+    : 'Next scheduled run';
   return chip;
 }
 
@@ -122,11 +124,14 @@ function describeLastRun(job) {
     const ago = fmtAgo(toEpoch(job.last_run.started_at));
     const status = job.last_run.status || '?';
     const duration = formatDuration(job.last_run.duration_seconds);
-    const tail = status +
-      (ago ? ' · ' + ago + ' ago' : '') +
-      (duration && status !== 'running' && status !== 'pending'
-        ? ' · ' + duration : '');
-    bits.push('last: ' + tail);
+    if (job.running || status === 'running' || status === 'pending') {
+      bits.push('running now' + (ago ? ' · started ' + ago + ' ago' : ''));
+    } else {
+      const tail = status +
+        (ago ? ' · ' + ago + ' ago' : '') +
+        (duration ? ' · ' + duration : '');
+      bits.push('last: ' + tail);
+    }
   } else {
     bits.push('never run');
   }
@@ -134,6 +139,12 @@ function describeLastRun(job) {
   const successRate = job.stats && job.stats.success_rate_30d;
   if (successRate != null && Number.isFinite(successRate)) {
     bits.push(Math.round(successRate * 100) + '% / 30d');
+  }
+  if (Number.isFinite(job.run_count)) {
+    bits.push(job.run_count + ' kept');
+  }
+  if (Number.isFinite(job.pinned_count) && job.pinned_count > 0) {
+    bits.push(job.pinned_count + ' pinned');
   }
   return bits.join(' · ');
 }
@@ -197,9 +208,9 @@ export function renderJobRow(job, options) {
     const elevated = document.createElement('span');
     elevated.className = 'kind-pill job-elevated-pill';
     elevated.dataset.role = 'elevated-chip';
-    elevated.innerHTML = icon('lock') + ' externally scheduled';
-    elevated.title = 'Registered by hand via schtasks /RL HIGHEST — ' +
-      'this app never creates, edits, or deletes its Task Scheduler entry';
+    elevated.innerHTML = icon('lock') + ' external schedule';
+    elevated.title = 'Runs through an externally managed elevated task. ' +
+      'Run-now and schedule controls are unavailable here; tap the row to view history.';
     pills.appendChild(elevated);
   }
   if (job.mutex_group) {
@@ -242,6 +253,8 @@ export function renderJobRow(job, options) {
   meta.dataset.role = 'meta';
   meta.textContent = describeLastRun(job);
   info.appendChild(meta);
+  info.title = 'View run history for ' + job.name;
+  info.setAttribute('aria-label', 'View run history for ' + job.name);
   info.addEventListener('click', function () {
     if (handlers.onToggle) handlers.onToggle(job);
   });
@@ -250,20 +263,23 @@ export function renderJobRow(job, options) {
 
   const actions = document.createElement('div');
   actions.className = 'row-actions session-actions';
-  const run = document.createElement('button');
-  run.type = 'button';
-  run.className = 'icon-btn';
-  run.dataset.role = 'run-btn';
-  setRunBtnState(run, job);
-  run.addEventListener('click', function (event) {
-    event.stopPropagation();
-    if (handlers.onRun) handlers.onRun(job);
-  });
-  actions.appendChild(run);
+  let run = null;
+  if (job.manual_run_allowed !== false) {
+    run = document.createElement('button');
+    run.type = 'button';
+    run.className = 'icon-btn';
+    run.dataset.role = 'run-btn';
+    setRunBtnState(run, job);
+    run.addEventListener('click', function (event) {
+      event.stopPropagation();
+      if (handlers.onRun) handlers.onRun(job);
+    });
+    actions.appendChild(run);
+  }
 
   const hasSchedule = job.paused ||
     (job.schedule && job.schedule.type && job.schedule.type !== 'none');
-  if (hasSchedule) {
+  if (hasSchedule && job.schedule_controls_allowed !== false) {
     const pause = document.createElement('button');
     pause.type = 'button';
     pause.className = 'icon-btn';
@@ -319,7 +335,7 @@ export function renderJobRow(job, options) {
     });
     actions.appendChild(remove);
   }
-  li.appendChild(actions);
+  if (actions.childElementCount) li.appendChild(actions);
 
   const nodes = {
     li: li,
@@ -354,7 +370,7 @@ function swapChip(container, oldElement, freshElement, anchor) {
 export function patchRowNodes(nodes, job) {
   nodes.dotEl.className = 'health-dot ' + statusClass(job);
   nodes.metaEl.textContent = describeLastRun(job);
-  setRunBtnState(nodes.runBtnEl, job);
+  if (nodes.runBtnEl) setRunBtnState(nodes.runBtnEl, job);
 
   const freshCountdown = renderCountdownChip(job);
   if (freshCountdown) freshCountdown.dataset.role = 'countdown-chip';

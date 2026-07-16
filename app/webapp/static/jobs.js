@@ -3,10 +3,8 @@
  * Expanded-panel model — runs list + one selected run's output:
  *   - Tap a job row → panel opens, defaults to the newest run selected.
  *   - The runs list (max 5) is always shown; tap a run to switch the log.
- *   - Polling tick (3 s) only fetches when the panel is open. It always
- *     refreshes the runs list (cheap — no output bytes), and only
- *     re-fetches the SELECTED run's output if that run is still
- *     running/pending. A finalized run is a static log: no flicker.
+ *   - Polling only refreshes the cheap runs list. A selected live run uses
+ *     one WebSocket snapshot plus deltas; finalized output is fetched once.
  *   - Scroll position is preserved on update; auto-follow-bottom kicks
  *     in only when the user was already at the bottom (classic tail -f).
  *
@@ -18,7 +16,14 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, AuthRequiredError, jsonApi, logPollFailure, toast } from './api.js';
+import {
+  apiFailToast,
+  AuthRequiredError,
+  jsonApi,
+  logPollFailure,
+  readToken,
+  toast,
+} from './api.js';
 import { fmtAgo } from './sessions.js';
 import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
 import { wireJobsAgenda } from './jobs-agenda.js';
@@ -32,14 +37,25 @@ import {
 } from './jobs-row.js';
 import { icon } from './_vendored/icons/icons.js';
 
+let searchTimer = null;
+let liveSocket = null;
+let liveSocketKey = null;
+const runExtras = new Map();
+
 // --------------------------------------------------------------- render
 
 export function renderJobs() {
   const host = els.jobsList;
   host.innerHTML = '';
-  els.jobsEmpty.hidden = state.jobs.length !== 0;
+  const searching = !!state.jobsSearchQuery;
+  els.jobsEmpty.hidden = searching || state.jobs.length !== 0;
   if (els.jobsAddBtn) els.jobsAddBtn.hidden = !state.editMode;
   syncSortBtn();
+
+  if (searching) {
+    renderSearchMatches(host);
+    return;
+  }
 
   sortedJobs().forEach(function (job) {
     host.appendChild(renderJobRow(job, {
@@ -54,6 +70,75 @@ export function renderJobs() {
       host.appendChild(renderHistoryLi(job));
     }
   });
+}
+
+function renderSearchMatches(host) {
+  const matches = state.jobsSearchMatches || [];
+  if (!matches.length) {
+    const empty = document.createElement('li');
+    empty.className = 'jobs-search-empty muted small';
+    empty.textContent = 'No matching run output.';
+    host.appendChild(empty);
+    return;
+  }
+  matches.forEach(function (match) {
+    const li = document.createElement('li');
+    li.className = 'app-item job-search-hit';
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'launch-btn session-open';
+    const title = document.createElement('span');
+    title.className = 'session-head';
+    title.innerHTML = icon(statusIcon(match.status)) + ' ';
+    title.append(match.job_id + ' · ' + match.run_id);
+    button.appendChild(title);
+    const snippet = document.createElement('span');
+    snippet.className = 'meta jobs-search-snippet';
+    snippet.textContent = match.snippet || '(match in empty output)';
+    button.appendChild(snippet);
+    button.addEventListener('click', function () { openSearchMatch(match); });
+    li.appendChild(button);
+    host.appendChild(li);
+  });
+}
+
+async function runJobsSearch() {
+  const query = (els.jobsSearchInput && els.jobsSearchInput.value || '').trim();
+  state.jobsSearchQuery = query;
+  if (els.jobsSearchClear) els.jobsSearchClear.hidden = !query;
+  stopLiveStream();
+  if (!query) {
+    state.jobsSearchMatches = [];
+    renderJobs();
+    return;
+  }
+  els.jobsList.innerHTML = '<li class="jobs-search-empty muted small">Searching run output…</li>';
+  try {
+    const body = await jsonApi('/api/jobs/runs/search?q=' + encodeURIComponent(query));
+    if (state.jobsSearchQuery !== query) return;
+    state.jobsSearchMatches = body.matches || [];
+    renderJobs();
+  } catch (exc) {
+    if (exc instanceof AuthRequiredError) return;
+    if (state.jobsSearchQuery !== query) return;
+    els.jobsList.innerHTML = '<li class="jobs-search-empty muted small">Run search unavailable.</li>';
+  }
+}
+
+function openSearchMatch(match) {
+  const job = state.jobs.find(function (entry) { return entry.id === match.job_id; });
+  if (!job) {
+    toast('That job is no longer registered.', 'error');
+    return;
+  }
+  if (els.jobsSearchInput) els.jobsSearchInput.value = '';
+  if (els.jobsSearchClear) els.jobsSearchClear.hidden = true;
+  state.jobsSearchQuery = '';
+  state.jobsSearchMatches = [];
+  state.expandedJob = match.job_id;
+  state.selectedRun = { jobId: match.job_id, runId: match.run_id };
+  renderJobs();
+  refreshExpandedContent(match.job_id, { fetchOutput: true }).catch(function () {});
 }
 
 // ------------------------------------------------------------ sort + order
@@ -167,6 +252,12 @@ function renderHistoryLi(job) {
   tail.addEventListener('click', function () { copyOutputTail(tail); });
   body.appendChild(tail);
 
+  const artifacts = document.createElement('section');
+  artifacts.className = 'jobs-artifacts';
+  artifacts.dataset.role = 'artifacts';
+  artifacts.hidden = true;
+  body.appendChild(artifacts);
+
   // Raw webhook payload (issue #73) — collapsed by default, only shown
   // (and populated) for a run that was actually webhook-triggered.
   const webhookDetails = document.createElement('details');
@@ -246,6 +337,19 @@ function redrawRunsList(jobId, runs) {
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
     li.appendChild(btn);
 
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = 'icon-btn jobs-pin-btn' + (r.pinned ? ' selected' : '');
+    pin.textContent = '📌';
+    pin.title = r.pinned ? 'Unpin run' : 'Pin run — keep forever';
+    pin.setAttribute('aria-label', pin.title);
+    pin.setAttribute('aria-pressed', r.pinned ? 'true' : 'false');
+    pin.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      toggleRunPin(jobId, r);
+    });
+    li.appendChild(pin);
+
     // Re-run button (issue #67) — only meaningful when the job declares
     // params now. Opens the run dialog pre-filled with this run's values.
     if (job && declaredNames.size && r.params && typeof r.params === 'object') {
@@ -288,6 +392,9 @@ function writeOutput(jobId, runId, text, status, extras) {
   const label = panel.querySelector('[data-role="output-label"]');
   const tail = panel.querySelector('[data-role="output-tail"]');
   if (!tail) return;
+  const key = jobId + '/' + runId;
+  if (extras) runExtras.set(key, extras);
+  extras = extras || runExtras.get(key) || {};
   if (label) {
     const bits = ['Output · ' + runId];
     if (status) bits.push(status + (status === 'running' || status === 'pending' ? ' (live)' : ''));
@@ -318,6 +425,8 @@ function writeOutput(jobId, runId, text, status, extras) {
     tail.scrollTop = prevScrollTop;
   }
 
+  renderArtifacts(jobId, runId, extras.artifacts || []);
+
   const webhookDetails = panel.querySelector('[data-role="webhook-payload-details"]');
   const webhookPre = panel.querySelector('[data-role="webhook-payload-body"]');
   if (webhookDetails && webhookPre) {
@@ -325,6 +434,48 @@ function writeOutput(jobId, runId, text, status, extras) {
     webhookDetails.hidden = !wh;
     webhookPre.textContent = wh ? JSON.stringify(wh, null, 2) : '';
   }
+}
+
+function appendOutput(jobId, runId, chunk, status) {
+  const panel = panelEl(jobId);
+  if (!panel || !state.selectedRun || state.selectedRun.runId !== runId) return;
+  const tail = panel.querySelector('[data-role="output-tail"]');
+  if (!tail) return;
+  const wasAtBottom = tail.scrollTop + tail.clientHeight >= tail.scrollHeight - 4;
+  if (tail.textContent === '(no output)') tail.textContent = '';
+  tail.textContent += chunk;
+  if (wasAtBottom) tail.scrollTop = tail.scrollHeight;
+  const label = panel.querySelector('[data-role="output-label"]');
+  if (label) label.textContent = 'Output · ' + runId + ' · ' + status + ' (live)';
+}
+
+function renderArtifacts(jobId, runId, artifacts) {
+  const panel = panelEl(jobId);
+  const host = panel && panel.querySelector('[data-role="artifacts"]');
+  if (!host) return;
+  host.innerHTML = '';
+  host.hidden = !artifacts.length;
+  if (!artifacts.length) return;
+  const heading = document.createElement('h4');
+  heading.textContent = 'Artifacts';
+  host.appendChild(heading);
+  const list = document.createElement('ul');
+  artifacts.forEach(function (artifact) {
+    const li = document.createElement('li');
+    const link = document.createElement('a');
+    let href = '/api/jobs/' + encodeURIComponent(jobId) + '/runs/' +
+      encodeURIComponent(runId) + '/artifacts/' + encodeURIComponent(artifact.name);
+    const token = readToken();
+    if (token) href += '?token=' + encodeURIComponent(token);
+    link.href = href;
+    link.download = artifact.name;
+    link.textContent = '↓ ' + artifact.name;
+    const size = document.createElement('span');
+    size.textContent = formatBytes(artifact.size) || '';
+    li.append(link, size);
+    list.appendChild(li);
+  });
+  host.appendChild(list);
 }
 
 // Tap-to-copy (issue #97). One tap on the run's output pane drops the whole
@@ -352,6 +503,7 @@ async function copyOutputTail(tail) {
 // ---------------------------------------------------------- interactions
 
 function collapseExpanded() {
+  stopLiveStream();
   state.expandedJob = null;
   state.selectedRun = null;
   renderJobs();
@@ -370,6 +522,7 @@ async function toggleExpanded(job) {
 }
 
 function selectRun(jobId, runId) {
+  stopLiveStream();
   state.selectedRun = { jobId: jobId, runId: runId };
   // Re-render the runs list so the highlight moves immediately, then
   // load the chosen run's output (always — even if static).
@@ -414,7 +567,13 @@ async function refreshExpandedContent(jobId, opts) {
   // Skip the output fetch when the selected run is final AND we've
   // already painted it — a static log doesn't need re-polling, which
   // is the difference between "I can read this" and "it keeps jumping".
-  if (opts.fetchOutput || isLive || isFirstPaint) {
+  if (isLive) {
+    if (opts.fetchOutput || isFirstPaint) {
+      await refreshOutputForRun(jobId, selectedRunId);
+    }
+    openLiveStream(jobId, selectedRunId);
+  } else if (opts.fetchOutput || isFirstPaint) {
+    stopLiveStream();
     await refreshOutputForRun(jobId, selectedRunId);
   }
 }
@@ -434,7 +593,76 @@ async function refreshOutputForRun(jobId, runId) {
     peak_rss_bytes: record.peak_rss_bytes,
     duration_seconds: record.duration_seconds,
     webhook_payload: record.webhook_payload,
+    artifacts: record.artifacts || [],
   });
+}
+
+function openLiveStream(jobId, runId) {
+  const key = jobId + '/' + runId;
+  if (liveSocket && liveSocketKey === key &&
+      (liveSocket.readyState === WebSocket.CONNECTING ||
+       liveSocket.readyState === WebSocket.OPEN)) return;
+  stopLiveStream();
+  const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  let url = scheme + '//' + window.location.host + '/api/jobs/' +
+    encodeURIComponent(jobId) + '/runs/' + encodeURIComponent(runId) + '/stream';
+  const token = readToken();
+  if (token) url += '?token=' + encodeURIComponent(token);
+  const socket = new WebSocket(url);
+  liveSocket = socket;
+  liveSocketKey = key;
+  socket.addEventListener('message', function (event) {
+    if (liveSocket !== socket) return;
+    let frame;
+    try { frame = JSON.parse(event.data); } catch (_) { return; }
+    if (frame.type === 'snapshot') {
+      writeOutput(jobId, runId, frame.output || '', frame.status || 'running');
+    } else if (frame.type === 'chunk') {
+      appendOutput(jobId, runId, frame.output || '', frame.status || 'running');
+    } else if (frame.type === 'status') {
+      stopLiveStream();
+      refreshOutputForRun(jobId, runId).catch(function () {});
+      refreshExpandedContent(jobId, {}).catch(function () {});
+    }
+  });
+  socket.addEventListener('close', function () {
+    if (liveSocket === socket) {
+      liveSocket = null;
+      liveSocketKey = null;
+    }
+  });
+}
+
+function stopLiveStream() {
+  const socket = liveSocket;
+  liveSocket = null;
+  liveSocketKey = null;
+  if (socket && (socket.readyState === WebSocket.CONNECTING ||
+                 socket.readyState === WebSocket.OPEN)) {
+    socket.close(1000, 'view changed');
+  }
+}
+
+async function toggleRunPin(jobId, run) {
+  const next = !run.pinned;
+  try {
+    await jsonApi(
+      '/api/jobs/' + encodeURIComponent(jobId) + '/runs/' + encodeURIComponent(run.run_id),
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned: next }),
+      }
+    );
+    run.pinned = next;
+    const job = state.jobs.find(function (entry) { return entry.id === jobId; });
+    if (job) job.pinned_count = Math.max(0, (job.pinned_count || 0) + (next ? 1 : -1));
+    redrawRunsList(jobId, state.jobRuns[jobId] || []);
+    patchRowsInPlace();
+    toast(next ? '📌 Run pinned.' : 'Run unpinned.', 'good');
+  } catch (exc) {
+    apiFailToast('Pin update failed', exc);
+  }
 }
 
 function renderKillButton(jobId, runId, status, extras) {
@@ -591,6 +819,10 @@ function patchRowsInPlace() {
 
 export async function fetchJobs() {
   if (state.tab !== 'jobs') return;
+  if (state.jobsSearchQuery) {
+    await runJobsSearch();
+    return;
+  }
   // While a row is expanded, polling refreshes that one panel's content
   // in place — touching the row list would tear down the user's view.
   if (state.expandedJob) {
@@ -619,6 +851,19 @@ export function wireJobs() {
     els.jobsSortBtn.addEventListener('click', function (ev) {
       ev.stopPropagation();
       toggleSort();
+    });
+  }
+  if (els.jobsSearchInput) {
+    els.jobsSearchInput.addEventListener('input', function () {
+      if (searchTimer) clearTimeout(searchTimer);
+      searchTimer = setTimeout(function () { runJobsSearch(); }, 250);
+    });
+  }
+  if (els.jobsSearchClear) {
+    els.jobsSearchClear.addEventListener('click', function () {
+      if (els.jobsSearchInput) els.jobsSearchInput.value = '';
+      runJobsSearch();
+      if (els.jobsSearchInput) els.jobsSearchInput.focus();
     });
   }
   wireJobsAgenda();

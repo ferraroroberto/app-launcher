@@ -665,7 +665,7 @@ class TestPauseResume:
 
 
 class TestElevatedJobsSkipTaskScheduler:
-    """Issue #352: create/edit/pause/resume on an ``elevated: true`` job
+    """Issue #352: create/edit on an ``elevated: true`` job
     must never *create* a Task Scheduler entry via the real schtasks
     runner — its ``/RL HIGHEST`` entry is externally-managed. Issue #409:
     it must still *delete* any stale entry left behind by a prior
@@ -740,6 +740,8 @@ class TestElevatedJobsSkipTaskScheduler:
         assert resp.status_code == 200
         created = resp.json()["job"]
         assert created["elevated"] is True
+        assert created["manual_run_allowed"] is False
+        assert created["schedule_controls_allowed"] is False
         assert_no_create()
 
         job_id = created["id"]
@@ -748,10 +750,24 @@ class TestElevatedJobsSkipTaskScheduler:
         assert_no_create()
 
         resp = client.post(f"/api/jobs/{job_id}/pause")
-        assert resp.status_code == 200
+        assert resp.status_code == 409
+        assert "externally managed" in resp.json()["detail"]
         assert_no_create()
 
         resp = client.post(f"/api/jobs/{job_id}/resume")
+        assert resp.status_code == 409
+        assert "externally managed" in resp.json()["detail"]
+        assert_no_create()
+
+        resp = client.post(f"/api/jobs/{job_id}/run")
+        assert resp.status_code == 409
+        assert "manual runs are unavailable" in resp.json()["detail"]
+        assert_no_create()
+
+        # Target resolution remains available because it has no side effects.
+        resp = client.post(
+            f"/api/jobs/{job_id}/run", json={"dry_run": "check"}
+        )
         assert resp.status_code == 200
         assert_no_create()
 
@@ -978,6 +994,100 @@ class TestRunHistory:
         created = _seed_one_job(client, name="Demo").json()["job"]
         resp = client.get("/api/jobs/" + created["id"] + "/runs/nope")
         assert resp.status_code == 404
+
+    def test_artifact_download_and_traversal_guard(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        from src import jobs as jobs_mod
+
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Artifacts").json()["job"]
+        run = client.post(f"/api/jobs/{created['id']}/run").json()
+        run_dir = jobs_mod.runs_dir(created["id"]) / run["run_id"]
+        artifact = run_dir / "artifacts" / "report.csv"
+        artifact.write_bytes(b"a,b\n1,2\n")
+
+        detail = client.get(f"/api/jobs/{created['id']}/runs/{run['run_id']}")
+        assert detail.json()["run"]["artifacts"][0]["name"] == "report.csv"
+        download = client.get(
+            f"/api/jobs/{created['id']}/runs/{run['run_id']}/artifacts/report.csv"
+        )
+        assert download.status_code == 200
+        assert download.text == "a,b\n1,2\n"
+        traversal = client.get(
+            f"/api/jobs/{created['id']}/runs/{run['run_id']}"
+            "/artifacts/%2E%2E%2Frun.json"
+        )
+        assert traversal.status_code == 400
+
+    def test_pin_toggle_survives_pruning(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        from src import jobs as jobs_mod
+
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Pinned").json()["job"]
+        first = client.post(f"/api/jobs/{created['id']}/run").json()["run_id"]
+        response = client.put(
+            f"/api/jobs/{created['id']}/runs/{first}", json={"pinned": True}
+        )
+        assert response.status_code == 200
+        assert response.json()["run"]["pinned"] is True
+        for i in range(3):
+            rd = jobs_mod.new_run_dir(created["id"], f"2026120{i + 1}T010101")
+            jobs_mod.write_run_json(rd, status="success")
+        jobs_mod.prune_runs(created["id"], keep=1)
+        assert (jobs_mod.runs_dir(created["id"]) / first).is_dir()
+
+    def test_live_stream_snapshot_delta_and_close(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        from src import jobs as jobs_mod
+
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Stream").json()["job"]
+        run_id = client.post(f"/api/jobs/{created['id']}/run").json()["run_id"]
+        run_dir = jobs_mod.runs_dir(created["id"]) / run_id
+        with client.websocket_connect(
+            f"/api/jobs/{created['id']}/runs/{run_id}/stream"
+        ) as websocket:
+            snapshot = websocket.receive_json()
+            assert snapshot == {"type": "snapshot", "output": "", "status": "pending"}
+            (run_dir / "output.log").write_bytes(b"hello live\n")
+            delta = websocket.receive_json()
+            assert delta["type"] == "chunk"
+            assert delta["output"] == "hello live\n"
+            jobs_mod.write_run_json(run_dir, status="success", exit_code=0)
+            final = websocket.receive_json()
+            assert final == {"type": "status", "status": "success"}
+
+    def test_cross_run_search_returns_snippet_and_filters_job(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        from src import jobs as jobs_mod
+
+        client, _, _ = webapp_client
+        first = _seed_one_job(client, name="First").json()["job"]
+        second = _seed_one_job(client, name="Second").json()["job"]
+        for job, stamp in ((first, "20260101T010101"), (second, "20260102T010101")):
+            run_dir = jobs_mod.new_run_dir(job["id"], stamp)
+            (run_dir / "output.log").write_bytes(b"prefix unique-needle suffix\n")
+            jobs_mod.write_run_json(
+                run_dir,
+                job_id=job["id"],
+                run_id=stamp,
+                status="success",
+                started_at=stamp,
+            )
+        response = client.get(
+            "/api/jobs/runs/search",
+            params={"q": "unique-needle", "job": first["id"]},
+        )
+        assert response.status_code == 200
+        matches = response.json()["matches"]
+        assert len(matches) == 1
+        assert matches[0]["job_id"] == first["id"]
+        assert "unique-needle" in matches[0]["snippet"]
 
 
 # ====================================================== bulk-cache schtasks
