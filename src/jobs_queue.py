@@ -20,12 +20,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
-try:  # Windows-only interprocess file lock (this repo runs Windows-only).
-    import msvcrt
-except ImportError:  # pragma: no cover - non-Windows fallback
-    msvcrt = None  # type: ignore[assignment]
-
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, file_lock
 from src.jobs_config import Job
 from src.jobs_history import (
     JOBS_RUNS_DIR,
@@ -55,44 +50,18 @@ def _queue_file_lock() -> Iterator[None]:
     webapp process and a spawned ``run-job`` executor process — so the
     in-process :data:`_queue_lock` alone doesn't prevent two writers from
     reading the same pre-write state and one clobbering the other's
-    ``os.replace`` (issue #409). Same ``msvcrt.locking`` byte-range sidecar
-    pattern as ``src.jobs_history._run_json_lock``: locked on a dedicated
-    ``.lock`` file, never on the JSON file itself (which ``os.replace``
-    swaps out from under any held handle).
+    ``os.replace`` (issue #409). Thin wrapper around the shared
+    :func:`src._json_io.file_lock` (same sidecar-lock pattern as
+    ``src.jobs_history._run_json_lock``).
 
     Resolves the lock path from the current :data:`JOBS_QUEUE_PATH` value
     on every call (rather than caching it at import time) so tests that
     ``monkeypatch`` ``JOBS_QUEUE_PATH`` to a tmp dir redirect the lock file
     too, instead of touching the real production runs dir.
     """
-    if msvcrt is None:  # pragma: no cover - non-Windows fallback
-        yield
-        return
     lock_path = JOBS_QUEUE_PATH.parent / (JOBS_QUEUE_PATH.name + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(lock_path, "a+b")
-    locked = False
-    try:
-        for attempt in range(3):
-            try:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-                locked = True
-                break
-            except OSError:
-                if attempt == 2:
-                    logger.warning(
-                        "⚠️  mutex queue lock contended — writing unlocked"
-                    )
+    with file_lock(lock_path, label="mutex queue"):
         yield
-    finally:
-        if locked:
-            try:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-        handle.close()
 
 
 def _read_queue_file() -> Dict[str, List[Dict[str, Any]]]:
