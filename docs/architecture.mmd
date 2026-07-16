@@ -25,8 +25,12 @@ flowchart TB
 
   subgraph tray["app/tray/ — tray.py + single_instance.py"]
     TRAY["tray.py\nmenu: open/copy URL, restart, status, quit"]
+    TRAYTS["tailscale.py\nCLI discovery + hostname resolution"]
+    TRAYREGTRAYS["registered_trays.py\nautostart boot sequence (#456)"]
   end
   TRAYCMD --> TRAY
+  TRAY --> TRAYTS
+  TRAY --> TRAYREGTRAYS
 
   TRAY -->|spawns, owns subtree :T kill/T restart| WEBAPPPROC["webapp process :8445"]
   TRAY -->|spawns DETACHED, re-adopts on start\nexcluded from tray reclaim sweep| HOSTPROC["session-host process :8446"]
@@ -41,7 +45,7 @@ flowchart TB
       R_AUTH["auth.py — /api/login"]
       R_CONFIG["config.py — /api/config, /api/status, /api/ports"]
       R_APPS["apps.py — /api/apps (Apps tab)"]
-      R_SESS["sessions.py — /api/claude-code/sessions,\nWS + transcribe + ocr"]
+      R_SESS["sessions.py — /api/claude-code/sessions, WS\n+ media_proxy.py (transcribe/ocr/tts)"]
       R_CC["claude_code.py — flags, git-status, generate"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]

@@ -13,22 +13,24 @@ Menu:
     Status                     — popup with webapp state
     --
     Quit                       — stop the webapp and exit
+
+Split off a single-file god-module (``/codebase-audit``): Tailscale CLI
+discovery + hostname resolution live in :mod:`app.tray.tailscale`, and the
+Registered Trays sequential autostart boot sequence lives in
+:mod:`app.tray.registered_trays` — both pure functions with no ``TrayApp``
+state, imported here rather than owning their own copy of the logic.
 """
 
 from __future__ import annotations
 
 import datetime
-import json
 import logging
 import os
 import shutil
 import signal
-import socket
 import subprocess
 import sys
 import threading
-import time
-import tomllib
 import webbrowser
 from pathlib import Path
 from typing import Optional
@@ -36,10 +38,9 @@ from typing import Optional
 import yaml
 
 from src import AppConfig
-from src.registry import load_registry
-from src.scanner import KIND_TRAY
 from src.webapp_config import append_auth_token, load_webapp_config
 
+from app.tray import registered_trays, tailscale
 from app.tray.single_instance import SingleInstance
 from app.tray.watchdog import HealthWatchdog
 from app.webapp.manager import (
@@ -66,57 +67,6 @@ WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
 # subtree) and adopted on start by this port, and :8446 is excluded from
 # tray.bat's reclaim sweep.
 SESSION_HOST_PORT = 8446
-
-# Registered Trays sequential boot (issue #456 part 2/2).
-_TRAY_READY_TIMEOUT_S = 30.0
-_TRAY_READY_POLL_S = 0.5
-# Fallback wait when a tray's repo has no readable .fleet.toml port — still
-# gives it a head start before the next tray launches, without a real signal.
-_TRAY_FALLBACK_DELAY_S = 5.0
-
-
-def _port_listening(port: int) -> bool:
-    """True if something is listening on 127.0.0.1:<port> (loopback)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.3)
-        return s.connect_ex(("127.0.0.1", port)) == 0
-
-
-def _fleet_toml_port(repo_dir: Path) -> Optional[int]:
-    """Read the ``port`` field out of ``repo_dir/.fleet.toml``.
-
-    This is the fleet-wide anti-staleness-enforced convention every
-    tray-owning repo already keeps current (project-scaffolding#83/#148) —
-    the only per-repo-agnostic readiness signal available here. PID-tree
-    port discovery (as the Running Apps panel uses for launcher-spawned
-    bats) does NOT work for a Registered Trays entry: every sister
-    ``tray.bat`` hands off via ``tray_lifecycle.ps1``'s ``Start-Process``
-    (verified in that shared script), which detaches the real long-lived
-    tray process from the invoking ``tray.bat``'s own process — that
-    invoking process exits within about a second, well before any webapp
-    binds its port, so a PID-tree walk rooted there finds nothing.
-
-    Accepts both shapes seen across the fleet: a bare int (``port =
-    8447``) or a leading-colon string (``port = ":8445"``). Returns
-    ``None`` on a missing file, missing field, or an unrecognised shape —
-    the caller falls back to a fixed delay.
-    """
-    toml_path = repo_dir / ".fleet.toml"
-    try:
-        data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
-        return None
-    raw = data.get("port")
-    if isinstance(raw, bool):
-        return None
-    if isinstance(raw, int):
-        return raw
-    if isinstance(raw, str):
-        try:
-            return int(raw.lstrip(":"))
-        except ValueError:
-            return None
-    return None
 
 
 def _read_tunnel_hostname(config_path: Path) -> Optional[str]:
@@ -168,28 +118,6 @@ def _clipboard_copy(text: str) -> bool:
     return False
 
 
-def _tailscale_binary() -> Optional[str]:
-    """Locate the tailscale CLI — PATH first, then the standard Windows install.
-
-    The GUI installer drops ``tailscale.exe`` under ``Program Files`` but
-    doesn't always add it to PATH, and the tray is often started by Task
-    Scheduler with a minimal environment — so PATH alone isn't enough.
-    """
-    found = shutil.which("tailscale")
-    if found:
-        return found
-    candidates = [
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
-        / "Tailscale" / "tailscale.exe",
-        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
-        / "Tailscale" / "tailscale.exe",
-    ]
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-    return None
-
-
 def _breadcrumb(path: Path, msg: str) -> None:
     """Append a timestamped breadcrumb line to ``path`` (best-effort)."""
     try:
@@ -211,86 +139,6 @@ def _wd_log(msg: str) -> None:
     """Append a breadcrumb to the watchdog log (best-effort)."""
     logger.debug(f"watchdog: {msg}")
     _breadcrumb(WATCHDOG_LOG, msg)
-
-
-def _run_tailscale(binary: str, args: list) -> subprocess.CompletedProcess:
-    """Run the tailscale CLI windowless, with stdin detached.
-
-    ``CREATE_NO_WINDOW`` stops a console flashing out of the windowless
-    tray; ``stdin=DEVNULL`` avoids the invalid-handle trap a ``pythonw``
-    parent can hit when a child inherits a missing stdin.
-    """
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    return subprocess.run(
-        [binary, *args],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        timeout=12,
-        check=False,
-        creationflags=creationflags,
-    )
-
-
-def _tailscale_hostname() -> Optional[str]:
-    """Return this machine's tailnet address, or None if unavailable.
-
-    Prefers the full DNS name (e.g. ``tower.tailnet.ts.net``) — the form
-    both the copied URL and the WebAuthn relying-party ID want — and falls
-    back to the raw ``100.x`` IP. Every failure path leaves a breadcrumb in
-    ``webapp/tailscale_debug.log`` since the tray has no console.
-    """
-    binary = _tailscale_binary()
-    if binary is None:
-        _ts_debug("CLI not found on PATH or under Program Files")
-        return None
-    _ts_debug(f"using binary {binary}")
-
-    # 1. `status --json` → Self.DNSName (the FQDN).
-    try:
-        result = _run_tailscale(
-            binary, ["status", "--self=true", "--peers=false", "--json"]
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        _ts_debug(f"status raised {type(exc).__name__}: {exc}")
-        result = None
-    if result is not None:
-        if result.returncode != 0:
-            _ts_debug(
-                f"status rc={result.returncode} "
-                f"stderr={(result.stderr or '').strip()[:200]!r}"
-            )
-        else:
-            try:
-                data = json.loads(result.stdout)
-                dns = ((data.get("Self") or {}).get("DNSName") or "").rstrip(".")
-                if dns:
-                    _ts_debug(f"resolved DNSName {dns}")
-                    return dns
-                _ts_debug(
-                    f"status ok but DNSName empty; "
-                    f"BackendState={data.get('BackendState')!r}"
-                )
-            except ValueError as exc:
-                _ts_debug(f"status JSON parse failed: {exc}")
-
-    # 2. Fallback: `tailscale ip -4` → the raw 100.x address.
-    try:
-        ip_res = _run_tailscale(binary, ["ip", "-4"])
-        if ip_res.returncode == 0:
-            lines = (ip_res.stdout or "").strip().splitlines()
-            ip = lines[0].strip() if lines else ""
-            if ip:
-                _ts_debug(f"fell back to tailscale ip {ip}")
-                return ip
-        _ts_debug(
-            f"ip -4 rc={ip_res.returncode} "
-            f"stderr={(ip_res.stderr or '').strip()[:200]!r}"
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        _ts_debug(f"ip -4 raised {type(exc).__name__}: {exc}")
-    return None
 
 
 def _notify(title: str, message: str) -> None:
@@ -354,7 +202,7 @@ class TrayApp:
         session-host is managed by port identity (adopt on start, reclaim on
         Quit), not by parentage.
         """
-        if _port_listening(SESSION_HOST_PORT):
+        if registered_trays.port_listening(SESSION_HOST_PORT):
             logger.info(f"🔗 Adopting running session-host on :{SESSION_HOST_PORT}")
             return
         # `start` launches the child and cmd exits, orphaning it out of this
@@ -392,7 +240,7 @@ class TrayApp:
         Same resolved path as tray.bat's TRAY_PS (#433: this used to point at
         a nonexistent repo-local path and silently no-op).
         """
-        if not _port_listening(SESSION_HOST_PORT):
+        if not registered_trays.port_listening(SESSION_HOST_PORT):
             return
         tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
         if not tray_ps.exists():
@@ -422,96 +270,13 @@ class TrayApp:
             logger.warning(f"⚠️  {msg}")
             _notify("Session host stop failed", msg)
 
-    # -- Registered Trays sequential boot (issue #456 part 2/2) --------------
-
-    def _spawn_tray_bat_detached(self, bat_path: Path) -> None:
-        """Quiet-launch a Registered Trays entry's ``tray.bat``.
-
-        Detached the same way as :meth:`_start_session_host` — re-parented
-        out of this tray's own process subtree via ``cmd /c start`` — so a
-        later ``tray.bat --restart`` on THIS machine never touches it (it
-        isn't this repo's process to manage beyond starting it).
-        """
-        cmd = ["cmd", "/c", "start", "", "/b", str(bat_path)]
-        kw: dict = dict(
-            cwd=str(bat_path.parent),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if sys.platform == "win32":
-            kw["creationflags"] = subprocess.CREATE_NO_WINDOW
-        subprocess.Popen(cmd, **kw)
-
-    def _wait_for_tray_ready(self, repo_dir: Path) -> bool:
-        """Best-effort readiness wait for a just-launched sister tray.
-
-        See :func:`_fleet_toml_port` for why this is `.fleet.toml`-port
-        based rather than PID-tree port discovery. No/malformed port
-        declaration → a fixed delay stand-in, returning ``False`` (not
-        confirmed ready, but gave it a head start).
-        """
-        port = _fleet_toml_port(repo_dir)
-        if port is None:
-            time.sleep(_TRAY_FALLBACK_DELAY_S)
-            return False
-        deadline = time.monotonic() + _TRAY_READY_TIMEOUT_S
-        while time.monotonic() < deadline:
-            if _port_listening(port):
-                return True
-            time.sleep(_TRAY_READY_POLL_S)
-        return False
-
-    def _launch_registered_trays(self) -> None:
-        """Walk autostart-enabled Registered Trays entries one at a time,
-        waiting for each to report ready before starting the next — avoids
-        a boot-time CPU/disk spike from launching several sister
-        Python/Streamlit processes concurrently. The registry's existing
-        alphabetical order (see :func:`src.registry.persist_additions`) is
-        the "fixed order" the issue accepts for v1 — no UI reordering.
-
-        One entry failing to launch, or its readiness check timing out,
-        is logged and does NOT abort the rest of the sequence — this
-        method itself must never raise into :meth:`_start`'s caller.
-        """
-        try:
-            registry = load_registry()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(f"⚠️  Registered Trays: could not load registry: {exc}")
-            return
-        trays = [a for a in registry.apps if a.kind == KIND_TRAY and a.autostart]
-        if not trays:
-            return
-        logger.info(f"🧭 Registered Trays: launching {len(trays)} autostart entr{'y' if len(trays) == 1 else 'ies'}")
-        for entry in trays:
-            if not entry.bat_path:
-                logger.warning(f"⚠️  Registered Trays: {entry.name} has no bat_path — skipped")
-                continue
-            bat_path = Path(entry.bat_path)
-            if not bat_path.is_file():
-                logger.warning(f"⚠️  Registered Trays: {entry.name} bat not found at {bat_path} — skipped")
-                continue
-            try:
-                logger.info(f"🚀 Registered Trays: launching {entry.name}")
-                self._spawn_tray_bat_detached(bat_path)
-                ready = self._wait_for_tray_ready(bat_path.parent)
-                if ready:
-                    logger.info(f"✅ Registered Trays: {entry.name} ready")
-                else:
-                    logger.warning(
-                        f"⚠️  Registered Trays: {entry.name} readiness unconfirmed "
-                        "(timed out or no .fleet.toml port) — continuing"
-                    )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"⚠️  Registered Trays: {entry.name} failed to launch: {exc}")
-                continue
-
     # -- webapp lifecycle ----------------------------------------------------
 
     def _start(self) -> None:
         try:
             self.manager.start(wait=True)
             _notify("Launcher webapp ready", self.manager.base_url)
-            self._launch_registered_trays()
+            registered_trays.launch_all()
         except Exception as exc:  # noqa: BLE001
             self.starter_exc = exc
             logger.error(f"❌ webapp start failed: {exc}")
@@ -621,7 +386,7 @@ class TrayApp:
             _notify("Local URL", url)
 
     def copy_tailscale(self, icon, item) -> None:  # noqa: ARG002
-        host = _tailscale_hostname()
+        host = tailscale.resolve_hostname(_ts_debug)
         if not host:
             reason = ""
             try:
