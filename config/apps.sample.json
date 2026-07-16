@@ -1,5 +1,5 @@
 {
-  "_comment": "Apps-tab registry (bat-based launchers). Real file is config/apps.json (gitignored). 'kind' is one of: streamlit | webapp | tunnel. claude-code projects are NOT listed here — the Claude Code tab discovers them live by scanning projects_dir (see webapp_config.json).",
+  "_comment": "Apps-tab registry (bat-based launchers). Real file is config/apps.json (gitignored). 'kind' is one of: streamlit | webapp | tunnel | tray. claude-code projects are NOT listed here — the Claude Code tab discovers them live by scanning projects_dir (see webapp_config.json).",
   "scan_root": "C:\\path\\to\\your\\projects-root",
   "apps": [
     {
