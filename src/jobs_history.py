@@ -21,12 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
-try:  # Windows-only interprocess file lock (this repo runs Windows-only).
-    import msvcrt
-except ImportError:  # pragma: no cover - non-Windows fallback
-    msvcrt = None  # type: ignore[assignment]
-
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -80,44 +75,15 @@ def _run_json_lock(run_dir: Path) -> Iterator[None]:
     """Hold an exclusive interprocess lock for a ``run.json`` read-merge-swap.
 
     The two writers (the executor's finalise and the webapp's Kill endpoint)
-    live in different processes, so a thread lock is not enough — this uses a
-    Windows ``msvcrt.locking`` byte-range lock on a dedicated ``run.json.lock``
-    sidecar (never on ``run.json`` itself, which ``os.replace`` swaps out from
-    under any held handle). ``LK_LOCK`` is the fully-blocking flavour: it retries
-    for ~10 s then raises, so a couple of attempts covers any real contention
-    (the critical section is sub-millisecond). If the lock genuinely can't be
-    taken, we log and proceed best-effort — losing serialization is far better
-    than wedging a job's finalisation forever.
+    live in different processes, so a thread lock is not enough. Thin wrapper
+    around the shared :func:`src._json_io.file_lock` (same
+    ``msvcrt.locking``-on-a-sidecar pattern as ``src.jobs_queue._queue_file_lock``)
+    on a dedicated ``run.json.lock`` file (never on ``run.json`` itself, which
+    ``os.replace`` swaps out from under any held handle).
     """
-    if msvcrt is None:  # pragma: no cover - non-Windows fallback
-        yield
-        return
-    run_dir.mkdir(parents=True, exist_ok=True)
     lock_path = run_dir / "run.json.lock"
-    handle = open(lock_path, "a+b")
-    locked = False
-    try:
-        for attempt in range(3):
-            try:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
-                locked = True
-                break
-            except OSError:
-                if attempt == 2:
-                    logger.warning(
-                        "⚠️  run.json lock contended for %s — writing unlocked",
-                        run_dir,
-                    )
+    with file_lock(lock_path, label=f"run.json for {run_dir}"):
         yield
-    finally:
-        if locked:
-            try:
-                handle.seek(0)
-                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
-            except OSError:
-                pass
-        handle.close()
 
 
 def write_run_json(run_dir: Path, **fields: Any) -> None:

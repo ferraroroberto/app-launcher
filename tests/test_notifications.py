@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src import notifications as notif
+from src import _loopback_http, notifications as notif
 
 
 # ============================================================== Notifiers
@@ -89,60 +89,90 @@ class TestFactory:
 
 
 # ============================================================= LLM summary
+#
+# summarise_failure routes through the shared src.llm_client hub client
+# (issue #520), so — like tests/test_llm_client.py — the hub round-trip is
+# stubbed by monkeypatching the shared `_loopback_http.requests.request`
+# rather than injecting a mock http object.
+
+
+class _HubResp:
+    def __init__(self, status_code=200, payload=None):
+        self.status_code = status_code
+        self._payload = payload if payload is not None else {}
+
+    def json(self):
+        return self._payload
+
+
+def _hub_completion(content):
+    return {"choices": [{"message": {"role": "assistant", "content": content}}]}
 
 
 class TestSummariseFailure:
-    def test_returns_text_block_first_line(self):
-        http = MagicMock()
-        http.post.return_value = SimpleNamespace(
-            status_code=200,
-            json=lambda: {
-                "content": [
-                    {"type": "text", "text": "ModuleNotFoundError: bs4\nfull stack..."},
-                ]
-            },
+    def test_returns_text_block_first_line(self, monkeypatch):
+        monkeypatch.setattr(
+            _loopback_http.requests,
+            "request",
+            lambda *a, **k: _HubResp(
+                200, _hub_completion("ModuleNotFoundError: bs4\nfull stack...")
+            ),
         )
-        out = notif.summarise_failure("Traceback (most recent call last)...", http=http)
+        out = notif.summarise_failure("Traceback (most recent call last)...")
         assert out == "ModuleNotFoundError: bs4"
 
-    def test_hub_unreachable_returns_none(self):
-        http = MagicMock()
-        http.post.side_effect = RuntimeError("connection refused")
-        assert notif.summarise_failure("oops", http=http) is None
+    def test_hub_unreachable_returns_none(self, monkeypatch):
+        def fake_request(*a, **k):
+            raise _loopback_http.requests.RequestException("connection refused")
 
-    def test_non_2xx_returns_none(self):
-        http = MagicMock()
-        http.post.return_value = SimpleNamespace(status_code=503, text="down")
-        assert notif.summarise_failure("oops", http=http) is None
+        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        assert notif.summarise_failure("oops") is None
 
-    def test_empty_tail_short_circuits(self):
-        http = MagicMock()
-        assert notif.summarise_failure("", http=http) is None
-        http.post.assert_not_called()
-
-    def test_malformed_payload_returns_none(self):
-        http = MagicMock()
-        http.post.return_value = SimpleNamespace(
-            status_code=200, json=lambda: {"unexpected": "shape"}
+    def test_non_2xx_returns_none(self, monkeypatch):
+        monkeypatch.setattr(
+            _loopback_http.requests, "request", lambda *a, **k: _HubResp(503)
         )
-        assert notif.summarise_failure("oops", http=http) is None
+        assert notif.summarise_failure("oops") is None
 
-    def test_base_url_from_config_is_honoured(self):
-        http = MagicMock()
-        http.post.return_value = SimpleNamespace(
-            status_code=200,
-            json=lambda: {"content": [{"type": "text", "text": "root cause"}]},
-        )
-        notif.summarise_failure("oops", http=http, base_url="http://127.0.0.1:9999")
-        assert http.post.call_args.args[0] == "http://127.0.0.1:9999/v1/messages"
+    def test_empty_tail_short_circuits(self, monkeypatch):
+        calls = {"n": 0}
 
-    def test_missing_base_url_falls_back_to_constant(self):
-        http = MagicMock()
-        http.post.return_value = SimpleNamespace(
-            status_code=200,
-            json=lambda: {"content": [{"type": "text", "text": "root cause"}]},
+        def fake_request(*a, **k):
+            calls["n"] += 1
+            return _HubResp(200, _hub_completion("x"))
+
+        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        assert notif.summarise_failure("") is None
+        assert calls["n"] == 0
+
+    def test_malformed_payload_returns_none(self, monkeypatch):
+        monkeypatch.setattr(
+            _loopback_http.requests,
+            "request",
+            lambda *a, **k: _HubResp(200, {"unexpected": "shape"}),
         )
-        notif.summarise_failure("oops", http=http, base_url="")
-        assert http.post.call_args.args[0] == (
-            f"{notif.LOCAL_LLM_BASE_URL}/v1/messages"
+        assert notif.summarise_failure("oops") is None
+
+    def test_base_url_from_config_is_honoured(self, monkeypatch):
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _HubResp(200, _hub_completion("root cause"))
+
+        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        notif.summarise_failure("oops", base_url="http://127.0.0.1:9999")
+        assert captured["url"] == "http://127.0.0.1:9999/v1/chat/completions"
+
+    def test_missing_base_url_falls_back_to_constant(self, monkeypatch):
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _HubResp(200, _hub_completion("root cause"))
+
+        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        notif.summarise_failure("oops", base_url="")
+        assert captured["url"] == (
+            f"{notif.LOCAL_LLM_BASE_URL}/v1/chat/completions"
         )

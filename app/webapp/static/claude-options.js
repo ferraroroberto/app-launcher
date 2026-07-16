@@ -47,45 +47,53 @@ export function renderClaudeOptions() {
   renderPiSubsection();
 }
 
+// One host, one array of items, the currently-active value, a label
+// renderer, and a select callback — every model/effort/permission/trust
+// segmented control below (Claude, Codex, Pi) is this same shape (issue
+// #520). `valueFn` defaults to identity (plain string items); Pi's model
+// row is the one case with {value,label} objects, so it passes a `valueFn`
+// to pull `value` out for the dataset/click-handler/active-comparison while
+// `labelFn` still renders `label`.
+function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, valueFn) {
+  host.innerHTML = '';
+  (items || []).forEach(function (item) {
+    const value = valueFn ? valueFn(item) : item;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = labelFn(item);
+    b.dataset.value = value;
+    if (value === currentValue) b.classList.add('active');
+    b.addEventListener('click', function () {
+      onSelect(value);
+    });
+    host.appendChild(b);
+  });
+}
+
 function renderClaudeSubsection() {
   const c = state.config && state.config.claude;
   if (!c) return;
-  els.claudeModel.innerHTML = '';
-  (c.models_available || []).forEach(function (m) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = m.charAt(0).toUpperCase() + m.slice(1);
-    b.dataset.value = m;
-    if (m === c.model) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ claude_model: m });
-    });
-    els.claudeModel.appendChild(b);
-  });
-  els.claudeEffort.innerHTML = '';
-  (c.efforts_available || []).forEach(function (e) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = e === 'off' ? 'Off' : e.charAt(0).toUpperCase() + e.slice(1);
-    b.dataset.value = e;
-    if (e === c.effort) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ claude_effort: e });
-    });
-    els.claudeEffort.appendChild(b);
-  });
-  els.claudePermission.innerHTML = '';
-  (c.permission_modes_available || []).forEach(function (p) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = p === 'skip' ? 'Skip permissions' : 'Auto mode';
-    b.dataset.value = p;
-    if (p === c.permission_mode) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ claude_permission_mode: p });
-    });
-    els.claudePermission.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.claudeModel,
+    c.models_available,
+    c.model,
+    function (m) { return m.charAt(0).toUpperCase() + m.slice(1); },
+    function (m) { patchConfig({ claude_model: m }); }
+  );
+  renderSegmentedControl(
+    els.claudeEffort,
+    c.efforts_available,
+    c.effort,
+    function (e) { return e === 'off' ? 'Off' : e.charAt(0).toUpperCase() + e.slice(1); },
+    function (e) { patchConfig({ claude_effort: e }); }
+  );
+  renderSegmentedControl(
+    els.claudePermission,
+    c.permission_modes_available,
+    c.permission_mode,
+    function (p) { return p === 'skip' ? 'Skip permissions' : 'Auto mode'; },
+    function (p) { patchConfig({ claude_permission_mode: p }); }
+  );
   setSwitch(els.claudeVerbose, !!c.verbose);
   setSwitch(els.claudeDebug, !!c.debug);
   els.claudeFlagsPreview.textContent = 'claude ' + (c.computed_flags || '');
@@ -97,32 +105,22 @@ function renderCodexSubsection() {
   // Reasoning tier — a segmented control mirroring Claude's Effort.
   // Codex has no model tiers, so this is the quality knob (mapped to
   // `model_reasoning_effort` server-side).
-  els.codexEffort.innerHTML = '';
-  (c.efforts_available || []).forEach(function (e) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = e.charAt(0).toUpperCase() + e.slice(1);
-    b.dataset.value = e;
-    if (e === c.effort) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ codex_effort: e });
-    });
-    els.codexEffort.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.codexEffort,
+    c.efforts_available,
+    c.effort,
+    function (e) { return e.charAt(0).toUpperCase() + e.slice(1); },
+    function (e) { patchConfig({ codex_effort: e }); }
+  );
   // Permission mode — auto (no prompts, still sandboxed) vs skip (the
   // all-bypass switch). Same two-state segmented control as Claude.
-  els.codexPermission.innerHTML = '';
-  (c.permission_modes_available || []).forEach(function (p) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = p === 'skip' ? 'Skip permissions' : 'Auto mode';
-    b.dataset.value = p;
-    if (p === c.permission_mode) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ codex_permission_mode: p });
-    });
-    els.codexPermission.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.codexPermission,
+    c.permission_modes_available,
+    c.permission_mode,
+    function (p) { return p === 'skip' ? 'Skip permissions' : 'Auto mode'; },
+    function (p) { patchConfig({ codex_permission_mode: p }); }
+  );
   els.codexFlagsPreview.textContent = 'codex ' + (c.computed_flags || '');
 }
 
@@ -167,46 +165,32 @@ function renderPiSubsection() {
   // providers (Opus/Sonnet on claude-agent-sdk, GPT on openai-codex), mirroring
   // the other agents' button rows. `models_available` carries {value,label} so
   // the buttons read "Opus/Sonnet/GPT" rather than the raw model ids.
-  els.piModel.innerHTML = '';
-  (p.models_available || []).forEach(function (m) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = m.label;
-    b.dataset.value = m.value;
-    if (m.value === p.model) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ pi_model: m.value });
-    });
-    els.piModel.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.piModel,
+    p.models_available,
+    p.model,
+    function (m) { return m.label; },
+    function (v) { patchConfig({ pi_model: v }); },
+    function (m) { return m.value; }
+  );
   // Effort — segmented control mapped to `--thinking`, mirroring Claude.
-  els.piEffort.innerHTML = '';
-  (p.efforts_available || []).forEach(function (e) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = e.charAt(0).toUpperCase() + e.slice(1);
-    b.dataset.value = e;
-    if (e === p.effort) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ pi_effort: e });
-    });
-    els.piEffort.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.piEffort,
+    p.efforts_available,
+    p.effort,
+    function (e) { return e.charAt(0).toUpperCase() + e.slice(1); },
+    function (e) { patchConfig({ pi_effort: e }); }
+  );
   // Project trust — `--approve` (Trust) vs `--no-approve` (Ask). NOT a
   // tool-permission gate (pi has no sandbox); it governs whether pi loads
   // project-local `.pi/` resources.
-  els.piTrust.innerHTML = '';
-  (p.trust_modes_available || []).forEach(function (t) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = t === 'trust' ? 'Trust' : 'Ask';
-    b.dataset.value = t;
-    if (t === p.trust_mode) b.classList.add('active');
-    b.addEventListener('click', function () {
-      patchConfig({ pi_trust_mode: t });
-    });
-    els.piTrust.appendChild(b);
-  });
+  renderSegmentedControl(
+    els.piTrust,
+    p.trust_modes_available,
+    p.trust_mode,
+    function (t) { return t === 'trust' ? 'Trust' : 'Ask'; },
+    function (t) { patchConfig({ pi_trust_mode: t }); }
+  );
   els.piFlagsPreview.textContent =
     'pi' + (p.computed_flags ? ' ' + p.computed_flags : '');
 }

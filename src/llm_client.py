@@ -54,16 +54,32 @@ def chat_url(base_url: str) -> str:
     return f"{base_url.rstrip('/')}/v1/chat/completions"
 
 
-def build_summary_payload(text: str, model: Optional[str] = None) -> Dict[str, Any]:
-    """Build the chat-completions body that asks the hub to summarize ``text``."""
-    return {
+def build_summary_payload(
+    text: str,
+    model: Optional[str] = None,
+    *,
+    system_prompt: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Build the chat-completions body that asks the hub a question about ``text``.
+
+    Defaults to the driving-mode reply summary (:data:`SUMMARY_SYSTEM_PROMPT`).
+    ``system_prompt``/``max_tokens`` let a caller ask a different question of
+    the same hub client instead of hand-rolling a second one — e.g.
+    :func:`src.notifications.summarise_failure` (issue #520) asks for a
+    one-line failure root cause.
+    """
+    payload: Dict[str, Any] = {
         "model": model or DEFAULT_MODEL,
         "messages": [
-            {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt or SUMMARY_SYSTEM_PROMPT},
             {"role": "user", "content": text},
         ],
         "stream": False,
     }
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    return payload
 
 
 def _extract_content(body: Any) -> str:
@@ -90,8 +106,21 @@ def _extract_content(body: Any) -> str:
     return ""
 
 
-def summarize(base_url: str, text: str, model: Optional[str] = None) -> str:
-    """Return a short, driving-oriented summary of ``text`` from the hub.
+def summarize(
+    base_url: str,
+    text: str,
+    model: Optional[str] = None,
+    *,
+    system_prompt: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+    timeout: float = _SUMMARIZE_TIMEOUT,
+) -> str:
+    """Return a short response from the hub about ``text``.
+
+    Defaults to the driving-mode reply summary (Coding tab read-aloud,
+    issue #210). ``system_prompt``/``max_tokens``/``timeout`` let a caller
+    ask a different question through this same hub client — see
+    :func:`build_summary_payload`.
 
     Raises :class:`LlmError` (status 503) when the hub is unreachable, the
     upstream status when it answers ``>= 400``, or 502 when it returns an
@@ -102,8 +131,10 @@ def summarize(base_url: str, text: str, model: Optional[str] = None) -> str:
         chat_url(base_url),
         error=LlmError,
         service="local-llm-hub",
-        timeout=_SUMMARIZE_TIMEOUT,
-        json=build_summary_payload(text, model=model),
+        timeout=timeout,
+        json=build_summary_payload(
+            text, model=model, system_prompt=system_prompt, max_tokens=max_tokens
+        ),
         allow_empty=False,
     )
     summary = _extract_content(body)

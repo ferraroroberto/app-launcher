@@ -37,6 +37,7 @@ import { VoiceLoop, STATE, INTENT } from './spike-voice-loop-fsm.js';
 import { consumeUrlParam, writeToken, readToken, jsonApi, apiRaw } from './api.js';
 import { ensureTerminalToken, readTerminalToken } from './webauthn.js';
 import { state } from './state.js';
+import { pickAudioMime } from './voice.js';
 import {
   prepareHub, speakHubInto, speak, cancelHub, cancelSpeech,
   probeHub, isHubAvailable, onSpeechEnd, onSpeakingChange,
@@ -204,13 +205,8 @@ function vadTick() {
 }
 
 // ── capture / transcribe ─────────────────────────────────────────────────────
-function pickAudioMime() {
-  const MR = window.MediaRecorder;
-  if (!MR || !MR.isTypeSupported) return '';
-  const ladder = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4;codecs=mp4a.40.2', 'audio/mp4'];
-  for (const c of ladder) if (MR.isTypeSupported(c)) return c;
-  return '';
-}
+// pickAudioMime() is imported from voice.js (issue #520) — same MIME ladder,
+// no local reimplementation.
 
 function startCapture() {
   if (!micStream) return;
