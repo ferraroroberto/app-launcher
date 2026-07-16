@@ -40,7 +40,7 @@ from fastapi import APIRouter, HTTPException, Request
 from src import audit, session_client
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import WebappConfig, build_claude_flags, build_resume_flags
+from src.webapp_config import WebappConfig, build_claude_flags
 
 from app.webapp.routers._helpers import (
     client_ip,
@@ -387,11 +387,14 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     # (effort / permission / verbose / debug) come from the shared Coding
     # options. The bare /<skill> is appended as claude's positional prompt
     # — skill.command is a validated slug, so no shell-quoting is needed.
-    # On Resume we drop the /<skill> prompt and swap in `claude --resume`
-    # so the native picker shows instead of re-invoking the skill.
+    # On Resume we drop the /<skill> prompt and invoke the native picker with
+    # the positional /resume command. Starting the interactive session through
+    # build_claude_flags first is intentional: Claude Code can carry
+    # `--resume --remote-control` in its process command without activating
+    # Remote Control for the selected conversation (issue #526).
     model = "opus" if opus else "sonnet"
     if resume:
-        flags = build_resume_flags(cfg, "claude", model_override=model)
+        flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
     else:
         flags = (
             f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
