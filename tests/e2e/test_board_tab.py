@@ -554,6 +554,7 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     missing on the truncating element itself) that a short title or a wide
     viewport can't surface. This pins a long title + a real phone-narrow
     viewport so the regression can't silently return."""
+    authed_page.set_viewport_size({"width": 430, "height": 739})
     long_title = (
         "This is a deliberately very long issue title meant to overflow the "
         "available card width so the truncation behavior is actually exercised"
