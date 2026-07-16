@@ -219,9 +219,12 @@ class TestLaunchSkill:
     def test_launch_resume_streams_pty_when_detached_off(
         self, life_os_client, monkeypatch
     ):
-        """Resume (issue #151) reopens Claude's picker: it swaps in
-        `--resume` and drops the /<skill> positional prompt. With Detached
-        off (mode=pty) it streams the picker to the phone over a PTY."""
+        """Resume reopens Claude's picker inside a remote-enabled session.
+
+        Issue #526: CLI startup shape ``--resume --remote-control`` can leave
+        the selected conversation unavailable on mobile. Launch Remote Control
+        normally, then invoke the native picker with positional ``/resume``.
+        """
         client, _, _ = life_os_client
         from app.webapp.routers import life_os as life_os_router
 
@@ -240,7 +243,9 @@ class TestLaunchSkill:
         assert resp.status_code == 200, resp.text
         assert captured["kind"] == "pty"
         assert captured["agent"] == "claude"
-        assert "--resume" in captured["flags"]
+        assert "--remote-control" in captured["flags"]
+        assert captured["flags"].endswith(" /resume")
+        assert "--resume" not in captured["flags"]
         assert "/journal-daily" not in captured["flags"]
         # The opus override still applies to the resumed session's model.
         assert "--model opus" in captured["flags"]
@@ -251,8 +256,8 @@ class TestLaunchSkill:
     ):
         """Detached + Resume are orthogonal (issue #157, matching the Coding
         tab): a resume with mode=remote honours the requested mode and spawns
-        a detached console (kind=remote), still swapping in `--resume` and
-        dropping the /<skill> prompt. Resume no longer forces a PTY."""
+        a detached console (kind=remote), still invoking the positional
+        ``/resume`` picker and dropping the /<skill> prompt."""
         client, _, _ = life_os_client
         from app.webapp.routers import life_os as life_os_router
 
@@ -271,7 +276,9 @@ class TestLaunchSkill:
         assert resp.status_code == 200, resp.text
         assert captured["kind"] == "remote"
         assert captured["agent"] == "claude"
-        assert "--resume" in captured["flags"]
+        assert "--remote-control" in captured["flags"]
+        assert captured["flags"].endswith(" /resume")
+        assert "--resume" not in captured["flags"]
         assert "/journal-daily" not in captured["flags"]
         # The opus override still applies to the resumed session's model.
         assert "--model opus" in captured["flags"]
