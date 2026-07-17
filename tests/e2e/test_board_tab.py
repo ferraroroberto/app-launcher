@@ -541,6 +541,48 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
 
+def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
+    authed_page: Page, base_url: str
+) -> None:
+    """#528: the shared active-issue marker makes an in-flight backlog row
+    visibly distinct and prevents both duplicate launch paths."""
+    payload = _board_payload()
+    payload["columns"]["backlog"][0]["in_progress"] = True
+    payload["columns"]["backlog"].append({
+        "kind": "issue", "repo": "app-launcher", "number": 302,
+        "title": "A normal backlog issue", "url": "https://example.test/302",
+        "updated_at": "2026-07-01T11:00:00Z", "labels": ["enhancement"],
+        "in_progress": False,
+    })
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page, payload)
+    _open_board(authed_page, base_url)
+    _switch_to_backlog(authed_page)
+
+    active = authed_page.locator(
+        '.board-list[data-col="backlog"] li.board-item', has_text="#301"
+    )
+    normal = authed_page.locator(
+        '.board-list[data-col="backlog"] li.board-item', has_text="#302"
+    )
+    expect(active).to_be_visible(timeout=15_000)
+    expect(active).to_have_class(re.compile(r"\bis-in-progress\b"))
+    expect(active.locator(".board-card-meta-inline")).to_contain_text("in progress")
+
+    active_actions = active.locator(".board-issue-btn")
+    normal_actions = normal.locator(".board-issue-btn")
+    expect(active_actions).to_have_count(2)
+    expect(normal_actions).to_have_count(2)
+    assert all(active_actions.nth(i).is_disabled() for i in range(2))
+    assert all(normal_actions.nth(i).is_enabled() for i in range(2))
+
+    active_bg = active.evaluate("el => getComputedStyle(el).backgroundColor")
+    normal_bg = normal.evaluate("el => getComputedStyle(el).backgroundColor")
+    assert active_bg != normal_bg, (
+        f"active backlog row must have a distinct tint: {active_bg!r} == {normal_bg!r}"
+    )
+
+
 def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     authed_page: Page, base_url: str
 ) -> None:

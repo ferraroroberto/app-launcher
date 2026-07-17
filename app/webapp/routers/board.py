@@ -109,14 +109,28 @@ def _rate_limits_section(rate_limits: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _mark_active_backlog(
+    columns: Dict[str, List[Dict[str, Any]]], active_rows: Dict[str, Any]
+) -> None:
+    """Annotate each backlog card from the shared ``repo#number`` mapping."""
+    active_keys = {str(key).lower() for key in active_rows}
+    for card in columns.get("backlog", []):
+        repo = str(card.get("repo") or "").strip().lower()
+        number = card.get("number")
+        key = f"{repo}#{number}" if repo and isinstance(number, int) else ""
+        card["in_progress"] = key in active_keys
+
+
 @router.get("/api/board")
 async def get_board(request: Request) -> Dict[str, Any]:
     """The five columns + source health, cheap enough for the 5s poll."""
     cfg: WebappConfig = request.app.state.webapp_config
 
-    live, state, job_cards, rate_limits = await asyncio.gather(
+    active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
+    live, state, active_issues, job_cards, rate_limits = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
+        asyncio.to_thread(board.read_active_issues, active_issues_file),
         asyncio.to_thread(board.jobs_attention),
         asyncio.to_thread(board.read_rate_limits, Path(cfg.rate_limits_file)),
     )
@@ -124,6 +138,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
 
     session_cards = board.merge_sessions(live, state["rows"])
     columns = board.build_board(session_cards, github, job_cards)
+    _mark_active_backlog(columns, active_issues["rows"])
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -135,6 +150,11 @@ async def get_board(request: Request) -> Dict[str, Any]:
             "available": state["available"],
             "stale": state["stale"],
             "updated_at": state["updated_at"],
+        },
+        "active_issues": {
+            "available": active_issues["available"],
+            "updated_at": active_issues["updated_at"],
+            "count": len(active_issues["rows"]),
         },
         "rate_limits": _rate_limits_section(rate_limits),
     }

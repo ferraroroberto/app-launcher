@@ -1,6 +1,6 @@
 # Board tab — reference
 
-The launcher's fifth surface (issue #164, shipped in four steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar, **#399** split into five single-purpose columns). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over five **computed** columns, each holding one kind of card. A card moves because reality changed; there is deliberately no drag-and-drop. It renders three independently-degrading live sources (the session-host's session list, fleet-config's sessions-state file, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
+The launcher's fifth surface (issue #164, shipped in four steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar, **#399** split into five single-purpose columns). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over five **computed** columns, each holding one kind of card. A card moves because reality changed; there is deliberately no drag-and-drop. It renders four independently-degrading live sources (the session-host's session list, fleet-config's sessions-state and active-issues files, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
 
 On the phone the five columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all five side by side. The **Your turn** count is the number that matters — its strip button highlights when nonzero.
 
@@ -16,7 +16,7 @@ Column assembly is pure logic in `src/board.py::build_board()`. Each column hold
 | **Other** | Open PRs, then today's failed-or-stuck job runs — everything else that needs attention but isn't a terminal. |
 | **Done** | Today's closed issues, since local midnight. |
 
-**Backlog** cards render thin (repo · #N · title · age) and link out to GitHub. A Backlog card whose repo is present in the projects folder additionally carries **▶ Start / ⚡ YOLO** (see "One-tap issue start" below).
+**Backlog** cards render thin (repo · #N · title · age) and link out to GitHub. A Backlog card whose repo is present in the projects folder additionally carries **▶ Start / ⚡ YOLO** (see "One-tap issue start" below). If fleet-config's issue workflows have an active marker for the same `<repo>#<number>`, the row gains the accent-soft tint and an explicit “in progress” label, and both launch buttons are truly disabled (#528).
 
 **Done is issues only** (#399): a merged PR that closed an issue is already reflected by that issue showing closed, so there is no PR/issue pairing step any more — `src/github_client.py::search_done_today()` is just the closed-issues search.
 
@@ -28,13 +28,13 @@ All Board routes live in `app/webapp/routers/board.py`.
 
 | Route | Auth | Purpose |
 | --- | --- | --- |
-| `GET /api/board` | bearer-token | The five columns — the **5 s poll target**. Cheap only: runs the live session list, one state-file read, and one jobs-runs walk concurrently, plus a pure in-memory read of the GitHub cache. **No `gh` subprocess ever runs on this path.** |
+| `GET /api/board` | bearer-token | The five columns — the **5 s poll target**. Cheap only: runs the live session list, two small state-file reads, and one jobs-runs walk concurrently, plus a pure in-memory read of the GitHub cache. **No `gh` subprocess ever runs on this path.** |
 | `POST /api/board/github/refresh` | bearer-token | Runs the three `gh` searches (open issues, open PRs, closed issues) and replaces the cache. The **only** place `gh` is invoked. |
 | `GET /api/board/sessions/{sid}/exchange` | Tailscale + passkey | The last user↔assistant exchange from the agent-aware conversation-source hierarchy (drill-down drawer). |
 | `POST /api/board/dispatch` | Tailscale + passkey | Spawn a new session and type an `/issue-*` goal into it (dispatch bar). |
 | `POST /api/board/issues/start` | Tailscale + passkey | One-tap `/issue-start` / `/issue-yolo <N>` on a Backlog card. |
 
-The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at}, rate_limits: {available, stale, updated_at, five_hour, seven_day} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`.
+The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, rate_limits: {available, stale, updated_at, five_hour, seven_day} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress`.
 
 ## The session-state file join
 
@@ -66,6 +66,12 @@ Agent capability matrix:
 `unknown` is an explicit capability limit, not silence interpreted as certainty. Native Codex/Pi status publication is independently shippable cross-agent work in [fleet-config#349](https://github.com/ferraroroberto/fleet-config/issues/349).
 
 **Degradation is total and silent.** `read_sessions_state()` returns `{available, stale, updated_at, rows}` and never raises: an absent, unreadable, or corrupt file yields `available: False` with empty rows, and every session card falls back to `unknown` while the GitHub and jobs columns render regardless. `stale: True` when the newest row is older than `STATE_STALE_AFTER` (24 h) — i.e. the hooks have stopped writing.
+
+## The active-issues lifecycle join (#528)
+
+Fleet-config's shared issue workflows publish `~/.claude/hooks/state/active-issues.json` (fleet-config#376) once an issue branch is ready and remove its row only after the PR merges. Rows are keyed by `<repo>#<number>` and carry `repo`, `number`, `branch`, and `started_at`. `GET /api/board` reads the file beside `sessions-state.json`, canonicalizes the key case-insensitively, and annotates every Backlog issue with `in_progress` before returning the columns.
+
+`read_active_issues()` has the same never-break-Board contract as the session-state reader: a missing, unreadable, corrupt, or non-dict file yields `available: False` with no rows. Invalid records are ignored individually. A record older than `STATE_STALE_AFTER` (24 h) expires on read, matching the writer's prune horizon, so a crashed workflow that never reaches `/issue-finish` cannot permanently block Start/YOLO. This is deliberately a lightweight lifecycle marker, not a GitHub/branch reconciliation source.
 
 ## Shared session title, cross-tab (#396)
 
@@ -141,7 +147,7 @@ All reads happen only when the drawer opens — `GET /api/board`'s 5-second poll
 
 **Replying to the live PTY.** The reply box is offered only for `alive && kind === 'pty'` cards (a detached console or state-only card has no reachable stdin). The reply proxies through `POST /api/claude-code/sessions/{sid}/input`, which wraps the text in bracketed paste when it contains a newline, then — on submit — sends `\r` as a **separate** write (the #166 rule again), forwarding to the session-host's `/sessions/{sid}/input`. On success the drawer closes (`boardExpanded = null`, poll resumes) and `board.js::moveCardToClaudeTurn()` optimistically relocates the card into *Claude's turn* client-side, immediately — before the server-side prompt-submit hook plus transcript overlay have had time to flip `sessions-state.json` (#461). No extra re-poll fires right away (it would almost always still see the pre-hook state and revert the optimistic move); the regular 5 s poll reconciles with ground truth as always. A **⚡** in the drawer opens the full-control terminal.
 
-**One-tap issue start.** A Backlog card whose repo is in the projects folder carries **▶ Start / ⚡ YOLO** → `POST /api/board/issues/start`, body `{repo, number, mode, model, rows, cols}`. Injection-safe by construction: `prompt = "/issue-<mode> <number>"` with mode allowlisted and number int-validated. The dispatch bar's **model** selector governs these launches too (#505), overriding the shared Coding model per launch — same #500 semantics as dispatch (gpt5.6 → a Codex session, which takes the same positional prompt; absent model → the legacy persisted Coding model). It resolves the repo to a project dir (404 if not present locally) and spawns a streamed PTY session — the `/issue-*` skills inherit worktree isolation for free, claiming the repo and building in a sibling worktree when the primary checkout is busy. On a desktop client it opens the PC-mirror window; elsewhere it opens the in-page terminal.
+**One-tap issue start.** A Backlog card whose repo is in the projects folder carries **▶ Start / ⚡ YOLO** → `POST /api/board/issues/start`, body `{repo, number, mode, model, rows, cols}`. Both controls are disabled while the card's active-issue marker is fresh (#528), preventing a redundant conflicting session. Otherwise the route is injection-safe by construction: `prompt = "/issue-<mode> <number>"` with mode allowlisted and number int-validated. The dispatch bar's **model** selector governs these launches too (#505), overriding the shared Coding model per launch — same #500 semantics as dispatch (gpt5.6 → a Codex session, which takes the same positional prompt; absent model → the legacy persisted Coding model). It resolves the repo to a project dir (404 if not present locally) and spawns a streamed PTY session — the `/issue-*` skills inherit worktree isolation for free, claiming the repo and building in a sibling worktree when the primary checkout is busy. On a desktop client it opens the PC-mirror window; elsewhere it opens the in-page terminal.
 
 **`?board=<sid>` deep-link** (`board.js::openBoardCard`): activates the Board tab, fetches the board, finds the column holding that `session_id`, opens its drawer, and scrolls the carousel to it — the landing page a `notify_on_idle` Slack ping links to. If the session is already gone, it toasts and leaves the board browsable rather than pausing the poll forever on a non-existent card.
 
