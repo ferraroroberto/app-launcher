@@ -540,6 +540,15 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(actions.nth(0)).to_have_attribute("aria-label", re.compile(r"^Start issue"))
     expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
+    tile_box = tile.bounding_box()
+    action_box = actions.first.bounding_box()
+    assert tile_box is not None and action_box is not None
+    tile_center = tile_box["y"] + tile_box["height"] / 2
+    action_center = action_box["y"] + action_box["height"] / 2
+    assert abs(action_center - tile_center) <= 1, (
+        f"issue action is not vertically centered: {action_center} vs {tile_center}"
+    )
+
 
 def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     authed_page: Page, base_url: str

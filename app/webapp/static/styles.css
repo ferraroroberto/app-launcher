@@ -2649,7 +2649,7 @@ body.terminal-open {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.board-issue-actions-compact {
+.board-issue-actions.board-issue-actions-compact {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
