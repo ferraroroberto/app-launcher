@@ -1,12 +1,15 @@
 """Hook-state-file IO for the Board tab (issue #408 split of ``board.py``).
 
-Reads the two files fleet-config's hooks/statusline write:
+Reads the three files fleet-config's hooks/statusline/workflows write:
 
 * the **sessions-state file** (``session_state`` hook —
   ``~/.claude/hooks/state/sessions-state.json``): ``working`` / ``needs-you``
   / ``idle`` rows per recent Claude Code session.
 * the **rate-limits cache** (a statusline writer): the 5h/7d Claude usage
   percentages.
+* the **active-issues file** (the shared issue workflows —
+  ``~/.claude/hooks/state/active-issues.json``): issue branches currently in
+  flight across the fleet.
 
 Both share the same degradation contract (#164 acceptance): a
 missing/corrupt/stale file must never error — callers get an
@@ -96,6 +99,53 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
     return {
         "available": True,
         "stale": bool(newest is not None and now - newest > STATE_STALE_AFTER),
+        "updated_at": _iso_z(newest) if newest else None,
+        "rows": rows,
+    }
+
+
+def read_active_issues(path: Path, *, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Read fresh cross-repo issue markers with tolerant degradation.
+
+    Fleet-config's issue workflows key rows by ``<repo>#<number>`` and stamp
+    ``started_at`` once the branch is ready. Missing/corrupt input is
+    unavailable; malformed and older-than-24h rows are omitted individually so
+    an abandoned workflow can never disable a backlog card forever.
+    """
+    now = now or _now()
+    empty: Dict[str, Any] = {"available": False, "updated_at": None, "rows": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return empty
+    if not isinstance(data, dict):
+        return empty
+
+    cutoff = now - STATE_STALE_AFTER
+    rows: Dict[str, Any] = {}
+    stamps = []
+    for row in data.values():
+        if not isinstance(row, dict):
+            continue
+        repo = row.get("repo")
+        number = row.get("number")
+        started_at = _parse_iso(row.get("started_at"))
+        if (
+            not isinstance(repo, str)
+            or not repo.strip()
+            or not isinstance(number, int)
+            or isinstance(number, bool)
+            or number <= 0
+            or started_at is None
+            or started_at < cutoff
+        ):
+            continue
+        rows[f"{repo.strip().lower()}#{number}"] = row
+        stamps.append(started_at)
+
+    newest = max(stamps) if stamps else None
+    return {
+        "available": True,
         "updated_at": _iso_z(newest) if newest else None,
         "rows": rows,
     }

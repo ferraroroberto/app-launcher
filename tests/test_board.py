@@ -2,6 +2,7 @@
 
 Covers the three sources and their degradation contract:
   * ``board.read_sessions_state`` — absent / corrupt / fresh / stale files.
+  * ``board.read_active_issues`` — absent / corrupt / fresh / expired markers.
   * ``board.merge_sessions`` — agent-aware state claims (exact launcher id,
     normalized-cwd fallback), external-card freshness, unknown fallback.
   * ``board.jobs_attention`` — failed-today and stuck runs from run.json trees.
@@ -73,6 +74,38 @@ def test_state_stale_when_newest_row_old(tmp_path: Path):
                   "updated_at": _iso(NOW - timedelta(hours=30))},
     }), encoding="utf-8")
     assert board.read_sessions_state(target, now=NOW)["stale"] is True
+
+
+# ------------------------------------------------------ read_active_issues
+
+
+def test_active_issues_missing_or_corrupt_file_unavailable(tmp_path: Path):
+    target = tmp_path / "active-issues.json"
+    assert board.read_active_issues(target, now=NOW) == {
+        "available": False, "updated_at": None, "rows": {},
+    }
+    target.write_text("{not json", encoding="utf-8")
+    assert board.read_active_issues(target, now=NOW)["available"] is False
+
+
+def test_active_issues_keeps_fresh_and_expires_orphans(tmp_path: Path):
+    target = tmp_path / "active-issues.json"
+    target.write_text(json.dumps({
+        "APP-LAUNCHER#528": {
+            "repo": "app-launcher", "number": 528,
+            "branch": "feat/528-active", "started_at": _iso(NOW - timedelta(hours=2)),
+        },
+        "photo-ocr#73": {
+            "repo": "photo-ocr", "number": 73,
+            "branch": "fix/73-old", "started_at": _iso(NOW - timedelta(hours=25)),
+        },
+        "broken#1": {"repo": "broken", "number": 1, "started_at": "garbage"},
+    }), encoding="utf-8")
+
+    result = board.read_active_issues(target, now=NOW)
+    assert result["available"] is True
+    assert result["updated_at"] == _iso(NOW - timedelta(hours=2))
+    assert set(result["rows"]) == {"app-launcher#528"}
 
 
 # -------------------------------------------------------- read_rate_limits
@@ -972,9 +1005,34 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "other", "done"}
     assert body["github"] == {"fetched_at": None, "error": None}
     assert body["sessions_state"]["available"] is False
+    assert body["active_issues"]["available"] is False
     assert body["rate_limits"]["available"] is False
     assert body["columns"]["backlog"] == []
     assert body["generated_at"]
+
+
+def test_api_board_marks_active_backlog_issue(
+    webapp_client, monkeypatch
+):
+    client, app, _overrides = webapp_client
+    fake = _FakeGh()
+    monkeypatch.setattr(github_client.subprocess, "run", fake)
+    github_client.refresh("ferraroroberto")
+
+    active_file = Path(app.state.webapp_config.sessions_state_file).with_name(
+        "active-issues.json"
+    )
+    active_file.write_text(json.dumps({
+        "app-launcher#164": {
+            "repo": "app-launcher", "number": 164,
+            "branch": "feat/164-board", "started_at": _iso(datetime.now(timezone.utc)),
+        },
+    }), encoding="utf-8")
+
+    body = client.get("/api/board").json()
+    assert body["active_issues"]["available"] is True
+    assert body["active_issues"]["count"] == 1
+    assert body["columns"]["backlog"][0]["in_progress"] is True
 
 
 def test_api_board_rate_limits_present(webapp_client):

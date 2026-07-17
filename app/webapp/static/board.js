@@ -424,6 +424,8 @@ async function startIssue(card, mode, btn) {
 function renderIssueCard(card) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-issue';
+  const isInProgress = card.in_progress === true;
+  if (isInProgress) li.classList.add('is-in-progress');
 
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -433,6 +435,7 @@ function renderIssueCard(card) {
   const meta = document.createElement('span');
   meta.className = 'board-card-meta-inline';
   meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
+  if (isInProgress) meta.textContent += ' · in progress';
   // Repo-state colour (#496 item 4): red = dirty working tree, yellow =
   // parked off the default branch — "don't start this issue right now".
   // Same precedence as the Coding tiles: red wins when both apply.
@@ -468,7 +471,10 @@ function renderIssueCard(card) {
       actionBtn.type = 'button';
       actionBtn.className = 'board-issue-btn icon-only';
       actionBtn.innerHTML = icon(pair[1]);
-      actionBtn.title = '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
+      actionBtn.disabled = isInProgress;
+      actionBtn.title = isInProgress
+        ? 'Issue #' + card.number + ' is already in progress'
+        : '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
       actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
       actionBtn.addEventListener('click', function () {
         startIssue(card, pair[0], actionBtn);

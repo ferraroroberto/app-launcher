@@ -22,7 +22,7 @@ every existing ``board.<name>`` call site (routers, tests) keeps working
 unchanged:
 
 * :mod:`src.board_state` — hook-state-file IO (:func:`read_sessions_state`,
-  :func:`read_rate_limits`).
+  :func:`read_active_issues`, :func:`read_rate_limits`).
 * :mod:`src.board_sessions` — session-claim/merge logic
   (:func:`merge_sessions`, :func:`attach_shared_names`,
   :func:`state_row_for_session`). Writer-provided launcher id + agent wins;
@@ -57,6 +57,7 @@ from src.board_state import (  # noqa: F401 — re-exported for board.<name> cal
     _age_seconds,
     _now,
     _parse_iso,
+    read_active_issues,
     read_rate_limits,
     read_sessions_state,
 )

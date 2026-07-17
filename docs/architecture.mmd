@@ -128,6 +128,7 @@ flowchart TB
   BOARD --> JOBSFACADE
   BOARD --> GHCLIENT
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
+  BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_CONFIG --> WEBAPPCFG
   R_CONFIG --> APPCFG
   R_WEBAUTHN --> WEBAUTHNGATE
