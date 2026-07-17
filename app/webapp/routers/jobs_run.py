@@ -63,6 +63,16 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
         argv, _cwd, _env = await asyncio.to_thread(
             build_invocation, job, raw_params, run_dir
         )
+        if job.env:
+            # "Would this even start?" includes the env overlay (issue
+            # #72): an unresolvable $secret: reference must fail the
+            # check, not wait for a real fire. Values are discarded —
+            # only argv ever lands in the note.
+            from src.jobs_secrets import resolve_env_overlay  # local: leaf util
+            from src.webapp_config import load_webapp_config
+
+            wcfg = await asyncio.to_thread(load_webapp_config)
+            resolve_env_overlay(job.env, wcfg.secrets)
         meta["status"] = "dry_run_success"
         meta["note"] = "resolved: " + " ".join(argv)
     except (OSError, ValueError) as exc:

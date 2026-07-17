@@ -283,6 +283,21 @@ function panelEl(jobId) {
   );
 }
 
+/* Provenance chip (issue #72): compact "who fired this" label from the
+ * run's trigger_source (+ token label when a scoped token was used). Falls
+ * back to the raw trigger string for pre-provenance records. */
+function triggerChip(r) {
+  const src = r.trigger_source || '';
+  if (src === 'schtasks') return '⏰ schedule';
+  if (src.indexOf('webhook:') === 0) return '🔗 ' + src.slice('webhook:'.length);
+  if (src === 'api') {
+    if (r.trigger_token_label) return '🎛 ' + r.trigger_token_label;
+    return '📱 ' + (r.trigger || 'manual');
+  }
+  if ((r.trigger || '').indexOf('chain') === 0) return '⛓ ' + r.trigger;
+  return r.trigger || '?';
+}
+
 function cssEscape(s) {
   if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(s);
   return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
@@ -330,7 +345,7 @@ function redrawRunsList(jobId, runs) {
     const paramsChip = formatRunParams(r.params);
     meta.textContent = (r.status || '?') +
       (ago ? ' · ' + ago + ' ago' : '') +
-      ' · ' + (r.trigger || '?') + exitText +
+      ' · ' + triggerChip(r) + exitText +
       (r.dry_run ? ' · 🧪 dry' : '') +
       (paramsChip ? ' · ' + paramsChip : '');
     btn.appendChild(meta);

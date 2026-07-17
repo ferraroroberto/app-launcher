@@ -80,6 +80,7 @@ from src.jobs_config_models import (
     _validate_chain_list,
     _validate_cooldown,
     _validate_mutex_group,
+    env_from_dict,
     job_from_dict,
     kind_config_from_dict,
     make_job_id,
@@ -103,6 +104,7 @@ __all__ = [
     "param_from_dict",
     "params_from_dict",
     "Job",
+    "env_from_dict",
     "job_from_dict",
     "make_job_id",
     "kind_config_from_dict",
@@ -215,6 +217,7 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
     ("visible", bool, False),
     ("elevated", bool, False),
     ("webhook", webhook_from_dict, False),
+    ("env", env_from_dict, False),
 )
 
 

@@ -322,6 +322,7 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 - Loopback callers still bypass.
 - Remote (tailnet, Cloudflare) callers must present `Authorization: Bearer <token>` *or* `?token=…`.
 - The tray menu's **Copy …** items bake the token into the copied URL automatically. Paste once on the phone, the page stashes it in `localStorage`, strips it from the visible URL, you're in.
+- **Settings → API tokens** (issue #72) mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
 
 ### Login password (`auth_password`)
 
@@ -470,8 +471,10 @@ UI prefs + secrets, authored from the web UI:
 | `claude_verbose` | `true` | Pass `--verbose` |
 | `claude_debug` | `false` | Pass `--debug` |
 | `claude_permission_mode` | `"auto"` | Permission flag: `"auto"` → `--permission-mode auto`, `"skip"` → `--dangerously-skip-permissions` |
-| `auth_token` | `""` | Bearer token. Empty = gate off. |
+| `auth_token` | `""` | Bearer token. Empty = gate off (unless `api_tokens` has entries). |
 | `auth_password` | `""` | Optional companion for `/api/login`. |
+| `secrets` | `{}` | One gitignored place for job secret values (issues #73, #72): a job's `webhook.secret` and any `Job.env` value can be `$secret:<key>` resolved against this dict at fire time. Legacy key `webhook_secrets` still loads. |
+| `api_tokens` | `[]` | Scoped bearer tokens minted from **Settings → API tokens** (issue #72): salted-hash records whose job-scoped kind can only call `POST /api/jobs/<id>/run` for its allowed jobs — safe to bake into a Stream Deck URL. Don't hand-edit. |
 | `session_host_port` | `8446` | Loopback port the PTY session-host binds. Never network-reachable; must differ from `port`. |
 | `tailnet_allowlist` | `[]` | Extra IPs / CIDRs allowed to reach the terminal endpoints, on top of loopback + `100.64.0.0/10`. |
 | `claude_show_local_window` | `true` | Open an interactive terminal window on the PC when a session is launched from the phone. |

@@ -899,6 +899,39 @@
         <p class="muted small"><a id="spikeVoiceLink" href="/spike/voice-loop">🎙️ Voice loop spike (#246)</a></p>
         </div>
       </div>
+
+      <div id="tokensPanel" class="card settings-card">
+        <div class="settings-head">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+            <h3 class="collapse-title">API tokens</h3>
+          </span>
+        </div>
+        <div class="collapse-body">
+          <p class="muted small">Job-scoped bearer tokens (issue #72) — safe to bake into a Stream Deck button URL: each token can fire only its chosen job and nothing else, and revoking one never touches the main login.</p>
+          <ul id="tokensList" class="card-list"></ul>
+          <p id="tokensEmpty" class="empty muted small" hidden>No tokens minted yet.</p>
+          <label class="stacked">
+            <span>Label</span>
+            <input id="tokenLabelInput" type="text" class="input-native" placeholder="Stream Deck — daily reporting">
+          </label>
+          <label class="stacked">
+            <span>Job it may fire</span>
+            <select id="tokenJobSelect" class="input-native"></select>
+          </label>
+          <div class="row settings-actions">
+            <button id="tokenMintBtn" type="button" class="button-ghost accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Mint token</button>
+          </div>
+          <div id="tokenMintResult" class="stacked" hidden>
+            <span class="muted small">Copy it now — it is shown only once.</span>
+            <div class="row">
+              <input id="tokenMintValue" type="text" class="input-native" readonly>
+              <button id="tokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+            </div>
+            <span id="tokenMintUrl" class="muted small"></span>
+          </div>
+        </div>
+      </div>
     </section>
 
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>

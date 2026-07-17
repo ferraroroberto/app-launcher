@@ -369,7 +369,7 @@ itself is safe to hand to the external service in plaintext.
 | Field | Type | Notes |
 | --- | --- | --- |
 | `provider` | `"github"` \| `"stripe"` \| `"generic"` | Selects the verification scheme above |
-| `secret` | string | A literal value, or `$secret:<key>` resolved against `webapp_config.json`'s `webhook_secrets` at fire time (see below) |
+| `secret` | string | A literal value, or `$secret:<key>` resolved against `webapp_config.json`'s `secrets` block at fire time (see below) |
 | `mapping` | `{param_name: jsonpath}` | Keys **must match a name in this job's `params`** — resolution reuses the exact same `compose_argv` composition a manual run goes through, so there is no separate argv-building logic for a webhook fire |
 | `events` | list of strings, GitHub only | `X-GitHub-Event` allowlist; empty (or omitted) accepts every event. A filtered-out event returns `204` with no run record |
 
@@ -390,19 +390,17 @@ Two worked examples:
 - **Stripe `payment_intent.succeeded`** — `{"intent_id": "$.data.object.id"}`
   pulls the PaymentIntent id out of the event envelope.
 
-### Secrets — in-line analogue of issue #72
+### Secrets — the shared `secrets` block
 
-The fuller "per-job secrets / scoped bearer tokens / run-record provenance"
-issue (#72) is still open. Rather than block this issue on it, `webhook.secret`
-gets a small in-line analogue: `config/webapp_config.json` carries a
-`webhook_secrets: {key: value}` dict (gitignored, alongside the existing
-`pushover_*` secrets), and `$secret:<key>` in a job's `webhook.secret` resolves
-against it at fire time (`src.jobs_webhook.resolve_secret`). A literal string
+`config/webapp_config.json` carries a `secrets: {key: value}` dict (gitignored,
+alongside the existing `pushover_*` secrets). `$secret:<key>` in a job's
+`webhook.secret` — and in any `Job.env` value, see "Per-job secrets & env"
+below — resolves against it at fire time (`src.jobs_secrets`). A literal string
 works too — `jobs.json` is already gitignored — but `$secret:` keeps the
 secret in one place instead of duplicated across every job that shares it, and
-lets it rotate without touching `jobs.json`. `run.json` also gains
-`trigger_source: "webhook:<provider>"` on a webhook-triggered run — the
-provenance signal #72 will eventually generalise across every trigger path.
+lets it rotate without touching `jobs.json`. This block shipped with issue #73
+under the legacy key `webhook_secrets`, which still loads; issue #72
+generalised it and renamed it on save.
 
 ### Run record
 
@@ -477,7 +475,10 @@ Unpinned history is pruned to the most recent **20 runs per job** by the executo
 | `job_id` | str | both | FK to `config/jobs.json` |
 | `name` | str | both | Job name at the time of the run (denormalised on purpose — survives renames) |
 | `trigger` | `"manual"` \| `"scheduled"` \| `"webhook"` \| `"chain:<upstream_id>"` | both | Where the run was fired from |
-| `trigger_source` | str, e.g. `"webhook:github"` | webapp | Only present on a webhook fire (issue #73) — the in-line analogue of the fuller provenance issue #72 will introduce |
+| `trigger_source` | `"api"` \| `"schtasks"` \| `"webhook:<provider>"` | webapp / executor | Provenance (issues #73, #72): `"api"` on every `POST /run` fire, `"schtasks"` on a Task Scheduler fire, `"webhook:github"`-style on a webhook fire. Absent on pre-#72 records and direct CLI fires |
+| `trigger_ip` | str | webapp | API fires only — `request.client.host` of the caller |
+| `trigger_ua` | str | webapp | API fires only — the caller's `User-Agent` |
+| `trigger_token_id` / `trigger_token_label` | str | webapp | API fires authenticated by a minted scoped token (see "Scoped API tokens") — the token's id + label, never the secret. Absent for the legacy `auth_token` and loopback callers |
 | `script_path` | str | both | Resolved at spawn time |
 | `args` | str | both | Whitespace-split into argv |
 | `params` | object | webapp + executor | Typed-parameter payload (issue #67); only written when non-empty |
@@ -655,11 +656,30 @@ The push body always includes: optional LLM summary, the raw output tail (last 5
 
 The notifier path is wrapped in a single `try`/`except` — credentials misconfigured, Pushover 5xx, hub unreachable: none of those can block the executor's normal exit. Errors land in the launcher log at `WARNING`.
 
+## Per-job secrets & env (issue #72)
+
+A job can declare an `env: {NAME: value}` overlay in `config/jobs.json` (or via the create/edit API — the field round-trips through both routes). The executor merges it into the child's environment at fire time, after `os.environ` and before the typed-param env (so a per-run param can override a static value). Values are either literals or `$secret:<key>` references resolved against `webapp_config.json`'s `secrets` block — the same mechanism `webhook.secret` uses:
+
+```json
+{
+  "id": "linkedin-sync",
+  "name": "LinkedIn sync",
+  "script_path": "E:\\automation\\social\\sync.py",
+  "env": {"LINKEDIN_API_KEY": "$secret:linkedin_api"}
+}
+```
+
+`jobs.json` and every API response carry only the opaque reference — the real value lives in the gitignored `secrets` block and appears nowhere else. An unresolvable reference finalises the run as `failed` with `note: "secret '<key>' not found"` (and the 🧪 dry-run "check" mode catches it without firing anything). Env names are UPPER_SNAKE_CASE, same shape as a `Param`'s `env` mapping.
+
+## Scoped API tokens (issue #72)
+
+The Settings tab's **API tokens** panel mints bearer tokens whose scope is a specific job (or `"*"` via the API). A job-scoped token can call exactly one thing — `POST /api/jobs/<id>/run` for its allowed jobs — and is rejected with a precise 403 everywhere else, so the URL baked into a Stream Deck button no longer unlocks the whole SPA if the deck config leaks. Records live in `webapp_config.json`'s `api_tokens` list as `{id, label, salt, hash, scope, created_at, last_used_at}`: only a salted SHA-256 hash is stored, the raw token is shown exactly once at mint time (with a copy button and, when the tunnel URL is known, a ready-to-paste run URL). Revoking a token deletes its record; the legacy `auth_token` keeps working unchanged with implicit `"*"` scope, and rotating a deck token never touches the phone's login. Endpoints: `GET /api/tokens`, `POST /api/tokens {label, jobs: [ids]}`, `DELETE /api/tokens/<id>` — all reachable only with full-scope auth.
+
 ## Security boundary
 
 Jobs sit on the **Apps tab side** of the launcher's security model — not the interactive-terminal side:
 
-- `POST /api/jobs/<id>/run` is bearer-token gated and reachable over the Cloudflare tunnel. That is the whole point — a Stream Deck button hits the same HTTPS endpoint the phone uses.
+- `POST /api/jobs/<id>/run` is bearer-token gated and reachable over the Cloudflare tunnel. That is the whole point — a Stream Deck button hits the same HTTPS endpoint the phone uses. Both the legacy `auth_token` and a minted job-scoped token (see "Scoped API tokens" above) pass the gate; the scoped kind passes *only* here.
 - `POST /api/jobs/<id>/hook` (issue #73) is the one exception — it is exempt from the bearer gate entirely and authenticates itself via the job's own provider signature instead. See "Webhook-target jobs" above.
 - The per-run WebSocket is an output-only tail, not an interactive terminal. It carries the same bearer-token boundary as the Jobs HTTP APIs and remains Cloudflare-reachable; the Tailscale-only + passkey terminal gate does not apply.
 - The `id` is checked against the registry on every call — the launcher cannot be coerced into running an arbitrary script path. Mutating `config/jobs.json` is the only way to register a new target.
@@ -669,11 +689,11 @@ Jobs sit on the **Apps tab side** of the launcher's security model — not the i
 A Stream Deck "Website / System" action calls the run endpoint directly — no plugin needed:
 
 ```
-URL:    https://launcher.<your-domain>/api/jobs/reporting-daily/run?token=<your-bearer-token>
+URL:    https://launcher.<your-domain>/api/jobs/reporting-daily/run?token=<job-scoped-token>
 Method: POST
 ```
 
-The token bakes into the URL the same way the tray menu's "Copy Cloudflare URL" item does it for the SPA. Use a tunnel URL (Cloudflare named tunnel or `<host>.<tailnet>.ts.net:8445`) — not loopback. The Stream Deck shows ✓ / ✗ based on the HTTP status; the SPA shows the run in history on the next poll.
+Mint the token in **Settings → API tokens**, scoped to exactly this job (issue #72) — the mint result shows the ready-to-paste run URL when the tunnel is up. Stream Deck stores button URLs in plaintext, so a scoped token caps what a leaked deck export can do: fire this one job, nothing else. Revoke + re-mint to rotate it without touching the SPA's own `auth_token` (which also still works in the URL if you accept the wider blast radius). Use a tunnel URL (Cloudflare named tunnel or `<host>.<tailnet>.ts.net:8445`) — not loopback. The Stream Deck shows ✓ / ✗ based on the HTTP status; the SPA shows the run in history on the next poll, with a 🎛 chip carrying the token's label.
 
 ## Why not …
 

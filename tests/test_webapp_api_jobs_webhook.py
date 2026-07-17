@@ -327,7 +327,7 @@ class TestSecretResolution:
         self, webapp_client, mocked_jobs_side_effects
     ):
         client, app, _ = webapp_client
-        app.state.webapp_config.webhook_secrets = {"gh_key": "resolved-secret"}
+        app.state.webapp_config.secrets = {"gh_key": "resolved-secret"}
         job = _seed_github_job(client, secret="$secret:gh_key")
         body = json.dumps(
             {"repository": {"full_name": "a/b"}, "ref": "refs/heads/main"}

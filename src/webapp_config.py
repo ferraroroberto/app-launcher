@@ -348,13 +348,24 @@ class WebappConfig:
     # "what went wrong" summary prepended to the push body. Default off
     # so the issue lands without a hard dependency on the hub.
     notify_failure_summary: bool = False
-    # --- Webhook-target jobs (issue #73) --------------------------------
-    # In-line analogue of the still-open #72 "per-job secrets" issue: a
-    # job's webhook.secret can be a literal string or a "$secret:<key>"
-    # reference resolved against this dict at fire time (src.jobs_webhook.
-    # resolve_secret), so a rotated secret lives in one gitignored place
-    # instead of jobs.json. Empty by default.
-    webhook_secrets: Dict[str, str] = field(default_factory=dict)
+    # --- Job secrets (issues #73, #72) ----------------------------------
+    # One gitignored place for secret values, referenced from jobs.json by
+    # opaque "$secret:<key>" strings resolved at fire time
+    # (src.jobs_secrets): a job's webhook.secret (issue #73) and every
+    # Job.env value (issue #72) both draw from this dict, so a rotated
+    # credential lives here and never in jobs.json. Loaded from the
+    # "secrets" key, falling back to the legacy "webhook_secrets" key this
+    # block shipped under before #72 generalized it. Empty by default.
+    secrets: Dict[str, str] = field(default_factory=dict)
+    # --- Scoped API bearer tokens (issue #72) ---------------------------
+    # List of token records minted from the Settings tab (see
+    # src.api_tokens): {id, label, salt, hash, scope, created_at,
+    # last_used_at}. Only the salted SHA-256 hash is stored — the raw
+    # token is shown once at mint time and discarded. scope is "*" or
+    # {"jobs": [ids]}; a job-scoped token can only fire its allowed jobs
+    # (POST /api/jobs/<id>/run) and nothing else. The legacy auth_token
+    # above keeps working unchanged with implicit scope "*".
+    api_tokens: list = field(default_factory=list)
 
 
 def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
@@ -501,9 +512,15 @@ def load_webapp_config(
         notify_on_failure=bool(raw.get("notify_on_failure", False)),
         notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
         notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
-        webhook_secrets={
-            str(k): str(v) for k, v in (raw.get("webhook_secrets") or {}).items()
+        secrets={
+            str(k): str(v)
+            for k, v in (
+                raw.get("secrets") or raw.get("webhook_secrets") or {}
+            ).items()
         },
+        api_tokens=[
+            dict(t) for t in (raw.get("api_tokens") or []) if isinstance(t, dict)
+        ],
     )
     if apply_env_override:
         _apply_session_host_override(cfg)
@@ -559,7 +576,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "notify_on_failure": cfg.notify_on_failure,
         "notify_failure_streak": cfg.notify_failure_streak,
         "notify_failure_summary": cfg.notify_failure_summary,
-        "webhook_secrets": cfg.webhook_secrets,
+        "secrets": cfg.secrets,
+        "api_tokens": cfg.api_tokens,
     }
 
     atomic_write_json(target, payload)

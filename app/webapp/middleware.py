@@ -20,6 +20,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from src import api_tokens
 from src.webauthn_gate import WebAuthnGate
 
 logger = logging.getLogger(__name__)
@@ -233,11 +234,19 @@ def terminal_reachability(request: Request) -> Dict[str, Any]:
 
 
 class BearerTokenMiddleware(BaseHTTPMiddleware):
-    """Require Authorization: Bearer <token> on API endpoints (non-loopback only)."""
+    """Require Authorization: Bearer <token> on API endpoints (non-loopback only).
 
-    def __init__(self, app, get_token):
+    Two credential classes (issue #72): the legacy ``auth_token`` (full
+    access, unchanged) and minted ``api_tokens`` records — full-scope
+    (``"*"``) tokens behave like the legacy one; job-scoped tokens may
+    only call ``POST /api/jobs/<id>/run`` on their allowed jobs. A
+    matched minted token's identity is surfaced on ``request.state``
+    (``token_id`` / ``token_label``) for run-record provenance.
+    """
+
+    def __init__(self, app, get_config):
         super().__init__(app)
-        self._get_token = get_token
+        self._get_config = get_config
 
     async def dispatch(self, request: Request, call_next):
         client_host = request.client.host if request.client else ""
@@ -255,8 +264,12 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         if _is_webhook_hook_path(path):
             return await call_next(request)
 
-        token = (self._get_token() or "").strip()
-        if not token or is_loopback:
+        cfg = self._get_config()
+        token = (getattr(cfg, "auth_token", "") or "").strip()
+        minted = getattr(cfg, "api_tokens", None) or []
+        # Auth is enforced when EITHER credential class is configured —
+        # a config with only minted tokens must not be an open gate.
+        if (not token and not minted) or is_loopback:
             return await call_next(request)
 
         if path in AUTH_EXEMPT_EXACT or any(
@@ -271,7 +284,19 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         if not presented:
             presented = request.query_params.get("token", "").strip()
 
-        if presented and hmac.compare_digest(presented, token):
+        if presented and token and hmac.compare_digest(presented, token):
+            return await call_next(request)
+
+        match = api_tokens.find_match(presented, minted)
+        if match is not None:
+            rejection = api_tokens.scope_rejection(match, request.method, path)
+            if rejection is not None:
+                return JSONResponse(status_code=403, content={"detail": rejection})
+            request.state.token_id = match.id
+            request.state.token_label = match.label
+            # In-memory freshness stamp; persisted opportunistically on
+            # the next mint/revoke save (see src.api_tokens).
+            api_tokens.touch_last_used(minted, match.id)
             return await call_next(request)
 
         return JSONResponse(

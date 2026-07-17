@@ -84,6 +84,7 @@ JOB_OPTIONAL_FIELDS = (
     "kind",
     "kind_config",
     "webhook",
+    "env",
 )
 
 
@@ -500,7 +501,25 @@ async def run_job(job_id: str, request: Request) -> Dict[str, Any]:
     if dry_mode == "execute":
         return await _dry_run_execute(job, raw_params)
 
-    return await _admit_and_spawn(job, cfg, raw_params, "manual")
+    # Run-record provenance (issue #72): who fired this, from where, with
+    # what credential. token_id/label are set by the auth middleware only
+    # for a minted (scoped) token — never the secret itself; the legacy
+    # auth_token and loopback callers record ip+ua alone.
+    provenance: Dict[str, Any] = {
+        "trigger_source": "api",
+        "trigger_ip": request.client.host if request.client else "",
+        "trigger_ua": request.headers.get("user-agent", ""),
+    }
+    token_id = getattr(request.state, "token_id", None)
+    if token_id:
+        provenance["trigger_token_id"] = token_id
+        token_label = getattr(request.state, "token_label", "")
+        if token_label:
+            provenance["trigger_token_label"] = token_label
+
+    return await _admit_and_spawn(
+        job, cfg, raw_params, "manual", extra_run_meta=provenance
+    )
 
 
 # ----------------------------------------------------------- kill stuck run
