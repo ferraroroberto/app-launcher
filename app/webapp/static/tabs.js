@@ -1,4 +1,4 @@
-/* Six-tab switcher: Code | Apps | Jobs | Life | Board | Settings.
+/* Six-tab switcher: Board | Code | Life | Apps | Jobs | Settings.
  *
  * Wraps the vendored _vendored/nav/nav-tabs.js (issue #355) — that file owns
  * tab/pane discovery, ARIA + roving tabindex, the standalone-PWA fixed-inset
@@ -23,6 +23,10 @@ export function setTab(tab) {
 
 export function wireTabs() {
   nav = initNavTabs({
+    // Board leads the visual workflow, but Coding remains the first-launch
+    // default. Without this explicit default the vendored controller selects
+    // the first DOM tab, coupling presentation order to startup behavior.
+    defaultTab: 'claude',
     onChange: function (tab) { state.tab = tab; },
   });
 }

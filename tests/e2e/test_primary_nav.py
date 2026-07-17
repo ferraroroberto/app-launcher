@@ -12,6 +12,15 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
+TAB_ORDER = [
+    "tabBoard",
+    "tabClaude",
+    "tabLifeOS",
+    "tabApps",
+    "tabJobs",
+    "tabSettings",
+]
+
 
 def test_primary_nav_is_responsive_and_accessible(
     authed_page: Page, base_url: str, browser_name: str
@@ -24,6 +33,14 @@ def test_primary_nav_is_responsive_and_accessible(
     tabs = authed_page.locator("nav.tabs")
     expect(tabs).to_be_visible()
     expect(tabs).to_have_attribute("role", "tablist")
+    assert tabs.locator(":scope > button.tab").evaluate_all(
+        "buttons => buttons.map(button => button.id)"
+    ) == TAB_ORDER
+    expect(authed_page.locator("#paneClaude")).to_be_visible()
+    expect(authed_page.locator("#tabClaude")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(tabs).to_have_attribute("data-active-tab", "claude")
 
     authed_page.locator("#tabJobs").click()
     expect(authed_page.locator("#paneJobs")).to_be_visible()
