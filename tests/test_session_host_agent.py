@@ -156,9 +156,10 @@ def _fake_pty_process(capture: dict):
 
     class _FakePtyProcess:
         @staticmethod
-        def spawn(command, cwd=None, dimensions=None):
+        def spawn(command, cwd=None, dimensions=None, env=None):
             capture["command"] = command
             capture["dimensions"] = dimensions
+            capture["env"] = env
             return _FakePty()
 
     return _FakePtyProcess
@@ -177,8 +178,14 @@ def test_create_spawns_pty_at_given_dimensions(tmp_path, monkeypatch):
     session = mgr.create(str(tmp_path), "proj", "", "codex", rows=55, cols=42)
 
     assert captured["dimensions"] == (55, 42)
-    assert f'APP_LAUNCHER_SESSION_ID={session.session_id}' in captured["command"]
-    assert 'APP_LAUNCHER_AGENT=codex' in captured["command"]
+    # APP_LAUNCHER_SESSION_ID/AGENT ride the child's real environment (#537),
+    # not a `set "VAR=val" && ...` chain baked into the command string —
+    # PtyProcess.spawn() re-tokenizes a str command via shlex.split() then
+    # rebuilds it with subprocess.list2cmdline(), which backslash-escapes
+    # embedded quotes and silently broke that chain.
+    assert captured["env"]["APP_LAUNCHER_SESSION_ID"] == session.session_id
+    assert captured["env"]["APP_LAUNCHER_AGENT"] == "codex"
+    assert "APP_LAUNCHER_SESSION_ID" not in captured["command"]
     assert session.rows == 55 and session.cols == 42
     assert session.to_api()["rows"] == 55 and session.to_api()["cols"] == 42
 

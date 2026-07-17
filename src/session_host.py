@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import ctypes
 import logging
+import os
 import re
 import subprocess
 import threading
@@ -883,14 +884,23 @@ class SessionManager:
         # `cmd /c` resolves the agent command (e.g. claude.cmd / agy.cmd)
         # off PATH the way a normal shell would; when the agent exits, cmd
         # exits, the PTY closes, and the reader thread sees EOF.
+        #
+        # APP_LAUNCHER_SESSION_ID/AGENT ride the child's environment
+        # (``env=``), NOT a `set "VAR=val" && ...` chain baked into the
+        # command string (#537 root cause): PtyProcess.spawn() re-tokenizes a
+        # str argv via shlex.split() then rebuilds it with
+        # subprocess.list2cmdline(), which backslash-escapes the quotes
+        # around "VAR=val" — cmd.exe's own SET parser doesn't strip that
+        # escaping, so the vars silently never landed. create_remote()'s
+        # PowerShell Start-Process path goes through a real cmd.exe shell
+        # (no pywinpty re-tokenizing) and is unaffected by this.
         exe = command_for(agent)
-        command = (
-            f'cmd /c set "APP_LAUNCHER_SESSION_ID={session_id}" && '
-            f'set "APP_LAUNCHER_AGENT={agent}" && '
-            f"{exe} {flags}"
-        ).strip()
+        command = f"cmd /c {exe} {flags}".strip()
+        child_env = dict(os.environ)
+        child_env["APP_LAUNCHER_SESSION_ID"] = session_id
+        child_env["APP_LAUNCHER_AGENT"] = agent
         pty = PtyProcess.spawn(
-            command, cwd=str(directory), dimensions=(rows, cols)
+            command, cwd=str(directory), dimensions=(rows, cols), env=child_env
         )
         vt: Optional[VtSnapshot] = None
         if is_fullscreen(agent):
