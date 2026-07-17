@@ -100,15 +100,16 @@ def test_compose_send_forwards_text_to_pty(
 def test_compose_send_submits_cr_in_its_own_frame(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    r"""➤ Send delivers the submitting CR as a separate, final WS frame (#166).
+    r"""➤ Send delivers the submitting CR immediately after the text (#166).
 
     The intermittent "Send does nothing" bug was the trailing ``\r`` riding
     in the same WS frame as the ``\x1b[201~`` paste-end marker, where the TUI
     sometimes swallowed it into paste finalization instead of submitting. We
-    spy on every outgoing ``input`` frame and pin that the last one is a lone
-    ``\r`` while the text rode an earlier frame with no CR glued on — the
+    spy on every outgoing ``input`` frame and pin that the payload frame is
+    followed immediately by a lone ``\r`` with no CR glued onto the text — the
     ordering invariant, holding whether or not the live agent has bracketed
-    paste enabled.
+    paste enabled. Xterm may emit unrelated focus-report input frames before
+    or after that pair.
     """
     sid = launched_pty_session
     _open_terminal(authed_page, base_url, sid)
@@ -143,11 +144,17 @@ def test_compose_send_submits_cr_in_its_own_frame(
 
     frames = authed_page.evaluate("() => window.__sentInput")
     assert len(frames) >= 2, f"➤ Send produced too few input frames: {frames!r}"
-    # The submitting CR is its own, final frame …
-    assert frames[-1] == "\r", f"submit CR was not its own final frame: {frames!r}"
-    # … and the payload rode the frame before it, with no CR glued on.
-    assert payload in frames[-2], f"payload not in the pre-CR frame: {frames!r}"
-    assert "\r" not in frames[-2], f"CR leaked into the text frame: {frames!r}"
+    payload_indexes = [i for i, frame in enumerate(frames) if payload in frame]
+    assert payload_indexes, f"payload frame was not sent: {frames!r}"
+    payload_index = payload_indexes[-1]
+    payload_frame = frames[payload_index]
+    assert "\r" not in payload_frame, f"CR leaked into the text frame: {frames!r}"
+    assert payload_index + 1 < len(frames), (
+        f"submit CR did not follow the payload frame: {frames!r}"
+    )
+    assert frames[payload_index + 1] == "\r", (
+        f"submit CR was not its own frame immediately after the payload: {frames!r}"
+    )
 
 
 def test_compose_image_inserts_path_into_bar(
