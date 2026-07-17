@@ -1279,6 +1279,11 @@ summary + .opt-group { border-top: 0; }
   border-bottom: 1px solid var(--line-muted);
 }
 .settings-edit-row { min-height: 0; font-size: var(--font-caption); }
+/* API-tokens panel (issue #72) */
+.token-row { justify-content: space-between; }
+.token-meta { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+#tokenMintValue { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
+#tokenMintUrl { overflow-wrap: anywhere; }
 .settings-switch-row { margin: 4px 0 10px; }
 .settings-card .stacked {
   display: flex;

@@ -157,15 +157,15 @@ class TestResolveMapping:
 
 class TestResolveSecret:
     def test_literal_passthrough(self):
-        cfg = WebappConfig(webhook_secrets={})
+        cfg = WebappConfig(secrets={})
         assert resolve_secret("literal-value", cfg) == "literal-value"
 
     def test_secret_ref_resolves(self):
-        cfg = WebappConfig(webhook_secrets={"gh_key": "whsec_abc"})
+        cfg = WebappConfig(secrets={"gh_key": "whsec_abc"})
         assert resolve_secret("$secret:gh_key", cfg) == "whsec_abc"
 
     def test_unknown_secret_ref_raises(self):
-        cfg = WebappConfig(webhook_secrets={})
+        cfg = WebappConfig(secrets={})
         with pytest.raises(ValueError):
             resolve_secret("$secret:missing", cfg)
 

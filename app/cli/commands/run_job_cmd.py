@@ -54,6 +54,7 @@ from src.jobs import (
 )
 from src.jobs_argv import compose_argv
 from src.jobs_config import Job, get_by_id, load_jobs
+from src.jobs_secrets import resolve_env_overlay
 from src.notifications import (
     Notifier,
     NoopNotifier,
@@ -367,6 +368,46 @@ def _build_invocation_or_record_failure(
         return None
 
 
+def _resolve_job_env_or_record_failure(
+    job: Job,
+    args: argparse.Namespace,
+    run_dir: Path,
+) -> Optional[Dict[str, str]]:
+    """Resolve the job's ``env`` overlay (issue #72), or finalise a
+    ``failed`` run record on an unresolvable ``$secret:`` reference and
+    return ``None``.
+
+    Loads the live webapp config so a secrets edit takes effect on the
+    next fire without a restart — same freshness contract as the
+    notification path in :func:`_finalize_run`. No ``env`` → ``{}``.
+    """
+    if not job.env:
+        return {}
+    try:
+        cfg = load_webapp_config()
+        return resolve_env_overlay(job.env, cfg.secrets)
+    except ValueError as exc:
+        logger.error(f"❌ cannot run job {job.id}: {exc}")
+        stamped = datetime.now().isoformat(timespec="seconds")
+        write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            job_id=job.id,
+            name=job.name,
+            trigger=args.trigger,
+            script_path=job.script_path,
+            args=job.args,
+            started_at=stamped,
+            finished_at=stamped,
+            status="failed",
+            exit_code=-1,
+            note=str(exc),
+        )
+        prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+        invalidate_stats_cache(job.id)
+        return None
+
+
 def _spawn_and_wait(
     job: Job,
     argv: List[str],
@@ -634,6 +675,13 @@ class RunJobCommand(BaseCommand):
             return 2
         argv, cwd, extra_env = invocation
 
+        # Per-job env overlay (issue #72) — resolved before the run flips
+        # to "running" so an unresolvable $secret: reference finalises as
+        # a clean failed record, mirroring the invocation-error path.
+        job_env = _resolve_job_env_or_record_failure(job, args, run_dir)
+        if job_env is None:
+            return 2
+
         started_at = datetime.now().isoformat(timespec="seconds")
         dry_run = bool(getattr(args, "dry_run", False))
         run_meta: Dict[str, Any] = dict(
@@ -650,6 +698,12 @@ class RunJobCommand(BaseCommand):
         # row can replay it and the meta line can show the values back.
         if values:
             run_meta["params"] = values
+        # Provenance (issue #72): a Task Scheduler fire reaches this
+        # executor directly, so it stamps its own source here; API fires
+        # carry trigger_source="api" (+ip/ua/token id) pre-written by the
+        # route into the run dir this executor merges into.
+        if args.trigger == "scheduled":
+            run_meta["trigger_source"] = "schtasks"
         # Dry-run 'execute' mode (issue #69): the child still spawns, but
         # JOB_DRY_RUN=1 lets an opted-in script no-op its side effects.
         # The flag is stamped so history shows the 🧪 chip.
@@ -661,6 +715,9 @@ class RunJobCommand(BaseCommand):
         )
 
         env = os.environ.copy()
+        # Job env overlay first, then the invocation's own extra_env (typed
+        # params + kind env) so a per-run param can override a static value.
+        env.update(job_env)
         env.update(extra_env)
         artifact_dir = run_dir / "artifacts"
         artifact_dir.mkdir(parents=True, exist_ok=True)

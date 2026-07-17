@@ -44,6 +44,7 @@ flowchart TB
       R_MISC["misc.py — /, /healthz, /api/version"]
       R_AUTH["auth.py — /api/login"]
       R_CONFIG["config.py — /api/config, /api/status, /api/ports"]
+      R_TOKENS["tokens.py — /api/tokens\nscoped-token mint/list/revoke (#72)"]
       R_APPS["apps.py — /api/apps (Apps tab)"]
       R_SESS["sessions.py — /api/claude-code/sessions, WS\n+ media_proxy.py (transcribe/ocr/tts)"]
       R_CC["claude_code.py — flags, git-status, generate"]
@@ -91,6 +92,8 @@ flowchart TB
     GHCLIENT["github_client.py\ngh CLI reads, cached snapshot"]
     NOTIFY["notifications.py\nPushover on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
+    APITOKENS["api_tokens.py\nscoped-token mint/hash/scope (#72)"]
+    JOBSSECRETS["jobs_secrets.py\n$secret: reference resolution (#72/#73)"]
     APPCFG["app_config.py\nconfig/config.json"]
     WEBAUTHNGATE["webauthn_gate.py"]
     STATICVER["static_versioning.py\nasset content-hash stamping"]
@@ -131,6 +134,10 @@ flowchart TB
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_CONFIG --> WEBAPPCFG
   R_CONFIG --> APPCFG
+  R_TOKENS --> APITOKENS
+  MW --> APITOKENS
+  RUNJOBCMD --> JOBSSECRETS
+  R_TOKENS --> WEBAPPCFG
   R_WEBAUTHN --> WEBAUTHNGATE
   WSERVER --> STATICVER
   R_SESS --> OCRCLIENT

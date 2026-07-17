@@ -87,6 +87,7 @@ from app.webapp.routers import (
     misc,
     sessions,
     system_map,
+    tokens,
     webauthn,
 )
 from app.webapp.routers._helpers import STATIC_DIR
@@ -234,7 +235,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         BearerTokenMiddleware,
-        get_token=lambda: getattr(app.state.webapp_config, "auth_token", ""),
+        get_config=lambda: app.state.webapp_config,
     )
     # Added last → outermost, so the timing covers the whole stack including
     # the auth middleware (issue #386).
@@ -264,6 +265,7 @@ def create_app() -> FastAPI:
     app.include_router(misc.router)
     app.include_router(auth.router)
     app.include_router(config.router)
+    app.include_router(tokens.router)
     app.include_router(apps.router)
     app.include_router(jobs.router)
     app.include_router(sessions.router)

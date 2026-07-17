@@ -10,10 +10,11 @@ Deliberately a leaf module — no import of :mod:`src.jobs_config` — so
 ``jobs_config`` can import :class:`WebhookConfig` from here without a cycle
 (same pattern as ``src.jobs_kinds.base``).
 
-Secrets (in-line analogue of the still-open #72 "per-job secrets" issue):
-a job's ``webhook.secret`` is either a literal string or a ``$secret:<key>``
-reference resolved against ``webapp_config.webhook_secrets`` at fire time —
-so a rotated secret lives in one gitignored place instead of ``jobs.json``.
+Secrets: a job's ``webhook.secret`` is either a literal string or a
+``$secret:<key>`` reference resolved against ``webapp_config.secrets`` at
+fire time (via :mod:`src.jobs_secrets`, generalized by issue #72 from the
+in-line mechanism this module introduced) — so a rotated secret lives in
+one gitignored place instead of ``jobs.json``.
 """
 
 from __future__ import annotations
@@ -25,9 +26,9 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Dict, List, Optional
 
-PROVIDERS = frozenset({"github", "stripe", "generic"})
+from src.jobs_secrets import resolve_secret_value
 
-_SECRET_REF_RE = re.compile(r"^\$secret:(.+)$")
+PROVIDERS = frozenset({"github", "stripe", "generic"})
 
 # Stripe's own SDKs default to a 5-minute replay tolerance window.
 DEFAULT_STRIPE_TOLERANCE_SECONDS = 300
@@ -116,18 +117,14 @@ def webhook_from_dict(raw: Any) -> Optional[WebhookConfig]:
 def resolve_secret(secret_ref: str, webapp_config: Any) -> str:
     """Resolve ``webhook.secret`` to its literal value.
 
-    ``$secret:<key>`` is looked up in ``webapp_config.webhook_secrets``
-    (raises ``ValueError`` when the key is unknown); anything else is used
-    as-is.
+    ``$secret:<key>`` is looked up in ``webapp_config.secrets`` (raises
+    ``ValueError`` when the key is unknown); anything else is used as-is.
+    Thin wrapper around :func:`src.jobs_secrets.resolve_secret_value` so
+    webhook callers keep passing the whole config object.
     """
-    match = _SECRET_REF_RE.match(secret_ref)
-    if match is None:
-        return secret_ref
-    key = match.group(1)
-    secrets = getattr(webapp_config, "webhook_secrets", {}) or {}
-    if key not in secrets:
-        raise ValueError(f"webhook secret {key!r} not found in webhook_secrets")
-    return secrets[key]
+    return resolve_secret_value(
+        secret_ref, getattr(webapp_config, "secrets", {}) or {}
+    )
 
 
 # ------------------------------------------------------------- verifiers

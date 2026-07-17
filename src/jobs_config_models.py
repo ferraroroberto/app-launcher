@@ -412,6 +412,13 @@ class Job:
     # by the provider signature instead of the bearer token. See
     # src.jobs_webhook for verification + payload-mapping.
     webhook: Optional[WebhookConfig] = None
+    # Per-job env-var overlay (issue #72): {NAME: value} merged into the
+    # child's environment by the executor at fire time. Values are either
+    # literal strings or "$secret:<key>" references resolved against
+    # webapp_config.secrets (src.jobs_secrets) — so jobs.json carries only
+    # opaque references, never a real credential. An unresolvable
+    # reference finalises the run as failed with a clear note.
+    env: Dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -453,6 +460,8 @@ class Job:
             payload["kind_config"] = dict(self.kind_config)
         if self.webhook is not None:
             payload["webhook"] = self.webhook.to_dict()
+        if self.env:
+            payload["env"] = dict(self.env)
         return payload
 
     @property
@@ -556,6 +565,33 @@ def _validate_mutex_group(raw: Any) -> Optional[str]:
     return stripped
 
 
+def env_from_dict(raw: Any) -> Dict[str, str]:
+    """Parse + validate a job's ``env`` overlay (issue #72).
+
+    Missing / ``None`` → ``{}``. Keys must be UPPER_SNAKE_CASE (same shape
+    as ``Param.env``); values must be strings — either literals or
+    ``$secret:<key>`` references (resolution happens at fire time, so a
+    reference to a not-yet-created key saves fine and fails the run with a
+    clear note instead).
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"env must be an object, got {type(raw).__name__}")
+    env: Dict[str, str] = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or not _PARAM_ENV_RE.match(name):
+            raise ValueError(
+                f"env name {name!r} must be UPPER_SNAKE_CASE"
+            )
+        if not isinstance(value, str):
+            raise ValueError(
+                f"env {name!r}: value must be a string, got {type(value).__name__}"
+            )
+        env[name] = value
+    return env
+
+
 def kind_config_from_dict(raw: Any) -> Dict[str, Any]:
     """Parse ``kind_config``. Missing / ``None`` → ``{}``."""
     if raw is None:
@@ -657,6 +693,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         kind=kind,
         kind_config=kind_config,
         webhook=webhook_from_dict(raw.get("webhook")),
+        env=env_from_dict(raw.get("env")),
     )
     if not job.id:
         raise ValueError("job id is required")
