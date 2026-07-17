@@ -18,6 +18,7 @@ resolves to the same state row, and therefore the same title, on both tabs.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -54,8 +55,16 @@ def _session_agent(session: Dict[str, Any]) -> str:
     return str(session.get("agent") or "claude").strip().lower()
 
 
+def _cwd_agent_key(session: Dict[str, Any]) -> tuple:
+    """(normalized project dir, agent) — the cwd fallback's matching grain."""
+    return (_normalize_dir(session.get("project_dir")), _session_agent(session))
+
+
 def _match_state_row(
-    session: Dict[str, Any], unmatched: Dict[str, Dict[str, Any]]
+    session: Dict[str, Any],
+    unmatched: Dict[str, Dict[str, Any]],
+    *,
+    ambiguous_cwd: bool = False,
 ) -> Optional[str]:
     """Claim an agent-compatible state row for one live session.
 
@@ -72,6 +81,20 @@ def _match_state_row(
     directory (e.g. a race where this session's own row hasn't landed yet).
     Without this guard the "most recently updated" tie-break could hand a
     brand-new session an hours-old sibling's title.
+
+    ``ambiguous_cwd`` (#537): true when 2+ *live* sessions share this
+    session's (cwd, agent) — set by :func:`_claim_walk` from the full live
+    list, not just the rows still unclaimed. With only recency to go on, the
+    cwd fallback has no way to tell which of several live siblings a given
+    row actually belongs to; picking the highest-``updated_at`` one anyway
+    cross-wires cards to the wrong session's transcript (reproduced live: 3
+    concurrent sessions in one directory, all 3 assigned to each other's
+    rows). Degrading to no match (``unknown`` card, no transcript) is safer
+    than a confident wrong answer — same principle as the Codex ambiguity
+    guard in :func:`src.board_exchange._find_codex_transcript`. Sessions that
+    carry their own ``launcher_session_id`` (the exact-match path above)
+    never reach here, so this only affects legacy/external sessions with no
+    launcher id sharing a directory.
     """
     session_id = str(session.get("session_id") or "")
     agent = _session_agent(session)
@@ -85,6 +108,9 @@ def _match_state_row(
                 exact_sid, exact_stamp = sid, stamp
     if exact_sid is not None:
         return exact_sid
+
+    if ambiguous_cwd:
+        return None
 
     project_dir_norm = _normalize_dir(session.get("project_dir"))
     if not project_dir_norm:
@@ -125,8 +151,14 @@ def _claim_walk(
     def started(sess: Dict[str, Any]) -> datetime:
         return _parse_iso(sess.get("started_at")) or _EPOCH
 
+    # Counted over the FULL live list (not the shrinking unmatched-rows
+    # walk) — the ambiguity is about how many live sessions are competing
+    # for this directory, independent of claim order.
+    cwd_agent_counts = Counter(_cwd_agent_key(sess) for sess in live)
+
     for sess in sorted(live, key=started, reverse=True):
-        sid = _match_state_row(sess, unmatched)
+        ambiguous = cwd_agent_counts[_cwd_agent_key(sess)] > 1
+        sid = _match_state_row(sess, unmatched, ambiguous_cwd=ambiguous)
         pairs.append((sess, unmatched.pop(sid) if sid else None, sid))
     return pairs, unmatched
 

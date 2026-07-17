@@ -272,13 +272,16 @@ def _live_sess(session_id: str, project_dir: str, started_min_ago: int) -> dict:
 
 
 def test_state_row_for_session_matches_render_claim():
+    """#537: an ambiguous single row (2 live sessions sharing one cwd)
+    matches neither — state_row_for_session must stay consistent with what
+    merge_sessions renders rather than resolving the ambiguity differently."""
     live = [_live_sess("old", "E:/a/x", 120), _live_sess("new", "E:/a/x", 5)]
     rows = {
         "t1": {"cwd": "E:/a/x", "status": "needs-you",
                "updated_at": _iso(NOW - timedelta(minutes=1)),
                "transcript_path": "p1"},
     }
-    assert board.state_row_for_session(live, rows, "new")["transcript_path"] == "p1"
+    assert board.state_row_for_session(live, rows, "new") is None
     assert board.state_row_for_session(live, rows, "old") is None
     assert board.state_row_for_session(live, rows, "ghost") is None
 

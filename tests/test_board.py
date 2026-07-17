@@ -253,7 +253,13 @@ def test_merge_matches_cwd_under_project_dir():
     assert cards[0]["status"] == "working"
 
 
-def test_merge_two_sessions_one_dir_recency_tiebreak():
+def test_merge_two_sessions_one_dir_ambiguous_row_stays_unclaimed():
+    """#537: 2+ live sessions sharing one cwd can't be safely disambiguated
+    by recency alone — the old greedy newest-wins tiebreak was exactly the
+    mechanism that cross-wired live Board cards to the wrong session's
+    transcript. Neither session claims the single row; both render
+    ``unknown`` instead of one confidently (and possibly wrongly)
+    inheriting it."""
     older = _live("old", "E:/automation/app-launcher", 120)
     newer = _live("new", "E:/automation/app-launcher", 5)
     cards = board.merge_sessions(
@@ -262,8 +268,44 @@ def test_merge_two_sessions_one_dir_recency_tiebreak():
         now=NOW,
     )
     by_id = {c["session_id"]: c for c in cards}
-    assert by_id["new"]["status"] == "needs-you"
+    assert by_id["new"]["status"] == "unknown"
     assert by_id["old"]["status"] == "unknown"
+
+
+def test_merge_three_sessions_one_dir_never_cross_wires_transcripts():
+    """#537 repro: 3 live sessions sharing one project directory, none
+    carrying ``launcher_session_id`` (the exact-match path is unavailable —
+    true for externally-started sessions, and for any launcher-spawned
+    session predating the env-var propagation fix). Reproduced live against
+    the real matching code: the old greedy recency tiebreak assigned every
+    one of 3 such sessions a DIFFERENT session's transcript, all wrong
+    simultaneously. No card may show another session's transcript_path —
+    the safe outcome here is every card staying unmatched (``unknown``,
+    no transcript), not a confident wrong guess."""
+    sessions = [
+        _live("s-oldest", "E:/automation/app-launcher", 60),
+        _live("s-middle", "E:/automation/app-launcher", 40),
+        _live("s-newest", "E:/automation/app-launcher", 20),
+    ]
+    rows = {
+        "row-a": _state_row(
+            "E:/automation/app-launcher", status="needs-you",
+            updated_min_ago=1, transcript_path="a.jsonl",
+        ),
+        "row-b": _state_row(
+            "E:/automation/app-launcher", status="working",
+            updated_min_ago=5, transcript_path="b.jsonl",
+        ),
+        "row-c": _state_row(
+            "E:/automation/app-launcher", status="needs-you",
+            updated_min_ago=10, transcript_path="c.jsonl",
+        ),
+    }
+    cards = board.merge_sessions(sessions, rows, now=NOW)
+    by_id = {c["session_id"]: c for c in cards}
+    assert len(by_id) == 3
+    for sid in ("s-oldest", "s-middle", "s-newest"):
+        assert by_id[sid]["status"] == "unknown"
 
 
 def test_merge_non_claude_does_not_claim_legacy_claude_row():
