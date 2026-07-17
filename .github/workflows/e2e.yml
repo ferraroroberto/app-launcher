@@ -74,6 +74,7 @@ jobs:
           path: |
             webapp/e2e-autoboot-webapp.log
             webapp/e2e-autoboot-session-host.log
+            webapp/verify-progress.log
             webapp/sessions/
           if-no-files-found: warn
           retention-days: 7

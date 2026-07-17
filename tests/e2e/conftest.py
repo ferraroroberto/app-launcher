@@ -69,6 +69,17 @@ _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # a temp COPY of the real config so it still boots with realistic values.
 _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
+# Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
+# disposable session-host's PATH is prepended with a harness-generated
+# `claude.cmd` shim: a launch whose flags are exactly this sentinel runs a
+# tiny deterministic Python echo loop instead of the real Claude CLI (3-5 s
+# startup each), while any other flag set falls through to the real `claude`.
+# Purely a harness substitution — no production code knows about it.
+_STUB_FLAG = "--e2e-stub"
+# Filled by _autoboot_server so the lightweight fixture can create sessions
+# directly on the disposable session-host (the sentinel flag can't travel
+# through the webapp's launch endpoint, which builds flags from config).
+_AUTOBOOT_STATE: dict = {}
 # Explicit opt-in for targeting the LIVE tray on :8445 (issue #386). The
 # live mode is deliberate (run-e2e.ps1 dev loop), but it drives real login
 # flows and PTY sessions against the instance the user's phone is using —
@@ -168,8 +179,65 @@ def _wait_healthz(base: str, timeout: float) -> bool:
     return False
 
 
+_STUB_CHILD_SOURCE = '''\
+"""Deterministic lightweight PTY child for UI-only e2e tests (issue #534).
+
+Stands in for the real Claude CLI under the disposable autoboot session-host:
+instant startup, echoes each input line (ConPTY cooked mode echoes keystrokes
+too), exits on /quit so the host's graceful stop path works.
+"""
+import sys
+
+print("[e2e-stub] lightweight PTY child ready (issue #534)", flush=True)
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    text = line.rstrip("\\r\\n")
+    if text.strip() == "/quit":
+        print("[e2e-stub] bye", flush=True)
+        break
+    print(text, flush=True)
+'''
+
+
+def _write_claude_shim(shim_dir: Path) -> None:
+    """Generate the `claude.cmd` PATH shim + stub child script (issue #534).
+
+    The session-host spawns agents via ``cmd /c … && claude <flags>`` with the
+    command resolved off its own PATH, so prepending this directory to the
+    *disposable* session-host's PATH intercepts every claude launch: the
+    ``--e2e-stub`` sentinel routes to the stub child, anything else falls
+    through to the real ``claude`` resolved at generation time. Where claude
+    isn't installed (the CI runner) the fall-through branch fails loud — but
+    it is never reached there, because `launched_claude_pty_session` skips
+    first (same `shutil.which` guard as always).
+    """
+    stub_py = shim_dir / "e2e_stub_child.py"
+    stub_py.write_text(_STUB_CHILD_SOURCE, encoding="utf-8")
+    real_claude = shutil.which("claude")
+    if real_claude:
+        real_branch = f'call "{real_claude}" %*\nexit /b %ERRORLEVEL%\n'
+    else:
+        real_branch = (
+            "echo [e2e-shim] real claude is not installed 1>&2\n"
+            "exit /b 1\n"
+        )
+    shim = (
+        "@echo off\n"
+        f'if "%~1"=="{_STUB_FLAG}" (\n'
+        f'  "{sys.executable}" -X utf8 "{stub_py}"\n'
+        "  exit /b %ERRORLEVEL%\n"
+        ")\n"
+        f"{real_branch}"
+    )
+    # Text-mode write translates \n -> os.linesep, so the .cmd lands with
+    # proper CRLF line endings on Windows.
+    (shim_dir / "claude.cmd").write_text(shim, encoding="ascii")
+
+
 @pytest.fixture(scope="session")
-def _autoboot_server() -> Iterator[str]:
+def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """Spawn a disposable webapp (+ session-host) and yield its base URL.
 
     A hard failure (`pytest.fail`) — never a skip — if anything doesn't come
@@ -230,7 +298,18 @@ def _autoboot_server() -> Iterator[str]:
             "--port",
             str(sh_port),
         ]
-        sh_proc = _spawn(sh_cmd, _open_log("e2e-autoboot-session-host.log"))
+        # Lightweight-child shim (issue #534): only the DISPOSABLE
+        # session-host gets the shim on PATH — the pytest process and the
+        # live tray keep the real resolution, so `shutil.which("claude")`
+        # in the fixtures below still faithfully predicts the real CLI.
+        shim_dir = tmp_path_factory.mktemp("claude-shim")
+        _write_claude_shim(shim_dir)
+        sh_proc = _spawn(
+            sh_cmd,
+            _open_log("e2e-autoboot-session-host.log"),
+            extra_env={"PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"},
+        )
+        _AUTOBOOT_STATE["session_host_port"] = sh_port
         if not _wait_port(sh_port, timeout=15):
             _teardown()
             pytest.fail(
@@ -431,9 +510,10 @@ def unauthed_page(context: BrowserContext) -> Iterator[Page]:
 
 
 # ---------------------------------------------------------------- session API
-# Opt-in fixture: tests that need state in #sessionsList depend on this; other
-# tests don't pay the 3-5 s launch + teardown cost. Target is `app-launcher`
-# itself (self-launching is harmless — just spawns claude in this repo dir).
+# Opt-in fixtures: tests that need state in #sessionsList depend on one of
+# these; other tests don't pay any launch + teardown cost. Target is
+# `app-launcher` itself (self-launching is harmless — just spawns the agent
+# in this repo dir).
 
 _LAUNCH_TARGET_ID = "app-launcher"
 
@@ -458,21 +538,23 @@ def _stop_session(base_url: str, headers: dict, sid: str) -> None:
         logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
 
 
-@pytest.fixture
-def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
-    # The PTY session runs a real `claude` process. Where `claude` isn't on
-    # PATH — notably the CI runner, which never installs it — the PTY child
-    # exits at once ("'claude' is not recognized…"), the session-host reaps
-    # it, and its WS endpoint then 403s the webapp's proxy, so every
-    # input-delivery test below would race a corpse. Skip cleanly instead:
-    # these tests genuinely gate on a dev box where `claude` runs. The test
-    # process shares the session-host's PATH (same machine), so `which` here
-    # faithfully predicts whether the session-host can spawn it. See #58.
+def _launch_claude_via_webapp(base_url: str, auth_token: str) -> str:
+    """Launch a REAL claude PTY session through the webapp's launch endpoint.
+
+    Where `claude` isn't on PATH — notably the CI runner, which never
+    installs it — the PTY child exits at once ("'claude' is not
+    recognized…"), the session-host reaps it, and its WS endpoint then 403s
+    the webapp's proxy, so every consumer would race a corpse. Skip cleanly
+    instead: these tests genuinely gate on a dev box where `claude` runs.
+    The test process shares the live session-host's PATH (same machine), so
+    `which` here faithfully predicts whether the session-host can spawn it.
+    See #58.
+    """
     if shutil.which("claude") is None:
         pytest.skip(
-            "`claude` is not on PATH — terminal input-delivery tests need a "
-            "live claude PTY and skip cleanly where it isn't installed (e.g. "
-            "the CI runner)"
+            "`claude` is not on PATH — real-Claude PTY tests need a live "
+            "claude CLI and skip cleanly where it isn't installed (e.g. the "
+            "CI runner)"
         )
 
     headers = _auth_headers(auth_token)
@@ -496,7 +578,81 @@ def launched_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
     sid = body.get("session", {}).get("session_id")
     if not sid:
         pytest.skip(f"launch response missing session_id: {body}")
+    return str(sid)
 
+
+@pytest.fixture
+def launched_pty_session(
+    request: pytest.FixtureRequest, base_url: str, auth_token: str
+) -> Iterator[str]:
+    """A live PTY session for UI-only assertions (issue #534).
+
+    Under autoboot (the pre-ship gate + CI) the child is the deterministic
+    lightweight stub, created directly on the disposable session-host with
+    the ``--e2e-stub`` sentinel — no real Claude CLI process per test. The
+    launch API never blocked on Claude's bootstrap, so the win is not big
+    idle-box wall time (measured ~20 s across the whole gate, #534): it is
+    removing ~110 background node boots whose CPU contention made loaded
+    runs balloon, plus CI coverage (the stub needs only Python). The
+    production webapp ↔ session-host ↔ ConPTY boundary stays fully real
+    (session rows, WS streaming, input forwarding, stop paths).
+
+    Against the LIVE tray (run-e2e.ps1 dev loop) there is no shim on the
+    tray's PATH, so this falls back to a real claude launch — behaviour
+    identical to before the split.
+
+    Tests that assert real agent semantics (rendered Claude output, agent
+    echo, lifecycle) must use `launched_claude_pty_session` instead.
+    """
+    headers = _auth_headers(auth_token)
+    if _autoboot_enabled(request.config):
+        sh_port = _AUTOBOOT_STATE.get("session_host_port")
+        if not sh_port:
+            pytest.fail("autoboot state missing session_host_port (issue #534)")
+        # POST the session-host directly: the sentinel flag can't travel
+        # through the webapp's launch endpoint (flags come from config
+        # there). The session still surfaces through the webapp normally —
+        # its session list proxies this same host.
+        res = requests.post(
+            f"http://127.0.0.1:{sh_port}/sessions",
+            json={
+                "project_dir": str(_REPO_ROOT),
+                "name": _LAUNCH_TARGET_ID,
+                "flags": _STUB_FLAG,
+                "agent": "claude",
+            },
+            timeout=15,
+        )
+        # Deterministic path — a failure here is a harness bug, never a
+        # missing-dependency skip.
+        if res.status_code != 200:
+            pytest.fail(
+                f"lightweight stub session failed to launch (HTTP "
+                f"{res.status_code}: {res.text[:200]})"
+            )
+        sid = str(res.json().get("session_id") or "")
+        if not sid:
+            pytest.fail(f"stub session response missing session_id: {res.text[:200]}")
+    else:
+        sid = _launch_claude_via_webapp(base_url, auth_token)
+
+    try:
+        yield sid
+    finally:
+        _stop_session(base_url, headers, sid)
+
+
+@pytest.fixture
+def launched_claude_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
+    """A live PTY session running the REAL Claude CLI (issue #534).
+
+    Only for tests whose assertions depend on the real agent — rendered
+    Claude output in the xterm buffer, agent input echo, Claude lifecycle
+    semantics. Spawns a real node process per test: keep its consumer set
+    minimal, and put UI-only assertions on `launched_pty_session`.
+    """
+    headers = _auth_headers(auth_token)
+    sid = _launch_claude_via_webapp(base_url, auth_token)
     try:
         yield sid
     finally:

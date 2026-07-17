@@ -18,10 +18,35 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
+# Persistent progress log (issue #534): phase markers land here from this
+# script, per-test START/DONE lines from the pytest hook in tests/conftest.py
+# (via LAUNCHER_VERIFY_PROGRESS_LOG). If an outer timeout kills the gate, the
+# last lines name the active phase + node id and the per-test timings survive.
+# Gitignored via the blanket *.log rule; overwritten each run.
+$progressLog = Join-Path $repoRoot "webapp\verify-progress.log"
+[void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $progressLog))
+Set-Content -Path $progressLog -Encoding UTF8 -Value (
+    "verify-before-ship run started {0}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+)
+$env:LAUNCHER_VERIFY_PROGRESS_LOG = $progressLog
+
+function Log-Progress($message) {
+    Add-Content -Path $progressLog -Encoding UTF8 -Value (
+        "[{0} +{1,7:n1}s] {2}" -f (Get-Date -Format "HH:mm:ss"), $sw.Elapsed.TotalSeconds, $message
+    )
+}
+
+function Phase($message) {
+    Write-Host "==> $message" -ForegroundColor Cyan
+    Log-Progress "==> phase: $message"
+}
+
 function Fail($message) {
     Write-Host ""
     Write-Host "[X] $message" -ForegroundColor Red
     Write-Host ("Failed after {0:n1}s." -f $sw.Elapsed.TotalSeconds) -ForegroundColor Red
+    Log-Progress ("FAILED: {0} (after {1:n1}s)" -f $message, $sw.Elapsed.TotalSeconds)
+    Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue
     exit 1
 }
 
@@ -31,15 +56,15 @@ if (-not (Test-Path $python)) {
 
 Push-Location $repoRoot
 try {
-    Write-Host "==> py_compile (app, src, tests)..." -ForegroundColor Cyan
+    Phase "py_compile (app, src, tests)..."
     & $python -m compileall -q app src tests
     if ($LASTEXITCODE -ne 0) { Fail "byte-compile failed." }
 
-    Write-Host "==> pytest (non-e2e)..." -ForegroundColor Cyan
+    Phase "pytest (non-e2e)..."
     & $python -m pytest -q --ignore=tests/e2e
     if ($LASTEXITCODE -ne 0) { Fail "non-e2e pytest suite failed." }
 
-    Write-Host "==> pytest e2e (Chromium + WebKit/iPhone, auto-booted)..." -ForegroundColor Cyan
+    Phase "pytest e2e (Chromium + WebKit/iPhone, auto-booted)..."
     $env:LAUNCHER_E2E_AUTOBOOT = "1"
     # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts the
     # process via os._exit, skipping the summary) is named by the last nodeid
@@ -65,6 +90,8 @@ finally {
 }
 
 $sw.Stop()
+Log-Progress ("OK: all checks passed in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
+Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host ("[OK] Ready to ship -- all checks passed in {0:n1}s." -f $sw.Elapsed.TotalSeconds) -ForegroundColor Green
 exit 0

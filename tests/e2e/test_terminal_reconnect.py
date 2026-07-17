@@ -162,7 +162,7 @@ def _stable_marker_count(page: Page, marker: str) -> int:
 def test_reconnect_replay_does_not_duplicate_scrollback(
     authed_page: Page,
     base_url: str,
-    launched_pty_session: str,
+    launched_claude_pty_session: str,
 ) -> None:
     """Regression pin for issue #444 (duplicated conversation tail).
 
@@ -172,8 +172,13 @@ def test_reconnect_replay_does_not_duplicate_scrollback(
     conversation. Pin: type a distinctive marker (no newline — it just echoes
     in the agent's composer), force a WS drop, let the auto-reconnect replay
     land, and assert the marker count in the buffer did NOT grow.
+
+    Uses the REAL Claude fixture (issue #534): the marker's on-screen echo
+    comes from the agent painting its composer, and the replayed ring must
+    carry that real rendered content — the one e2e assertion a stub child
+    can't stand in for.
     """
-    sid = launched_pty_session
+    sid = launched_claude_pty_session
     authed_page.add_init_script(_WS_PROBE)
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     authed_page.wait_for_function(

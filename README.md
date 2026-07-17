@@ -647,8 +647,8 @@ One-time setup:
 **Run after every webapp/SPA edit** with the tray up (`tray.bat`):
 
 ```powershell
-.\scripts\run-e2e.ps1                       # both projections, ~60 s
-.\scripts\run-e2e.ps1 --browser chromium    # Chromium-only, ~15 s — dev loop
+.\scripts\run-e2e.ps1                       # both projections (~9 min — full suite)
+.\scripts\run-e2e.ps1 --browser chromium    # Chromium-only — the faster dev loop
 # or directly — the env var is the explicit live-tray opt-in (see below):
 $env:LAUNCHER_E2E_LIVE = "1"; & .\.venv\Scripts\python.exe -m pytest -m smoke -v tests/e2e
 ```
@@ -657,7 +657,12 @@ The suite runs against the live tray on `https://127.0.0.1:8445` — it does not
 
 Because that live instance is the one the phone is using, targeting it is an **explicit opt-in**: `run-e2e.ps1` sets `LAUNCHER_E2E_LIVE=1` for you, and a bare `pytest tests/e2e` without it (and without autoboot) exits immediately with a guard message instead of silently load-testing the live webapp.
 
-The terminal-related regression tests (reconnect, paste, mirror-close) launch a real `claude` PTY via the `launched_pty_session` fixture and force-kill it in teardown — they don't require any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var). The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
+The terminal-related regression tests get a live PTY session from one of two fixtures (issue #534) — neither requires any test-only product hooks (no `LAUNCHER_TEST_HOOKS=1` env var):
+
+- **`launched_pty_session`** — the default for UI-only assertions (toolbar, overlay geometry, dictation, readback, session rows, WS wiring, input logged by the webapp). Under the autoboot gate the child is a **deterministic lightweight stub** instead of the real Claude CLI: the harness prepends a generated `claude.cmd` shim to the *disposable* session-host's `PATH` that routes the `--e2e-stub` sentinel to an instant Python echo loop, so ~55 tests × 2 projections stop spawning a real Claude/node process each — removing the host-load variance that ballooned loaded runs, and letting these tests run on CI (the stub needs only Python) — while still exercising the production webapp ↔ session-host ↔ ConPTY boundary. Against the live tray (`run-e2e.ps1`) there is no shim, so it falls back to a real `claude` launch.
+- **`launched_claude_pty_session`** — a real `claude` child, only for tests whose assertions depend on the real agent's rendered output (currently the #444 reconnect-replay scrollback pin).
+
+The WebSocket-drop probe and the clipboard mock are injected via `page.add_init_script` from inside each test, so the production surface is untouched.
 
 Byte-loss at the PTY write boundary itself has a dedicated **non-browser** guard, `tests/test_session_host_pty_realpty.py` (in the `pytest tests -m "not smoke"` suite, Windows/pywinpty-gated): it pushes multi-KB payloads through `PtySession.write` into a *real* ConPTY and asserts a byte-for-byte lossless readback. A `MagicMock` PtyProcess can never drop bytes, so this real-PTY readback is what proves the write path is clean — the unit tests in `test_session_host_pty_write.py` only pin the chunk-and-pace shape and the #13 no-retry contract.
 
@@ -671,16 +676,17 @@ pwsh -File scripts\verify-before-ship.ps1
 
 It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `tests`), the non-e2e pytest suite, then the Playwright e2e suite on both projections — and **boots its own disposable webapp + session-host** on a free port, so it never silently skips:
 
-- A tray on `:8445` may be running or not. Autoboot picks a free port for its webapp and adopts the tray's session-host on `:8446` if one is up, otherwise spawns its own. The existing tray is left untouched.
+- A tray on `:8445` may be running or not. Autoboot picks a free port for its webapp and **always spawns its own disposable session-host** on a free port (never the live `:8446`, whose sessions include the user's real Claude PTYs — issue #260). The existing tray is left untouched.
 - The disposable instance serves HTTPS reusing `webapp/certificates/` (plain HTTP if no cert pair exists). Subprocess output is captured to `webapp/e2e-autoboot-*.log`.
 - The disposable webapp reads and writes a **temp copy** of `config/webapp_config.json` (`webapp/e2e-autoboot-webapp-config.json`, via `LAUNCHER_WEBAPP_CONFIG`), so an e2e test that saves settings can never mutate the real config file — the gate asserts the real file is byte-identical after the run and fails loud if not (issue #441).
-- It exits non-zero on the first failure and prints total wall time (~20–40 s typical).
+- It persists a live progress log to `webapp/verify-progress.log` (gitignored, overwritten each run): phase markers from the script plus one `START`/`DONE` line per test — with per-test totals including fixture cost — and a slowest-15 summary at the end of each pytest phase. If the gate wedges or an outer timeout kills it, the last `START` without a `DONE` names the active test, so a genuinely slow test is distinguishable from aggregate overhead (issue #534).
+- It exits non-zero on the first failure and prints total wall time. Measured contract (2026-07-17, #534, idle dev box): **~10–11 min** for the full gate — ~5 s byte-compile, ~70 s non-e2e pytest (1086 tests), ~9 min e2e (360 nodes across both projections). The bulk is the browser suite itself, not agent startups; treat a run past ~15 min as wedged and read `webapp/verify-progress.log` for the stuck node before killing anything.
 
 Run it before declaring any change to `app/webapp/`, `src/launcher.py`, or `src/session_host*.py` done. The same autoboot path is available to a plain pytest run with `--e2e-autoboot` (or `LAUNCHER_E2E_AUTOBOOT=1`).
 
 The same gate also runs on CI (`.github/workflows/e2e.yml`, `windows-latest`) on every push to a non-`main` branch and on pull requests into `main` — so the gate runs without relying on remembering to. The local `verify-before-ship.ps1` stays the contract; CI is supplementary.
 
-The terminal input-delivery tests (`test_compose_bar`, `test_paste_button`, `test_keys_popover`, `test_terminal_reconnect`) need a **live `claude` PTY** to type into. The `launched_pty_session` fixture checks `claude` is on `PATH` before launching: where it isn't — notably the CI runner, which never installs it — the fixture **skips** those tests cleanly instead of failing them against a PTY that dies the moment `cmd` can't find `claude` (issue #58). They therefore gate on a dev box where `claude` is installed; on CI they show as skipped. A failed run keeps the autoboot and per-session logs as a downloadable `e2e-logs` artifact on the run page, so any e2e failure can be diagnosed without a local repro.
+Since the #534 fixture split, the UI-only terminal tests run on CI too: their lightweight stub child needs only Python, so the CI runner exercises them instead of skipping. Only the `launched_claude_pty_session` tests (real-Claude rendered-output assertions) still check `claude` is on `PATH` and **skip** cleanly where it isn't — notably the CI runner, which never installs it (issue #58). A failed run keeps the autoboot and per-session logs as a downloadable `e2e-logs` artifact on the run page, so any e2e failure can be diagnosed without a local repro.
 
 ---
 
