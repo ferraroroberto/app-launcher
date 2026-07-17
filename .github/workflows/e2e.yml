@@ -22,10 +22,12 @@ concurrency:
 jobs:
   verify-before-ship:
     runs-on: windows-2025
-    # Typical green is ~3 min; the suite has wedged for 12–18+ min on a slow
+    # Typical green is ~8 min since #534 unskipped the UI-terminal e2e tests
+    # (stub-backed, no Claude CLI needed); the suite has wedged on a slow
     # runner with no cap (issue #184). Bound it so a wedge fails fast (red)
-    # instead of running to GitHub's 6 h ceiling.
-    timeout-minutes: 15
+    # instead of running to GitHub's 6 h ceiling, with headroom over the
+    # new typical so a merely-loaded runner isn't a false red.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
