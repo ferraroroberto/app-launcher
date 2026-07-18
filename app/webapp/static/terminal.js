@@ -28,6 +28,7 @@ import {
   isMirrorWindowSession,
   mirrorDocTitle,
   refreshTerminalTitle,
+  setTerminalTitleText,
 } from './terminal-mirror.js';
 import {
   framePaste,
@@ -262,7 +263,7 @@ export async function openTerminal(session) {
     els.terminalOverlay.hidden = false;
     document.body.classList.add('terminal-open');
     lockBodyScroll();
-    els.terminalTitle.textContent = sessionTitle(session);
+    setTerminalTitleText(session);
     setTerminalStatus(
       '🔒 ' + (state.status.terminal.reason ||
         'The live terminal is Tailscale-only.')
@@ -284,8 +285,9 @@ export async function openTerminal(session) {
   lockBodyScroll();
   // Use the same stripping sessionTitle() applies elsewhere so Claude's
   // leading ✻/☁️/emoji prefix doesn't show up on first paint — the
-  // agent icon next to the title is the redundancy.
-  els.terminalTitle.textContent = sessionTitle(session);
+  // agent icon next to the title is the redundancy. Also prepends the
+  // chief's crown marker (#547) when this session is the chief.
+  setTerminalTitleText(session);
   setTerminalStatus('Connecting…');
 
   // The PC mirror window is the launcher-spawned Edge --app window (issue

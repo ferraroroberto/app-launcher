@@ -107,6 +107,18 @@ export function wireModelCombo(root, onChange) {
   };
 }
 
+// The standing fleet chief (#245, cross-tab parity #547): one label="chief"
+// PTY session. Same label-first, name-fallback match everywhere a session
+// might be the chief — a session-host that predates the label field still
+// reports the chief's launch name, so the fallback keeps crown/tint/confirm
+// working across that host's last pre-label run. Single source of truth for
+// board.js (card rendering), sessions.js (Coding tab rows + stop guard), and
+// terminal.js (overlay title) — do not re-derive this check independently.
+export function isChiefSession(s) {
+  return !!s && (s.label === 'chief' || (s.kind === 'pty' && s.name === 'chief'));
+}
+export const CHIEF_KILL_CONFIRM = 'Kill the chief session?';
+
 // Claude 5h/7d usage badges (issue #326) — shared between the Board tab and
 // the Coding tab's Running-sessions header, both of which poll their own
 // endpoint (GET /api/board, GET /api/rate-limits) but render the identical

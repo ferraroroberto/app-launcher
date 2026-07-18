@@ -438,6 +438,15 @@
           <span id="codingUsageSession" class="usage-badge" hidden></span>
           <span id="codingUsageWeekly" class="usage-badge" hidden></span>
         </div>
+        <!-- Fleet chief status (#547) — Coding-tab parity with the Board's
+             chat-mode status row: same crown + text + Start affordance so
+             the chief can be spotted/started here too, not only in Board
+             chat mode. renderCodingChiefStatus() only flips hidden/text. -->
+        <div id="codingChiefStatus" class="board-chief-status" hidden>
+          <span class="board-chief-crown"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg></span>
+          <span id="codingChiefStatusText" class="board-chief-status-text"></span>
+          <button id="codingChiefStart" type="button" class="board-chief-start">Start</button>
+        </div>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
         <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
         <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
@@ -803,19 +812,21 @@
           <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>
         <div class="board-dispatch-row">
-          <div id="boardDispatchModes" class="board-dispatch-modes" role="radiogroup" aria-label="Dispatch mode">
-            <button type="button" class="board-mode-btn active" data-mode="add"
-                    role="radio" aria-checked="true" title="/issue-add — file the issue only">add</button>
-            <button type="button" class="board-mode-btn" data-mode="build"
-                    role="radio" aria-checked="false" title="/issue-add now — file and build straight away">build</button>
-            <button type="button" class="board-mode-btn" data-mode="yolo"
-                    role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
-            <button type="button" class="board-mode-btn" data-mode="chat"
-                    role="radio" aria-checked="false" title="chat — talk to the standing fleet chief (#245)">chat</button>
-          </div>
-          <!-- Wrapper span carries the ▾ affordance on the phone, where the
+          <!-- Wrapper spans carry the ▾ affordance on the phone, where each
                select is flattened to the row's shared button recipe (#496) —
-               same pattern as .board-repo-combo's ::after chevron. -->
+               same pattern as .board-repo-combo's ::after chevron. Mode was
+               a 4-segment radiogroup until #547 collapsed it into a select
+               matching the model dropdown beside it — the segments no
+               longer fit an iPhone-width row once chat mode (#245) landed. -->
+          <span class="board-model-combo">
+            <select id="boardDispatchMode" class="select-native" aria-label="Dispatch mode"
+                    title="add — file the issue only / build — file and build straight away / yolo — file, build, and ship / chat — talk to the standing fleet chief (#245)">
+              <option value="add" selected>Add</option>
+              <option value="build">Build</option>
+              <option value="yolo">Yolo</option>
+              <option value="chat">Chat</option>
+            </select>
+          </span>
           <span class="board-model-combo">
             <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
                     title="model for dispatches and one-tap ▶/⚡ starts: Sonnet / Opus / Fable spawn Claude Code; GPT-5.6 spawns Codex CLI (high effort)">
@@ -1253,7 +1264,7 @@
         </div>
         <div class="chief-settings-row">
           <label for="chiefWorkerCap">Worker cap</label>
-          <input id="chiefWorkerCap" type="number" class="input-native" min="1" max="8" step="1" value="3">
+          <input id="chiefWorkerCap" type="number" class="input-native" min="1" max="10" step="1" value="3">
         </div>
         <div class="row dialog-actions">
           <button type="button" id="chiefSettingsCancel" class="button-ghost">Cancel</button>

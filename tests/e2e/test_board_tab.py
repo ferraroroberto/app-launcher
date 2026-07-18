@@ -722,7 +722,7 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
 
     authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
-    authed_page.locator('.board-mode-btn[data-mode="yolo"]').click()
+    authed_page.locator("#boardDispatchMode").select_option("yolo")
     # Model selector (#500): defaults to Sonnet; pick a non-default value so
     # the POST provably carries the selection, not a hardcoded default.
     expect(authed_page.locator("#boardDispatchModel")).to_have_value("sonnet")

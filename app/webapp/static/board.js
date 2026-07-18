@@ -41,7 +41,7 @@ import { createDictation, startWorkTimer, voiceDictationAvailable } from './voic
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -80,14 +80,10 @@ function sessionLabel(card) {
 // the chat dispatch mode talks to. Server-side plumbing in routers/board.py;
 // the brain is fleet-config's /chief skill.
 
-function isChiefCard(card) {
-  // Same label-first, name-fallback match as the server's _find_chief: a
-  // session-host that predates the label field (#245) still reports the
-  // chief's launch name, so the crown/tint/confirm and the chat status row
-  // keep working across that host's last pre-label run.
-  return card.label === 'chief' ||
-    (card.kind === 'pty' && card.name === 'chief');
-}
+// isChiefCard is the board-card-shaped alias of the shared dom-utils.js
+// predicate (#547) — board cards carry the same label/kind/name fields the
+// Coding tab's session rows do, so no board-specific logic is needed here.
+const isChiefCard = isChiefSession;
 
 function findChiefCard() {
   const columns = (state.board && state.board.columns) || {};
@@ -101,7 +97,12 @@ function findChiefCard() {
   return found;
 }
 
-async function ensureChief(fresh) {
+// Exported (#547) so the Coding tab's manual Start-chief affordance
+// (sessions.js) can call the same ensure endpoint the Board's chat mode
+// uses — sessions.js already imports openTerminal from terminal.js while
+// terminal.js imports back from sessions.js, so this mirrors an existing,
+// working circular-import pattern rather than introducing a new risk.
+export async function ensureChief(fresh) {
   const tt = await ensureTerminalToken();
   const payload = fresh ? { fresh: true } : {};
   // Same size contract as every launch (issue #374).
@@ -299,7 +300,7 @@ function buildDrawer(card) {
       // Kill protection (#245): the chief is the one session a mis-tap
       // shouldn't take down — same confirm() convention as Apps/Jobs kills.
       // Every other card keeps the deliberate one-tap stop (#253).
-      if (isChiefCard(card) && !confirm('Kill the chief session?')) return;
+      if (isChiefCard(card) && !confirm(CHIEF_KILL_CONFIRM)) return;
       stop.disabled = true;
       // Close the drawer first — fetchBoard() self-gates while it's open,
       // so a stop with the drawer up would never see the card clear.
@@ -922,12 +923,9 @@ const CHAT_PLACEHOLDER =
 
 function setDispatchMode(mode) {
   dispatchMode = mode;
-  els.boardDispatchModes.querySelectorAll('.board-mode-btn')
-    .forEach(function (btn) {
-      const active = btn.dataset.mode === mode;
-      btn.classList.toggle('active', active);
-      btn.setAttribute('aria-checked', active ? 'true' : 'false');
-    });
+  // The select itself already shows the chosen value (#547 collapsed the
+  // old 4-segment radiogroup into a single <select>) — nothing else to
+  // paint here beyond the mode-dependent chat UI.
   syncChatModeUi();
 }
 
@@ -1161,12 +1159,11 @@ function wireRepoCombo() {
 function wireDispatch() {
   if (!els.boardDispatchSend) return;
   wireRepoCombo();
-  els.boardDispatchModes.querySelectorAll('.board-mode-btn')
-    .forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        setDispatchMode(btn.dataset.mode);
-      });
+  if (els.boardDispatchMode) {
+    els.boardDispatchMode.addEventListener('change', function () {
+      setDispatchMode(els.boardDispatchMode.value);
     });
+  }
   // The model <select> (#500) is a plain client-side control (issue #355
   // pattern) — no server config, just read at dispatch time above.
   els.boardDispatchSend.addEventListener('click', function () {
