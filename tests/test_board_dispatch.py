@@ -6,8 +6,10 @@ own second write — the #64/#166 two-frame rule) and must never appear in the
 flags string that the session-host interpolates into its unquoted ``cmd /c``
 line. Plus the readiness probe: no typing until the agent painted its first
 output (``output_chars``), a clean 504 + kill of the half-spawned session on
-timeout or death, and the fixed-grace fallback for a live session-host old
-enough to not report ``output_chars`` yet.
+timeout or death, the fixed-grace fallback for a live session-host old enough
+to not report ``output_chars`` yet, and (#549) the shared PTY-quiescence wait
+that stops the submitting CR from being typed — and swallowed — while the
+freshly spawned agent's boot output is still growing.
 """
 
 from __future__ import annotations
@@ -31,11 +33,15 @@ def _bypass_gate(monkeypatch):
 
 @pytest.fixture
 def _fast_probe(monkeypatch):
-    """Shrink the readiness constants so no test ever really waits."""
+    """Shrink the readiness + quiescence constants so no test ever really
+    waits (#549: dispatch now also awaits PTY quiescence before typing)."""
     monkeypatch.setattr(board_router, "DISPATCH_READY_CAP_S", 0.3)
     monkeypatch.setattr(board_router, "DISPATCH_SETTLE_S", 0.0)
     monkeypatch.setattr(board_router, "DISPATCH_POLL_S", 0.01)
     monkeypatch.setattr(board_router, "DISPATCH_LEGACY_GRACE_S", 0.0)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_STABLE_S", 0.02)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_CAP_S", 0.3)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_POLL_S", 0.01)
 
 
 @pytest.fixture
@@ -208,6 +214,28 @@ class TestSpawnThenType:
         resp = _dispatch(client, overrides)
         assert resp.status_code == 200
         assert len(overrides["session"].send_input.call_args_list) == 2
+
+    def test_boot_never_quiescent_still_dispatches(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn
+    ):
+        """#549: dispatch now shares the chief's quiescence wait (#245) — a
+        goal typed while the freshly spawned agent's boot output is still
+        growing had its submitting CR swallowed, leaving the worker idle
+        with the goal typed but never submitted. Ever-growing output must
+        still cap out and dispatch rather than hang or drop the CR."""
+        client, _, overrides = webapp_client
+        counter = {"n": 0}
+
+        def _growing(port, sid):
+            counter["n"] += 1
+            return {"alive": True, "output_chars": counter["n"]}
+
+        overrides["session"].get_session.side_effect = _growing
+        resp = _dispatch(client, overrides)
+        assert resp.status_code == 200
+        calls = overrides["session"].send_input.call_args_list
+        assert len(calls) == 2
+        assert calls[1].args == (8446, "disp-1", "\r")
 
 
 class TestDispatchFailure:

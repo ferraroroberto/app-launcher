@@ -38,9 +38,9 @@ def _fast_probe(monkeypatch):
     monkeypatch.setattr(board_router, "DISPATCH_LEGACY_GRACE_S", 0.0)
     monkeypatch.setattr(board_router, "CHIEF_STOP_WAIT_S", 0.1)
     monkeypatch.setattr(board_router, "CHIEF_STOP_POLL_S", 0.01)
-    monkeypatch.setattr(board_router, "CHIEF_QUIESCENT_STABLE_S", 0.02)
-    monkeypatch.setattr(board_router, "CHIEF_QUIESCENT_CAP_S", 0.3)
-    monkeypatch.setattr(board_router, "CHIEF_QUIESCENT_POLL_S", 0.01)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_STABLE_S", 0.02)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_CAP_S", 0.3)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_POLL_S", 0.01)
 
 
 @pytest.fixture
