@@ -81,7 +81,12 @@ function sessionLabel(card) {
 // the brain is fleet-config's /chief skill.
 
 function isChiefCard(card) {
-  return card.label === 'chief';
+  // Same label-first, name-fallback match as the server's _find_chief: a
+  // session-host that predates the label field (#245) still reports the
+  // chief's launch name, so the crown/tint/confirm and the chat status row
+  // keep working across that host's last pre-label run.
+  return card.label === 'chief' ||
+    (card.kind === 'pty' && card.name === 'chief');
 }
 
 function findChiefCard() {

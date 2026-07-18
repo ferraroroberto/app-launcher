@@ -222,6 +222,26 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     expect(drawer).to_contain_text("6 open issues. Smallest is #229 — start it?")
 
 
+def test_chief_recognized_by_name_when_label_missing(
+    authed_page: Page, base_url: str
+) -> None:
+    """Legacy-host fallback: a session-host that predates the label field
+    reports no ``label`` on the chief's card — the client must still
+    recognize it by launch name (mirror of the server's _find_chief),
+    keeping the crown and the chat status row truthful."""
+    payload = _board_payload(with_chief=True)
+    del payload["columns"]["claude_turn"][0]["label"]
+    _mock_board(authed_page, payload)
+
+    _open_board(authed_page, base_url)
+    expect(authed_page.locator("li.board-item-chief")).to_be_visible()
+    _enter_chat_mode(authed_page)
+    expect(authed_page.locator("#boardChiefStatus")).not_to_contain_text(
+        "not running"
+    )
+    expect(authed_page.locator("#boardChiefStart")).to_be_hidden()
+
+
 def test_chief_stop_requires_confirm_other_cards_do_not(
     authed_page: Page, base_url: str
 ) -> None:
