@@ -351,3 +351,17 @@ class TestChiefSettings:
         assert client.put(
             "/api/board/chief/settings", json=bad
         ).status_code == 400
+
+    def test_put_accepts_raised_ceiling(self, webapp_client, _bypass_gate):
+        """#547: the ceiling was raised 8 -> 10 on direct request; 10 must
+        now persist (it 400'd against the old ceiling) and 11 must still
+        400 (the ceiling moved, it didn't disappear)."""
+        client, _, _ = webapp_client
+        resp = client.put(
+            "/api/board/chief/settings", json={"worker_cap": 10}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["settings"]["worker_cap"] == 10
+        assert client.put(
+            "/api/board/chief/settings", json={"worker_cap": 11}
+        ).status_code == 400

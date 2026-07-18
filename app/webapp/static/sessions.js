@@ -5,15 +5,21 @@
  * Copilot's /exit, …), waits briefly for a clean exit so shutdown hooks
  * run, then force-terminates as a fallback — and the window always closes.
  * Detached (remote) rows have no PTY to type into, so the host force-kills
- * the console directly.
+ * the console directly. One exception to the no-confirm design: the fleet
+ * chief (#547) — see stopSession()'s isChiefSession() guard.
  */
 
 import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
+// ensureChief lives in board.js, exported for this cross-tab use (#547);
+// board.js already imports stopSession/sessionTitle/openSessionRename from
+// this module, so this mirrors the existing sessions.js<->terminal.js
+// circular-import pattern rather than introducing a new risk.
+import { ensureChief } from './board.js';
 
 export function fmtAgo(epochSeconds) {
   if (!epochSeconds) return '';
@@ -87,15 +93,31 @@ export function sessionTitle(s) {
   return live || (s && s.name) || (s && s.project) || 'session';
 }
 
+// Fleet chief status (#547) — Coding-tab parity with the Board's chat-mode
+// row. Derived straight from state.sessions (already the Coding tab's own
+// poll of every launcher-owned session, chief included), so no extra fetch.
+function renderCodingChiefStatus() {
+  if (!els.codingChiefStatus) return;
+  const chief = state.sessions.find(isChiefSession);
+  const alive = !!(chief && chief.alive !== false);
+  els.codingChiefStatus.hidden = false;
+  els.codingChiefStart.hidden = alive;
+  els.codingChiefStatusText.textContent = alive ? 'chief: running' : 'chief: not running';
+}
+
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
   els.sessionsEmpty.hidden = state.sessions.length !== 0;
   renderHomeHead();
+  renderCodingChiefStatus();
 
   state.sessions.forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item session-item';
+    // Same accent tint + crown as the Board tab's chief card (#547) — the
+    // standing orchestrator reads distinct here too, not just on the Board.
+    if (isChiefSession(s)) li.classList.add('session-item-chief');
     // Stable hook so a test (or any consumer) can target a specific
     // session's row by id rather than position — e.g. the kill regression
     // must act on the session it launched, never ".first" (issue #260).
@@ -117,7 +139,13 @@ export function renderSessions() {
     // into the narrow space beside the badges (issue #113).
     const name = document.createElement('span');
     name.className = 'name';
-    name.textContent = sessionTitle(s);
+    if (isChiefSession(s)) {
+      const crown = document.createElement('span');
+      crown.className = 'board-chief-crown';
+      crown.innerHTML = icon('crown');
+      name.appendChild(crown);
+    }
+    name.appendChild(document.createTextNode(sessionTitle(s)));
     open.appendChild(name);
 
     const head = document.createElement('div');
@@ -229,7 +257,14 @@ export async function openSession(s) {
 export async function stopSession(s) {
   // No confirm — one tap stops (issue #253 follow-up). The stop is graceful
   // (the agent's own quit, then force-fallback) and a mis-tap is resumable,
-  // so a confirmation dialog is just friction.
+  // so a confirmation dialog is just friction. The one exception is the
+  // fleet chief (#547 — parity with the Board tab's own drawer guard,
+  // board.js:302): the chief is the one session a mis-tap shouldn't take
+  // down, from either the Coding tab's row or the terminal overlay's kill
+  // button (which calls this same function). The Board drawer's own call
+  // passes a stripped {session_id, name} object with no kind/label, so
+  // isChiefSession() is a safe no-op there and it never double-confirms.
+  if (isChiefSession(s) && !confirm(CHIEF_KILL_CONFIRM)) return;
   try {
     await jsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
@@ -335,6 +370,25 @@ export function wireSessions() {
     : null;
   if (headerActions) {
     headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
+  }
+  // Manual Start-chief (#547) — same ensure endpoint as the Board's chat
+  // mode, so a chief killed while the Coding tab was open (or via a
+  // deliberate tray/session-host restart) can be brought back without
+  // switching tabs.
+  if (els.codingChiefStart) {
+    els.codingChiefStart.addEventListener('click', async function () {
+      const btn = els.codingChiefStart;
+      btn.disabled = true;
+      try {
+        const body = await ensureChief(false);
+        toast(body.spawned ? '👑 Chief started' : 'Chief already running', 'good');
+        await fetchSessions();
+      } catch (exc) {
+        apiFailToast('Chief start failed', exc);
+      } finally {
+        btn.disabled = false;
+      }
+    });
   }
   wireSessionRenameDialog();
 }

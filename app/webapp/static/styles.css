@@ -1845,6 +1845,15 @@ body.terminal-open {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Fleet chief crown in the terminal overlay's own title (#547) — same marker
+   as the Board card and the Coding-tab row, set by terminal-mirror.js's
+   setTerminalTitleText(). */
+.terminal-title-crown {
+  display: inline-flex;
+  color: var(--accent);
+  margin-right: 4px;
+  vertical-align: -0.15em;
+}
 /* (#514) .terminal-bar-actions is a flex item of the row-flex .terminal-bar;
    without min-width: 0 a flex item's automatic minimum size is its content's
    min-content width, so this group refused to shrink below the sum of its
@@ -2386,30 +2395,11 @@ body.terminal-open {
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
 .board-repo-empty { color: var(--muted); cursor: default; }
 .board-repo-empty:hover { background: none; }
-.board-dispatch-modes { display: flex; gap: 4px; }
-/* Same 10px radius as the rest of the row's controls (compose-send/record,
-   .detached-toggle) — a 999px pill here read as a different, more-rounded
-   style than its neighbors (#337). */
-/* Not migrated to the button tiers (issue #477 audit): a segmented-control
-   toggle (has an .active state), not one of the four one-off action tiers. */
-.board-mode-btn {
-  min-height: var(--control-h);
-  padding: 0 10px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  font-size: var(--font-caption);
-  cursor: pointer;
-}
-.board-mode-btn.active {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--card-2);
-}
-/* Model dropdown (#500): a native <select> like the Copilot model picker,
-   shrunk to the row's shared control height + caption size so it lines up
-   with the mode pill and the compose buttons. */
+/* Dispatch mode + model dropdowns (#500, mode collapsed from a 4-segment
+   radiogroup into a matching select in #547 — the segments no longer fit an
+   iPhone-width row once chat mode landed): native <select>s like the Copilot
+   model picker, shrunk to the row's shared control height + caption size so
+   they line up with the compose buttons. */
 .board-dispatch-row .select-native {
   padding: 0 10px;
   font-size: var(--font-caption);
@@ -2459,6 +2449,15 @@ body.terminal-open {
 }
 .board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
 .board-chief-status-text { flex: 1; min-width: 0; }
+/* The settings gear sits outside .board-dispatch-row, so it misses that
+   row's .compose-record shrink rule and rendered at the base 44px size —
+   visibly bigger than every other icon button in the bar (#547). Match the
+   same 36px --control-h square footprint here directly. */
+.board-chief-status .compose-record {
+  min-height: var(--control-h);
+  min-width: var(--control-h);
+  padding: 0;
+}
 .board-chief-start {
   min-height: var(--control-h);
   padding: 0 14px;
@@ -2583,8 +2582,7 @@ body.terminal-open {
   margin: 0 0 10px;
 }
 /* Not migrated to the button tiers (issue #477 audit): the column-switcher
-   strip is a segmented control (has an .active state), same case as
-   .board-mode-btn above. */
+   strip is a segmented control (has an .active state). */
 .board-strip-btn {
   flex: 1;
   min-width: 0;
@@ -2612,7 +2610,29 @@ body.terminal-open {
 /* "Your turn" holding work is the one number that matters. State signal,
    not decoration — the warn color marks pending human action. */
 .board-strip-btn.attention .board-count { background: var(--attention); color: var(--attention-fg); }
-.board-refresh { flex: 0 0 auto; }
+/* Had no icon-button box at all before #547 (only flex: 0 0 auto — a bare
+   default browser button, visibly smaller/different than the dispatch bar's
+   ↻/send buttons above it). Same 36px --control-h square recipe as
+   .board-dispatch-row .compose-record and .model-combo-trigger, so every
+   icon-sized button in the Board tab now shares one footprint. */
+.board-refresh {
+  flex: 0 0 auto;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  width: var(--control-h);
+  min-width: var(--control-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-label);
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.board-refresh:active { background: var(--card); }
 .board-status { color: var(--muted); font-size: var(--font-caption); margin: 0 0 8px; }
 
 /* Claude 5h/7d usage badges (issue #326) — dot + label, colored by usage
@@ -2726,6 +2746,15 @@ body.terminal-open {
 }
 .board-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 .board-empty { margin: 4px 0 12px; }
+
+/* Fleet chief row in the Coding tab's session list (#547) — same accent-soft
+   tint + accent left edge as the Board card above, adapted to this tab's
+   flat GitHub-list row shape (.app-item has no card box of its own). */
+.app-item.session-item.session-item-chief {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+}
+.session-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 
 /* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
    background/border/radius, just a bottom-border divider between rows

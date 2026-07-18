@@ -139,7 +139,9 @@ def _open_board(page: Page, base_url: str) -> None:
 
 
 def _enter_chat_mode(page: Page) -> None:
-    page.locator('#boardDispatchModes .board-mode-btn[data-mode="chat"]').click()
+    # Mode collapsed from a 4-segment radiogroup into a <select> in #547 —
+    # the segments no longer fit an iPhone-width row.
+    page.locator("#boardDispatchMode").select_option("chat")
 
 
 def test_chat_mode_routes_message_to_chief_not_dispatch(
