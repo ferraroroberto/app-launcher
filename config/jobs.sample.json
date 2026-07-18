@@ -28,6 +28,15 @@
       "cooldown_seconds": 3600
     },
     {
+      "id": "design-sweep-fleet",
+      "name": "Weekly Design Sweep (fleet)",
+      "script_path": "E:\\automation\\fleet-config\\skills\\design-sweep\\run-weekly.bat",
+      "args": "",
+      "schedule": { "type": "weekly", "day": "SAT", "at": "22:00" },
+      "visible": true,
+      "cooldown_seconds": 3600
+    },
+    {
       "id": "weekly-recap-draft",
       "name": "Weekly Recap (draft)",
       "script_path": "E:\\automation\\life-os\\.claude\\skills\\_recap\\run-weekly.bat",
