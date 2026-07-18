@@ -244,6 +244,22 @@ def test_merge_joins_by_normalized_cwd():
     assert cards[0]["session_id"] == "aaa"
 
 
+def test_merge_carries_label_from_live_session():
+    """The role tag (#245) rides the live session into the board card so the
+    frontend can single out e.g. the fleet chief; absent → empty string."""
+    cards = board.merge_sessions(
+        [
+            _live("aaa", "E:\\automation\\fleet-config", 30, label="chief"),
+            _live("bbb", "E:\\automation\\photo-ocr", 20),
+        ],
+        {},
+        now=NOW,
+    )
+    by_id = {c["session_id"]: c for c in cards}
+    assert by_id["aaa"]["label"] == "chief"
+    assert by_id["bbb"]["label"] == ""
+
+
 def test_merge_matches_cwd_under_project_dir():
     cards = board.merge_sessions(
         [_live("aaa", "E:/automation/app-launcher", 30)],

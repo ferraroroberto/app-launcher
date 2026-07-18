@@ -246,6 +246,7 @@ def merge_sessions(
             "state_sid": sid,
             "kind": sess.get("kind"),
             "agent": sess.get("agent"),
+            "label": sess.get("label") or "",
             "project_dir": project_dir,
             "name": sess.get("name"),
             "alive": bool(sess.get("alive", True)),

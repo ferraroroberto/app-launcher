@@ -352,6 +352,26 @@ def test_pty_session_to_api_carries_agent():
     assert session.to_api()["agent"] == "antigravity"
 
 
+def test_create_threads_label_to_api(tmp_path, monkeypatch):
+    """The role tag (#245, e.g. the fleet chief) rides create() → to_api()
+    so callers can find a purpose-built session deterministically; omitted
+    stays the empty string."""
+    captured: dict = {}
+    from src import session_host
+
+    monkeypatch.setattr(session_host, "PtyProcess", _fake_pty_process(captured))
+    monkeypatch.setattr(session_host.PtySession, "start_reader", lambda self: None)
+
+    mgr = SessionManager()
+    mgr.attach_loop(MagicMock())
+
+    chief = mgr.create(str(tmp_path), "chief", "", "claude", label="chief")
+    assert chief.to_api()["label"] == "chief"
+
+    plain = mgr.create(str(tmp_path), "proj", "", "claude")
+    assert plain.to_api()["label"] == ""
+
+
 def test_pty_session_to_api_reports_output_chars():
     """The board's dispatch readiness probe (#302) reads ``output_chars`` —
     0 before the agent paints anything, the scrollback ring's length after."""

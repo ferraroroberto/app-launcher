@@ -67,6 +67,10 @@
     <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
     <circle cx="12" cy="12" r="3" />
   </symbol>
+  <symbol id="i-crown" viewBox="0 0 24 24" fill="none">
+    <path d="M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.735H5.81a1 1 0 0 1-.957-.735L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z" />
+    <path d="M5 21h14" />
+  </symbol>
   <symbol id="i-sprout" viewBox="0 0 24 24" fill="none">
     <path d="M14 9.536V7a4 4 0 0 1 4-4h1.5a.5.5 0 0 1 .5.5V5a4 4 0 0 1-4 4 4 4 0 0 0-4 4c0 2 1 3 1 5a5 5 0 0 1-1 3" />
     <path d="M4 9a5 5 0 0 1 8 4 5 5 0 0 1-8-4" />
@@ -806,6 +810,8 @@
                     role="radio" aria-checked="false" title="/issue-add now — file and build straight away">build</button>
             <button type="button" class="board-mode-btn" data-mode="yolo"
                     role="radio" aria-checked="false" title="/issue-yolo — file, build, and ship">yolo</button>
+            <button type="button" class="board-mode-btn" data-mode="chat"
+                    role="radio" aria-checked="false" title="chat — talk to the standing fleet chief (#245)">chat</button>
           </div>
           <!-- Wrapper span carries the ▾ affordance on the phone, where the
                select is flattened to the row's shared button recipe (#496) —
@@ -825,6 +831,15 @@
                   title="Clear the goal"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
           <button id="boardDispatchSend" type="button" class="compose-send"
                   title="Dispatch the goal"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
+        </div>
+        <!-- Chief status row (#245) — chat mode only. Static markup like the
+             rest of the bar; renderChiefStatus() only flips hidden/text. -->
+        <div id="boardChiefStatus" class="board-chief-status" hidden>
+          <span class="board-chief-crown"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg></span>
+          <span id="boardChiefStatusText" class="board-chief-status-text"></span>
+          <button id="boardChiefStart" type="button" class="board-chief-start" hidden>Start</button>
+          <button id="boardChiefSettings" type="button" class="compose-record"
+                  title="Chief settings" aria-label="Chief settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
         </div>
       </div>
       <div class="board-strip" role="tablist" aria-label="Board columns">
@@ -1211,6 +1226,37 @@
         <input id="renameInput" type="text" class="input-native" required>
         <div class="row dialog-actions">
           <button type="button" id="renameCancel" class="button-ghost">Cancel</button>
+          <button type="submit" class="button-tint">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="chiefSettingsDialog" class="rename-dialog chief-settings-dialog">
+      <form id="chiefSettingsForm">
+        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg> Chief settings</h2>
+        <div class="chief-settings-row">
+          <label for="chiefModelSelect">Model</label>
+          <select id="chiefModelSelect" class="select-native">
+            <option value="sonnet">Sonnet</option>
+            <option value="opus">Opus</option>
+            <option value="fable" selected>Fable</option>
+          </select>
+        </div>
+        <div class="chief-settings-row">
+          <span id="chiefRespawnLabel">Daily respawn</span>
+          <button id="chiefRespawnToggle" type="button" class="toggle on" role="switch"
+                  aria-checked="true" aria-labelledby="chiefRespawnLabel"><span class="knob"></span><span class="toggle-label">ON</span></button>
+        </div>
+        <div class="chief-settings-row">
+          <label for="chiefRespawnAt">Respawn time</label>
+          <input id="chiefRespawnAt" type="time" class="input-native" value="05:00">
+        </div>
+        <div class="chief-settings-row">
+          <label for="chiefWorkerCap">Worker cap</label>
+          <input id="chiefWorkerCap" type="number" class="input-native" min="1" max="8" step="1" value="3">
+        </div>
+        <div class="row dialog-actions">
+          <button type="button" id="chiefSettingsCancel" class="button-ghost">Cancel</button>
           <button type="submit" class="button-tint">Save</button>
         </div>
       </form>

@@ -2446,6 +2446,53 @@ body.terminal-open {
   }
 }
 
+/* Fleet chief (#245): the chat-mode status row under the dispatch bar —
+   crown + one-line liveness + Start (only when down) + the settings gear.
+   Same caption voice as .board-status; the row is static markup like the
+   rest of the bar, renderChiefStatus() only flips hidden/text. */
+.board-chief-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+}
+.board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
+.board-chief-status-text { flex: 1; min-width: 0; }
+.board-chief-start {
+  min-height: var(--control-h);
+  padding: 0 14px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-md);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Chief settings dialog rows: label/value on the modal contract's 12px
+   rhythm, value control right-aligned (the rename-dialog base supplies the
+   surface, header, and the equal Cancel/Save footer pair). */
+.chief-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-muted);
+}
+.chief-settings-row label,
+.chief-settings-row > span:first-child {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.chief-settings-row .select-native,
+.chief-settings-row .input-native {
+  width: auto;
+  min-width: 110px;
+}
+
 /* Launch-model dropdown (#540) for the Coding + Life OS card summaries. A
    native <select> cannot live inside a <summary> — WebKit's HTML parser
    derails on it (closes the <details> early, cascading into a broken tree
@@ -2665,6 +2712,19 @@ body.terminal-open {
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
 .board-item.is-idle .board-card { opacity: 0.7; }
+/* Fleet chief card (#245): the standing orchestrator reads distinct from
+   worker sessions — the canonical accent tint (the #528 in-progress recipe)
+   plus an accent left edge and the crown glyph colored to match. The tint
+   works in both themes (accent-soft is a color-mix over the per-theme
+   accent). Status accents above still win the left edge when more urgent
+   (needs-you/failed) because they share specificity and come first — the
+   chief rule below overrides via the extra class. */
+.board-item.board-item-chief .board-card {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  opacity: 1;
+}
+.board-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 .board-empty { margin: 4px 0 12px; }
 
 /* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
