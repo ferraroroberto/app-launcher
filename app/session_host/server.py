@@ -128,6 +128,9 @@ def create_app() -> FastAPI:
         flags = str(body.get("flags") or "").strip()
         kind = str(body.get("kind") or "pty").strip().lower()
         agent = str(body.get("agent") or DEFAULT_AGENT).strip().lower()
+        # Role tag (e.g. "chief", #245) so callers can find a purpose-built
+        # session deterministically. PTY-only; remote sessions ignore it.
+        label = str(body.get("label") or "").strip().lower()
         # Phone-supplied spawn dimensions (issue #126): size the PTY to the
         # real viewport before first paint so a ratatui TUI isn't cut.
         # Omitted → the manager's legacy 40×120 default.
@@ -148,7 +151,7 @@ def create_app() -> FastAPI:
             else:
                 session = manager.create(
                     project_dir, name, flags, agent, rows=rows, cols=cols,
-                    history_lines=history_lines,
+                    history_lines=history_lines, label=label,
                 )
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))

@@ -4,6 +4,7 @@ Focused on ``history_lines`` (issue #435 follow-up, Settings-tab
 configurable scrollback depth): the endpoint must forward it to
 ``SessionManager.create`` when present, and pass ``None`` (SessionManager's
 own default) when the caller omits it — never a spurious 0/null override.
+Plus ``label`` (#245): forwarded normalized when given, ``""`` when omitted.
 """
 
 from __future__ import annotations
@@ -19,10 +20,10 @@ def _stub_manager(monkeypatch):
     captured: dict = {}
 
     def fake_create(project_dir, name, flags, agent, rows=40, cols=120,
-                     history_lines=None):
+                     history_lines=None, label=""):
         captured.update(
             project_dir=project_dir, name=name, flags=flags, agent=agent,
-            rows=rows, cols=cols, history_lines=history_lines,
+            rows=rows, cols=cols, history_lines=history_lines, label=label,
         )
         session = MagicMock()
         session.to_api.return_value = {"session_id": "sid", "kind": "pty"}
@@ -62,3 +63,22 @@ def test_create_defaults_history_lines_to_none_when_omitted(monkeypatch):
 
     assert resp.status_code == 200
     assert captured["history_lines"] is None
+    assert captured["label"] == ""
+
+
+def test_create_forwards_normalized_label(monkeypatch):
+    """#245: the role tag rides through lowercased/stripped — the chief
+    ensure endpoint matches on it, so normalization lives server-side."""
+    captured = _stub_manager(monkeypatch)
+    client = TestClient(server.app)
+
+    resp = client.post(
+        "/sessions",
+        json={
+            "project_dir": r"C:\proj", "name": "chief", "flags": "",
+            "agent": "claude", "label": " Chief ",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert captured["label"] == "chief"

@@ -113,6 +113,13 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board dispatch (#302): spawn + type — both terminal-grade.",
     ),
     (
+        lambda p: p.startswith("/api/board/chief/"),
+        "passkey",
+        "Fleet chief (#245): ensure spawns + types into a PTY, settings steer "
+        "it — both terminal-grade. Loopback (the daily job, the /chief skill) "
+        "bypasses like everything else.",
+    ),
+    (
         lambda p: p == "/api/transcribe" or p.startswith("/api/transcribe/"),
         "passkey",
         "Voice dictation (#165/#168): the recording is as sensitive as terminal "

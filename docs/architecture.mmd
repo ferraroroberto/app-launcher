@@ -50,7 +50,7 @@ flowchart TB
       R_CC["claude_code.py — flags, git-status, generate"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
-      R_BOARD["board.py — /api/board (Board tab)"]
+      R_BOARD["board.py — /api/board (Board tab)\n+ dispatch & fleet-chief ensure/settings (#245)"]
       R_SYSMAP["system_map.py — fleet map section"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
     end
@@ -127,6 +127,7 @@ flowchart TB
   JOBSFACADE --> JOBSPREFLIGHT
   JOBSFACADE --> JOBSARGV
   R_BOARD --> BOARD
+  R_BOARD -->|"dispatch + chief spawn-then-type\n(chief session cwd = fleet-config,\nbrain = its /chief skill)"| SESSCLIENT
   BOARD --> SESSCLIENT
   BOARD --> JOBSFACADE
   BOARD --> GHCLIENT

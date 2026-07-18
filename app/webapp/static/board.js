@@ -39,6 +39,7 @@ import { openSessionRename, sessionTitle, stopSession } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
+import { setSwitch } from './_vendored/switch/switch.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 
@@ -72,6 +73,39 @@ function fmtAge(seconds) {
 // codepaths (#383 review round first duplicated a smaller version of this).
 function sessionLabel(card) {
   return sessionTitle(card) || card.project || 'session';
+}
+
+// ---------------------------------------------------- fleet chief (#245)
+// The standing conversational orchestrator: one label="chief" PTY session
+// the chat dispatch mode talks to. Server-side plumbing in routers/board.py;
+// the brain is fleet-config's /chief skill.
+
+function isChiefCard(card) {
+  return card.label === 'chief';
+}
+
+function findChiefCard() {
+  const columns = (state.board && state.board.columns) || {};
+  let found = null;
+  Object.keys(columns).some(function (key) {
+    return (columns[key] || []).some(function (c) {
+      if (isChiefCard(c)) { found = c; return true; }
+      return false;
+    });
+  });
+  return found;
+}
+
+async function ensureChief(fresh) {
+  const tt = await ensureTerminalToken();
+  const payload = fresh ? { fresh: true } : {};
+  // Same size contract as every launch (issue #374).
+  applyLaunchSizePayload(payload);
+  return jsonApi('/api/board/chief/ensure', {
+    method: 'POST',
+    headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+    body: JSON.stringify(payload),
+  });
 }
 
 const STATUS_META = {
@@ -112,6 +146,16 @@ function renderSessionCard(card) {
   const meta = STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
   const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
+  // The chief's card is visually distinct (#245): accent tint + crown, so
+  // the standing orchestrator never blends in with worker sessions.
+  if (isChiefCard(card)) {
+    shell.li.classList.add('board-item-chief');
+    const crown = document.createElement('span');
+    crown.className = 'board-card-top-icon board-chief-crown';
+    crown.innerHTML = icon('crown');
+    const chiefTop = shell.btn.querySelector('.board-card-top');
+    chiefTop.insertBefore(crown, chiefTop.firstChild);
+  }
   // The Board now includes every launcher-owned agent, not only Claude Code
   // (#455). Show the same registry-backed brand identity as the Coding tab so
   // an unknown/degraded status never hides which terminal the card belongs to.
@@ -146,6 +190,14 @@ function renderSessionCard(card) {
 
 // ------------------------------------------------------ drill-down drawer
 
+// Chief-only exchange refresh (#245): loadExchange is one-shot, fine for a
+// worker drawer you glance at — but a chat conversation needs the chief's
+// reply to *arrive*. While the chief's drawer is open, re-run loadExchange
+// on a short interval. Cleared unconditionally at the top of renderBoard()
+// (drawers are rebuilt every render, and every close path goes through it).
+let chiefExchangeTimer = null;
+const CHIEF_EXCHANGE_POLL_MS = 5000;
+
 function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
@@ -158,6 +210,14 @@ function buildDrawer(card) {
   exchange.textContent = 'Reading last exchange…';
   drawer.appendChild(exchange);
   loadExchange(card, exchange);
+  if (isChiefCard(card)) {
+    chiefExchangeTimer = setInterval(function () {
+      // Defensive: a tab switch doesn't re-render the board, so gate on
+      // the drawer actually still being the visible one.
+      if (state.tab !== 'board' || state.boardExpanded !== card.session_id) return;
+      loadExchange(card, exchange);
+    }, CHIEF_EXCHANGE_POLL_MS);
+  }
 
   const actions = document.createElement('div');
   actions.className = 'board-drawer-actions';
@@ -231,6 +291,10 @@ function buildDrawer(card) {
     stop.title = 'Stop and kill this session';
     stop.setAttribute('aria-label', 'Stop and kill this session');
     stop.addEventListener('click', async function () {
+      // Kill protection (#245): the chief is the one session a mis-tap
+      // shouldn't take down — same confirm() convention as Apps/Jobs kills.
+      // Every other card keeps the deliberate one-tap stop (#253).
+      if (isChiefCard(card) && !confirm('Kill the chief session?')) return;
       stop.disabled = true;
       // Close the drawer first — fetchBoard() self-gates while it's open,
       // so a stop with the drawer up would never see the card clear.
@@ -559,6 +623,12 @@ function renderStatusLine(body) {
 // dom-utils.js::renderUsageBadgeRow.
 
 export function renderBoard() {
+  // Drawers rebuild every render — the chief exchange poll (#245) must
+  // never outlive the DOM node it writes into.
+  if (chiefExchangeTimer) {
+    clearInterval(chiefExchangeTimer);
+    chiefExchangeTimer = null;
+  }
   const body = state.board;
   if (!body || !els.boardColumns) return;
   const columns = body.columns || {};
@@ -840,6 +910,11 @@ function matchesRepoFilter(card, filter) {
   return !!repo && String(repo).toLowerCase() === String(filter).toLowerCase();
 }
 
+const DISPATCH_PLACEHOLDER =
+  'Speak or type a goal — send dispatches an /issue-* session.';
+const CHAT_PLACEHOLDER =
+  'Ask the chief — questions answer, directions dispatch.';
+
 function setDispatchMode(mode) {
   dispatchMode = mode;
   els.boardDispatchModes.querySelectorAll('.board-mode-btn')
@@ -848,6 +923,159 @@ function setDispatchMode(mode) {
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-checked', active ? 'true' : 'false');
     });
+  syncChatModeUi();
+}
+
+// Chat mode (#245): the same bar, rerouted — text goes to the standing
+// chief's PTY instead of a fresh /issue-* session. Toggling off restores
+// the one-shot dispatch exactly (the mode governs only the send path).
+function syncChatModeUi() {
+  const chat = dispatchMode === 'chat';
+  els.boardDispatchGoal.placeholder = chat ? CHAT_PLACEHOLDER : DISPATCH_PLACEHOLDER;
+  if (els.boardDispatchModel) {
+    // The chief's model is owned by chief settings, not the per-dispatch
+    // selector — grey it out so the bar doesn't suggest otherwise.
+    els.boardDispatchModel.disabled = chat;
+  }
+  renderChiefStatus();
+}
+
+function renderChiefStatus() {
+  const row = els.boardChiefStatus;
+  if (!row) return;
+  const chat = dispatchMode === 'chat';
+  row.hidden = !chat;
+  if (!chat) return;
+  const chief = findChiefCard();
+  const alive = !!(chief && chief.alive);
+  els.boardChiefStart.hidden = alive;
+  els.boardChiefStatusText.textContent = alive
+    ? 'chief: ' + (chief.status || 'idle')
+    : 'chief: not running';
+}
+
+async function dispatchChat() {
+  const text = els.boardDispatchGoal.value.trim();
+  if (!text) {
+    toast('Type or dictate a message first', 'error');
+    return;
+  }
+  const btn = els.boardDispatchSend;
+  btn.disabled = true;
+  // A first message may spawn the chief (spawn-then-type server-side), so
+  // this legitimately takes seconds — tick like dispatchGoal does.
+  const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
+  try {
+    const ensured = await ensureChief(false);
+    const sid = ensured.session_id;
+    const tt = await ensureTerminalToken();
+    await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
+      {
+        method: 'POST',
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+        body: JSON.stringify({ data: text, submit: true }),
+      }
+    );
+    // Conversation semantics: unlike dispatch's keep-for-multi-dispatch,
+    // a sent chat message clears — the reply is the next thing you want.
+    els.boardDispatchGoal.value = '';
+    if (ensured.spawned) {
+      toast('👑 Chief spawned — first reply may take a moment', 'good');
+    }
+    // Open the chief's drawer so the reply lands somewhere visible. The
+    // card is already in /api/board (live sessions fold in before hook
+    // state exists); fetch once with no drawer open, then expand.
+    state.boardExpanded = null;
+    await fetchBoard().catch(function () {});
+    state.boardExpanded = sid;
+    renderBoard();
+  } catch (exc) {
+    apiFailToast('Chief message failed', exc);
+  } finally {
+    stopTimer();
+    btn.disabled = false;
+  }
+}
+
+// ---- chief settings dialog (#245): GET on open, PUT on Save. The dialog
+// is the modal contract's editor shape (rename-dialog base); the respawn
+// switch is the vendored fleet switch.
+
+let chiefRespawnOn = true;
+
+async function openChiefSettings() {
+  try {
+    const tt = await ensureTerminalToken();
+    const body = await jsonApi('/api/board/chief/settings', {
+      headers: authHeaders({ terminalToken: tt }),
+    });
+    const s = body.settings || {};
+    els.chiefModelSelect.value = s.model || 'fable';
+    chiefRespawnOn = s.respawn_enabled !== false;
+    setSwitch(els.chiefRespawnToggle, chiefRespawnOn);
+    els.chiefRespawnAt.value = s.respawn_at || '05:00';
+    els.chiefWorkerCap.value = String(s.worker_cap || 3);
+    els.chiefSettingsDialog.showModal();
+  } catch (exc) {
+    apiFailToast('Chief settings unavailable', exc);
+  }
+}
+
+async function saveChiefSettings() {
+  try {
+    const tt = await ensureTerminalToken();
+    const body = await jsonApi('/api/board/chief/settings', {
+      method: 'PUT',
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+      body: JSON.stringify({
+        model: els.chiefModelSelect.value,
+        respawn_enabled: chiefRespawnOn,
+        respawn_at: els.chiefRespawnAt.value,
+        worker_cap: parseInt(els.chiefWorkerCap.value, 10),
+      }),
+    });
+    els.chiefSettingsDialog.close();
+    if (body.job_warning) {
+      toast('⚠️ Saved — ' + body.job_warning, 'error');
+    } else {
+      toast('✅ Chief settings saved', 'good');
+    }
+  } catch (exc) {
+    apiFailToast('Chief settings save failed', exc);
+  }
+}
+
+function wireChief() {
+  if (!els.boardChiefStatus) return;
+  els.boardChiefStart.addEventListener('click', async function () {
+    const startBtn = els.boardChiefStart;
+    startBtn.disabled = true;
+    const stopTimer = startWorkTimer(startBtn, 'Start');
+    try {
+      const body = await ensureChief(false);
+      toast(body.spawned ? '👑 Chief started' : 'Chief already running', 'good');
+      await fetchBoard().catch(function () {});
+      renderChiefStatus();
+    } catch (exc) {
+      apiFailToast('Chief start failed', exc);
+    } finally {
+      stopTimer();
+      startBtn.disabled = false;
+    }
+  });
+  els.boardChiefSettings.addEventListener('click', openChiefSettings);
+  els.chiefRespawnToggle.addEventListener('click', function () {
+    chiefRespawnOn = !chiefRespawnOn;
+    setSwitch(els.chiefRespawnToggle, chiefRespawnOn);
+  });
+  els.chiefSettingsForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    saveChiefSettings();
+  });
+  els.chiefSettingsCancel.addEventListener('click', function () {
+    els.chiefSettingsDialog.close();
+  });
 }
 
 async function dispatchGoal() {
@@ -898,6 +1126,7 @@ function syncDispatchBar() {
   if (els.boardDispatchRecord) {
     els.boardDispatchRecord.hidden = !voiceDictationAvailable();
   }
+  renderChiefStatus();
 }
 
 function wireRepoCombo() {
@@ -936,7 +1165,8 @@ function wireDispatch() {
   // The model <select> (#500) is a plain client-side control (issue #355
   // pattern) — no server config, just read at dispatch time above.
   els.boardDispatchSend.addEventListener('click', function () {
-    dispatchGoal();
+    if (dispatchMode === 'chat') dispatchChat();
+    else dispatchGoal();
   });
   els.boardDispatchClear.addEventListener('click', function () {
     els.boardDispatchGoal.value = '';
@@ -947,6 +1177,7 @@ function wireDispatch() {
     getTextarea: function () { return els.boardDispatchGoal; },
   });
   els.boardDispatchRecord.addEventListener('click', dictation.toggle);
+  wireChief();
   syncDispatchBar();
 }
 

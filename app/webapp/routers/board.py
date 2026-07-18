@@ -9,6 +9,13 @@
     POST /api/board/dispatch              → speak/type a goal into a fresh
                                             /issue-add|yolo session (Tailscale
                                             + passkey)
+    POST /api/board/chief/ensure          → spawn the fleet chief if absent
+                                            (?fresh=1 kills + respawns) —
+                                            Tailscale + passkey
+    GET  /api/board/chief/settings        → chief settings block (also read
+                                            by the /chief skill over loopback)
+    PUT  /api/board/chief/settings        → persist chief settings + resync
+                                            the daily respawn job
 
 ``GET /api/board`` is the 5s poll target, so it does only cheap work: the live
 session list from the session-host, one state-file read, one jobs-runs walk
@@ -51,10 +58,17 @@ from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException, Request
 
 from src import agents, audit, board, github_client, session_client
+from src import jobs as jobs_mod
+from src import jobs_config
 from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
-from src.webapp_config import WebappConfig, build_claude_flags, build_codex_flags
+from src.webapp_config import (
+    WebappConfig,
+    build_claude_flags,
+    build_codex_flags,
+    update_webapp_config,
+)
 
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
@@ -409,6 +423,34 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
         raise HTTPException(status_code=504, detail="session died during startup")
 
 
+async def _type_into_session(port: int, sid: str, command: str) -> None:
+    """Await readiness, then type ``command`` into the session's PTY.
+
+    Bracketed-paste framing keeps the text one atomic paste (no
+    per-keystroke TUI interpretation) and routes it through the
+    first-prompt title capture (#266); the CR is its own second write so
+    the paste-end marker can't swallow it (#64/#166). On any failure past
+    the spawn the half-spawned session is killed, so a timeout can't
+    strand an orphan the user never asked for. Shared by dispatch (#302)
+    and the chief ensure (#245) so the two-frame rule stays single-sourced.
+    """
+    try:
+        await _await_dispatch_ready(port, sid)
+        await asyncio.to_thread(
+            session_client.send_input, port, sid,
+            "\x1b[200~" + command + "\x1b[201~",
+        )
+        await asyncio.to_thread(session_client.send_input, port, sid, "\r")
+    except (HTTPException, session_client.SessionHostError) as exc:
+        try:
+            await asyncio.to_thread(session_client.stop, port, sid, "kill")
+        except session_client.SessionHostError:
+            pass
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+
+
 @router.post("/api/board/dispatch")
 async def dispatch_goal(request: Request) -> Dict[str, Any]:
     """Free-text goal → a fresh ``/issue-*`` session (Tailscale + passkey, #302).
@@ -461,31 +503,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
 
     sid = str(session.get("session_id") or "")
     command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
-    try:
-        await _await_dispatch_ready(cfg.session_host_port, sid)
-        # Bracketed-paste framing keeps the goal one atomic paste (no
-        # per-keystroke TUI interpretation) and routes it through the
-        # first-prompt title capture (#266); the CR is its own second
-        # write so the paste-end marker can't swallow it (#64/#166).
-        await asyncio.to_thread(
-            session_client.send_input,
-            cfg.session_host_port,
-            sid,
-            "\x1b[200~" + command + "\x1b[201~",
-        )
-        await asyncio.to_thread(
-            session_client.send_input, cfg.session_host_port, sid, "\r"
-        )
-    except (HTTPException, session_client.SessionHostError) as exc:
-        try:
-            await asyncio.to_thread(
-                session_client.stop, cfg.session_host_port, sid, "kill"
-            )
-        except session_client.SessionHostError:
-            pass
-        if isinstance(exc, HTTPException):
-            raise
-        raise HTTPException(status_code=exc.status, detail=str(exc))
+    await _type_into_session(cfg.session_host_port, sid, command)
 
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
@@ -493,3 +511,295 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
         skill=command, audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
     return {"launched": command, "repo": entry.name, "session": session}
+
+
+# --------------------------------------------------------- fleet chief (#245)
+# The standing conversational orchestrator behind the Board's chat mode. The
+# chief is a normal PTY session (label="chief") spawned in the fleet-config
+# checkout — that cwd is what loads the fleet-only /chief skill tier and
+# keeps app-launcher's own project context out of it. The server ships zero
+# chief prose: the spawn types only "/chief", so the brain stays versioned
+# in fleet-config. Three triggers hit the same ensure endpoint: the first
+# chat-mode message (lazy), the registered chief-daily-respawn job
+# (?fresh=1, context hygiene), and the manual Start button.
+
+_CHIEF_REPO = "fleet-config"
+_CHIEF_LABEL = "chief"
+_CHIEF_COMMAND = "/chief"
+_CHIEF_TITLE = "chief"
+_CHIEF_JOB_ID = "chief-daily-respawn"
+# How long a fresh respawn waits for the old chief's graceful stop before
+# escalating to kill. Module-level so tests can patch it tiny.
+CHIEF_STOP_WAIT_S = 8.0
+CHIEF_STOP_POLL_S = 0.25
+# Boot quiescence (#245 review): first-paint + settle is NOT always "input
+# ready" for a fresh --remote-control Claude — a rename typed at paint+2s
+# had its CR swallowed mid-boot, leaving "/rename …" in the input line and
+# merging with the later /chief paste into one garbage prompt (observed
+# on-device 2026-07-18). So before typing anything into the chief, wait
+# until the boot output stops growing for a stable window; cap and proceed
+# best-effort rather than failing the spawn.
+CHIEF_QUIESCENT_STABLE_S = 2.0
+CHIEF_QUIESCENT_CAP_S = 30.0
+CHIEF_QUIESCENT_POLL_S = 0.5
+
+# Two concurrent ensures (e.g. a chat send racing the daily job) must not
+# double-spawn; the lock serializes the check-then-spawn window.
+_CHIEF_ENSURE_LOCK = asyncio.Lock()
+
+
+def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The alive chief PTY session, or {}. Matches the ``label`` tag with a
+    ``name`` fallback so a legacy session-host that didn't echo ``label``
+    still can't be double-spawned."""
+    for sess in live:
+        if not sess.get("alive") or sess.get("kind") != "pty":
+            continue
+        if sess.get("label") == _CHIEF_LABEL or sess.get("name") == _CHIEF_LABEL:
+            return sess
+    return {}
+
+
+def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    return {
+        "model": cfg.chief_model,
+        "respawn_enabled": cfg.chief_respawn_enabled,
+        "respawn_at": cfg.chief_respawn_at,
+        "worker_cap": cfg.chief_worker_cap,
+    }
+
+
+def _sync_chief_respawn_job(enabled: bool, at: str) -> str:
+    """Point the registered chief-daily-respawn job at the new time, or park
+    it. Returns a warning string ("" when fine) instead of raising — the
+    settings save must persist even when the job isn't registered yet.
+    Runs in a worker thread (jobs I/O + schtasks are blocking)."""
+    jobs_cfg = jobs_config.load_jobs()
+    job = jobs_config.get_by_id(jobs_cfg, _CHIEF_JOB_ID)
+    if job is None:
+        return (
+            f"{_CHIEF_JOB_ID} job not registered — copy it from "
+            "config/jobs.sample.json via the Jobs tab"
+        )
+    try:
+        if enabled:
+            if job.is_paused:
+                jobs_config.resume_job(jobs_cfg, _CHIEF_JOB_ID)
+            job = jobs_config.update_job(
+                jobs_cfg, _CHIEF_JOB_ID,
+                schedule={"type": "daily", "at": at},
+            )
+        else:
+            job = jobs_config.pause_job(jobs_cfg, _CHIEF_JOB_ID)
+        if job is not None:
+            jobs_mod.sync_schtasks(job)
+    except ValueError as exc:
+        return f"could not resync {_CHIEF_JOB_ID}: {exc}"
+    return ""
+
+
+@router.get("/api/board/chief/settings")
+async def get_chief_settings(request: Request) -> Dict[str, Any]:
+    """The chief settings block. Also the /chief skill's rails source: the
+    worker cap is read from here over loopback, so it stays phone-tunable
+    without a fleet-config commit."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    return {"settings": _chief_settings_payload(cfg)}
+
+
+@router.put("/api/board/chief/settings")
+async def put_chief_settings(request: Request) -> Dict[str, Any]:
+    """Persist chief settings; a respawn-time/enabled change resyncs the
+    registered daily job (best-effort — an unregistered job is a warning in
+    the response, never a failed save)."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    patch: Dict[str, Any] = {}
+    if "model" in body:
+        patch["chief_model"] = str(body.get("model") or "").strip().lower()
+    if "respawn_enabled" in body:
+        patch["chief_respawn_enabled"] = bool(body.get("respawn_enabled"))
+    if "respawn_at" in body:
+        patch["chief_respawn_at"] = str(body.get("respawn_at") or "").strip()
+    if "worker_cap" in body:
+        try:
+            patch["chief_worker_cap"] = int(body.get("worker_cap"))
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400, detail="worker_cap must be an integer"
+            )
+    if not patch:
+        raise HTTPException(status_code=400, detail="no chief settings in body")
+    respawn_changed = (
+        patch.get("chief_respawn_at", cfg.chief_respawn_at)
+        != cfg.chief_respawn_at
+        or patch.get("chief_respawn_enabled", cfg.chief_respawn_enabled)
+        != cfg.chief_respawn_enabled
+    )
+    try:
+        new_cfg = await asyncio.to_thread(update_webapp_config, **patch)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    request.app.state.webapp_config = new_cfg
+    job_warning = ""
+    if respawn_changed:
+        job_warning = await asyncio.to_thread(
+            _sync_chief_respawn_job,
+            new_cfg.chief_respawn_enabled,
+            new_cfg.chief_respawn_at,
+        )
+        if job_warning:
+            logger.warning("⚠️ chief settings: %s", job_warning)
+    return {
+        "settings": _chief_settings_payload(new_cfg),
+        "job_warning": job_warning,
+    }
+
+
+async def _stop_chief_for_respawn(port: int, sid: str) -> None:
+    """Gracefully quit the old chief, escalating to kill after the bounded
+    wait — a fresh respawn must never end up with two chiefs."""
+    try:
+        await asyncio.to_thread(session_client.stop, port, sid, "quit")
+    except session_client.SessionHostError as exc:
+        logger.debug(f"chief respawn: quit failed ({exc}); will kill")
+    deadline = time.monotonic() + CHIEF_STOP_WAIT_S
+    while time.monotonic() < deadline:
+        try:
+            info = await asyncio.to_thread(session_client.get_session, port, sid)
+        except session_client.SessionHostError:
+            return  # gone — the host dropped it
+        if not info.get("alive"):
+            return
+        await asyncio.sleep(CHIEF_STOP_POLL_S)
+    try:
+        await asyncio.to_thread(session_client.stop, port, sid, "kill")
+    except session_client.SessionHostError:
+        pass
+
+
+async def _await_chief_quiescent(port: int, sid: str) -> None:
+    """Wait until the chief's boot output stops growing (best-effort).
+
+    ``output_chars > 0`` means "painted something", not "input box live" —
+    a fresh --remote-control Claude keeps booting (handshake, banner) well
+    past first paint, and a CR typed in that window is swallowed, leaving
+    the typed text to merge with the next paste (observed on-device,
+    #245 review). Stable output for CHIEF_QUIESCENT_STABLE_S is the
+    strongest cheap signal that the prompt is settled. On cap: proceed —
+    typing slightly early degrades, failing the spawn is worse.
+    """
+    deadline = time.monotonic() + CHIEF_QUIESCENT_CAP_S
+    last_chars = -1
+    stable_since = time.monotonic()
+    while time.monotonic() < deadline:
+        try:
+            info = await asyncio.to_thread(session_client.get_session, port, sid)
+        except session_client.SessionHostError:
+            return  # let the next step surface the real failure
+        chars = info.get("output_chars")
+        if chars is None:
+            return  # legacy host — no probe to lean on
+        if chars != last_chars:
+            last_chars = chars
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= CHIEF_QUIESCENT_STABLE_S:
+            return
+        await asyncio.sleep(CHIEF_QUIESCENT_POLL_S)
+    logger.warning(
+        "⚠️ chief boot never went quiet within %.0fs — typing anyway",
+        CHIEF_QUIESCENT_CAP_S,
+    )
+
+
+@router.post("/api/board/chief/ensure")
+async def ensure_chief(request: Request) -> Dict[str, Any]:
+    """Spawn the fleet chief if none is alive (Tailscale + passkey, #245).
+
+    Body/query: ``fresh`` truthy → kill the current chief first and respawn
+    (the daily job's context-hygiene mode; the query form keeps the job a
+    bodyless ``curl -X POST``). ``rows``/``cols`` size the PTY like every
+    other launch. Returns ``{"session_id", "spawned"}`` — ``spawned`` False
+    when an alive chief was found and kept.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    fresh_raw = body.get("fresh", request.query_params.get("fresh"))
+    fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
+    rows = int(body.get("rows") or 40)
+    cols = int(body.get("cols") or 120)
+
+    async with _CHIEF_ENSURE_LOCK:
+        live = await asyncio.to_thread(
+            _safe_list_sessions, cfg.session_host_port
+        )
+        chief = _find_chief(live)
+        if chief:
+            sid = str(chief.get("session_id") or "")
+            if not fresh:
+                return {"session_id": sid, "spawned": False}
+            await _stop_chief_for_respawn(cfg.session_host_port, sid)
+
+        entry = _resolve_repo_entry(cfg, _CHIEF_REPO)
+        agent, flags = _agent_and_flags(cfg, cfg.chief_model)
+        try:
+            session = await asyncio.to_thread(
+                spawn_claude_session,
+                Path(entry.project_dir),
+                _CHIEF_LABEL,
+                flags,
+                cfg.session_host_port,
+                "pty",
+                agent,
+                rows,
+                cols,
+                history_lines=cfg.terminal_history_lines,
+                label=_CHIEF_LABEL,
+            )
+        except session_client.SessionHostError as exc:
+            raise HTTPException(status_code=exc.status, detail=str(exc))
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        sid = str(session.get("session_id") or "")
+        # Order matters (#245 review): rename FIRST, then /chief. The rename
+        # also forwards the agent-native /rename into the PTY, so it must
+        # land after boot but before the skill invocation — typed the other
+        # way round it interleaves with /chief's processing and the agent
+        # rejects it ("Args from unknown skill: rename"). The ready-wait
+        # here plus _type_into_session's own settle give the rename a clear
+        # beat before /chief goes in. Best-effort — a rename failure never
+        # fails the spawn.
+        try:
+            await _await_dispatch_ready(cfg.session_host_port, sid)
+        except HTTPException:
+            try:
+                await asyncio.to_thread(
+                    session_client.stop, cfg.session_host_port, sid, "kill"
+                )
+            except session_client.SessionHostError:
+                pass
+            raise
+        # First paint is not "input live" — wait for boot output to go
+        # quiet before typing the rename, or its CR gets swallowed and the
+        # text merges with the /chief paste (see _await_chief_quiescent).
+        await _await_chief_quiescent(cfg.session_host_port, sid)
+        try:
+            await asyncio.to_thread(
+                session_client.rename,
+                cfg.session_host_port, sid, _CHIEF_TITLE,
+            )
+        except session_client.SessionHostError as exc:
+            logger.warning(
+                "⚠️ chief ensure could not name session %s: %s",
+                sid[:8], exc,
+            )
+        await _type_into_session(cfg.session_host_port, sid, _CHIEF_COMMAND)
+
+        await audit_session_start_and_maybe_mirror(
+            cfg, request, body,
+            sid=sid, agent=agent, name=_CHIEF_LABEL,
+            project=entry.project_dir, skill=_CHIEF_COMMAND,
+            audit_mod=audit, mirror_fn=open_local_terminal_window,
+        )
+        return {"session_id": sid, "spawned": True, "session": session}

@@ -33,6 +33,8 @@ All Board routes live in `app/webapp/routers/board.py`.
 | `GET /api/board/sessions/{sid}/exchange` | Tailscale + passkey | The last user↔assistant exchange from the agent-aware conversation-source hierarchy (drill-down drawer). |
 | `POST /api/board/dispatch` | Tailscale + passkey | Spawn a new session and type an `/issue-*` goal into it (dispatch bar). |
 | `POST /api/board/issues/start` | Tailscale + passkey | One-tap `/issue-start` / `/issue-yolo <N>` on a Backlog card. |
+| `POST /api/board/chief/ensure` | Tailscale + passkey | Spawn the fleet chief if none is alive (`?fresh=1` kills + respawns) — see "The fleet chief" below. |
+| `GET/PUT /api/board/chief/settings` | Tailscale + passkey | The chief settings block (model / daily respawn on-off + time / worker cap); PUT resyncs the `chief-daily-respawn` job. Also read by the `/chief` skill over loopback. |
 
 The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, rate_limits: {available, stale, updated_at, five_hour, seven_day} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress`.
 
@@ -132,6 +134,20 @@ The modes map to `/issue-*` commands:
 **PTY-only.** Dispatch always spawns a full-control (`pty`) session — a detached console has no input path, and handing free text to its command line is exactly the injection this design avoids.
 
 The bar is static markup the 5 s poll never re-renders, so a re-render cannot wipe a goal being typed. After a send the goal **stays in the bar** for rapid multi-dispatch (✕ clears it), and the new card lands in *Claude's turn* on the next poll. Voice dictation — the compose bar's exact streamed-partials pipeline, extracted to a shared `voice.js` — mounts on the dispatch goal box (and on every drawer reply box), so "speak a goal" is one mic tap; the transcript always lands in the box for review, never straight into a dispatch.
+
+## The fleet chief — conversational orchestrator (#245)
+
+The dispatch bar's fourth mode segment, **chat**, reroutes the same bar to a **standing conversational fleet chief** instead of a one-shot dispatch: your mic/typed text goes into the chief's PTY through the exact same bracketed-paste reply proxy the drawer uses (`POST /api/claude-code/sessions/{sid}/input`), and its replies render through the drawer's exchange surface (which, chief-only, re-polls every 5 s while open so the reply actually arrives). Toggle back to add/build/yolo and the bar is today's one-shot cannon, unchanged — `POST /api/board/dispatch` is never touched in chat mode.
+
+The chief is a **normal PTY session, not a service**: `label="chief"`, agent claude on the configured chief model (default fable), **cwd = the fleet-config checkout**. That cwd is the whole context story — it loads fleet-config's fleet-only skill tier (including `/chief`, the brain, versioned in fleet-config) and the global fleet map, while app-launcher's own project context never loads because the cwd isn't app-launcher. The server ships zero chief prose: the spawn types only `/chief` (the same spawn-then-type contract as dispatch, shared via `_type_into_session`), so brain updates never require an app-launcher deploy. Being a normal `:8446` session, it survives `tray.bat --restart`; it does **not** survive a session-host death (sessions are in-memory), which is why the lifecycle has three triggers, all hitting the same `POST /api/board/chief/ensure` (serialized by a lock, matched by `label` with a `name=="chief"` fallback for legacy hosts):
+
+1. **Lazy** — the first chat-mode send ensures before typing, so the chief exists exactly when first needed.
+2. **Daily fresh respawn** — the registered `chief-daily-respawn` job (`config/jobs.sample.json`, default 05:00) curls `ensure?fresh=1` over loopback: graceful-quit the old chief, spawn a fresh one that re-reads fleet state cold (context hygiene; it kills an in-flight chat by design).
+3. **Manual** — chat mode shows a status row (`chief: not running — Start`) when no chief is alive, for after a deliberate tray/session-host kill.
+
+The chief's Board card is **visually distinct** (accent tint + crown, `.board-item-chief`) and **kill-protected**: its drawer ✕ asks `confirm()` first — every other card keeps the deliberate one-tap stop (#253).
+
+**Settings** (gear in the chat-mode status row → editor dialog): model (sonnet/opus/fable), daily-respawn on/off + time, and the **worker cap** — persisted as `chief_*` fields in `config/webapp_config.json` via `GET/PUT /api/board/chief/settings`. A respawn change resyncs the registered job (schedule update or pause) through the jobs machinery, best-effort — an unregistered job is a warning in the response, never a failed save. The worker cap is deliberately server-side state: the `/chief` skill reads it over loopback as its dispatch rail, so it stays phone-tunable without a fleet-config commit. All safety rails (start-verb default, the literal-"yolo" gate, deterministic issue lists, the cap) live in the skill — app-launcher ships plumbing only.
 
 ## The drill-down drawer and its PTY-write path (#301)
 

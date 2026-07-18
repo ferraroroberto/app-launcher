@@ -393,6 +393,9 @@ class PtySession:
     _loop: asyncio.AbstractEventLoop
     _pty: "PtyProcess"  # type: ignore[name-defined]
     agent: str = DEFAULT_AGENT
+    # Free-form role tag set at create time (e.g. "chief", #245) so callers
+    # can find a purpose-built session deterministically; "" for normal ones.
+    label: str = ""
     rows: int = 40
     cols: int = 120
     _ring: str = ""
@@ -733,6 +736,7 @@ class PtySession:
             "session_id": self.session_id,
             "kind": self.kind,
             "agent": self.agent,
+            "label": self.label,
             "project_dir": self.project_dir,
             "name": self.name,
             "flags": self.flags,
@@ -851,6 +855,7 @@ class SessionManager:
         rows: int = 40,
         cols: int = 120,
         history_lines: Optional[int] = None,
+        label: str = "",
     ) -> PtySession:
         """Spawn ``<agent> <flags>`` inside a fresh ConPTY in ``project_dir``.
 
@@ -918,6 +923,7 @@ class SessionManager:
             _loop=self._loop,
             _pty=pty,
             agent=agent,
+            label=label,
             rows=rows,
             cols=cols,
             _vt=vt,
