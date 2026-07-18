@@ -38,7 +38,10 @@ int-validated, so the string that reaches the session-host's unquoted
 Dispatch (#302) carries free text — the goal — so it can't use a positional
 prompt at all. Instead it **spawns-then-types**: the session starts with only
 the shared flags (no prompt), the endpoint polls until the agent has painted
-its first output (``output_chars`` in the session dict), then writes
+its first output (``output_chars`` in the session dict) and its boot output
+has gone quiet (the shared PTY-quiescence wait, #245/#549 — first paint alone
+is not "input ready" and typing into a still-booting agent can swallow the
+submitting CR, leaving the goal typed but never sent), then writes
 ``/issue-<mode> <goal>`` through the PTY input path inside bracketed-paste
 framing with the submitting CR as its own second write (the #64/#166 framing
 the reply proxy uses). The goal therefore never touches the unquoted
@@ -341,6 +344,19 @@ DISPATCH_SETTLE_S = 2.0
 DISPATCH_POLL_S = 0.25
 DISPATCH_LEGACY_GRACE_S = 5.0
 
+# PTY input-quiescence (#245 review, generalized #549): first-paint + a fixed
+# settle is NOT always "input ready" for a fresh --remote-control agent — a
+# CR typed while boot output (handshake, banner) is still growing gets
+# swallowed, leaving the typed text sitting unsubmitted (observed on-device
+# 2026-07-18, first on the chief's own rename, then on a chief-dispatched
+# /issue-add worker left idle with its goal typed but never submitted). Stable
+# output for PTY_QUIESCENT_STABLE_S is the strongest cheap signal the prompt
+# has settled; cap and proceed best-effort rather than failing the spawn.
+# Module-level so tests can patch them tiny.
+PTY_QUIESCENT_STABLE_S = 2.0
+PTY_QUIESCENT_CAP_S = 30.0
+PTY_QUIESCENT_POLL_S = 0.5
+
 _DISPATCH_COMMANDS = {
     "add": "/issue-add",
     "build": "/issue-add now",
@@ -423,19 +439,61 @@ async def _await_dispatch_ready(port: int, sid: str) -> None:
         raise HTTPException(status_code=504, detail="session died during startup")
 
 
+async def _await_pty_quiescent(port: int, sid: str) -> None:
+    """Wait until the session's output stops growing (best-effort).
+
+    ``output_chars > 0`` (what :func:`_await_dispatch_ready` checks) means
+    "painted something", not "input box live" — a fresh --remote-control
+    agent keeps booting (handshake, banner) well past first paint, and a CR
+    typed in that window is swallowed, merging the typed text with whatever
+    is typed next (#245 review; generalized to every typed submission in
+    #549 after the same race hit a chief-dispatched worker). Stable output
+    for ``PTY_QUIESCENT_STABLE_S`` is the strongest cheap signal the prompt
+    is settled. On cap: proceed — typing slightly early degrades, failing
+    the spawn is worse. A session dict without ``output_chars`` or a dead
+    session-host is a legacy/gone host — nothing to lean on, so return
+    immediately and let the caller's own probe surface the real state.
+    """
+    deadline = time.monotonic() + PTY_QUIESCENT_CAP_S
+    last_chars = -1
+    stable_since = time.monotonic()
+    while time.monotonic() < deadline:
+        try:
+            info = await asyncio.to_thread(session_client.get_session, port, sid)
+        except session_client.SessionHostError:
+            return
+        chars = info.get("output_chars")
+        if chars is None:
+            return
+        if chars != last_chars:
+            last_chars = chars
+            stable_since = time.monotonic()
+        elif time.monotonic() - stable_since >= PTY_QUIESCENT_STABLE_S:
+            return
+        await asyncio.sleep(PTY_QUIESCENT_POLL_S)
+    logger.warning(
+        "⚠️ PTY %s boot never went quiet within %.0fs — typing anyway",
+        sid[:8], PTY_QUIESCENT_CAP_S,
+    )
+
+
 async def _type_into_session(port: int, sid: str, command: str) -> None:
-    """Await readiness, then type ``command`` into the session's PTY.
+    """Await readiness + quiescence, then type ``command`` into the PTY.
 
     Bracketed-paste framing keeps the text one atomic paste (no
     per-keystroke TUI interpretation) and routes it through the
     first-prompt title capture (#266); the CR is its own second write so
-    the paste-end marker can't swallow it (#64/#166). On any failure past
-    the spawn the half-spawned session is killed, so a timeout can't
-    strand an orphan the user never asked for. Shared by dispatch (#302)
-    and the chief ensure (#245) so the two-frame rule stays single-sourced.
+    the paste-end marker can't swallow it (#64/#166). The quiescence wait
+    (#549) guards against typing while the agent's boot output is still
+    growing, which can swallow that submitting CR — first-paint alone is
+    not enough. On any failure past the spawn the half-spawned session is
+    killed, so a timeout can't strand an orphan the user never asked for.
+    Shared by dispatch (#302) and the chief ensure (#245) so the timing
+    rules stay single-sourced instead of drifting between call sites.
     """
     try:
         await _await_dispatch_ready(port, sid)
+        await _await_pty_quiescent(port, sid)
         await asyncio.to_thread(
             session_client.send_input, port, sid,
             "\x1b[200~" + command + "\x1b[201~",
@@ -532,16 +590,6 @@ _CHIEF_JOB_ID = "chief-daily-respawn"
 # escalating to kill. Module-level so tests can patch it tiny.
 CHIEF_STOP_WAIT_S = 8.0
 CHIEF_STOP_POLL_S = 0.25
-# Boot quiescence (#245 review): first-paint + settle is NOT always "input
-# ready" for a fresh --remote-control Claude — a rename typed at paint+2s
-# had its CR swallowed mid-boot, leaving "/rename …" in the input line and
-# merging with the later /chief paste into one garbage prompt (observed
-# on-device 2026-07-18). So before typing anything into the chief, wait
-# until the boot output stops growing for a stable window; cap and proceed
-# best-effort rather than failing the spawn.
-CHIEF_QUIESCENT_STABLE_S = 2.0
-CHIEF_QUIESCENT_CAP_S = 30.0
-CHIEF_QUIESCENT_POLL_S = 0.5
 
 # Two concurrent ensures (e.g. a chat send racing the daily job) must not
 # double-spawn; the lock serializes the check-then-spawn window.
@@ -678,40 +726,6 @@ async def _stop_chief_for_respawn(port: int, sid: str) -> None:
         pass
 
 
-async def _await_chief_quiescent(port: int, sid: str) -> None:
-    """Wait until the chief's boot output stops growing (best-effort).
-
-    ``output_chars > 0`` means "painted something", not "input box live" —
-    a fresh --remote-control Claude keeps booting (handshake, banner) well
-    past first paint, and a CR typed in that window is swallowed, leaving
-    the typed text to merge with the next paste (observed on-device,
-    #245 review). Stable output for CHIEF_QUIESCENT_STABLE_S is the
-    strongest cheap signal that the prompt is settled. On cap: proceed —
-    typing slightly early degrades, failing the spawn is worse.
-    """
-    deadline = time.monotonic() + CHIEF_QUIESCENT_CAP_S
-    last_chars = -1
-    stable_since = time.monotonic()
-    while time.monotonic() < deadline:
-        try:
-            info = await asyncio.to_thread(session_client.get_session, port, sid)
-        except session_client.SessionHostError:
-            return  # let the next step surface the real failure
-        chars = info.get("output_chars")
-        if chars is None:
-            return  # legacy host — no probe to lean on
-        if chars != last_chars:
-            last_chars = chars
-            stable_since = time.monotonic()
-        elif time.monotonic() - stable_since >= CHIEF_QUIESCENT_STABLE_S:
-            return
-        await asyncio.sleep(CHIEF_QUIESCENT_POLL_S)
-    logger.warning(
-        "⚠️ chief boot never went quiet within %.0fs — typing anyway",
-        CHIEF_QUIESCENT_CAP_S,
-    )
-
-
 @router.post("/api/board/chief/ensure")
 async def ensure_chief(request: Request) -> Dict[str, Any]:
     """Spawn the fleet chief if none is alive (Tailscale + passkey, #245).
@@ -782,8 +796,10 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             raise
         # First paint is not "input live" — wait for boot output to go
         # quiet before typing the rename, or its CR gets swallowed and the
-        # text merges with the /chief paste (see _await_chief_quiescent).
-        await _await_chief_quiescent(cfg.session_host_port, sid)
+        # text merges with the /chief paste (see _await_pty_quiescent). The
+        # later _type_into_session call for the /chief command itself also
+        # runs this wait, but by then boot has already settled here.
+        await _await_pty_quiescent(cfg.session_host_port, sid)
         try:
             await asyncio.to_thread(
                 session_client.rename,
