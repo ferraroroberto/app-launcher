@@ -40,6 +40,73 @@ export function bindOutsideClickToClose(box, toggle, closer) {
   };
 }
 
+// A compact model-picker dropdown that is valid inside a <summary> (#540).
+// A native <select> cannot live there — WebKit's HTML parser derails on it,
+// closing the enclosing <details> early and cascading into a broken tree
+// that even zeroes custom-property inheritance on ancestors (the flat 0-token
+// layout bug). So the control is built from phrasing-only content — a
+// <button class="model-combo-trigger"> plus a <span class="model-combo-menu"
+// role="listbox"> of <button role="option" data-value>. Looks like the
+// flattened board select.
+//
+// `root` is the .model-combo wrapper (its data-value holds the current
+// value). `onChange(value)` fires only on a user pick, never on programmatic
+// setValue — so a config round-trip that calls setValue can't loop. Returns
+// { setValue(v), getValue() }, or null when the markup is absent.
+export function wireModelCombo(root, onChange) {
+  if (!root) return null;
+  const trigger = root.querySelector('.model-combo-trigger');
+  const menu = root.querySelector('.model-combo-menu');
+  if (!trigger || !menu) return null;
+  let dispose = null;
+
+  function close() {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    if (dispose) { dispose(); dispose = null; }
+  }
+  function open() {
+    if (!menu.hidden) return;
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    dispose = bindOutsideClickToClose(menu, trigger, close);
+  }
+  function apply(value, fire) {
+    const opt = menu.querySelector('[data-value="' + value + '"]');
+    if (!opt) return;
+    root.dataset.value = value;
+    trigger.textContent = opt.textContent;
+    menu.querySelectorAll('[role="option"]').forEach(function (o) {
+      o.setAttribute('aria-selected', o === opt ? 'true' : 'false');
+    });
+    if (fire && onChange) onChange(value);
+  }
+
+  // A tap anywhere in a <summary> also toggles its <details>, so every
+  // interactive handler here stops propagation (same guard the sibling
+  // Detached/Resume toggles use).
+  trigger.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    if (menu.hidden) open(); else close();
+  });
+  menu.addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    const opt = ev.target.closest('[data-value]');
+    if (!opt) return;
+    apply(opt.dataset.value, true);
+    close();
+  });
+  trigger.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape') close();
+  });
+
+  return {
+    setValue: function (v) { apply(v, false); },
+    getValue: function () { return root.dataset.value || ''; },
+  };
+}
+
 // Claude 5h/7d usage badges (issue #326) — shared between the Board tab and
 // the Coding tab's Running-sessions header, both of which poll their own
 // endpoint (GET /api/board, GET /api/rate-limits) but render the identical

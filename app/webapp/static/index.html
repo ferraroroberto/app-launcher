@@ -452,13 +452,31 @@
           </span>
           <span class="summary-actions">
             <div class="coding-toggles">
+              <!-- Launch model (#540): a board-style combo (mirrors the Board
+                   dispatch bar's model selector) that stays in sync with the
+                   Claude Model segmented control in the options card below —
+                   both write/read the same claude_model config, so picking in
+                   one updates the other (no double-setting). Claude-only:
+                   Codex/others are their own per-tile launch buttons. -->
+              <span class="model-combo" id="codingModelCombo" data-value="sonnet">
+                <button type="button" id="codingModelBtn" class="model-combo-trigger"
+                        aria-haspopup="listbox" aria-expanded="false" aria-controls="codingModelMenu"
+                        title="Model for Claude Code launches — stays in sync with the Model control in options below">Sonnet</button>
+                <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Claude launch model" hidden>
+                  <button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button>
+                  <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
+                  <button type="button" role="option" data-value="fable" aria-selected="false">Fable</button>
+                </span>
+              </span>
               <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
+                     aria-label="Launch detached"
                      title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-                <span>Detached</span>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
               </button>
               <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
+                     aria-label="Resume session"
                      title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
-                <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
               </button>
             </div>
             <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
@@ -703,8 +721,8 @@
 
     <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
       <!-- No separate options card (#496 round 2, mirroring the Coding tab):
-           the opus/Detached/Resume launch toggles live in the Skills card's
-           summary below — the surface skills are launched from. The recap
+           the model combo + Detached/Resume launch controls live in the
+           Skills card's summary below — the surface skills are launched from. The recap
            tile leads the tab. -->
       <section id="lifeOsRecap" class="card card--row lifeos-recap-card" hidden>
         <div class="card-head">
@@ -727,17 +745,29 @@
           </span>
           <span class="summary-actions">
             <div class="lifeos-toggles">
-              <button type="button" id="lifeOsOpus" class="detached-toggle" role="switch" aria-checked="false"
-                     title="opus model: off = Sonnet (default), on = Opus">
-                <span>opus</span>
-              </button>
+              <!-- Launch model (#540): the same board-style combo as the
+                   Coding tab, replacing the old opus on/off toggle. Life OS is
+                   a focused Coding tab, so its launch row mirrors it exactly.
+                   Claude-only (life-os skills are Claude /skill commands). -->
+              <span class="model-combo" id="lifeOsModelCombo" data-value="sonnet">
+                <button type="button" id="lifeOsModelBtn" class="model-combo-trigger"
+                        aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsModelMenu"
+                        title="Model for the launched life-os skill">Sonnet</button>
+                <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden>
+                  <button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button>
+                  <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
+                  <button type="button" role="option" data-value="fable" aria-selected="false">Fable</button>
+                </span>
+              </span>
               <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
+                     aria-label="Launch detached"
                      title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-                <span>Detached</span>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
               </button>
               <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
+                     aria-label="Resume session"
                      title="Resume: reopen Claude's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-                <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume</span>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
               </button>
             </div>
             <span class="collapse-chevron" aria-hidden="true">›</span>

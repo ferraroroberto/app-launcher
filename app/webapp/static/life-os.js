@@ -3,7 +3,7 @@
  *
  * ~80% a clone of the Coding tab. A tile launches a Claude session in the
  * life-os repo that auto-invokes the bare /<skill> slash-command; the
- * ☁️ Detached + opus toggles live in the Life OS options card (same UX as
+ * ☁️ Detached + model combo live in the Life OS Skills summary (same UX as
  * the Coding-options Detached toggle). The 📖 Browse button opens an
  * overlay that reads each skill's files — public SKILL.md/description.md
  * plus the private context/memory/examples/conversations + shared
@@ -16,7 +16,15 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
-import { toggleAriaChecked } from './dom-utils.js';
+import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+
+// The Skills-summary launch-model dropdown controller ({setValue, getValue}),
+// created in the tab's wiring once the DOM exists (#540). Read at launch time;
+// no server round-trip — it's per-launch, like the Board dispatch combo.
+let lifeOsModelCombo = null;
+function lifeOsModel() {
+  return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'sonnet';
+}
 
 // ----------------------------------------------------------- skills list
 export async function fetchSkills() {
@@ -116,12 +124,21 @@ function renderRecap() {
   badge.textContent = label;
 }
 
+// Toast suffix for the launch model: silent on the Sonnet default (the
+// common case), " (Opus)" / " (Fable)" otherwise — mirroring the old opus
+// tag's terseness (#540).
+function modelTag(model) {
+  if (!model || model === 'sonnet') return '';
+  return ' (' + model.charAt(0).toUpperCase() + model.slice(1) + ')';
+}
+
 async function launchRecap() {
-  // Reuse the Life OS options card's toggles: ☁️ Detached → remote, opus → model.
+  // Reuse the Skills summary controls: ☁️ Detached → remote, the model combo
+  // → the launch model (#540, replacing the old opus on/off toggle).
   const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
     ? 'remote' : 'pty';
-  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
-  const payload = { mode: mode, opus: opus };
+  const model = lifeOsModel();
+  const payload = { mode: mode, model: model };
   // A desktop browser launch gets a dedicated PC Edge --app window (issue
   // #241); the phone carries its real terminal size so the PTY spawns at
   // the width the overlay will fit() to (issue #374, #126). Remote
@@ -134,7 +151,7 @@ async function launchRecap() {
       body: JSON.stringify(payload),
     });
     toast(
-      '🌱 Launched weekly recap' + (opus ? ' (Opus)' : '') +
+      '🌱 Launched weekly recap' + modelTag(model) +
         (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );
@@ -155,8 +172,8 @@ async function launchSkill(s) {
   const resume = !!(els.lifeOsResume && els.lifeOsResume.getAttribute('aria-checked') === 'true');
   const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
     ? 'remote' : 'pty';
-  const opus = !!(els.lifeOsOpus && els.lifeOsOpus.getAttribute('aria-checked') === 'true');
-  const payload = { mode: mode, opus: opus, resume: resume };
+  const model = lifeOsModel();
+  const payload = { mode: mode, model: model, resume: resume };
   // Same size contract as launchRecap (issue #374, #126, #241). Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
@@ -171,7 +188,7 @@ async function launchSkill(s) {
     );
     toast(
       (resume ? '↺ Resumed ' : '🌱 Launched ') + s.name +
-        (opus ? ' (Opus)' : '') + (mode === 'remote' ? ' (detached)' : ''),
+        modelTag(model) + (mode === 'remote' ? ' (detached)' : ''),
       'good'
     );
     // Full-control sessions drop straight into the terminal; detached
@@ -481,17 +498,22 @@ export function wireLifeOs() {
   if (els.lifeOsRecapLaunch) {
     els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
   }
-  // opus/Detached/Resume are plain client-side switches (issue #355) — no
-  // server config, just read at launch time above. They live in the Skills
-  // card's <summary> (#496 round 2, mirroring the Coding tab's Projects
-  // card), so stopPropagation keeps a tap from also collapsing the panel.
-  [els.lifeOsOpus, els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
+  // Detached/Resume are plain client-side switches (issue #355) — no server
+  // config, just read at launch time above. They live in the Skills card's
+  // <summary> (#496 round 2, mirroring the Coding tab's Projects card), so
+  // stopPropagation keeps a tap from also collapsing the panel.
+  [els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
     if (!btn) return;
     btn.addEventListener('click', function (ev) {
       ev.stopPropagation();
       toggleAriaChecked(btn);
     });
   });
+  // The model dropdown (#540) shares that summary; wireModelCombo owns its
+  // open/close + the summary-tap guard. Read at launch time via lifeOsModel().
+  lifeOsModelCombo = wireModelCombo(
+    document.getElementById('lifeOsModelCombo'), null
+  );
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
   // directory scan + a single ledger stat).
   if (els.tabLifeOS) {

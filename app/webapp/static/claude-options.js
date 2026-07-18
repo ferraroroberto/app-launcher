@@ -13,8 +13,20 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi } from './api.js';
-import { toggleAriaChecked } from './dom-utils.js';
+import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { setSwitch } from './_vendored/switch/switch.js';
+
+// The Coding tab surfaces the Claude launch model twice — the compact
+// board-style dropdown in the Projects summary (#codingModelCombo) and the
+// segmented control in the options card (#claudeModel) — and keeps them in
+// sync. Both offer exactly these three (Board-combo parity, #540): Haiku stays
+// a valid `claude_model` config value server-side but is not surfaced here.
+// Order matches the dropdown's option order.
+const CODING_MODELS = ['sonnet', 'opus', 'fable'];
+
+// The Projects-summary model dropdown controller ({setValue, getValue}),
+// created in wireClaudeOptions once the DOM exists.
+let codingModelCombo = null;
 
 export async function fetchConfig() {
   const body = await jsonApi('/api/config');
@@ -73,13 +85,26 @@ function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, va
 function renderClaudeSubsection() {
   const c = state.config && state.config.claude;
   if (!c) return;
+  // Both the segmented control and the Projects-summary combo render the
+  // same CODING_MODELS subset so the two stay a true mirror of each other
+  // (#540) — filter server truth to those actually offered, in combo order.
+  const models = CODING_MODELS.filter(function (m) {
+    return (c.models_available || []).includes(m);
+  });
   renderSegmentedControl(
     els.claudeModel,
-    c.models_available,
+    models,
     c.model,
     function (m) { return m.charAt(0).toUpperCase() + m.slice(1); },
     function (m) { patchConfig({ claude_model: m }); }
   );
+  // Keep the compact dropdown in lockstep. patchConfig() round-trips through
+  // GET /api/config and re-renders this whole subsection, so a change from
+  // either control lands here and updates both — no explicit cross-wiring.
+  // setValue never fires onChange, so this can't loop.
+  if (codingModelCombo && CODING_MODELS.includes(c.model)) {
+    codingModelCombo.setValue(c.model);
+  }
   renderSegmentedControl(
     els.claudeEffort,
     c.efforts_available,
@@ -242,4 +267,12 @@ export function wireClaudeOptions() {
       toggleAriaChecked(btn);
     });
   });
+  // The launch-model dropdown (#540) lives in the Projects <summary>. A user
+  // pick persists claude_model; the config round-trip re-renders both this
+  // dropdown and the options-card segmented control, keeping them in sync
+  // (#claudeModel follows too). wireModelCombo handles the summary-tap guard.
+  codingModelCombo = wireModelCombo(
+    document.getElementById('codingModelCombo'),
+    function (v) { patchConfig({ claude_model: v }); }
+  );
 }

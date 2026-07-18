@@ -216,6 +216,65 @@ class TestLaunchSkill:
         assert resp.status_code == 200, resp.text
         assert "--model opus" in captured["flags"]
 
+    @pytest.mark.parametrize("model", ["sonnet", "opus", "fable"])
+    def test_launch_model_field_sets_model_flag(
+        self, life_os_client, monkeypatch, model
+    ):
+        """#540: the model combo sends an explicit ``model`` — each of the three
+        offered Claude tiers maps to its ``--model`` flag, and the response
+        echoes it back."""
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"mode": "pty", "model": model},
+        )
+        assert resp.status_code == 200, resp.text
+        assert f"--model {model}" in captured["flags"]
+        assert resp.json()["model"] == model
+
+    def test_launch_model_field_wins_over_legacy_opus(
+        self, life_os_client, monkeypatch
+    ):
+        """When both are sent, the explicit ``model`` takes precedence over the
+        legacy ``opus`` bool (#540 back-compat resolution order)."""
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"model": "fable", "opus": True},
+        )
+        assert resp.status_code == 200, resp.text
+        assert "--model fable" in captured["flags"]
+        assert "--model opus" not in captured["flags"]
+
+    def test_launch_rejects_unknown_model(self, life_os_client):
+        """An out-of-range model is a 400, not a silent fallback (#540)."""
+        client, _, _ = life_os_client
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"model": "gpt5.6"},
+        )
+        assert resp.status_code == 400, resp.text
+
     def test_launch_resume_streams_pty_when_detached_off(
         self, life_os_client, monkeypatch
     ):

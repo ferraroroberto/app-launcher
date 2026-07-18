@@ -146,7 +146,6 @@ export const els = {
   boardDispatchClear: document.getElementById('boardDispatchClear'),
   boardDispatchSend: document.getElementById('boardDispatchSend'),
 
-  lifeOsOpus: document.getElementById('lifeOsOpus'),
   lifeOsDetached: document.getElementById('lifeOsDetached'),
   lifeOsResume: document.getElementById('lifeOsResume'),
   lifeOsList: document.getElementById('lifeOsList'),
