@@ -323,6 +323,13 @@ html, body {
   border-color: var(--accent);
   background: rgb(from var(--accent) r g b / 0.18);
 }
+/* #540: Detached/Resume are icon-only now (the Coding + Life OS launch rows
+   gained a model combo and needed the room). Render the glyph at the app's
+   standard --icon-title size in a square-ish tap target — matching the other
+   icon buttons — while keeping the pill's opacity + accent-border on/off
+   shading that marks them as toggles rather than one-shot actions. */
+.detached-toggle .icon { font-size: var(--icon-title); }
+.detached-toggle { padding: 6px; min-width: var(--control-h); }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
 
 /* Theme toggle (issue #355; #392 put it in the options summary, #496 moved
@@ -2206,9 +2213,9 @@ body.terminal-open {
 }
 
 /* ---------- Life OS tab (issue #102) ---------- */
-/* The opus/Detached/Resume toggles live in the Skills card's summary
-   (#496 round 2 — no separate options card); the recap tile is the only
-   .card--row left on the tab. */
+/* The model combo + Detached/Resume controls live in the Skills card's
+   summary (#496 round 2 — no separate options card); the recap tile is the
+   only .card--row left on the tab. */
 /* Single-row (non-collapsible) cards inherit the disclosure closed-box:
    zero vertical padding, a 52px .card-head (vendored card.css) owns the
    height, so they sit pixel-identical beside collapsed disclosure cards. */
@@ -2437,6 +2444,73 @@ body.terminal-open {
     font-size: var(--font-caption);
     pointer-events: none;
   }
+}
+
+/* Launch-model dropdown (#540) for the Coding + Life OS card summaries. A
+   native <select> cannot live inside a <summary> — WebKit's HTML parser
+   derails on it (closes the <details> early, cascading into a broken tree
+   that even zeroes custom-property inheritance on ancestors). So this is
+   built from phrasing-only content — a <button> trigger + a
+   <span role="listbox"> of <button role="option"> — which is valid in a
+   summary, styled to match the flattened .board-dispatch-row select (36px
+   control height, 12px radius, --card-2 fill, ▾ affordance). */
+.model-combo { position: relative; display: inline-flex; }
+.model-combo-trigger {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 24px 0 10px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: var(--font-caption);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.model-combo-trigger:active { background: var(--card); }
+.model-combo::after {
+  content: '▾';
+  position: absolute;
+  right: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  pointer-events: none;
+}
+/* Opens downward from the summary; cards don't clip overflow, so a high
+   z-index keeps it above the collapsed card body below it. */
+.model-combo-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.model-combo-menu[hidden] { display: none; }
+.model-combo-menu button {
+  padding: 8px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: var(--font-caption);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.model-combo-menu button:hover,
+.model-combo-menu button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--accent);
 }
 /* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
    height so the dispatch row lines up. (The drawer reply mic is NOT in

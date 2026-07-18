@@ -1,9 +1,9 @@
 """Life OS tab e2e (issue #102).
 
 Browser-side coverage: the tab renders skill tiles from
-``/api/life-os/skills``, the ``opus`` + ``☁️ Detached`` toggles are wired,
+``/api/life-os/skills``, the model combo + ``☁️ Detached`` toggle are wired,
 and tapping launch POSTs ``/api/life-os/skills/<id>/launch`` with the
-toggle state — proving the bare ``/skill`` launch path is reached with
+combo/toggle state — proving the bare ``/skill`` launch path is reached with
 the right model/mode. Hermetic via route-mocks, like the Jobs e2e tests.
 
 The server-side security (Cloudflare refusal, Tailscale gate, path-jail)
@@ -124,7 +124,7 @@ def test_life_os_recap_launch_posts(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "weekly-recap", "name": "weekly-recap",
-                "agent": "claude", "mode": "remote", "opus": False,
+                "agent": "claude", "mode": "remote", "model": "sonnet",
                 "session": {"session_id": "r", "kind": "remote"},
             }),
         )
@@ -144,7 +144,8 @@ def test_life_os_recap_launch_posts(
     assert "body" in captured, "recap launch POST was never intercepted"
     payload = _json.loads(captured["body"])
     assert payload["mode"] == "remote", payload
-    assert payload["opus"] is False, payload
+    # No model picked → the combo's Sonnet default rides along (#540).
+    assert payload["model"] == "sonnet", payload
 
 
 def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
@@ -158,18 +159,19 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(tiles.first).to_be_visible(timeout=5_000)
     assert tiles.count() == 2
     expect(tiles.first).to_contain_text("journal-daily")
-    # The opus + Detached toggles live in the Skills card's summary (#496).
-    expect(authed_page.locator("#lifeOsOpus")).to_be_attached()
+    # The model dropdown + Detached toggle live in the Skills card's summary
+    # (#496; the dropdown replaced the opus toggle in #540).
+    expect(authed_page.locator("#lifeOsModelCombo")).to_be_attached()
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
 
 
 def test_life_os_toggles_live_in_skills_summary_without_options_card(
     authed_page: Page, base_url: str
 ) -> None:
-    """#496 round 2: the separate Life OS options card is gone — the
-    opus/Detached/Resume toggles sit in the Skills card's summary (same
-    structure as the Coding tab's Projects card), and tapping one flips
-    the switch without collapsing the panel."""
+    """#496 round 2: the separate Life OS options card is gone — the model
+    combo + Detached/Resume controls sit in the Skills card's summary (same
+    structure as the Coding tab's Projects card, #540), and interacting with
+    one must not collapse the panel."""
     _mock_skills(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
@@ -178,26 +180,41 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     # The old standalone options card no longer exists.
     expect(authed_page.locator("#lifeOsOptions")).to_have_count(0)
 
-    # All three toggles render inside the Skills <details> summary.
+    # The model dropdown + both toggles render inside the Skills <details>
+    # summary.
     summary = authed_page.locator("details.lifeos-list-card summary")
-    for tid in ("#lifeOsOpus", "#lifeOsDetached", "#lifeOsResume"):
-        expect(summary.locator(tid)).to_be_visible()
+    for cid in ("#lifeOsModelCombo", "#lifeOsDetached", "#lifeOsResume"):
+        expect(summary.locator(cid)).to_be_visible()
 
     # A toggle tap flips the switch but must not collapse the open panel.
     skills_card = authed_page.locator("details.lifeos-list-card")
     assert skills_card.evaluate("el => el.open") is True
-    authed_page.locator("#lifeOsOpus").click()
-    expect(authed_page.locator("#lifeOsOpus")).to_have_attribute(
+    authed_page.locator("#lifeOsDetached").click()
+    expect(authed_page.locator("#lifeOsDetached")).to_have_attribute(
         "aria-checked", "true"
     )
     assert skills_card.evaluate("el => el.open") is True, (
         "toggle tap must not collapse the Skills panel"
     )
 
+    # Opening + picking in the model dropdown likewise must not collapse the
+    # panel (#540 — its trigger/options are click targets inside the summary).
+    authed_page.locator("#lifeOsModelBtn").click()
+    authed_page.locator("#lifeOsModelMenu button[data-value='opus']").click()
+    expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
+        "data-value", "opus"
+    )
+    expect(authed_page.locator("#lifeOsModelBtn")).to_have_text("Opus")
+    assert skills_card.evaluate("el => el.open") is True, (
+        "model-dropdown pick must not collapse the Skills panel"
+    )
 
-def test_life_os_launch_posts_mode_and_opus(
+
+def test_life_os_launch_posts_mode_and_model(
     authed_page: Page, base_url: str
 ) -> None:
+    """#540: the launch POST carries the model combo's value (not the old
+    ``opus`` bool) alongside mode + resume."""
     _mock_skills(authed_page)
 
     captured: dict = {}
@@ -208,7 +225,7 @@ def test_life_os_launch_posts_mode_and_opus(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "remote", "opus": True,
+                "agent": "claude", "mode": "remote", "model": "fable",
                 "session": {"session_id": "x", "kind": "remote"},
             }),
         )
@@ -224,9 +241,10 @@ def test_life_os_launch_posts_mode_and_opus(
         timeout=5_000
     )
 
-    # Flip opus on + Detached on (so it launches detached → no terminal
-    # overlay / WS to deal with in the assertion).
-    authed_page.locator("#lifeOsOpus").click()
+    # Pick a non-default model + Detached on (so it launches detached → no
+    # terminal overlay / WS to deal with in the assertion).
+    authed_page.locator("#lifeOsModelBtn").click()
+    authed_page.locator("#lifeOsModelMenu button[data-value='fable']").click()
     authed_page.locator("#lifeOsDetached").click()
 
     tile = authed_page.locator(
@@ -239,7 +257,7 @@ def test_life_os_launch_posts_mode_and_opus(
     assert "body" in captured, "launch POST was never intercepted"
     payload = _json.loads(captured["body"])
     # resume defaults to False on a normal (non-resume) launch (issue #151).
-    assert payload == {"mode": "remote", "opus": True, "resume": False}, payload
+    assert payload == {"mode": "remote", "model": "fable", "resume": False}, payload
 
 
 def test_life_os_pty_launch_carries_terminal_size(
@@ -264,7 +282,7 @@ def test_life_os_pty_launch_carries_terminal_size(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "pty", "opus": False,
+                "agent": "claude", "mode": "pty", "model": "sonnet",
                 "session": {"session_id": "x", "kind": "remote"},
             }),
         )
@@ -313,7 +331,7 @@ def test_life_os_detached_resume_posts_remote_console(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "remote", "opus": False,
+                "agent": "claude", "mode": "remote", "model": "sonnet",
                 "resume": True,
                 "session": {"session_id": "x", "kind": "remote"},
             }),

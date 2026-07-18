@@ -12,7 +12,7 @@ specialised to the skills in the sibling ``life-os`` repo:
 Launch reuses the Coding tab's session-host / ConPTY machinery wholesale
 (:func:`src.launcher.spawn_claude_session`); only three things differ:
 the cwd is always ``life_os_dir`` (so the project skills resolve), the
-model is forced by the tab's ``opus`` toggle, and a bare ``/<skill>``
+model comes from the tab's model combo (#540), and a bare ``/<skill>``
 slash-command is passed as the positional prompt. **No** free text is
 ever interpolated into the launch — the user types their input into the
 live terminal once the skill reports ready.
@@ -72,6 +72,32 @@ _BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
 # (validated by construction — matches ``scanner._SKILL_SLUG_RE``); if the
 # skill is ever renamed the tile 404s visibly rather than launching the wrong
 # thing.
+# The launch model comes from the tab's board-style combo (#540): the three
+# Claude tiers Life OS offers, matching the Coding tab's combo. GPT-5.6/Codex
+# is deliberately absent — life-os skills are Claude ``/skill`` commands Codex
+# cannot invoke.
+_LAUNCH_MODELS = ("sonnet", "opus", "fable")
+
+
+def _resolve_launch_model(body: Dict[str, Any]) -> str:
+    """Resolve the per-launch Claude model from the request body.
+
+    The tab now sends an explicit ``model`` (#540, board parity). Older
+    callers sent an ``opus`` bool (on → opus, off → sonnet); accept it as a
+    fallback so an out-of-date cached client still launches correctly.
+    """
+    raw = body.get("model")
+    if raw is not None:
+        model = str(raw).strip().lower()
+        if model not in _LAUNCH_MODELS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"model must be one of {_LAUNCH_MODELS}; got {model!r}",
+            )
+        return model
+    return "opus" if bool(body.get("opus", False)) else "sonnet"
+
+
 _RECAP_COMMAND = "weekly-recap"
 # The ledger is (re)written only when the user promotes a recap in review, so
 # its mtime is "when the memory was last curated" — exactly the staleness clock.
@@ -168,7 +194,7 @@ async def _spawn_skill_session(
     flags: str,
     name: str,
     kind: str,
-    opus: bool,
+    model: str,
     resume: bool,
     audit_skill: str,
     body: Dict[str, Any],
@@ -239,7 +265,7 @@ async def _spawn_skill_session(
         "name": name,
         "agent": "claude",
         "mode": kind,
-        "opus": opus,
+        "model": model,
         "resume": resume,
         "session": session,
     }
@@ -322,7 +348,8 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
     """Launch a claude session that invokes ``/weekly-recap`` (review) in life-os.
 
     The Weekly-recap tile's 🚀 — the interactive **review** half of the recap
-    (issue #167 / life-os #15). Body: ``{"mode": "pty"|"remote", "opus": bool}``.
+    (issue #167 / life-os #15). Body: ``{"mode": "pty"|"remote", "model": str}``
+    (``model`` ∈ sonnet/opus/fable; a legacy ``opus`` bool is still accepted).
     The drafting half runs headless on a schedule (the recap-draft Job), so this
     tile is review-only: no ``/weekly-recap draft`` and no resume. cwd is fixed
     to ``life_os_dir``; the positional prompt is a bare ``/weekly-recap``.
@@ -337,14 +364,13 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
 
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
-    opus = bool(body.get("opus", False))
+    model = _resolve_launch_model(body)
 
-    model = "opus" if opus else "sonnet"
     flags = f"{build_claude_flags(cfg, model_override=model)} /{_RECAP_COMMAND}"
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
-        flags=flags, name=_RECAP_COMMAND, kind=kind, opus=opus, resume=False,
+        flags=flags, name=_RECAP_COMMAND, kind=kind, model=model, resume=False,
         audit_skill="_recap", body=body,
     )
     return {"launched": _RECAP_COMMAND, **result}
@@ -354,9 +380,10 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
 async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     """Launch a claude session that auto-invokes ``/<skill>`` in life-os.
 
-    Body: ``{"mode": "pty"|"remote", "opus": bool, "resume": bool}``. The
-    cwd is fixed to ``life_os_dir``; the model is ``opus`` when the toggle
-    is on, else ``sonnet``; the positional prompt is a bare ``/<skill>``
+    Body: ``{"mode": "pty"|"remote", "model": str, "resume": bool}`` (``model``
+    ∈ sonnet/opus/fable, #540; a legacy ``opus`` bool is still accepted). The
+    cwd is fixed to ``life_os_dir``; the model comes from the tab's combo;
+    the positional prompt is a bare ``/<skill>``
     (no free text). Mirrors the Coding tab's claude-code launch (PTY
     streamed to the phone vs. detached console window, + PC mirror window
     + audit).
@@ -380,19 +407,18 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
 
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
-    opus = bool(body.get("opus", False))
+    model = _resolve_launch_model(body)
     resume = bool(body.get("resume", False))
 
-    # Model override is per-launch (opus toggle); the rest of the flags
-    # (effort / permission / verbose / debug) come from the shared Coding
-    # options. The bare /<skill> is appended as claude's positional prompt
-    # — skill.command is a validated slug, so no shell-quoting is needed.
+    # Model override is per-launch (the tab's model combo, #540); the rest of
+    # the flags (effort / permission / verbose / debug) come from the shared
+    # Coding options. The bare /<skill> is appended as claude's positional
+    # prompt — skill.command is a validated slug, so no shell-quoting is needed.
     # On Resume we drop the /<skill> prompt and invoke the native picker with
     # the positional /resume command. Starting the interactive session through
     # build_claude_flags first is intentional: Claude Code can carry
     # `--resume --remote-control` in its process command without activating
     # Remote Control for the selected conversation (issue #526).
-    model = "opus" if opus else "sonnet"
     if resume:
         flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
     else:
@@ -407,7 +433,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
-        flags=flags, name=name, kind=kind, opus=opus, resume=resume,
+        flags=flags, name=name, kind=kind, model=model, resume=resume,
         audit_skill=skill.id, body=body,
     )
     return {"launched": skill.id, **result}
