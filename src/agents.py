@@ -1,4 +1,4 @@
-"""Coding-agent registry — the CLIs the Coding tab can launch.
+"""Terminal-agent registries for Coding launches and loopback PTY clients.
 
 The Coding tab launches one of several interactive terminal agents in
 a project folder, all hosted by the same session-host PTY/remote
@@ -16,9 +16,10 @@ machinery:
   ``build_pi_flags`` and ``docs/pi-coding-agent.md``.
 
 This module is the single source of truth for the agent id → command
-mapping. It is imported by *both* long-lived processes — the webapp
-(detection + launch routing) and the session-host (spawning the PTY) —
-so the two never disagree on what ``agent="antigravity"`` actually runs.
+mapping. ``AGENTS`` contains the coding agents exposed by the webapp;
+``SESSION_HOST_AGENTS`` adds loopback-only PTY commands such as SSH. The
+split keeps service integrations out of the Coding tab while letting the
+session-host reuse its normal ConPTY/WebSocket machinery for them.
 """
 
 from __future__ import annotations
@@ -30,14 +31,14 @@ from typing import Dict, List
 
 @dataclass(frozen=True)
 class Agent:
-    """One launchable coding agent.
+    """One command that the terminal session-host can launch.
 
     ``id`` is the stable key threaded through the launch API; ``label``
     is the display name; ``command`` is the executable resolved off
     ``PATH`` when the agent is spawned; ``quit_command`` is the
-    interactive slash command typed into the PTY for a graceful stop
-    (each agent uses its own — Claude's is ``/quit``, Copilot's is
-    ``/exit``).
+    interactive command typed into the PTY for a graceful stop (each
+    program uses its own — Claude's is ``/quit``; Copilot's and SSH's are
+    ``/exit`` and ``exit`` respectively).
 
     ``fullscreen`` marks a full-screen *differential* TUI (Codex's
     ratatui, and the other terminal agents) that repaints in place rather
@@ -110,6 +111,17 @@ AGENTS: Dict[str, Agent] = {
     ),
 }
 
+# The loopback session-host accepts the Coding-tab agents plus commands used
+# by trusted sibling services. SSH is intentionally absent from ``AGENTS``:
+# it is a service integration, not a sixth Coding-tab launch button (#558).
+SESSION_HOST_AGENTS: Dict[str, Agent] = {
+    **AGENTS,
+    "ssh": Agent(
+        id="ssh", label="SSH", command="ssh",
+        quit_command="exit", fullscreen=False,
+    ),
+}
+
 DEFAULT_AGENT = "claude"
 
 
@@ -119,7 +131,7 @@ def command_for(agent_id: str) -> str:
     Raises :class:`ValueError` for an unknown id so a bad value can
     never silently fall through to spawning the wrong process.
     """
-    agent = AGENTS.get(agent_id)
+    agent = SESSION_HOST_AGENTS.get(agent_id)
     if agent is None:
         raise ValueError(f"unknown agent: {agent_id!r}")
     return agent.command
@@ -133,7 +145,7 @@ def quit_command_for(agent_id: str) -> str:
     agent's command for an unknown id rather than raising — a bad id
     must never block a stop.
     """
-    agent = AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
+    agent = SESSION_HOST_AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
     return agent.quit_command
 
 
@@ -148,7 +160,7 @@ def resume_command_for(agent_id: str) -> str:
     caller treats that as "not resumable" rather than raising, so a bad id
     can never break a launch.
     """
-    agent = AGENTS.get(agent_id)
+    agent = SESSION_HOST_AGENTS.get(agent_id)
     return agent.resume_token if agent else ""
 
 
@@ -160,7 +172,7 @@ def native_session_name_flags_for(agent_id: str, title: str) -> str:
     metacharacters; otherwise the launcher-side ``manual_title`` remains the
     safe source of truth. Unsupported agents also return an empty string.
     """
-    agent = AGENTS.get(agent_id)
+    agent = SESSION_HOST_AGENTS.get(agent_id)
     clean = title.strip()[:60]
     if not agent or not agent.native_name_flag or not clean:
         return ""
@@ -177,13 +189,13 @@ def is_fullscreen(agent_id: str) -> bool:
     (issue #128). An unknown id is treated as non-fullscreen — the safe
     inline default, matching Claude Code.
     """
-    agent = AGENTS.get(agent_id)
+    agent = SESSION_HOST_AGENTS.get(agent_id)
     return bool(agent and agent.fullscreen)
 
 
 def is_installed(agent_id: str) -> bool:
     """Whether ``agent_id``'s command resolves on ``PATH``."""
-    agent = AGENTS.get(agent_id)
+    agent = SESSION_HOST_AGENTS.get(agent_id)
     if agent is None:
         return False
     return shutil.which(agent.command) is not None

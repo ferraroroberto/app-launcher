@@ -7,7 +7,7 @@ process means a webapp restart doesn't kill running Claude sessions.
 
 Routes:
 
-    POST   /sessions                  → spawn `claude` (kind=pty|remote)
+    POST   /sessions                  → spawn a registered terminal command
     GET    /sessions                  → list live sessions
     GET    /sessions/{sid}            → one session's detail
     POST   /sessions/{sid}/input      → write text to the PTY
@@ -46,7 +46,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from src.agents import AGENTS, DEFAULT_AGENT, is_fullscreen
+from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.session_host import _EOF, SessionManager
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ def create_app() -> FastAPI:
         history_lines = int(history_lines_raw) if history_lines_raw else None
         if not project_dir:
             raise HTTPException(status_code=400, detail="project_dir is required")
-        if agent not in AGENTS:
+        if agent not in SESSION_HOST_AGENTS:
             raise HTTPException(status_code=400, detail=f"unknown agent: {agent}")
         try:
             if kind == "remote":

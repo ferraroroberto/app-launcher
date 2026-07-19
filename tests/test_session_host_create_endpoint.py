@@ -82,3 +82,26 @@ def test_create_forwards_normalized_label(monkeypatch):
 
     assert resp.status_code == 200
     assert captured["label"] == "chief"
+
+
+def test_create_accepts_ssh_agent_for_loopback_pty(monkeypatch):
+    """#558: sibling apps can request an interactive SSH PTY session."""
+    captured = _stub_manager(monkeypatch)
+    client = TestClient(server.app)
+
+    resp = client.post(
+        "/sessions",
+        json={
+            "project_dir": r"C:\proj",
+            "name": "peer-machine",
+            "flags": "user@somehost",
+            "agent": "ssh",
+            "kind": "pty",
+            "rows": 30,
+            "cols": 120,
+        },
+    )
+
+    assert resp.status_code == 200
+    assert captured["agent"] == "ssh"
+    assert captured["flags"] == "user@somehost"
