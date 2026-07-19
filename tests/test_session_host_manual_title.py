@@ -105,132 +105,20 @@ def test_manual_title_defaults_empty_in_to_api():
     assert session.to_api()["manual_title"] == ""
 
 
-# --- native-CLI rename forwarding (issue #503) --------------------------------
+# --- rename never touches the live PTY (issue #555) ---------------------------
 
 
-def test_rename_forwards_native_command_into_pty():
-    """A pty-kind rename also types the agent's native command into the PTY —
-    ESC to clear the prompt, then `/rename <title>` + CR (Claude)."""
+def test_rename_never_writes_to_the_pty():
+    """A rename is a pure ``manual_title`` set — it must never type anything
+    into the live PTY. The agent-native ``/rename`` injection (#503) was
+    removed in #555 as unfixably racy against the TUI: its ESC interrupted
+    the agent's active turn and its CR often failed to submit, leaving the
+    rename text stuck (and duplicated) in the prompt (#551/#553)."""
     mgr = SessionManager()
     session = _make_pty_session(mgr, agent="claude")
 
     mgr.rename(session.session_id, "my custom title")
 
-    calls = [c.args for c in session._pty.write.call_args_list]
-    assert ("\x1b",) in calls
-    assert ("/rename my custom title\r",) in calls
-
-
-def test_rename_uses_pi_name_verb():
-    """Pi's built-in rename verb is /name, not /rename (#503)."""
-    mgr = SessionManager()
-    session = _make_pty_session(mgr, agent="pi")
-
-    mgr.rename(session.session_id, "pi thread")
-
-    calls = [c.args for c in session._pty.write.call_args_list]
-    assert ("/name pi thread\r",) in calls
-    assert ("/rename pi thread\r",) not in calls
-
-
-def test_rename_clear_does_not_write_to_pty():
-    """Clearing a title (empty string) sets manual_title but injects nothing —
-    a title clear has no sensible agent-side semantics."""
-    mgr = SessionManager()
-    session = _make_pty_session(mgr)
-
-    mgr.rename(session.session_id, "")
-
-    assert session.manual_title == ""
+    assert session.manual_title == "my custom title"
     session._pty.write.assert_not_called()
-
-
-def test_rename_caps_injected_title_length():
-    """The injected command carries the same stripped/capped title as
-    manual_title — not the raw over-length input."""
-    mgr = SessionManager()
-    session = _make_pty_session(mgr)
-
-    mgr.rename(session.session_id, "  " + ("x" * (_MANUAL_TITLE_MAX_CHARS + 20)) + "  ")
-
-    expected = "x" * _MANUAL_TITLE_MAX_CHARS
-    calls = [c.args for c in session._pty.write.call_args_list]
-    assert (f"/rename {expected}\r",) in calls
-
-
-# --- rename busy-wait (issue #551) --------------------------------------
-
-
-class _FakeClock:
-    """Deterministic monotonic() + sleep() for the busy-wait tests below."""
-
-    def __init__(self, start: float = 100.0):
-        self.now = start
-
-    def monotonic(self) -> float:
-        return self.now
-
-    def sleep(self, seconds: float) -> None:
-        self.now += seconds
-
-
-def test_rename_waits_for_pty_to_go_quiet_before_injecting(monkeypatch):
-    """A session with recent output (mid-stream) is not written into until
-    it's been quiet for _RENAME_QUIET_S — the ESC prefix would otherwise
-    interrupt an active turn instead of just clearing a partial prompt."""
-    from src import session_host
-
-    clock = _FakeClock()
-    monkeypatch.setattr(session_host.time, "monotonic", clock.monotonic)
-    monkeypatch.setattr(session_host.time, "sleep", clock.sleep)
-
-    mgr = SessionManager()
-    session = _make_pty_session(mgr)
-    session._last_output_at = clock.now  # output "just arrived"
-
-    session._pty.write.assert_not_called()
-    mgr.rename(session.session_id, "quiet please")
-
-    assert clock.now - session._last_output_at >= session_host._RENAME_QUIET_S
-    calls = [c.args for c in session._pty.write.call_args_list]
-    assert ("/rename quiet please\r",) in calls
-
-
-def test_rename_gives_up_waiting_after_cap_and_injects_anyway(monkeypatch):
-    """A PTY that never goes quiet doesn't block rename forever — best-effort
-    cap, then inject anyway (same philosophy as the board dispatch
-    quiescence wait, #549)."""
-    from src import session_host
-
-    clock = _FakeClock()
-    mgr = SessionManager()
-    session = _make_pty_session(mgr)
-
-    def _never_quiet_sleep(seconds: float) -> None:
-        clock.now += seconds
-        session._last_output_at = clock.now  # output keeps arriving
-
-    monkeypatch.setattr(session_host.time, "monotonic", clock.monotonic)
-    monkeypatch.setattr(session_host.time, "sleep", _never_quiet_sleep)
-    session._last_output_at = clock.now
-
-    start = clock.now
-    mgr.rename(session.session_id, "never quiet")
-
-    assert clock.now - start >= session_host._RENAME_WAIT_CAP_S
-    calls = [c.args for c in session._pty.write.call_args_list]
-    assert ("/rename never quiet\r",) in calls
-
-
-def test_rename_remote_session_attempts_no_pty_write(tmp_path, monkeypatch):
-    """A detached RemoteSession keeps today's manual_title-only behaviour —
-    the native-command injection is PtySession-only (no PTY to type into)."""
-    mgr = SessionManager()
-    session = _make_remote_session(mgr, tmp_path, monkeypatch)
-
-    mgr.rename(session.session_id, "detached rename")
-
-    assert session.manual_title == "detached rename"
-    # The injection path lives only on PtySession — a RemoteSession never
-    # exposes it, so the isinstance guard can never mis-route to it.
     assert not hasattr(session, "inject_rename")

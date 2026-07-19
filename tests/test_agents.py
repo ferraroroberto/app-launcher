@@ -43,30 +43,6 @@ class TestQuitCommandFor:
         assert agents.quit_command_for("bogus") == "/quit"
 
 
-class TestRenameCommandFor:
-    def test_claude_renames_with_slash_rename(self):
-        assert agents.rename_command_for("claude") == "/rename"
-
-    def test_codex_renames_with_slash_rename(self):
-        assert agents.rename_command_for("codex") == "/rename"
-
-    def test_antigravity_renames_with_slash_rename(self):
-        assert agents.rename_command_for("antigravity") == "/rename"
-
-    def test_copilot_renames_with_slash_rename(self):
-        assert agents.rename_command_for("copilot") == "/rename"
-
-    def test_pi_renames_with_slash_name(self):
-        # Pi's built-in verb is /name, not /rename (#503).
-        assert agents.rename_command_for("pi") == "/name"
-
-    def test_unknown_agent_returns_empty(self):
-        # Unlike quit, rename does NOT fall back to the default's command —
-        # typing the wrong verb into a live prompt would surface a spurious
-        # error line, so an unknown id stays silent (nothing to forward).
-        assert agents.rename_command_for("bogus") == ""
-
-
 class TestResumeCommandFor:
     def test_claude_resumes_with_flag(self):
         # Claude's --resume opens its native interactive session picker.
