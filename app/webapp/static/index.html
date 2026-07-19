@@ -406,8 +406,8 @@
         <span id="homeHeadStatus" class="status"></span>
         <button type="button" id="themeToggle" class="home-toggle hit-target"
                 title="Toggle theme" aria-label="Toggle dark mode">
-          <svg class="theme-toggle-icon theme-icon-moon" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
-          <svg class="theme-toggle-icon theme-icon-sun" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
       </div>
 
@@ -1192,7 +1192,7 @@
         <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
         <div class="dialog-actions dialog-actions--stacked">
           <button type="button" id="jobSaveAnyway" class="button-tint warn" hidden>Save anyway</button>
-          <button type="submit" id="jobSaveBtn" class="button-tint">Add and verify</button>
+          <button type="submit" id="jobSaveBtn" class="button-primary">Add and verify</button>
         </div>
       </form>
     </dialog>
@@ -1212,7 +1212,7 @@
           <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry-run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="dialog-actions dialog-actions--stacked">
-          <button type="submit" class="button-tint">▶ Run</button>
+          <button type="submit" class="button-primary">▶ Run</button>
         </div>
       </form>
     </dialog>
@@ -1233,18 +1233,27 @@
 
     <dialog id="renameDialog" class="rename-dialog">
       <form id="renameForm">
-        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename</h2>
+        <div class="dialog-head">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename</h2>
+          <button type="button" id="renameCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <input id="renameInput" type="text" class="input-native" required>
-        <div class="row dialog-actions">
-          <button type="button" id="renameCancel" class="button-ghost">Cancel</button>
-          <button type="submit" class="button-tint">Save</button>
+        <div class="dialog-actions dialog-actions--stacked">
+          <button type="submit" class="button-primary">Save</button>
         </div>
       </form>
     </dialog>
 
     <dialog id="chiefSettingsDialog" class="rename-dialog chief-settings-dialog">
       <form id="chiefSettingsForm">
-        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg> Chief settings</h2>
+        <div class="dialog-head">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg> Chief settings</h2>
+          <button type="button" id="chiefSettingsCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <div class="chief-settings-row">
           <label for="chiefModelSelect">Model</label>
           <select id="chiefModelSelect" class="select-native">
@@ -1266,20 +1275,23 @@
           <label for="chiefWorkerCap">Worker cap</label>
           <input id="chiefWorkerCap" type="number" class="input-native" min="1" max="10" step="1" value="3">
         </div>
-        <div class="row dialog-actions">
-          <button type="button" id="chiefSettingsCancel" class="button-ghost">Cancel</button>
-          <button type="submit" class="button-tint">Save</button>
+        <div class="dialog-actions dialog-actions--stacked">
+          <button type="submit" class="button-primary">Save</button>
         </div>
       </form>
     </dialog>
 
     <dialog id="sessionRenameDialog" class="rename-dialog">
       <form id="sessionRenameForm">
-        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename session</h2>
+        <div class="dialog-head">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename session</h2>
+          <button type="button" id="sessionRenameCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
         <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
-        <div class="row dialog-actions">
-          <button type="button" id="sessionRenameCancel" class="button-ghost">Cancel</button>
-          <button type="submit" class="button-tint">Save</button>
+        <div class="dialog-actions dialog-actions--stacked">
+          <button type="submit" class="button-primary">Save</button>
         </div>
       </form>
     </dialog>

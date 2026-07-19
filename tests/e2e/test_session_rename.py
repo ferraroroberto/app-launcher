@@ -185,14 +185,15 @@ def test_board_drawer_rename_patches_card_in_place(
     )
 
 
-def test_rename_dialog_buttons_render_as_equal_pair(
+def test_rename_dialog_adopts_modal_contract(
     authed_page: Page, base_url: str
 ) -> None:
-    # Regression for #484: .button-tint's global width:100% ballooned Save to
-    # ~the whole .dialog-actions flex row while Cancel (.button-ghost, no
-    # width/height rule) shrank to its caption-sized content box. The scoped
-    # `.rename-dialog .row.dialog-actions` grid (1fr 1fr) + ghost min-height
-    # must render the two actions as an equal-width, equal-height pair.
+    # #545 supersedes #484: the rename dialogs adopt the fleet modal contract
+    # (design.md components.modal), replacing the two-button Cancel+Save footer
+    # that #484 hand-tuned into an equal pair. The contract is a square × close
+    # in the *header* + exactly one full-width primary Save in the footer;
+    # dismissal is via the × / Escape / backdrop, never a footer Cancel. This
+    # is what clears the /design-sync modal-header + modal-footer FAILs.
     state = {"manual_title": ""}
     _mock_sessions_list(authed_page, state)
 
@@ -203,35 +204,34 @@ def test_rename_dialog_buttons_render_as_equal_pair(
     row.locator('button[aria-label="Rename session"]').click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
 
-    cancel = authed_page.locator("#sessionRenameCancel").bounding_box()
+    # Header × close: the compact modal.closeSize square (~34px) carrying the
+    # `dialog-close` class, sitting in the header *above* the input — not a
+    # footer button.
+    close = authed_page.locator("#sessionRenameCancel")
+    expect(close).to_have_class(re.compile(r"\bdialog-close\b"))
+    close_box = close.bounding_box()
+    field = authed_page.locator("#sessionRenameInput").bounding_box()
     save = authed_page.locator(
         "#sessionRenameForm button[type='submit']"
     ).bounding_box()
-    assert cancel and save
-    assert abs(cancel["width"] - save["width"]) <= 2, (
-        f"Cancel/Save widths diverge: {cancel['width']} vs {save['width']}"
+    assert close_box and field and save
+    assert close_box["width"] <= 40 and close_box["height"] <= 40, (
+        f"× close is not a compact square: {close_box['width']}x{close_box['height']}"
     )
-    assert abs(cancel["height"] - save["height"]) <= 2, (
-        f"Cancel/Save heights diverge: {cancel['height']} vs {save['height']}"
-    )
-    assert cancel["height"] >= 48 and save["height"] >= 48
+    assert abs(close_box["width"] - close_box["height"]) <= 2
+    assert close_box["y"] < field["y"], "× close must sit in the header, above the input"
 
-    # #484 follow-up: the title field spans the same width as the button pair
-    # (Cancel's left edge to Save's right edge), and the dialog keeps one
-    # uniform 12px internal rhythm — the Cancel-to-Save gap and the
-    # field-to-footer gap are the same modal rowPadding step, not the .row
-    # default 8px beside a 12px margin.
-    field = authed_page.locator("#sessionRenameInput").bounding_box()
-    assert field
-    pair_width = (save["x"] + save["width"]) - cancel["x"]
-    assert abs(field["width"] - pair_width) <= 2, (
-        f"input width {field['width']} != actions row width {pair_width}"
+    # Footer: exactly one action, and it is the full-width primary Save — its
+    # width matches the input field (both stretch to the dialog content box),
+    # never a half-row paired with a Cancel.
+    footer_buttons = authed_page.locator("#sessionRenameForm .dialog-actions button")
+    expect(footer_buttons).to_have_count(1)
+    expect(footer_buttons).to_have_text(re.compile(r"Save"))
+    assert save["width"] >= field["width"] - 3, (
+        f"Save width {save['width']} is not full-width vs field {field['width']}"
     )
-    v_gap = cancel["y"] - (field["y"] + field["height"])
-    h_gap = save["x"] - (cancel["x"] + cancel["width"])
-    assert v_gap >= 10, f"input-to-footer gap collapsed: {v_gap}px"
-    assert abs(v_gap - h_gap) <= 1, (
-        f"gap rhythm diverges: buttons {h_gap}px vs field-to-footer {v_gap}px"
+    assert save["width"] > close_box["width"] * 3, (
+        "footer Save reads as a narrow paired button, not the full-width primary"
     )
 
 

@@ -54,4 +54,4 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 
 ## Don't diverge
 
-`card.css` is vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. Streamlit POC spikes are exempt.
+`card.css` is vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.

@@ -46,7 +46,7 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.tab.active { background: var(--card-off); color: var(--accent); }
+.tab.active { background: var(--accent-soft); color: var(--accent); }
 .tab:active { transform: scale(0.97); }
 /* The stroke SVG icon shows everywhere — desktop segmented control and mobile
    pill alike (home-automation #77 made icon-as-SVG the fleet's direction; this
@@ -278,8 +278,8 @@
     transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
   }
   .tab.active {
-    background: var(--card-off);
-    border-color: var(--line);
+    background: var(--accent-soft);
+    border-color: var(--accent-border-soft);
     color: var(--accent);
     box-shadow: none;
   }
