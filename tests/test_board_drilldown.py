@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from app.webapp.routers import board as board_router
 from src import board, board_exchange
 
 
@@ -379,6 +380,20 @@ class TestInputProxy:
 # ------------------------------------------------------------- issue start
 
 
+@pytest.fixture
+def _fast_probe(monkeypatch):
+    """Shrink the readiness + quiescence constants so no test ever really
+    waits (#553: issue-start's auto-rename now awaits them too, same as the
+    goal-dispatch path in test_board_dispatch.py's fixture of the same name)."""
+    monkeypatch.setattr(board_router, "DISPATCH_READY_CAP_S", 0.3)
+    monkeypatch.setattr(board_router, "DISPATCH_SETTLE_S", 0.0)
+    monkeypatch.setattr(board_router, "DISPATCH_POLL_S", 0.01)
+    monkeypatch.setattr(board_router, "DISPATCH_LEGACY_GRACE_S", 0.0)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_STABLE_S", 0.02)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_CAP_S", 0.3)
+    monkeypatch.setattr(board_router, "PTY_QUIESCENT_POLL_S", 0.01)
+
+
 class TestIssueStart:
 
     @pytest.fixture
@@ -526,12 +541,15 @@ class TestIssueStart:
         assert resp.status_code == 404
 
     def test_title_auto_names_the_spawned_session(
-        self, webapp_client, _bypass_gate, _spawn
+        self, webapp_client, _bypass_gate, _spawn, _fast_probe
     ):
         """#467: a Board start carrying the issue title renames the spawned
         session after it, via the #458 manual-override path."""
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        overrides["session"].get_session.return_value = {
+            "alive": True, "output_chars": 64,
+        }
         resp = client.post(
             "/api/board/issues/start",
             json={
@@ -543,6 +561,51 @@ class TestIssueStart:
         overrides["session"].rename.assert_called_once_with(
             8446, "spawned-1", "Board tab: auto-name a started session"
         )
+
+    def test_rename_waits_for_readiness_before_typing(
+        self, webapp_client, _bypass_gate, _spawn, _fast_probe
+    ):
+        """#553: the auto-rename must wait for the same readiness/quiescence
+        signal the goal-dispatch path trusts (#302/#549) before typing —
+        firing the instant the session spawns races the agent's own boot
+        output and gets swallowed."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        overrides["session"].get_session.return_value = {
+            "alive": True, "output_chars": 64,
+        }
+        client.post(
+            "/api/board/issues/start",
+            json={
+                "repo": "myrepo", "number": 42, "mode": "start",
+                "title": "readiness matters",
+            },
+        )
+        names = [c[0] for c in overrides["session"].mock_calls]
+        assert "get_session" in names, "readiness probe never ran"
+        assert names.index("get_session") < names.index("rename"), (
+            "rename fired before the readiness/quiescence probe"
+        )
+
+    def test_rename_skipped_when_session_dies_before_ready(
+        self, webapp_client, _bypass_gate, _spawn, _fast_probe
+    ):
+        """A session that dies during boot never gets the rename typed into
+        it — the readiness wait's own dead-session guard (#302) surfaces
+        through the rename's best-effort catch instead of failing the
+        launch (#553)."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        overrides["session"].get_session.return_value = {"alive": False}
+        resp = client.post(
+            "/api/board/issues/start",
+            json={
+                "repo": "myrepo", "number": 42, "mode": "start",
+                "title": "never types",
+            },
+        )
+        assert resp.status_code == 200
+        overrides["session"].rename.assert_not_called()
 
     def test_blank_title_skips_rename(
         self, webapp_client, _bypass_gate, _spawn
@@ -559,11 +622,14 @@ class TestIssueStart:
         overrides["session"].rename.assert_not_called()
 
     def test_rename_failure_does_not_fail_the_launch(
-        self, webapp_client, _bypass_gate, _spawn
+        self, webapp_client, _bypass_gate, _spawn, _fast_probe
     ):
         """A rename error is best-effort — the launch still succeeds (#467)."""
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        overrides["session"].get_session.return_value = {
+            "alive": True, "output_chars": 64,
+        }
         overrides["session"].rename.side_effect = (
             overrides["session"].SessionHostError("boom", 502)
         )
