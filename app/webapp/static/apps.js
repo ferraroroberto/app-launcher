@@ -43,7 +43,7 @@ function renderCodingList(host, items) {
   host.innerHTML = '';
   // Favorites pinned to the top (issue #250). `items` arrives alphabetical
   // from the scanner, so a stable partition keeps both groups A–Z. The
-  // "★ Favorites" header toggle (state.codingFavFilter) narrows the list to
+  // "Favorites" header toggle (state.codingFavFilter) narrows the list to
   // just the starred ones.
   const favs = items.filter(function (a) { return a.is_favorite; });
   const rest = items.filter(function (a) { return !a.is_favorite; });
@@ -124,7 +124,8 @@ function renderCodingList(host, items) {
     actions.appendChild(ghBtn);
 
     // Favorite star — rightmost in the action strip, a toggle distinct from
-    // the agent-launch buttons. Filled ★ when starred, hollow ☆ otherwise.
+    // the agent-launch buttons. Filled when starred, outline otherwise
+    // (see the .star-btn.is-fav CSS fill treatment).
     const starBtn = document.createElement('button');
     starBtn.type = 'button';
     starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
@@ -173,7 +174,7 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
-// Keep the "★ Favorites" header toggle's pressed state + glyph in sync with
+// Keep the "Favorites" header toggle's pressed state + glyph in sync with
 // state.codingFavFilter. Called on every coding re-render so the 4 s apps
 // poll can't leave the button out of step with the list it's filtering.
 function syncFavFilterBtn() {

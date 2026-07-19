@@ -292,7 +292,8 @@ let runDialogJob = null;
 
 export function openRunDialog(job, prefill, staleKeys) {
   runDialogJob = job;
-  els.jobRunDialogTitle.textContent = '▶ ' + job.name;
+  els.jobRunDialogTitle.innerHTML = icon('play');
+  els.jobRunDialogTitle.appendChild(document.createTextNode(' ' + job.name));
   if (staleKeys && staleKeys.length) {
     els.jobRunDialogStaleNote.hidden = false;
     els.jobRunDialogStaleNote.textContent =

@@ -871,9 +871,10 @@ summary + .opt-group { border-top: 0; }
 }
 
 /* ---------- Coding tab favorites (issue #250) ---------- */
-/* Per-tile star toggle — rightmost in the agent-action strip, a glyph (not an
-   svg icon) so it can fill/hollow on state. Muted ☆ when unstarred (like the
-   other idle icons), gold ★ when starred. */
+/* Per-tile star toggle — rightmost in the agent-action strip, the vendored
+   Lucide `star` glyph. Outline + muted colour when unstarred (like the
+   other idle icons); the `.is-fav` rule below fills it gold when starred —
+   the sprite has one star symbol, not a filled/outline pair (#563). */
 .app-item .row-actions.agent-actions .icon-btn.star-btn {
   font-size: 20px;
   line-height: 1;
@@ -882,8 +883,12 @@ summary + .opt-group { border-top: 0; }
 .app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav:active {
   color: var(--star);
 }
-/* "★ Favorites" header filter toggle — compact ghost button sized like the
-   git-status button; gold outline + glyph when the filter is active. */
+.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav .icon {
+  fill: var(--star);
+}
+/* "Favorites" header filter toggle — compact ghost button sized like the
+   git-status button; gold outline + filled star glyph when the filter is
+   active (fill rule: `.fav-filter-btn.active .icon`, near `.opt-group`). */
 .fav-filter-btn { font-size: var(--font-caption); padding: 6px 10px; }
 .fav-filter-btn.active { color: var(--star); border-color: var(--star); }
 /* Icon-only on narrow phones (#496): the Projects summary also carries the
