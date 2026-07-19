@@ -39,14 +39,6 @@ class Agent:
     (each agent uses its own — Claude's is ``/quit``, Copilot's is
     ``/exit``).
 
-    ``rename_command`` is the interactive slash command that renames the
-    agent's *own* conversation from inside the CLI, typed into the PTY when
-    the launcher renames a session so the agent's native ``--resume`` picker
-    shows the same name (issue #503). Nearly uniform — Claude/Codex/
-    Antigravity/Copilot all use ``/rename <name>``; Pi's built-in verb is
-    ``/name <name>`` instead. Empty means the agent has no native rename to
-    forward (the launcher keeps its own ``manual_title`` either way).
-
     ``fullscreen`` marks a full-screen *differential* TUI (Codex's
     ratatui, and the other terminal agents) that repaints in place rather
     than scrolling inline like Claude Code. The session-host streams these
@@ -71,7 +63,6 @@ class Agent:
     quit_command: str
     fullscreen: bool = False
     resume_token: str = ""
-    rename_command: str = ""
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -80,22 +71,18 @@ AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
-        rename_command="/rename",
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
         quit_command="/quit", fullscreen=True, resume_token="resume",
-        rename_command="/rename",
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",
         quit_command="/quit", fullscreen=True, resume_token="--continue",
-        rename_command="/rename",
     ),
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
         quit_command="/exit", fullscreen=True, resume_token="--resume",
-        rename_command="/rename",
     ),
     # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
     # the Claude **subscription** path (no API credits); see the launch flags
@@ -111,9 +98,6 @@ AGENTS: Dict[str, Agent] = {
     "pi": Agent(
         id="pi", label="Pi", command="pi",
         quit_command="/quit", fullscreen=True, resume_token="-r",
-        # Pi's built-in rename verb is `/name`, not `/rename` (a community
-        # `/rename` extension exists but must not be assumed installed) — #503.
-        rename_command="/name",
     ),
 }
 
@@ -142,23 +126,6 @@ def quit_command_for(agent_id: str) -> str:
     """
     agent = AGENTS.get(agent_id) or AGENTS[DEFAULT_AGENT]
     return agent.quit_command
-
-
-def rename_command_for(agent_id: str) -> str:
-    """Return the agent's native in-CLI rename command (issue #503).
-
-    Typed into the PTY when the launcher renames a session so the agent's
-    own ``--resume`` picker shows the launcher-set name (Claude/Codex/
-    Antigravity/Copilot ``/rename``, Pi ``/name``). Returns an empty string
-    for an unknown id or an agent with no native rename — the caller treats
-    that as "nothing to forward" (the launcher keeps its own ``manual_title``
-    regardless) rather than raising, so a bad id can never break a rename.
-    Deliberately does *not* fall back to the default agent's command like
-    :func:`quit_command_for`: typing the wrong verb into a live prompt would
-    surface a spurious error line in the agent, so an unknown id stays silent.
-    """
-    agent = AGENTS.get(agent_id)
-    return agent.rename_command if agent else ""
 
 
 def resume_command_for(agent_id: str) -> str:

@@ -207,11 +207,7 @@ def create_app() -> FastAPI:
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
-        # A live PtySession rename waits for the PTY to go quiet before
-        # typing the agent-native /rename in (issue #551) — run it off the
-        # event loop so the session-host stays responsive, same reason as
-        # the graceful stop above (issue #253).
-        await asyncio.to_thread(manager.rename, sid, str(body.get("title") or ""))
+        manager.rename(sid, str(body.get("title") or ""))
         return session.to_api()
 
     @app.post("/sessions/{sid}/image")

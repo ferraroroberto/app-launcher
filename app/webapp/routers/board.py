@@ -320,21 +320,17 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     # Auto-name the session after the issue title (#467): a Board-started
     # session is then recognizable in the Coding tab immediately, instead of
     # inheriting the first-prompt/OSC-derived default. Reuses the #458 manual
-    # override (wins over the agent's later self-naming). Best-effort — a
-    # rename failure must never fail an otherwise-successful launch. Waits
-    # for the same readiness signal the goal-dispatch path already trusts
-    # (_await_dispatch_ready/_await_pty_quiescent, #302/#549) before typing:
-    # a rename fired the instant the session spawns races the agent's own
-    # boot output (handshake, banner) and gets swallowed (#553) — the same
-    # typed-into-a-not-ready-PTY race #551 fixed on the too-*late* side.
+    # override (a launcher-side ``manual_title`` set, wins over the agent's
+    # later self-naming). Best-effort — a rename failure must never fail an
+    # otherwise-successful launch. No readiness wait needed: the rename is a
+    # pure in-memory attribute set on the session record, never typed into
+    # the PTY (the racy agent-native injection was removed in #555).
     if sid and title:
         try:
-            await _await_dispatch_ready(cfg.session_host_port, sid)
-            await _await_pty_quiescent(cfg.session_host_port, sid)
             await asyncio.to_thread(
                 session_client.rename, cfg.session_host_port, sid, title
             )
-        except (HTTPException, session_client.SessionHostError) as exc:
+        except session_client.SessionHostError as exc:
             logger.warning(
                 "⚠️ Board issue-start could not auto-name session %s: %s",
                 sid[:8], exc,
