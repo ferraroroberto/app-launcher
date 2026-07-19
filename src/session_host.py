@@ -75,6 +75,19 @@ _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
 
+# inject_rename()'s busy-wait (#551): the ESC prefix that clears a partial
+# prompt also interrupts an *active* agent turn — sending it while the agent
+# is mid-stream races the CLI's interrupt-recovery and can leave the rename
+# command's submitting CR unconsumed (typed but never executed). Waiting for
+# output to go quiet before injecting sidesteps the interrupt entirely rather
+# than trying to out-time it. Short quiet window + short cap: unlike the
+# board dispatch quiescence wait (#549, a fresh spawn's boot output), this
+# targets a session already mid-conversation — no long boot to ride out, and
+# a stalled cap of only a few seconds still beats blocking rename indefinitely.
+_RENAME_QUIET_S = 0.5
+_RENAME_WAIT_CAP_S = 5.0
+_RENAME_POLL_S = 0.1
+
 # First-prompt session title (issue #266). Only Claude Code emits a genuine
 # per-conversation OSC title; Antigravity/Copilot emit none and Codex/Pi emit
 # only the project folder, so for those agents we derive a human title from the
@@ -400,6 +413,13 @@ class PtySession:
     cols: int = 120
     _ring: str = ""
     _ring_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Last time a PTY output chunk arrived (monotonic clock). Used only as a
+    # coarse "is the agent actively streaming right now" signal for
+    # inject_rename's busy-wait (#551) — unlike output_chars (the ring's
+    # length), this doesn't saturate once a long-running session's ring hits
+    # _RING_MAX_CHARS, so it stays meaningful for a session that's been open
+    # a while.
+    _last_output_at: float = 0.0
     _subscribers: "set[asyncio.Queue]" = field(default_factory=set)
     _reader: Optional[threading.Thread] = None
     _exited: bool = False
@@ -451,6 +471,7 @@ class PtySession:
                     break
                 time.sleep(0.01)
                 continue
+            self._last_output_at = time.monotonic()
             # Strip OSC 10/11/12 colour query/reply sequences (#270) at the
             # source — before scrollback + broadcast — so the leak never
             # reaches a fresh OR reconnecting client. Stateful: a sequence
@@ -672,6 +693,24 @@ class PtySession:
         # Every terminating stop closes the window — signal mirror page(s).
         self._signal_shutdown_to_subscribers()
 
+    def _await_output_quiet(
+        self, cap_s: float = _RENAME_WAIT_CAP_S, quiet_s: float = _RENAME_QUIET_S
+    ) -> None:
+        """Best-effort block until the PTY has been quiet for ``quiet_s`` (#551).
+
+        Blocking (``time.sleep``), not async — callers run this off the
+        session-host's event loop (see ``session_rename`` in
+        ``app/session_host/server.py``, same ``to_thread`` pattern as
+        :meth:`stop`'s graceful-quit wait) so it never stalls other sessions'
+        I/O. Caps at ``cap_s`` and returns anyway rather than blocking a
+        rename indefinitely on a session that never goes quiet.
+        """
+        deadline = time.monotonic() + cap_s
+        while time.monotonic() < deadline:
+            if time.monotonic() - self._last_output_at >= quiet_s:
+                return
+            time.sleep(_RENAME_POLL_S)
+
     def inject_rename(self, title: str) -> None:
         """Forward a manual rename into the agent's own CLI (issue #503).
 
@@ -680,18 +719,27 @@ class PtySession:
         :func:`rename_command_for`) — into the live PTY, prefixed with an ESC
         that clears any partial prompt, exactly like :meth:`stop`'s graceful
         quit. This keeps the agent's own ``--resume`` picker in sync with the
-        launcher-set name instead of the two silently diverging. Claude's
-        ``/rename`` persists through ``/clear``/compaction/``--resume`` and
-        works mid-response, so no busy-guard is needed. A no-op when the agent
-        has no native rename command or the title is empty — a title *clear*
-        has no sensible agent-side semantics, so nothing is typed. Writes go
-        straight to the raw PTY (not :meth:`write`) so the rename command is
-        never mistaken for the session's first-prompt title capture.
+        launcher-set name instead of the two silently diverging. A no-op when
+        the agent has no native rename command or the title is empty — a
+        title *clear* has no sensible agent-side semantics, so nothing is
+        typed. Writes go straight to the raw PTY (not :meth:`write`) so the
+        rename command is never mistaken for the session's first-prompt title
+        capture.
+
+        Waits for output to go quiet first (:meth:`_await_output_quiet`,
+        #551): the ESC prefix that "clears any partial prompt" also
+        interrupts an *actively streaming* response — the CLI shows its own
+        interrupt prompt, and the rename's submitting CR then races that
+        transition and can land unconsumed (typed but never executed,
+        sometimes visibly duplicated in the transcript). Deferring the write
+        until the agent stops producing output for a beat means the ESC has
+        nothing active to interrupt.
         """
         command = rename_command_for(self.agent)
         title = title.strip()
         if not command or not title:
             return
+        self._await_output_quiet()
         try:
             self._pty.write("\x1b")
             self._pty.write(f"{command} {title}\r")
