@@ -57,4 +57,4 @@ On top of [`card/`](../card/)'s tokens:
 
 ## Don't diverge
 
-`disclosure.css` is vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. In particular, never re-introduce per-card `height`/`padding` enumerations: the shared modifier exists precisely because that enumeration is how the contract drifts. Streamlit POC spikes are exempt.
+`disclosure.css` is vendored verbatim — to change the contract, change it **here in `project-scaffolding`** and re-vendor downstream. In particular, never re-introduce per-card `height`/`padding` enumerations: the shared modifier exists precisely because that enumeration is how the contract drifts. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.

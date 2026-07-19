@@ -412,6 +412,10 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--icon-title);
   cursor: pointer;
 }
+/* Invisible hit-area expansion to the 44px effective floor (design.md Touch
+   targets); a co-applied .hit-target class can't be used here — it sets
+   position: relative, which would break this control's position: fixed. */
+.system-map-lightbox-close::before { content: ""; position: absolute; inset: -2px; }
 /* Tighter inter-tile gap on the Projects list — part of the vertical
    compaction (issue #212); horizontal rhythm is left alone. */
 .opt-group {
@@ -978,7 +982,11 @@ summary + .opt-group { border-top: 0; }
   color: var(--fg);
   font: inherit;
 }
-.jobs-search-bar button {
+/* Scoped to the .button-ghost class (the sole search-bar button, #jobsSearchClear)
+   rather than the bare element: the button co-applies the shared .hit-target
+   utility in markup, which reaches the 44px effective floor around this 36px
+   visual (design.md Touch targets). */
+.jobs-search-bar .button-ghost {
   width: 36px;
   height: 36px;
   padding: 0;
@@ -1221,9 +1229,9 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .jobs-webhook-payload > summary .icon {
-  width: 14px;
-  height: 14px;
-  vertical-align: -2px;
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
 }
 .jobs-webhook-payload-body {
   margin: 6px 0 0;
@@ -1438,6 +1446,7 @@ summary + .opt-group { border-top: 0; }
   line-height: 1.2;
 }
 .dialog-close {
+  position: relative;
   width: 34px;
   height: 34px;
   flex: 0 0 auto;
@@ -1450,6 +1459,9 @@ summary + .opt-group { border-top: 0; }
   color: var(--muted);
   cursor: pointer;
 }
+/* Invisible hit-area expansion: keep the 34px modal.closeSize visual, reach
+   the 44px effective floor (design.md Touch targets). 34 + 2×5 = 44. */
+.dialog-close::before { content: ""; position: absolute; inset: -5px; }
 .dialog-close .icon { width: 18px; height: 18px; }
 .dialog-close:active { color: var(--fg); background: var(--card-off); }
 /* Stacked label/value rows (design modal contract): 12px 0 padding on a
@@ -1531,37 +1543,12 @@ summary + .opt-group { border-top: 0; }
   padding-top: 12px;
   border-top: 1px solid var(--line-muted);
 }
-.rename-dialog .dialog-actions .button-tint:not(.warn) {
-  background: var(--accent);
-  color: var(--accent-fg);
-  border-color: var(--accent-border-strong);
-  min-height: 48px;
-}
-/* Rename-dialog Cancel/Save footer (#484): an equal-width, equal-height pair
-   (home-automation's .confirm-actions grid) — .button-tint's own width:100%
-   would otherwise balloon Save while Cancel shrinks to its content box.
-   Scoped to .row so the stacked editor footers (.dialog-actions--stacked in
-   #jobDialog / #jobRunDialog, same .rename-dialog class) keep their column
-   layout. One 12px step — the modal contract's rowPadding (design.md
-   components.modal) and this dialog's own internal rhythm (h2 margin,
-   .stacked padding, .dialog-actions--stacked) — sets BOTH the field-to-footer
-   margin and the Cancel/Save gap, overriding .row's 8px so the dialog reads
-   as one uniform grid rather than three different gaps (#484 round 3). */
-.rename-dialog .row.dialog-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 12px;
-}
-/* The rename forms' bare title field (#484 follow-up): .input-native has no
-   width rule, so outside a .stacked flex column it rendered at the browser's
-   intrinsic <input> width — narrower than the button pair below it. Stacked
-   editor controls already stretch; this makes the bare case match. */
+/* The rename forms' bare title field: .input-native has no width rule, so
+   outside a .stacked flex column it renders at the browser's intrinsic
+   <input> width. Stacked editor controls already stretch; this makes the
+   bare case match, full-width like the footer primary below it. */
 .rename-dialog .input-native {
   width: 100%;
-}
-.rename-dialog .row.dialog-actions .button-ghost {
-  min-height: 48px;
 }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
