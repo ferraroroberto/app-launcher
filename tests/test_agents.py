@@ -23,6 +23,9 @@ class TestCommandFor:
     def test_pi_resolves(self):
         assert agents.command_for("pi") == "pi"
 
+    def test_ssh_resolves_for_loopback_session_host(self):
+        assert agents.command_for("ssh") == "ssh"
+
     def test_unknown_agent_raises(self):
         with pytest.raises(ValueError):
             agents.command_for("bogus")
@@ -143,6 +146,7 @@ class TestDetectAgents:
         assert by_id["claude"] is False
         assert by_id["codex"] is True
         assert by_id["pi"] is True  # differential TUI, forced-repaint path (#291)
+        assert "ssh" not in by_id  # service integration, not a Coding-tab button
 
     def test_availability_reflects_path(self, monkeypatch):
         # Only `claude` resolves; `agy` does not.

@@ -190,6 +190,24 @@ def test_create_spawns_pty_at_given_dimensions(tmp_path, monkeypatch):
     assert session.to_api()["rows"] == 55 and session.to_api()["cols"] == 42
 
 
+def test_create_spawns_ssh_pty_with_caller_target(tmp_path, monkeypatch):
+    """#558: SSH reuses the normal ConPTY path with caller-supplied target flags."""
+    captured: dict = {}
+    from src import session_host
+
+    monkeypatch.setattr(session_host, "PtyProcess", _fake_pty_process(captured))
+    monkeypatch.setattr(session_host.PtySession, "start_reader", lambda self: None)
+
+    mgr = SessionManager()
+    mgr.attach_loop(MagicMock())
+    session = mgr.create(
+        str(tmp_path), "peer-machine", "user@somehost", "ssh", rows=30, cols=120,
+    )
+
+    assert captured["command"] == "cmd /c ssh user@somehost"
+    assert session.agent == "ssh"
+
+
 def test_create_defaults_and_clamps_dimensions(tmp_path, monkeypatch):
     captured: dict = {}
     from src import session_host
