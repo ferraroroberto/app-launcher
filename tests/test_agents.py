@@ -69,6 +69,29 @@ class TestResumeCommandFor:
         assert agents.resume_command_for("bogus") == ""
 
 
+class TestNativeSessionNameFlags:
+    @pytest.mark.parametrize("agent", ["claude", "copilot", "pi"])
+    def test_supported_agents_receive_spawn_time_name(self, agent: str):
+        assert (
+            agents.native_session_name_flags_for(agent, "Issue 556: sync picker")
+            == '--name "Issue 556: sync picker"'
+        )
+
+    @pytest.mark.parametrize("agent", ["codex", "antigravity", "bogus"])
+    def test_unsupported_agents_skip_native_name(self, agent: str):
+        assert agents.native_session_name_flags_for(agent, "Issue 556") == ""
+
+    def test_shell_unsafe_title_skips_native_name(self):
+        assert agents.native_session_name_flags_for("claude", "name & command") == ""
+
+    def test_native_name_matches_launcher_title_cap(self):
+        expected = "x" * 60
+        assert (
+            agents.native_session_name_flags_for("claude", "x" * 70)
+            == f'--name "{expected}"'
+        )
+
+
 class TestIsInstalled:
     def test_true_when_command_on_path(self, monkeypatch):
         monkeypatch.setattr(agents.shutil, "which", lambda cmd: f"C:\\bin\\{cmd}")

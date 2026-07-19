@@ -541,8 +541,48 @@ class TestIssueStart:
             },
         )
         assert resp.status_code == 200
+        assert '--name "Board tab: auto-name a started session"' in _spawn["flags"]
         overrides["session"].rename.assert_called_once_with(
             8446, "spawned-1", "Board tab: auto-name a started session"
+        )
+
+    def test_unsafe_title_remains_launcher_only(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        """A shell-sensitive issue title never reaches a native CLI flag."""
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        title = "docs & release"
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 42, "mode": "start", "title": title},
+        )
+        assert resp.status_code == 200
+        assert "--name" not in _spawn["flags"]
+        overrides["session"].rename.assert_called_once_with(8446, "spawned-1", title)
+
+    def test_codex_title_remains_launcher_only(
+        self, webapp_client, _bypass_gate, _spawn, monkeypatch
+    ):
+        """Codex exposes no verified spawn-time session-name interface."""
+        from app.webapp.routers import board as board_router
+
+        monkeypatch.setattr(
+            board_router.agents, "is_installed", lambda agent: agent == "codex"
+        )
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir()
+        resp = client.post(
+            "/api/board/issues/start",
+            json={
+                "repo": "myrepo", "number": 42, "mode": "start",
+                "model": "gpt5.6", "title": "Codex title",
+            },
+        )
+        assert resp.status_code == 200
+        assert "--name" not in _spawn["flags"]
+        overrides["session"].rename.assert_called_once_with(
+            8446, "spawned-1", "Codex title"
         )
 
     def test_blank_title_skips_rename(

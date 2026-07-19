@@ -55,6 +55,11 @@ class Agent:
     Codex (``resume``). Antigravity has no picker flag, so it maps to
     ``--continue`` (reopen the most recent conversation — the closest
     native behaviour). Empty means the agent has no resume path.
+
+    ``native_name_flag`` is a spawn-time flag that gives a new session a
+    picker-visible title. It is intentionally separate from a live rename:
+    the launcher must never type into a running agent TUI (#555). Empty means
+    the agent exposes no verified non-PTY naming mechanism.
     """
 
     id: str
@@ -63,6 +68,7 @@ class Agent:
     quit_command: str
     fullscreen: bool = False
     resume_token: str = ""
+    native_name_flag: str = ""
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -71,6 +77,7 @@ AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
+        native_name_flag="--name",
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
@@ -83,6 +90,7 @@ AGENTS: Dict[str, Agent] = {
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
         quit_command="/exit", fullscreen=True, resume_token="--resume",
+        native_name_flag="--name",
     ),
     # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
     # the Claude **subscription** path (no API credits); see the launch flags
@@ -98,6 +106,7 @@ AGENTS: Dict[str, Agent] = {
     "pi": Agent(
         id="pi", label="Pi", command="pi",
         quit_command="/quit", fullscreen=True, resume_token="-r",
+        native_name_flag="--name",
     ),
 }
 
@@ -141,6 +150,23 @@ def resume_command_for(agent_id: str) -> str:
     """
     agent = AGENTS.get(agent_id)
     return agent.resume_token if agent else ""
+
+
+def native_session_name_flags_for(agent_id: str, title: str) -> str:
+    """Return safe spawn-time picker-name flags for ``title`` (issue #556).
+
+    The title originates outside the command line (for example, from a
+    GitHub issue). Only pass it through ``cmd.exe`` when it contains no
+    metacharacters; otherwise the launcher-side ``manual_title`` remains the
+    safe source of truth. Unsupported agents also return an empty string.
+    """
+    agent = AGENTS.get(agent_id)
+    clean = title.strip()[:60]
+    if not agent or not agent.native_name_flag or not clean:
+        return ""
+    if any(not (char.isalnum() or char in " .,:;()[]{}_-/#?") for char in clean):
+        return ""
+    return f'{agent.native_name_flag} "{clean}"'
 
 
 def is_fullscreen(agent_id: str) -> bool:
