@@ -292,7 +292,10 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     entry = _resolve_repo_entry(cfg, repo)
 
     prompt = f"/issue-{mode} {number}"
-    flags = f'{base_flags} "{prompt}"'
+    native_name_flags = agents.native_session_name_flags_for(agent, title)
+    flags = " ".join(
+        part for part in (base_flags, native_name_flags, f'"{prompt}"') if part
+    )
     try:
         session = await asyncio.to_thread(
             spawn_claude_session,
@@ -324,7 +327,9 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     # later self-naming). Best-effort — a rename failure must never fail an
     # otherwise-successful launch. No readiness wait needed: the rename is a
     # pure in-memory attribute set on the session record, never typed into
-    # the PTY (the racy agent-native injection was removed in #555).
+    # the PTY (the racy agent-native injection was removed in #555). Agents
+    # with a verified spawn-time --name flag also receive the same safe title
+    # above, so their native resume picker is synchronized from birth (#556).
     if sid and title:
         try:
             await asyncio.to_thread(
