@@ -70,13 +70,18 @@ def test_jobs_panel_is_collapsible_and_add_button_does_not_toggle(
         "jobs panel should open by default"
     )
 
-    # The ➕ Add job button lives in the jobs <summary>; it's revealed by Edit
-    # mode. Reveal it, click it, and confirm the panel stays open
-    # (stopPropagation) — the click opens the dialog instead of folding.
-    authed_page.evaluate("document.getElementById('jobsAddBtn').hidden = false")
-    authed_page.locator("#jobsAddBtn").click()
+    # The ➕ Add job button lives in the jobs <summary>. Use the real Edit-mode
+    # control to reveal it: forcing ``hidden = false`` races a pending
+    # renderJobs(), which correctly hides it while Edit mode is still off.
+    authed_page.locator("#jobsEditBtn").click()
+    add_job = authed_page.locator("#jobsAddBtn")
+    add_job.wait_for(state="visible", timeout=10_000)
+    add_job.click()
     assert _is_open(authed_page, "#paneJobs details.jobs-card"), (
         "header action tap must not collapse the jobs panel"
+    )
+    assert bool(authed_page.locator("#jobDialog").evaluate("el => el.open")), (
+        "Add job should open its dialog through the real Edit-mode path"
     )
 
 
