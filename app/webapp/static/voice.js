@@ -315,10 +315,10 @@ export function createDictation(opts) {
       if (body && body.silent) {
         // Nothing heard — drop the empty span we anchored.
         renderDictation('');
-        toast('🎤 Nothing heard — silent recording');
+        toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
       } else if (body && typeof body.transcript === 'string') {
         renderDictation(body.transcript);
-        toast('🎤 Transcribed — review, then ➤ Send.', 'good');
+        toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
       }
       getTextarea().focus();
     } catch (exc) {
@@ -352,11 +352,11 @@ export function createDictation(opts) {
       const body = await res.json().catch(function () { return null; });
       const text = body && body.transcript;
       if (body && body.silent) {
-        toast('🎤 Nothing heard — silent recording');
+        toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
         return;
       }
       if (!text) {
-        toast('🎤 No transcript returned');
+        toast('No transcript returned', undefined, { icon: 'mic' });
         return;
       }
       // Insert at the caret with a leading space when the textarea already
@@ -367,7 +367,7 @@ export function createDictation(opts) {
       ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
       onRender();
       ta.focus();
-      toast('🎤 Transcribed — review, then ➤ Send.', 'good');
+      toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
     } catch (exc) {
       apiFailToast('Transcription failed', exc);
     } finally {

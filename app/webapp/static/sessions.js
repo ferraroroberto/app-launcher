@@ -239,9 +239,10 @@ export async function openSession(s) {
       );
       if (r && r.mirrored) {
         toast(
-          (r.action === 'focused' ? '🖥️ Focused ' : '🖥️ Opened ') +
+          (r.action === 'focused' ? 'Focused ' : 'Opened ') +
             sessionTitle(s) + ' window',
-          'good'
+          'good',
+          { icon: 'monitor' }
         );
         return;
       }
@@ -275,7 +276,7 @@ export async function stopSession(s) {
         body: JSON.stringify({ mode: 'quit' }),
       }
     );
-    toast('🛑 Stopping ' + s.name + '…', 'good');
+    toast('Stopping ' + s.name + '…', 'good', { icon: 'octagon-x' });
     if (state.terminal && state.terminal.sid === s.session_id) {
       hideTerminal();
     }
@@ -381,7 +382,8 @@ export function wireSessions() {
       btn.disabled = true;
       try {
         const body = await ensureChief(false);
-        toast(body.spawned ? '👑 Chief started' : 'Chief already running', 'good');
+        toast(body.spawned ? 'Chief started' : 'Chief already running', 'good',
+          body.spawned ? { icon: 'crown' } : undefined);
         await fetchSessions();
       } catch (exc) {
         apiFailToast('Chief start failed', exc);

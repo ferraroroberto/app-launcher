@@ -602,7 +602,7 @@ function renderPreflightProblems(problems) {
     li.className = 'job-preflight-problem ' + (p.level === 'error' ? 'error' : 'warning');
     const tag = document.createElement('span');
     tag.className = 'job-preflight-tag';
-    tag.textContent = p.level === 'error' ? '❌' : '⚠️';
+    tag.innerHTML = icon(p.level === 'error' ? 'octagon-x' : 'triangle-alert');
     li.appendChild(tag);
     const text = document.createElement('span');
     text.textContent = (p.field ? p.field + ': ' : '') + p.message;

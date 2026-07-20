@@ -265,8 +265,9 @@ export async function openTerminal(session) {
     lockBodyScroll();
     setTerminalTitleText(session);
     setTerminalStatus(
-      '🔒 ' + (state.status.terminal.reason ||
-        'The live terminal is Tailscale-only.')
+      state.status.terminal.reason ||
+        'The live terminal is Tailscale-only.',
+      { icon: 'lock' }
     );
     return;
   }
@@ -756,9 +757,9 @@ async function sendImage(file, opts) {
         // Enter. Cleared once the buffer is sent or reset.
         t.composeHasImage = true;
       }
-      if (!silent) toast('📎 Uploaded — path added to the compose bar.', 'good');
+      if (!silent) toast('Uploaded — path added to the compose bar.', 'good', { icon: 'paperclip' });
     } else {
-      if (!silent) toast('📎 Sent — the file path was pasted into the prompt.', 'good');
+      if (!silent) toast('Sent — the file path was pasted into the prompt.', 'good', { icon: 'paperclip' });
       if (t.term) t.term.focus();
     }
     return true;
@@ -957,11 +958,12 @@ export function wireTerminal() {
     const plural = ok > 1;
     toast(
       inline
-        ? '📎 Uploaded ' + ok + ' image' + (plural ? 's' : '') +
+        ? 'Uploaded ' + ok + ' image' + (plural ? 's' : '') +
             ' — path' + (plural ? 's' : '') + ' added to the compose bar.'
-        : '📎 Sent — ' + ok + ' file path' + (plural ? 's' : '') +
+        : 'Sent — ' + ok + ' file path' + (plural ? 's' : '') +
             ' pasted into the prompt.',
-      'good'
+      'good',
+      { icon: 'paperclip' }
     );
   });
   els.terminalHost.addEventListener('paste', function (ev) {

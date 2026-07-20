@@ -7,7 +7,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
 import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
@@ -283,7 +283,7 @@ function buildGitSummary() {
   if (!offMain.length) {
     const note = document.createElement('div');
     note.className = 'git-summary-empty';
-    note.textContent = 'All projects on their default branch ✓';
+    note.innerHTML = 'All projects on their default branch ' + icon('circle-check');
     box.appendChild(note);
     return;
   }
@@ -365,11 +365,11 @@ function renderList(host, items) {
         link.href = a.tunnel_url;
         link.target = '_blank';
         link.rel = 'noopener';
-        link.textContent = '📡 ' + a.tunnel_url;
+        link.innerHTML = icon('satellite-dish') + ' ' + escapeHtml(a.tunnel_url);
         tr.appendChild(link);
       } else {
         const span = document.createElement('span');
-        span.textContent = '📡 Tunnel not running';
+        span.innerHTML = icon('satellite-dish') + ' Tunnel not running';
         tr.appendChild(span);
       }
       main.appendChild(tr);
@@ -482,9 +482,10 @@ async function launchApp(a, agentId) {
       agentTag = ' (' + (known ? known.label : body.agent) + ')';
     }
     toast(
-      (resume ? '↺ Resumed ' : '🚀 Launched ') + a.name + agentTag +
+      (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
         (mode === 'remote' ? ' (detached)' : ''),
-      'good'
+      'good',
+      { icon: resume ? 'rotate-ccw' : 'rocket' }
     );
     if (a.kind === 'claude-code' && body.session) {
       // Full-control sessions drop straight into the terminal; detached
@@ -632,7 +633,7 @@ async function stopAppInstance(r) {
         '/instances/' + r.pid + '/stop',
       { method: 'POST' }
     );
-    toast('🛑 Stopped ' + r.name + '.', 'good');
+    toast('Stopped ' + r.name + '.', 'good', { icon: 'octagon-x' });
     // Optimistic removal — the next poll confirms it's gone.
     state.runningApps = state.runningApps.filter(function (x) {
       return !(x.app_id === r.app_id && x.pid === r.pid);

@@ -123,7 +123,7 @@ async function readTextAloud(text, handle, quiet) {
   // `quiet` suppresses the peek toast — the summarize path already shows the
   // full text in the modal, so the toast would be redundant noise.
   if (handle || isHubAvailable()) {
-    if (!quiet) toast('🔊 Reading: ' + peek, 'good');
+    if (!quiet) toast('Reading: ' + peek, 'good', { icon: 'volume-2' });
     try {
       if (handle) await speakHubInto(handle, text, opts);
       else await speakHub(text, opts);
@@ -139,7 +139,7 @@ async function readTextAloud(text, handle, quiet) {
     toast('Speech not supported on this browser', 'error');
     return false;
   }
-  if (!quiet) toast('🔊 Reading: ' + peek, 'good');
+  if (!quiet) toast('Reading: ' + peek, 'good', { icon: 'volume-2' });
   return true;
 }
 
@@ -149,7 +149,7 @@ function readLastReplyAloud() {
   const t = state.terminal;
   if (!t || !t.term) return;
   const text = extractLastReply(t.term);
-  if (!text) { toast('🔊 No reply to read yet.'); return; }
+  if (!text) { toast('No reply to read yet.', undefined, { icon: 'volume-2' }); return; }
   readTextAloud(text, null);
 }
 
@@ -161,7 +161,7 @@ async function summarizeAndReadLastReply() {
   const t = state.terminal;
   if (!t || !t.term) return;
   const text = extractLastReply(t.term);
-  if (!text) { toast('🔊 No reply to read yet.'); return; }
+  if (!text) { toast('No reply to read yet.', undefined, { icon: 'volume-2' }); return; }
   const opts = { token: readToken(), terminalToken: readTerminalToken() };
   // Arm hub audio now, in the gesture, so the summary can sound after the LLM
   // round-trip; null when Web Audio is unavailable → Web Speech fallback.
@@ -169,7 +169,7 @@ async function summarizeAndReadLastReply() {
   if (isHubAvailable()) {
     try { handle = prepareHub(); } catch (_) { handle = null; }
   }
-  toast('📝 Summarizing…');
+  toast('Summarizing…', undefined, { icon: 'notebook-text' });
   let summary;
   try {
     summary = await summarizeReply(text, opts);
@@ -236,7 +236,7 @@ export function wireReadAloud() {
   onSpeakingChange(setSpeakingUI);
   // When the reply finishes reading on its own, reset the button (done by
   // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
-  onSpeechEnd(function () { toast('🔊 Finished reading.', 'good'); });
+  onSpeechEnd(function () { toast('Finished reading.', 'good', { icon: 'volume-2' }); });
   wireSpeakMenu();
   wireSummaryModal();
 }
