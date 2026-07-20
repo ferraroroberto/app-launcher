@@ -34,10 +34,11 @@
  */
 
 import { VoiceLoop, STATE, INTENT } from './spike-voice-loop-fsm.js';
-import { consumeUrlParam, writeToken, readToken, jsonApi, apiRaw } from './api.js';
+import { consumeUrlParam, writeToken, readToken, jsonApi, apiRaw, escapeHtml } from './api.js';
 import { ensureTerminalToken, readTerminalToken } from './webauthn.js';
 import { state } from './state.js';
 import { pickAudioMime } from './voice.js';
+import { icon } from './_vendored/icons/icons.js';
 import {
   prepareHub, speakHubInto, speak, cancelHub, cancelSpeech,
   probeHub, isHubAvailable, onSpeechEnd, onSpeakingChange,
@@ -116,11 +117,12 @@ function renderMetrics() {
   const banner = $('verdict');
   if (banner) {
     if (m.forcedGestures > 0) {
-      banner.textContent =
-        `⚠️ ${m.forcedGestures} forced tap(s) across ${m.turns} turn(s) — not fully hands-free`;
+      banner.innerHTML = icon('triangle-alert') + ' ' + escapeHtml(
+        `${m.forcedGestures} forced tap(s) across ${m.turns} turn(s) — not fully hands-free`);
       banner.className = 'verdict bad';
     } else if (m.turns > 0) {
-      banner.textContent = `✅ ${m.turns} turn(s) hands-free so far — no forced taps`;
+      banner.innerHTML = icon('circle-check') + ' ' +
+        escapeHtml(`${m.turns} turn(s) hands-free so far — no forced taps`);
       banner.className = 'verdict good';
     } else {
       banner.textContent = 'Awaiting first turn…';
@@ -149,7 +151,7 @@ function apply(intent) {
 // ── listen / VAD ─────────────────────────────────────────────────────────────
 function armListen() {
   bargeVoiceStart = 0;
-  log('👂 listening (mic re-armed, no tap)', 'ok');
+  log('listening (mic re-armed, no tap)', 'ok');
   renderMetrics();
 }
 
@@ -167,7 +169,7 @@ function vadTick() {
     if (voiced) {
       if (!bargeVoiceStart) bargeVoiceStart = t;
       else if (t - bargeVoiceStart >= BARGE_MS) {
-        log('🙋 barge-in detected — stopping narration', 'warn');
+        log('barge-in detected — stopping narration', 'warn');
         bargeVoiceStart = 0;
         apply(loop.onBargeIn());
       }
@@ -198,7 +200,7 @@ function vadTick() {
       apply(loop.onSpeechEnd(nowMs()));   // → TRANSCRIBE
     }
     if ((t - speechStartAt) > MAX_CAPTURE_MS) {
-      log('⏱️ max capture reached — closing take', 'warn');
+      log('max capture reached — closing take', 'warn');
       apply(loop.onSpeechEnd(nowMs()));
     }
   }
@@ -216,14 +218,14 @@ function startCapture() {
     recorder = recMime ? new MediaRecorder(micStream, { mimeType: recMime })
                        : new MediaRecorder(micStream);
   } catch (exc) {
-    log('❌ recorder failed: ' + (exc.message || exc), 'err');
+    log('recorder failed: ' + (exc.message || exc), 'err');
     return;
   }
   recorder.addEventListener('dataavailable', (ev) => {
     if (ev.data && ev.data.size) recChunks.push(ev.data);
   });
   recorder.start();
-  log('🎙️ capturing take…');
+  log('capturing take…');
 }
 
 function transcribe() {
@@ -245,11 +247,11 @@ function transcribe() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error((body && body.detail) || ('HTTP ' + res.status));
       const text = (body && body.transcript) || '';
-      log('📝 transcript: ' + (text || '(silent)'), 'ok');
+      log('transcript: ' + (text || '(silent)'), 'ok');
       setText('lastTranscript', text || '(silent)');
       apply(loop.onTranscript(text, nowMs()));
     } catch (exc) {
-      log('❌ transcribe failed: ' + (exc.message || exc), 'err');
+      log('transcribe failed: ' + (exc.message || exc), 'err');
       // Treat as an empty turn so the loop keeps cycling rather than wedging.
       apply(loop.onTranscript('', nowMs()));
     }
@@ -267,7 +269,7 @@ function nextNarration() {
 async function narrate() {
   const line = nextNarration();
   setText('lastNarration', line);
-  log('🔊 narrating: ' + line.slice(0, 48) + '…');
+  log('narrating: ' + line.slice(0, 48) + '…');
 
   if (!useHub) {
     // Web Speech fallback — onSpeechEnd (registered once) fires the turn end.
@@ -286,13 +288,13 @@ async function narrate() {
   try {
     handle = prepareHub();
   } catch (exc) {
-    log('❌ hub prepare failed: ' + (exc.message || exc), 'err');
+    log('hub prepare failed: ' + (exc.message || exc), 'err');
     apply(loop.onGestureRequired(INTENT.NARRATE));
     return;
   }
   try { await handle.ctx.resume(); } catch (_) { /* best effort */ }
   if (handle.ctx.state !== 'running') {
-    log('🚫 AudioContext suspended outside a gesture — iOS wants a tap', 'warn');
+    log('AudioContext suspended outside a gesture — iOS wants a tap', 'warn');
     try { cancelHub(); } catch (_) { /* best effort */ }
     apply(loop.onGestureRequired(INTENT.NARRATE));
     return;
@@ -303,7 +305,7 @@ async function narrate() {
     // onSpeechEnd (registered once in start()) fires onNarrationEnd at the
     // real end of audio — don't end the turn here, the stream is still playing.
   } catch (exc) {
-    log('❌ hub playback failed: ' + (exc.message || exc), 'err');
+    log('hub playback failed: ' + (exc.message || exc), 'err');
     apply(loop.onGestureRequired(INTENT.NARRATE));
   }
 }
@@ -317,7 +319,7 @@ function stopNarration() {
 function showResume(on) {
   const btn = $('resumeBtn');
   if (btn) btn.hidden = !on;
-  if (on) log('⏸️ paused — tap Resume (iOS forced a gesture)', 'warn');
+  if (on) log('paused — tap Resume (iOS forced a gesture)', 'warn');
 }
 
 async function onResume() {
@@ -339,9 +341,9 @@ function snapshot() {
 }
 
 function wireLifecycle() {
-  const ev = (name) => log(`📱 ${name} — ${snapshot()}`, 'life');
+  const ev = (name) => log(`${name} — ${snapshot()}`, 'life');
   document.addEventListener('visibilitychange',
-    () => log(`📱 visibility=${document.visibilityState} — ${snapshot()}`, 'life'));
+    () => log(`visibility=${document.visibilityState} — ${snapshot()}`, 'life'));
   window.addEventListener('pagehide', () => ev('pagehide'));
   window.addEventListener('pageshow', () => ev('pageshow'));
   // Page Lifecycle API (Chromium/iOS): the loop's real screen-lock test.
@@ -353,7 +355,7 @@ function wireLifecycle() {
 async function start() {
   if (running) return;
   $('startBtn').disabled = true;
-  log('▶️ start tapped — the single gesture that must carry the whole loop');
+  log('start tapped — the single gesture that must carry the whole loop');
 
   // 1) Auth, inside-or-around the gesture. Bearer from URL/localStorage; the
   //    passkey terminal token from the live store, or the passkey ceremony.
@@ -367,20 +369,20 @@ async function start() {
     opts.terminalToken = await ensureTerminalToken();
   } catch (exc) {
     opts.terminalToken = readTerminalToken();
-    log('⚠️ passkey unlock skipped: ' + (exc.message || exc), 'warn');
+    log('passkey unlock skipped: ' + (exc.message || exc), 'warn');
   }
 
   // 2) Probe the hub TTS voice; fall back to Web Speech if unreachable.
   try { await probeHub(opts); } catch (_) { /* probe caches false */ }
   useHub = isHubAvailable();
-  log(useHub ? '🔊 narration via hub Orpheus TTS' : '🔊 narration via Web Speech (hub unavailable)');
+  log(useHub ? 'narration via hub Orpheus TTS' : 'narration via Web Speech (hub unavailable)');
 
   // 3) One mic permission grant + one long-lived stream + one analyser, reused
   //    every turn — re-using the granted stream is the whole no-tap bet.
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (exc) {
-    log('❌ microphone unavailable: ' + (exc.message || exc), 'err');
+    log('microphone unavailable: ' + (exc.message || exc), 'err');
     $('startBtn').disabled = false;
     return;
   }
@@ -393,14 +395,14 @@ async function start() {
   vadData = new Float32Array(analyser.fftSize);
   src.connect(analyser);
   micStream.getAudioTracks().forEach((tr) => {
-    tr.addEventListener('mute', () => log('🔇 mic track muted — ' + snapshot(), 'warn'));
-    tr.addEventListener('ended', () => log('🛑 mic track ended — ' + snapshot(), 'err'));
+    tr.addEventListener('mute', () => log('mic track muted — ' + snapshot(), 'warn'));
+    tr.addEventListener('ended', () => log('mic track ended — ' + snapshot(), 'err'));
   });
 
   // 4) Narration-end → turn-end → re-arm, registered once.
   onSpeechEnd(() => {
     if (loop.state === STATE.NARRATING) {
-      log('✅ narration finished — turn complete', 'ok');
+      log('narration finished — turn complete', 'ok');
       apply(loop.onNarrationEnd());
     }
   });
@@ -424,7 +426,7 @@ function teardown() {
 }
 
 function stop() {
-  log('⏹️ stop tapped');
+  log('stop tapped');
   apply(loop.halt());
   $('startBtn').disabled = false;
   $('stopBtn').hidden = true;
