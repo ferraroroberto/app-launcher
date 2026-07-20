@@ -37,6 +37,13 @@
       "cooldown_seconds": 3600
     },
     {
+      "id": "fleet-health-weekly",
+      "name": "Fleet Hardware Health Checkup",
+      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\fleet-health\\run-weekly.bat",
+      "args": "",
+      "schedule": { "type": "weekly", "day": "WED", "at": "23:30" }
+    },
+    {
       "id": "weekly-recap-draft",
       "name": "Weekly Recap (draft)",
       "script_path": "E:\\automation\\life-os\\.claude\\skills\\_recap\\run-weekly.bat",
