@@ -135,7 +135,7 @@ function describeLastRun(job) {
   } else {
     bits.push('never run');
   }
-  if (job.stuck) bits.push('⚠️ stuck');
+  if (job.stuck) bits.push(icon('triangle-alert') + ' stuck');
   const successRate = job.stats && job.stats.success_rate_30d;
   if (successRate != null && Number.isFinite(successRate)) {
     bits.push(Math.round(successRate * 100) + '% / 30d');
@@ -251,7 +251,7 @@ export function renderJobRow(job, options) {
   const meta = document.createElement('span');
   meta.className = 'meta';
   meta.dataset.role = 'meta';
-  meta.textContent = describeLastRun(job);
+  meta.innerHTML = describeLastRun(job);
   info.appendChild(meta);
   info.title = 'View run history for ' + job.name;
   info.setAttribute('aria-label', 'View run history for ' + job.name);
@@ -369,7 +369,7 @@ function swapChip(container, oldElement, freshElement, anchor) {
 
 export function patchRowNodes(nodes, job) {
   nodes.dotEl.className = 'health-dot ' + statusClass(job);
-  nodes.metaEl.textContent = describeLastRun(job);
+  nodes.metaEl.innerHTML = describeLastRun(job);
   if (nodes.runBtnEl) setRunBtnState(nodes.runBtnEl, job);
 
   const freshCountdown = renderCountdownChip(job);

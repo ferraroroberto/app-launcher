@@ -6,8 +6,9 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, readToken } from './api.js';
+import { apiFailToast, escapeHtml, readToken } from './api.js';
 import { clearTerminalToken, ensureTerminalToken } from './webauthn.js';
+import { icon } from './_vendored/icons/icons.js';
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
@@ -55,7 +56,7 @@ export function beginRepaintBatch(terminal) {
       terminal.term.element.style.visibility = 'hidden';
     }
   } catch (_) { /* best effort */ }
-  setTerminalStatus('⏳ Loading the current frame…');
+  setTerminalStatus('Loading the current frame…', { icon: 'hourglass' });
   if (terminal.batchTimer) clearTimeout(terminal.batchTimer);
   terminal.batchTimer = setTimeout(function () {
     flushRepaintBatch(terminal);
@@ -117,10 +118,17 @@ function termWsUrl(sid, terminalToken) {
     encodeURIComponent(sid) + '/ws' + (query ? '?' + query : '');
 }
 
-export function setTerminalStatus(message) {
+// opts.icon (a Lucide glyph name) renders a leading icon before the escaped
+// message; without it the status stays plain text as before.
+export function setTerminalStatus(message, opts) {
   if (!els.terminalStatus) return;
   if (message) {
-    els.terminalStatus.textContent = message;
+    const iconName = opts && opts.icon;
+    if (iconName) {
+      els.terminalStatus.innerHTML = icon(iconName) + ' ' + escapeHtml(message);
+    } else {
+      els.terminalStatus.textContent = message;
+    }
     els.terminalStatus.hidden = false;
   } else {
     els.terminalStatus.hidden = true;
@@ -211,8 +219,8 @@ export function connectTerminalWs(terminal) {
     const reason = event && event.reason ? event.reason : '';
     if (event.code === 4000) { setTerminalStatus('Session ended.'); return; }
     if (event.code === 4403) {
-      setTerminalStatus('🔒 ' + (reason || 'Terminal is Tailscale-only') +
-        ' — open the launcher over your Tailscale URL.');
+      setTerminalStatus((reason || 'Terminal is Tailscale-only') +
+        ' — open the launcher over your Tailscale URL.', { icon: 'lock' });
       return;
     }
     if (event.code === 4404) {
@@ -222,7 +230,7 @@ export function connectTerminalWs(terminal) {
     if (event.code === 4401) {
       clearTerminalToken();
       terminal.tt = '';
-      setTapToReconnect(terminal, '🔒 ' + (reason || 'Passkey unlock required'));
+      setTapToReconnect(terminal, reason || 'Passkey unlock required', { icon: 'lock' });
       return;
     }
     if (!terminal.giveUpAt) {
@@ -266,10 +274,10 @@ function scheduleReconnect(terminal) {
   }, delay);
 }
 
-function setTapToReconnect(terminal, label) {
+function setTapToReconnect(terminal, label, opts) {
   if (!terminal || terminal !== state.terminal || !els.terminalStatus) return;
   clearTerminalReconnect(terminal);
-  setTerminalStatus(label || 'Tap to reconnect');
+  setTerminalStatus(label || 'Tap to reconnect', opts);
   els.terminalStatus.style.cursor = 'pointer';
   els.terminalStatus.style.textDecoration = 'underline';
   terminal.tapHandler = function () {

@@ -6,6 +6,7 @@
  */
 
 import { els, state, TOKEN_KEY } from './state.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // --------------------------------------------------------------- tokens
 // Read a `?<name>=<value>` deep-link param once, strip it from the visible
@@ -170,9 +171,23 @@ export function wireLoginForm(onLoginSuccess) {
 }
 
 // --------------------------------------------------------------- toast
+export function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 let toastTimer = null;
-export function toast(msg, kind) {
-  els.toast.textContent = msg;
+// opts.icon (a Lucide glyph name) renders a leading icon before the escaped
+// message; without it the toast stays plain text as before.
+export function toast(msg, kind, opts) {
+  const iconName = opts && opts.icon;
+  if (iconName) {
+    els.toast.innerHTML = icon(iconName) + ' ' + escapeHtml(msg);
+  } else {
+    els.toast.textContent = msg;
+  }
   els.toast.className = 'toast ' + (kind || '');
   els.toast.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);

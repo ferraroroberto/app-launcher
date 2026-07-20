@@ -19,6 +19,7 @@ import { els, state } from './state.js';
 import {
   apiFailToast,
   AuthRequiredError,
+  escapeHtml,
   jsonApi,
   logPollFailure,
   readToken,
@@ -288,14 +289,16 @@ function panelEl(jobId) {
  * back to the raw trigger string for pre-provenance records. */
 function triggerChip(r) {
   const src = r.trigger_source || '';
-  if (src === 'schtasks') return '⏰ schedule';
-  if (src.indexOf('webhook:') === 0) return '🔗 ' + src.slice('webhook:'.length);
-  if (src === 'api') {
-    if (r.trigger_token_label) return '🎛 ' + r.trigger_token_label;
-    return '📱 ' + (r.trigger || 'manual');
+  if (src === 'schtasks') return icon('clock') + ' schedule';
+  if (src.indexOf('webhook:') === 0) {
+    return icon('webhook') + ' ' + escapeHtml(src.slice('webhook:'.length));
   }
-  if ((r.trigger || '').indexOf('chain') === 0) return '⛓ ' + r.trigger;
-  return r.trigger || '?';
+  if (src === 'api') {
+    if (r.trigger_token_label) return icon('sliders-horizontal') + ' ' + escapeHtml(r.trigger_token_label);
+    return icon('smartphone') + ' ' + escapeHtml(r.trigger || 'manual');
+  }
+  if ((r.trigger || '').indexOf('chain') === 0) return icon('link') + ' ' + escapeHtml(r.trigger);
+  return escapeHtml(r.trigger || '?');
 }
 
 function cssEscape(s) {
@@ -343,11 +346,11 @@ function redrawRunsList(jobId, runs) {
     const exitText = (r.exit_code === undefined || r.exit_code === null)
       ? '' : ' · exit ' + r.exit_code;
     const paramsChip = formatRunParams(r.params);
-    meta.textContent = (r.status || '?') +
-      (ago ? ' · ' + ago + ' ago' : '') +
-      ' · ' + triggerChip(r) + exitText +
-      (r.dry_run ? ' · 🧪 dry' : '') +
-      (paramsChip ? ' · ' + paramsChip : '');
+    meta.innerHTML = escapeHtml(r.status || '?') +
+      (ago ? ' · ' + escapeHtml(ago) + ' ago' : '') +
+      ' · ' + triggerChip(r) + escapeHtml(exitText) +
+      (r.dry_run ? ' · ' + icon('flask-conical') + ' dry' : '') +
+      (paramsChip ? ' · ' + escapeHtml(paramsChip) : '');
     btn.appendChild(meta);
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
     li.appendChild(btn);
@@ -355,7 +358,7 @@ function redrawRunsList(jobId, runs) {
     const pin = document.createElement('button');
     pin.type = 'button';
     pin.className = 'icon-btn jobs-pin-btn' + (r.pinned ? ' selected' : '');
-    pin.textContent = '📌';
+    pin.innerHTML = icon('pin');
     pin.title = r.pinned ? 'Unpin run' : 'Pin run — keep forever';
     pin.setAttribute('aria-label', pin.title);
     pin.setAttribute('aria-pressed', r.pinned ? 'true' : 'false');
@@ -509,7 +512,7 @@ async function copyOutputTail(tail) {
   if (!text || text === '(no output)') return;
   try {
     await navigator.clipboard.writeText(text);
-    toast('📋 Copied log', 'good');
+    toast('Copied log', 'good', { icon: 'clipboard' });
   } catch (exc) {
     toast('Clipboard unavailable — copy manually', 'error');
   }
@@ -674,7 +677,7 @@ async function toggleRunPin(jobId, run) {
     if (job) job.pinned_count = Math.max(0, (job.pinned_count || 0) + (next ? 1 : -1));
     redrawRunsList(jobId, state.jobRuns[jobId] || []);
     patchRowsInPlace();
-    toast(next ? '📌 Run pinned.' : 'Run unpinned.', 'good');
+    toast(next ? 'Run pinned.' : 'Run unpinned.', 'good', next ? { icon: 'pin' } : undefined);
   } catch (exc) {
     apiFailToast('Pin update failed', exc);
   }
@@ -716,7 +719,7 @@ async function killRun(jobId, runId) {
       '/api/jobs/' + encodeURIComponent(jobId) + '/runs/' + encodeURIComponent(runId) + '/kill',
       { method: 'POST' }
     );
-    toast('🛑 Kill signal sent.', 'good');
+    toast('Kill signal sent.', 'good', { icon: 'octagon-x' });
     await refreshExpandedContent(jobId, { fetchOutput: true });
     await fetchJobs();
   } catch (exc) {
@@ -731,7 +734,8 @@ async function togglePause(job) {
       '/api/jobs/' + encodeURIComponent(job.id) + '/' + action,
       { method: 'POST' }
     );
-    toast(job.paused ? '▶ Resumed ' + job.name : '⏸ Paused ' + job.name, 'good');
+    toast(job.paused ? 'Resumed ' + job.name : 'Paused ' + job.name, 'good',
+      { icon: job.paused ? 'play' : 'pause' });
     await fetchJobs();
   } catch (exc) {
     apiFailToast(action.charAt(0).toUpperCase() + action.slice(1) + ' failed', exc);
@@ -773,18 +777,18 @@ export async function runJobNow(job, options) {
       });
     if (res && res.dry_run) {
       if (res.status === 'dry_run_failed') {
-        toast('🧪 Dry-run check failed for ' + job.name + ' — see history.', 'error');
+        toast('Dry-run check failed for ' + job.name + ' — see history.', 'error', { icon: 'flask-conical' });
       } else if (res.status === 'dry_run_success') {
-        toast('🧪 Dry-run check passed for ' + job.name + '.', 'good');
+        toast('Dry-run check passed for ' + job.name + '.', 'good', { icon: 'flask-conical' });
       } else {
-        toast('🧪 Dry-run started for ' + job.name + '.', 'good');
+        toast('Dry-run started for ' + job.name + '.', 'good', { icon: 'flask-conical' });
         job.running = true;
       }
     } else if (res && res.status === 'queued') {
       const blocker = res.mutex_blocked_by ? ' (behind ' + res.mutex_blocked_by + ')' : '';
-      toast('🪢 Queued ' + job.name + blocker + '.', 'good');
+      toast('Queued ' + job.name + blocker + '.', 'good', { icon: 'hourglass' });
     } else {
-      toast('🚀 Started ' + job.name + '.', 'good');
+      toast('Started ' + job.name + '.', 'good', { icon: 'rocket' });
       job.running = true;
     }
     renderJobs();
@@ -802,7 +806,7 @@ export async function runJobNow(job, options) {
       const cd = payload && Number(payload.cooldown_seconds);
       if (detail === 'cooldown' && Number.isFinite(remaining)) {
         const suffix = (Number.isFinite(cd) && cd > 0) ? ' (cooldown ' + cd + 's)' : '';
-        toast('⏭ Skipped — cooled down for ' + remaining + ' more s' + suffix + '.');
+        toast('Skipped — cooled down for ' + remaining + ' more s' + suffix + '.', undefined, { icon: 'timer' });
         return;
       }
     }

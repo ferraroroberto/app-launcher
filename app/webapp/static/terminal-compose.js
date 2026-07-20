@@ -267,7 +267,7 @@ async function runOcrExtraction() {
     const text = body && body.text;
     const plural = list.length > 1;
     if (!text) {
-      toast('📷 No text found in the image' + (plural ? 's' : ''));
+      toast('No text found in the image' + (plural ? 's' : ''), undefined, { icon: 'camera' });
       return;
     }
     // Insert at the caret with a leading space when the textarea already
@@ -280,9 +280,10 @@ async function runOcrExtraction() {
     ta.focus();
     clearOcrStaging();
     toast(
-      '📷 Text extracted from ' + list.length + ' image' +
-        (plural ? 's' : '') + ' — review, then ➤ Send.',
-      'good'
+      'Text extracted from ' + list.length + ' image' +
+        (plural ? 's' : '') + ' — review, then tap Send.',
+      'good',
+      { icon: 'camera' }
     );
   } catch (exc) {
     apiFailToast('OCR failed', exc);
@@ -331,7 +332,7 @@ export function wireCompose() {
     // instead of racing it; the transcript lands a beat later and Send works
     // normally then.
     if (composeDictation.isBusy()) {
-      toast('🎤 Still transcribing — wait for the transcript, then ➤ Send', 'error');
+      toast('Still transcribing — wait for the transcript, then tap Send', 'error', { icon: 'mic' });
       return;
     }
     const text = els.terminalComposeInput.value;

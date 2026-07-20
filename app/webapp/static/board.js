@@ -33,7 +33,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, authHeaders, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { openSessionRename, sessionTitle, stopSession } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
@@ -402,7 +402,7 @@ async function sendReply(card, input, btn) {
         body: JSON.stringify({ data: text, submit: true }),
       }
     );
-    toast('➤ Sent to ' + (card.project || 'session'), 'good');
+    toast('Sent to ' + (card.project || 'session'), 'good', { icon: 'send-horizontal' });
     input.value = '';
     // Close the drawer and optimistically flip the card to Claude's turn
     // right away. Deliberately no immediate fetchBoard() here (#461): the
@@ -469,9 +469,10 @@ async function startIssue(card, mode, btn) {
       body: JSON.stringify(payload),
     });
     toast(
-      (mode === 'yolo' ? '⚡ /issue-yolo ' : '▶ /issue-start ') + '#' +
+      (mode === 'yolo' ? '/issue-yolo ' : '/issue-start ') + '#' +
         card.number + ' in ' + (body.repo || card.repo),
-      'good'
+      'good',
+      { icon: mode === 'yolo' ? 'zap' : 'play' }
     );
     if (body.session && body.session.kind !== 'remote' && !isDesktopClient()) {
       openTerminal(body.session);
@@ -605,16 +606,16 @@ function renderCard(colKey, card) {
 function renderStatusLine(body) {
   const parts = [];
   if (body.github && body.github.error) {
-    parts.push('⚠️ GitHub: ' + body.github.error);
+    parts.push(icon('triangle-alert') + ' GitHub: ' + escapeHtml(body.github.error));
   } else if (body.github && !body.github.fetched_at) {
     parts.push('GitHub not fetched yet — tap ↻');
   }
   if (body.sessions_state && !body.sessions_state.available) {
     parts.push('session state unavailable (hooks not writing yet)');
   } else if (body.sessions_state && body.sessions_state.stale) {
-    parts.push('⚠️ session state stale');
+    parts.push(icon('triangle-alert') + ' session state stale');
   }
-  els.boardStatus.textContent = parts.join(' · ');
+  els.boardStatus.innerHTML = parts.join(' · ');
   els.boardStatus.hidden = parts.length === 0;
 }
 
@@ -984,7 +985,7 @@ async function dispatchChat() {
     // a sent chat message clears — the reply is the next thing you want.
     els.boardDispatchGoal.value = '';
     if (ensured.spawned) {
-      toast('👑 Chief spawned — first reply may take a moment', 'good');
+      toast('Chief spawned — first reply may take a moment', 'good', { icon: 'crown' });
     }
     // Open the chief's drawer so the reply lands somewhere visible. The
     // card is already in /api/board (live sessions fold in before hook
@@ -1040,9 +1041,9 @@ async function saveChiefSettings() {
     });
     els.chiefSettingsDialog.close();
     if (body.job_warning) {
-      toast('⚠️ Saved — ' + body.job_warning, 'error');
+      toast('Saved — ' + body.job_warning, 'error', { icon: 'triangle-alert' });
     } else {
-      toast('✅ Chief settings saved', 'good');
+      toast('Chief settings saved', 'good', { icon: 'circle-check' });
     }
   } catch (exc) {
     apiFailToast('Chief settings save failed', exc);
@@ -1057,7 +1058,8 @@ function wireChief() {
     const stopTimer = startWorkTimer(startBtn, 'Start');
     try {
       const body = await ensureChief(false);
-      toast(body.spawned ? '👑 Chief started' : 'Chief already running', 'good');
+      toast(body.spawned ? 'Chief started' : 'Chief already running', 'good',
+        body.spawned ? { icon: 'crown' } : undefined);
       await fetchBoard().catch(function () {});
       renderChiefStatus();
     } catch (exc) {
@@ -1112,7 +1114,7 @@ async function dispatchGoal() {
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify(payload),
     });
-    toast('🚀 ' + (body.launched || dispatchMode) + ' → ' + (body.repo || repo), 'good');
+    toast((body.launched || dispatchMode) + ' → ' + (body.repo || repo), 'good', { icon: 'rocket' });
     // The goal stays in the bar for rapid multi-dispatch ("create more");
     // ✕ clears it. The new card lands in Claude's turn on the next poll.
     fetchBoard().catch(function () {});

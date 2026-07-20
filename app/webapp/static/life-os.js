@@ -151,9 +151,10 @@ async function launchRecap() {
       body: JSON.stringify(payload),
     });
     toast(
-      '🌱 Launched weekly recap' + modelTag(model) +
+      'Launched weekly recap' + modelTag(model) +
         (mode === 'remote' ? ' (detached)' : ''),
-      'good'
+      'good',
+      { icon: 'sprout' }
     );
     // A desktop browser gets its terminal in a dedicated PC Edge window,
     // not in-page (issue #241) — so it stays on the launcher SPA.
@@ -187,9 +188,10 @@ async function launchSkill(s) {
       }
     );
     toast(
-      (resume ? '↺ Resumed ' : '🌱 Launched ') + s.name +
+      (resume ? 'Resumed ' : 'Launched ') + s.name +
         modelTag(model) + (mode === 'remote' ? ' (detached)' : ''),
-      'good'
+      'good',
+      { icon: resume ? 'rotate-ccw' : 'sprout' }
     );
     // Full-control sessions drop straight into the terminal; detached
     // ones only appear in the Coding tab's running-sessions list. A
@@ -295,7 +297,7 @@ async function deleteFile(f) {
       '/api/life-os/file?path=' + encodeURIComponent(f.path),
       { method: 'DELETE' }
     );
-    toast('🗑️ Deleted ' + f.name, 'good');
+    toast('Deleted ' + f.name, 'good', { icon: 'trash-2' });
     closeDoc();             // in case the deleted file was the open one
     await loadFileList();
   } catch (exc) {
@@ -327,7 +329,7 @@ async function renameFile(f) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.path, slug: slug }),
     });
-    toast('✏️ Renamed to ' + (body.name || slug), 'good');
+    toast('Renamed to ' + (body.name || slug), 'good', { icon: 'pencil' });
     closeDoc();             // name (and path) changed — back to the list
     await loadFileList();
   } catch (exc) {
