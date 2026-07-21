@@ -441,6 +441,7 @@ def _spawn_and_wait(
                 stdout=stdout_target,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             # Persist the pid so the kill endpoint can find the tree
             # even if the executor itself crashes before wait() returns.
