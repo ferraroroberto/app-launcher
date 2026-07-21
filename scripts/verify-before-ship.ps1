@@ -64,26 +64,63 @@ try {
     & $python -m pytest -q --ignore=tests/e2e
     if ($LASTEXITCODE -ne 0) { Fail "non-e2e pytest suite failed." }
 
-    Phase "pytest e2e (Chromium + WebKit/iPhone, auto-booted)..."
-    $env:LAUNCHER_E2E_AUTOBOOT = "1"
-    # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts the
-    # process via os._exit, skipping the summary) is named by the last nodeid
-    # logged at test start. Locally keep the compact dotted output (#184).
+    # Diff-proportionate e2e routing (issue #568). Classify the branch's
+    # changed files vs main and run an e2e slice proportionate to the diff:
+    # static assets -> Chromium smoke only, real UI/behaviour -> the full
+    # dual-projection suite, backend/docs-only -> no browser suite. Fail-safe:
+    # any mixed/ambiguous/unrecognized diff runs the full suite. The path->tier
+    # rules live in scripts/classify_e2e.py (one reviewable place). On CI the
+    # full suite always runs -- the local gate is where routing is proven first.
+    $tier = "full"; $e2eTarget = "tests/e2e"; $e2eBrowsers = ""; $routeReason = ""
     if ($env:CI -eq "true") {
-        $env:PYTHONUNBUFFERED = "1"
-        $e2eArgs = @("tests/e2e", "-v")
+        $routeReason = "CI always runs the full dual-projection suite"
     } else {
-        $e2eArgs = @("tests/e2e", "-q")
+        $classifyOut = & $python (Join-Path $repoRoot "scripts\classify_e2e.py")
+        $kv = @{}
+        foreach ($line in $classifyOut) {
+            if ($line -match '^(E2E_[A-Z_]+)=(.*)$') { $kv[$matches[1]] = $matches[2] }
+        }
+        if ($kv.ContainsKey("E2E_TIER") -and $kv["E2E_TIER"]) {
+            $tier = $kv["E2E_TIER"]
+            $e2eTarget = $kv["E2E_PYTEST_TARGET"]
+            $e2eBrowsers = $kv["E2E_BROWSERS"]
+            $routeReason = $kv["E2E_REASON"]
+        } else {
+            $routeReason = "classifier gave no verdict -- defaulting to full suite (fail-safe)"
+        }
     }
-    try {
-        & $python -m pytest @e2eArgs
-        $e2eExit = $LASTEXITCODE
+
+    if ($tier -eq "skip") {
+        Phase "e2e routing: SKIP browser suite (backend/docs-only diff)"
+        Write-Host "    reason: $routeReason" -ForegroundColor DarkGray
+        Log-Progress "e2e routing: tier=skip reason=$routeReason"
+    } else {
+        Phase "e2e routing: $tier ($routeReason)"
+        Log-Progress "e2e routing: tier=$tier target=$e2eTarget browsers=$e2eBrowsers reason=$routeReason"
+
+        $env:LAUNCHER_E2E_AUTOBOOT = "1"
+        # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts
+        # the process via os._exit, skipping the summary) is named by the last
+        # nodeid logged at test start. Locally keep the compact dotted output
+        # (#184).
+        $verbosity = if ($env:CI -eq "true") { "-v" } else { "-q" }
+        if ($env:CI -eq "true") { $env:PYTHONUNBUFFERED = "1" }
+        $e2eArgs = @($e2eTarget, $verbosity)
+        foreach ($b in ($e2eBrowsers -split ',' | Where-Object { $_ })) {
+            $e2eArgs += @("--browser", $b)
+        }
+        $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
+        Phase "pytest e2e ($e2eTarget, $projLabel, auto-booted)..."
+        try {
+            & $python -m pytest @e2eArgs
+            $e2eExit = $LASTEXITCODE
+        }
+        finally {
+            Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
+            if ($env:CI -eq "true") { Remove-Item Env:\PYTHONUNBUFFERED -ErrorAction SilentlyContinue }
+        }
+        if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
     }
-    finally {
-        Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
-        if ($env:CI -eq "true") { Remove-Item Env:\PYTHONUNBUFFERED -ErrorAction SilentlyContinue }
-    }
-    if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
 }
 finally {
     Pop-Location
