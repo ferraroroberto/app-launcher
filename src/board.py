@@ -121,6 +121,16 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     return cards
 
 
+def _is_chief_card(card: Dict[str, Any]) -> bool:
+    """Board-side mirror of the frontend's ``isChiefSession`` (dom-utils.js) —
+    label-first, ``kind``/``name`` fallback for a session-host predating the
+    label field. Kept in lockstep with that JS predicate (#575)."""
+    return bool(
+        card.get("label") == "chief"
+        or (card.get("kind") == "pty" and card.get("name") == "chief")
+    )
+
+
 def build_board(
     session_cards: List[Dict[str, Any]],
     github: Dict[str, Any],
@@ -135,9 +145,20 @@ def build_board(
     human. Other = everything else that needs attention but isn't a terminal:
     open PRs, then failed/stuck jobs. Done = today's closed issues only — a
     merged PR that closed one is already reflected by the issue itself.
+
+    The standing fleet chief (#245) never routes to Your turn (#575): its
+    ``Stop``-hook-driven ``needs-you`` status just means "chief finished
+    replying," which for a long-lived chat session is true for nearly its
+    entire life between dispatches, not a transient alert like it is for a
+    worker session. It always lands in Claude's turn instead, regardless of
+    its raw hook status.
     """
-    claude_turn = [c for c in session_cards if c["status"] != "needs-you"]
-    your_turn = [c for c in session_cards if c["status"] == "needs-you"]
+    claude_turn = [
+        c for c in session_cards if c["status"] != "needs-you" or _is_chief_card(c)
+    ]
+    your_turn = [
+        c for c in session_cards if c["status"] == "needs-you" and not _is_chief_card(c)
+    ]
     return {
         "backlog": list(github.get("issues") or []),
         "claude_turn": claude_turn,
