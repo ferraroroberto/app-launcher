@@ -47,7 +47,6 @@ import subprocess
 import sys
 from dataclasses import dataclass, field
 from enum import IntEnum
-from pathlib import PurePosixPath
 from typing import List, Sequence
 
 
@@ -76,34 +75,38 @@ def _classify_one(path: str) -> tuple[Category, str]:
 
     Ordered most-specific first. The final ``return FULL`` is the fail-safe:
     any path not matched by a rule above is treated as browser-relevant.
+
+    Uses plain prefix/extension checks rather than ``PurePath.full_match`` —
+    that glob API only exists on Python 3.13+, and the gate must run on the
+    older Python the CI runner ships (caught by CI: full_match AttributeError).
     """
-    p = PurePosixPath(path)
-    ext = p.suffix[1:].lower()  # "svg", "js", "" (no extension)
+    name = path.rsplit("/", 1)[-1]
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
     # --- static assets under the webapp's static dir -> STATIC ---------------
-    if p.full_match("app/webapp/static/**"):
+    if path.startswith("app/webapp/static/"):
         if ext in _STATIC_EXTS:
             return Category.STATIC, "static-asset"
         # A vendored HTML *fragment* (e.g. the icons sprite) is pure markup the
         # smoke suite loads — no behaviour of its own. Non-vendored .html
         # (index.html, spike pages) are real app pages -> fall through to FULL.
-        if ext == "html" and p.full_match("app/webapp/static/_vendored/**/*.html"):
+        if ext == "html" and path.startswith("app/webapp/static/_vendored/"):
             return Category.STATIC, "static-asset"
         # .js / .css / real .html / anything else under static -> browser.
         return Category.FULL, "webapp-static-code"
 
     # --- the rest of the webapp package (server, routers, manager) -> FULL ---
-    if p.full_match("app/webapp/**"):
+    if path.startswith("app/webapp/"):
         return Category.FULL, "webapp"
 
     # --- session-host / launcher on the e2e surface -> FULL -----------------
-    if p.full_match("app/session_host/**"):
+    if path.startswith("app/session_host/"):
         return Category.FULL, "session-host"
     if path in _FULL_SRC_PY or path == "launcher.py":
         return Category.FULL, "session-host/launcher"
 
     # --- the e2e suite itself (and the shared root conftest) -> FULL --------
-    if p.full_match("tests/e2e/**"):
+    if path.startswith("tests/e2e/"):
         return Category.FULL, "e2e-test"
     if path == "tests/conftest.py":
         return Category.FULL, "shared-conftest"
@@ -111,16 +114,16 @@ def _classify_one(path: str) -> tuple[Category, str]:
     # --- things with no browser impact -> NONE ------------------------------
     #   backend Python off the session-host path; non-e2e tests; docs; scripts;
     #   config; CI yaml; repo meta files.
-    if p.full_match("src/**/*.py"):  # ** matches zero dirs too -> src/foo.py
+    if path.startswith("src/") and ext == "py":
         return Category.NONE, "backend-python"
-    if p.full_match("tests/**/*.py"):
+    if path.startswith("tests/") and ext == "py":
         return Category.NONE, "non-e2e-test"
-    if ext == "md" or p.full_match("docs/**"):
+    if ext == "md" or path.startswith("docs/"):
         return Category.NONE, "docs"
     if (
-        p.full_match("scripts/**")
-        or p.full_match("config/**")
-        or p.full_match(".github/**")
+        path.startswith("scripts/")
+        or path.startswith("config/")
+        or path.startswith(".github/")
     ):
         return Category.NONE, "tooling/config"
     if path in {".fleet.toml", ".gitignore", "LICENSE", "AGENTS.md", "CLAUDE.md"} or ext == "bat":
