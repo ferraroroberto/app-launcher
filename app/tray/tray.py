@@ -111,6 +111,7 @@ def _clipboard_copy(text: str) -> bool:
                 text=True,
                 check=False,
                 encoding="utf-8",
+                creationflags=subprocess.CREATE_NO_WINDOW,
             )
             return p.returncode == 0
         except OSError as exc:
