@@ -121,6 +121,12 @@ const STATUS_META = {
   unknown: { icon: null, text: '', cls: 'is-unknown' },
 };
 
+// The chief's Stop-hook status sits at needs-you for nearly all of its life
+// between dispatches (#575) — the server already routes it out of Your turn
+// (build_board's _is_chief_card carve-out), and this is the matching label:
+// its normal resting state reads as "standing by", not a "needs you" alert.
+const CHIEF_STANDING_BY_META = { icon: 'moon', text: 'standing by', cls: 'is-idle' };
+
 // ----------------------------------------------------------------- cards
 
 function cardShell(iconName, topText, titleText, cls) {
@@ -149,7 +155,10 @@ function cardShell(iconName, topText, titleText, cls) {
 }
 
 function renderSessionCard(card) {
-  const meta = STATUS_META[card.status] || STATUS_META.unknown;
+  const meta =
+    isChiefCard(card) && card.status === 'needs-you'
+      ? CHIEF_STANDING_BY_META
+      : STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
   const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
   // The chief's card is visually distinct (#245): accent tint + crown, so

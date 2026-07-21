@@ -1152,6 +1152,30 @@ def test_api_board_merges_live_sessions_and_state(webapp_client):
     assert body["columns"]["claude_turn"] == []
 
 
+def test_api_board_chief_never_lands_in_your_turn(webapp_client):
+    """The standing fleet chief's needs-you card routes to Claude's turn, not
+    Your turn (#575) — its Stop-hook status is its normal resting state
+    between dispatches, not a transient alert like a worker session's."""
+    client, app, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = [
+        _live("chief-1", "E:/automation/fleet-config", 20, label="chief"),
+    ]
+    state_file = Path(app.state.webapp_config.sessions_state_file)
+    state_file.write_text(json.dumps({
+        "t-uuid": {"project": "fleet-config", "status": "needs-you",
+                   "cwd": "E:/automation/fleet-config",
+                   "updated_at": _iso(datetime.now(timezone.utc) - timedelta(minutes=3))},
+    }), encoding="utf-8")
+
+    body = client.get("/api/board").json()
+    assert body["columns"]["your_turn"] == []
+    claude_turn = body["columns"]["claude_turn"]
+    assert [c["session_id"] for c in claude_turn] == ["chief-1"]
+    # Routing moved, but the underlying hook-written status is untouched —
+    # the client is the one that relabels it for display.
+    assert claude_turn[0]["status"] == "needs-you"
+
+
 def test_api_board_survives_session_host_down(webapp_client):
     client, _app, overrides = webapp_client
     from src.session_client import SessionHostError

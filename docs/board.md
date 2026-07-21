@@ -11,8 +11,8 @@ Column assembly is pure logic in `src/board.py::build_board()`. Each column hold
 | Column | What populates it |
 | --- | --- |
 | **Backlog** | Open GitHub issues across every repo of the configured owner (`github_owner`, default `ferraroroberto`). |
-| **Claude's turn** | Live session cards whose status is **not** `needs-you` — i.e. `working`, `unknown`, or `idle`. (An idle session is still Claude holding a workspace, so it is shown here — dimmed client-side, not hidden.) |
-| **Your turn** | Session cards whose status **is** `needs-you`, and nothing else — a terminal-only column. |
+| **Claude's turn** | Live session cards whose status is **not** `needs-you` — i.e. `working`, `unknown`, or `idle` — plus the fleet chief's card unconditionally (#575, see below). (An idle session is still Claude holding a workspace, so it is shown here — dimmed client-side, not hidden.) |
+| **Your turn** | Session cards whose status **is** `needs-you`, excluding the chief (#575) — a terminal-only column. |
 | **Other** | Open PRs, then today's failed-or-stuck job runs — everything else that needs attention but isn't a terminal. |
 | **Done** | Today's closed issues, since local midnight. |
 
@@ -144,6 +144,8 @@ The chief is a **normal PTY session, not a service**: `label="chief"`, agent cla
 1. **Lazy** — the first chat-mode send ensures before typing, so the chief exists exactly when first needed.
 2. **Daily fresh respawn** — the registered `chief-daily-respawn` job (`config/jobs.sample.json`, default 05:00) curls `ensure?fresh=1` over loopback: graceful-quit the old chief, spawn a fresh one that re-reads fleet state cold (context hygiene; it kills an in-flight chat by design).
 3. **Manual** — chat mode shows a status row (`chief: not running — Start`) when no chief is alive, for after a deliberate tray/session-host kill. The same status row + Start button exists in the **Coding tab**'s Running-sessions card (#547) — `ensureChief()` is exported from `board.js` and called from `sessions.js`, so both tabs hit the identical endpoint.
+
+**Board status (#575).** The chief is a normal PTY session, so it gets the same `Stop`-hook-driven `needs-you` status as any other Claude Code session — but since it's long-lived and dispatched only occasionally, it sits at `needs-you` for nearly its entire life between exchanges, not as a transient alert. `build_board()`'s `_is_chief_card()` carve-out (`src/board.py`) routes the chief unconditionally into *Claude's turn* regardless of its raw status, and the client (`board.js::renderSessionCard`) relabels a `needs-you` chief card as **"standing by"** instead of "needs you" (`CHIEF_STANDING_BY_META`) — the underlying hook-written status is untouched, this is purely how the Board routes and labels the card.
 
 The chief's card is **visually distinct** (accent tint + crown) and **kill-protected** everywhere it can be stopped from — the Board drawer's ✕ (`.board-item-chief`, `board.js:302`), the Coding tab's row stop button, and the terminal overlay's kill button (`sessions.js::stopSession`, `session-item-chief`) — each asks `confirm('Kill the chief session?')` first via the shared `isChiefSession()` predicate in `dom-utils.js` (label-first, `name=="chief"` fallback for a legacy pre-label host). Every other session keeps the deliberate one-tap stop (#253).
 

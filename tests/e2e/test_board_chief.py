@@ -224,6 +224,24 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     expect(drawer).to_contain_text("6 open issues. Smallest is #229 — start it?")
 
 
+def test_chief_needs_you_card_reads_standing_by_not_needs_you(
+    authed_page: Page, base_url: str
+) -> None:
+    """#575: a needs-you chief card (its normal resting state between
+    dispatches) must not read as an alert. Server already routes it into
+    Claude's turn regardless of status; the client relabels the text."""
+    payload = _board_payload(with_chief=True)
+    payload["columns"]["claude_turn"][0]["status"] = "needs-you"
+    _mock_board(authed_page, payload)
+
+    _open_board(authed_page, base_url)
+    chief_li = authed_page.locator("li.board-item-chief")
+    expect(chief_li).to_be_visible()
+    expect(chief_li).to_contain_text("standing by")
+    expect(chief_li).not_to_contain_text("needs you")
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
+
+
 def test_chief_recognized_by_name_when_label_missing(
     authed_page: Page, base_url: str
 ) -> None:
