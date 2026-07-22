@@ -34,6 +34,56 @@ def test_enable_writes_wrapper_bat_pointing_at_tray_bat(tmp_path: Path):
     assert boot_autostart.is_enabled(startup_dir) is True
 
 
+def test_wrapper_bat_has_breadcrumb_and_output_redirection(tmp_path: Path):
+    # A login-time failure was silent before #582: the wrapper must leave a
+    # timestamped trail and redirect tray.bat's output on every attempt.
+    startup_dir = tmp_path / "Startup"
+    tray_bat = tmp_path / "repo" / "tray.bat"
+    tray_bat.parent.mkdir(parents=True)
+    tray_bat.write_text("@echo off\r\n", encoding="utf-8")
+
+    path = boot_autostart.enable(tray_bat=tray_bat, startup_dir=startup_dir)
+    content = path.read_text(encoding="utf-8")
+
+    log = str(boot_autostart._startup_log_path(tray_bat.parent))
+    # Timestamped breadcrumb line naming the wrapper firing.
+    assert "autostart wrapper fired" in content
+    assert "%date% %time%" in content
+    # tray.bat's own output is captured (stdout+stderr) to the startup log.
+    assert f'call "{tray_bat}" >>"{log}" 2>&1' in content
+    # The exit code is recorded so a silent death becomes a logged non-zero.
+    assert "tray.bat returned errorlevel %ERRORLEVEL%" in content
+    # The one hard precondition (missing shared helper) is named, not left as
+    # a bare non-zero exit.
+    assert "precondition missing" in content
+    assert r"%USERPROFILE%\.claude\tray\tray_lifecycle.ps1" in content
+
+
+def test_enable_verifies_write_landed(tmp_path: Path, monkeypatch):
+    # enable() must surface a failed/partial write instead of silently
+    # succeeding (the #582 failure mode was a silent no-op).
+    startup_dir = tmp_path / "Startup"
+    tray_bat = tmp_path / "repo" / "tray.bat"
+    tray_bat.parent.mkdir(parents=True)
+    tray_bat.write_text("@echo off\r\n", encoding="utf-8")
+
+    real_read_bytes = Path.read_bytes
+
+    def corrupt_read_bytes(self, *args, **kwargs):
+        if self.name == boot_autostart.STARTUP_BAT_NAME:
+            return b"TRUNCATED"
+        return real_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", corrupt_read_bytes)
+
+    try:
+        boot_autostart.enable(tray_bat=tray_bat, startup_dir=startup_dir)
+    except OSError as exc:
+        assert "did not land intact" in str(exc)
+    else:
+        raise AssertionError("expected OSError when the read-back does not match")
+
+
 def test_enable_creates_missing_startup_dir(tmp_path: Path):
     startup_dir = tmp_path / "does" / "not" / "exist" / "yet"
     tray_bat = tmp_path / "repo" / "tray.bat"
