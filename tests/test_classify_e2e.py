@@ -7,9 +7,13 @@ motivated the issue: it must route to the fast ``static`` / Chromium-only tier.
 
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from scripts.classify_e2e import Category, _classify_one, classify
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
 # ------------------------------------------------------- per-file categories
@@ -31,6 +35,7 @@ from scripts.classify_e2e import Category, _classify_one, classify
         ("app/webapp/routers/board.py", Category.FULL),
         ("app/session_host/server.py", Category.FULL),
         ("src/session_host.py", Category.FULL),
+        ("src/session_host_pty.py", Category.FULL),  # future split, not on disk yet
         ("src/session_client.py", Category.FULL),
         ("src/launcher.py", Category.FULL),
         ("launcher.py", Category.FULL),
@@ -124,3 +129,38 @@ def test_session_host_python_forces_full() -> None:
     """A backend .py *on* the session-host path still gets full coverage."""
     r = classify(["src/session_host.py", "src/board.py"])
     assert r.tier == "full"
+
+
+# --------------------------------------------------------- real-tree drift guard
+def test_real_session_host_files_route_full() -> None:
+    """Every real `src/session_host*.py` on disk must classify FULL.
+
+    Guards against layout drift: a new session-host module added on disk
+    without the classifier being taught about it would silently narrow e2e
+    coverage while every hand-written test above stays green. This test
+    walks the real tree, so it fails loudly (naming the offending file) the
+    moment that happens.
+    """
+    src_dir = REPO_ROOT / "src"
+    session_host_files = sorted(src_dir.glob("session_host*.py"))
+    assert session_host_files, "expected src/session_host.py to exist on disk"
+    for f in session_host_files:
+        rel = f.relative_to(REPO_ROOT).as_posix()
+        cat, _label = _classify_one(rel)
+        assert cat is Category.FULL, f"{rel} -> {cat.name}, expected FULL (layout drift?)"
+
+
+def test_real_static_asset_routes_static() -> None:
+    """Sanity: a real image under app/webapp/static/ still classifies STATIC."""
+    real_png = REPO_ROOT / "app/webapp/static/icon-512.png"
+    assert real_png.is_file(), "fixture file moved/renamed; update this test"
+    cat, _label = _classify_one("app/webapp/static/icon-512.png")
+    assert cat is Category.STATIC
+
+
+def test_real_webapp_js_routes_full() -> None:
+    """Sanity: a real app/webapp/static/*.js file still classifies FULL."""
+    real_js = REPO_ROOT / "app/webapp/static/apps.js"
+    assert real_js.is_file(), "fixture file moved/renamed; update this test"
+    cat, _label = _classify_one("app/webapp/static/apps.js")
+    assert cat is Category.FULL
