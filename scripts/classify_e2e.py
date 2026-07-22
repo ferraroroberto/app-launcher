@@ -67,7 +67,12 @@ _STATIC_EXTS = {
 # Python modules that ARE on the e2e browser surface (the PTY / session-host /
 # launcher path CLAUDE.md calls out). Everything else under src/ is covered by
 # the non-e2e pytest suite and needs no browser.
-_FULL_SRC_PY = ("src/session_host.py", "src/session_client.py", "src/launcher.py")
+#
+# Matched as a `session_host` *prefix* (not an exact filename) so a future
+# split/extension of the session host (e.g. `src/session_host_pty.py`) is
+# caught automatically instead of falling through to the generic `src/*.py`
+# -> NONE rule below. See test_classify_e2e.py's real-tree drift guard.
+_FULL_SRC_PY_EXACT = ("src/session_client.py", "src/launcher.py")
 
 
 def _classify_one(path: str) -> tuple[Category, str]:
@@ -102,7 +107,9 @@ def _classify_one(path: str) -> tuple[Category, str]:
     # --- session-host / launcher on the e2e surface -> FULL -----------------
     if path.startswith("app/session_host/"):
         return Category.FULL, "session-host"
-    if path in _FULL_SRC_PY or path == "launcher.py":
+    if path in _FULL_SRC_PY_EXACT or path == "launcher.py":
+        return Category.FULL, "session-host/launcher"
+    if path.startswith("src/session_host") and ext == "py":
         return Category.FULL, "session-host/launcher"
 
     # --- the e2e suite itself (and the shared root conftest) -> FULL --------
@@ -114,6 +121,10 @@ def _classify_one(path: str) -> tuple[Category, str]:
     # --- things with no browser impact -> NONE ------------------------------
     #   backend Python off the session-host path; non-e2e tests; docs; scripts;
     #   config; CI yaml; repo meta files.
+    # Deliberate #568 decision, not an oversight: backend `src/` code off the
+    # session-host path has no browser surface of its own — it's covered by
+    # the non-e2e pytest suite (TestClient etc.), so it skips the browser
+    # tier here. Do not "fix" this by routing all of src/ to FULL.
     if path.startswith("src/") and ext == "py":
         return Category.NONE, "backend-python"
     if path.startswith("tests/") and ext == "py":
