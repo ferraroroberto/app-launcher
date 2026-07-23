@@ -27,12 +27,13 @@ import logging
 import os
 import re
 import subprocess
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
+
+from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -344,10 +345,6 @@ def github_repo_url(project_dir: Path) -> Optional[str]:
 
 # ------------------------------------------------------------- git status
 
-# CREATE_NO_WINDOW keeps the short-lived `git` children from flashing a
-# console window when the webapp runs under the tray's pythonw.exe.
-_GIT_NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-
 
 @dataclass(frozen=True)
 class GitStatus:
@@ -402,7 +399,7 @@ def _run_git(project_dir: Path, args: Sequence[str]) -> Optional[str]:
             encoding="utf-8",
             errors="replace",
             timeout=10,
-            creationflags=_GIT_NO_WINDOW,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         logger.debug(f"git {' '.join(args)} failed in {project_dir}: {exc}")

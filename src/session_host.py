@@ -35,6 +35,7 @@ from src.agents import (
     quit_command_for,
 )
 from src.audit import transcript_path
+from src.subprocess_flags import NO_WINDOW
 from src.vt_snapshot import VtSnapshot
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -110,8 +111,6 @@ _STOP_GRACE_SECONDS = 5.0
 KIND_PTY = "pty"
 KIND_REMOTE = "remote"
 
-# Spawn a short-lived child without flashing a console window.
-_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # Absolute Windows PowerShell 5.1 — never the bare `pwsh` execution-alias stub
 # (a 0-byte reparse point that fails when spawned non-interactively).
 _POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
@@ -783,7 +782,7 @@ class RemoteSession:
             subprocess.run(
                 ["taskkill", "/PID", str(self._pid), "/T", "/F"],
                 capture_output=True,
-                creationflags=_CREATE_NO_WINDOW,
+                creationflags=NO_WINDOW,
                 timeout=10,
             )
         except (OSError, subprocess.SubprocessError) as exc:
@@ -949,7 +948,7 @@ class SessionManager:
             [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", ps_command],
             capture_output=True,
             text=True,
-            creationflags=_CREATE_NO_WINDOW,
+            creationflags=NO_WINDOW,
             timeout=30,
         )
         pid = _parse_started_pid(result.stdout)

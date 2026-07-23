@@ -21,6 +21,7 @@ from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.static_versioning import asset_hash_for, rewrite_index_html
+from src.subprocess_flags import NO_WINDOW
 
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
 
@@ -50,9 +51,8 @@ def _resolve_git_sha() -> str:
         text=True,
         timeout=5,
         check=False,
+        creationflags=NO_WINDOW,
     )
-    if hasattr(subprocess, "CREATE_NO_WINDOW"):
-        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
         result = subprocess.run(cmd, **kwargs)
     except (OSError, subprocess.SubprocessError) as exc:

@@ -38,6 +38,7 @@ from typing import Optional
 import yaml
 
 from src import AppConfig
+from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 from src.webapp_config import append_auth_token, load_webapp_config
 
 from app.tray import registered_trays, tailscale
@@ -111,7 +112,7 @@ def _clipboard_copy(text: str) -> bool:
                 text=True,
                 check=False,
                 encoding="utf-8",
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=NO_WINDOW,
             )
             return p.returncode == 0
         except OSError as exc:
@@ -219,7 +220,7 @@ class TrayApp:
             stderr=subprocess.DEVNULL,
         )
         if sys.platform == "win32":
-            kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+            kw["creationflags"] = NO_WINDOW
         try:
             subprocess.Popen(cmd, **kw)
         except OSError as exc:
@@ -258,7 +259,7 @@ class TrayApp:
                  "reclaim",
                  "-VenvDir", str(PROJECT_ROOT / ".venv"),
                  "-Ports", str(SESSION_HOST_PORT)],
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=NO_WINDOW,
                 timeout=10,
                 check=False,
             )
@@ -323,9 +324,7 @@ class TrayApp:
             stderr=subprocess.DEVNULL,
         )
         if sys.platform == "win32":
-            kw["creationflags"] = (
-                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            )
+            kw["creationflags"] = NO_WINDOW_NEW_GROUP
         try:
             proc = subprocess.Popen(cmd, **kw)
         except OSError as exc:

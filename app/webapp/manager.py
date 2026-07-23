@@ -25,6 +25,7 @@ import requests
 
 from app.tray.single_instance import cross_process_lock
 from app.webapp.event_loop import LOOP_FACTORY
+from src.subprocess_flags import NO_WINDOW_NEW_GROUP
 
 logger = logging.getLogger(__name__)
 
@@ -206,9 +207,7 @@ class WebappManager:
                     env=env,
                 )
                 if sys.platform == "win32":
-                    popen_kwargs["creationflags"] = (
-                        subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-                    )
+                    popen_kwargs["creationflags"] = NO_WINDOW_NEW_GROUP
                 self._proc = subprocess.Popen(cmd, **popen_kwargs)
             except FileNotFoundError as exc:
                 raise RuntimeError(f"❌ python launcher not found: {exc}") from exc

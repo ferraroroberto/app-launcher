@@ -19,6 +19,7 @@ from typing import Optional
 
 from src.registry import load_registry
 from src.scanner import KIND_TRAY
+from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def _spawn_tray_bat_detached(bat_path: Path) -> None:
         stderr=subprocess.DEVNULL,
     )
     if sys.platform == "win32":
-        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+        kw["creationflags"] = NO_WINDOW
     subprocess.Popen(cmd, **kw)
 
 

@@ -61,6 +61,7 @@ from src.notifications import (
     build_notifier_from_config,
     summarise_failure,
 )
+from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig, load_webapp_config
 
 from .base import BaseCommand
@@ -441,7 +442,7 @@ def _spawn_and_wait(
                 stdout=stdout_target,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                creationflags=NO_WINDOW,
             )
             # Persist the pid so the kill endpoint can find the tree
             # even if the executor itself crashes before wait() returns.
