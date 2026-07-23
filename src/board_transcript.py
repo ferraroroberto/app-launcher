@@ -11,7 +11,8 @@ state file can't tell you on its own:
 * whether a session stamped ``needs-you``/``idle`` is actually still waiting
   on its *own* backgrounded work — a background sub-agent or shell dispatch
   it hasn't heard back from yet (:func:`_has_pending_background_dispatch`,
-  #464);
+  #464, hardened by #576 — see that function's docstring for why the
+  original ``toolUseResult``-keyed check alone isn't reliable);
 * the last completed user→assistant exchange, for the drill-down drawer
   (:func:`last_exchange`, #301).
 
@@ -210,6 +211,72 @@ def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
     return _TASK_ID_RE.findall(text)
 
 
+def _is_background_bash_tool_use(block: Any) -> bool:
+    """Whether an assistant ``tool_use`` content block is a ``Bash`` call
+    dispatched with ``run_in_background: true``.
+
+    Read directly off the ``tool_use`` block itself — the Anthropic
+    message-content-block shape (every tool call carries ``type``, ``name``,
+    ``id``, ``input``) is part of the stable message format, unlike the
+    internal ``toolUseResult.backgroundTaskId`` key
+    :func:`_launched_background_ids` depends on, which a live-transcript
+    spot-check for #576 found had silently stopped appearing: a fresh
+    ``run_in_background`` Bash dispatch and its eventual
+    ``<task-notification>`` both showed up in the tail, but no
+    ``backgroundTaskId`` anywhere — the old check sees nothing launched and
+    never overrides the status.
+    """
+    return (
+        isinstance(block, dict)
+        and block.get("type") == "tool_use"
+        and block.get("name") == "Bash"
+        and isinstance(block.get("input"), dict)
+        and block["input"].get("run_in_background") is True
+    )
+
+
+def _launched_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
+    """``tool_use`` ids of backgrounded ``Bash`` dispatches an assistant line
+    launches (#576) — correlated against the tool call's own ``id``, not the
+    internal ``backgroundTaskId`` :func:`_launched_background_ids` reads out
+    of the result.
+    """
+    if obj.get("type") != "assistant":
+        return []
+    msg = obj.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        return []
+    return [
+        block["id"]
+        for block in content
+        if _is_background_bash_tool_use(block) and isinstance(block.get("id"), str)
+    ]
+
+
+# A completion notification's own correlation tag (#576) — carried alongside
+# ``<task-id>`` in the real ``<task-notification>`` payload (confirmed
+# against a live transcript), so it resolves a dispatch even when nothing
+# ever surfaced the internal ``backgroundTaskId`` the legacy check keys on.
+# Deliberately *not* matched against an ordinary ``tool_result`` for the same
+# ``tool_use_id``: a backgrounded Bash call's synchronous reply is just the
+# "launched" ack, not real completion — treating it as done would defeat the
+# whole point of this check the instant the dispatch fires.
+_TOOL_USE_ID_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
+
+
+def _notified_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
+    """``tool_use`` ids a ``<task-notification>`` line's ``<tool-use-id>``
+    tag proves resolved (#576)."""
+    text = obj.get("content")
+    if not isinstance(text, str) or "<task-notification>" not in text:
+        attachment = obj.get("attachment")
+        text = attachment.get("prompt") if isinstance(attachment, dict) else None
+    if not isinstance(text, str) or "<task-notification>" not in text:
+        return []
+    return _TOOL_USE_ID_RE.findall(text)
+
+
 def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     """Whether the tail shows a background dispatch with no completion yet.
 
@@ -221,11 +288,32 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     Unlike :func:`_last_activity` this runs unconditionally, not mtime-gated:
     the dispatch's launch line sits *before* the hook's stamp, not after it,
     so the mtime pre-filter that skips a quiet tail would otherwise hide it.
+
+    Two independent launched/completed id schemes are unioned (#576): the
+    original one keyed on internal ``toolUseResult`` fields
+    (:func:`_launched_background_ids` / :func:`_notified_background_ids`,
+    covers backgrounded ``Bash`` via ``backgroundTaskId`` and async
+    ``Agent``/``Task`` dispatches via ``isAsync``+``agentId``), and a
+    narrower, more robust one for backgrounded ``Bash`` calls specifically,
+    keyed on the tool call's own ``tool_use`` id
+    (:func:`_launched_bash_dispatch_ids` / :func:`_notified_bash_dispatch_ids`),
+    which doesn't depend on the internal result-shape field that a live
+    spot-check found had drifted. Either scheme flagging a dispatch as
+    still-outstanding is enough to keep the status ``working`` — a launched
+    id only counts as resolved within its own scheme's id-space, so there's
+    no cross-scheme false match. (The sub-agent/``Task`` path is left to the
+    original scheme alone — unlike backgrounded Bash, most ``Task`` dispatches
+    are ordinary *synchronous* sub-agent calls, so a tool-call-id-keyed check
+    would need to tell "still running async" apart from "finished, this is
+    just the normal blocking reply" and risk misreading the common case.)
+
     Any failure degrades to "nothing pending" — callers keep the hook status.
     """
     lines, _truncated = _tail_lines(transcript_path, _ACTIVITY_TAIL_BYTES)
     launched: set = set()
     completed: set = set()
+    bash_launched: set = set()
+    bash_completed: set = set()
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -238,7 +326,9 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
             continue
         launched.update(_launched_background_ids(obj))
         completed.update(_notified_background_ids(obj))
-    return bool(launched - completed)
+        bash_launched.update(_launched_bash_dispatch_ids(obj))
+        bash_completed.update(_notified_bash_dispatch_ids(obj))
+    return bool(launched - completed) or bool(bash_launched - bash_completed)
 
 
 def _external_row_liveness(
