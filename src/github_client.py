@@ -25,9 +25,10 @@ import threading
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Sequence
 
+from src.subprocess_flags import NO_WINDOW
+
 logger = logging.getLogger(__name__)
 
-_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _GH_TIMEOUT_SECONDS = 20.0
 _ISSUE_LIMIT = 100
 _PR_LIMIT = 50
@@ -50,7 +51,7 @@ def _run_gh(args: Sequence[str], *, timeout: float = _GH_TIMEOUT_SECONDS) -> str
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
-            creationflags=_NO_WINDOW,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise GhError(f"gh {' '.join(args[:2])}: {exc}") from exc

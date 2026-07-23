@@ -40,6 +40,7 @@ from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.jobs_config import Job, Schedule
+from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +58,6 @@ TASK_FOLDER_PREFIX = f"\\{TASK_NAMESPACE}\\"
 _NEXT_RUN_TTL_SECONDS = 30.0
 _next_run_cache: Optional[Tuple[float, Dict[str, Optional[str]]]] = None
 _next_run_lock = Lock()
-
-_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 # Defensive upper bound when blind-deleting daily_times variants without
 # a query first. 24 covers every hour of the day with headroom.
@@ -94,7 +93,7 @@ def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         check=False,
-        creationflags=_CREATE_NO_WINDOW,
+        creationflags=NO_WINDOW,
     )
 
 
@@ -187,7 +186,7 @@ def spawn_run_job_detached(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
-        creationflags=_CREATE_NO_WINDOW,
+        creationflags=NO_WINDOW,
         close_fds=True,
     )
     logger.info(f"🚀 spawned run-job {job_id} (rid={run_id}, pid={proc.pid})")

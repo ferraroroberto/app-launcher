@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from src import session_client
+from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,6 @@ def open_local_terminal_window(url: str, sid: Optional[str] = None) -> None:
 
 def _spawn_terminal_window(url: str) -> None:
     """Spawn the Edge/Chrome --app window for ``url``, with browser fallback."""
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     for rel, env_key in _BROWSER_APP_CANDIDATES:
         base = os.environ.get(env_key)
         if not base:
@@ -205,7 +205,7 @@ def _spawn_terminal_window(url: str) -> None:
                     "--ignore-certificate-errors",
                     "--test-type",
                 ],
-                creationflags=creationflags,
+                creationflags=NO_WINDOW,
                 close_fds=True,
             )
             logger.info(f"🖥️  opened local terminal window: {url}")

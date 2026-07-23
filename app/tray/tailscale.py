@@ -17,6 +17,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.subprocess_flags import NO_WINDOW
+
 logger = logging.getLogger(__name__)
 
 # No-op default so callers that don't care about breadcrumbing (e.g. tests)
@@ -53,7 +55,6 @@ def _run(binary: str, args: list) -> subprocess.CompletedProcess:
     tray; ``stdin=DEVNULL`` avoids the invalid-handle trap a ``pythonw``
     parent can hit when a child inherits a missing stdin.
     """
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return subprocess.run(
         [binary, *args],
         stdin=subprocess.DEVNULL,
@@ -62,7 +63,7 @@ def _run(binary: str, args: list) -> subprocess.CompletedProcess:
         text=True,
         timeout=12,
         check=False,
-        creationflags=creationflags,
+        creationflags=NO_WINDOW,
     )
 
 
