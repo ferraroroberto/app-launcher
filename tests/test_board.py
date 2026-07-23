@@ -828,6 +828,105 @@ def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     assert cards[0]["status"] == "needs-you"
 
 
+# ------------------------ pending background dispatch, tool-use-id keyed (#576)
+
+
+def _bash_tool_use_line(ts: datetime, tool_use_id: str, *, run_in_background: bool = True) -> str:
+    """One assistant line dispatching a ``Bash`` tool call — the shape
+    ``_launched_bash_dispatch_ids`` reads. This is the tool-call-id-keyed
+    counterpart to ``_tool_result_line``'s ``toolUseResult``-keyed shape:
+    #576 found real transcripts no longer carry ``backgroundTaskId`` on the
+    result, so the launch has to be read off the ``tool_use`` block itself."""
+    return json.dumps({
+        "type": "assistant",
+        "timestamp": _iso(ts),
+        "message": {
+            "role": "assistant",
+            "content": [{
+                "type": "tool_use",
+                "id": tool_use_id,
+                "name": "Bash",
+                "input": {"command": "pwsh -File scripts/verify-before-ship.ps1",
+                           "run_in_background": run_in_background},
+            }],
+        },
+    })
+
+
+def _tool_use_notification_line(ts: datetime, task_id: str, tool_use_id: str) -> str:
+    """A completion notice carrying both correlation tags real transcripts
+    use — ``<task-id>`` (the legacy scheme) and ``<tool-use-id>`` (#576)."""
+    return json.dumps({
+        "type": "queue-operation",
+        "operation": "enqueue",
+        "timestamp": _iso(ts),
+        "content": (
+            f"<task-notification>\n<task-id>{task_id}</task-id>\n"
+            f"<tool-use-id>{tool_use_id}</tool-use-id>\n"
+            "<status>completed</status>\n</task-notification>"
+        ),
+    })
+
+
+def test_overlay_pending_bash_dispatch_without_background_task_id_keeps_working(tmp_path: Path):
+    """A backgrounded Bash dispatch whose synchronous ack carries no
+    ``backgroundTaskId`` (the real-world drift #576 found) must still be
+    caught via the tool_use's own id, not just the legacy toolUseResult key."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _bash_tool_use_line(stamp_time, "toolu_abc") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_bash_dispatch_ack_alone_does_not_resolve_it(tmp_path: Path):
+    """The synchronous 'launched in background' ack is an ordinary
+    tool_result for the same tool_use_id — it must not be mistaken for
+    completion, or the check would resolve the dispatch the instant it
+    fires, defeating the whole point."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _bash_tool_use_line(stamp_time - timedelta(seconds=5), "toolu_abc") + "\n"
+        + _tool_result_line(stamp_time, {"tool_use_id": "toolu_abc",
+                                          "stdout": "Command running in background"}) + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path: Path):
+    """Once the notification's ``<tool-use-id>`` tag resolves the dispatch,
+    a genuine needs-you still wins — mirrors the legacy scheme's own
+    already-notified test, for the new id space."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _bash_tool_use_line(stamp_time - timedelta(minutes=1), "toolu_abc") + "\n"
+        + _tool_use_notification_line(
+            stamp_time - timedelta(seconds=30), "btask1", "toolu_abc"
+        ) + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+
+
+def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path):
+    """A plain (non-backgrounded) Bash call must not trip the new check —
+    only ``run_in_background: true`` marks a dispatch as pending."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _bash_tool_use_line(
+        stamp_time, "toolu_abc", run_in_background=False
+    ) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "needs-you"
+
+
 # ------------------------------------------------------------ jobs_attention
 
 
