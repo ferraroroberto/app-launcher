@@ -216,6 +216,7 @@ export const els = {
   jobScheduleOnceAt: document.getElementById('jobScheduleOnceAt'),
   jobCooldownInput: document.getElementById('jobCooldownInput'),
   jobMutexGroupInput: document.getElementById('jobMutexGroupInput'),
+  jobAlertOnFailureInput: document.getElementById('jobAlertOnFailureInput'),
   jobConfirmInput: document.getElementById('jobConfirmInput'),
   jobOnSuccessList: document.getElementById('jobOnSuccessList'),
   jobOnFailureList: document.getElementById('jobOnFailureList'),

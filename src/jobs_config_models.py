@@ -377,6 +377,12 @@ class Job:
     # so a fat-fingered tap or stray Stream Deck press can't execute a
     # destructive job by accident (issue #69).
     confirm: bool = False
+    # When True, a failed run pushes a Telegram alert via the vendored
+    # notifier (``src.notify``), independent of the global Pushover
+    # ``notify_on_failure`` switch in webapp_config.json. Opt-in per job
+    # (default off) so the shared Telegram chat isn't spammed by every
+    # job's failures — issue #597.
+    alert_on_failure: bool = False
     # When True, the job's scheduled Task Scheduler entry runs under
     # ``python.exe`` (a real console window in the logged-on session)
     # instead of the silent ``pythonw.exe``, and the executor tees the
@@ -445,6 +451,8 @@ class Job:
             payload["on_failure"] = list(self.on_failure)
         if self.confirm:
             payload["confirm"] = True
+        if self.alert_on_failure:
+            payload["alert_on_failure"] = True
         if self.visible:
             payload["visible"] = True
         if self.elevated:
@@ -683,6 +691,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
+        alert_on_failure=bool(raw.get("alert_on_failure", False)),
         visible=bool(raw.get("visible", False)),
         elevated=bool(raw.get("elevated", False)),
         paused_schedule=(
