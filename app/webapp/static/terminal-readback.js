@@ -424,6 +424,8 @@ const hub = {
   hiddenAt: null,      // ctx.currentTime captured when the page went hidden
   streamDone: false,   // true once the PCM stream is fully read + scheduled
   visHandler: null,    // visibilitychange listener (removed on teardown)
+  lastGain: null,      // gain node of the most recently scheduled buffer …
+  lastEnd: 0,          // … and its end time — for the end-of-stream tail fade
 };
 
 // Bearer + passkey terminal token, supplied by the caller (terminal.js owns
@@ -466,6 +468,8 @@ function hubTeardown() {
   hub.queue = [];
   hub.hiddenAt = null;
   hub.streamDone = false;
+  hub.lastGain = null;
+  hub.lastEnd = 0;
   if (hub.reader) {
     try { hub.reader.cancel(); } catch (_) { /* best effort */ }
     hub.reader = null;
@@ -536,10 +540,9 @@ function reanchorHubQueue() {
   let lastNode = null;
   for (let i = 0; i < pending.length; i++) {
     if (playHead < ctx.currentTime + 0.02) playHead = ctx.currentTime + 0.02;
-    const node = ctx.createBufferSource();
-    node.buffer = pending[i].buf;
-    node.connect(ctx.destination);
-    node.start(playHead);
+    // Only the first re-anchored buffer sits on a real gap (the suspension);
+    // the rest are contiguous with it and must not re-fade.
+    const node = scheduleHubBuffer(ctx, pending[i].buf, playHead, i === 0);
     fresh.push({ buf: pending[i].buf, node: node, start: playHead, dur: pending[i].dur });
     playHead += pending[i].dur;
     lastNode = node;
@@ -556,20 +559,64 @@ function reanchorHubQueue() {
   }
 }
 
+// A silence↔audio discontinuity (real silence jumping straight to a
+// mid-amplitude sample, or playback running out mid-waveform) is an audible
+// click — and that's exactly what happens every time delivery falls behind and
+// guard 1 below snaps `playHead` forward to "now" (issue #599): the prior
+// buffer's tail played out, real silence followed, and the next buffer starts
+// at full amplitude with no ramp. The fade is applied ONLY at such
+// discontinuity edges (stream/segment start, a guard-1 snap, a post-lock
+// re-anchor) plus one tail fade-out on the true final buffer: contiguous
+// buffers carry sample-continuous PCM, and fading every one of them would
+// dip the level to zero at each ~85 ms SNAC-window seam — an audible flutter
+// far worse than the clicks being fixed. (4 ms is far below the ~10 ms
+// auditory threshold for a level change.)
+const HUB_FADE_S = 0.004;
+
+// Create + start an `AudioBufferSourceNode` for `buf` at `start`, routed
+// through a per-node `GainNode`; when `fadeIn` is set (a discontinuity edge)
+// the buffer ramps in from silence. The gain of the most recent node is kept
+// on `hub.lastGain`/`hub.lastEnd` so the pump can add the single end-of-stream
+// tail fade once it knows which buffer is last. Returns the source node
+// (callers track it exactly as before).
+function scheduleHubBuffer(ctx, buf, start, fadeIn) {
+  const node = ctx.createBufferSource();
+  node.buffer = buf;
+  const gain = ctx.createGain();
+  node.connect(gain);
+  gain.connect(ctx.destination);
+  const dur = buf.duration;
+  const fade = Math.min(HUB_FADE_S, dur / 2);
+  if (fadeIn && fade > 0) {
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(1, start + fade);
+  }
+  hub.lastGain = gain;
+  hub.lastEnd = start + dur;
+  node.start(start);
+  return node;
+}
+
 // Stream PCM16 from `res` and schedule it on `ctx`'s timeline. Resolves once the
 // WHOLE stream has been read + scheduled; the audio keeps playing until the last
 // buffer's end, after which `finishHubNaturally` fires. Mirrors local-llm-hub's
 // playground.js speakStream.
 //
 // Orpheus can synthesize slower than realtime, so the stream may arrive slower
-// than it plays. Two guards keep the tail from being cut (issue #206 follow-up):
+// than it plays. Three guards keep playback smooth (issue #206 follow-up,
+// #599 follow-up):
 //  1. never schedule a buffer in the *past* — if delivery fell behind, resume
 //     `playHead` from "now", so it always tracks the true end of audio (a buffer
 //     started in the past would otherwise make playHead under-count the end and
-//     overlap earlier audio); and
+//     overlap earlier audio);
 //  2. finish on the LAST buffer's `onended` (the real end), with a generous
 //     timer only as a backstop — the previous timer-only finish, computed from a
-//     drifted playHead, fired early and `ctx.close()` chopped the tail.
+//     drifted playHead, fired early and `ctx.close()` chopped the tail; and
+//  3. a short gain fade-in is applied ONLY where a real silence↔audio edge
+//     exists — the first buffer of a segment and any buffer scheduled right
+//     after a guard-1 snap — plus one tail fade-out on the final buffer;
+//     contiguous buffers stay un-faded so their sample-continuous seams are
+//     untouched (per-buffer fades would flutter, see HUB_FADE_S above).
 //
 // `seg` carries a segment's position within a multi-request read (issue #254):
 // the hub caps each synthesis request at ~49.6 s of audio, so a long reply is
@@ -588,7 +635,10 @@ async function pumpPcmStream(ctx, res, ac, seg) {
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
   if (isFirst) {
-    hub.playHead = ctx.currentTime + 0.15;   // lead-in cushion against underrun
+    // Lead-in cushion against underrun (issue #599: Orpheus can run well
+    // below realtime under GPU load, so a bigger cushion buys more time
+    // before the first catch-up gap than the previous 0.15s did).
+    hub.playHead = ctx.currentTime + 0.35;
     hub.queue = [];
     hub.hiddenAt = null;
     installHubVisibility();   // re-anchor the tail if iOS suspends output (lock)
@@ -597,6 +647,10 @@ async function pumpPcmStream(ctx, res, ac, seg) {
   // segment keeps the stream "open" so the lock re-anchor doesn't fire finish.
   hub.streamDone = false;
   let leftover = new Uint8Array(0);
+  // Each segment starts on a real edge (silence, or another synthesis call's
+  // tail) → fade its first buffer in; reset to false once scheduled, and set
+  // again whenever guard 1 below snaps over a genuine delivery gap.
+  let discontinuity = true;
   const reader = res.body.getReader();
   hub.reader = reader;
   for (;;) {
@@ -618,12 +672,13 @@ async function pumpPcmStream(ctx, res, ac, seg) {
     for (let i = 0; i < i16.length; i++) f32[i] = i16[i] / 32768;
     const buf = ctx.createBuffer(1, f32.length, sampleRate);
     buf.copyToChannel(f32, 0);
-    const node = ctx.createBufferSource();
-    node.buffer = buf;
-    node.connect(ctx.destination);
     // Guard 1: never start in the past — keeps playHead == true end of audio.
-    if (hub.playHead < ctx.currentTime + 0.02) hub.playHead = ctx.currentTime + 0.02;
-    node.start(hub.playHead);
+    if (hub.playHead < ctx.currentTime + 0.02) {
+      hub.playHead = ctx.currentTime + 0.02;
+      discontinuity = true;   // a real silent gap just played out
+    }
+    const node = scheduleHubBuffer(ctx, buf, hub.playHead, discontinuity);
+    discontinuity = false;
     // Track every scheduled buffer so a screen-lock suspension (#248) can
     // re-anchor the un-played tail instead of losing it.
     hub.queue.push({ buf: buf, node: node, start: hub.playHead, dur: buf.duration });
@@ -632,6 +687,14 @@ async function pumpPcmStream(ctx, res, ac, seg) {
   if (!isLast) return;   // more segments still to stream onto this timeline
   hub.streamDone = true;
   if (!hub.queue.length) { finishHubNaturally(); return; }
+  // Tail fade-out on the true final buffer — only knowable now that the whole
+  // stream is scheduled (mid-stream buffers never fade out; see HUB_FADE_S).
+  if (hub.lastGain && hub.lastEnd > ctx.currentTime + HUB_FADE_S) {
+    try {
+      hub.lastGain.gain.setValueAtTime(1, hub.lastEnd - HUB_FADE_S);
+      hub.lastGain.gain.linearRampToValueAtTime(0, hub.lastEnd);
+    } catch (_) { /* best effort — a click here beats a crash */ }
+  }
   // Guard 2: finish when the final buffer actually ends; the timer only backs
   // it up (with ample slack) in case onended doesn't fire. The true last buffer
   // is the tail of the shared queue (across all segments), not this segment's.
