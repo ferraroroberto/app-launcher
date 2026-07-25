@@ -214,6 +214,7 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
     ("cooldown_seconds", _validate_cooldown, False),
     ("mutex_group", _validate_mutex_group, False),
     ("confirm", bool, False),
+    ("alert_on_failure", bool, False),
     ("visible", bool, False),
     ("elevated", bool, False),
     ("webhook", webhook_from_dict, False),

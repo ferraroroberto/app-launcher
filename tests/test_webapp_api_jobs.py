@@ -1650,3 +1650,44 @@ class TestConfirmOnFire:
         created = _seed_one_job(client, name="Demo").json()["job"]
         resp = client.post("/api/jobs/" + created["id"] + "/run")
         assert resp.status_code == 200
+
+
+# ================================================ alert-on-failure (#597)
+
+
+class TestAlertOnFailure:
+    """``alert_on_failure`` flag round-trips through create/edit (issue #597)."""
+
+    def test_create_round_trips_alert_on_failure(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        job = client.post(
+            "/api/jobs",
+            json={
+                "name": "Reporting Pipeline",
+                "script_path": _stub_path("report.py"),
+                "alert_on_failure": True,
+            },
+        ).json()["job"]
+        assert job["alert_on_failure"] is True
+
+    def test_alert_on_failure_round_trips_through_put(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        r = client.put("/api/jobs/" + created["id"], json={"alert_on_failure": True})
+        assert r.status_code == 200
+        assert r.json()["job"]["alert_on_failure"] is True
+        # Clearing it drops the key (omitted when False).
+        r = client.put("/api/jobs/" + created["id"], json={"alert_on_failure": False})
+        assert r.status_code == 200
+        assert "alert_on_failure" not in r.json()["job"]
+
+    def test_default_omitted_from_response(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        assert "alert_on_failure" not in created

@@ -193,6 +193,10 @@
     <path d="M12 9v4" />
     <path d="M12 17h.01" />
   </symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none">
+    <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+    <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+  </symbol>
   <symbol id="i-flask-conical" viewBox="0 0 24 24" fill="none">
     <path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2" />
     <path d="M6.453 15h11.094" />
@@ -1131,6 +1135,10 @@
           <input id="jobMutexGroupInput" type="text" class="input-native"
                  maxlength="32" placeholder="e.g. chrome-profile">
         </label>
+        <div class="job-alert-row switch-row">
+          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg> Alert to Telegram if failed</span>
+          <button type="button" id="jobAlertOnFailureInput" class="toggle" role="switch" aria-checked="false" aria-label="Alert to Telegram if failed"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
         <div class="job-confirm-row switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
           <button type="button" id="jobConfirmInput" class="toggle" role="switch" aria-checked="false" aria-label="Require confirmation before running"><span class="knob"></span><span class="toggle-label">OFF</span></button>

@@ -682,6 +682,9 @@ summary + .opt-group { border-top: 0; }
   text-overflow: ellipsis;
   min-width: 0;
 }
+/* Alert-on-failure marker (issue #597) — mirrors the board-chief-crown
+   convention: a colored glyph beside the title, not inside the status dot. */
+.job-item .job-alert-icon { color: var(--accent); display: inline-flex; flex: none; }
 /* Two sibling rows under the name, always rendered separately so the
    eye lands in the same place across every job:
      row 2 — type pill + schedule chip

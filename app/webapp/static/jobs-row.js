@@ -184,6 +184,15 @@ export function renderJobRow(job, options) {
   name.className = 'name';
   name.textContent = job.name;
   head.appendChild(name);
+  if (job.alert_on_failure) {
+    const alertIcon = document.createElement('span');
+    alertIcon.className = 'job-alert-icon';
+    alertIcon.dataset.role = 'alert-icon';
+    alertIcon.innerHTML = icon('bell');
+    alertIcon.title = 'Alerts to Telegram on failure';
+    alertIcon.setAttribute('aria-label', 'Alerts to Telegram on failure');
+    head.appendChild(alertIcon);
+  }
   info.appendChild(head);
 
   const pills = document.createElement('div');

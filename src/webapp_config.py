@@ -377,6 +377,14 @@ class WebappConfig:
     # "what went wrong" summary prepended to the push body. Default off
     # so the issue lands without a hard dependency on the hub.
     notify_failure_summary: bool = False
+    # --- Per-job Telegram failure alerts (issue #597) --------------------
+    # Credentials for the vendored src/notify Telegram primitive. Both
+    # empty means no-op — the executor still finalises runs identically.
+    # Unlike notify_on_failure above (global, Pushover, every job), this
+    # channel fires per job: only jobs with Job.alert_on_failure=True push
+    # here, so the shared Telegram chat isn't spammed by every failure.
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
     # --- Job secrets (issues #73, #72) ----------------------------------
     # One gitignored place for secret values, referenced from jobs.json by
     # opaque "$secret:<key>" strings resolved at fire time
@@ -549,6 +557,8 @@ def load_webapp_config(
         notify_on_failure=bool(raw.get("notify_on_failure", False)),
         notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
         notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
+        telegram_bot_token=str(raw.get("telegram_bot_token", "")),
+        telegram_chat_id=str(raw.get("telegram_chat_id", "")),
         secrets={
             str(k): str(v)
             for k, v in (
@@ -617,6 +627,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "notify_on_failure": cfg.notify_on_failure,
         "notify_failure_streak": cfg.notify_failure_streak,
         "notify_failure_summary": cfg.notify_failure_summary,
+        "telegram_bot_token": cfg.telegram_bot_token,
+        "telegram_chat_id": cfg.telegram_chat_id,
         "secrets": cfg.secrets,
         "api_tokens": cfg.api_tokens,
     }

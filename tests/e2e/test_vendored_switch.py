@@ -143,6 +143,7 @@ def test_static_boolean_controls_have_no_checkbox_markup(
         "#jobsEditBtn",
         "#editMode",
         "#bootAutostartToggle",
+        "#jobAlertOnFailureInput",
         "#jobConfirmInput",
         "#jobRunDialogDryRun",
     )

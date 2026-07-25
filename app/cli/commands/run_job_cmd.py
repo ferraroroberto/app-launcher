@@ -59,6 +59,7 @@ from src.notifications import (
     Notifier,
     NoopNotifier,
     build_notifier_from_config,
+    build_telegram_notifier_from_config,
     summarise_failure,
 )
 from src.subprocess_flags import NO_WINDOW
@@ -217,44 +218,62 @@ def _maybe_notify_failure(
     status: str,
     exit_code: int,
     notifier: Optional[Notifier] = None,
+    telegram_notifier: Optional[Notifier] = None,
 ) -> None:
-    """Push a Pushover notification for a ``failed`` finalisation.
+    """Push failure notifications for a ``failed`` finalisation.
 
-    No-op when ``notify_on_failure`` is off, when the notifier resolves
-    to :class:`NoopNotifier` (no creds), or when the run succeeded. The
-    optional LLM summary is best-effort; hub down → raw tail only. Any
-    error inside this path is logged and swallowed — finalisation must
-    keep going.
+    Two independent channels, both no-op on success:
+
+    * Pushover (global, issue #66) — gated by ``cfg.notify_on_failure``,
+      fires for every job.
+    * Telegram (per-job, issue #597) — gated by ``job.alert_on_failure``,
+      fires only for jobs that opted in.
+
+    Either resolving to :class:`NoopNotifier` (no creds) is a silent
+    no-op for that channel. The optional LLM summary (Pushover only) is
+    best-effort; hub down → raw tail only. Any error inside this path is
+    logged and swallowed — finalisation must keep going.
     """
     try:
-        if status != "failed" or not cfg.notify_on_failure:
+        if status != "failed":
             return
-        notifier = notifier or build_notifier_from_config(cfg)
-        if isinstance(notifier, NoopNotifier):
-            return
-        tail = read_output_tail(run_dir, max_bytes=8 * 1024)
-        body_parts: List[str] = []
-        if cfg.notify_failure_summary:
-            summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
-            if summary:
-                body_parts.append(summary)
-        # The raw tail is what an operator wants when the summary is
-        # missing or wrong — always include the last 500 chars.
-        body_parts.append(tail[-500:] if tail else "(no output captured)")
-        body_parts.append(
-            f"— job={job.id} run={run_dir.name} exit={exit_code}"
-        )
-        title = f"❌ {job.name}"
-        notifier.notify(title, "\n\n".join(body_parts), severity="error")
 
-        streak = cfg.notify_failure_streak
-        if streak and streak > 1:
-            count = consecutive_failed_runs(job.id)
-            if count == streak:
-                notifier.notify(
-                    f"🔁 {job.name} — {count} consecutive failures",
-                    f"Failure streak reached {count} runs.\n"
-                    f"Most recent: {run_dir.name} (exit {exit_code}).",
+        if cfg.notify_on_failure:
+            notifier = notifier or build_notifier_from_config(cfg)
+            if not isinstance(notifier, NoopNotifier):
+                tail = read_output_tail(run_dir, max_bytes=8 * 1024)
+                body_parts: List[str] = []
+                if cfg.notify_failure_summary:
+                    summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
+                    if summary:
+                        body_parts.append(summary)
+                # The raw tail is what an operator wants when the summary is
+                # missing or wrong — always include the last 500 chars.
+                body_parts.append(tail[-500:] if tail else "(no output captured)")
+                body_parts.append(
+                    f"— job={job.id} run={run_dir.name} exit={exit_code}"
+                )
+                title = f"❌ {job.name}"
+                notifier.notify(title, "\n\n".join(body_parts), severity="error")
+
+                streak = cfg.notify_failure_streak
+                if streak and streak > 1:
+                    count = consecutive_failed_runs(job.id)
+                    if count == streak:
+                        notifier.notify(
+                            f"🔁 {job.name} — {count} consecutive failures",
+                            f"Failure streak reached {count} runs.\n"
+                            f"Most recent: {run_dir.name} (exit {exit_code}).",
+                            severity="error",
+                        )
+
+        if job.alert_on_failure:
+            telegram_notifier = telegram_notifier or build_telegram_notifier_from_config(cfg)
+            if not isinstance(telegram_notifier, NoopNotifier):
+                when = datetime.now().strftime("%Y-%m-%d %H:%M")
+                telegram_notifier.notify(
+                    f"❌ {job.name} failed",
+                    f"{when} — run={run_dir.name} exit={exit_code}",
                     severity="error",
                 )
     except Exception as exc:  # noqa: BLE001 — never block finalisation

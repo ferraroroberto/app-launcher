@@ -79,6 +79,7 @@ JOB_OPTIONAL_FIELDS = (
     "on_success",
     "on_failure",
     "confirm",
+    "alert_on_failure",
     "visible",
     "elevated",
     "kind",

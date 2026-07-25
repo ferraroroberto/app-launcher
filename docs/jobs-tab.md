@@ -668,6 +668,26 @@ The push body always includes: optional LLM summary, the raw output tail (last 5
 
 The notifier path is wrapped in a single `try`/`except` — credentials misconfigured, Pushover 5xx, hub unreachable: none of those can block the executor's normal exit. Errors land in the launcher log at `WARNING`.
 
+### Per-job Telegram alerts (issue #597)
+
+`notify_on_failure` above is global — every job, one shared Pushover channel. A job can additionally carry an `alert_on_failure: true` flag (the **🔔 Alert to Telegram if failed** toggle in the editor, sitting just above **Require confirmation before running**) that fires a Telegram message on *that job's* failed runs only, independent of the global switch — opt-in per job so a shared Telegram chat isn't spammed by every job's failures.
+
+The channel is the fleet's vendored `src/notify/` Telegram primitive (byte-identical to `whatsapp-radar` and `home-automation`'s copies, sourced from `project-scaffolding`) — one Bot API `sendMessage` HTTPS POST via stdlib `urllib`. Set both credentials in `config/webapp_config.json`:
+
+```json
+{
+  "telegram_bot_token": "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
+  "telegram_chat_id":   "987654321"
+}
+```
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `telegram_bot_token` / `telegram_chat_id` | `""` | Both must be set for any alert to fire; otherwise the notifier short-circuits as a no-op |
+| `Job.alert_on_failure` | `false` | Per-job opt-in — set from the editor's toggle, or `"alert_on_failure": true` in `config/jobs.json` |
+
+The message is short and job-scoped: `❌ <job name> failed` as the title, `<timestamp> — run=<rid> exit=<code>` as the body — no LLM summary, no streak logic (those are Pushover-specific enrichments on the global channel). Same swallow-on-error contract as Pushover: a misconfigured token or a Telegram-side failure is logged at `WARNING` and never blocks the executor's normal exit. A job with the toggle on shows a 🔔 bell icon next to its name in the Jobs tab list.
+
 ## Per-job secrets & env (issue #72)
 
 A job can declare an `env: {NAME: value}` overlay in `config/jobs.json` (or via the create/edit API — the field round-trips through both routes). The executor merges it into the child's environment at fire time, after `os.environ` and before the typed-param env (so a per-run param can override a static value). Values are either literals or `$secret:<key>` references resolved against `webapp_config.json`'s `secrets` block — the same mechanism `webhook.secret` uses:
