@@ -150,11 +150,24 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
     """
     if not job.mutex_group:
         return None
+    # Local import avoids a jobs_queue <-> jobs_reap import cycle
+    # (jobs_reap.reap_stranded_runs locally imports drain_mutex_queue from
+    # here) — same pattern as write_run_json's local jobs_index import.
+    # finalize_dead_runs (not reap_stranded_runs) deliberately skips the
+    # mutex-queue drain: we're still mid-sweep deciding admission for
+    # `job` itself, and draining here could spawn a queued sibling before
+    # the rest of this same loop has re-checked it against that spawn.
+    from src.jobs_reap import finalize_dead_runs
+
     for other in jobs:
         if other.id == job.id:
             continue
         if other.mutex_group != job.mutex_group:
             continue
+        # A stranded "running" record (executor died before finalising,
+        # issue #591) must not wedge the group forever — reconcile it
+        # before treating it as a live collision.
+        finalize_dead_runs(other)
         latest = latest_run(other.id)
         if latest is None:
             continue

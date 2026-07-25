@@ -446,7 +446,12 @@ def _spawn_and_wait(
             )
             # Persist the pid so the kill endpoint can find the tree
             # even if the executor itself crashes before wait() returns.
-            write_run_json(run_dir, pid=proc.pid)
+            # pid_create_time (captured immediately, mirroring
+            # src.app_runtime.record_spawn) lets a later reap check
+            # (src.jobs_reap) tell "still this process" apart from "a
+            # since-recycled pid" — Windows reuses pids, so a bare
+            # pid_exists() isn't enough (issue #591).
+            write_run_json(run_dir, pid=proc.pid, pid_create_time=time.time())
             try:
                 sampler = _ResourceSampler(proc.pid)
                 sampler.start()

@@ -88,6 +88,10 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
     for job in load_jobs().jobs:
         try:
+            # A run stranded "running" by a dead executor (issue #591) is
+            # reconciled here too, so the Board doesn't keep rendering a
+            # "stuck" card for a run that nothing is actually executing.
+            jobs_mod.reap_stranded_runs(job)
             latest = jobs_mod.latest_run(job.id)
         except OSError:
             continue

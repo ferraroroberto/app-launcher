@@ -425,6 +425,41 @@ def kill_process_tree(pid: int, grace_seconds: float = 3.0) -> List[int]:
     return signalled
 
 
+def is_pid_alive(
+    pid: int,
+    create_time_hint: Optional[float] = None,
+    tolerance: float = 1.0,
+) -> bool:
+    """True when ``pid`` is a live process, guarded against Windows PID reuse.
+
+    Mirrors ``src.app_runtime``'s spawned-instance liveness check. When
+    ``create_time_hint`` (an epoch float captured right after the process was
+    spawned) is given, a live ``pid`` whose actual ``create_time()`` drifts
+    beyond ``tolerance`` seconds from the hint is treated as a *different*
+    process that reused the pid — i.e. not alive. Without a hint (records
+    written before a caller started persisting one), a live pid is trusted
+    as-is: reuse can't be disambiguated, so the conservative default is to
+    assume it's still the original process.
+    """
+    if psutil is None:
+        return True  # can't introspect — assume alive, don't reap blindly
+    try:
+        if not psutil.pid_exists(pid):
+            return False
+        proc = psutil.Process(pid)
+        if not proc.is_running():
+            return False
+        if create_time_hint is None:
+            return True
+        try:
+            create_time = proc.create_time()
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            return True  # exists but unreadable — keep it
+        return abs(create_time - create_time_hint) <= tolerance
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+        return False
+
+
 def kill_pids(pids: List[int]) -> tuple[List[int], List[str]]:
     """Force-kill ``pids``. Returns ``(killed_pids, error_messages)``."""
     if psutil is None:

@@ -130,6 +130,10 @@ def _decorate_job(
     payload["next_run_iso"] = (
         nf.isoformat(timespec="seconds") if nf is not None else None
     )
+    # A run stranded "running" by a dead executor (issue #591) is reconciled
+    # opportunistically here, on every poll, before it's decorated for the
+    # client — mirrors src.app_runtime.prune_dead's lazy-on-read pattern.
+    jobs_mod.reap_stranded_runs(job)
     latest = jobs_mod.latest_run(job.id)
     if latest is not None:
         payload["last_run"] = {
