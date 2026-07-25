@@ -50,6 +50,17 @@ _AUDIO_MOCK = """
     }
     stop() { window.__audioLog.stopped += 1; }
   }
+  // scheduleHubBuffer() (issue #599) routes every node through a GainNode for
+  // a click-avoiding fade; the fake just needs the shape (connect + a gain
+  // param with the AudioParam automation methods it calls).
+  class FakeGainNode {
+    constructor() {
+      this.gain = {
+        setValueAtTime() {}, linearRampToValueAtTime() {},
+      };
+    }
+    connect() {}
+  }
   class FakeAudioContext {
     constructor() {
       this.currentTime = 0; this.destination = {};
@@ -62,6 +73,7 @@ _AUDIO_MOCK = """
       return new FakeAudioBuffer(ch, len, sr);
     }
     createBufferSource() { return new FakeNode(); }
+    createGain() { return new FakeGainNode(); }
     close() { window.__audioLog.closed += 1; return Promise.resolve(); }
   }
   for (const name of ['AudioContext', 'webkitAudioContext']) {
