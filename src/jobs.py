@@ -12,6 +12,8 @@ jobs_mod.X(...)``) keep working unchanged:
 * :mod:`src.jobs_queue` — the cross-job mutex queue + chain dispatch.
 * :mod:`src.jobs_stats` — run-duration percentiles, health, stuck-run
   detection.
+* :mod:`src.jobs_reap` — reconciles a run record stranded ``running`` by an
+  executor that died before finalising it.
 
 New code should generally import directly from the module that actually
 owns what it needs; this facade exists for backward compatibility and as
@@ -62,6 +64,7 @@ from src.jobs_queue import (
     pop_mutex_entry,
     remove_queue_entry,
 )
+from src.jobs_reap import reap_stranded_runs
 from src.jobs_schtasks import (
     FREQUENT_SCHEDULE_TYPES,
     TASK_FOLDER_PREFIX,
@@ -132,4 +135,5 @@ __all__ = [
     "is_stuck",
     "consecutive_failed_runs",
     "cooldown_check",
+    "reap_stranded_runs",
 ]

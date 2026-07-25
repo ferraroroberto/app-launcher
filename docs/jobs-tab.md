@@ -487,10 +487,12 @@ Unpinned history is pruned to the most recent **20 runs per job** by the executo
 | `finished_at` | ISO 8601 | executor | Only on final write |
 | `exit_code` | int | executor | `-9` is reserved for `/kill` (`SIGKILL` analogue) |
 | `pid` | int | executor | The child PID, persisted at spawn so the kill endpoint works even if the executor itself crashes between spawn and `wait()` |
+| `pid_create_time` | float (epoch) | executor | Captured immediately after spawn (issue #591) — lets the reap check (below) tell "still this process" apart from a since-recycled pid; absent on pre-#591 records |
 | `duration_seconds` | float | executor | Wall-clock seconds the child ran for; rounded to 3 d.p. |
 | `peak_rss_bytes` | int | executor | Peak resident-set size summed across the process tree (parent + recursive children) — sampled at ~1 Hz |
 | `cpu_seconds` | float | executor | Accumulated user + system CPU across the tree — sum of per-PID maxima |
 | `killed` | bool | kill endpoint | `True` only when finalised via `/kill` |
+| `reaped` | bool | reap check (issue #591) | `True` only when finalised automatically because the recorded pid was provably dead and the executor never finalised it — distinct from `killed`, which means a human tapped Kill |
 | `pinned` | bool | run update endpoint | Keep-forever flag; omitted/false for normal retention |
 
 Plain files remain the canonical store — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling. `webapp/jobs/_index.sqlite` is only a derived mirror: `runs` stores queryable metadata and `output_fts` maps FTS5 rowids to run rowids for cross-run grep. `src/jobs_index.py` rebuilds it from every `run.json` / `output.log` pair when the file is missing, corrupt, or carries an older `PRAGMA user_version`; deleting it and reloading the Jobs tab is the supported repair path. Canonical writes update the mirror after the atomic JSON swap, and finalization captures the completed output plus artifact presence.
@@ -620,6 +622,16 @@ POST /api/jobs/<id>/runs/<rid>/kill
 - Finalises `run.json` to `status: failed`, `exit_code: -9`, `killed: true`, `finished_at: now`, with `duration_seconds` derived from `started_at`.
 
 If the executor has already exited (orphan pid), the route still finalises the record — the UI is the authoritative "is this run done?" surface, and a stale `running` row that nothing is actually executing is the bug the kill button fixes.
+
+### Stranded-run reap (issue #591)
+
+If the **executor itself** dies before it reaches its own finalise (interrupt, reboot, OOM, a parent shell killing its process tree) — not just the child it's tracking — nothing ever writes a terminal status, and the record stays `running` forever even after the recorded pid is long gone. `src/jobs_reap.py` automates the same reconciliation the kill route already does by hand for that exact case:
+
+- **Where it runs.** Opportunistically on read, not a background sweep — every `GET /api/jobs` poll (`app/webapp/routers/jobs.py::_decorate_job`) and every `Board` "stuck" sweep (`src.board.jobs_attention`) call `reap_stranded_runs(job)` before deciding what to show. `src.jobs_queue.mutex_collision` calls the drain-less `finalize_dead_runs(job)` for the same reason mid-admission-check (draining there could spawn a queued sibling before the rest of that same collision sweep re-checks it).
+- **What counts as "provably dead".** Only a recorded `pid` that `psutil` confirms is gone (or has been recycled by Windows — a `pid_create_time` persisted alongside `pid` at spawn, and compared against the live process's actual `create_time()` within 1 s, rules out reuse). No `pid` yet, or a pid that's alive and unverifiable against a create-time hint, is left alone — a genuinely long-running job is never reconciled out from under itself.
+- **What gets swept.** Every non-terminal record in the job's history, not just the latest — an older `running` record superseded by a newer run is invisible to every behavioural consumer (mutex/streak/run-button all read only the latest), but still a lie if a user opens that specific historical run's detail view.
+- **What a reap does.** Writes `status: "failed"`, `finished_at`, `duration_seconds` (mirroring the kill route) plus `reaped: true` — distinct from `killed: true`, since this was never killed, just lost track of — invalidates the stats cache, and drains the job's mutex group once if anything was reaped.
+- **What it doesn't replace.** The ⚠️ stuck marker (a live-but-slow run) is untouched — reap only fires on a confirmed-dead pid.
 
 ### `next_run` cache
 
