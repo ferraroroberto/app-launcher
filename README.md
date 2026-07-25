@@ -522,8 +522,8 @@ A `tray` kind (issue #456) is surfaced by the same scan flow above — a
 `tray_lifecycle.ps1` helper (see `tray.bat`'s own header) is recognized as
 a sister project's tray, not a plain streamlit/webapp/tunnel launcher.
 
-Once scanned in, each `tray`-kind row gets an **Autostart at boot** switch
-in the collapsible **Registered Trays** panel. When app-launcher's own
+Once scanned in, each `tray`-kind row gets an autostart switch inline with
+its path, in the collapsible **Autostart registered trays** panel. When app-launcher's own
 webapp comes up (see the Settings-tab boot toggle above), it walks every
 autostart-enabled tray one at a time — in the registry's existing
 alphabetical order, no reordering UI yet — waiting for each to report

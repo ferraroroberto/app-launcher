@@ -352,7 +352,10 @@ function renderList(host, items) {
     const meta = document.createElement('span');
     meta.className = 'meta';
     meta.textContent = a.bat_path || a.project_dir || '';
-    launch.appendChild(meta);
+    // Tray rows show the path inline with the autostart toggle below
+    // instead — .launch-btn is a <button>, so the toggle can't nest
+    // inside it, and the path moves out to sit alongside it.
+    if (a.kind !== 'tray') launch.appendChild(meta);
 
     launch.addEventListener('click', function () { launchApp(a); });
     main.appendChild(launch);
@@ -375,17 +378,16 @@ function renderList(host, items) {
       main.appendChild(tr);
     }
 
-    // Registered Trays autostart switch (issue #456 part 2/2) — persists
+    // Autostart switch (issue #456 part 2/2, tightened in #593) — persists
     // via the same PATCH /api/apps/{id} the rename dialog uses, just with
     // `autostart` instead of `name`. The switch is a sibling of the launch
     // button, so its compact 44px target remains independent of launching.
+    // Shares a row with the path text (moved out of .launch-btn above) —
+    // the panel title already says "autostart", so no per-row label.
     if (a.kind === 'tray') {
       const row = document.createElement('div');
       row.className = 'tray-autostart-row';
-      const switchRow = document.createElement('div');
-      switchRow.className = 'switch-row';
-      const label = document.createElement('span');
-      label.textContent = 'Autostart at boot';
+      row.appendChild(meta);
       const toggleBtn = switchEl(!!a.autostart, {
         label: 'Autostart ' + a.name + ' at boot',
         onToggle: function (next, btn) {
@@ -395,9 +397,7 @@ function renderList(host, items) {
           });
         },
       });
-      switchRow.appendChild(label);
-      switchRow.appendChild(toggleBtn);
-      row.appendChild(switchRow);
+      row.appendChild(toggleBtn);
       main.appendChild(row);
     }
 
