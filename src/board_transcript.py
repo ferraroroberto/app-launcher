@@ -48,6 +48,16 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=15)
 
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
+# Only the transcript's tail is read for either an exchange or a pending
+# background dispatch — a long session's JSONL runs to many MB, but the last
+# exchange (or the launch line of a dispatch still in flight) always sits
+# within the final few hundred KB, even behind one large intervening tool
+# result (e.g. a file Read). Shared by :func:`last_exchange` and
+# :func:`_has_pending_background_dispatch` (#594 widened the latter from the
+# much smaller ``_ACTIVITY_TAIL_BYTES`` after a live dispatch's launch line —
+# 11.8 KB back — was pushed out of an 8 KB window by one such Read).
+_EXCHANGE_TAIL_BYTES = 256 * 1024
+
 # Pending-background-dispatch detection (#464): the id a completed dispatch
 # is later referenced by, e.g. "<task-id>btvos2agp</task-id>".
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
@@ -211,9 +221,12 @@ def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
     return _TASK_ID_RE.findall(text)
 
 
-def _is_background_bash_tool_use(block: Any) -> bool:
-    """Whether an assistant ``tool_use`` content block is a ``Bash`` call
-    dispatched with ``run_in_background: true``.
+_BACKGROUNDABLE_TOOL_NAMES = frozenset({"Bash", "PowerShell"})
+
+
+def _is_background_dispatch_tool_use(block: Any) -> bool:
+    """Whether an assistant ``tool_use`` content block is a ``Bash`` or
+    ``PowerShell`` call dispatched with ``run_in_background: true``.
 
     Read directly off the ``tool_use`` block itself — the Anthropic
     message-content-block shape (every tool call carries ``type``, ``name``,
@@ -224,22 +237,26 @@ def _is_background_bash_tool_use(block: Any) -> bool:
     ``run_in_background`` Bash dispatch and its eventual
     ``<task-notification>`` both showed up in the tail, but no
     ``backgroundTaskId`` anywhere — the old check sees nothing launched and
-    never overrides the status.
+    never overrides the status. ``PowerShell`` shares the same
+    ``run_in_background`` input shape and is this repo's own agents' actual
+    backgrounding tool on Windows (#594) — restricting the check to ``Bash``
+    left it blind to exactly that case.
     """
     return (
         isinstance(block, dict)
         and block.get("type") == "tool_use"
-        and block.get("name") == "Bash"
+        and block.get("name") in _BACKGROUNDABLE_TOOL_NAMES
         and isinstance(block.get("input"), dict)
         and block["input"].get("run_in_background") is True
     )
 
 
 def _launched_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
-    """``tool_use`` ids of backgrounded ``Bash`` dispatches an assistant line
-    launches (#576) — correlated against the tool call's own ``id``, not the
-    internal ``backgroundTaskId`` :func:`_launched_background_ids` reads out
-    of the result.
+    """``tool_use`` ids of backgrounded ``Bash``/``PowerShell`` dispatches an
+    assistant line launches (#576, widened to ``PowerShell`` by #594) —
+    correlated against the tool call's own ``id``, not the internal
+    ``backgroundTaskId`` :func:`_launched_background_ids` reads out of the
+    result.
     """
     if obj.get("type") != "assistant":
         return []
@@ -250,7 +267,7 @@ def _launched_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     return [
         block["id"]
         for block in content
-        if _is_background_bash_tool_use(block) and isinstance(block.get("id"), str)
+        if _is_background_dispatch_tool_use(block) and isinstance(block.get("id"), str)
     ]
 
 
@@ -294,8 +311,8 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     (:func:`_launched_background_ids` / :func:`_notified_background_ids`,
     covers backgrounded ``Bash`` via ``backgroundTaskId`` and async
     ``Agent``/``Task`` dispatches via ``isAsync``+``agentId``), and a
-    narrower, more robust one for backgrounded ``Bash`` calls specifically,
-    keyed on the tool call's own ``tool_use`` id
+    narrower, more robust one for backgrounded ``Bash``/``PowerShell`` calls
+    specifically, keyed on the tool call's own ``tool_use`` id
     (:func:`_launched_bash_dispatch_ids` / :func:`_notified_bash_dispatch_ids`),
     which doesn't depend on the internal result-shape field that a live
     spot-check found had drifted. Either scheme flagging a dispatch as
@@ -307,9 +324,19 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     would need to tell "still running async" apart from "finished, this is
     just the normal blocking reply" and risk misreading the common case.)
 
+    Reads :data:`_EXCHANGE_TAIL_BYTES` rather than the smaller
+    ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
+    large intervening tool result (e.g. a file ``Read``) by the time the turn
+    ends, and the 8 KB window sized for the cheap #309 mtime pre-filter was
+    empirically too small to still reach it. A truncated read's first line is
+    dropped — it is likely torn — matching :func:`last_exchange`'s handling
+    of the same tail-read shape.
+
     Any failure degrades to "nothing pending" — callers keep the hook status.
     """
-    lines, _truncated = _tail_lines(transcript_path, _ACTIVITY_TAIL_BYTES)
+    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
+    if truncated and lines:
+        lines = lines[1:]
     launched: set = set()
     completed: set = set()
     bash_launched: set = set()
@@ -356,11 +383,6 @@ def _external_row_liveness(
     if now - mtime > _EXTERNAL_ACTIVITY_AFTER:
         return False, "transcript quiet past 15 minutes"
     return True, "recent transcript activity"
-
-
-# Only the transcript's tail is read — a long session's JSONL runs to many
-# MB but the last exchange always sits within the final few hundred KB.
-_EXCHANGE_TAIL_BYTES = 256 * 1024
 
 # User lines whose string content is harness plumbing, not a typed prompt:
 # slash-command wrappers, local-command output, background-task events.

@@ -811,6 +811,24 @@ def test_overlay_pending_background_agent_keeps_working(tmp_path: Path):
     assert cards[0]["status"] == "working"
 
 
+def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_path: Path):
+    """#594: a background dispatch's launch line can be pushed well past the
+    old 8 KiB activity window by one large intervening tool result (e.g. a
+    file Read) before the turn ends — reproduced from a live transcript where
+    the launch line sat 11.8 KB from EOF. The wider ``_EXCHANGE_TAIL_BYTES``
+    scan must still reach it."""
+    stamp_time = NOW - timedelta(minutes=10)
+    launch = _tool_result_line(
+        stamp_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    # Padding well past the old 8 KiB window but inside the new 256 KiB one.
+    filler = (json.dumps({"type": "system", "content": "x" * 400}) + "\n") * 30
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, launch + filler)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
 def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     """Once the completion notice lands, a genuine needs-you still wins — the
     pending check must not keep matching after the work actually finished."""
@@ -831,12 +849,15 @@ def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
 # ------------------------ pending background dispatch, tool-use-id keyed (#576)
 
 
-def _bash_tool_use_line(ts: datetime, tool_use_id: str, *, run_in_background: bool = True) -> str:
-    """One assistant line dispatching a ``Bash`` tool call — the shape
-    ``_launched_bash_dispatch_ids`` reads. This is the tool-call-id-keyed
-    counterpart to ``_tool_result_line``'s ``toolUseResult``-keyed shape:
-    #576 found real transcripts no longer carry ``backgroundTaskId`` on the
-    result, so the launch has to be read off the ``tool_use`` block itself."""
+def _bash_tool_use_line(
+    ts: datetime, tool_use_id: str, *, run_in_background: bool = True, tool_name: str = "Bash",
+) -> str:
+    """One assistant line dispatching a ``Bash`` (or, per #594, ``PowerShell``)
+    tool call — the shape ``_launched_bash_dispatch_ids`` reads. This is the
+    tool-call-id-keyed counterpart to ``_tool_result_line``'s
+    ``toolUseResult``-keyed shape: #576 found real transcripts no longer
+    carry ``backgroundTaskId`` on the result, so the launch has to be read
+    off the ``tool_use`` block itself."""
     return json.dumps({
         "type": "assistant",
         "timestamp": _iso(ts),
@@ -845,7 +866,7 @@ def _bash_tool_use_line(ts: datetime, tool_use_id: str, *, run_in_background: bo
             "content": [{
                 "type": "tool_use",
                 "id": tool_use_id,
-                "name": "Bash",
+                "name": tool_name,
                 "input": {"command": "pwsh -File scripts/verify-before-ship.ps1",
                            "run_in_background": run_in_background},
             }],
@@ -874,6 +895,18 @@ def test_overlay_pending_bash_dispatch_without_background_task_id_keeps_working(
     caught via the tool_use's own id, not just the legacy toolUseResult key."""
     stamp_time = NOW - timedelta(minutes=10)
     content = _bash_tool_use_line(stamp_time, "toolu_abc") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_pending_powershell_dispatch_keeps_working(tmp_path: Path):
+    """#594: this repo's own agents background long-running commands (e.g.
+    the verify-before-ship gate) via the ``PowerShell`` tool, not ``Bash`` —
+    the tool-call-id-keyed scheme must recognize it too, not just Bash."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _bash_tool_use_line(stamp_time, "toolu_ps1", tool_name="PowerShell") + "\n"
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
