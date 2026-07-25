@@ -585,10 +585,20 @@ summary + .opt-group { border-top: 0; }
   word-break: break-all;
 }
 .app-item .tray-autostart-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 18px 10px;
   border-top: 1px solid var(--line);
 }
-.app-item .tray-autostart-row .switch-row { font-size: var(--font-caption); }
+.app-item .tray-autostart-row .meta {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  word-break: break-all;
+}
 .app-item .row-actions {
   display: flex;
   flex-direction: column;
