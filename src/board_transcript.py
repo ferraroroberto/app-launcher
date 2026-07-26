@@ -11,7 +11,7 @@ state file can't tell you on its own:
 * whether a session stamped ``needs-you``/``idle`` is actually still waiting
   on its *own* backgrounded work — a background sub-agent or shell dispatch
   it hasn't heard back from yet (:func:`_has_pending_background_dispatch`,
-  #464, hardened by #576 — see that function's docstring for why the
+  #464, hardened by #576 and #601 — see that function's docstring for why the
   original ``toolUseResult``-keyed check alone isn't reliable);
 * the last completed user→assistant exchange, for the drill-down drawer
   (:func:`last_exchange`, #301).
@@ -332,6 +332,24 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     dropped — it is likely torn — matching :func:`last_exchange`'s handling
     of the same tail-read shape.
 
+    A ``<task-notification>``'s ``<task-id>``/``<tool-use-id>`` tags first
+    appear on a ``queue-operation`` line whose ``operation`` is ``"enqueue"``
+    — that only means the background result is *ready*, not that Claude has
+    received it yet. A live-transcript spot-check for #601 found a session
+    where the enqueue line was the last thing written to the transcript, with
+    no later ``dequeue``/``remove`` — the notification was still sitting in
+    the queue, unconsumed, while the row's stale ``needs-you`` Stop stamp
+    stood. So an enqueued notification is only counted as delivered once a
+    *later* ``dequeue``/``remove`` operation pops it off the (FIFO) queue —
+    tracked positionally, since a ``dequeue`` line carries no content of its
+    own to correlate by id. Other queue traffic (e.g. a prompt typed into an
+    already-running session, which rides the same enqueue/dequeue mechanism)
+    occupies a queue slot too, so it is tracked untagged rather than skipped —
+    skipping it would misalign a later dequeue onto the wrong notification.
+    The ``attachment``-shaped notification (:func:`_notified_background_ids`'s
+    other fallback) is not queue-gated: it isn't a ``queue-operation`` line at
+    all, so it already represents a delivered conversation event.
+
     Any failure degrades to "nothing pending" — callers keep the hook status.
     """
     lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
@@ -341,6 +359,7 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     completed: set = set()
     bash_launched: set = set()
     bash_completed: set = set()
+    queued_notifications: List[Tuple[List[str], List[str]]] = []
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -352,8 +371,19 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
         if not isinstance(obj, dict):
             continue
         launched.update(_launched_background_ids(obj))
-        completed.update(_notified_background_ids(obj))
         bash_launched.update(_launched_bash_dispatch_ids(obj))
+        if obj.get("type") == "queue-operation":
+            operation = obj.get("operation")
+            if operation == "enqueue":
+                queued_notifications.append(
+                    (_notified_background_ids(obj), _notified_bash_dispatch_ids(obj))
+                )
+            elif operation in ("dequeue", "remove") and queued_notifications:
+                task_ids, tool_use_ids = queued_notifications.pop(0)
+                completed.update(task_ids)
+                bash_completed.update(tool_use_ids)
+            continue
+        completed.update(_notified_background_ids(obj))
         bash_completed.update(_notified_bash_dispatch_ids(obj))
     return bool(launched - completed) or bool(bash_launched - bash_completed)
 
