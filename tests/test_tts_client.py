@@ -29,7 +29,7 @@ def test_health_true_when_hub_ok(monkeypatch):
         captured["verify"] = kwargs.get("verify")
         return _Resp(200, {"status": "ok"})
 
-    monkeypatch.setattr(tts_client.requests, "request", fake_request)
+    monkeypatch.setattr(tts_client._loopback_http.SESSION, "request", fake_request)
     assert tts_client.health("http://127.0.0.1:8000/") is True
     # No double slash from the trailing-slash base.
     assert captured["url"] == "http://127.0.0.1:8000/health"
@@ -39,7 +39,7 @@ def test_health_true_when_hub_ok(monkeypatch):
 
 def test_health_false_when_status_not_ok(monkeypatch):
     monkeypatch.setattr(
-        tts_client.requests, "request",
+        tts_client._loopback_http.SESSION, "request",
         lambda *a, **k: _Resp(200, {"status": "starting"}),
     )
     assert tts_client.health("http://127.0.0.1:8000") is False
@@ -49,7 +49,7 @@ def test_health_connection_failure_raises_503(monkeypatch):
     def fake_request(method, url, **kwargs):
         raise tts_client.requests.RequestException("connection refused")
 
-    monkeypatch.setattr(tts_client.requests, "request", fake_request)
+    monkeypatch.setattr(tts_client._loopback_http.SESSION, "request", fake_request)
     with pytest.raises(tts_client.TtsError) as exc:
         tts_client.health("http://127.0.0.1:8000")
     assert exc.value.status == 503

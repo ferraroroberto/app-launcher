@@ -2,8 +2,9 @@
 
 Thin ``requests`` wrapper (via ``_loopback_http``) over the hub's OpenAI-shape
 ``/v1/chat/completions`` plus pure URL / payload / extraction helpers — so we
-stub the shared ``requests.request`` for the round-trip and assert the error
-mapping, and exercise the builders directly.
+stub the shared pooled ``_loopback_http.SESSION.request`` (issue #605) for
+the round-trip and assert the error mapping, and exercise the builders
+directly.
 """
 
 from __future__ import annotations
@@ -51,7 +52,7 @@ def test_summarize_returns_trimmed_content(monkeypatch):
         captured["verify"] = kwargs.get("verify")
         return _Resp(200, _completion("  Ship it. Decide: merge now?  "))
 
-    monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+    monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
     out = llm_client.summarize("http://127.0.0.1:8000", "a long reply")
     assert out == "Ship it. Decide: merge now?"
     assert captured["url"] == "http://127.0.0.1:8000/v1/chat/completions"
@@ -62,7 +63,7 @@ def test_summarize_returns_trimmed_content(monkeypatch):
 
 def test_summarize_handles_list_content(monkeypatch):
     monkeypatch.setattr(
-        _loopback_http.requests, "request",
+        _loopback_http.SESSION, "request",
         lambda *a, **k: _Resp(200, _completion(
             [{"type": "text", "text": "Gist here."}]
         )),
@@ -72,7 +73,7 @@ def test_summarize_handles_list_content(monkeypatch):
 
 def test_summarize_empty_completion_raises_502(monkeypatch):
     monkeypatch.setattr(
-        _loopback_http.requests, "request",
+        _loopback_http.SESSION, "request",
         lambda *a, **k: _Resp(200, _completion("   ")),
     )
     with pytest.raises(llm_client.LlmError) as exc:
@@ -84,7 +85,7 @@ def test_summarize_connection_failure_raises_503(monkeypatch):
     def fake_request(method, url, **kwargs):
         raise _loopback_http.requests.RequestException("connection refused")
 
-    monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+    monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
     with pytest.raises(llm_client.LlmError) as exc:
         llm_client.summarize("http://127.0.0.1:8000", "x")
     assert exc.value.status == 503
