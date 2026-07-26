@@ -2,7 +2,7 @@
 
 The launcher's fifth surface (issue #164, shipped in four steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar, **#399** split into five single-purpose columns). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over five **computed** columns, each holding one kind of card. A card moves because reality changed; there is deliberately no drag-and-drop. It renders four independently-degrading live sources (the session-host's session list, fleet-config's sessions-state and active-issues files, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
 
-On the phone the five columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all five side by side. The **Your turn** count is the number that matters — its strip button highlights when nonzero.
+On the phone the five columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all five side by side, each column header carrying its own `(N)` item count (#603). The **Your turn** count is the number that matters — its strip button highlights when nonzero.
 
 ## The five columns and their data sources
 

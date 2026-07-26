@@ -660,6 +660,8 @@ export function renderBoard() {
       if (count) count.textContent = String(cards.length);
       btn.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
     }
+    const titleCount = els.boardColumns.querySelector('.board-col-count[data-col="' + col.key + '"]');
+    if (titleCount) titleCount.textContent = '(' + cards.length + ')';
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
     if (!list) return;
