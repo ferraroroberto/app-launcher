@@ -14,6 +14,16 @@ Each client declares a trivial :class:`LoopbackError` subclass (e.g.
 ``VoiceTranscriberError``) so callers keep catching one service's failures
 without catching another's; the shared ``status``-carrying ``__init__`` lives
 on the base.
+
+Every call also shares one pooled, keep-alive :data:`SESSION` (issue #605) —
+a bare ``requests.get``/``requests.request`` opens a fresh TCP connection per
+call, and each closed connection parks its ephemeral port in ``TIME_WAIT`` for
+~120 s on Windows. The Board and Coding tabs poll the session-host
+continuously, so that was measured holding 145 such sockets to ``:8446`` at a
+single sample. ``SESSION`` is built once at import and never reconfigured per
+call — ``requests.Session`` is not thread-safe for *configuration* mutation,
+but plain request dispatch on a shared ``HTTPAdapter`` pool is fine across the
+several ``asyncio.to_thread`` worker threads that share it concurrently.
 """
 
 from __future__ import annotations
@@ -23,6 +33,7 @@ from typing import Any, Type
 
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +43,37 @@ logger = logging.getLogger(__name__)
 # loopback-only anyway). Suppress it once here; every client inherits the
 # silence by importing this module.
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# The Board fans polls out across every open PTY session concurrently, so
+# requests' default pool_maxsize of 10 undersizes this — size it deliberately.
+_POOL_SIZE = 20
+
+SESSION = requests.Session()
+_adapter = HTTPAdapter(pool_connections=_POOL_SIZE, pool_maxsize=_POOL_SIZE)
+SESSION.mount("http://", _adapter)
+SESSION.mount("https://", _adapter)
+
+
+def pooled_request(
+    method: str, url: str, *, timeout: float, verify: bool = True, **kwargs: Any
+) -> requests.Response:
+    """One call over the shared keep-alive pool, retried once on a dropped
+    connection.
+
+    A pooled connection can go stale between calls — most commonly a
+    session-host restart closing sockets it still held open. urllib3 usually
+    detects and silently reopens a dead pooled socket before sending (verified
+    empirically against a live restart), but the rarer race where the peer
+    closes mid-send still surfaces as ``requests.exceptions.ConnectionError``
+    before any bytes reach the server. Retrying that case is safe even for
+    non-idempotent methods — the failed attempt never left the client — so a
+    session-host restart surfaces as a clean reconnect rather than a spurious
+    error on the next poll.
+    """
+    try:
+        return SESSION.request(method, url, timeout=timeout, verify=verify, **kwargs)
+    except requests.exceptions.ConnectionError:
+        return SESSION.request(method, url, timeout=timeout, verify=verify, **kwargs)
 
 
 class LoopbackError(RuntimeError):
@@ -79,7 +121,7 @@ def request(
     ``headers``, ...) flow straight to ``requests.request``.
     """
     try:
-        resp = requests.request(method, url, timeout=timeout, verify=verify, **kwargs)
+        resp = pooled_request(method, url, timeout=timeout, verify=verify, **kwargs)
     except requests.RequestException as exc:
         raise error(f"{service} unreachable at {url} ({exc})", status=503) from exc
     if resp.status_code >= 400:

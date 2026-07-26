@@ -55,7 +55,9 @@ def _request(method: str, port: int, path: str, *, timeout: float = _TIMEOUT, **
 
 def health(port: int) -> bool:
     try:
-        resp = requests.get(base_url(port) + "/healthz", timeout=2.0)
+        resp = _loopback_http.pooled_request(
+            "GET", base_url(port) + "/healthz", timeout=2.0
+        )
         return resp.status_code == 200
     except requests.RequestException:
         return False

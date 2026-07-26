@@ -92,8 +92,8 @@ class TestFactory:
 #
 # summarise_failure routes through the shared src.llm_client hub client
 # (issue #520), so — like tests/test_llm_client.py — the hub round-trip is
-# stubbed by monkeypatching the shared `_loopback_http.requests.request`
-# rather than injecting a mock http object.
+# stubbed by monkeypatching the shared pooled `_loopback_http.SESSION.request`
+# (issue #605) rather than injecting a mock http object.
 
 
 class _HubResp:
@@ -112,7 +112,7 @@ def _hub_completion(content):
 class TestSummariseFailure:
     def test_returns_text_block_first_line(self, monkeypatch):
         monkeypatch.setattr(
-            _loopback_http.requests,
+            _loopback_http.SESSION,
             "request",
             lambda *a, **k: _HubResp(
                 200, _hub_completion("ModuleNotFoundError: bs4\nfull stack...")
@@ -125,12 +125,12 @@ class TestSummariseFailure:
         def fake_request(*a, **k):
             raise _loopback_http.requests.RequestException("connection refused")
 
-        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
         assert notif.summarise_failure("oops") is None
 
     def test_non_2xx_returns_none(self, monkeypatch):
         monkeypatch.setattr(
-            _loopback_http.requests, "request", lambda *a, **k: _HubResp(503)
+            _loopback_http.SESSION, "request", lambda *a, **k: _HubResp(503)
         )
         assert notif.summarise_failure("oops") is None
 
@@ -141,13 +141,13 @@ class TestSummariseFailure:
             calls["n"] += 1
             return _HubResp(200, _hub_completion("x"))
 
-        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
         assert notif.summarise_failure("") is None
         assert calls["n"] == 0
 
     def test_malformed_payload_returns_none(self, monkeypatch):
         monkeypatch.setattr(
-            _loopback_http.requests,
+            _loopback_http.SESSION,
             "request",
             lambda *a, **k: _HubResp(200, {"unexpected": "shape"}),
         )
@@ -160,7 +160,7 @@ class TestSummariseFailure:
             captured["url"] = url
             return _HubResp(200, _hub_completion("root cause"))
 
-        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
         notif.summarise_failure("oops", base_url="http://127.0.0.1:9999")
         assert captured["url"] == "http://127.0.0.1:9999/v1/chat/completions"
 
@@ -171,7 +171,7 @@ class TestSummariseFailure:
             captured["url"] = url
             return _HubResp(200, _hub_completion("root cause"))
 
-        monkeypatch.setattr(_loopback_http.requests, "request", fake_request)
+        monkeypatch.setattr(_loopback_http.SESSION, "request", fake_request)
         notif.summarise_failure("oops", base_url="")
         assert captured["url"] == (
             f"{notif.LOCAL_LLM_BASE_URL}/v1/chat/completions"

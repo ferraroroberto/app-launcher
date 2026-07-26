@@ -1,7 +1,9 @@
 """The loopback session-host client (`src.session_client`).
 
 Focused on the request *shape* — these are thin `requests` wrappers, so we
-stub `requests.request` and assert the JSON body the session-host receives.
+stub the shared pooled session's `request` (issue #605 — calls go through
+`_loopback_http.SESSION`, not the bare `requests.request` function) and
+assert the JSON body the session-host receives.
 """
 
 from __future__ import annotations
@@ -26,7 +28,7 @@ def test_create_session_includes_phone_dimensions(monkeypatch):
         captured["json"] = kwargs.get("json")
         return _Resp()
 
-    monkeypatch.setattr(session_client.requests, "request", fake_request)
+    monkeypatch.setattr(session_client._loopback_http.SESSION, "request", fake_request)
 
     session_client.create_session(
         8446, r"C:\proj", "name", "", agent="codex", rows=50, cols=42
@@ -47,7 +49,7 @@ def test_create_session_defaults_dimensions(monkeypatch):
         captured["json"] = kwargs.get("json")
         return _Resp()
 
-    monkeypatch.setattr(session_client.requests, "request", fake_request)
+    monkeypatch.setattr(session_client._loopback_http.SESSION, "request", fake_request)
 
     session_client.create_session(8446, r"C:\proj", "name", "")
 
@@ -64,7 +66,7 @@ def test_create_session_includes_history_lines_when_given(monkeypatch):
         captured["json"] = kwargs.get("json")
         return _Resp()
 
-    monkeypatch.setattr(session_client.requests, "request", fake_request)
+    monkeypatch.setattr(session_client._loopback_http.SESSION, "request", fake_request)
 
     session_client.create_session(
         8446, r"C:\proj", "name", "", agent="codex", history_lines=5000,
@@ -82,7 +84,7 @@ def test_create_session_omits_history_lines_when_not_given(monkeypatch):
         captured["json"] = kwargs.get("json")
         return _Resp()
 
-    monkeypatch.setattr(session_client.requests, "request", fake_request)
+    monkeypatch.setattr(session_client._loopback_http.SESSION, "request", fake_request)
 
     session_client.create_session(8446, r"C:\proj", "name", "")
 
