@@ -2989,6 +2989,7 @@ body.terminal-open {
     text-transform: none;
     color: var(--muted);
   }
+  .board-col-count { font-weight: 400; }
   /* #495: the phone tab-switcher strip duplicates the grid's own aligned
      .board-col-title headers, with no shared width/gap math between the two
      rows. Hide just the switcher buttons — .board-strip also hosts the gh
