@@ -771,8 +771,12 @@ def _tool_result_line(ts: datetime, result: dict) -> str:
 
 def _task_notification_line(ts: datetime, task_id: str) -> str:
     """A completion notice in Claude Code's real ``queue-operation`` shape —
-    invisible to ``_last_activity`` since it carries no ``message`` field."""
-    return json.dumps({
+    invisible to ``_last_activity`` since it carries no ``message`` field.
+    Real transcripts pair the ``enqueue`` with an almost-immediate ``dequeue``
+    once Claude actually receives it (#601); every caller here wants the
+    fully-delivered case, so that pairing is baked in — the enqueue-only,
+    still-queued case has its own dedicated fixture below."""
+    enqueue = json.dumps({
         "type": "queue-operation",
         "operation": "enqueue",
         "timestamp": _iso(ts),
@@ -781,6 +785,8 @@ def _task_notification_line(ts: datetime, task_id: str) -> str:
             "<status>completed</status>\n</task-notification>"
         ),
     })
+    dequeue = json.dumps({"type": "queue-operation", "operation": "dequeue", "timestamp": _iso(ts)})
+    return enqueue + "\n" + dequeue
 
 
 def test_overlay_pending_background_bash_keeps_working(tmp_path: Path):
@@ -846,6 +852,35 @@ def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     assert cards[0]["status"] == "needs-you"
 
 
+def test_overlay_background_dispatch_enqueued_not_dequeued_keeps_working(tmp_path: Path):
+    """#601: a live transcript (app-launcher#601, home-automation issue #321)
+    ended with the notification's ``enqueue`` line as the very last thing
+    written — no ``dequeue``/``remove`` followed it anywhere in the tail, so
+    Claude had not actually received the result yet. The notification being
+    merely *ready* (enqueued) must not resolve the dispatch — only being
+    handed to Claude (dequeued) may."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _tool_result_line(
+            stamp_time - timedelta(minutes=1),
+            {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"},
+        ) + "\n"
+        + json.dumps({
+            "type": "queue-operation",
+            "operation": "enqueue",
+            "timestamp": _iso(stamp_time - timedelta(seconds=30)),
+            "content": (
+                "<task-notification>\n<task-id>btask1</task-id>\n"
+                "<status>completed</status>\n</task-notification>"
+            ),
+        }) + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
 # ------------------------ pending background dispatch, tool-use-id keyed (#576)
 
 
@@ -876,8 +911,10 @@ def _bash_tool_use_line(
 
 def _tool_use_notification_line(ts: datetime, task_id: str, tool_use_id: str) -> str:
     """A completion notice carrying both correlation tags real transcripts
-    use — ``<task-id>`` (the legacy scheme) and ``<tool-use-id>`` (#576)."""
-    return json.dumps({
+    use — ``<task-id>`` (the legacy scheme) and ``<tool-use-id>`` (#576).
+    Paired with an immediate ``dequeue``, matching real delivery (#601) —
+    see :func:`_task_notification_line`."""
+    enqueue = json.dumps({
         "type": "queue-operation",
         "operation": "enqueue",
         "timestamp": _iso(ts),
@@ -887,6 +924,8 @@ def _tool_use_notification_line(ts: datetime, task_id: str, tool_use_id: str) ->
             "<status>completed</status>\n</task-notification>"
         ),
     })
+    dequeue = json.dumps({"type": "queue-operation", "operation": "dequeue", "timestamp": _iso(ts)})
+    return enqueue + "\n" + dequeue
 
 
 def test_overlay_pending_bash_dispatch_without_background_task_id_keeps_working(tmp_path: Path):
