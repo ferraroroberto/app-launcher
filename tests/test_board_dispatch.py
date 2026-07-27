@@ -14,6 +14,8 @@ freshly spawned agent's boot output is still growing.
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from app.webapp.routers import board as board_router
@@ -263,3 +265,55 @@ class TestDispatchFailure:
         assert "died" in resp.json()["detail"]
         overrides["session"].send_input.assert_not_called()
         assert overrides["session"].stop.called
+
+
+class TestChiefManagedMarking:
+    """`dispatch_goal` is the other launcher-dispatched path chief calls
+    over loopback (fleet-config#474) -- same gated marking as
+    `TestChiefManagedMarking` in test_board_drilldown.py's `issues/start`
+    coverage, exercised here for the free-text-goal path (no issue number,
+    so `number=0` is the recorded sentinel)."""
+
+    @pytest.fixture
+    def _fleet_config_repo(self, webapp_client):
+        _, _, overrides = webapp_client
+        repo = overrides["tmp_projects_dir"] / "fleet-config"
+        (repo / ".venv" / "Scripts").mkdir(parents=True)
+        (repo / ".venv" / "Scripts" / "python.exe").touch()
+        (repo / "skills" / "_lib").mkdir(parents=True)
+        (repo / "skills" / "_lib" / "chief_managed.py").touch()
+        return repo
+
+    @pytest.fixture
+    def _fake_run(self, monkeypatch):
+        calls: list = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+            return MagicMock(returncode=0)
+
+        monkeypatch.setattr(board_router.subprocess, "run", fake_run)
+        return calls
+
+    def test_marks_when_chief_alive_and_loopback(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session,
+        _fleet_config_repo, _fake_run,
+    ):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {"session_id": "chief-1", "kind": "pty", "alive": True, "label": "chief"},
+        ]
+        resp = _dispatch(client, overrides)
+        assert resp.status_code == 200
+        assert len(_fake_run) == 1
+        assert _fake_run[0][2:] == ["mark", "disp-1", "myrepo", "0"]
+
+    def test_does_not_mark_without_a_live_chief_session(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session,
+        _fleet_config_repo, _fake_run,
+    ):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = []
+        resp = _dispatch(client, overrides)
+        assert resp.status_code == 200
+        assert _fake_run == []
