@@ -217,6 +217,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import board as board_router
     from app.webapp.routers import life_os as life_os_router
     from app.webapp.routers import media_proxy as media_proxy_router
+    from app.webapp.routers import misc as misc_router
     from app.webapp.routers import sessions as sessions_router
 
     # Mock the session-host loopback client. Every route that talks to
@@ -232,11 +233,15 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "kind": "pty",
     }
     session_mock.upload_image.return_value = {"path": "stub.png"}
+    # Default: no session-host in the test env (#615) — /api/version's
+    # freshness check degrades to "unreachable", never a real loopback call.
+    session_mock.identity.return_value = None
     session_mock.SessionHostError = real_session_client.SessionHostError
     monkeypatch.setattr(apps_router, "session_client", session_mock)
     monkeypatch.setattr(sessions_router, "session_client", session_mock)
     monkeypatch.setattr(life_os_router, "session_client", session_mock)
     monkeypatch.setattr(board_router, "session_client", session_mock)
+    monkeypatch.setattr(misc_router, "session_client", session_mock)
 
     # Mock the voice-transcriber loopback client (issue #165) — the
     # /api/transcribe proxy goes through it; tests assert call args and set

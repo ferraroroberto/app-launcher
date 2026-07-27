@@ -100,10 +100,53 @@ class TestVersion:
         resp = client.get("/api/version")
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body.keys()) == {"git_sha", "built_at", "asset_hash"}
+        assert set(body.keys()) == {
+            "git_sha", "built_at", "asset_hash", "head_sha", "session_host",
+        }
         assert isinstance(body["git_sha"], str) and body["git_sha"]
         assert isinstance(body["built_at"], str) and body["built_at"]
         assert isinstance(body["asset_hash"], str)
+        assert isinstance(body["head_sha"], str) and body["head_sha"]
+
+    def test_session_host_unreachable_reports_reachable_false(self, webapp_client):
+        """Default test-env mock (#615): no session-host listening —
+        session_client.identity() returns None, never a false "up to date"."""
+        client, _, _ = webapp_client
+        body = client.get("/api/version").json()
+        assert body["session_host"] == {
+            "reachable": False, "git_sha": None, "started_at": None, "stale": None,
+        }
+
+    def test_session_host_stale_when_sha_differs_from_head(self, webapp_client):
+        client, app, overrides = webapp_client
+        overrides["session"].identity.return_value = {
+            "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
+        }
+        body = client.get("/api/version").json()
+        assert body["session_host"]["reachable"] is True
+        assert body["session_host"]["git_sha"] == "deadbee"
+        assert body["session_host"]["started_at"] == "2026-07-24T05:51:34"
+        assert body["session_host"]["stale"] is True
+
+    def test_session_host_not_stale_when_sha_matches_head(self, webapp_client):
+        client, app, overrides = webapp_client
+        from app.webapp.routers import misc as misc_router
+        current_head = misc_router.resolve_git_sha()
+        overrides["session"].identity.return_value = {
+            "git_sha": current_head, "started_at": "2026-07-27T08:00:00",
+        }
+        body = client.get("/api/version").json()
+        assert body["session_host"]["stale"] is False
+
+    def test_unknown_sha_never_reads_as_stale(self, webapp_client):
+        """A failed git lookup on either side must degrade to unknown
+        (`stale: None`), never a confident but wrong true/false."""
+        client, app, overrides = webapp_client
+        overrides["session"].identity.return_value = {
+            "git_sha": "unknown", "started_at": "2026-07-27T08:00:00",
+        }
+        body = client.get("/api/version").json()
+        assert body["session_host"]["stale"] is None
 
 
 class TestStatus:

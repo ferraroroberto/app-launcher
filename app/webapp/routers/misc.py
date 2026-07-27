@@ -7,21 +7,22 @@ listener→app label mapping uses the registry but doesn't mutate it.
 
 from __future__ import annotations
 
-import datetime as _dt
+import asyncio
 import logging
-import subprocess
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from src import session_client
 from src.agents import detect_agents
+from src.build_info import build_identity, resolve_git_sha
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.static_versioning import asset_hash_for, rewrite_index_html
-from src.subprocess_flags import NO_WINDOW
+from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
 
@@ -29,48 +30,9 @@ _log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-def _resolve_git_sha() -> str:
-    """Short git SHA, captured once at module import.
-
-    Falls back to ``"unknown"`` if git isn't on PATH or this isn't a
-    repo — both happen in test envs and shouldn't crash startup. The
-    pythonw tray has no console, so we pass ``CREATE_NO_WINDOW`` to
-    keep a stray cmd from flashing AND to avoid the subprocess
-    failing on console-allocation quirks when its parent has none.
-    """
-    # ``-C <path>`` is more robust than ``cwd=`` when something has
-    # already chdir'd; both belt and braces here.
-    cmd = ["git", "-C", str(PROJECT_ROOT), "rev-parse", "--short", "HEAD"]
-    kwargs: Dict[str, Any] = dict(
-        capture_output=True,
-        # pythonw has no stdin handle — without this, subprocess on
-        # Windows can fail with WinError 6 (invalid handle) before
-        # git even runs.
-        stdin=subprocess.DEVNULL,
-        text=True,
-        timeout=5,
-        check=False,
-        creationflags=NO_WINDOW,
-    )
-    try:
-        result = subprocess.run(cmd, **kwargs)
-    except (OSError, subprocess.SubprocessError) as exc:
-        _log.warning("⚠️ /api/version: git rev-parse raised %s: %s", type(exc).__name__, exc)
-        return "unknown"
-    sha = (result.stdout or "").strip()
-    if not sha:
-        _log.warning(
-            "⚠️ /api/version: git rev-parse exit=%s stderr=%r",
-            result.returncode,
-            (result.stderr or "").strip(),
-        )
-        return "unknown"
-    return sha
-
-
-_GIT_SHA = _resolve_git_sha()
-_BUILT_AT = _dt.datetime.now().replace(microsecond=0).isoformat()
+_IDENTITY = build_identity()
+_GIT_SHA = _IDENTITY["git_sha"]
+_BUILT_AT = _IDENTITY["captured_at"]
 
 
 @router.get("/")
@@ -122,13 +84,60 @@ async def spike_voice_loop(request: Request) -> HTMLResponse:
 
 
 @router.get("/api/version")
-async def version(request: Request) -> Dict[str, str]:
-    """Build identity. Stable across requests; cached at module load."""
+async def version(request: Request) -> Dict[str, Any]:
+    """Build identity: this webapp process's own (stable, cached at module
+    load) plus a live staleness check of the session-host on ``:8446``
+    (#615).
+
+    The session-host is deliberately excluded from ``tray.bat --restart``'s
+    reclaim sweep (project-scaffolding#35, to protect live PTYs), so it can
+    keep running code that is days old with nothing else surfacing that —
+    exactly what happened to #611's fix on 2026-07-27. ``session_host.stale``
+    compares the session-host's own loaded ``git_sha`` (captured once, at
+    *its* process start) against ``head_sha`` (this repo's current ``HEAD``,
+    resolved fresh on every call — the webapp's own cached ``git_sha`` isn't
+    used for the comparison, since the webapp itself could equally be stale).
+    ``session_host: {"reachable": false}`` when the session-host can't be
+    reached at all; both git_sha fields are ``"unknown"`` (never compared as
+    stale) when a ``git`` lookup itself fails, e.g. a non-repo test env.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
     asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
+    head_sha, host_identity = await asyncio.gather(
+        asyncio.to_thread(resolve_git_sha),
+        asyncio.to_thread(session_client.identity, cfg.session_host_port),
+    )
+    session_host = _session_host_freshness(host_identity, head_sha)
     return {
         "git_sha": _GIT_SHA,
         "built_at": _BUILT_AT,
         "asset_hash": asset_hash_for(asset_hashes, "styles.css") or "",
+        "head_sha": head_sha,
+        "session_host": session_host,
+    }
+
+
+def _session_host_freshness(
+    identity: Optional[Dict[str, Any]], head_sha: str
+) -> Dict[str, Any]:
+    """``{"reachable", "git_sha", "started_at", "stale"}`` (#615) from the
+    session-host's own ``/healthz`` body and the repo's current ``head_sha``.
+
+    ``stale`` is ``None`` (unknown, not "not stale") whenever either SHA is
+    unresolvable — an unreachable host or a failed ``git`` lookup must never
+    read as a false "up to date".
+    """
+    if identity is None:
+        return {"reachable": False, "git_sha": None, "started_at": None, "stale": None}
+    host_sha = identity.get("git_sha")
+    stale: Optional[bool] = None
+    if host_sha and host_sha != "unknown" and head_sha and head_sha != "unknown":
+        stale = host_sha != head_sha
+    return {
+        "reachable": True,
+        "git_sha": host_sha,
+        "started_at": identity.get("started_at"),
+        "stale": stale,
     }
 
 
