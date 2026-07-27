@@ -375,6 +375,26 @@ class TestInputProxy:
             "/api/claude-code/sessions/s1/input", json={"data": "   "}
         ).status_code == 400
 
+    def test_dead_session_surfaces_as_error_not_false_ok(
+        self, webapp_client, _bypass_gate
+    ):
+        """A session-host 409 (write dropped, issue #607) must propagate as a
+        real error — never collapse back to {"ok": true}."""
+        client, _, overrides = webapp_client
+        overrides["session"].send_input.side_effect = (
+            overrides["session"].SessionHostError(
+                "session s1 not accepting input (exited)", status=409
+            )
+        )
+
+        resp = client.post(
+            "/api/claude-code/sessions/s1/input",
+            json={"data": "hello", "submit": True},
+        )
+
+        assert resp.status_code == 409
+        assert resp.json() != {"ok": True}
+
 
 # ------------------------------------------------------------- issue start
 
