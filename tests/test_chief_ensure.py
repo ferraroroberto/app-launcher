@@ -95,14 +95,17 @@ def _chief_row(**extra):
 
 
 class TestReconcileChiefLabel:
-    """Unit coverage for ``_reconcile_chief_label`` (#617): a chief PTY
-    started outside ``ensure`` self-heals its ``label`` from either of two
-    independent signals — ``prompt_title`` (#266, a fresh ``/chief`` typed
-    into a brand-new PTY) or ``shared_name`` (fleet-config#302, Claude's own
-    persisted conversation identity, which survives a Resume into a new PTY
-    after a session-host restart — the case actually observed live against
-    real session 1c8e6dde…, where the first line submitted into the new PTY
-    was Roberto's own chat message, not ``/chief``)."""
+    """Unit coverage for ``_reconcile_chief_label`` (#617, extended #628): a
+    chief PTY started outside ``ensure`` self-heals its ``label`` from any of
+    three independent signals — ``prompt_title`` (#266, a fresh ``/chief``
+    typed into a brand-new PTY), ``shared_name`` (fleet-config#302, Claude's
+    own persisted conversation identity, which survives a Resume into a new
+    PTY after a session-host restart — the case actually observed live
+    against real session 1c8e6dde…, where the first line submitted into the
+    new PTY was Roberto's own chat message, not ``/chief``), or ``live_title``
+    (#628, the OSC title session_host parses straight off the PTY's own
+    output — available before either of the other two, since it needs no
+    hook and no submitted prompt at all)."""
 
     def _unlabelled_row(self, **extra):
         row = {
@@ -160,6 +163,30 @@ class TestReconcileChiefLabel:
         healed = board_router._reconcile_chief_label(row, shared_name=None)
         assert healed is not row
         assert row["label"] == ""
+
+    def test_resumed_chief_healed_via_live_title_before_hook_or_prompt(self):
+        """#628, reproduced from the real resumed chief session (7174c1d2…):
+        right after a host reboot, prompt_title is whatever was typed first
+        into the new PTY (not "/chief") and shared_name hasn't caught up yet
+        (no hook has fired) — but live_title, parsed straight off Claude
+        Code's own OSC title re-emitted on Resume, already names the
+        conversation. This is the exact "undetectable until its first hook
+        fires" window #628 was filed over."""
+        row = self._unlabelled_row(
+            prompt_title="can I compact now?", live_title="👑 chief"
+        )
+        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        assert healed["label"] == "chief"
+
+    def test_live_title_match_is_case_insensitive_and_tolerates_prefix(self):
+        row = self._unlabelled_row(prompt_title="hi", live_title="🔥 CHIEF")
+        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        assert healed["label"] == "chief"
+
+    def test_unrelated_live_title_is_not_healed(self):
+        row = self._unlabelled_row(prompt_title="hi", live_title="fleet-config")
+        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        assert healed["label"] == ""
 
 
 class TestReconcileChiefLabels:
