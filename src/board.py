@@ -62,6 +62,7 @@ from src.board_state import (  # noqa: F401 — re-exported for board.<name> cal
     read_sessions_state,
 )
 from src.board_sessions import (  # noqa: F401 — re-exported for board.<name> callers
+    active_issue_repos,
     attach_shared_names,
     merge_sessions,
     state_row_for_session,
