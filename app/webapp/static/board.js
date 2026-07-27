@@ -41,7 +41,7 @@ import { createDictation, startWorkTimer, voiceDictationAvailable } from './voic
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
@@ -964,6 +964,7 @@ function renderChiefStatus() {
   const chief = findChiefCard();
   const alive = !!(chief && chief.alive);
   els.boardChiefStart.hidden = alive;
+  els.boardChiefRestart.hidden = !alive;
   els.boardChiefStatusText.textContent = alive
     ? 'chief: ' + (chief.status || 'idle')
     : 'chief: not running';
@@ -1078,6 +1079,25 @@ function wireChief() {
     } finally {
       stopTimer();
       startBtn.disabled = false;
+    }
+  });
+  els.boardChiefRestart.addEventListener('click', async function () {
+    if (!confirm(CHIEF_RESTART_CONFIRM)) return;
+    const restartBtn = els.boardChiefRestart;
+    restartBtn.disabled = true;
+    const stopTimer = startWorkTimer(restartBtn, 'Restart');
+    try {
+      // fresh=true (#617): ensure_chief's own graceful stop-then-respawn —
+      // never the session-host (:8446) restart, which would kill every PTY.
+      await ensureChief(true);
+      toast('Chief restarted', 'good', { icon: 'crown' });
+      await fetchBoard().catch(function () {});
+      renderChiefStatus();
+    } catch (exc) {
+      apiFailToast('Chief restart failed', exc);
+    } finally {
+      stopTimer();
+      restartBtn.disabled = false;
     }
   });
   els.boardChiefSettings.addEventListener('click', openChiefSettings);

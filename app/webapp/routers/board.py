@@ -153,6 +153,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
     )
     github = github_client.snapshot()
 
+    live = _reconcile_chief_labels(live, state["rows"])
     session_cards = board.merge_sessions(live, state["rows"])
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"])
@@ -606,6 +607,102 @@ CHIEF_STOP_POLL_S = 0.25
 # double-spawn; the lock serializes the check-then-spawn window.
 _CHIEF_ENSURE_LOCK = asyncio.Lock()
 
+# The directory-name grain every "is this fleet-config?" check in this repo
+# already uses (board_state.py's project fallback, the state-row `project`
+# field) — cheap and consistent, no registry scan needed.
+_CHIEF_PROJECT_DIR_NAME = "fleet-config"
+
+
+def _reconcile_chief_label(sess: Dict[str, Any], shared_name: Any) -> Dict[str, Any]:
+    """Self-heal ``label`` for a chief PTY spawned outside ``ensure`` (#617).
+
+    ``ensure_chief`` is spawn-if-absent, but it is not the only way a chief
+    gets started. Two ways it slips past the label: Roberto opens a plain
+    Coding-tab session in fleet-config and types ``/chief`` himself, or — the
+    case actually observed live, verified against the real session
+    (1c8e6dde…) rather than only synthetic tests — the session-host restarts,
+    killing the PTY, and he re-attaches the *same underlying Claude Code
+    conversation* via Resume. Either way the launcher never gets to pass
+    ``label="chief"`` at spawn, so every consumer keying on it — this
+    router's own ``_find_chief``, ``chief_ops.py``'s worker-cap count and
+    ``chief-sid`` lookup, the Board's crown/tint — silently treats a live,
+    working chief as not running.
+
+    Two independent, narrow signals, either sufficient on its own — not a
+    stack of guesses, two genuinely different things a chief session does:
+
+    * ``prompt_title`` (#266): the session-host's own capture of the first
+      line ever *submitted* into this PTY. Exact for a freshly typed
+      ``/chief`` — but a Resume never re-submits it (the conversation is
+      already past that point), so this alone misses exactly the observed
+      case.
+    * ``shared_name`` (fleet-config#302): Claude Code's own self-derived name
+      for the *conversation*, not the PTY — read from its live per-process
+      registry via the hook state file, joined by the same agent-aware claim
+      walk every other cross-tab title uses (:func:`board.attach_shared_names`).
+      This persists across a Resume into a brand-new PTY, because it belongs
+      to the conversation, not the process that's currently attached to it.
+
+    Both are scoped to a live PTY cwd'd in the fleet-config checkout — a
+    directory name alone proves nothing (the dead ``name == "chief"``
+    fallback below learned that the hard way: it reads the *launcher's*
+    session name, which is the project name ("fleet-config") for a
+    Resume-launched session, never "chief").
+
+    Read-only: never mutates the session-host's own record, only the dict
+    this process just fetched from it.
+    """
+    if sess.get("label") or sess.get("kind") != "pty":
+        return sess
+    if Path(str(sess.get("project_dir") or "")).name != _CHIEF_PROJECT_DIR_NAME:
+        return sess
+    prompt_title = str(sess.get("prompt_title") or "").strip()
+    shared_name_norm = str(shared_name or "").strip().lower()
+    if prompt_title != _CHIEF_COMMAND and shared_name_norm != _CHIEF_TITLE:
+        return sess
+    logger.info(
+        "👑 chief label self-healed for session %s (spawned outside ensure)",
+        str(sess.get("session_id") or "")[:8],
+    )
+    return {**sess, "label": _CHIEF_LABEL}
+
+
+def _reconcile_chief_labels(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Any]
+) -> List[Dict[str, Any]]:
+    """Apply :func:`_reconcile_chief_label` across a live session list.
+
+    Needs both the live list and the hook state rows together (``shared_name``
+    only exists after the state-row join), so this can't live inside
+    ``_safe_list_sessions`` (``port``-only) — callers that need a
+    chief-reconciled live list fetch both and call this, or go through
+    :func:`_live_sessions_with_chief_label`.
+    """
+    named = board.attach_shared_names(live, state_rows)
+    shared_names = {
+        str(item.get("session_id")): item.get("shared_name") for item in named
+    }
+    return [
+        _reconcile_chief_label(sess, shared_names.get(str(sess.get("session_id"))))
+        for sess in live
+    ]
+
+
+async def _live_sessions_with_chief_label(
+    cfg: WebappConfig,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Live sessions + hook state, fetched together and chief-reconciled (#617).
+
+    Returns ``(live, state)`` so a caller that also needs ``state["rows"]``
+    for its own purposes (``get_board`` builds cards from it) doesn't fetch
+    the state file twice.
+    """
+    live, state = await asyncio.gather(
+        asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
+        asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
+    )
+    return _reconcile_chief_labels(live, state["rows"]), state
+
 
 def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
     """The alive chief PTY session, or {}. Matches the ``label`` tag with a
@@ -755,9 +852,7 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     cols = int(body.get("cols") or 120)
 
     async with _CHIEF_ENSURE_LOCK:
-        live = await asyncio.to_thread(
-            _safe_list_sessions, cfg.session_host_port
-        )
+        live, _state = await _live_sessions_with_chief_label(cfg)
         chief = _find_chief(live)
         if chief:
             sid = str(chief.get("session_id") or "")
