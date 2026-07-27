@@ -13,6 +13,36 @@ import { icon } from './_vendored/icons/icons.js';
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
 
+// First-paint watchdog (issue #610): a session that opened on the phone
+// during a heavy multi-worker run was observed painting nothing at all —
+// blank screen, no prompt, no scrollback, no status line — indistinguishable
+// from "still connecting" with no way to recover short of leaving and
+// reopening. Root cause wasn't pinned down (candidates: a stuck/lost attach,
+// a race in which frame arrives first under load), but the failure mode is
+// fixable regardless of cause: if the WS opens but nothing has painted
+// within this window, surface an explicit, actionable state instead of
+// staying silently blank forever. Generous on purpose — a normal agent boot
+// (Claude Code / Codex CLI startup) can legitimately take a couple of
+// seconds before its first frame, and a genuinely fresh session with no
+// output yet sends nothing at connect time at all (session-host only
+// replays a *non-empty* snapshot) — this must not misfire on either.
+const PAINT_WATCHDOG_MS = 8000;
+
+function armPaintWatchdog(terminal) {
+  disarmPaintWatchdog(terminal);
+  terminal.paintWatchdog = setTimeout(function () {
+    terminal.paintWatchdog = null;
+    if (terminal !== state.terminal) return;
+    setTapToReconnect(terminal, 'No response yet — tap to reconnect');
+  }, PAINT_WATCHDOG_MS);
+}
+
+function disarmPaintWatchdog(terminal) {
+  if (!terminal || !terminal.paintWatchdog) return;
+  clearTimeout(terminal.paintWatchdog);
+  terminal.paintWatchdog = null;
+}
+
 // Repaint batching for full-screen differential agents (#430). Empirical
 // probe: Codex/ratatui re-emits its ENTIRE transcript on every winsize
 // change (~65 KB for a long conversation — same magnitude as a full
@@ -178,8 +208,17 @@ export function connectTerminalWs(terminal) {
     }
     if (terminal.applySize) terminal.applySize();
     if (terminal.term) terminal.term.focus();
+    // #610: arm after clearTerminalReconnect (which disarms any stale
+    // watchdog from a superseded connection attempt) so this fresh one
+    // isn't immediately wiped out by its own setup.
+    armPaintWatchdog(terminal);
   };
   ws.onmessage = function (event) {
+    // #610: any frame at all — including a shutdown/close-mirror one —
+    // proves the pipe is alive and the "stuck, silently blank" state this
+    // watchdog exists for cannot be it; a definitive close/shutdown gets
+    // its own explicit status regardless.
+    disarmPaintWatchdog(terminal);
     const route = routeFrame(event.data, terminal.mirror);
     if (route === 'close-mirror') {
       if (terminal.onShutdown) terminal.onShutdown();
@@ -215,6 +254,10 @@ export function connectTerminalWs(terminal) {
   };
   ws.onerror = function () { /* onclose drives UI */ };
   ws.onclose = function (event) {
+    // #610: a close of any kind (clean or not) means the watchdog's own
+    // "no response yet" message would be stale/wrong the moment it later
+    // fires — every branch below sets its own definitive status instead.
+    disarmPaintWatchdog(terminal);
     if (terminal !== state.terminal) return;
     const reason = event && event.reason ? event.reason : '';
     if (event.code === 4000) { setTerminalStatus('Session ended.'); return; }
@@ -303,6 +346,7 @@ function setTapToReconnect(terminal, label, opts) {
 
 export function clearTerminalReconnect(terminal) {
   if (!terminal) return;
+  disarmPaintWatchdog(terminal);
   // Drop any pending repaint batch without writing it (#430) — this runs
   // on teardown and right before a fresh connect, where the next onopen
   // starts a new batch against a cleared screen anyway. Un-hide the

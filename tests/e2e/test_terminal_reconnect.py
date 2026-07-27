@@ -243,3 +243,81 @@ def test_reconnect_replay_does_not_duplicate_scrollback(
         "replay — the ring landed below the stale buffer instead of on a "
         "wiped one (#444)"
     )
+
+
+# --------------------------------------------------------------- issue #610
+
+# A WebSocket that opens (after a tick, same async shape as a real socket)
+# but never sends a single frame — the exact condition the #610 first-paint
+# watchdog exists to catch. Deliberately not the real session-host: this
+# isolates the pure client-side timer logic (arm on open, never disarmed
+# because nothing ever arrives) from server behavior, which is what the fix
+# actually is — the root cause on the server side was never pinned down.
+_SILENT_WS = """
+(() => {
+  class SilentWs extends EventTarget {
+    constructor(url) {
+      super();
+      this.url = url;
+      this.readyState = 0;
+      this.onopen = null;
+      this.onmessage = null;
+      this.onerror = null;
+      this.onclose = null;
+      window.__silentWs = this;
+      setTimeout(() => {
+        this.readyState = 1;
+        if (this.onopen) this.onopen({});
+      }, 0);
+    }
+    send() {}
+    close() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      if (this.onclose) this.onclose({ code: 1000, reason: '', wasClean: true });
+    }
+  }
+  SilentWs.CONNECTING = 0; SilentWs.OPEN = 1; SilentWs.CLOSING = 2; SilentWs.CLOSED = 3;
+  window.WebSocket = SilentWs;
+})();
+"""
+
+
+def test_terminal_watchdog_fires_when_nothing_ever_paints(
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+) -> None:
+    """#610: a terminal that opens a WS but receives no frame at all within
+    the watchdog window must surface an explicit, actionable status — never
+    stay silently blank forever. Real wall-clock wait (no virtual clock):
+    installing one globally from page load risks freezing unrelated page
+    timers (polling loops, the #374 first-fit defer) that this test has no
+    business touching — the ~8s cost is in the same order as this file's
+    other real-timing waits."""
+    sid = launched_pty_session
+    authed_page.add_init_script(_SILENT_WS)
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+
+    # Confirm the fake socket actually reached OPEN (proves ws.onopen ran,
+    # which is what arms the watchdog) before waiting out its window.
+    authed_page.wait_for_function(
+        "() => window.__silentWs && window.__silentWs.readyState === 1",
+        timeout=10_000,
+    )
+
+    # Past PAINT_WATCHDOG_MS (8000ms in terminal-connection.js) with margin.
+    authed_page.wait_for_function(
+        "() => { const s = document.getElementById('terminalStatus'); "
+        "return s && !s.hidden && s.textContent.indexOf('No response yet') !== -1; }",
+        timeout=11_000,
+    )
+
+    # And it must be recoverable — tapping it starts a fresh connect attempt
+    # (a new WebSocket instance), not a dead end.
+    authed_page.locator("#terminalStatus").click()
+    authed_page.wait_for_function(
+        "() => document.getElementById('terminalStatus').textContent"
+        ".indexOf('Connecting') !== -1",
+        timeout=5_000,
+    )
