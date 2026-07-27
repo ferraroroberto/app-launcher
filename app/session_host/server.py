@@ -159,12 +159,23 @@ def create_app() -> FastAPI:
         if agent not in SESSION_HOST_AGENTS:
             raise HTTPException(status_code=400, detail=f"unknown agent: {agent}")
         try:
+            # Off the event loop (issue #610): SessionManager.create/
+            # create_remote block on a real OS spawn (PtyProcess.spawn / a
+            # PowerShell Start-Process). Left un-threaded, one slow spawn
+            # freezes every other coroutine sharing this loop — including
+            # an already-attached terminal's _pump_to_client, which is a
+            # concrete contributor to "terminal opens blank" under a
+            # multi-session burst (a fixed-delay mitigation was already
+            # ruled insufficient for the analogous #499 readiness problem).
             if kind == "remote":
-                session = manager.create_remote(project_dir, name, flags, agent)
+                session = await asyncio.to_thread(
+                    manager.create_remote, project_dir, name, flags, agent
+                )
             else:
-                session = manager.create(
-                    project_dir, name, flags, agent, rows=rows, cols=cols,
-                    history_lines=history_lines, label=label,
+                session = await asyncio.to_thread(
+                    manager.create, project_dir, name, flags, agent,
+                    rows=rows, cols=cols, history_lines=history_lines,
+                    label=label,
                 )
         except (OSError, RuntimeError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
@@ -263,6 +274,14 @@ def create_app() -> FastAPI:
         role = (websocket.query_params.get("role") or "phone").strip().lower()
         await websocket.accept()
         snapshot, queue = session.subscribe()
+        # Breadcrumb for #610 ("terminal opens blank and never paints"): an
+        # empty ring at attach is expected for a session that hasn't
+        # printed yet, but if a future report recurs, this timestamp +
+        # ring size lets it be correlated against a concurrent create burst
+        # (see #610's asyncio.to_thread fix above) without guessing blind.
+        logger.info(
+            f"🔌 WS attach {sid[:8]} role={role} ring_chars={len(snapshot)}"
+        )
         try:
             if is_fullscreen(getattr(session, "agent", DEFAULT_AGENT)):
                 # Full-screen differential TUI (Codex/ratatui): do NOT replay
