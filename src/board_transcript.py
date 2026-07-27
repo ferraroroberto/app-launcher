@@ -53,6 +53,40 @@ _RESUME_EPSILON = timedelta(seconds=10)
 # transcript) are the real fix and run first.
 _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 
+# Live-title busy override (#631/#627): Claude Code prefixes its own OSC
+# window title with a brand glyph that doubles as a busy/idle marker — a
+# Braille Pattern spinner glyph (U+2800-U+28FF) while a turn is genuinely in
+# progress, "*" (U+2733) once it returns to an idle prompt. Verified live
+# against real sessions on this box: the glyph stays a spinner throughout
+# text generation *and* tool dispatch, only flipping to the idle marker once
+# control returns to the user — so it is immune to #631's race (the tail
+# scan landing in the ~1.8s gap between a streamed text block and its own
+# following tool_use block), which is entirely a transcript-file phenomenon
+# this field never touches. This is undocumented CLI UI chrome, not a
+# versioned contract, so a title counts as busy ONLY on this recognized
+# glyph range; anything else (a future CLI's different spinner, no title
+# yet, a non-Claude agent, a "remote" kind session with no PTY) falls
+# through to the existing transcript-based checks below, unchanged.
+#
+# This is a positive, PTY-sourced signal that a turn was in progress as of
+# the *last title paint* — not a heartbeat. A genuinely wedged PTY (no more
+# output at all) freezes on whatever glyph was last painted, which could be
+# this same spinner, so it cannot by itself distinguish "still legitimately
+# working" from "wedged mid-spinner". Closing that remaining gap needs a
+# freshness check against the session's own last PTY output — #627's named
+# remainder (tracking issue TBD), not solved here.
+_BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿]")
+
+
+def _live_title_is_busy(live_title: Optional[str]) -> bool:
+    """Whether ``live_title`` opens with Claude Code's animated spinner glyph.
+
+    See the module-level comment above :data:`_BUSY_LIVE_TITLE_RE` for what
+    this does and does not prove.
+    """
+    title = (live_title or "").strip()
+    return bool(_BUSY_LIVE_TITLE_RE.match(title))
+
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
 # Only the transcript's tail is read for either an exchange or a pending
@@ -166,9 +200,16 @@ def _transcript_overlay(
     anchor: Optional[datetime],
     *,
     now: Optional[datetime] = None,
+    live_title: Optional[str] = None,
 ) -> tuple:
     """Override a waiting status with ``working`` (or, for a long-stuck
     dispatch, ``stalled``) when the transcript says so.
+
+    Checked first (#631/#627): a busy ``live_title`` (see
+    :func:`_live_title_is_busy`) short-circuits straight to ``working``,
+    before any of the transcript-file reads below run. It is sourced from
+    the live PTY, not this row's transcript, so it is immune to the
+    JSONL write-ordering race the rest of this function has to work around.
 
     The hooks flip status only on prompt-submit / stop / notification — but
     Claude *resumes* without any of those firing (an answered permission
@@ -206,6 +247,10 @@ def _transcript_overlay(
     if row is None or status not in ("needs-you", "idle"):
         return status, anchor
     now = now or _now()
+    if _live_title_is_busy(live_title):
+        # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
+        # this override only proves busy as of this instant, not since when.
+        return "working", now
     updated = _parse_iso(row.get("updated_at"))
     transcript = row.get("transcript_path")
     if updated is None or not transcript:

@@ -279,7 +279,9 @@ def merge_sessions(
         anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
             _parse_iso(sess.get("started_at"))
         )
-        status, anchor = _transcript_overlay(row, status, anchor, now=now)
+        status, anchor = _transcript_overlay(
+            row, status, anchor, now=now, live_title=sess.get("live_title")
+        )
         status = _refine_waiting_status(status, (row or {}).get("transcript_path"))
         cards.append({
             "session_id": sess.get("session_id"),
