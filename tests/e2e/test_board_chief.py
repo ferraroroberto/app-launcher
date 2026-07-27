@@ -12,7 +12,7 @@ Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
 Server-side logic (spawn shape, label matching, fresh respawn, settings
-validation + job resync) is covered by tests/test_chief_ensure.py.
+validation) is covered by tests/test_chief_ensure.py.
 """
 
 from __future__ import annotations
@@ -127,8 +127,7 @@ def _mock_ensure(page: Page, captured: dict, *, spawned: bool = False) -> None:
 
 
 _CHIEF_SETTINGS = {
-    "settings": {"model": "fable", "respawn_enabled": True,
-                 "respawn_at": "05:00", "worker_cap": 3},
+    "settings": {"model": "fable", "worker_cap": 3},
 }
 
 
@@ -369,8 +368,9 @@ def test_chat_mode_offers_restart_when_chief_alive(
 def test_chief_settings_dialog_roundtrip(
     authed_page: Page, base_url: str
 ) -> None:
-    """Gear → GET-populated fields; edit respawn time + cap → Save PUTs the
-    full settings body; × path (Cancel) just closes."""
+    """Gear → GET-populated fields; edit worker cap → Save PUTs the settings
+    body; × path (Cancel) just closes. #616 retired the daily-respawn
+    fields — model and worker cap are all that's left to round-trip."""
     _mock_board(authed_page, _board_payload(with_chief=True))
 
     put: dict = {}
@@ -380,7 +380,7 @@ def test_chief_settings_dialog_roundtrip(
             put["body"] = route.request.post_data_json
             route.fulfill(
                 status=200, content_type="application/json",
-                body=_json.dumps({"settings": put["body"], "job_warning": ""}),
+                body=_json.dumps({"settings": put["body"]}),
             )
         else:
             route.fulfill(
@@ -397,19 +397,11 @@ def test_chief_settings_dialog_roundtrip(
     dialog = authed_page.locator("#chiefSettingsDialog")
     expect(dialog).to_be_visible()
     expect(authed_page.locator("#chiefModelSelect")).to_have_value("fable")
-    expect(authed_page.locator("#chiefRespawnAt")).to_have_value("05:00")
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("3")
-    expect(authed_page.locator("#chiefRespawnToggle")).to_have_attribute(
-        "aria-checked", "true"
-    )
 
-    authed_page.locator("#chiefRespawnAt").fill("06:30")
     authed_page.locator("#chiefWorkerCap").fill("5")
     authed_page.locator('#chiefSettingsForm button[type="submit"]').click()
     authed_page.wait_for_timeout(500)
 
-    assert put.get("body") == {
-        "model": "fable", "respawn_enabled": True,
-        "respawn_at": "06:30", "worker_cap": 5,
-    }
+    assert put.get("body") == {"model": "fable", "worker_cap": 5}
     expect(dialog).not_to_be_visible()

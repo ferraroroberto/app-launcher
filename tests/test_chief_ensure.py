@@ -5,9 +5,9 @@ legacy-name matching, lock-serialized), in the fleet-config checkout, on the
 configured chief model, typing only ``/chief`` through the two-frame
 bracketed-paste path (never the command line); ``fresh`` quits the old chief
 first; failures past the spawn kill the half-spawned session (the dispatch
-contract, shared via ``_type_into_session``). Settings persist through
-``update_webapp_config`` with validation, and a respawn-time change resyncs
-the registered daily job best-effort.
+contract, shared via ``_type_into_session``). Settings (model, worker cap)
+persist through ``update_webapp_config`` with validation. #616 retired the
+daily-respawn setting and its job-resync path — see the closed issue for why.
 """
 
 from __future__ import annotations
@@ -425,8 +425,6 @@ class TestChiefSettings:
         assert resp.status_code == 200
         assert resp.json()["settings"] == {
             "model": "fable",
-            "respawn_enabled": True,
-            "respawn_at": "05:00",
             "worker_cap": 3,
         }
 
@@ -445,56 +443,22 @@ class TestChiefSettings:
             "/api/board/chief/settings"
         ).json()["settings"]["worker_cap"] == 5
 
-    def test_put_respawn_change_resyncs_job(
-        self, webapp_client, _bypass_gate, monkeypatch
-    ):
-        client, _, _ = webapp_client
-        synced: dict = {}
-
-        def fake_sync(enabled, at):
-            synced.update(enabled=enabled, at=at)
-            return ""
-
-        monkeypatch.setattr(
-            board_router, "_sync_chief_respawn_job", fake_sync
-        )
-        resp = client.put(
-            "/api/board/chief/settings", json={"respawn_at": "06:30"}
-        )
-        assert resp.status_code == 200
-        assert synced == {"enabled": True, "at": "06:30"}
-
-    def test_put_without_respawn_change_skips_job_sync(
-        self, webapp_client, _bypass_gate, monkeypatch
-    ):
-        client, _, _ = webapp_client
-        monkeypatch.setattr(
-            board_router, "_sync_chief_respawn_job",
-            lambda *a: pytest.fail("job sync must not run"),
-        )
-        resp = client.put(
-            "/api/board/chief/settings", json={"worker_cap": 4}
-        )
-        assert resp.status_code == 200
-
-    def test_put_unregistered_job_is_warning_not_failure(
-        self, webapp_client, _bypass_gate
-    ):
-        """jobs.json (tmp, empty) has no chief-daily-respawn — the save must
-        still land, with the warning surfaced in the response."""
+    def test_put_ignores_unknown_keys(self, webapp_client, _bypass_gate):
+        """#616: a stale client still sending the retired respawn keys must
+        not error or resurrect them — they're simply not recognized patch
+        keys, so a request carrying only those (plus nothing else valid)
+        falls through to the generic empty-patch 400, same as any other
+        unrecognized body."""
         client, _, _ = webapp_client
         resp = client.put(
-            "/api/board/chief/settings", json={"respawn_at": "07:15"}
+            "/api/board/chief/settings",
+            json={"respawn_enabled": False, "respawn_at": "06:30"},
         )
-        assert resp.status_code == 200
-        assert "not registered" in resp.json()["job_warning"]
-        assert resp.json()["settings"]["respawn_at"] == "07:15"
+        assert resp.status_code == 400
 
     @pytest.mark.parametrize("bad", [
         {"model": "haiku"},
         {"model": "gpt5.6"},
-        {"respawn_at": "5:00"},
-        {"respawn_at": "24:00"},
         {"worker_cap": 0},
         {"worker_cap": 99},
         {"worker_cap": "lots"},

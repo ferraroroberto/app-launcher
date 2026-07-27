@@ -10,12 +10,12 @@
                                             /issue-add|yolo session (Tailscale
                                             + passkey)
     POST /api/board/chief/ensure          → spawn the fleet chief if absent
-                                            (?fresh=1 kills + respawns) —
+                                            (?fresh=1 kills + restarts, an
+                                            explicit operator action, #616) —
                                             Tailscale + passkey
     GET  /api/board/chief/settings        → chief settings block (also read
                                             by the /chief skill over loopback)
-    PUT  /api/board/chief/settings        → persist chief settings + resync
-                                            the daily respawn job
+    PUT  /api/board/chief/settings        → persist chief settings
 
 ``GET /api/board`` is the 5s poll target, so it does only cheap work: the live
 session list from the session-host, one state-file read, one jobs-runs walk
@@ -61,8 +61,6 @@ from typing import Any, Dict, List, Tuple
 from fastapi import APIRouter, HTTPException, Request
 
 from src import agents, audit, board, github_client, session_client
-from src import jobs as jobs_mod
-from src import jobs_config
 from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
@@ -589,21 +587,26 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
 # checkout — that cwd is what loads the fleet-only /chief skill tier and
 # keeps app-launcher's own project context out of it. The server ships zero
 # chief prose: the spawn types only "/chief", so the brain stays versioned
-# in fleet-config. Three triggers hit the same ensure endpoint: the first
-# chat-mode message (lazy), the registered chief-daily-respawn job
-# (?fresh=1, context hygiene), and the manual Start button.
+# in fleet-config. Two triggers hit the same ensure endpoint: the first
+# chat-mode message (lazy) and the manual Start/Restart button (#617). A
+# third trigger — an unattended daily respawn job — was retired in #616:
+# fleet-config#442/#449 shipped compact-and-continue (chief hands its own
+# handover log back to itself on every session start), so a schedule that
+# force-restarted chief unattended would now discard a live batch's context
+# instead of protecting it. `fresh=1` (a graceful stop-then-respawn) is kept
+# as an explicit operator action only, still used by the manual Restart
+# button — nothing calls it unattended anymore.
 
 _CHIEF_REPO = "fleet-config"
 _CHIEF_LABEL = "chief"
 _CHIEF_COMMAND = "/chief"
 _CHIEF_TITLE = "chief"
-_CHIEF_JOB_ID = "chief-daily-respawn"
 # How long a fresh respawn waits for the old chief's graceful stop before
 # escalating to kill. Module-level so tests can patch it tiny.
 CHIEF_STOP_WAIT_S = 8.0
 CHIEF_STOP_POLL_S = 0.25
 
-# Two concurrent ensures (e.g. a chat send racing the daily job) must not
+# Two concurrent ensures (e.g. a chat send racing a manual Restart) must not
 # double-spawn; the lock serializes the check-then-spawn window.
 _CHIEF_ENSURE_LOCK = asyncio.Lock()
 
@@ -719,39 +722,8 @@ def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
 def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "model": cfg.chief_model,
-        "respawn_enabled": cfg.chief_respawn_enabled,
-        "respawn_at": cfg.chief_respawn_at,
         "worker_cap": cfg.chief_worker_cap,
     }
-
-
-def _sync_chief_respawn_job(enabled: bool, at: str) -> str:
-    """Point the registered chief-daily-respawn job at the new time, or park
-    it. Returns a warning string ("" when fine) instead of raising — the
-    settings save must persist even when the job isn't registered yet.
-    Runs in a worker thread (jobs I/O + schtasks are blocking)."""
-    jobs_cfg = jobs_config.load_jobs()
-    job = jobs_config.get_by_id(jobs_cfg, _CHIEF_JOB_ID)
-    if job is None:
-        return (
-            f"{_CHIEF_JOB_ID} job not registered — copy it from "
-            "config/jobs.sample.json via the Jobs tab"
-        )
-    try:
-        if enabled:
-            if job.is_paused:
-                jobs_config.resume_job(jobs_cfg, _CHIEF_JOB_ID)
-            job = jobs_config.update_job(
-                jobs_cfg, _CHIEF_JOB_ID,
-                schedule={"type": "daily", "at": at},
-            )
-        else:
-            job = jobs_config.pause_job(jobs_cfg, _CHIEF_JOB_ID)
-        if job is not None:
-            jobs_mod.sync_schtasks(job)
-    except ValueError as exc:
-        return f"could not resync {_CHIEF_JOB_ID}: {exc}"
-    return ""
 
 
 @router.get("/api/board/chief/settings")
@@ -765,18 +737,11 @@ async def get_chief_settings(request: Request) -> Dict[str, Any]:
 
 @router.put("/api/board/chief/settings")
 async def put_chief_settings(request: Request) -> Dict[str, Any]:
-    """Persist chief settings; a respawn-time/enabled change resyncs the
-    registered daily job (best-effort — an unregistered job is a warning in
-    the response, never a failed save)."""
-    cfg: WebappConfig = request.app.state.webapp_config
+    """Persist chief settings."""
     body = await maybe_json(request)
     patch: Dict[str, Any] = {}
     if "model" in body:
         patch["chief_model"] = str(body.get("model") or "").strip().lower()
-    if "respawn_enabled" in body:
-        patch["chief_respawn_enabled"] = bool(body.get("respawn_enabled"))
-    if "respawn_at" in body:
-        patch["chief_respawn_at"] = str(body.get("respawn_at") or "").strip()
     if "worker_cap" in body:
         try:
             patch["chief_worker_cap"] = int(body.get("worker_cap"))
@@ -786,30 +751,12 @@ async def put_chief_settings(request: Request) -> Dict[str, Any]:
             )
     if not patch:
         raise HTTPException(status_code=400, detail="no chief settings in body")
-    respawn_changed = (
-        patch.get("chief_respawn_at", cfg.chief_respawn_at)
-        != cfg.chief_respawn_at
-        or patch.get("chief_respawn_enabled", cfg.chief_respawn_enabled)
-        != cfg.chief_respawn_enabled
-    )
     try:
         new_cfg = await asyncio.to_thread(update_webapp_config, **patch)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     request.app.state.webapp_config = new_cfg
-    job_warning = ""
-    if respawn_changed:
-        job_warning = await asyncio.to_thread(
-            _sync_chief_respawn_job,
-            new_cfg.chief_respawn_enabled,
-            new_cfg.chief_respawn_at,
-        )
-        if job_warning:
-            logger.warning("⚠️ chief settings: %s", job_warning)
-    return {
-        "settings": _chief_settings_payload(new_cfg),
-        "job_warning": job_warning,
-    }
+    return {"settings": _chief_settings_payload(new_cfg)}
 
 
 async def _stop_chief_for_respawn(port: int, sid: str) -> None:
@@ -839,10 +786,11 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     """Spawn the fleet chief if none is alive (Tailscale + passkey, #245).
 
     Body/query: ``fresh`` truthy → kill the current chief first and respawn
-    (the daily job's context-hygiene mode; the query form keeps the job a
-    bodyless ``curl -X POST``). ``rows``/``cols`` size the PTY like every
-    other launch. Returns ``{"session_id", "spawned"}`` — ``spawned`` False
-    when an alive chief was found and kept.
+    — the manual Restart button's mode (#616/#617; the query form keeps a
+    bodyless ``curl -X POST`` usable for a manual operator restart).
+    ``rows``/``cols`` size the PTY like every other launch. Returns
+    ``{"session_id", "spawned"}`` — ``spawned`` False when an alive chief was
+    found and kept.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)

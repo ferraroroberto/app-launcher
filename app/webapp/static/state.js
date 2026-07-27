@@ -153,8 +153,6 @@ export const els = {
   chiefSettingsDialog: document.getElementById('chiefSettingsDialog'),
   chiefSettingsForm: document.getElementById('chiefSettingsForm'),
   chiefModelSelect: document.getElementById('chiefModelSelect'),
-  chiefRespawnToggle: document.getElementById('chiefRespawnToggle'),
-  chiefRespawnAt: document.getElementById('chiefRespawnAt'),
   chiefWorkerCap: document.getElementById('chiefWorkerCap'),
   chiefSettingsCancel: document.getElementById('chiefSettingsCancel'),
 

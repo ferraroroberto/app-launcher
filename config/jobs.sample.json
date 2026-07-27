@@ -53,19 +53,6 @@
       "cooldown_seconds": 3600
     },
     {
-      "id": "chief-daily-respawn",
-      "name": "chief — daily fresh respawn (kills an in-flight chat)",
-      "kind": "inline-shell",
-      "kind_config": {
-        "script_body": "curl.exe -skf -X POST \"https://127.0.0.1:8445/api/board/chief/ensure?fresh=1\" --max-time 180\nexit $LASTEXITCODE\n",
-        "ext": ".ps1"
-      },
-      "args": "",
-      "schedule": { "type": "daily", "at": "05:00" },
-      "visible": true,
-      "cooldown_seconds": 3600
-    },
-    {
       "id": "hwinfo-refresh",
       "name": "HWiNFO refresh (sample, powershell kind)",
       "script_path": "E:\\automation\\automation\\system\\hwinfo_refresh.ps1",
