@@ -1,11 +1,13 @@
-/* Board tab (issues #300 / #301 / #302 / #164 / #399): the fleet kanban.
+/* Board tab (issues #300 / #301 / #302 / #164 / #399 / #608): the fleet
+ * kanban.
  *
  * Five computed columns from GET /api/board, each single-purpose — Backlog
- * (open issues), Claude's turn (sessions working/unknown/idle), Your turn
- * (needs-you sessions only), Other (open PRs + failed/stuck jobs), Done
- * (closed issues today). Phone-first: the columns container is a scroll-snap
- * carousel (one column per swipe) and the strip above it doubles as column
- * switcher + counts.
+ * (open issues), Claude's turn (sessions working/unknown/idle/idle-finished),
+ * Your turn (stalled/awaiting-decision/awaiting-input sessions only — #608's
+ * split of the old undifferentiated needs-you), Other (open PRs +
+ * failed/stuck jobs), Done (closed issues today). Phone-first: the columns
+ * container is a scroll-snap carousel (one column per swipe) and the strip
+ * above it doubles as column switcher + counts.
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
@@ -114,17 +116,28 @@ export async function ensureChief(fresh) {
   });
 }
 
+// #608: the hook-written needs-you is split server-side into four
+// caller-actionable values (src/board_transcript.py::_refine_waiting_status)
+// — the raw "needs-you" string itself never reaches a card's status field.
 const STATUS_META = {
   working: { icon: 'zap', text: 'working', cls: 'is-working' },
-  'needs-you': { icon: 'sparkle', text: 'needs you', cls: 'is-needs-you' },
+  stalled: { icon: 'hourglass', text: 'stalled', cls: 'is-stalled' },
+  'awaiting-decision': { icon: 'sparkle', text: 'awaiting decision', cls: 'is-awaiting-decision' },
+  'awaiting-input': { icon: 'sparkle', text: 'needs you', cls: 'is-awaiting-input' },
+  'idle-finished': { icon: 'circle-check', text: 'finished', cls: 'is-idle-finished' },
   idle: { icon: 'moon', text: 'idle', cls: 'is-idle' },
   unknown: { icon: null, text: '', cls: 'is-unknown' },
 };
 
-// The chief's Stop-hook status sits at needs-you for nearly all of its life
-// between dispatches (#575) — the server already routes it out of Your turn
-// (build_board's _is_chief_card carve-out), and this is the matching label:
-// its normal resting state reads as "standing by", not a "needs you" alert.
+// The chief's Stop-hook status sits in the needs-you family for nearly all
+// of its life between dispatches (#575) — the server already routes it out
+// of Your turn (build_board's _is_chief_card carve-out). #608 sharpened
+// what "resting state" actually means: idle-finished/awaiting-input/
+// awaiting-decision are all ordinary waiting for a long-lived chat session,
+// so they get the same "standing by" label. stalled is deliberately
+// excluded — a chief dispatch that's been outstanding this long is a real
+// anomaly worth surfacing, not hiding behind a benign label.
+const CHIEF_STANDING_BY_STATUSES = new Set(['idle-finished', 'awaiting-input', 'awaiting-decision']);
 const CHIEF_STANDING_BY_META = { icon: 'moon', text: 'standing by', cls: 'is-idle' };
 
 // ----------------------------------------------------------------- cards
@@ -156,7 +169,7 @@ function cardShell(iconName, topText, titleText, cls) {
 
 function renderSessionCard(card) {
   const meta =
-    isChiefCard(card) && card.status === 'needs-you'
+    isChiefCard(card) && CHIEF_STANDING_BY_STATUSES.has(card.status)
       ? CHIEF_STANDING_BY_META
       : STATUS_META[card.status] || STATUS_META.unknown;
   const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);

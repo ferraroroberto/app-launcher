@@ -239,7 +239,9 @@ def test_merge_joins_by_normalized_cwd():
         now=NOW,
     )
     assert len(cards) == 1
-    assert cards[0]["status"] == "needs-you"
+    # #608: the raw hook "needs-you" is split; no transcript to check
+    # pending tool_use against, so it lands on the safe generic fallback.
+    assert cards[0]["status"] == "awaiting-input"
     assert cards[0]["project"] == "photo-ocr"
     assert cards[0]["session_id"] == "aaa"
 
@@ -362,7 +364,8 @@ def test_merge_exact_launcher_id_beats_same_cwd_recency():
     }
     cards = board.merge_sessions(live, state_rows, now=NOW)
     assert len(cards) == 1
-    assert cards[0]["status"] == "needs-you"
+    # #608 split; see test_merge_joins_by_normalized_cwd.
+    assert cards[0]["status"] == "awaiting-input"
     assert cards[0]["state_sid"] == "right"
 
 
@@ -384,7 +387,8 @@ def test_merge_duplicate_exact_launcher_ids_take_newest_row():
         ),
     }
     cards = board.merge_sessions(live, state_rows, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    # #608 split; see test_merge_joins_by_normalized_cwd.
+    assert cards[0]["status"] == "awaiting-input"
     assert cards[0]["state_sid"] == "newer"
 
 
@@ -738,20 +742,25 @@ def test_overlay_idle_with_active_transcript_is_working(tmp_path: Path):
 def test_overlay_inside_stop_epsilon_keeps_needs_you(tmp_path: Path):
     """Stop's row stamp and the final transcript write land seconds apart (in
     either order) — inside the epsilon the hook status wins, so a genuine
-    needs-you alert is never delayed."""
+    needs-you alert is never delayed. #608: the default fixture transcript
+    is a plain text reply with nothing pending, so the split correctly reads
+    it as a clean stop, not just an undifferentiated needs-you."""
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(
         tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=5)
     )
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "idle-finished"
 
 
 def test_overlay_missing_transcript_keeps_hook_status(tmp_path: Path):
+    """#608: a transcript path that can't be read gives no usable signal —
+    the split must not misread that as "checked, nothing pending" and claim
+    idle-finished; it falls back to the safe, generic value."""
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = str(tmp_path / "gone.jsonl")
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "awaiting-input"
 
 
 def test_overlay_applies_to_external_cards(tmp_path: Path):
@@ -765,7 +774,9 @@ def test_overlay_applies_to_external_cards(tmp_path: Path):
 def test_overlay_metadata_only_appends_keep_needs_you(tmp_path: Path):
     """#309: post-Stop metadata lines (system, pr-link, snapshots) advance the
     file mtime past the epsilon with no real resume — the tail probe sees the
-    last conversation line is still pre-stamp and keeps the hook status."""
+    last conversation line is still pre-stamp and keeps the hook status.
+    #608: the only real conversation line is a plain text reply with no
+    tool_use pending, so the split correctly reads it as a clean stop."""
     stamp_time = NOW - timedelta(minutes=10)
     content = (
         _msg_line("assistant", stamp_time - timedelta(seconds=3)) + "\n"
@@ -779,7 +790,7 @@ def test_overlay_metadata_only_appends_keep_needs_you(tmp_path: Path):
         tmp_path, NOW - timedelta(minutes=1), content
     )
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "idle-finished"
     # Age still anchors to the hook stamp, not the metadata mtime.
     assert cards[0]["age_seconds"] == 600
 
@@ -814,13 +825,15 @@ def test_overlay_message_buried_under_metadata_still_flips(tmp_path: Path):
 
 
 def test_overlay_malformed_tail_keeps_hook_status(tmp_path: Path):
-    """Unparseable tail (torn write, junk) degrades to the hook status."""
+    """Unparseable tail (torn write, junk) degrades to the hook status. #608:
+    no line parsed at all is "no usable signal", not "checked, clean" — the
+    split must not read this as idle-finished."""
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(
         tmp_path, NOW - timedelta(minutes=1), "{torn line no json\nnot json either\n"
     )
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "awaiting-input"
 
 
 # --------------------------------- pending background dispatch overlay (#464)
@@ -909,8 +922,10 @@ def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_pat
 
 
 def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
-    """Once the completion notice lands, a genuine needs-you still wins — the
-    pending check must not keep matching after the work actually finished."""
+    """Once the completion notice lands, a genuine needs-you-family status
+    still wins — the pending check must not keep matching after the work
+    actually finished. #608: nothing else is pending in this fixture, so the
+    split reads it as a clean stop."""
     stamp_time = NOW - timedelta(minutes=10)
     content = (
         _tool_result_line(
@@ -922,7 +937,7 @@ def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "idle-finished"
 
 
 def test_overlay_background_dispatch_enqueued_not_dequeued_keeps_working(tmp_path: Path):
@@ -1044,8 +1059,13 @@ def test_overlay_bash_dispatch_ack_alone_does_not_resolve_it(tmp_path: Path):
 
 def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path: Path):
     """Once the notification's ``<tool-use-id>`` tag resolves the dispatch,
-    a genuine needs-you still wins — mirrors the legacy scheme's own
-    already-notified test, for the new id space."""
+    a genuine needs-you-family status still wins — mirrors the legacy
+    scheme's own already-notified test, for the new id space. #608: the
+    notification isn't a ``tool_result`` block, so the generic split's own
+    scanner still sees the Bash call as unresolved — the safe generic
+    fallback, not a false idle-finished claim (a materially different,
+    already-notified-and-genuinely-resolved concern, which is what keeps the
+    dispatch itself out of ``working``/``stalled`` here)."""
     stamp_time = NOW - timedelta(minutes=10)
     content = (
         _bash_tool_use_line(stamp_time - timedelta(minutes=1), "toolu_abc") + "\n"
@@ -1056,12 +1076,16 @@ def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path:
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "awaiting-input"
 
 
 def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path):
     """A plain (non-backgrounded) Bash call must not trip the new check —
-    only ``run_in_background: true`` marks a dispatch as pending."""
+    only ``run_in_background: true`` marks a dispatch as pending. #608: the
+    fixture never adds a resolving tool_result (out of scope for what this
+    test targets), so the generic split's own scanner still sees it
+    unresolved and falls back to the safe generic value rather than
+    misreading an incomplete fixture as a confirmed clean stop."""
     stamp_time = NOW - timedelta(minutes=10)
     content = _bash_tool_use_line(
         stamp_time, "toolu_abc", run_in_background=False
@@ -1069,7 +1093,197 @@ def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path)
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "needs-you"
+    assert cards[0]["status"] == "awaiting-input"
+
+
+# --------------------------------------- needs-you four-way split (#608)
+
+
+def _tool_use_line(ts: datetime, tool_use_id: str, name: str) -> str:
+    """One assistant line dispatching an arbitrary foreground tool call —
+    the generic counterpart to :func:`_bash_tool_use_line`, for exercising
+    :func:`src.board_transcript._refine_waiting_status`'s own tail scan
+    rather than the background-dispatch-specific one."""
+    return json.dumps({
+        "type": "assistant",
+        "timestamp": _iso(ts),
+        "message": {
+            "role": "assistant",
+            "content": [{"type": "tool_use", "id": tool_use_id, "name": name, "input": {}}],
+        },
+    })
+
+
+def _generic_tool_result_line(ts: datetime, tool_use_id: str) -> str:
+    """A plain, ordinary ``tool_result`` block for ``tool_use_id`` — the
+    standard Anthropic content-block shape (no ``toolUseResult`` sibling),
+    resolving whatever :func:`_tool_use_line` launched."""
+    return json.dumps({
+        "type": "user",
+        "timestamp": _iso(ts),
+        "message": {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": "ok"}],
+        },
+    })
+
+
+def test_refine_pending_ask_user_question_is_awaiting_decision(tmp_path: Path):
+    """A pending AskUserQuestion — Claude is blocked on a human picking an
+    option, not just "needs a prompt"."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_use_line(stamp_time, "toolu_q1", "AskUserQuestion") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "awaiting-decision"
+
+
+def test_refine_pending_exit_plan_mode_is_awaiting_decision(tmp_path: Path):
+    """A pending ExitPlanMode is the same kind of human-decision block as
+    AskUserQuestion — approve or revise a plan."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_use_line(stamp_time, "toolu_p1", "ExitPlanMode") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "awaiting-decision"
+
+
+def test_refine_resolved_ask_user_question_is_idle_finished(tmp_path: Path):
+    """Once the decision tool_use resolves (a real tool_result lands), the
+    session isn't blocked on a decision anymore — nothing else is pending,
+    so it reads as a clean stop."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = (
+        _tool_use_line(stamp_time - timedelta(seconds=5), "toolu_q1", "AskUserQuestion") + "\n"
+        + _generic_tool_result_line(stamp_time, "toolu_q1") + "\n"
+    )
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle-finished"
+
+
+def test_refine_pending_unrecognized_tool_use_is_awaiting_input(tmp_path: Path):
+    """A pending tool_use that isn't a decision tool and isn't a background
+    dispatch (e.g. a permission-gated Read waiting on approval) falls back
+    to the generic, safe awaiting-input value — real, just not specifically
+    classifiable."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_use_line(stamp_time, "toolu_r1", "Read") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "awaiting-input"
+
+
+def test_refine_only_applies_to_needs_you_not_idle(tmp_path: Path):
+    """The split is scoped to needs-you — a plain ``idle`` row with a pending
+    decision tool_use must not be reclassified; idle isn't part of #608."""
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_use_line(stamp_time, "toolu_q1", "AskUserQuestion") + "\n"
+    row = _state_row("E:/x/y", status="idle", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle"
+
+
+# --------------------------------------------- stalled threshold (#608)
+
+
+def test_stalled_background_dispatch_under_threshold_stays_working(tmp_path: Path):
+    """A background dispatch outstanding 10 minutes is healthy waiting, not
+    a stall — mirrors the fleet chief's own observed ~9-minute e2e-gate wait
+    that must never misread as stalled."""
+    stamp_time = NOW - timedelta(minutes=25)
+    launch_time = NOW - timedelta(minutes=10)
+    content = _tool_result_line(
+        launch_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=25)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_stalled_background_dispatch_over_threshold_is_stalled(tmp_path: Path):
+    """A background dispatch outstanding 35 minutes (past the 30-minute
+    threshold) is a genuine anomaly worth surfacing distinctly from healthy
+    waiting."""
+    stamp_time = NOW - timedelta(minutes=40)
+    launch_time = NOW - timedelta(minutes=35)
+    content = _tool_result_line(
+        launch_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 45)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "stalled"
+
+
+def test_stalled_dispatch_with_unparseable_launch_stamp_stays_working(tmp_path: Path):
+    """A dispatch with no parseable launch timestamp is genuinely
+    outstanding but not age-able — per explicit direction, a low-confidence
+    stalled call is worse than a late one, so this must not be guessed as
+    stalled just because the sentinel age looks ancient."""
+    stamp_time = NOW - timedelta(minutes=40)
+    content = json.dumps({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": [{"type": "tool_result", "tool_use_id": "toolu_x", "content": "ack"}],
+        },
+        "toolUseResult": {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"},
+        # No "timestamp" field at all — _parse_iso(None) is None.
+    }) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 45)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_stalled_status_stays_stalled_for_idle_hook_status(tmp_path: Path):
+    """The stalled check only fires for a ``needs-you`` row — an ``idle``
+    row with the same outstanding dispatch keeps the #464 pre-#608
+    behavior (always ``working``), since idle is out of the four-way
+    split's scope."""
+    stamp_time = NOW - timedelta(minutes=40)
+    launch_time = NOW - timedelta(minutes=35)
+    content = _tool_result_line(
+        launch_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    row = _state_row("E:/x/y", status="idle", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 45)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+# ---------------------------------------------- build_board routing (#608)
+
+
+def test_build_board_idle_finished_routes_to_claude_turn():
+    """idle-finished isn't an alert — it belongs in Claude's turn alongside
+    working/idle/unknown, not Your turn."""
+    cards = [{"session_id": "s1", "status": "idle-finished", "label": ""}]
+    columns = board.build_board(cards, {}, [])
+    assert columns["your_turn"] == []
+    assert [c["session_id"] for c in columns["claude_turn"]] == ["s1"]
+
+
+def test_build_board_needs_you_family_routes_to_your_turn():
+    """stalled / awaiting-decision / awaiting-input all still mean "a human
+    needs to look at this" and route to Your turn."""
+    cards = [
+        {"session_id": "s-stalled", "status": "stalled", "label": ""},
+        {"session_id": "s-decision", "status": "awaiting-decision", "label": ""},
+        {"session_id": "s-input", "status": "awaiting-input", "label": ""},
+    ]
+    columns = board.build_board(cards, {}, [])
+    assert {c["session_id"] for c in columns["your_turn"]} == {
+        "s-stalled", "s-decision", "s-input",
+    }
+    assert columns["claude_turn"] == []
 
 
 # ------------------------------------------------------------ jobs_attention
@@ -1392,7 +1606,9 @@ def test_api_board_merges_live_sessions_and_state(webapp_client):
     assert body["sessions_state"]["available"] is True
     your_turn = body["columns"]["your_turn"]
     assert [c["session_id"] for c in your_turn] == ["live-1"]
-    assert your_turn[0]["status"] == "needs-you"
+    # #608: no transcript to check, so the needs-you split lands on the
+    # safe generic value — still routed to Your turn either way.
+    assert your_turn[0]["status"] == "awaiting-input"
     assert body["columns"]["claude_turn"] == []
 
 
@@ -1415,9 +1631,10 @@ def test_api_board_chief_never_lands_in_your_turn(webapp_client):
     assert body["columns"]["your_turn"] == []
     claude_turn = body["columns"]["claude_turn"]
     assert [c["session_id"] for c in claude_turn] == ["chief-1"]
-    # Routing moved, but the underlying hook-written status is untouched —
-    # the client is the one that relabels it for display.
-    assert claude_turn[0]["status"] == "needs-you"
+    # #608: no transcript to check, so the needs-you split lands on the
+    # safe generic value — still routed to Claude's turn regardless (the
+    # chief carve-out), and the client relabels it "standing by" for display.
+    assert claude_turn[0]["status"] == "awaiting-input"
 
 
 def test_api_board_survives_session_host_down(webapp_client):

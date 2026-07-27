@@ -125,6 +125,13 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     return cards
 
 
+# #608: the family of statuses that still mean "a human needs to look at
+# this" after board_transcript's needs-you split. ``idle-finished`` is
+# deliberately excluded — a clean-stopped session that nothing is pending on
+# isn't an alert, it's Claude quietly holding a workspace, same as ``idle``.
+_NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input"})
+
+
 def _is_chief_card(card: Dict[str, Any]) -> bool:
     """Board-side mirror of the frontend's ``isChiefSession`` (dom-utils.js) —
     label-first, ``kind``/``name`` fallback for a session-host predating the
@@ -143,25 +150,29 @@ def build_board(
     """Route the three sources into the five computed columns.
 
     Each column now holds one kind of card (#399): Backlog = open issues.
-    Claude's turn = sessions working / unknown / idle (idle is dimmed
-    client-side, not hidden — an idle session is still Claude holding a
-    workspace). Your turn = needs-you sessions only — a terminal that needs a
-    human. Other = everything else that needs attention but isn't a terminal:
-    open PRs, then failed/stuck jobs. Done = today's closed issues only — a
-    merged PR that closed one is already reflected by the issue itself.
+    Claude's turn = sessions working / unknown / idle / idle-finished (idle
+    and idle-finished are dimmed client-side, not hidden — a session with
+    nothing pending is still Claude holding a workspace, not an alert). Your
+    turn = :data:`_NEEDS_YOU_STATUSES` only (#608: ``stalled`` /
+    ``awaiting-decision`` / ``awaiting-input`` — the needs-you split's three
+    genuinely human-actionable outcomes) — a terminal that needs a human.
+    Other = everything else that needs attention but isn't a terminal: open
+    PRs, then failed/stuck jobs. Done = today's closed issues only — a merged
+    PR that closed one is already reflected by the issue itself.
 
     The standing fleet chief (#245) never routes to Your turn (#575): its
-    ``Stop``-hook-driven ``needs-you`` status just means "chief finished
-    replying," which for a long-lived chat session is true for nearly its
-    entire life between dispatches, not a transient alert like it is for a
-    worker session. It always lands in Claude's turn instead, regardless of
-    its raw hook status.
+    ``Stop``-hook-driven status sits in the needs-you family for nearly its
+    entire life between dispatches — for a long-lived chat session that's a
+    resting state, not a transient alert like it is for a worker session. It
+    always lands in Claude's turn instead, regardless of its raw status.
     """
     claude_turn = [
-        c for c in session_cards if c["status"] != "needs-you" or _is_chief_card(c)
+        c for c in session_cards
+        if c["status"] not in _NEEDS_YOU_STATUSES or _is_chief_card(c)
     ]
     your_turn = [
-        c for c in session_cards if c["status"] == "needs-you" and not _is_chief_card(c)
+        c for c in session_cards
+        if c["status"] in _NEEDS_YOU_STATUSES and not _is_chief_card(c)
     ]
     return {
         "backlog": list(github.get("issues") or []),
