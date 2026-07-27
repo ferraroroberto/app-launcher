@@ -11,7 +11,10 @@
                                             + passkey)
     POST /api/board/chief/ensure          → spawn the fleet chief if absent
                                             (?fresh=1 kills + restarts, an
-                                            explicit operator action, #616) —
+                                            explicit operator action, #616;
+                                            ?resume=1 reattaches the most
+                                            recent chief conversation instead
+                                            of starting fresh, #633) —
                                             Tailscale + passkey
     GET  /api/board/chief/settings        → chief settings block (also read
                                             by the /chief skill over loopback)
@@ -56,7 +59,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -68,6 +71,7 @@ from src.webapp_config import (
     WebappConfig,
     build_claude_flags,
     build_codex_flags,
+    build_resume_flags,
     update_webapp_config,
 )
 
@@ -760,6 +764,48 @@ def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {}
 
 
+def _find_resumable_chief_session_id(
+    state_rows: Dict[str, Any], *, now: Optional[datetime] = None
+) -> str:
+    """The most recent fleet-config chief conversation id, or ``""`` (#633).
+
+    Filters ``sessions-state.json`` rows to the ones that are both in the
+    fleet-config checkout (``project``, falling back to ``Path(cwd).name`` —
+    the same fallback ``board_sessions._external_row`` already applies) and
+    named ``"chief"`` (case-insensitive, mirroring ``_CHIEF_TITLE``), then
+    returns the dict key — Claude's own session UUID, exactly what
+    ``claude --resume <id>`` needs — of the newest by ``updated_at``.
+
+    Applies ``board.STATE_STALE_AFTER`` (24h) per row rather than trusting
+    the file-level ``stale`` flag some *other* row could keep looking fresh:
+    a chief conversation that's individually gone cold must not be resumed
+    just because a different session kept the file's newest timestamp
+    recent. Returns ``""`` (never raises) when nothing qualifies — same
+    degradation contract every other ``board_state`` reader already follows;
+    the caller treats that as "fall back to a fresh spawn", not an error.
+    """
+    now = now or board._now()
+    best_sid = ""
+    best_stamp = None
+    for sid, row in state_rows.items():
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or "").strip().lower()
+        if name != _CHIEF_TITLE:
+            continue
+        cwd = row.get("cwd")
+        project = str(row.get("project") or Path(str(cwd or "")).name)
+        if project != _CHIEF_PROJECT_DIR_NAME:
+            continue
+        stamp = board._parse_iso(row.get("updated_at"))
+        if stamp is None or now - stamp > board.STATE_STALE_AFTER:
+            continue
+        if best_stamp is None or stamp > best_stamp:
+            best_stamp = stamp
+            best_sid = str(sid)
+    return best_sid
+
+
 def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "model": cfg.chief_model,
@@ -828,29 +874,62 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
 
     Body/query: ``fresh`` truthy → kill the current chief first and respawn
     — the manual Restart button's mode (#616/#617; the query form keeps a
-    bodyless ``curl -X POST`` usable for a manual operator restart).
+    bodyless ``curl -X POST`` usable for a manual operator restart). ``resume``
+    truthy → reattach the most recent chief conversation instead of starting
+    fresh (#633): stops any live chief first (same as ``fresh`` — never end up
+    with two), looks up the newest same-day ``name == "chief"`` row in
+    ``sessions-state.json`` for the fleet-config checkout
+    (:func:`_find_resumable_chief_session_id`), and — if found — spawns with
+    ``label="chief"`` declared at spawn time and a direct
+    ``claude --resume <id>`` (never the bare interactive picker), skipping the
+    ``/chief`` type-in entirely since a resumed conversation is already past
+    that point. A chief stopped for a ``resume`` request is thus resumed right
+    back into itself — a context-preserving restart, not a coincidence of the
+    shared stop-first ordering with ``fresh``. No resumable id (state pruned
+    past the 24h window, or no prior chief) degrades to today's fresh-spawn-
+    and-``/chief`` path, never a hard failure — the response's ``resumed`` /
+    ``resume_fallback_reason`` fields tell the caller which happened.
     ``rows``/``cols`` size the PTY like every other launch. Returns
-    ``{"session_id", "spawned"}`` — ``spawned`` False when an alive chief was
-    found and kept.
+    ``{"session_id", "spawned", "resumed", "resume_fallback_reason"}`` —
+    ``spawned`` False when an alive chief was found and kept (only possible
+    when neither ``fresh`` nor ``resume`` was requested).
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     fresh_raw = body.get("fresh", request.query_params.get("fresh"))
     fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
+    resume_raw = body.get("resume", request.query_params.get("resume"))
+    resume = str(resume_raw).strip().lower() in ("1", "true", "yes")
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
 
     async with _CHIEF_ENSURE_LOCK:
-        live, _state = await _live_sessions_with_chief_label(cfg)
+        live, state = await _live_sessions_with_chief_label(cfg)
         chief = _find_chief(live)
         if chief:
             sid = str(chief.get("session_id") or "")
-            if not fresh:
+            if not fresh and not resume:
                 return {"session_id": sid, "spawned": False}
             await _stop_chief_for_respawn(cfg.session_host_port, sid)
 
+        resumed_session_id = (
+            _find_resumable_chief_session_id(state["rows"]) if resume else ""
+        )
+        resume_fallback_reason = (
+            "no resumable chief conversation found in the last 24h"
+            if resume and not resumed_session_id
+            else ""
+        )
+
         entry = _resolve_repo_entry(cfg, _CHIEF_REPO)
-        agent, flags = _agent_and_flags(cfg, cfg.chief_model)
+        if resumed_session_id:
+            agent = "claude"
+            flags = build_resume_flags(
+                cfg, agent, model_override=cfg.chief_model,
+                session_id=resumed_session_id,
+            )
+        else:
+            agent, flags = _agent_and_flags(cfg, cfg.chief_model)
         try:
             session = await asyncio.to_thread(
                 spawn_claude_session,
@@ -878,7 +957,10 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
         # rejects it ("Args from unknown skill: rename"). The ready-wait
         # here plus _type_into_session's own settle give the rename a clear
         # beat before /chief goes in. Best-effort — a rename failure never
-        # fails the spawn.
+        # fails the spawn. A resumed conversation (#633) skips /chief below —
+        # it's already past that point — but still gets the same rename so
+        # its title reads "chief" immediately rather than waiting on the
+        # self-heal signals in _reconcile_chief_label.
         try:
             await _await_dispatch_ready(cfg.session_host_port, sid)
         except HTTPException:
@@ -905,12 +987,21 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
                 "⚠️ chief ensure could not name session %s: %s",
                 sid[:8], exc,
             )
-        await _type_into_session(cfg.session_host_port, sid, _CHIEF_COMMAND)
+        if not resumed_session_id:
+            await _type_into_session(cfg.session_host_port, sid, _CHIEF_COMMAND)
 
         await audit_session_start_and_maybe_mirror(
             cfg, request, body,
             sid=sid, agent=agent, name=_CHIEF_LABEL,
-            project=entry.project_dir, skill=_CHIEF_COMMAND,
+            project=entry.project_dir,
+            skill=None if resumed_session_id else _CHIEF_COMMAND,
+            resume=bool(resumed_session_id),
             audit_mod=audit, mirror_fn=open_local_terminal_window,
         )
-        return {"session_id": sid, "spawned": True, "session": session}
+        return {
+            "session_id": sid,
+            "spawned": True,
+            "session": session,
+            "resumed": bool(resumed_session_id),
+            "resume_fallback_reason": resume_fallback_reason,
+        }

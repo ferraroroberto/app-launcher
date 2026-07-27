@@ -102,6 +102,7 @@ function renderCodingChiefStatus() {
   const alive = !!(chief && chief.alive !== false);
   els.codingChiefStatus.hidden = false;
   els.codingChiefStart.hidden = alive;
+  if (els.codingChiefResume) els.codingChiefResume.hidden = alive;
   els.codingChiefStatusText.textContent = alive ? 'chief: running' : 'chief: not running';
 }
 
@@ -387,6 +388,28 @@ export function wireSessions() {
         await fetchSessions();
       } catch (exc) {
         apiFailToast('Chief start failed', exc);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+  // Manual Resume-chief (#633) — same ensure endpoint with resume=true, so
+  // a chief killed by a host reboot / session-host restart can be reattached
+  // (rather than started fresh) from the Coding tab too, not only Board chat
+  // mode. Falls back server-side to a fresh spawn when nothing is resumable.
+  if (els.codingChiefResume) {
+    els.codingChiefResume.addEventListener('click', async function () {
+      const btn = els.codingChiefResume;
+      btn.disabled = true;
+      try {
+        const body = await ensureChief(false, true);
+        toast(
+          body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
+          'good', { icon: 'crown' },
+        );
+        await fetchSessions();
+      } catch (exc) {
+        apiFailToast('Chief resume failed', exc);
       } finally {
         btn.disabled = false;
       }
