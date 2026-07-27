@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,7 @@ from src import agents, audit, board, github_client, session_client
 from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
+from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import (
     WebappConfig,
     build_claude_flags,
@@ -77,6 +79,7 @@ from src.webapp_config import (
 
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
+    client_ip,
     maybe_json,
 )
 
@@ -102,6 +105,65 @@ def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:
             status_code=404, detail=f"repo not in the projects folder: {repo}"
         )
     return entry
+
+
+async def _mark_chief_managed(
+    cfg: WebappConfig, request: Request, sid: str, repo: str, number: int
+) -> None:
+    """Best-effort: record a launcher-dispatched worker as chief-managed
+    (fleet-config#474) so `hooks/notify_on_idle.py` and
+    `hooks/block_askuserquestion_chief.py` route it like one dispatched
+    through `chief_ops.py dispatch` -- the CLI-only path that already
+    marked correctly. `start_issue`/`dispatch_goal` are the paths chief
+    actually calls (over loopback, never through the CLI wrapper), so
+    without this the marker was never written for a real dispatch.
+
+    Gated on two signals already meaningful in this codebase rather than a
+    new protocol: the caller is loopback (the same trust `BearerTokenMiddleware`
+    already grants -- a remote Tailscale+passkey Board tap never qualifies)
+    *and* a chief PTY session is actually alive right now. Without the
+    second check, a human driving the Board locally on this same machine
+    would get their own session silently marked chief-managed too --
+    blocking their own `AskUserQuestion` and rerouting their own
+    notifications to chief. Never raises; a marking failure must never fail
+    an otherwise-successful dispatch (mirrors `chief_ops.py cmd_dispatch`'s
+    own best-effort mark).
+    """
+    # Imported here, not at module load, so a test's `monkeypatch.setattr
+    # (middleware, "LOOPBACK_HOSTS", ...)` is actually observed -- a
+    # module-level import would bind this router's own stale copy at import
+    # time instead (same reasoning as `_helpers.should_mirror_to_pc`).
+    from app.webapp.middleware import LOOPBACK_HOSTS
+
+    if not sid or client_ip(request) not in LOOPBACK_HOSTS:
+        return
+    try:
+        live, _ = await _live_sessions_with_chief_label(cfg)
+    except Exception as exc:  # noqa: BLE001 -- best-effort, never fail the dispatch
+        logger.debug("chief-managed mark: could not read live sessions: %s", exc)
+        return
+    if not _find_chief(live):
+        return
+    try:
+        fleet_config = _resolve_repo_entry(cfg, _CHIEF_REPO)
+    except HTTPException:
+        return
+    venv_python = Path(fleet_config.project_dir) / ".venv" / "Scripts" / "python.exe"
+    script = Path(fleet_config.project_dir) / "skills" / "_lib" / "chief_managed.py"
+    if not venv_python.exists() or not script.exists():
+        return
+    try:
+        await asyncio.to_thread(
+            subprocess.run,
+            [str(venv_python), str(script), "mark", sid, repo, str(number)],
+            capture_output=True,
+            timeout=10,
+            creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning(
+            "⚠️ chief-managed mark failed for session %s: %s", sid[:8], exc
+        )
 
 
 def _safe_list_sessions(port: int) -> List[Dict[str, Any]]:
@@ -321,6 +383,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc))
 
     sid = str(session.get("session_id") or "")
+    await _mark_chief_managed(cfg, request, sid, entry.name, number)
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
         sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
@@ -579,6 +642,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     sid = str(session.get("session_id") or "")
     command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
     await _type_into_session(cfg.session_host_port, sid, command)
+    await _mark_chief_managed(cfg, request, sid, entry.name, 0)
 
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
