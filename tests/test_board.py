@@ -753,6 +753,58 @@ def test_overlay_inside_stop_epsilon_keeps_needs_you(tmp_path: Path):
     assert cards[0]["status"] == "idle-finished"
 
 
+def test_live_title_is_busy_glyph_range():
+    from src.board_transcript import _live_title_is_busy
+
+    assert _live_title_is_busy("⠂ chief") is True  # a real observed spinner frame
+    assert _live_title_is_busy("⠐ Start work on issue 635") is True  # another frame
+    assert _live_title_is_busy("✳ Some Conversation Title") is False  # idle marker
+    assert _live_title_is_busy("") is False
+    assert _live_title_is_busy(None) is False
+    assert _live_title_is_busy("   ") is False
+    assert _live_title_is_busy("app-launcher | gpt-5.5") is False  # Codex folder-echo title
+    # The glyph must lead the title, not appear mid-string.
+    assert _live_title_is_busy("Some Title ⠂") is False
+
+
+def test_overlay_busy_live_title_overrides_stale_needs_you_inside_epsilon(tmp_path: Path):
+    """#631: the classifier's tail-scan can land in the gap between a
+    streamed text block and its own following tool_use block — landing
+    inside the resume epsilon, with the transcript tail ending on a
+    text-only assistant message, previously resolved to idle-finished even
+    though a turn was genuinely still in progress. A busy live_title (the
+    session's own OSC-title spinner glyph) is sourced from the live PTY, not
+    this transcript file, so it short-circuits straight to working before
+    the epsilon/tail-scan logic ever runs."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/x/y", 30, live_title="\u2802 doing the thing")],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "working"
+    assert cards[0]["age_seconds"] == 0
+
+
+def test_overlay_idle_live_title_does_not_force_a_false_override(tmp_path: Path):
+    """The idle marker ("*", U+2733) must not be mistaken for the busy
+    spinner range (U+2800-U+28FF) — same epsilon scenario as the busy-title
+    test above, but with the idle glyph, must keep the original outcome."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live("aaa", "E:/x/y", 30, live_title="\u2733 Some Conversation Title")],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "idle-finished"
+
+
 def test_overlay_missing_transcript_keeps_hook_status(tmp_path: Path):
     """#608: a transcript path that can't be read gives no usable signal —
     the split must not misread that as "checked, nothing pending" and claim
