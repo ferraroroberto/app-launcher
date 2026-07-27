@@ -103,9 +103,25 @@ function findChiefCard() {
 // uses — sessions.js already imports openTerminal from terminal.js while
 // terminal.js imports back from sessions.js, so this mirrors an existing,
 // working circular-import pattern rather than introducing a new risk.
-export async function ensureChief(fresh) {
+// ``resume`` (#633) reattaches the most recent chief conversation instead of
+// starting fresh — mutually exclusive with ``fresh`` in practice (the two
+// buttons are never both pressed), but the server decides precedence.
+//
+// No auto-ensure race with the Resume button's !alive-gated visibility
+// (#633 review): every call site — this Board row's Start/Restart/Resume
+// (below), the Coding tab's Start (sessions.js), and dispatchChat's
+// spawn-then-type on first chat send — fires only from an explicit user
+// action (a click or a Send tap), never a background poll or timer. So
+// nothing silently spawns a fresh chief out from under a still-visible
+// Resume button; the only way to "miss" Resume is to deliberately type a
+// chat message instead, which is an ordinary Start-equivalent choice, not a
+// race — the resumable conversation's state row survives untouched either
+// way (pruned only after 24h, per _find_resumable_chief_session_id).
+export async function ensureChief(fresh, resume) {
   const tt = await ensureTerminalToken();
-  const payload = fresh ? { fresh: true } : {};
+  const payload = {};
+  if (fresh) payload.fresh = true;
+  if (resume) payload.resume = true;
   // Same size contract as every launch (issue #374).
   applyLaunchSizePayload(payload);
   return jsonApi('/api/board/chief/ensure', {
@@ -976,6 +992,7 @@ function renderChiefStatus() {
   const chief = findChiefCard();
   const alive = !!(chief && chief.alive);
   els.boardChiefStart.hidden = alive;
+  els.boardChiefResume.hidden = alive;
   els.boardChiefRestart.hidden = !alive;
   els.boardChiefStatusText.textContent = alive
     ? 'chief: ' + (chief.status || 'idle')
@@ -1082,6 +1099,29 @@ function wireChief() {
     } finally {
       stopTimer();
       startBtn.disabled = false;
+    }
+  });
+  els.boardChiefResume.addEventListener('click', async function () {
+    const resumeBtn = els.boardChiefResume;
+    resumeBtn.disabled = true;
+    const stopTimer = startWorkTimer(resumeBtn, 'Resume');
+    try {
+      // resume=true (#633): reattach the most recent chief conversation
+      // (direct claude --resume <id>, label declared at spawn) instead of
+      // starting fresh — falls back to a fresh spawn server-side when no
+      // resumable conversation is found, never a hard failure.
+      const body = await ensureChief(false, true);
+      toast(
+        body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
+        'good', { icon: 'crown' },
+      );
+      await fetchBoard().catch(function () {});
+      renderChiefStatus();
+    } catch (exc) {
+      apiFailToast('Chief resume failed', exc);
+    } finally {
+      stopTimer();
+      resumeBtn.disabled = false;
     }
   });
   els.boardChiefRestart.addEventListener('click', async function () {

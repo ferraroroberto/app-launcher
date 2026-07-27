@@ -777,7 +777,8 @@ def build_pi_flags(cfg: WebappConfig) -> str:
 
 
 def build_resume_flags(
-    cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None
+    cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
+    session_id: Optional[str] = None,
 ) -> str:
     """Compose the full flags string for a *Resume* launch (issue #151).
 
@@ -797,10 +798,20 @@ def build_resume_flags(
     ``model_override`` forces a specific Claude ``--model`` (used by the
     Life OS tab's opus toggle); it is ignored for non-Claude agents, which
     have no launch-time model flag.
+
+    ``session_id``, when given, pins the resume token to that specific
+    conversation (``<token> <session_id> <flags>``) so the agent reattaches
+    directly instead of rendering its interactive picker (issue #633, the
+    fleet chief's Resume control — verified empirically that Claude's
+    ``--resume <id>`` accepts a session id directly, non-interactively).
+    Omitted (the default, and every caller before #633), the bare token
+    renders the picker exactly as before.
     """
     from src.agents import resume_command_for
 
     token = resume_command_for(agent_id)
+    if session_id:
+        token = f"{token} {session_id}"
     if agent_id == "codex":
         parts = [token]
         if cfg.codex_effort in VALID_CODEX_EFFORTS:

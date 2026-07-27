@@ -444,6 +444,183 @@ class TestEnsureSpawn:
         )
 
 
+def _chief_state_row(session_id, updated_at, **extra):
+    row = {
+        "launcher_session_id": session_id, "agent": "claude",
+        "name": "chief", "cwd": "E:/automation/fleet-config",
+        "updated_at": updated_at,
+    }
+    row.update(extra)
+    return row
+
+
+class TestFindResumableChiefSessionId:
+    """Unit coverage for ``_find_resumable_chief_session_id`` (#633): the
+    lookup that turns "the most recent chief conversation" into a concrete
+    session id ``claude --resume <id>`` can reattach to."""
+
+    def test_no_rows_returns_empty(self):
+        assert board_router._find_resumable_chief_session_id({}) == ""
+
+    def test_picks_newest_matching_row(self):
+        rows = {
+            "old-uuid": _chief_state_row("old-sess", "2026-07-27T06:00:00Z"),
+            "new-uuid": _chief_state_row("new-sess", "2026-07-27T07:00:00Z"),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == "new-uuid"
+
+    def test_wrong_project_is_excluded(self):
+        rows = {
+            "uuid-1": _chief_state_row(
+                "s1", "2026-07-27T07:00:00Z",
+                cwd="E:/automation/app-launcher",
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == ""
+
+    def test_wrong_name_is_excluded(self):
+        rows = {
+            "uuid-1": _chief_state_row(
+                "s1", "2026-07-27T07:00:00Z", name="fleet-config",
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == ""
+
+    def test_name_match_is_case_insensitive(self):
+        rows = {
+            "uuid-1": _chief_state_row(
+                "s1", "2026-07-27T07:00:00Z", name="Chief",
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+
+    def test_stale_row_past_24h_is_excluded(self):
+        rows = {"uuid-1": _chief_state_row("s1", "2026-07-26T00:00:00Z")}
+        now = board_router.board._parse_iso("2026-07-27T07:00:00Z")
+        assert (
+            board_router._find_resumable_chief_session_id(rows, now=now) == ""
+        )
+
+    def test_project_field_used_over_cwd_basename(self):
+        rows = {
+            "uuid-1": _chief_state_row(
+                "s1", "2026-07-27T07:00:00Z",
+                cwd="E:/automation/app-launcher-wt-42", project="fleet-config",
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+
+    def test_non_dict_row_is_skipped(self):
+        rows = {"uuid-1": "not-a-row"}
+        assert board_router._find_resumable_chief_session_id(rows) == ""
+
+
+class TestEnsureResume:
+    """Integration coverage for ``resume`` on ``POST /api/board/chief/ensure``
+    (#633): reattach the most recent chief conversation via a direct
+    ``claude --resume <id>`` instead of starting fresh, falling back cleanly
+    when nothing is resumable."""
+
+    def test_no_resumable_conversation_falls_back_to_fresh_and_types_chief(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        client, _, overrides = webapp_client
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["spawned"] is True
+        assert body["resumed"] is False
+        assert body["resume_fallback_reason"]
+        # Fallback is indistinguishable from a plain fresh spawn: /chief is
+        # still typed, and no --resume token rides the flags.
+        assert "--resume" not in _spawn["flags"]
+        assert overrides["session"].send_input.call_args_list[0].args == (
+            8446, "chief-1", "/chief", True,
+        )
+
+    def test_resumable_conversation_spawns_direct_resume_and_skips_chief_type(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        client, app, overrides = webapp_client
+        cfg = app.state.webapp_config
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "old-chief-sess": _chief_state_row(
+                    "chief-1", "2026-07-27T07:14:05Z",
+                ),
+            }),
+            encoding="utf-8",
+        )
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["spawned"] is True
+        assert body["resumed"] is True
+        assert body["resume_fallback_reason"] == ""
+        assert "--resume old-chief-sess" in _spawn["flags"]
+        assert _spawn["label"] == "chief"
+        # The conversation is already past its own boot — no /chief re-typed.
+        overrides["session"].send_input.assert_not_called()
+
+    def test_resume_stops_live_chief_first_then_reattaches_it(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir,
+    ):
+        """Resume repurposes the same stop-first ordering ``fresh`` uses
+        (#633) — deliberately: the chief being stopped is exactly the
+        conversation the state row (fresh off its own hook write) points
+        back to, so this is a context-preserving restart, not an accident of
+        shared plumbing."""
+        client, app, overrides = webapp_client
+        cfg = app.state.webapp_config
+        overrides["session"].list_sessions.return_value = [_chief_row()]
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "chief-old": _chief_state_row(
+                    "chief-old", "2026-07-27T07:14:05Z",
+                ),
+            }),
+            encoding="utf-8",
+        )
+        probes = iter([{"alive": False}])
+
+        def _get_session(port, sid):
+            try:
+                return next(probes)
+            except StopIteration:
+                return {"alive": True, "output_chars": 64}
+
+        overrides["session"].get_session.side_effect = _get_session
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["resumed"] is True
+        assert overrides["session"].stop.call_args_list[0].args == (
+            8446, "chief-old", "quit"
+        )
+        assert "--resume chief-old" in _spawn["flags"]
+
+    def test_resume_honors_chief_model(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        client, app, overrides = webapp_client
+        app.state.webapp_config.chief_model = "opus"
+        cfg = app.state.webapp_config
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "hook-row-1": _chief_state_row(
+                    "old-chief-sess", "2026-07-27T07:14:05Z",
+                ),
+            }),
+            encoding="utf-8",
+        )
+        client.post("/api/board/chief/ensure", json={"resume": True})
+        assert "--model opus" in _spawn["flags"]
+
+
 class TestChiefSettings:
 
     def test_get_returns_defaults(self, webapp_client, _bypass_gate):
