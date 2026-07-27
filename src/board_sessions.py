@@ -24,11 +24,18 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
-from src.board_transcript import _external_row_liveness, _transcript_overlay
+from src.board_transcript import (
+    _external_row_liveness,
+    _refine_waiting_status,
+    _transcript_overlay,
+)
 
 logger = logging.getLogger(__name__)
 
-# Statuses the hook writer emits; anything else renders as "unknown".
+# Statuses the hook writer emits; anything else renders as "unknown". This
+# gates the *raw* row status only — a card's final ``status`` can diverge
+# further downstream (the transcript overlay, and #608's needs-you split;
+# see :func:`merge_sessions`).
 _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
 
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
@@ -247,7 +254,12 @@ def merge_sessions(
     becomes an external card when recent transcript activity independently
     proves the process still exists — hook state alone is not liveness (#455).
     Waiting statuses are checked against transcript activity — see
-    :func:`src.board_transcript._transcript_overlay` (#305).
+    :func:`src.board_transcript._transcript_overlay` (#305) — and a hook
+    ``needs-you`` is then split into ``stalled`` / ``awaiting-decision`` /
+    ``idle-finished`` / ``awaiting-input`` (#608's
+    :func:`src.board_transcript._refine_waiting_status`) so a caller never
+    has to fetch the exchange to tell those four apart. The raw
+    ``needs-you`` string itself never reaches a card's ``status`` field.
 
     Live-session cards also carry ``state_sid`` — the claimed state row's own
     key (``None`` when unmatched) — so a Slack ping's deep link, which only
@@ -267,7 +279,8 @@ def merge_sessions(
         anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
             _parse_iso(sess.get("started_at"))
         )
-        status, anchor = _transcript_overlay(row, status, anchor)
+        status, anchor = _transcript_overlay(row, status, anchor, now=now)
+        status = _refine_waiting_status(status, (row or {}).get("transcript_path"))
         cards.append({
             "session_id": sess.get("session_id"),
             "state_sid": sid,
@@ -299,7 +312,8 @@ def merge_sessions(
         cwd = row.get("cwd")
         project = row.get("project") or Path(str(cwd or "")).name
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-        status, anchor = _transcript_overlay(row, status, stamp)
+        status, anchor = _transcript_overlay(row, status, stamp, now=now)
+        status = _refine_waiting_status(status, row.get("transcript_path"))
         externally_live, reason = _external_row_liveness(
             row, now,
             claimed_transcripts=claimed_transcripts,

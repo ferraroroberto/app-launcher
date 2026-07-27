@@ -228,11 +228,13 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
 def test_chief_needs_you_card_reads_standing_by_not_needs_you(
     authed_page: Page, base_url: str
 ) -> None:
-    """#575: a needs-you chief card (its normal resting state between
+    """#575: a needs-you-family chief card (its normal resting state between
     dispatches) must not read as an alert. Server already routes it into
-    Claude's turn regardless of status; the client relabels the text."""
+    Claude's turn regardless of status; the client relabels the text. #608
+    split needs-you into four values — idle-finished is the one that most
+    directly matches "chief just finished replying, standing by"."""
     payload = _board_payload(with_chief=True)
-    payload["columns"]["claude_turn"][0]["status"] = "needs-you"
+    payload["columns"]["claude_turn"][0]["status"] = "idle-finished"
     _mock_board(authed_page, payload)
 
     _open_board(authed_page, base_url)

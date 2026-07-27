@@ -54,7 +54,7 @@ _FAKE_BOARD = {
              "project_dir": "E:/automation/photo-ocr", "name": "photo-ocr",
              "alive": True, "started_at": "2026-07-02T11:30:00Z",
              "live_title": "chunk merge fix", "prompt_title": "",
-             "project": "photo-ocr", "status": "needs-you", "age_seconds": 720},
+             "project": "photo-ocr", "status": "awaiting-input", "age_seconds": 720},
         ],
         "other": [
             {"kind": "pr", "repo": "app-launcher", "number": 158,

@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AbstractSet, Any, Dict, List, Optional, Tuple
 
-from src.board_state import _parse_iso
+from src.board_state import _now, _parse_iso
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,29 @@ _EXCHANGE_TAIL_BYTES = 256 * 1024
 # Pending-background-dispatch detection (#464): the id a completed dispatch
 # is later referenced by, e.g. "<task-id>btvos2agp</task-id>".
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
+
+# #608's ``stalled`` status: how long a pending background dispatch must sit
+# unresolved before a Stop-hook ``needs-you`` stamp is a real anomaly rather
+# than healthy waiting. Deliberately generous, per explicit direction: a
+# fleet chief was observed correctly *not* alerting through two ~9-minute e2e
+# gate runs in one day (this repo's own full verify-before-ship gate is
+# documented at ~10-11 minutes, CI's own investigate threshold is >12
+# minutes) — that is ordinary waiting, not a stall. The distinguishing
+# property a caller actually wants is "a turn that ended with nothing that
+# will ever wake it", which this module cannot observe directly; duration is
+# only a proxy. A threshold comfortably above every observed healthy wait
+# trades a slower alert for not crying wolf — "a stalled that is right 60% of
+# the time is worse than useless" than one that is occasionally a few minutes
+# late.
+_STALLED_DISPATCH_AFTER = timedelta(minutes=30)
+
+# The sentinel :func:`_pending_background_dispatch_launched_at` returns when
+# something is genuinely outstanding but its launch line carried no
+# parseable timestamp — real, just not age-able. Shared with
+# :func:`_transcript_overlay` so the ``stalled`` check can tell "unknown age"
+# apart from "actually old" instead of misreading the epoch bound as proof of
+# staleness.
+_UNKNOWN_LAUNCH_STAMP = datetime.min.replace(tzinfo=timezone.utc)
 
 
 def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
@@ -141,8 +164,11 @@ def _transcript_overlay(
     row: Optional[Dict[str, Any]],
     status: str,
     anchor: Optional[datetime],
+    *,
+    now: Optional[datetime] = None,
 ) -> tuple:
-    """Override a waiting status with ``working`` when the transcript says so.
+    """Override a waiting status with ``working`` (or, for a long-stuck
+    dispatch, ``stalled``) when the transcript says so.
 
     The hooks flip status only on prompt-submit / stop / notification — but
     Claude *resumes* without any of those firing (an answered permission
@@ -158,17 +184,28 @@ def _transcript_overlay(
     so when mtime clears the epsilon, :func:`_last_activity` reads the tail
     and only a real conversation line past the stamp flips the status.
 
-    Separately (#464), :func:`_has_pending_background_dispatch` always checks
-    the tail for an outstanding background sub-agent/shell dispatch launched
-    *before* Claude's own turn ended — a case the mtime pre-filter above
-    would otherwise skip, since nothing is written to this transcript past
-    the stamp until the background work's own completion notice lands.
+    Separately (#464), :func:`_pending_background_dispatch_launched_at`
+    always checks the tail for an outstanding background sub-agent/shell
+    dispatch launched *before* Claude's own turn ended — a case the mtime
+    pre-filter above would otherwise skip, since nothing is written to this
+    transcript past the stamp until the background work's own completion
+    notice lands. #608 refines this further: a dispatch outstanding past
+    :data:`_STALLED_DISPATCH_AFTER` is no longer healthy waiting but a real
+    anomaly, so it renders ``stalled`` instead of ``working`` — but only when
+    the launch line's own timestamp actually resolved
+    (:data:`_UNKNOWN_LAUNCH_STAMP` means "genuinely outstanding, age
+    unknown", not "very old"; guessing stalled from that sentinel would be
+    wrong far too often, per the explicit caution against a low-confidence
+    stalled call). ``idle`` never gets a ``stalled`` verdict — the four-way
+    split is scoped to ``needs-you``, and :func:`_refine_waiting_status` does
+    the rest of that split once this function is done overriding.
 
     Any failure keeps the hook status. Returns the (possibly overridden)
     ``(status, age-anchor)``.
     """
     if row is None or status not in ("needs-you", "idle"):
         return status, anchor
+    now = now or _now()
     updated = _parse_iso(row.get("updated_at"))
     transcript = row.get("transcript_path")
     if updated is None or not transcript:
@@ -180,7 +217,14 @@ def _transcript_overlay(
         activity = _last_activity(transcript)
         if activity is not None and activity - updated > _RESUME_EPSILON:
             return "working", activity
-    if _has_pending_background_dispatch(transcript):
+    pending_since = _pending_background_dispatch_launched_at(transcript)
+    if pending_since is not None:
+        if (
+            status == "needs-you"
+            and pending_since != _UNKNOWN_LAUNCH_STAMP
+            and now - pending_since > _STALLED_DISPATCH_AFTER
+        ):
+            return "stalled", anchor
         return "working", anchor
     return status, anchor
 
@@ -301,8 +345,12 @@ def _notified_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     return _TOOL_USE_ID_RE.findall(text)
 
 
-def _has_pending_background_dispatch(transcript_path: Any) -> bool:
-    """Whether the tail shows a background dispatch with no completion yet.
+def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[datetime]:
+    """The earliest still-outstanding background dispatch's own launch
+    timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
+    needs *how long* a dispatch has been outstanding, not just whether one
+    is — see :func:`_has_pending_background_dispatch` for the full detection
+    story this shares).
 
     A ``Stop`` hook fires (stamping ``needs-you``) the moment Claude's own
     turn ends — even when that turn dispatched a background sub-agent or
@@ -362,9 +410,9 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
     if truncated and lines:
         lines = lines[1:]
-    launched: set = set()
+    launched: Dict[str, Optional[datetime]] = {}
     completed: set = set()
-    bash_launched: set = set()
+    bash_launched: Dict[str, Optional[datetime]] = {}
     bash_completed: set = set()
     queued_notifications: List[Tuple[List[str], List[str]]] = []
     for raw in lines:
@@ -377,8 +425,11 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
             continue
         if not isinstance(obj, dict):
             continue
-        launched.update(_launched_background_ids(obj))
-        bash_launched.update(_launched_bash_dispatch_ids(obj))
+        stamp = _parse_iso(obj.get("timestamp"))
+        for tid in _launched_background_ids(obj):
+            launched.setdefault(tid, stamp)
+        for tid in _launched_bash_dispatch_ids(obj):
+            bash_launched.setdefault(tid, stamp)
         if obj.get("type") == "queue-operation":
             operation = obj.get("operation")
             if operation == "enqueue":
@@ -392,7 +443,158 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
             continue
         completed.update(_notified_background_ids(obj))
         bash_completed.update(_notified_bash_dispatch_ids(obj))
-    return bool(launched - completed) or bool(bash_launched - bash_completed)
+    outstanding_stamps = [
+        stamp for tid, stamp in launched.items() if tid not in completed
+    ] + [
+        stamp for tid, stamp in bash_launched.items() if tid not in bash_completed
+    ]
+    if not outstanding_stamps:
+        return None
+    resolved_stamps = [s for s in outstanding_stamps if s is not None]
+    if not resolved_stamps:
+        # Something is genuinely outstanding but its launch line carried no
+        # parseable timestamp — real, just not age-able. Report the
+        # earliest-possible bound (epoch) so a caller keying only on
+        # "is anything pending" still sees it, while #608's stalled check
+        # (which needs a real age) treats this as unknown rather than old.
+        return _UNKNOWN_LAUNCH_STAMP
+    return min(resolved_stamps)
+
+
+def _has_pending_background_dispatch(transcript_path: Any) -> bool:
+    """Whether the tail shows a background dispatch with no completion yet
+    — see :func:`_pending_background_dispatch_launched_at` for the full
+    detection story; this is the plain boolean callers that don't need the
+    age used before #613."""
+    return _pending_background_dispatch_launched_at(transcript_path) is not None
+
+
+# #608: the tool_use names that block on a human decision, not just an async
+# result — a caller must be able to tell "blocked on a human" apart from
+# "finished, nothing wanted" without fetching the exchange.
+_PENDING_DECISION_TOOL_NAMES = frozenset({"AskUserQuestion", "ExitPlanMode"})
+
+
+def _tail_tool_use_pairs(transcript_path: Any) -> Tuple[Dict[str, str], "set[str]", bool]:
+    """Every assistant ``tool_use`` in the tail (id -> tool name), every
+    ``tool_use_id`` a later ``tool_result`` block resolves, and whether the
+    tail held at least one genuine, parseable conversation line at all
+    (#608).
+
+    Same tail-scan shape as :func:`_pending_background_dispatch_launched_at`,
+    generalized from "any backgrounded dispatch" to "any tool call at all" —
+    :func:`_refine_waiting_status` needs to know whether *anything* is still
+    pending, not just a background one. A backgrounded ``Bash``/``PowerShell``
+    call's own synchronous "launched" ack rides as a normal ``tool_result``
+    block too (empirically confirmed against a live transcript: the block
+    carries a sibling ``toolUseResult.backgroundTaskId``, but the block itself
+    is the standard Anthropic ``tool_result`` shape) — so it reads as
+    "resolved" here the moment it's launched, same as any other tool call.
+    That is intentional: whether the *background work itself* is still
+    outstanding is a separate question :func:`_transcript_overlay` already
+    answers via :func:`_pending_background_dispatch_launched_at`, which this
+    function does not duplicate.
+
+    The third return value uses the same "real conversation event" test as
+    :func:`_last_activity` (an ``assistant``/``user`` line carrying a
+    ``message`` dict) — a missing file, an empty tail, or an unparseable one
+    all leave it ``False``. This lets :func:`_pending_tool_use_names`, and
+    through it :func:`_refine_waiting_status`, tell "checked and found
+    nothing pending" apart from "couldn't check at all" — the latter must
+    never be read as proof of a clean stop.
+    """
+    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
+    if truncated and lines:
+        lines = lines[1:]
+    launched: Dict[str, str] = {}
+    completed: "set[str]" = set()
+    saw_message = False
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        obj_type = obj.get("type")
+        if obj_type not in ("assistant", "user"):
+            continue
+        msg = obj.get("message")
+        if not isinstance(msg, dict):
+            continue
+        saw_message = True
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        if obj_type == "assistant":
+            for block in content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_use"
+                    and isinstance(block.get("id"), str)
+                ):
+                    launched[block["id"]] = str(block.get("name") or "")
+        else:
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    tid = block.get("tool_use_id")
+                    if isinstance(tid, str):
+                        completed.add(tid)
+    return launched, completed, saw_message
+
+
+def _pending_tool_use_names(transcript_path: Any) -> Optional["set[str]"]:
+    """Tool names of every ``tool_use`` still unresolved at the tail's end
+    (#608) — empty set when the tail was read and genuinely has nothing
+    pending; ``None`` when there was no usable signal at all (no path,
+    missing file, or an unparseable tail) — the caller must not conflate the
+    two."""
+    if not transcript_path:
+        return None
+    launched, completed, saw_message = _tail_tool_use_pairs(transcript_path)
+    if not saw_message:
+        return None
+    return {name for tid, name in launched.items() if tid not in completed}
+
+
+def _refine_waiting_status(status: str, transcript_path: Any) -> str:
+    """Split the generic ``needs-you`` into a caller-actionable value (#608)
+    without a caller ever needing to fetch the exchange to tell them apart:
+
+    * ``awaiting-decision`` -- blocked on :data:`_PENDING_DECISION_TOOL_NAMES`
+      (``AskUserQuestion``/``ExitPlanMode``) — a human must pick an option.
+    * ``idle-finished`` -- the turn ended clean, nothing pending at all — the
+      session doesn't actually need anyone, it's just holding a workspace.
+    * ``awaiting-input`` -- everything else: a genuinely typed prompt is
+      expected, some other/unrecognized tool_use is pending, or the tail
+      gave no usable signal at all (no transcript, a missing file, an
+      unparseable tail — see :func:`_pending_tool_use_names`). This is the
+      old undifferentiated ``needs-you`` meaning, kept as the safe fallback
+      for whatever this function can't positively classify — ``idle-finished``
+      is a claim this function must have actually checked for, never a
+      default for "couldn't check" (the same asymmetry the ``stalled``
+      threshold applies to an unparseable launch timestamp).
+
+    ``stalled`` is decided earlier, in :func:`_transcript_overlay` — it needs
+    the pending *background* dispatch's age, which that function already
+    computes; by the time this runs, ``status`` is never ``needs-you`` for a
+    stalled dispatch (it's already ``stalled``). Any status other than
+    ``needs-you`` (``working``, ``idle``, ``unknown``) passes through
+    unchanged — the split is scoped to ``needs-you`` alone.
+    """
+    if status != "needs-you":
+        return status
+    pending_names = _pending_tool_use_names(transcript_path)
+    if pending_names is None:
+        return "awaiting-input"
+    if pending_names & _PENDING_DECISION_TOOL_NAMES:
+        return "awaiting-decision"
+    if pending_names:
+        return "awaiting-input"
+    return "idle-finished"
 
 
 def _external_row_liveness(
@@ -420,7 +622,7 @@ def _external_row_liveness(
       issue to the next, still pointing at the transcript the live session
       keeps writing — not independent evidence of a second process.
 
-    Only once neither applies does a transcript written in the last 15
+    Only once neither applies does a transcript written in the last 5
     minutes remain the (inherently imperfect) fallback evidence for a
     genuinely external row the launcher has no other way to verify — a
     process that writes once and exits within the window is indistinguishable
