@@ -114,11 +114,18 @@ class TestVersion:
         client, _, _ = webapp_client
         body = client.get("/api/version").json()
         assert body["session_host"] == {
-            "reachable": False, "git_sha": None, "started_at": None, "stale": None,
+            "reachable": False, "git_sha": None, "started_at": None,
+            "stale": None, "stale_relevant": None,
         }
 
-    def test_session_host_stale_when_sha_differs_from_head(self, webapp_client):
+    def test_session_host_stale_relevant_true_when_declared_path_touched(
+        self, webapp_client, monkeypatch
+    ):
+        """#635: sha differs AND the diff touched a declared session-host
+        path — the actionable "needs restart" case."""
         client, app, overrides = webapp_client
+        from app.webapp.routers import misc as misc_router
+        monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: True)
         overrides["session"].identity.return_value = {
             "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
         }
@@ -127,6 +134,38 @@ class TestVersion:
         assert body["session_host"]["git_sha"] == "deadbee"
         assert body["session_host"]["started_at"] == "2026-07-24T05:51:34"
         assert body["session_host"]["stale"] is True
+        assert body["session_host"]["stale_relevant"] is True
+
+    def test_session_host_stale_relevant_false_when_only_unrelated_paths_touched(
+        self, webapp_client, monkeypatch
+    ):
+        """#635: sha differs but the diff only touched paths outside the
+        session-host's declaration — stale for the repo, not for :8446."""
+        client, app, overrides = webapp_client
+        from app.webapp.routers import misc as misc_router
+        monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: False)
+        overrides["session"].identity.return_value = {
+            "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
+        }
+        body = client.get("/api/version").json()
+        assert body["session_host"]["stale"] is True
+        assert body["session_host"]["stale_relevant"] is False
+
+    def test_session_host_stale_relevant_unknown_when_scope_check_cannot_run(
+        self, webapp_client, monkeypatch
+    ):
+        """#635: sha differs but the scoped diff itself is unresolvable
+        (e.g. host sha not in local history) — must read as unknown, never
+        a confident "unaffected"."""
+        client, app, overrides = webapp_client
+        from app.webapp.routers import misc as misc_router
+        monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: None)
+        overrides["session"].identity.return_value = {
+            "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
+        }
+        body = client.get("/api/version").json()
+        assert body["session_host"]["stale"] is True
+        assert body["session_host"]["stale_relevant"] is None
 
     def test_session_host_not_stale_when_sha_matches_head(self, webapp_client):
         client, app, overrides = webapp_client
@@ -137,6 +176,7 @@ class TestVersion:
         }
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is False
+        assert body["session_host"]["stale_relevant"] is False
 
     def test_unknown_sha_never_reads_as_stale(self, webapp_client):
         """A failed git lookup on either side must degrade to unknown
@@ -147,6 +187,7 @@ class TestVersion:
         }
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is None
+        assert body["session_host"]["stale_relevant"] is None
 
 
 class TestStatus:

@@ -21,6 +21,7 @@ from src.build_info import build_identity, resolve_git_sha
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
+from src.session_host_paths import declared_session_host_paths, paths_touched_between
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.webapp_config import WebappConfig
 
@@ -33,6 +34,7 @@ router = APIRouter()
 _IDENTITY = build_identity()
 _GIT_SHA = _IDENTITY["git_sha"]
 _BUILT_AT = _IDENTITY["captured_at"]
+_CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
 
 
 @router.get("/")
@@ -97,9 +99,17 @@ async def version(request: Request) -> Dict[str, Any]:
     *its* process start) against ``head_sha`` (this repo's current ``HEAD``,
     resolved fresh on every call — the webapp's own cached ``git_sha`` isn't
     used for the comparison, since the webapp itself could equally be stale).
-    ``session_host: {"reachable": false}`` when the session-host can't be
-    reached at all; both git_sha fields are ``"unknown"`` (never compared as
-    stale) when a ``git`` lookup itself fails, e.g. a non-repo test env.
+    ``session_host.stale`` is a raw fact — it flips ``true`` after *any* merge
+    anywhere in the repo, even one that never touched the paths the
+    session-host actually loads (#635). ``session_host.stale_relevant`` scopes
+    that: ``true`` only when a declared session-host path (``CLAUDE.md``'s
+    ``## session-host`` block) was touched between the loaded sha and
+    ``head_sha`` — this is the field that should actually drive a restart
+    decision. ``session_host: {"reachable": false}`` when the session-host
+    can't be reached at all; both ``stale`` and ``stale_relevant`` stay
+    ``None`` (never a confident answer) whenever either sha, or the scoped
+    diff itself, can't be resolved — e.g. a non-repo test env or an unknown
+    host sha.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
@@ -120,25 +130,50 @@ async def version(request: Request) -> Dict[str, Any]:
 def _session_host_freshness(
     identity: Optional[Dict[str, Any]], head_sha: str
 ) -> Dict[str, Any]:
-    """``{"reachable", "git_sha", "started_at", "stale"}`` (#615) from the
-    session-host's own ``/healthz`` body and the repo's current ``head_sha``.
+    """``{"reachable", "git_sha", "started_at", "stale", "stale_relevant"}``
+    (#615, scoped by #635) from the session-host's own ``/healthz`` body and
+    the repo's current ``head_sha``.
 
     ``stale`` is ``None`` (unknown, not "not stale") whenever either SHA is
     unresolvable — an unreachable host or a failed ``git`` lookup must never
-    read as a false "up to date".
+    read as a false "up to date". ``stale_relevant`` narrows ``stale`` to
+    whether a declared session-host path was actually touched between the two
+    shas: ``False`` when the shas match (nothing stale, so nothing relevant),
+    and ``None`` when ``stale`` itself is unknown, or the scoped diff can't be
+    resolved (e.g. the host sha isn't in local git history) — never a
+    confident "unaffected" when the comparison couldn't actually run.
     """
     if identity is None:
-        return {"reachable": False, "git_sha": None, "started_at": None, "stale": None}
+        return {
+            "reachable": False, "git_sha": None, "started_at": None,
+            "stale": None, "stale_relevant": None,
+        }
     host_sha = identity.get("git_sha")
     stale: Optional[bool] = None
+    stale_relevant: Optional[bool] = None
     if host_sha and host_sha != "unknown" and head_sha and head_sha != "unknown":
         stale = host_sha != head_sha
+        stale_relevant = False if not stale else _session_host_path_relevance(host_sha, head_sha)
     return {
         "reachable": True,
         "git_sha": host_sha,
         "started_at": identity.get("started_at"),
         "stale": stale,
+        "stale_relevant": stale_relevant,
     }
+
+
+def _session_host_path_relevance(host_sha: str, head_sha: str) -> Optional[bool]:
+    """Whether the diff between ``host_sha`` and ``head_sha`` touched a
+    declared session-host path (``CLAUDE.md``'s ``## session-host`` block).
+
+    ``None`` when the declaration can't be parsed or the diff can't be
+    resolved — see :func:`src.session_host_paths.paths_touched_between`.
+    """
+    paths = declared_session_host_paths(_CLAUDE_MD_PATH)
+    if not paths:
+        return None
+    return paths_touched_between(PROJECT_ROOT, host_sha, head_sha, paths)
 
 
 @router.get("/api/terminal-themes")
