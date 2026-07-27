@@ -672,6 +672,25 @@ def test_merge_reaped_launcher_session_with_no_transcript_also_suppressed():
     assert cards == []
 
 
+def test_merge_reaped_codex_launcher_session_suppressed(tmp_path: Path):
+    """#613's literal reported ghost, reproduced: ``agent=codex``,
+    ``status=needs-you``, ~14.3 min old -- the exact shape from the issue.
+    The reaped-session check is agent-agnostic (keyed only on
+    ``launcher_session_id``, never on ``agent``), and a Codex row spawned via
+    the launcher's own session-host does carry ``launcher_session_id``
+    (fleet-config#349's ``session_state_codex.py`` inherits
+    ``APP_LAUNCHER_SESSION_ID`` from the same PTY env Claude rows use) -- so
+    this ghost is suppressed exactly like the Claude case above, regardless
+    of how fresh its transcript looks."""
+    row = _state_row(
+        "E:/automation/app-launcher", status="needs-you", updated_min_ago=14,
+        transcript_path=_transcript_file(tmp_path, NOW - timedelta(minutes=1)),
+        launcher_session_id="dead-codex-pty-id", agent="codex",
+    )
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards == []
+
+
 def test_external_row_liveness_reaped_check_does_not_fire_when_id_is_live(tmp_path: Path):
     """Unit-level check on ``_external_row_liveness`` directly: the
     reaped-session check must not fire for a row whose ``launcher_session_id``
