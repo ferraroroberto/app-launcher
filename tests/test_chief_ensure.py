@@ -120,11 +120,11 @@ class TestEnsureSpawn:
         assert "--model fable" in _spawn["flags"]
         assert not _spawn["flags"].rstrip().endswith('"')
         assert str(_spawn["project_dir"]).endswith("fleet-config")
-        # /chief rides the PTY input path: bracketed paste + its own CR.
+        # /chief rides the PTY input path: framing + the submit CR are the
+        # session-host's own job now (#611) — one call, submit=True.
         calls = overrides["session"].send_input.call_args_list
-        assert len(calls) == 2
-        assert calls[0].args == (8446, "chief-1", "\x1b[200~/chief\x1b[201~")
-        assert calls[1].args == (8446, "chief-1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "chief-1", "/chief", True)
         # Friendly display name via the manual-override rename path — and
         # it must land BEFORE /chief (#245 review): the rename forwards the
         # agent-native /rename into the PTY, which the agent rejects if it
@@ -136,7 +136,7 @@ class TestEnsureSpawn:
             name for name, _a, _k in overrides["session"].mock_calls
             if name in ("rename", "send_input")
         ]
-        assert ordered == ["rename", "send_input", "send_input"]
+        assert ordered == ["rename", "send_input"]
 
     def test_model_honors_chief_settings(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
@@ -236,7 +236,7 @@ class TestEnsureSpawn:
         resp = client.post("/api/board/chief/ensure", json={})
         assert resp.status_code == 200
         assert resp.json()["spawned"] is True
-        assert len(overrides["session"].send_input.call_args_list) == 2
+        assert len(overrides["session"].send_input.call_args_list) == 1
 
     def test_missing_fleet_config_checkout_404s(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn

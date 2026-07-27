@@ -112,9 +112,17 @@ def get_session(port: int, session_id: str) -> Dict[str, Any]:
     return _request("GET", port, f"/sessions/{session_id}")
 
 
-def send_input(port: int, session_id: str, data: str) -> Dict[str, Any]:
+def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Dict[str, Any]:
+    """Write ``data`` and, if ``submit``, submit it (issue #611).
+
+    One call, not two — the session-host now owns the whole framing +
+    settle-then-submit sequence internally (``PtySession.submit_input``), so
+    the caller no longer needs to send the text and the CR as two separate
+    requests.
+    """
     return _request(
-        "POST", port, f"/sessions/{session_id}/input", json={"data": data}
+        "POST", port, f"/sessions/{session_id}/input",
+        json={"data": data, "submit": submit},
     )
 
 

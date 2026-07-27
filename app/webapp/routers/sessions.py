@@ -210,37 +210,49 @@ async def session_image(
 async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     """Write composed text into a session's PTY (Tailscale-only + passkey, #301).
 
-    The Board drawer's reply path. Body: ``{"data": str, "submit": bool}``.
-    Multi-line data is wrapped in bracketed-paste markers so the TUI buffers
-    it as one atomic paste (#64); the submitting CR is delivered as its own
-    *second* PTY write, never concatenated onto the text — the same two-frame
-    ordering the compose bar's ➤ Send uses over the WS (#166), which is what
-    keeps the paste-end marker from swallowing the CR.
+    The Board drawer's reply path — chief's only way to steer a running
+    worker. Body: ``{"data": str, "submit": bool}``. One call to the
+    session-host, which now owns the whole framing + settle-then-submit
+    sequence (``PtySession.submit_input``, issue #611, ported from the
+    compose bar's ``framePaste``/``sendSubmit``/``bulkSettle`` — #166/#450/
+    #499): bracketed-paste framing only when the PTY's own output says
+    bracketed-paste mode is on, the submitting CR as its own separate write,
+    and — for a bulk payload — held back until the paste's ingest visibly
+    settles instead of racing it. Previously this endpoint wrote the text and
+    the CR back-to-back with no settle logic, which is why a bulk/multi-line
+    steer could sit unsubmitted as a ``[Pasted text #N]`` chip while the API
+    reported ``{"ok": true}`` (the incident #607 was filed over).
 
-    ``{"ok": true}`` here means both PTY writes were actually accepted by a
-    live session — the session-host now reports a dead/exited session as a
-    409 instead of unconditionally claiming delivery (issue #607), and that
-    propagates through the ``except`` below rather than a false 200.
+    ``data`` may be blank when ``submit`` is true — a bare submit against
+    whatever is already sitting in the composer, with no text write. This is
+    the recovery path for a message already stranded by the exact race above:
+    previously the only way to release it was tapping the phone's own compose
+    Send by hand. Blank ``data`` with ``submit`` false is still a 400 — there
+    would be nothing to do.
+
+    ``{"ok": true}`` means the write (and, if requested, the submit) were
+    actually accepted by a live session — the session-host reports a dead/
+    exited session as a 409 instead of unconditionally claiming delivery
+    (issue #607), and that propagates through the ``except`` below rather
+    than a false 200.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     data = body.get("data")
-    if not isinstance(data, str) or not data.strip():
-        raise HTTPException(status_code=400, detail="data must be a non-empty string")
+    if not isinstance(data, str):
+        raise HTTPException(status_code=400, detail="data must be a string")
     submit = bool(body.get("submit", True))
-    payload = "\x1b[200~" + data + "\x1b[201~" if "\n" in data else data
+    text = data if data.strip() else ""
+    if not text and not submit:
+        raise HTTPException(status_code=400, detail="data must be a non-empty string")
     try:
         await asyncio.to_thread(
-            session_client.send_input, cfg.session_host_port, sid, payload
+            session_client.send_input, cfg.session_host_port, sid, text, submit
         )
-        if submit:
-            await asyncio.to_thread(
-                session_client.send_input, cfg.session_host_port, sid, "\r"
-            )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.session_log(sid, "input", bytes=len(data), submit=submit)
-    return {"ok": True, "bytes": len(data), "submit": submit}
+    audit.session_log(sid, "input", bytes=len(text), submit=submit)
+    return {"ok": True, "bytes": len(text), "submit": submit}
 
 
 @router.websocket("/api/claude-code/sessions/{sid}/ws")

@@ -174,10 +174,13 @@ def create_app() -> FastAPI:
         if session is None:
             raise HTTPException(status_code=404, detail=f"unknown session {sid}")
         body = await _json(request)
-        # write() blocks in real time between chunks over ~512 bytes (see
-        # PtySession.write) — offload it like .stop (issue #253) so a large
-        # paste doesn't stall every other live session's WS pump.
-        delivered = await asyncio.to_thread(session.write, str(body.get("data") or ""))
+        data = str(body.get("data") or "")
+        submit = bool(body.get("submit", True))
+        # submit_input() blocks in real time — a bulk payload's settle wait
+        # (issue #611) plus write()'s own chunk-and-pace pauses over ~512
+        # bytes — so offload it like .stop (issue #253) so it doesn't stall
+        # every other live session's WS pump.
+        delivered = await asyncio.to_thread(session.submit_input, data, submit)
         if not delivered:
             # The session had already exited (or the PTY write raised) — it
             # can still be sitting in manager.get() for up to the 30s reap

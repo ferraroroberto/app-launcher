@@ -75,6 +75,25 @@ _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
 
+# Settle-then-submit for bulk input (issue #611) — ported from
+# app/webapp/static/terminal-compose.js's sendSubmit/bulkSettle (#166/#499),
+# the WS/compose-bar path's fix for the same race the HTTP /input endpoint
+# lacked: a bulk (dictation-sized) paste's bracketed-paste ingest can outrun
+# a fixed delay under machine load, so a CR arriving too soon lands mid-ingest
+# and becomes a literal newline into the still-settling composer instead of
+# Submit, leaving the message stranded as an unsent "[Pasted text #N]" chip.
+# These four values are copied verbatim from terminal-compose.js so the two
+# paths cannot drift and quietly diverge again — see that file's #499 comment
+# for the calibration data (echo-then-quiet was the only protocol that ran
+# clean 20/20 against a live ConPTY probe under synthetic load).
+_BULK_SUBMIT_THRESHOLD_CHARS = 500
+_BULK_FLOOR_MS = 350
+_BULK_QUIET_MS = 350
+_BULK_CAP_MS = 3000
+# Poll interval while waiting for the bulk-settle condition — matches the
+# 50ms setInterval terminal-compose.js polls at.
+_BULK_POLL_S = 0.05
+
 # First-prompt session title (issue #266). Only Claude Code emits a genuine
 # per-conversation OSC title; Antigravity/Copilot emit none and Codex/Pi emit
 # only the project folder, so for those agents we derive a human title from the
@@ -329,6 +348,44 @@ _OSC_COLOR_PARTIAL_RE = re.compile(
 # never wedge the stream.
 _OSC_CARRY_MAX = 64
 
+# Bracketed-paste mode tracking (DECSET 2004, issue #611). The client-side
+# framePaste() in terminal-compose.js only wraps a WS-sent payload in
+# \x1b[200~ / \x1b[201~ when xterm's own term.modes.bracketedPasteMode is on
+# — sending the literal markers to an agent that never asked for them lands
+# as garbage, not a paste. A server-initiated write (the HTTP /input path)
+# has no xterm to ask, so this tracks the same signal directly off the PTY's
+# *output* stream: the agent announces the mode itself via DECSET 2004
+# (`\x1b[?2004h` enable / `\x1b[?2004l` disable). Passive only — never
+# strips these sequences from the stream, since the client's own terminal
+# still needs to see them to keep its own state in sync.
+_BRACKETED_PASTE_RE = re.compile(r"\x1b\[\?2004([hl])")
+# A trailing fragment that could be the start of `\x1b[?2004h`/`l` split
+# across a read boundary — held back and re-checked with the next chunk
+# prepended, so a straddling sequence is never missed. Anchored to the end;
+# tight to the seven-char prefix so it can't swallow unrelated trailing text.
+_BRACKETED_PASTE_PARTIAL_RE = re.compile(r"\x1b(?:\[(?:\?(?:2(?:0(?:0(?:4)?)?)?)?)?)?\Z")
+_BRACKETED_PASTE_CARRY_MAX = 8
+
+
+def _scan_bracketed_paste_mode(chunk: str, carry: str) -> Tuple[Optional[bool], str]:
+    """Track the PTY app's DECSET 2004 state from its *output*.
+
+    Returns ``(latest_or_None, new_carry)``: ``latest`` is the last
+    enable(``True``)/disable(``False``) seen in this chunk, or ``None`` if
+    the chunk carried no (complete) DECSET 2004 sequence. ``new_carry`` is a
+    possibly-split trailing sequence to prepend to the next chunk.
+    """
+    if not carry and "\x1b" not in chunk:
+        return None, ""
+    data = carry + chunk
+    latest: Optional[bool] = None
+    for m in _BRACKETED_PASTE_RE.finditer(data):
+        latest = m.group(1) == "h"
+    tail = data[-_BRACKETED_PASTE_CARRY_MAX:]
+    m = _BRACKETED_PASTE_PARTIAL_RE.search(tail)
+    new_carry = tail[m.start():] if m else ""
+    return latest, new_carry
+
 
 def _trim_ring_head(ring: str) -> str:
     """Advance a freshly hard-truncated ring to the next newline boundary.
@@ -413,6 +470,15 @@ class PtySession:
     # — Claude's raw-ring replay path never needs one. None for a
     # non-fullscreen agent, or before SessionManager wires it in.
     _vt: Optional["VtSnapshot"] = None
+    # Settle-then-submit state for server-initiated writes (issue #611).
+    # _bracketed_paste_mode mirrors xterm's term.modes.bracketedPasteMode,
+    # tracked off the PTY's own DECSET 2004 output (default False — matches
+    # the client-side gate's own default before any signal has been seen).
+    # _last_output_at mirrors terminal-compose.js's t.lastOutputAt, used by
+    # the bulk-settle wait to detect the paste's ingest has gone quiet.
+    _bracketed_paste_mode: bool = False
+    _decset_carry: str = ""
+    _last_output_at: float = 0.0
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -458,6 +524,15 @@ class PtySession:
             )
             if not chunk:
                 continue
+            self._last_output_at = time.time()
+            # Track DECSET 2004 (bracketed-paste mode) off the raw output —
+            # BEFORE any stripping below, since this must see exactly what a
+            # real terminal client would (issue #611).
+            paste_mode, self._decset_carry = _scan_bracketed_paste_mode(
+                chunk, self._decset_carry
+            )
+            if paste_mode is not None:
+                self._bracketed_paste_mode = paste_mode
             if self._vt is not None:
                 self._vt.feed(chunk)
             # Parse OSC window-title sequences and cache the latest title.
@@ -604,6 +679,70 @@ class PtySession:
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
             return False
+
+    def submit_input(self, data: str, submit: bool) -> bool:
+        """Write ``data`` and, if ``submit``, follow it with a submitting CR.
+
+        Ported from ``app/webapp/static/terminal-compose.js``'s
+        ``framePaste``/``sendSubmit``/``bulkSettle`` (issues #166/#450/#499)
+        for the HTTP ``/input`` path (issue #611), which previously wrote the
+        (unconditionally bracketed) text and the CR back-to-back with no
+        settle logic — Claude Code's composer classifies a bulk write as a
+        paste, and a CR arriving mid-ingest is absorbed as a literal newline
+        instead of Submit, stranding the message as an unsent
+        ``[Pasted text #N]`` chip while the caller was told ``ok: true``.
+
+        - Bracketed-paste framing (``\\x1b[200~ … \\x1b[201~``) is applied
+          only when ``self._bracketed_paste_mode`` is currently on (tracked
+          from the PTY's own DECSET 2004 output — see
+          ``_scan_bracketed_paste_mode``), matching ``framePaste``'s gate on
+          xterm's client-side ``term.modes.bracketedPasteMode`` exactly: a
+          literal ``\\x1b[200~`` sent to an agent that never asked for it is
+          garbage, not a paste.
+        - The CR is always its own separate ``write()`` call, never
+          concatenated onto the framed text (#166).
+        - ``data`` blank + ``submit`` → a bare submit against whatever is
+          already sitting in the composer, with no text write at all — the
+          escape hatch for a message already stranded by this exact race
+          (previously both ``{"data": "", "submit": true}`` and any other
+          blank-data call 400'd, leaving no recovery but a human tapping the
+          phone's own Send control).
+        - Payloads at/above ``_BULK_SUBMIT_THRESHOLD_CHARS`` hold the CR
+          until the session's output stream shows the paste was echoed and
+          has gone quiet (floor/quiet/cap — #499); shorter payloads submit
+          immediately, matching ``sendSubmit``'s "short sends stay instant".
+
+        Returns whether everything asked for reached the PTY — ``False`` on
+        the same drop conditions as :meth:`write` (matches #607's contract:
+        never claim delivery for a message that didn't land).
+        """
+        if not data:
+            if not submit:
+                return True
+            return self.write("\r")
+        framed = "\x1b[200~" + data + "\x1b[201~" if self._bracketed_paste_mode else data
+        sent_at = time.time()
+        if not self.write(framed):
+            return False
+        if not submit:
+            return True
+        if len(data) >= _BULK_SUBMIT_THRESHOLD_CHARS:
+            floor_at = sent_at + _BULK_FLOOR_MS / 1000
+            deadline = sent_at + _BULK_CAP_MS / 1000
+            quiet_s = _BULK_QUIET_MS / 1000
+            while True:
+                if self._exited:
+                    break
+                now = time.time()
+                settled = (
+                    now >= floor_at
+                    and self._last_output_at > sent_at
+                    and (now - self._last_output_at) >= quiet_s
+                )
+                if settled or now >= deadline:
+                    break
+                time.sleep(_BULK_POLL_S)
+        return self.write("\r")
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))
