@@ -6,7 +6,8 @@ rides the same input proxy as drawer replies, never /api/board/dispatch),
 a mocked chief reply renders through the drawer's exchange surface, the
 chief card is visually distinct and confirm-protected against the one-tap
 stop every other card keeps, the manual Start affordance shows when no
-chief is alive, and the settings dialog round-trips GET → edit → PUT.
+chief is alive (Restart when one is, #617), and the settings dialog
+round-trips GET → edit → PUT.
 Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
@@ -334,6 +335,33 @@ def test_chat_mode_offers_manual_start_when_chief_down(
     start.click()
     authed_page.wait_for_timeout(500)
     assert ensured.get("method") == "POST", "Start never POSTed ensure"
+
+
+def test_chat_mode_offers_restart_when_chief_alive(
+    authed_page: Page, base_url: str
+) -> None:
+    """#617: Start and Restart are mutually exclusive on actual state — a
+    live chief shows Restart (never Start, which would offer to spawn a
+    duplicate); clicking it confirms, then POSTs ensure with fresh:true —
+    the graceful stop-then-respawn, never the session-host restart."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _mock_exchange(authed_page)
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured, spawned=True)
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+
+    expect(authed_page.locator("#boardChiefStart")).to_be_hidden()
+    restart = authed_page.locator("#boardChiefRestart")
+    expect(restart).to_be_visible()
+
+    authed_page.once("dialog", lambda d: d.accept())
+    restart.click()
+    authed_page.wait_for_timeout(500)
+
+    assert ensured.get("method") == "POST", "Restart never POSTed ensure"
+    assert ensured.get("body", {}).get("fresh") is True
 
 
 def test_chief_settings_dialog_roundtrip(

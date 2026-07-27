@@ -148,6 +148,7 @@ export const els = {
   boardChiefStatus: document.getElementById('boardChiefStatus'),
   boardChiefStatusText: document.getElementById('boardChiefStatusText'),
   boardChiefStart: document.getElementById('boardChiefStart'),
+  boardChiefRestart: document.getElementById('boardChiefRestart'),
   boardChiefSettings: document.getElementById('boardChiefSettings'),
   chiefSettingsDialog: document.getElementById('chiefSettingsDialog'),
   chiefSettingsForm: document.getElementById('chiefSettingsForm'),

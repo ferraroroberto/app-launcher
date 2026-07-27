@@ -12,6 +12,9 @@ the registered daily job best-effort.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.webapp.routers import board as board_router
@@ -89,6 +92,105 @@ def _chief_row(**extra):
     }
     row.update(extra)
     return row
+
+
+class TestReconcileChiefLabel:
+    """Unit coverage for ``_reconcile_chief_label`` (#617): a chief PTY
+    started outside ``ensure`` self-heals its ``label`` from either of two
+    independent signals — ``prompt_title`` (#266, a fresh ``/chief`` typed
+    into a brand-new PTY) or ``shared_name`` (fleet-config#302, Claude's own
+    persisted conversation identity, which survives a Resume into a new PTY
+    after a session-host restart — the case actually observed live against
+    real session 1c8e6dde…, where the first line submitted into the new PTY
+    was Roberto's own chat message, not ``/chief``)."""
+
+    def _unlabelled_row(self, **extra):
+        row = {
+            "session_id": "manual-chief",
+            "kind": "pty",
+            "label": "",
+            "prompt_title": "",
+            "project_dir": "E:/automation/fleet-config",
+            "alive": True,
+        }
+        row.update(extra)
+        return row
+
+    def test_unlabelled_chief_prompt_in_fleet_config_gets_healed(self):
+        row = self._unlabelled_row(prompt_title="/chief")
+        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        assert healed["label"] == "chief"
+
+    def test_resumed_chief_healed_via_shared_name_despite_wrong_prompt(self):
+        """The live-observed case: prompt_title is whatever the human typed
+        first into the resumed PTY, never "/chief" — only shared_name (from
+        Claude's own persisted identity) carries the signal."""
+        row = self._unlabelled_row(prompt_title="ok restarted, check all is good")
+        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        assert healed["label"] == "chief"
+
+    def test_already_labelled_row_is_untouched(self):
+        row = self._unlabelled_row(label="chief", prompt_title="whatever")
+        assert board_router._reconcile_chief_label(row, shared_name=None) is row
+
+    def test_wrong_prompt_title_and_shared_name_is_not_healed(self):
+        row = self._unlabelled_row(prompt_title="/chief please help")
+        healed = board_router._reconcile_chief_label(row, shared_name="fleet-config")
+        assert healed["label"] == ""
+
+    def test_wrong_project_dir_is_not_healed(self):
+        row = self._unlabelled_row(
+            prompt_title="/chief", project_dir="E:/automation/app-launcher"
+        )
+        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        assert healed["label"] == ""
+
+    def test_remote_kind_is_not_healed(self):
+        row = self._unlabelled_row(prompt_title="/chief", kind="remote")
+        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        assert healed["label"] == ""
+
+    def test_shared_name_match_is_case_insensitive(self):
+        row = self._unlabelled_row(prompt_title="hi")
+        healed = board_router._reconcile_chief_label(row, shared_name="Chief")
+        assert healed["label"] == "chief"
+
+    def test_source_dict_is_never_mutated(self):
+        row = self._unlabelled_row(prompt_title="/chief")
+        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        assert healed is not row
+        assert row["label"] == ""
+
+
+class TestReconcileChiefLabels:
+    """``_reconcile_chief_labels`` (#617): the batch join — pulls
+    ``shared_name`` from the state rows via the same agent-aware claim walk
+    every other cross-tab title uses, then applies the per-session heal."""
+
+    def test_joins_shared_name_from_state_row_by_launcher_session_id(self):
+        live = [{
+            "session_id": "manual-chief", "kind": "pty", "label": "",
+            "prompt_title": "ok restarted, check all is good",
+            "project_dir": "E:/automation/fleet-config", "alive": True,
+            "started_at": "2026-07-27T07:14:00Z",
+        }]
+        state_rows = {
+            "hook-row-1": {
+                "launcher_session_id": "manual-chief", "agent": "claude",
+                "name": "chief", "updated_at": "2026-07-27T07:14:05Z",
+            },
+        }
+        healed = board_router._reconcile_chief_labels(live, state_rows)
+        assert healed[0]["label"] == "chief"
+
+    def test_no_matching_state_row_leaves_label_empty(self):
+        live = [{
+            "session_id": "manual-chief", "kind": "pty", "label": "",
+            "prompt_title": "hi", "project_dir": "E:/automation/fleet-config",
+            "alive": True, "started_at": "2026-07-27T07:14:00Z",
+        }]
+        healed = board_router._reconcile_chief_labels(live, {})
+        assert healed[0]["label"] == ""
 
 
 class TestChiefGate:
@@ -169,6 +271,58 @@ class TestEnsureSpawn:
         row = _chief_row()
         del row["label"]
         overrides["session"].list_sessions.return_value = [row]
+        resp = client.post("/api/board/chief/ensure", json={})
+        assert resp.json()["spawned"] is False
+        assert not _spawn
+
+    def test_alive_chief_via_self_heal_is_kept(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir,
+    ):
+        """A chief typed by hand outside ``ensure`` (#617) — no label, but
+        its first submitted line was ``/chief`` in the fleet-config
+        checkout — is recognized as already running, not double-spawned."""
+        client, _, overrides = webapp_client
+        row = _chief_row()
+        del row["label"]
+        row["name"] = "fleet-config"
+        row["prompt_title"] = "/chief"
+        row["project_dir"] = "E:/automation/fleet-config"
+        overrides["session"].list_sessions.return_value = [row]
+        resp = client.post("/api/board/chief/ensure", json={})
+        assert resp.json()["spawned"] is False
+        assert not _spawn
+
+    def test_alive_chief_via_resumed_shared_name_is_kept(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir,
+    ):
+        """The case actually observed live (#617), verified against the real
+        session (1c8e6dde…): a session-host restart kills chief's PTY, and
+        Roberto re-attaches the same Claude Code conversation via Resume —
+        no label, and the first line submitted into the *new* PTY is his own
+        chat message, never "/chief". Only Claude's own persisted conversation
+        name (``shared_name``, joined from the hook state file) identifies it."""
+        client, app, overrides = webapp_client
+        row = _chief_row()
+        del row["label"]
+        row["name"] = "fleet-config"
+        row["prompt_title"] = "ok restarted, check all is good"
+        row["project_dir"] = "E:/automation/fleet-config"
+        row["started_at"] = "2026-07-27T07:14:00Z"
+        overrides["session"].list_sessions.return_value = [row]
+
+        cfg = app.state.webapp_config
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "hook-row-1": {
+                    "launcher_session_id": row["session_id"], "agent": "claude",
+                    "name": "chief", "updated_at": "2026-07-27T07:14:05Z",
+                },
+            }),
+            encoding="utf-8",
+        )
+
         resp = client.post("/api/board/chief/ensure", json={})
         assert resp.json()["spawned"] is False
         assert not _spawn
