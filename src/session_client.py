@@ -63,6 +63,23 @@ def health(port: int) -> bool:
         return False
 
 
+def identity(port: int) -> Optional[Dict[str, Any]]:
+    """The session-host's ``/healthz`` body (``git_sha``/``started_at``, #615),
+    or ``None`` when unreachable — the build-identity companion to
+    :func:`health`'s plain up/down check, used by ``/api/version`` to report
+    whether the session-host is running current code."""
+    try:
+        resp = _loopback_http.pooled_request(
+            "GET", base_url(port) + "/healthz", timeout=2.0
+        )
+        if resp.status_code != 200:
+            return None
+        body = resp.json()
+        return body if isinstance(body, dict) else None
+    except (requests.RequestException, ValueError):
+        return None
+
+
 def create_session(
     port: int,
     project_dir: str,

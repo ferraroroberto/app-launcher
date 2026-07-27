@@ -219,6 +219,8 @@ Build: 35caad4 · 2026-05-19 21:34
 
 Backed by `GET /api/version`, which also returns the current `asset_hash` for quick diff against the PC. The line updates only when the webapp module re-imports (i.e., tray restart or 🔄 Restart webapp) — a phone refresh alone won't move it.
 
+`GET /api/version` also reports a `session_host` block (`{"reachable", "git_sha", "started_at", "stale"}`, issue #615): the session-host on `:8446` is deliberately excluded from `tray.bat --restart`'s reclaim sweep to protect live PTYs (project-scaffolding#35), so it can keep running code that's days old with nothing else surfacing that. `session_host.git_sha` is the SHA that process loaded at *its own* start (not live git state); `stale` is `true` when that differs from `head_sha` (this repo's current `HEAD`, resolved fresh on every call), and `null` — never a confident false — when either SHA can't be resolved. See `CLAUDE.md`'s restart section for what a `stale: true` session-host means for shipping and the one supported way to restart it (`scripts/restart-session-host.ps1`).
+
 ### If the webapp stops answering
 
 The tray runs a health watchdog: every 60 s it round-trips `GET /healthz` on its own webapp — a wedged uvicorn still *listens*, so only a real response proves it's alive. After 3 consecutive failed probes it raises a Windows toast and appends a timestamped line to `webapp/watchdog.log`; the first successful probe afterwards logs the recovery. Recovery stays manual and canonical: `tray.bat --restart`.

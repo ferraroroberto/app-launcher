@@ -131,4 +131,19 @@ Log-Progress ("OK: all checks passed in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
 Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host ("[OK] Ready to ship -- all checks passed in {0:n1}s." -f $sw.Elapsed.TotalSeconds) -ForegroundColor Green
+
+# A green gate + merge + tray.bat --restart still does not make a
+# session-host-path change live -- that process is deliberately excluded
+# from the reclaim sweep (project-scaffolding#35) and can run stale code for
+# days with nothing else surfacing that (issue #615, demonstrated live on
+# #611). Reuse classify_e2e.py's own path categorization (the "session-host"
+# / "session-host/launcher" label it already computes for e2e routing) so
+# this warning never drifts out of sync with that classifier's path list.
+if ($routeReason -match "session-host") {
+    Write-Host ""
+    Write-Host "[!] SESSION-HOST PATHS TOUCHED -- this is NOT live after tray.bat --restart." -ForegroundColor Yellow
+    Write-Host "    Check GET /api/version's session_host.stale field before reporting this" -ForegroundColor Yellow
+    Write-Host "    change as shipped -- if stale, report it as merged but not yet live." -ForegroundColor Yellow
+    Write-Host "    See CLAUDE.md's restart section for the one supported way to restart :8446." -ForegroundColor Yellow
+}
 exit 0

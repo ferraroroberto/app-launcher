@@ -47,6 +47,7 @@ from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
+from src.build_info import build_identity
 from src.session_host import _EOF, SessionManager
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,12 @@ _IMAGE_DIR_NAME = ".launcher-tmp"
 _SAFE_SUFFIX_RE = re.compile(r"^\.[A-Za-z0-9]{1,10}$")
 _MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
+# Captured once at import — the whole point is that this does NOT track live
+# git state (#615): it's what this specific process loaded when it started,
+# which is what a caller needs to know when this process is excluded from
+# the webapp's own restart and can keep running for days unattended.
+_IDENTITY = build_identity()
+
 manager = SessionManager()
 
 
@@ -118,7 +125,13 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz")
     async def healthz() -> Dict[str, Any]:
-        return {"ok": True, "service": "session-host", "sessions": len(manager.list())}
+        return {
+            "ok": True,
+            "service": "session-host",
+            "sessions": len(manager.list()),
+            "git_sha": _IDENTITY["git_sha"],
+            "started_at": _IDENTITY["captured_at"],
+        }
 
     @app.post("/sessions")
     async def create_session(request: Request) -> Dict[str, Any]:
