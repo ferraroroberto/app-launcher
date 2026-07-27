@@ -49,8 +49,9 @@ async def test_short_write_is_one_shot():
     loop = asyncio.get_running_loop()
     session = _make_session(loop)
 
-    session.write("hello")
+    delivered = session.write("hello")
 
+    assert delivered is True
     assert session._pty.write.call_count == 1
     session._pty.write.assert_called_once_with("hello")
 
@@ -76,8 +77,9 @@ async def test_long_write_is_chunked_and_concatenates_back_to_input():
     session = _make_session(loop)
     payload = "".join(chr(0x41 + (i % 26)) for i in range(2048))  # 2 KB
 
-    session.write(payload)
+    delivered = session.write(payload)
 
+    assert delivered is True
     calls = [c.args[0] for c in session._pty.write.call_args_list]
     assert len(calls) > 1, "long write must be chunked"
     assert all(len(c) <= _WRITE_CHUNK_SIZE for c in calls)
@@ -123,35 +125,44 @@ async def test_long_write_does_not_retry_on_pty_return_value():
 
 @pytest.mark.asyncio
 async def test_write_after_exit_is_noop():
-    """A write into a dead session must not touch the (possibly closed) PTY."""
+    """A write into a dead session must not touch the (possibly closed) PTY,
+    and must report the drop (issue #607) rather than silently succeeding —
+    the exited session can still be sitting in manager.get() for up to the
+    30s reap window, so a caller relies on this to know the message never
+    landed."""
     loop = asyncio.get_running_loop()
     session = _make_session(loop)
     session._exited = True
 
-    session.write("x" * (_WRITE_CHUNK_SIZE * 3))
+    delivered = session.write("x" * (_WRITE_CHUNK_SIZE * 3))
 
+    assert delivered is False
     session._pty.write.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_empty_write_is_noop():
-    """Empty payloads must not trigger a spurious PTY call."""
+    """Empty payloads must not trigger a spurious PTY call, and trivially
+    succeed — there was nothing to deliver, so nothing was dropped."""
     loop = asyncio.get_running_loop()
     session = _make_session(loop)
 
-    session.write("")
+    delivered = session.write("")
 
+    assert delivered is True
     session._pty.write.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_write_swallows_pty_exception():
+async def test_write_swallows_pty_exception_but_reports_failure():
     """A PTY-side failure must not propagate — write is best-effort
-    (matches the prior contract and audit-log behaviour)."""
+    (matches the prior contract and audit-log behaviour) — but must now
+    report the drop via its return value (issue #607) instead of silently
+    claiming success."""
     loop = asyncio.get_running_loop()
     session = _make_session(loop)
     session._pty.write.side_effect = OSError("pipe gone")
 
-    # Must not raise.
-    session.write("hello")
-    session.write("x" * (_WRITE_CHUNK_SIZE * 2))
+    # Must not raise, but must report the drop.
+    assert session.write("hello") is False
+    assert session.write("x" * (_WRITE_CHUNK_SIZE * 2)) is False

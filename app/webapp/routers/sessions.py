@@ -216,6 +216,11 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     *second* PTY write, never concatenated onto the text — the same two-frame
     ordering the compose bar's ➤ Send uses over the WS (#166), which is what
     keeps the paste-end marker from swallowing the CR.
+
+    ``{"ok": true}`` here means both PTY writes were actually accepted by a
+    live session — the session-host now reports a dead/exited session as a
+    409 instead of unconditionally claiming delivery (issue #607), and that
+    propagates through the ``except`` below rather than a false 200.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)

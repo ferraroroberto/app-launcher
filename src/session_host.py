@@ -564,15 +564,26 @@ class PtySession:
         if title:
             self.prompt_title = title
 
-    def write(self, data: str) -> None:
-        if self._exited or not data:
-            return
+    def write(self, data: str) -> bool:
+        """Write ``data`` into the PTY. Returns whether it was actually sent.
+
+        ``False`` means the write never reached ``self._pty`` at all — the
+        session had already exited, or the underlying write raised — so a
+        caller (the session-host's ``/input`` route, issue #607) can turn a
+        drop into an honest failure instead of the previous unconditional
+        ``{"ok": true}`` regardless of outcome. An empty payload is trivially
+        ``True``: there was nothing to deliver, so nothing was dropped.
+        """
+        if not data:
+            return True
+        if self._exited:
+            return False
         if not self._prompt_captured:
             self._maybe_capture_prompt(data)
         try:
             if len(data) <= _WRITE_CHUNK_THRESHOLD:
                 self._pty.write(data)
-                return
+                return True
             # Long write (paste / large input): pace it in ~512 B chunks so
             # the burst doesn't overrun the console input queue a busy TUI
             # drains slowly (#64). pywinpty's return value is deliberately
@@ -589,8 +600,10 @@ class PtySession:
                     time.sleep(_WRITE_CHUNK_PAUSE)
                 self._pty.write(data[i : i + _WRITE_CHUNK_SIZE])
                 first = False
+            return True
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
+            return False
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))

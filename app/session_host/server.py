@@ -177,7 +177,16 @@ def create_app() -> FastAPI:
         # write() blocks in real time between chunks over ~512 bytes (see
         # PtySession.write) — offload it like .stop (issue #253) so a large
         # paste doesn't stall every other live session's WS pump.
-        await asyncio.to_thread(session.write, str(body.get("data") or ""))
+        delivered = await asyncio.to_thread(session.write, str(body.get("data") or ""))
+        if not delivered:
+            # The session had already exited (or the PTY write raised) — it
+            # can still be sitting in manager.get() for up to the 30s reap
+            # window. Report the drop instead of the previous unconditional
+            # {"ok": true}, which let a caller believe a message landed when
+            # it never reached the PTY at all (issue #607).
+            raise HTTPException(
+                status_code=409, detail=f"session {sid} not accepting input (exited)"
+            )
         return {"ok": True}
 
     @app.post("/sessions/{sid}/resize")
