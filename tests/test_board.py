@@ -616,6 +616,79 @@ def test_merge_needs_you_quiet_transcript_is_suppressed(tmp_path: Path):
     assert cards == []
 
 
+# ---------------------------------- ghost / dead-process cards (#613) -----
+
+
+def test_merge_shared_transcript_superseded_row_does_not_double_render(tmp_path: Path):
+    """#613 acceptance test: the fleet-config ghost, reproduced. A worker
+    moving from one issue to the next gets its row re-keyed — the superseded
+    row stays unmatched but keeps pointing at the transcript the live session
+    keeps writing. One live session must yield exactly one card, never a
+    real one plus a ghost carrying the old row's stale status."""
+    transcript = _transcript_file(tmp_path, NOW - timedelta(minutes=1))
+    live = [_live("aaa", "E:/automation/fleet-config", 30)]
+    state_rows = {
+        "current-row": _state_row(
+            "E:/automation/fleet-config", status="working", updated_min_ago=1,
+            transcript_path=transcript, launcher_session_id="aaa",
+        ),
+        "superseded-row": _state_row(
+            "E:/automation/fleet-config", status="working", updated_min_ago=30,
+            transcript_path=transcript, launcher_session_id="aaa",
+        ),
+    }
+    cards = board.merge_sessions(live, state_rows, now=NOW)
+    assert len(cards) == 1
+    assert cards[0]["kind"] == "pty"
+    assert cards[0]["session_id"] == "aaa"
+
+
+def test_merge_reaped_launcher_session_suppressed_despite_fresh_transcript(tmp_path: Path):
+    """#613: a hook row whose own ``launcher_session_id`` no longer appears
+    in the live session-host list is provably dead (the session-host is the
+    authority on which PTYs it owns) -- suppressed regardless of how recently
+    its transcript happened to be touched. The Codex ghost's shape: a
+    launcher-spawned session hard-killed without a SessionEnd, its row still
+    inside the transcript-freshness window."""
+    row = _state_row(
+        "E:/automation/app-launcher", status="needs-you", updated_min_ago=5,
+        transcript_path=_transcript_file(tmp_path, NOW - timedelta(minutes=1)),
+        launcher_session_id="dead-pty-id",
+    )
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards == []
+
+
+def test_merge_reaped_launcher_session_with_no_transcript_also_suppressed():
+    row = _state_row(
+        "E:/automation/app-launcher", status="working", updated_min_ago=2,
+        launcher_session_id="dead-pty-id",
+    )
+    cards = board.merge_sessions([], {"t": row}, now=NOW)
+    assert cards == []
+
+
+def test_external_row_liveness_reaped_check_does_not_fire_when_id_is_live(tmp_path: Path):
+    """Unit-level check on ``_external_row_liveness`` directly: the
+    reaped-session check must not fire for a row whose ``launcher_session_id``
+    genuinely IS in the live set -- it falls through to the transcript-claim
+    check and then the ordinary freshness fallback, exactly as before #613."""
+    from src.board_transcript import _external_row_liveness
+
+    row = _state_row(
+        "E:/automation/app-launcher", status="working", updated_min_ago=2,
+        transcript_path=_transcript_file(tmp_path, NOW - timedelta(minutes=1)),
+        launcher_session_id="still-alive",
+    )
+    live_ok, reason = _external_row_liveness(
+        row, NOW,
+        claimed_transcripts=set(),
+        live_launcher_session_ids={"still-alive"},
+    )
+    assert live_ok is True
+    assert reason == "recent transcript activity"
+
+
 # ------------------------------- transcript activity overlay (#305 / #309)
 
 

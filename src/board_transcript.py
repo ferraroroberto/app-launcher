@@ -28,7 +28,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import AbstractSet, Any, Dict, List, Optional, Tuple
 
 from src.board_state import _parse_iso
 
@@ -40,11 +40,18 @@ logger = logging.getLogger(__name__)
 # couple of seconds apart in either order.
 _RESUME_EPSILON = timedelta(seconds=10)
 
-# External-row liveness (#322, tightened by #455): a hook state is semantic
-# evidence, not proof that its process still exists. Only recent transcript
-# activity lets an unmatched row render as an external session. Missing cloud
-# / bridge transcripts and quiet waiting rows otherwise linger for 24 hours.
-_EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=15)
+# External-row liveness (#322, tightened by #455, narrowed by #613): a hook
+# state is semantic evidence, not proof that its process still exists. Only
+# recent transcript activity lets an unmatched row render as an external
+# session. Missing cloud/bridge transcripts and quiet waiting rows otherwise
+# linger for 24 hours. Narrowed from 15 to 5 minutes by #613 — the observed
+# Codex ghost sat at 14.3 minutes, just inside the old window; this is still
+# an inherently imperfect fallback (a process that writes once and exits
+# within the window is indistinguishable from one still running), not a fix
+# for that class — the two deterministic checks in
+# :func:`_external_row_liveness` (reaped launcher session, claimed
+# transcript) are the real fix and run first.
+_EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
@@ -389,29 +396,54 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
 
 
 def _external_row_liveness(
-    row: Optional[Dict[str, Any]], now: datetime
+    row: Optional[Dict[str, Any]],
+    now: datetime,
+    *,
+    claimed_transcripts: AbstractSet[str] = frozenset(),
+    live_launcher_session_ids: AbstractSet[str] = frozenset(),
 ) -> Tuple[bool, str]:
     """Whether an unmatched hook row has independent process-liveness proof.
 
     A hook row can survive a hard kill or a cloud/bridge lifecycle gap for the
     writer's whole 24-hour retention window. Its status says what the agent was
-    doing at the last event; it does not say the process is still alive. For a
-    row with no launcher-owned session-host match, only a transcript written in
-    the last 15 minutes is enough evidence to render an external card.
+    doing at the last event; it does not say the process is still alive. Two
+    stronger, deterministic checks run before the transcript-freshness
+    fallback (#613 — a freshness heuristic is corroboration, not proof):
+
+    * ``launcher_session_id`` present but absent from the *current* live
+      session-host list is definitive: the session-host is the authority on
+      which PTYs it owns, so a row whose own PTY has been reaped is proven
+      dead regardless of how recently its transcript happened to be touched.
+    * A transcript path already claimed by a live, *matched* card's own row
+      (``claimed_transcripts``) means this unmatched row is a superseded
+      leftover of that same session — re-keyed when a worker moved from one
+      issue to the next, still pointing at the transcript the live session
+      keeps writing — not independent evidence of a second process.
+
+    Only once neither applies does a transcript written in the last 15
+    minutes remain the (inherently imperfect) fallback evidence for a
+    genuinely external row the launcher has no other way to verify — a
+    process that writes once and exits within the window is indistinguishable
+    from one still running; #613 narrows this gap, it does not close it.
 
     The reason string is deliberately condition-specific so the caller can
     leave one useful info-level breadcrumb for the next recurrence (#455).
     """
     if row is None:
         return False, "missing state row"
+    launcher_sid = row.get("launcher_session_id")
+    if launcher_sid and str(launcher_sid) not in live_launcher_session_ids:
+        return False, "launcher session no longer live"
     transcript = row.get("transcript_path")
+    if transcript and transcript in claimed_transcripts:
+        return False, "transcript claimed by a live matched session"
     if not transcript:
         return False, "missing transcript path"
     mtime = _transcript_mtime(transcript)
     if mtime is None:
         return False, "transcript file unavailable"
     if now - mtime > _EXTERNAL_ACTIVITY_AFTER:
-        return False, "transcript quiet past 15 minutes"
+        return False, "transcript quiet past 5 minutes"
     return True, "recent transcript activity"
 
 # User lines whose string content is harness plumbing, not a typed prompt:
