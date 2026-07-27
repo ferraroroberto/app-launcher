@@ -921,6 +921,64 @@ def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_pat
     assert cards[0]["status"] == "working"
 
 
+def _turn_duration_line(ts: datetime, pending_agent_count: int) -> str:
+    """Claude Code's own end-of-turn accounting line, emitted the moment a
+    turn ends — the harness-native signal
+    :func:`src.board_transcript._pending_background_dispatch_launched_at`
+    falls back to when its id-keyed scan comes up empty (#627)."""
+    return json.dumps({
+        "type": "system",
+        "subtype": "turn_duration",
+        "durationMs": 1000,
+        "pendingBackgroundAgentCount": pending_agent_count,
+        "timestamp": _iso(ts),
+    })
+
+
+def test_overlay_pending_dispatch_beyond_tail_window_uses_turn_duration_count(tmp_path: Path):
+    """#627, reproduced from a live transcript (project-scaffolding#199's
+    worker): a background ``Agent`` dispatch's launch line sat ~299 KB from
+    EOF by the time its turn ended — past even the widened 256 KiB
+    ``_EXCHANGE_TAIL_BYTES`` window (#594 already widened it once, from 8 KB,
+    for the same class of problem). The id-keyed scan below found nothing
+    outstanding, so the row read as a clean stop (``idle-finished``) while the
+    dispatch was still genuinely running — exactly the false-negative #627
+    warns is worse than the five prior false-``needs-you`` reports it
+    replaced. Claude Code's own ``turn_duration`` line reports
+    ``pendingBackgroundAgentCount`` independent of any byte window (the real
+    transcript's matching line read ``1`` at the same instant); the scan must
+    fall back to it when the id-keyed search finds nothing."""
+    stamp_time = NOW - timedelta(minutes=10)
+    launch = _tool_result_line(
+        stamp_time, {"isAsync": True, "status": "async_launched", "agentId": "agent1"}
+    ) + "\n"
+    # Padding well past the 256 KiB _EXCHANGE_TAIL_BYTES window.
+    filler = (json.dumps({"type": "system", "content": "x" * 400}) + "\n") * 700
+    final_text = _msg_line("assistant", stamp_time) + "\n"
+    turn_duration = _turn_duration_line(stamp_time, 1) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, stamp_time, launch + filler + final_text + turn_duration
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_turn_duration_zero_pending_does_not_block_idle_finished(tmp_path: Path):
+    """#627: a ``turn_duration`` line reporting zero pending agents is not
+    itself evidence of outstanding work — a genuinely clean stop must still
+    read as idle-finished, turn_duration line or not."""
+    stamp_time = NOW - timedelta(minutes=10)
+    final_text = _msg_line("assistant", stamp_time) + "\n"
+    turn_duration = _turn_duration_line(stamp_time, 0) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, stamp_time, final_text + turn_duration
+    )
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle-finished"
+
+
 def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     """Once the completion notice lands, a genuine needs-you-family status
     still wins — the pending check must not keep matching after the work
