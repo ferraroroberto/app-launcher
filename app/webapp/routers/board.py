@@ -156,7 +156,10 @@ async def get_board(request: Request) -> Dict[str, Any]:
     github = github_client.snapshot()
 
     live = _reconcile_chief_labels(live, state["rows"])
-    session_cards = board.merge_sessions(live, state["rows"])
+    session_cards = board.merge_sessions(
+        live, state["rows"],
+        active_issue_repos=board.active_issue_repos(active_issues["rows"]),
+    )
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"])
 

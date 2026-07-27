@@ -18,10 +18,11 @@ resolves to the same state row, and therefore the same title, on both tabs.
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional
 
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
 from src.board_transcript import (
@@ -31,6 +32,40 @@ from src.board_transcript import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Worktree sibling suffix (``skills/_lib/worktree_claim.py``'s ``<repo>-wt-<N>``)
+# stripped so a session built in an isolated worktree still resolves to its
+# primary repo's own active-issue marker (#627).
+_WORKTREE_SUFFIX_RE = re.compile(r"-wt-\d+$")
+
+
+def _normalize_repo_name(name: str) -> str:
+    """Lower-cased repo key for a project/directory name, worktree-suffix
+    stripped — see :data:`_WORKTREE_SUFFIX_RE`."""
+    return _WORKTREE_SUFFIX_RE.sub("", str(name or "").strip().lower())
+
+
+def active_issue_repos(active_issue_rows: Dict[str, Any]) -> FrozenSet[str]:
+    """Distinct lower-cased repo names carrying a live active-issue marker.
+
+    :func:`src.board_state.read_active_issues` already prunes stale/malformed
+    rows, so every ``repo`` value seen here is a currently-open issue
+    workflow. This is the cheap, already-fetched-every-poll signal
+    :func:`merge_sessions` uses to keep a session's card out of
+    ``idle-finished`` while its own repo's issue work is still open (#627) —
+    coarser than the branch/PR-level evidence the issue itself describes
+    (that would need a new ``git``/``gh`` call per session per poll, which
+    this Board explicitly never does — see ``scanner.git_status``'s own
+    on-demand-only docstring), but free and directionally right: prefer
+    under-claiming ``idle-finished`` over asserting it from mere silence.
+    """
+    repos = set()
+    for row in active_issue_rows.values():
+        if isinstance(row, dict):
+            repo = row.get("repo")
+            if isinstance(repo, str) and repo.strip():
+                repos.add(repo.strip().lower())
+    return frozenset(repos)
 
 # Statuses the hook writer emits; anything else renders as "unknown". This
 # gates the *raw* row status only — a card's final ``status`` can diverge
@@ -245,6 +280,7 @@ def merge_sessions(
     state_rows: Dict[str, Dict[str, Any]],
     *,
     now: Optional[datetime] = None,
+    active_issue_repos: Optional[AbstractSet[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Join live session-host sessions with hook state rows into board cards.
 
@@ -261,6 +297,19 @@ def merge_sessions(
     has to fetch the exchange to tell those four apart. The raw
     ``needs-you`` string itself never reaches a card's ``status`` field.
 
+    ``idle-finished`` gets one more downgrade after that split (#627): a
+    clean stop with nothing pending is still only an *absence* of evidence,
+    not positive proof the session's own work is done — a turn can end mid
+    task (no tool call issued, nothing to structurally detect) just as
+    cleanly as a turn that is genuinely finished. Per-session proof would
+    need a fresh ``git``/``gh`` call this Board deliberately never makes on
+    a poll, so ``active_issue_repos`` (see :func:`active_issue_repos`) is the
+    cheap, already-fetched substitute: an ``idle-finished`` card whose repo
+    still has an open issue workflow is reported ``awaiting-input`` instead
+    — a coarser, repo-level check that can occasionally keep a genuinely
+    finished session in view, which is exactly the asymmetry #627 asks for
+    (under-claim, don't over-claim).
+
     Live-session cards also carry ``state_sid`` — the claimed state row's own
     key (``None`` when unmatched) — so a Slack ping's deep link, which only
     knows the hook's transcript UUID, can still resolve to the right card
@@ -268,6 +317,7 @@ def merge_sessions(
     session-host id and no drawer target, so a deep link to one is out of scope.
     """
     now = now or _now()
+    active_repos = active_issue_repos or frozenset()
     cards: List[Dict[str, Any]] = []
     pairs, unmatched = _claim_walk(live, state_rows)
 
@@ -283,6 +333,9 @@ def merge_sessions(
             row, status, anchor, now=now, live_title=sess.get("live_title")
         )
         status = _refine_waiting_status(status, (row or {}).get("transcript_path"))
+        project = (row or {}).get("project") or Path(str(project_dir or "")).name
+        if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
+            status = "awaiting-input"
         cards.append({
             "session_id": sess.get("session_id"),
             "state_sid": sid,
@@ -298,7 +351,7 @@ def merge_sessions(
             "manual_title": sess.get("manual_title") or "",
             "shared_name": (row or {}).get("name"),
             "shared_name_source": (row or {}).get("name_source"),
-            "project": (row or {}).get("project") or Path(str(project_dir or "")).name,
+            "project": project,
             "status": status,
             "age_seconds": _age_seconds(anchor, now),
         })
@@ -316,6 +369,8 @@ def merge_sessions(
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
         status, anchor = _transcript_overlay(row, status, stamp, now=now)
         status = _refine_waiting_status(status, row.get("transcript_path"))
+        if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
+            status = "awaiting-input"
         externally_live, reason = _external_row_liveness(
             row, now,
             claimed_transcripts=claimed_transcripts,
