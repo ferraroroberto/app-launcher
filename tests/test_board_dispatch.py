@@ -108,14 +108,11 @@ class TestSpawnThenType:
         assert "wire the" not in _spawn["flags"]
         assert not _spawn["flags"].rstrip().endswith('"')
         assert _spawn["kind"] == "pty" and _spawn["agent"] == "claude"
-        # The goal arrives byte-identical inside bracketed-paste framing,
-        # with the submitting CR as its own second write.
+        # The goal arrives byte-identical, in a single call — framing and
+        # the submit CR are now the session-host's own job (#611).
         calls = overrides["session"].send_input.call_args_list
-        assert len(calls) == 2
-        assert calls[0].args == (
-            8446, "disp-1", "\x1b[200~/issue-add " + goal + "\x1b[201~"
-        )
-        assert calls[1].args == (8446, "disp-1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "disp-1", "/issue-add " + goal, True)
         assert resp.json()["launched"] == "/issue-add " + goal
 
     @pytest.mark.parametrize("mode,command", [
@@ -130,7 +127,7 @@ class TestSpawnThenType:
         client, _, overrides = webapp_client
         _dispatch(client, overrides, goal="ship it", mode=mode)
         first_write = overrides["session"].send_input.call_args_list[0].args[2]
-        assert first_write == "\x1b[200~" + command + " ship it\x1b[201~"
+        assert first_write == command + " ship it"
 
     @pytest.mark.parametrize("model", ["sonnet", "opus", "fable"])
     def test_claude_models_map_to_model_flag(
@@ -165,10 +162,11 @@ class TestSpawnThenType:
         assert _spawn["agent"] == "codex" and _spawn["kind"] == "pty"
         assert "model_reasoning_effort=" in _spawn["flags"]
         assert "--model" not in _spawn["flags"]
-        # The goal still rides the PTY path, same two-frame contract.
+        # The goal still rides the PTY path, one call, submit=True.
         calls = overrides["session"].send_input.call_args_list
-        assert calls[0].args[2].startswith("\x1b[200~/issue-add ")
-        assert calls[1].args == (8446, "disp-1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args[2].startswith("/issue-add ")
+        assert calls[0].args[3] is True
 
     def test_gpt56_without_codex_installed_400s_before_spawn(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn, monkeypatch
@@ -213,7 +211,7 @@ class TestSpawnThenType:
         overrides["session"].get_session.return_value = {"alive": True}
         resp = _dispatch(client, overrides)
         assert resp.status_code == 200
-        assert len(overrides["session"].send_input.call_args_list) == 2
+        assert len(overrides["session"].send_input.call_args_list) == 1
 
     def test_boot_never_quiescent_still_dispatches(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn
@@ -234,8 +232,8 @@ class TestSpawnThenType:
         resp = _dispatch(client, overrides)
         assert resp.status_code == 200
         calls = overrides["session"].send_input.call_args_list
-        assert len(calls) == 2
-        assert calls[1].args == (8446, "disp-1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args[3] is True
 
 
 class TestDispatchFailure:

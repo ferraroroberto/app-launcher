@@ -7,8 +7,9 @@ Covers the act-from-the-card loop server-side:
     degraded to ``available: False``.
   * ``board.state_row_for_session`` — resolves the same row the board's
     merge renders (newest-session-wins claim order).
-  * ``POST /api/claude-code/sessions/{sid}/input`` — bracketed-paste framing
-    for multi-line data and the two-write CR rule (#166).
+  * ``POST /api/claude-code/sessions/{sid}/input`` — one call to the
+    session-host, which now owns framing + settle-then-submit itself
+    (#611); the bare-submit escape hatch for a stranded composer.
   * ``POST /api/board/issues/start`` — server-built ``/issue-<mode> <N>``
     prompt, mode/number validation, repo resolution in the projects folder.
   * ``GET /api/board/sessions/{sid}/exchange`` — agent-aware native history,
@@ -337,9 +338,9 @@ def _bypass_gate(monkeypatch):
 
 class TestInputProxy:
 
-    def test_multiline_is_bracketed_and_cr_is_second_write(
-        self, webapp_client, _bypass_gate
-    ):
+    def test_multiline_forwarded_raw_in_one_call(self, webapp_client, _bypass_gate):
+        """Framing + the submit CR are the session-host's own job now
+        (#611) — the router just forwards data + submit in a single call."""
         client, _, overrides = webapp_client
         resp = client.post(
             "/api/claude-code/sessions/s1/input",
@@ -347,33 +348,73 @@ class TestInputProxy:
         )
         assert resp.status_code == 200
         calls = overrides["session"].send_input.call_args_list
-        assert len(calls) == 2
-        assert calls[0].args == (8446, "s1", "\x1b[200~line one\nline two\x1b[201~")
-        assert calls[1].args == (8446, "s1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "s1", "line one\nline two", True)
 
-    def test_single_line_not_bracketed(self, webapp_client, _bypass_gate):
+    def test_single_line_forwarded_raw(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
         client.post(
             "/api/claude-code/sessions/s1/input",
             json={"data": "hello", "submit": True},
         )
         calls = overrides["session"].send_input.call_args_list
-        assert calls[0].args == (8446, "s1", "hello")
-        assert calls[1].args == (8446, "s1", "\r")
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "s1", "hello", True)
 
-    def test_no_submit_sends_no_cr(self, webapp_client, _bypass_gate):
+    def test_no_submit_forwards_submit_false(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
         client.post(
             "/api/claude-code/sessions/s1/input",
             json={"data": "draft", "submit": False},
         )
-        assert len(overrides["session"].send_input.call_args_list) == 1
+        calls = overrides["session"].send_input.call_args_list
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "s1", "draft", False)
 
-    def test_empty_data_is_400(self, webapp_client, _bypass_gate):
+    def test_blank_data_without_submit_is_400(self, webapp_client, _bypass_gate):
+        """Blank data with no submit is a genuine no-op request — nothing
+        to write, nothing to submit — unlike the bare-submit escape hatch
+        below, which always carries submit=True."""
         client, _, _ = webapp_client
         assert client.post(
-            "/api/claude-code/sessions/s1/input", json={"data": "   "}
+            "/api/claude-code/sessions/s1/input",
+            json={"data": "   ", "submit": False},
         ).status_code == 400
+        assert client.post(
+            "/api/claude-code/sessions/s1/input",
+            json={"data": "", "submit": False},
+        ).status_code == 400
+
+    def test_bare_submit_escape_hatch_releases_stranded_composer(
+        self, webapp_client, _bypass_gate
+    ):
+        """{"data": "", "submit": true} (#611) — release whatever is already
+        sitting in the composer, with no text write. The recovery path for a
+        message stranded by the submit race, previously only reachable by
+        tapping the phone's own compose Send by hand."""
+        client, _, overrides = webapp_client
+        resp = client.post(
+            "/api/claude-code/sessions/s1/input",
+            json={"data": "", "submit": True},
+        )
+        assert resp.status_code == 200
+        calls = overrides["session"].send_input.call_args_list
+        assert len(calls) == 1
+        assert calls[0].args == (8446, "s1", "", True)
+
+    def test_whitespace_only_data_with_submit_is_bare_submit(
+        self, webapp_client, _bypass_gate
+    ):
+        """Whitespace-only data collapses to the same bare-submit call as
+        an empty string — there is no meaningful text to write either way."""
+        client, _, overrides = webapp_client
+        resp = client.post(
+            "/api/claude-code/sessions/s1/input",
+            json={"data": "   ", "submit": True},
+        )
+        assert resp.status_code == 200
+        calls = overrides["session"].send_input.call_args_list
+        assert calls[0].args == (8446, "s1", "", True)
 
     def test_dead_session_surfaces_as_error_not_false_ok(
         self, webapp_client, _bypass_gate

@@ -488,25 +488,28 @@ async def _await_pty_quiescent(port: int, sid: str) -> None:
 async def _type_into_session(port: int, sid: str, command: str) -> None:
     """Await readiness + quiescence, then type ``command`` into the PTY.
 
-    Bracketed-paste framing keeps the text one atomic paste (no
-    per-keystroke TUI interpretation) and routes it through the
-    first-prompt title capture (#266); the CR is its own second write so
-    the paste-end marker can't swallow it (#64/#166). The quiescence wait
-    (#549) guards against typing while the agent's boot output is still
-    growing, which can swallow that submitting CR — first-paint alone is
-    not enough. On any failure past the spawn the half-spawned session is
-    killed, so a timeout can't strand an orphan the user never asked for.
-    Shared by dispatch (#302) and the chief ensure (#245) so the timing
-    rules stay single-sourced instead of drifting between call sites.
+    Framing, the CR-as-a-separate-write ordering (#64/#166), and — for a
+    long ``command`` — the settle-then-submit wait (#611) all now live
+    session-host-side in ``PtySession.submit_input``, keeping the text one
+    atomic paste with no per-keystroke TUI interpretation and routing it
+    through the first-prompt title capture (#266). Framing is applied only
+    when the PTY's own DECSET 2004 output says bracketed-paste mode is on —
+    always true by the time this fires, since typing happens after both the
+    readiness and quiescence waits below, well past the agent's own paste-
+    mode announcement during boot. The quiescence wait (#549) guards against
+    typing while the agent's boot output is still growing, which can swallow
+    the submitting CR — first-paint alone is not enough. On any failure past
+    the spawn the half-spawned session is killed, so a timeout can't strand
+    an orphan the user never asked for. Shared by dispatch (#302) and the
+    chief ensure (#245) so the timing rules stay single-sourced instead of
+    drifting between call sites.
     """
     try:
         await _await_dispatch_ready(port, sid)
         await _await_pty_quiescent(port, sid)
         await asyncio.to_thread(
-            session_client.send_input, port, sid,
-            "\x1b[200~" + command + "\x1b[201~",
+            session_client.send_input, port, sid, command, True,
         )
-        await asyncio.to_thread(session_client.send_input, port, sid, "\r")
     except (HTTPException, session_client.SessionHostError) as exc:
         try:
             await asyncio.to_thread(session_client.stop, port, sid, "kill")
