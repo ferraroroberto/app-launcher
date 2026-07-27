@@ -50,11 +50,12 @@ export function authHeaders({ terminalToken, contentType } = {}) {
 
 // True when this browser is a desktop (a fine/mouse pointer), as opposed
 // to a phone (a coarse/touch pointer). A coding launch carries this so the
-// server can skip the PC mirror window (issue #159): a desktop browser
-// already renders the streamed terminal in-page, so spawning a separate
-// Edge --app window is redundant — the redundancy only surfaced when the
-// desktop reached the app over the tunnel (non-loopback), where the server
-// can't tell it's the PC by IP alone. A phone keeps the mirror.
+// server opens a dedicated PC mirror window rather than rendering the
+// terminal inside the desktop browser's own tab (issue #241 — the "obvious"
+// #159 optimization of skipping a redundant in-page render was reversed:
+// that redundancy was what let Stop & Close tear down the controlling
+// browser window). The flag is what distinguishes a desktop from a phone
+// regardless of loopback vs tunnel, since the server can't tell by IP alone.
 export function isDesktopClient() {
   try {
     return window.matchMedia('(pointer: fine)').matches;
