@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse
 
 from src import session_client
 from src.agents import detect_agents
-from src.build_info import build_identity, resolve_git_sha
+from src.build_info import build_identity, resolve_deployed_sha, resolve_git_sha
 from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
@@ -96,28 +96,35 @@ async def version(request: Request) -> Dict[str, Any]:
     keep running code that is days old with nothing else surfacing that —
     exactly what happened to #611's fix on 2026-07-27. ``session_host.stale``
     compares the session-host's own loaded ``git_sha`` (captured once, at
-    *its* process start) against ``head_sha`` (this repo's current ``HEAD``,
-    resolved fresh on every call — the webapp's own cached ``git_sha`` isn't
-    used for the comparison, since the webapp itself could equally be stale).
+    *its* process start) against ``deployed_sha`` — the repo's resolved
+    default remote branch (``origin/HEAD``, normally ``origin/main``),
+    resolved fresh on every call. This is **not** ``head_sha`` (below): #641
+    found that comparing against the *live checkout's current branch tip*
+    reports a false ``stale_relevant=false`` whenever the primary checkout
+    transiently sits on an unrelated feature branch (e.g. a worker occupying
+    the tree mid-issue) that never contained the merged fix being checked
+    for. ``deployed_sha`` instead tracks what's actually mergeable/shippable
+    regardless of what the on-disk checkout happens to be doing right now.
     ``session_host.stale`` is a raw fact — it flips ``true`` after *any* merge
     anywhere in the repo, even one that never touched the paths the
     session-host actually loads (#635). ``session_host.stale_relevant`` scopes
     that: ``true`` only when a declared session-host path (``CLAUDE.md``'s
     ``## session-host`` block) was touched between the loaded sha and
-    ``head_sha`` — this is the field that should actually drive a restart
+    ``deployed_sha`` — this is the field that should actually drive a restart
     decision. ``session_host: {"reachable": false}`` when the session-host
     can't be reached at all; both ``stale`` and ``stale_relevant`` stay
     ``None`` (never a confident answer) whenever either sha, or the scoped
-    diff itself, can't be resolved — e.g. a non-repo test env or an unknown
-    host sha.
+    diff itself, can't be resolved — e.g. a non-repo test env, an unknown
+    host sha, or no resolvable ``origin`` remote.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
-    head_sha, host_identity = await asyncio.gather(
+    head_sha, deployed_sha, host_identity = await asyncio.gather(
         asyncio.to_thread(resolve_git_sha),
+        asyncio.to_thread(resolve_deployed_sha),
         asyncio.to_thread(session_client.identity, cfg.session_host_port),
     )
-    session_host = _session_host_freshness(host_identity, head_sha)
+    session_host = _session_host_freshness(host_identity, deployed_sha)
     return {
         "git_sha": _GIT_SHA,
         "built_at": _BUILT_AT,
@@ -128,11 +135,13 @@ async def version(request: Request) -> Dict[str, Any]:
 
 
 def _session_host_freshness(
-    identity: Optional[Dict[str, Any]], head_sha: str
+    identity: Optional[Dict[str, Any]], deployed_sha: str
 ) -> Dict[str, Any]:
     """``{"reachable", "git_sha", "started_at", "stale", "stale_relevant"}``
-    (#615, scoped by #635) from the session-host's own ``/healthz`` body and
-    the repo's current ``head_sha``.
+    (#615, scoped by #635, ref fixed by #641) from the session-host's own
+    ``/healthz`` body and the repo's resolved ``deployed_sha`` (its default
+    remote branch tip, e.g. ``origin/main`` — not the live checkout's current
+    branch, which can transiently point anywhere).
 
     ``stale`` is ``None`` (unknown, not "not stale") whenever either SHA is
     unresolvable — an unreachable host or a failed ``git`` lookup must never
@@ -151,9 +160,11 @@ def _session_host_freshness(
     host_sha = identity.get("git_sha")
     stale: Optional[bool] = None
     stale_relevant: Optional[bool] = None
-    if host_sha and host_sha != "unknown" and head_sha and head_sha != "unknown":
-        stale = host_sha != head_sha
-        stale_relevant = False if not stale else _session_host_path_relevance(host_sha, head_sha)
+    if host_sha and host_sha != "unknown" and deployed_sha and deployed_sha != "unknown":
+        stale = host_sha != deployed_sha
+        stale_relevant = (
+            False if not stale else _session_host_path_relevance(host_sha, deployed_sha)
+        )
     return {
         "reachable": True,
         "git_sha": host_sha,
@@ -163,8 +174,8 @@ def _session_host_freshness(
     }
 
 
-def _session_host_path_relevance(host_sha: str, head_sha: str) -> Optional[bool]:
-    """Whether the diff between ``host_sha`` and ``head_sha`` touched a
+def _session_host_path_relevance(host_sha: str, deployed_sha: str) -> Optional[bool]:
+    """Whether the diff between ``host_sha`` and ``deployed_sha`` touched a
     declared session-host path (``CLAUDE.md``'s ``## session-host`` block).
 
     ``None`` when the declaration can't be parsed or the diff can't be
@@ -173,7 +184,7 @@ def _session_host_path_relevance(host_sha: str, head_sha: str) -> Optional[bool]
     paths = declared_session_host_paths(_CLAUDE_MD_PATH)
     if not paths:
         return None
-    return paths_touched_between(PROJECT_ROOT, host_sha, head_sha, paths)
+    return paths_touched_between(PROJECT_ROOT, host_sha, deployed_sha, paths)
 
 
 @router.get("/api/terminal-themes")
