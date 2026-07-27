@@ -41,7 +41,6 @@ import { openSessionRename, sessionTitle, stopSession } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
-import { setSwitch } from './_vendored/switch/switch.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 
@@ -1028,10 +1027,10 @@ async function dispatchChat() {
 }
 
 // ---- chief settings dialog (#245): GET on open, PUT on Save. The dialog
-// is the modal contract's editor shape (rename-dialog base); the respawn
-// switch is the vendored fleet switch.
-
-let chiefRespawnOn = true;
+// is the modal contract's editor shape (rename-dialog base). #616 retired
+// the daily-respawn setting (fleet-config#442/#449 shipped compact-and-
+// continue, making an unattended respawn actively harmful to a live batch)
+// — model and worker cap are all that's left to edit here.
 
 async function openChiefSettings() {
   try {
@@ -1041,9 +1040,6 @@ async function openChiefSettings() {
     });
     const s = body.settings || {};
     els.chiefModelSelect.value = s.model || 'fable';
-    chiefRespawnOn = s.respawn_enabled !== false;
-    setSwitch(els.chiefRespawnToggle, chiefRespawnOn);
-    els.chiefRespawnAt.value = s.respawn_at || '05:00';
     els.chiefWorkerCap.value = String(s.worker_cap || 3);
     els.chiefSettingsDialog.showModal();
   } catch (exc) {
@@ -1054,22 +1050,16 @@ async function openChiefSettings() {
 async function saveChiefSettings() {
   try {
     const tt = await ensureTerminalToken();
-    const body = await jsonApi('/api/board/chief/settings', {
+    await jsonApi('/api/board/chief/settings', {
       method: 'PUT',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify({
         model: els.chiefModelSelect.value,
-        respawn_enabled: chiefRespawnOn,
-        respawn_at: els.chiefRespawnAt.value,
         worker_cap: parseInt(els.chiefWorkerCap.value, 10),
       }),
     });
     els.chiefSettingsDialog.close();
-    if (body.job_warning) {
-      toast('Saved — ' + body.job_warning, 'error', { icon: 'triangle-alert' });
-    } else {
-      toast('Chief settings saved', 'good', { icon: 'circle-check' });
-    }
+    toast('Chief settings saved', 'good', { icon: 'circle-check' });
   } catch (exc) {
     apiFailToast('Chief settings save failed', exc);
   }
@@ -1114,10 +1104,6 @@ function wireChief() {
     }
   });
   els.boardChiefSettings.addEventListener('click', openChiefSettings);
-  els.chiefRespawnToggle.addEventListener('click', function () {
-    chiefRespawnOn = !chiefRespawnOn;
-    setSwitch(els.chiefRespawnToggle, chiefRespawnOn);
-  });
   els.chiefSettingsForm.addEventListener('submit', function (e) {
     e.preventDefault();
     saveChiefSettings();
