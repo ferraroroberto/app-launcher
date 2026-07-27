@@ -167,16 +167,41 @@ class TestVersion:
         assert body["session_host"]["stale"] is True
         assert body["session_host"]["stale_relevant"] is None
 
-    def test_session_host_not_stale_when_sha_matches_head(self, webapp_client):
+    def test_session_host_not_stale_when_sha_matches_deployed(self, webapp_client):
         client, app, overrides = webapp_client
         from app.webapp.routers import misc as misc_router
-        current_head = misc_router.resolve_git_sha()
+        deployed_sha = misc_router.resolve_deployed_sha()
         overrides["session"].identity.return_value = {
-            "git_sha": current_head, "started_at": "2026-07-27T08:00:00",
+            "git_sha": deployed_sha, "started_at": "2026-07-27T08:00:00",
         }
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is False
         assert body["session_host"]["stale_relevant"] is False
+
+    def test_stale_relevant_compares_against_deployed_ref_not_checkout_branch(
+        self, webapp_client, monkeypatch
+    ):
+        """#641 regression: the primary checkout can transiently sit on an
+        unrelated feature branch that never contained a merged, declared-path
+        commit. ``stale_relevant`` must compare against the resolved deployed
+        ref (``origin/main``), not that transient branch tip — else it
+        under-reports risk (reports ``false`` when the answer is ``true``)."""
+        client, app, overrides = webapp_client
+        from app.webapp.routers import misc as misc_router
+        # Simulate: the live checkout's HEAD (head_sha) is on an unrelated
+        # branch that does NOT contain the fix; the resolved deployed ref
+        # (origin/main) DOES. A pre-#641 implementation compared against
+        # head_sha and would have missed this entirely.
+        monkeypatch.setattr(misc_router, "resolve_git_sha", lambda *a, **k: "unrelated")
+        monkeypatch.setattr(misc_router, "resolve_deployed_sha", lambda *a, **k: "deployed1")
+        monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, d: d == "deployed1")
+        overrides["session"].identity.return_value = {
+            "git_sha": "stalehost", "started_at": "2026-07-27T08:00:00",
+        }
+        body = client.get("/api/version").json()
+        assert body["head_sha"] == "unrelated"
+        assert body["session_host"]["stale"] is True
+        assert body["session_host"]["stale_relevant"] is True
 
     def test_unknown_sha_never_reads_as_stale(self, webapp_client):
         """A failed git lookup on either side must degrade to unknown
