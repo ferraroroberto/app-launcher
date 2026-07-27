@@ -163,6 +163,33 @@ def _claim_walk(
     return pairs, unmatched
 
 
+def _claimed_transcript_paths(pairs: List[tuple]) -> "set[str]":
+    """Transcript paths already backing a live, matched session's own row
+    (#613) — an unmatched row pointing at the same file is a superseded
+    leftover of that same session (re-keyed when a worker moved from one
+    issue to the next), not independent evidence of a second live process."""
+    claimed: "set[str]" = set()
+    for sess, row, _sid in pairs:
+        if not sess.get("alive") or not row:
+            continue
+        path = row.get("transcript_path")
+        if path:
+            claimed.add(path)
+    return claimed
+
+
+def _live_launcher_session_ids(live: List[Dict[str, Any]]) -> "set[str]":
+    """Every currently-alive session-host id (#613) — the session-host is the
+    authority on which PTYs it owns, so a hook row whose own
+    ``launcher_session_id`` is absent from this set is provably dead, however
+    recently its transcript happened to be touched."""
+    return {
+        str(sess.get("session_id"))
+        for sess in live
+        if sess.get("alive") and sess.get("session_id")
+    }
+
+
 def state_row_for_session(
     live: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
@@ -261,6 +288,9 @@ def merge_sessions(
             "age_seconds": _age_seconds(anchor, now),
         })
 
+    claimed_transcripts = _claimed_transcript_paths(pairs)
+    live_launcher_session_ids = _live_launcher_session_ids(live)
+
     for sid, row in unmatched.items():
         stamp = _parse_iso(row.get("updated_at"))
         if stamp is None or now - stamp > STATE_STALE_AFTER:
@@ -270,7 +300,11 @@ def merge_sessions(
         project = row.get("project") or Path(str(cwd or "")).name
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
         status, anchor = _transcript_overlay(row, status, stamp)
-        externally_live, reason = _external_row_liveness(row, now)
+        externally_live, reason = _external_row_liveness(
+            row, now,
+            claimed_transcripts=claimed_transcripts,
+            live_launcher_session_ids=live_launcher_session_ids,
+        )
         if not externally_live:
             if sid not in _LOGGED_SUPPRESSED_ROWS:
                 if len(_LOGGED_SUPPRESSED_ROWS) >= _SUPPRESSED_LOG_CAP:
