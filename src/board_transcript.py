@@ -74,8 +74,27 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 # this same spinner, so it cannot by itself distinguish "still legitimately
 # working" from "wedged mid-spinner". Closing that remaining gap needs a
 # freshness check against the session's own last PTY output — #627's named
-# remainder (tracking issue TBD), not solved here.
+# remainder, closed by :data:`_WEDGED_PTY_AFTER` below (#636).
 _BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿]")
+
+# Wedged-PTY staleness (#636): how old ``last_output_at`` (the PTY's raw-read
+# timestamp, session_host.py's ``PtySession._last_output_at``) can be before
+# a busy ``live_title`` is no longer trusted at face value. Live-probed
+# against two real, concurrently-busy production sessions on this box (a
+# 20s WS-attach sample per session, read-only, no input sent): raw output
+# arrived at a median ~100ms cadence in both, with the single largest
+# inter-arrival gap observed at 1.06s across ~400 combined frames — a
+# genuine spinner repaints continuously regardless of whether the title
+# *string* itself changes. 10s is a ~10x margin over that worst observed
+# gap: generous enough to absorb a slow disk flush or scheduler hiccup
+# without crying wolf, while still being an order of magnitude tighter than
+# :data:`_STALLED_DISPATCH_AFTER` (a *background-dispatch* staleness check,
+# not a PTY-heartbeat one — the two measure different things at different
+# timescales). A ``last_output_at`` past this age means the PTY has gone
+# genuinely quiet, so the busy glyph is stale chrome, not proof of a live
+# turn — the override below falls through to the pre-#631 transcript-based
+# checks instead of trusting it.
+_WEDGED_PTY_AFTER = timedelta(seconds=10)
 
 
 def _live_title_is_busy(live_title: Optional[str]) -> bool:
@@ -194,6 +213,28 @@ def _transcript_mtime(transcript_path: Any) -> Optional[datetime]:
         return None
 
 
+def _pty_output_is_fresh(
+    last_output_at: Optional[float], now: datetime
+) -> bool:
+    """Whether ``last_output_at`` (``PtySession._last_output_at``, a raw
+    ``time.time()`` epoch stamp) is recent enough to trust a busy
+    ``live_title`` at face value — see :data:`_WEDGED_PTY_AFTER`.
+
+    ``None`` (an older ``to_api()`` build with no such field yet, or a
+    non-PTY/unmatched row with no live session to read from at all) means
+    "no freshness signal available", not "stale" — treated as fresh so the
+    pre-#636 behavior (trust the busy glyph unconditionally) is unchanged
+    when this signal simply isn't there. A non-positive value is the same
+    "never recorded" case, not a real epoch-0 timestamp (session_host.py
+    always stamps this in the same read that first populates ``live_title``,
+    so a genuinely busy title with a zero stamp can't happen in practice).
+    """
+    if last_output_at is None or last_output_at <= 0:
+        return True
+    age = now - datetime.fromtimestamp(last_output_at, tz=timezone.utc)
+    return age <= _WEDGED_PTY_AFTER
+
+
 def _transcript_overlay(
     row: Optional[Dict[str, Any]],
     status: str,
@@ -201,15 +242,21 @@ def _transcript_overlay(
     *,
     now: Optional[datetime] = None,
     live_title: Optional[str] = None,
+    last_output_at: Optional[float] = None,
 ) -> tuple:
     """Override a waiting status with ``working`` (or, for a long-stuck
     dispatch, ``stalled``) when the transcript says so.
 
     Checked first (#631/#627): a busy ``live_title`` (see
     :func:`_live_title_is_busy`) short-circuits straight to ``working``,
-    before any of the transcript-file reads below run. It is sourced from
-    the live PTY, not this row's transcript, so it is immune to the
-    JSONL write-ordering race the rest of this function has to work around.
+    before any of the transcript-file reads below run — but only while
+    ``last_output_at`` is also fresh (:func:`_pty_output_is_fresh`, #636): a
+    busy glyph frozen on a genuinely wedged PTY (no more raw output at all)
+    is stale chrome, not proof of a live turn, so it falls through to the
+    transcript-based checks below instead — the same path a non-busy title
+    already takes. It is sourced from the live PTY, not this row's
+    transcript, so it is immune to the JSONL write-ordering race the rest of
+    this function has to work around.
 
     The hooks flip status only on prompt-submit / stop / notification — but
     Claude *resumes* without any of those firing (an answered permission
@@ -247,7 +294,7 @@ def _transcript_overlay(
     if row is None or status not in ("needs-you", "idle"):
         return status, anchor
     now = now or _now()
-    if _live_title_is_busy(live_title):
+    if _live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
         # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
         # this override only proves busy as of this instant, not since when.
         return "working", now

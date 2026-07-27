@@ -824,6 +824,91 @@ def test_overlay_idle_live_title_does_not_force_a_false_override(tmp_path: Path)
     assert cards[0]["status"] == "idle-finished"
 
 
+# ------------------------------------------- wedged-PTY freshness gate (#636)
+
+
+def test_pty_output_is_fresh_boundaries():
+    from src.board_transcript import _WEDGED_PTY_AFTER, _pty_output_is_fresh
+
+    assert _pty_output_is_fresh(None, NOW) is True  # no signal -> trust the glyph
+    assert _pty_output_is_fresh(0.0, NOW) is True  # never recorded, same as no signal
+    fresh = (NOW - timedelta(seconds=1)).timestamp()
+    assert _pty_output_is_fresh(fresh, NOW) is True
+    at_threshold = (NOW - _WEDGED_PTY_AFTER).timestamp()
+    assert _pty_output_is_fresh(at_threshold, NOW) is True  # inclusive boundary
+    stale = (NOW - _WEDGED_PTY_AFTER - timedelta(seconds=1)).timestamp()
+    assert _pty_output_is_fresh(stale, NOW) is False
+
+
+def test_overlay_busy_live_title_with_fresh_last_output_at_still_overrides(tmp_path: Path):
+    """#636 must not regress #631: a busy live_title backed by genuinely
+    recent PTY output (last_output_at inside the wedged-PTY threshold) keeps
+    short-circuiting straight to working, same fixture as #631's own
+    regression test."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 30,
+            live_title="\u2802 doing the thing",
+            last_output_at=(NOW - timedelta(seconds=1)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_wedged_busy_live_title_does_not_force_working(tmp_path: Path):
+    """A busy live_title frozen on a PTY that has gone genuinely quiet (#636,
+    #627's remainder) must not be trusted at face value — same fixture as
+    the #631 busy-title regression test above, but with a stale
+    last_output_at, must fall through to the ordinary transcript-based
+    outcome instead of blindly reporting working."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 30,
+            live_title="\u2802 doing the thing",
+            last_output_at=(NOW - timedelta(minutes=5)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] != "working"
+    assert cards[0]["status"] == "idle-finished"
+
+
+def test_overlay_wedged_busy_live_title_falls_through_to_stalled_dispatch(tmp_path: Path):
+    """A wedged busy live_title on top of a genuinely stalled background
+    dispatch (#608) must resolve to stalled, not working — the freshness
+    gate falling through has to reach the existing stalled-dispatch check,
+    not just any transcript-based outcome. Same transcript fixture as
+    test_stalled_background_dispatch_over_threshold_is_stalled."""
+    stamp_time = NOW - timedelta(minutes=40)
+    launch_time = NOW - timedelta(minutes=35)
+    content = _tool_result_line(
+        launch_time, {"stdout": "", "stderr": "", "backgroundTaskId": "btask1"}
+    ) + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 45,
+            live_title="\u2802 doing the thing",
+            last_output_at=(NOW - timedelta(minutes=5)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "stalled"
+
+
 def test_idle_finished_downgraded_when_repo_has_active_issue(tmp_path: Path):
     """#627: a clean stop with nothing pending is only an *absence* of
     evidence, not proof the session's own work is done — the same shape a
