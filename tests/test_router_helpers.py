@@ -1,10 +1,12 @@
 """Unit tests for cross-router helpers.
 
-Focus: ``should_mirror_to_pc`` — the decision (issue #20 / #241) of whether
-a PTY launch opens the dedicated PC mirror window. Both a phone launch
-(non-loopback, no ``desktop`` flag) and a desktop-browser launch
-(``desktop: true``, loopback or tunnel) open it; only a non-desktop loopback
-launch skips it and renders in-page.
+Focus: ``should_mirror_to_pc`` — the decision (issue #20 / #241, widened by
+#609) of whether a PTY launch opens the dedicated PC mirror window.
+Mirroring is the *default* for every caller — a phone launch (non-loopback),
+a desktop-browser launch (``desktop: true``), and a bare loopback API caller
+(chief, a script — no flags at all) all open it. Only a loopback caller that
+explicitly sets ``in_page: true`` (a genuine SPA rendering the session
+itself) skips it.
 
 Plus ``tsnet_host_from_cert`` / ``mirror_url`` (issue #356) — which URL that
 window opens: loopback (auth-bypass) on a self-signed cert, the ts.net URL
@@ -58,17 +60,40 @@ def test_desktop_flag_opens_mirror_over_loopback() -> None:
         )
 
 
-def test_loopback_launch_without_desktop_flag_skips_mirror() -> None:
-    # A loopback client that did NOT flag itself a desktop (the rare coarse-
-    # pointer PC browser) still renders in-page — harmless now that an in-page
-    # loopback terminal is no longer mis-classified as a mirror (issue #241).
+def test_loopback_in_page_flag_skips_mirror() -> None:
+    # Issue #609: a genuine SPA loopback client (the rare coarse-pointer PC
+    # browser) explicitly says it's rendering the session itself — the only
+    # case that still skips the mirror.
     for host in ("127.0.0.1", "::1", "localhost"):
-        assert should_mirror_to_pc(True, _request(host), {}) is False
+        assert should_mirror_to_pc(True, _request(host), {"in_page": True}) is False
+
+
+def test_loopback_api_launch_with_no_flags_opens_mirror() -> None:
+    """Issue #609: the actual bug. A non-browser loopback API caller — the
+    fleet chief dispatching over 127.0.0.1, or any script — sends neither
+    ``desktop`` nor ``in_page``. There is no page for it to render into, so
+    unlike the old "loopback + no flag = skip" inference, this must now
+    default to mirroring rather than silently rendering nowhere."""
+    for host in ("127.0.0.1", "::1", "localhost"):
+        assert should_mirror_to_pc(True, _request(host), {}) is True
+
+
+def test_loopback_api_launch_with_rows_cols_but_no_in_page_opens_mirror() -> None:
+    """A caller that sizes its own terminal (``rows``/``cols``, the same
+    keys board.py's launch handlers already read from any caller) but never
+    sets ``in_page`` is still a non-rendering API caller, not a browser —
+    ``in_page`` is a distinct, purpose-built signal, not inferred from the
+    sizing keys."""
+    body = {"rows": 40, "cols": 120}
+    for host in ("127.0.0.1", "::1", "localhost"):
+        assert should_mirror_to_pc(True, _request(host), body) is True
 
 
 def test_disabled_flag_never_mirrors() -> None:
     # claude_show_local_window off → never open the mirror, even for a phone.
     assert should_mirror_to_pc(False, _request("100.64.0.5"), {}) is False
+    # ...or for a loopback caller with no in_page flag, the new default-mirror case.
+    assert should_mirror_to_pc(False, _request("127.0.0.1"), {}) is False
 
 
 # --------------------------------------------------- tsnet_host_from_cert

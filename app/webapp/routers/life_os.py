@@ -249,9 +249,10 @@ async def _spawn_skill_session(
         project=str(life_os_dir),
     )
 
-    # Mirror full-control sessions into a dedicated PC terminal window for
-    # both phone and desktop-browser launches (issue #241) — identical to the
-    # Coding tab; only a non-desktop loopback launch renders in-page.
+    # Mirror full-control sessions into a dedicated PC terminal window —
+    # identical to the Coding tab (issue #241, widened by #609): the default
+    # for every caller, unless the launcher explicitly says it's rendering
+    # in-page itself (see should_mirror_to_pc).
     if kind == "pty" and should_mirror_to_pc(
         cfg.claude_show_local_window, request, body
     ):

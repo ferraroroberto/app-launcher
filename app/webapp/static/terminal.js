@@ -118,10 +118,19 @@ export function estimateTermSize() {
 // first frame is painted at the right width. Mutates `payload` in place —
 // callers apply their own outer gate (e.g. "only for a streamed/pty launch")
 // before calling this.
+//
+// `in_page: true` (issue #609) is the explicit "I will render this myself"
+// signal the server's `should_mirror_to_pc` now requires from a genuine SPA
+// loopback client, instead of inferring it from "loopback and no desktop
+// flag" — an inference a non-browser loopback API caller (a script, the
+// fleet chief) also matched, silently leaving it with no window at all. A
+// phone sets it too, but it's moot there: the server already mirrors any
+// non-loopback caller before this flag is ever consulted.
 export function applyLaunchSizePayload(payload) {
   if (isDesktopClient()) {
     payload.desktop = true;
   } else {
+    payload.in_page = true;
     const sz = estimateTermSize();
     payload.rows = sz.rows;
     payload.cols = sz.cols;

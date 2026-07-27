@@ -141,23 +141,32 @@ def should_mirror_to_pc(
 ) -> bool:
     """Whether a PTY launch should open the PC mirror window (issue #20).
 
-    Both the phone and a desktop browser get a dedicated Edge ``--app``
-    window on the PC (issue #241):
+    The default is to mirror; only a caller that explicitly says it will
+    render the session itself skips it (issue #609):
 
     * **Phone** — non-loopback and no ``desktop`` flag: the PC has no window
       of its own, so mirror to one.
-    * **Desktop browser** — ``desktop: true`` in the launch body: mirror to a
-      dedicated, independently-closable Edge window rather than rendering the
-      terminal inside the user's own browser. This reverses issue #159's
-      desktop-skips-mirror optimization for the PTY case — the "redundant"
-      in-page render was the very thing that let Stop & Close tear down the
-      controlling Chrome window, so the dedicated window is the fix, not the
-      redundancy. The flag (set client-side by ``isDesktopClient``) is what
-      distinguishes a desktop from a phone regardless of loopback vs tunnel.
-
-    A non-``desktop`` loopback launch (the rare PC client that reports a
-    coarse pointer) still skips the mirror and renders in-page — harmless now
-    that an in-page loopback terminal is no longer mis-treated as a mirror.
+    * **Desktop browser** — ``desktop: true`` in the launch body (issue
+      #241): mirror to a dedicated, independently-closable Edge window rather
+      than rendering the terminal inside the user's own browser. This
+      reverses issue #159's desktop-skips-mirror optimization for the PTY
+      case — the "redundant" in-page render was the very thing that let Stop
+      & Close tear down the controlling Chrome window, so the dedicated
+      window is the fix, not the redundancy. The flag (set client-side by
+      ``isDesktopClient``) is what distinguishes a desktop from a phone
+      regardless of loopback vs tunnel.
+    * **Genuine in-page loopback browser** — ``in_page: true`` in the launch
+      body (issue #609): the SPA itself sets this whenever it's about to
+      render the session in-page (``applyLaunchSizePayload``'s non-desktop
+      branch — a phone always takes this branch too, but the non-loopback
+      check above already mirrors it before this is ever consulted). An
+      *explicit* signal, not an inference from "loopback and no desktop
+      flag" — that inference used to double as "skip", which silently
+      starved every non-browser loopback API caller (a script, the fleet
+      chief orchestrator dispatching over ``127.0.0.1``) of a window at all:
+      there was no page for them to render into, so "skip" meant "renders
+      nowhere". Any other loopback caller — including one that sends neither
+      flag — now mirrors by default.
     """
     # Imported here to avoid a module-load cycle (middleware imports nothing
     # from the routers package, but keep the dependency edge one-directional).
@@ -165,7 +174,11 @@ def should_mirror_to_pc(
 
     if not show_local_window:
         return False
-    return bool(body.get("desktop")) or client_ip(request) not in LOOPBACK_HOSTS
+    if bool(body.get("desktop")):
+        return True
+    if client_ip(request) not in LOOPBACK_HOSTS:
+        return True
+    return not bool(body.get("in_page"))
 
 
 async def audit_session_start_and_maybe_mirror(
@@ -213,10 +226,10 @@ async def audit_session_start_and_maybe_mirror(
         sid, "start", agent=agent, skill=skill, name=name, project=project,
     )
     # Mirror the session into a dedicated interactive terminal window on the
-    # PC for both phone and desktop-browser launches (issue #241 — see
-    # should_mirror_to_pc); only a non-desktop loopback launch renders
-    # in-page and skips it. mirror_url picks loopback (auth-bypass) or the
-    # ts.net URL with explicit credentials, keyed on the active cert (#356).
+    # PC — the default for every caller (issue #241, widened by #609); only
+    # an explicit in-page loopback browser skips it (see should_mirror_to_pc).
+    # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
+    # credentials, keyed on the active cert (#356).
     if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &
         # Close to dismiss it later (issue #20).
