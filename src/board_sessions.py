@@ -295,7 +295,13 @@ def merge_sessions(
     ``idle-finished`` / ``awaiting-input`` (#608's
     :func:`src.board_transcript._refine_waiting_status`) so a caller never
     has to fetch the exchange to tell those four apart. The raw
-    ``needs-you`` string itself never reaches a card's ``status`` field.
+    ``needs-you`` string itself never reaches a card's ``status`` field. The
+    live session's ``last_output_at`` rides along with ``live_title`` to the
+    matched-pairs call site only (#636) — a busy title with a genuinely
+    stale PTY (no more raw output at all) falls through to this same
+    transcript-based logic instead of being trusted blindly; unmatched rows
+    have no live PTY to read a freshness stamp from, same scoping as
+    ``live_title`` itself.
 
     ``idle-finished`` gets one more downgrade after that split (#627): a
     clean stop with nothing pending is still only an *absence* of evidence,
@@ -330,7 +336,12 @@ def merge_sessions(
             _parse_iso(sess.get("started_at"))
         )
         status, anchor = _transcript_overlay(
-            row, status, anchor, now=now, live_title=sess.get("live_title")
+            row,
+            status,
+            anchor,
+            now=now,
+            live_title=sess.get("live_title"),
+            last_output_at=sess.get("last_output_at"),
         )
         status = _refine_waiting_status(status, (row or {}).get("transcript_path"))
         project = (row or {}).get("project") or Path(str(project_dir or "")).name
