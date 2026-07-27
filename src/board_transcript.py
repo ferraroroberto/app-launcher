@@ -387,6 +387,22 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
     dropped — it is likely torn — matching :func:`last_exchange`'s handling
     of the same tail-read shape.
 
+    Even :data:`_EXCHANGE_TAIL_BYTES` is still just a window, and a long
+    enough turn pushes the launch line past it — a real transcript (#627,
+    project-scaffolding#199's worker) dispatched a background ``Explore``
+    sub-agent whose launch line sat ~299 KB from EOF by the time the turn
+    ended, past this window, so the id-keyed scan below found nothing
+    outstanding and the row read as a clean stop when a dispatch was still
+    genuinely running. Claude Code itself reports this directly, independent
+    of any byte window: the ``system``/``turn_duration`` line it appends the
+    moment a turn ends carries ``pendingBackgroundAgentCount`` — the exact
+    real transcript above had one such line reading ``1`` at the same instant
+    the id-keyed scan below found nothing. When the scan below finds no
+    outstanding stamp but the tail's last ``turn_duration`` line reports a
+    nonzero count, that harness-native count wins — treated the same as
+    :data:`_UNKNOWN_LAUNCH_STAMP` (genuinely outstanding, age unknown) since
+    it carries no per-dispatch launch time of its own.
+
     A ``<task-notification>``'s ``<task-id>``/``<tool-use-id>`` tags first
     appear on a ``queue-operation`` line whose ``operation`` is ``"enqueue"``
     — that only means the background result is *ready*, not that Claude has
@@ -415,6 +431,7 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
     bash_launched: Dict[str, Optional[datetime]] = {}
     bash_completed: set = set()
     queued_notifications: List[Tuple[List[str], List[str]]] = []
+    last_turn_pending_agent_count: Optional[int] = None
     for raw in lines:
         raw = raw.strip()
         if not raw:
@@ -425,6 +442,10 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
             continue
         if not isinstance(obj, dict):
             continue
+        if obj.get("type") == "system" and obj.get("subtype") == "turn_duration":
+            count = obj.get("pendingBackgroundAgentCount")
+            if isinstance(count, int):
+                last_turn_pending_agent_count = count
         stamp = _parse_iso(obj.get("timestamp"))
         for tid in _launched_background_ids(obj):
             launched.setdefault(tid, stamp)
@@ -449,6 +470,8 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
         stamp for tid, stamp in bash_launched.items() if tid not in bash_completed
     ]
     if not outstanding_stamps:
+        if last_turn_pending_agent_count:
+            return _UNKNOWN_LAUNCH_STAMP
         return None
     resolved_stamps = [s for s in outstanding_stamps if s is not None]
     if not resolved_stamps:
