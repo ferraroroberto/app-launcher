@@ -78,10 +78,26 @@ def _github_btn(page: Page):
     )
 
 
+def _reset_visibility(page: Page, base_url: str) -> None:
+    """Start from a known baseline — every button visible.
+
+    The autoboot fixture boots the disposable webapp from a *copy of the real
+    config* (issue #441) so values are realistic, which means whatever the
+    developer has hidden in their own launcher is the starting state here.
+    Asserting an empty default would fail on any machine with a hidden agent,
+    so the baseline is set rather than assumed. Loopback bypasses the bearer
+    middleware, so a plain request needs no token.
+    """
+    page.request.post(
+        f"{base_url}/api/config", data={"coding_hidden_agents": []}
+    )
+
+
 def test_hidden_agent_and_github_buttons_disappear_and_persist(
     authed_page: Page, base_url: str
 ) -> None:
     _install_routes(authed_page)
+    _reset_visibility(authed_page, base_url)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_surfaces(authed_page)
 
