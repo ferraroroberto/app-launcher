@@ -1011,7 +1011,12 @@ async function dispatchChat() {
   // this legitimately takes seconds — tick like dispatchGoal does.
   const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
   try {
-    const ensured = await ensureChief(false);
+    // resume=true (#651): the lazy first-send ensure used to always spawn a
+    // blank chief, silently discarding a resumable conversation exactly like
+    // Restart did before #649/#650 — this is in fact the most likely path a
+    // user takes after a session-host restart, since chat mode reads as
+    // conversational and the Start/Resume status row is easy to not notice.
+    const ensured = await ensureChief(false, true);
     const sid = ensured.session_id;
     const tt = await ensureTerminalToken();
     await jsonApi(
@@ -1026,7 +1031,12 @@ async function dispatchChat() {
     // a sent chat message clears — the reply is the next thing you want.
     els.boardDispatchGoal.value = '';
     if (ensured.spawned) {
-      toast('Chief spawned — first reply may take a moment', 'good', { icon: 'crown' });
+      toast(
+        ensured.resumed
+          ? 'Chief resumed — first reply may take a moment'
+          : 'Chief spawned — first reply may take a moment',
+        'good', { icon: 'crown' },
+      );
     }
     // Open the chief's drawer so the reply lands somewhere visible. The
     // card is already in /api/board (live sessions fold in before hook
