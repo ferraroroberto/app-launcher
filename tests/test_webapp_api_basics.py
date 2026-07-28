@@ -125,6 +125,9 @@ class TestVersion:
         path — the actionable "needs restart" case."""
         client, app, overrides = webapp_client
         from app.webapp.routers import misc as misc_router
+        # #655: pin resolve_deployed_sha instead of relying on the ambient
+        # checkout -- CI's shallow PR checkout can resolve it to "unknown".
+        monkeypatch.setattr(misc_router, "resolve_deployed_sha", lambda *a, **k: "cafebee")
         monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: True)
         overrides["session"].identity.return_value = {
             "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
@@ -143,6 +146,9 @@ class TestVersion:
         session-host's declaration — stale for the repo, not for :8446."""
         client, app, overrides = webapp_client
         from app.webapp.routers import misc as misc_router
+        # #655: pin resolve_deployed_sha instead of relying on the ambient
+        # checkout -- CI's shallow PR checkout can resolve it to "unknown".
+        monkeypatch.setattr(misc_router, "resolve_deployed_sha", lambda *a, **k: "cafebee")
         monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: False)
         overrides["session"].identity.return_value = {
             "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
@@ -159,6 +165,9 @@ class TestVersion:
         a confident "unaffected"."""
         client, app, overrides = webapp_client
         from app.webapp.routers import misc as misc_router
+        # #655: pin resolve_deployed_sha instead of relying on the ambient
+        # checkout -- CI's shallow PR checkout can resolve it to "unknown".
+        monkeypatch.setattr(misc_router, "resolve_deployed_sha", lambda *a, **k: "cafebee")
         monkeypatch.setattr(misc_router, "_session_host_path_relevance", lambda h, hd: None)
         overrides["session"].identity.return_value = {
             "git_sha": "deadbee", "started_at": "2026-07-24T05:51:34",
@@ -167,12 +176,14 @@ class TestVersion:
         assert body["session_host"]["stale"] is True
         assert body["session_host"]["stale_relevant"] is None
 
-    def test_session_host_not_stale_when_sha_matches_deployed(self, webapp_client):
+    def test_session_host_not_stale_when_sha_matches_deployed(self, webapp_client, monkeypatch):
         client, app, overrides = webapp_client
         from app.webapp.routers import misc as misc_router
-        deployed_sha = misc_router.resolve_deployed_sha()
+        # #655: pin resolve_deployed_sha instead of relying on the ambient
+        # checkout -- CI's shallow PR checkout can resolve it to "unknown".
+        monkeypatch.setattr(misc_router, "resolve_deployed_sha", lambda *a, **k: "cafebee")
         overrides["session"].identity.return_value = {
-            "git_sha": deployed_sha, "started_at": "2026-07-27T08:00:00",
+            "git_sha": "cafebee", "started_at": "2026-07-27T08:00:00",
         }
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is False
