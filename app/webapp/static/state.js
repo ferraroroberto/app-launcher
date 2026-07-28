@@ -52,6 +52,7 @@ export const state = {
     { id: 'antigravity', label: 'Antigravity CLI', available: false, fullscreen: true },
     { id: 'copilot', label: 'GitHub Copilot CLI', available: false, fullscreen: true },
     { id: 'pi', label: 'Pi', available: false, fullscreen: true },
+    { id: 'grok', label: 'Grok Build', available: false, fullscreen: true },
   ],
   runningApps: [],
   // Git flags for the Coding tiles + Board backlog (issue #115, always-on

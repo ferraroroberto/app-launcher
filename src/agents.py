@@ -14,6 +14,8 @@ machinery:
 - ``pi`` — the Pi coding agent, launched under the ``claude-agent-sdk``
   provider so it runs on the Claude subscription (no API credits); see
   ``build_pi_flags`` and ``docs/pi-coding-agent.md``.
+- ``grok`` — xAI's Grok Build CLI (the Rust terminal agent; browser
+  OAuth or ``XAI_API_KEY``, both out-of-band like every other agent).
 
 This module is the single source of truth for the agent id → command
 mapping. ``AGENTS`` contains the coding agents exposed by the webapp;
@@ -108,6 +110,20 @@ AGENTS: Dict[str, Agent] = {
         id="pi", label="Pi", command="pi",
         quit_command="/quit", fullscreen=True, resume_token="-r",
         native_name_flag="--name",
+    ),
+    # Grok Build (issue #626). fullscreen=True is empirical, not assumed: a
+    # ConPTY probe of grok 0.2.112 showed an alt-screen enter (CSI ?1049h)
+    # plus DEC 2026 synchronized-output writes on startup — a differential
+    # TUI in the Codex bucket, so it takes the skip-replay + forced-repaint
+    # path (#128). The same probe saw an OSC title write traverse the ConPTY
+    # layer: Grok self-names per conversation like Claude (an LLM-generated
+    # session title), so no spawn-time name flag is needed — and none
+    # exists (`--session-id` takes only a UUID, not a label).
+    # Bare `--resume` resumes the cwd's most recent session (Antigravity's
+    # `--continue` shape, not a Claude-style picker).
+    "grok": Agent(
+        id="grok", label="Grok Build", command="grok",
+        quit_command="/quit", fullscreen=True, resume_token="--resume",
     ),
 }
 
