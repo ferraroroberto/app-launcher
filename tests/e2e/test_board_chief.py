@@ -325,6 +325,72 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
 
 
+def test_chat_mode_send_reattaches_resumable_chief(
+    authed_page: Page, base_url: str
+) -> None:
+    """#651: the lazy first-send ensure used to spawn a blank chief with no
+    resume flag, silently discarding a resumable conversation exactly like
+    Restart did before #649/#650 — and the lazy send is in fact the most
+    likely path a user takes after a session-host restart, since typing
+    into chat mode reads as conversational and the Start/Resume status row
+    is easy to miss. The send must POST ensure with resume:true, and toast
+    'Chief resumed' when the response comes back resumed."""
+    _mock_board(authed_page, _board_payload(with_chief=False))
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured, spawned=True, resumed=True)
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        ),
+    )
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+
+    authed_page.locator("#boardDispatchGoal").fill("hey")
+    authed_page.locator("#boardDispatchSend").click()
+    authed_page.wait_for_timeout(600)
+
+    assert ensured.get("method") == "POST", "send never POSTed ensure"
+    assert ensured.get("body", {}).get("resume") is True
+    assert ensured["body"].get("fresh") is not True, (
+        "chat send must never force-kill a live chief"
+    )
+    expect(authed_page.locator("#toast")).to_contain_text("Chief resumed")
+
+
+def test_chat_mode_send_toasts_fresh_spawn_when_nothing_resumable(
+    authed_page: Page, base_url: str
+) -> None:
+    """#651: when nothing is resumable the send still degrades to a fresh
+    spawn, but the toast must say so — the 'Chief spawned' wording used to
+    fire unconditionally regardless of whether a resume actually happened."""
+    _mock_board(authed_page, _board_payload(with_chief=False))
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured, spawned=True, resumed=False)
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        ),
+    )
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+
+    authed_page.locator("#boardDispatchGoal").fill("hey")
+    authed_page.locator("#boardDispatchSend").click()
+    authed_page.wait_for_timeout(600)
+
+    assert ensured.get("body", {}).get("resume") is True
+    expect(authed_page.locator("#toast")).to_contain_text("Chief spawned")
+
+
 def test_chat_mode_offers_manual_start_when_chief_down(
     authed_page: Page, base_url: str
 ) -> None:
