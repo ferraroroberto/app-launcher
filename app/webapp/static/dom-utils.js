@@ -119,8 +119,9 @@ export function isChiefSession(s) {
 }
 export const CHIEF_KILL_CONFIRM = 'Kill the chief session?';
 export const CHIEF_RESTART_CONFIRM =
-  'Restart the chief? It will stop the current one gracefully (its handover ' +
-  'log carries context to the fresh one) and start a new session.';
+  'Restart the chief? It will stop the current one gracefully and resume ' +
+  'the same conversation (falling back to a fresh one only if nothing is ' +
+  'resumable).';
 
 // Claude 5h/7d usage badges (issue #326) — shared between the Board tab and
 // the Coding tab's Running-sessions header, both of which poll their own
