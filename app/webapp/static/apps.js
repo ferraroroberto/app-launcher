@@ -51,6 +51,28 @@ function hiddenButtons() {
   return new Set((cfg.coding_hidden_agents || []).map(String));
 }
 
+// The list to *write*, read off the rendered switches rather than
+// `state.config`. Tapping two switches in quick succession would otherwise
+// compose the second patch from a config the first patch hasn't refreshed
+// yet — a read-modify-write race that silently resurrects the button the
+// first tap just hid (caught on the WebKit projection, where the slower
+// round-trip loses every time; Chromium only won it by luck).
+function hiddenFromSwitches() {
+  const host = els.agentVisibility;
+  if (!host) return [];
+  return Array.prototype.filter
+    .call(
+      host.querySelectorAll('[data-visibility-toggle]'),
+      function (sw) { return sw.getAttribute('aria-checked') !== 'true'; }
+    )
+    .map(function (sw) { return sw.dataset.visibilityToggle; });
+}
+
+// Writes are chained so two quick taps can't land out of order — each patch
+// sends the whole list, so a late-arriving earlier write would otherwise
+// clobber the newer one.
+let visibilityWrite = Promise.resolve();
+
 // The toggle list is *generated* from the live agent registry, never
 // hand-written per agent: adding an agent to src/agents.py puts it in this
 // list with no further code change (the whole point of issue #666).
@@ -74,18 +96,21 @@ export function renderAgentVisibility() {
       label: 'Show the ' + row.label + ' button on project rows',
       onToggle: function (next) {
         // Optimistic flip, then persist the whole list and repaint the rows.
-        // patchConfig round-trips through GET /api/config, so re-rendering
-        // this list afterwards also self-corrects a failed save.
+        // The payload is composed from the switches (including this flip),
+        // not from state.config, and writes are serialized — see
+        // hiddenFromSwitches. patchConfig round-trips through GET
+        // /api/config, so re-rendering afterwards self-corrects a failed
+        // save.
         setSwitch(sw, next);
-        const wanted = hiddenButtons();
-        if (next) wanted.delete(row.id);
-        else wanted.add(row.id);
-        patchConfig({ coding_hidden_agents: Array.from(wanted) }).then(
-          function () {
-            renderApps();
-            renderAgentVisibility();
-          }
-        );
+        const wanted = hiddenFromSwitches();
+        visibilityWrite = visibilityWrite.then(function () {
+          return patchConfig({ coding_hidden_agents: wanted }).then(
+            function () {
+              renderApps();
+              renderAgentVisibility();
+            }
+          );
+        });
       },
     });
     sw.dataset.visibilityToggle = row.id;

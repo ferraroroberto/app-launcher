@@ -964,6 +964,60 @@ class RemoteSession:
         }
 
 
+# Environment variables a *parent* coding agent injects into the short-lived,
+# non-interactive subprocesses it spawns for its own tool calls. They are
+# correct there and actively wrong for the long-lived interactive agent we are
+# about to host:
+#
+#   NO_COLOR                   strips every ANSI colour out of the child's TUI,
+#                              so the session renders monochrome.
+#   CLAUDE_CODE_CHILD_SESSION  makes Claude Code treat itself as a nested run
+#                              and disable transcript saving — no .jsonl, no
+#                              --resume, no history for the whole session.
+#
+# The rest are the parent's own identity, stale the moment we inherit it.
+#
+# They reach us whenever the tray was (re)started from inside an agent's tool
+# subprocess — an agent running `tray.bat --restart` is the usual route — since
+# the whole tray → webapp → session-host chain inherits that environment and we
+# then hand our own os.environ to everything we spawn. Scrubbing here makes a
+# launcher-hosted session independent of *how* the host happened to be started.
+#
+# Deliberately NOT scrubbed: user-scope settings.json vars that are meant for
+# every agent run (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, telemetry), and
+# GIT_TERMINAL_PROMPT — restoring git's interactive credential prompt could
+# hang an agent's own git call on a prompt nobody is watching.
+_INHERITED_AGENT_MARKERS = frozenset(
+    {
+        "AI_AGENT",
+        "CLAUDECODE",
+        "CLAUDE_CODE_BRIDGE_SESSION_ID",
+        "CLAUDE_CODE_CHILD_SESSION",
+        "CLAUDE_CODE_ENTRYPOINT",
+        "CLAUDE_CODE_SESSION_ID",
+        "CLAUDE_PID",
+        "FORCE_COLOR",
+        "NO_COLOR",
+    }
+)
+
+
+def agent_child_env(session_id: str, agent: str) -> Dict[str, str]:
+    """Build the environment for a launcher-spawned agent process.
+
+    The host's own environment minus :data:`_INHERITED_AGENT_MARKERS`, plus
+    this session's ``APP_LAUNCHER_SESSION_ID``/``APP_LAUNCHER_AGENT`` stamp.
+    """
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() not in _INHERITED_AGENT_MARKERS
+    }
+    env["APP_LAUNCHER_SESSION_ID"] = session_id
+    env["APP_LAUNCHER_AGENT"] = agent
+    return env
+
+
 class SessionManager:
     """Owns every launcher-spawned PTY session for the life of the host."""
 
@@ -1031,9 +1085,7 @@ class SessionManager:
         # (no pywinpty re-tokenizing) and is unaffected by this.
         exe = command_for(agent)
         command = f"cmd /c {exe} {flags}".strip()
-        child_env = dict(os.environ)
-        child_env["APP_LAUNCHER_SESSION_ID"] = session_id
-        child_env["APP_LAUNCHER_AGENT"] = agent
+        child_env = agent_child_env(session_id, agent)
         pty = PtyProcess.spawn(
             command, cwd=str(directory), dimensions=(rows, cols), env=child_env
         )
@@ -1102,12 +1154,16 @@ class SessionManager:
             f"-ArgumentList '/c {_ps_quote(inner)}' "
             f"-WorkingDirectory '{_ps_quote(str(directory))}' -PassThru).Id"
         )
+        # The console inherits its environment through this PowerShell, so the
+        # scrub has to happen here too — otherwise a detached session gets the
+        # same monochrome, transcript-less child a PTY session would.
         result = subprocess.run(
             [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", ps_command],
             capture_output=True,
             text=True,
             creationflags=NO_WINDOW,
             timeout=30,
+            env=agent_child_env(session_id, agent),
         )
         pid = _parse_started_pid(result.stdout)
         if pid is None:
