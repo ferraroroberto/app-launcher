@@ -115,13 +115,20 @@ def _mock_exchange(page: Page, sid: str = "s-chief") -> None:
     )
 
 
-def _mock_ensure(page: Page, captured: dict, *, spawned: bool = False) -> None:
+def _mock_ensure(
+    page: Page, captured: dict, *, spawned: bool = False,
+    resumed: bool = False, resume_fallback_reason: str = "",
+) -> None:
     def _capture(route):
         captured["method"] = route.request.method
         captured["body"] = route.request.post_data_json
         route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({"session_id": "s-chief", "spawned": spawned}),
+            body=_json.dumps({
+                "session_id": "s-chief", "spawned": spawned,
+                "resumed": resumed,
+                "resume_fallback_reason": resume_fallback_reason,
+            }),
         )
     page.route(re.compile(r".*/api/board/chief/ensure$"), _capture)
 
@@ -343,12 +350,14 @@ def test_chat_mode_offers_restart_when_chief_alive(
 ) -> None:
     """#617: Start and Restart are mutually exclusive on actual state — a
     live chief shows Restart (never Start, which would offer to spawn a
-    duplicate); clicking it confirms, then POSTs ensure with fresh:true —
-    the graceful stop-then-respawn, never the session-host restart."""
+    duplicate). #649: clicking it confirms, then POSTs ensure with
+    fresh:true AND resume:true — the graceful stop-then-resume-the-same-
+    conversation (never the session-host restart, and never a silent
+    discard of the conversation in favor of a blank fresh one)."""
     _mock_board(authed_page, _board_payload(with_chief=True))
     _mock_exchange(authed_page)
     ensured: dict = {}
-    _mock_ensure(authed_page, ensured, spawned=True)
+    _mock_ensure(authed_page, ensured, spawned=True, resumed=True)
 
     _open_board(authed_page, base_url)
     _enter_chat_mode(authed_page)
@@ -363,6 +372,37 @@ def test_chat_mode_offers_restart_when_chief_alive(
 
     assert ensured.get("method") == "POST", "Restart never POSTed ensure"
     assert ensured.get("body", {}).get("fresh") is True
+    assert ensured.get("body", {}).get("resume") is True
+    expect(authed_page.locator("#toast")).to_contain_text("Chief resumed")
+
+
+def test_chat_mode_restart_toasts_fallback_when_nothing_resumable(
+    authed_page: Page, base_url: str
+) -> None:
+    """#649: when the ensure response comes back with resumed:false (no
+    resumable conversation within the 24h window), Restart still degrades
+    to a fresh spawn rather than failing — but the toast must say so
+    explicitly, reusing the Resume button's existing fallback wording, so
+    the user is never left assuming a resume happened when it didn't."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _mock_exchange(authed_page)
+    ensured: dict = {}
+    _mock_ensure(
+        authed_page, ensured, spawned=True, resumed=False,
+        resume_fallback_reason="no resumable chief conversation found in the last 24h",
+    )
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+
+    authed_page.once("dialog", lambda d: d.accept())
+    authed_page.locator("#boardChiefRestart").click()
+    authed_page.wait_for_timeout(500)
+
+    assert ensured.get("body", {}).get("resume") is True
+    expect(authed_page.locator("#toast")).to_contain_text(
+        "No resumable conversation"
+    )
 
 
 def test_chief_settings_dialog_roundtrip(

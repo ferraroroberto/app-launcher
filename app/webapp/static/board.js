@@ -1132,8 +1132,16 @@ function wireChief() {
     try {
       // fresh=true (#617): ensure_chief's own graceful stop-then-respawn —
       // never the session-host (:8446) restart, which would kill every PTY.
-      await ensureChief(true);
-      toast('Chief restarted', 'good', { icon: 'crown' });
+      // resume=true (#649): reattach the same conversation by default —
+      // "Restart" read as "bring my chief back" while it silently discarded
+      // the conversation, and Resume is never reachable while a chief is
+      // alive to fall back on. Same resumed/resume_fallback_reason contract
+      // as the Resume button, so the toast always says which happened.
+      const body = await ensureChief(true, true);
+      toast(
+        body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
+        'good', { icon: 'crown' },
+      );
       await fetchBoard().catch(function () {});
       renderChiefStatus();
     } catch (exc) {
