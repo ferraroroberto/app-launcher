@@ -239,6 +239,38 @@ class TestPatchConfig:
         body = client.get("/api/config").json()
         assert body["projects_ignore"] == ["archive", "*-old"]
 
+    def test_coding_hidden_agents_round_trips_and_persists(self, webapp_client):
+        """coding_hidden_agents (issue #666) is a list field like
+        projects_ignore: it patches through, strips blanks, surfaces on the
+        next GET, and actually reaches disk — a hidden button must stay
+        hidden across a webapp restart, not just in process state."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        # Default is empty — every button visible until the user hides one.
+        assert client.get("/api/config").json()["coding_hidden_agents"] == []
+        resp = client.post(
+            "/api/config",
+            json={"coding_hidden_agents": ["antigravity", "  ", "github"]},
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.coding_hidden_agents == [
+            "antigravity",
+            "github",
+        ]
+        body = client.get("/api/config").json()
+        assert body["coding_hidden_agents"] == ["antigravity", "github"]
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        on_disk = json.loads(cfg_path.read_text(encoding="utf-8"))
+        assert on_disk["coding_hidden_agents"] == ["antigravity", "github"]
+        assert load_webapp_config(cfg_path).coding_hidden_agents == [
+            "antigravity",
+            "github",
+        ]
+        # Un-hiding clears it back out.
+        client.post("/api/config", json={"coding_hidden_agents": []})
+        assert client.get("/api/config").json()["coding_hidden_agents"] == []
+
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is
         in the allow-list — it patches through, surfaces on the next GET,

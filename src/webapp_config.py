@@ -240,6 +240,12 @@ class WebappConfig:
     # `projects_ignore` — a plain string list in this same config — so the
     # feature needs no new file.
     coding_favorites: list = field(default_factory=list)
+    # Agent ids whose Coding-row launch button the user hid (issue #666),
+    # plus the pseudo-id `github` for the repo-issues button. A *hidden*
+    # list rather than a visible one so a newly registered agent shows up
+    # by default and needs no config migration. Stored like
+    # `coding_favorites` — a plain string list in this same config.
+    coding_hidden_agents: list = field(default_factory=list)
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
     # Root of the life-os checkout the Life OS tab surfaces (issue #102).
@@ -486,6 +492,9 @@ def load_webapp_config(
         projects_dir=str(raw.get("projects_dir") or _default_projects_dir()),
         projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
         coding_favorites=[str(p) for p in (raw.get("coding_favorites") or [])],
+        coding_hidden_agents=[
+            str(p) for p in (raw.get("coding_hidden_agents") or [])
+        ],
         apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
         life_os_dir=str(raw.get("life_os_dir") or _default_life_os_dir()),
         claude_config_dir=str(
@@ -582,6 +591,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
         "coding_favorites": cfg.coding_favorites,
+        "coding_hidden_agents": cfg.coding_hidden_agents,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
