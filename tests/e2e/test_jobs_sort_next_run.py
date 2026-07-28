@@ -21,8 +21,6 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
-_NOW = int(time.time())
-
 
 def _job(name, *, job_id, next_epoch, chip, sched, elevated=False):
     """One decorated /api/jobs row with the fields renderJobRow reads."""
@@ -52,13 +50,18 @@ def _job(name, *, job_id, next_epoch, chip, sched, elevated=False):
 
 
 def _wire_jobs(page: Page) -> None:
+    # Compute at call time, not module/collection time (#646) — a full
+    # dual-projection run can take ~10+ minutes between collection and this
+    # test's turn, which would otherwise burn through Zeta's margin before
+    # the assertion runs. Never hoist this back to module scope.
+    now = int(time.time())
     jobs = [
         # A–Z: Alpha, Mango, Zeta. Next-run: Zeta (+10m), Alpha (+2h), Mango (none).
-        _job("Alpha", job_id="alpha", next_epoch=_NOW + 7200,
+        _job("Alpha", job_id="alpha", next_epoch=now + 7200,
              chip="daily 12:00", sched={"type": "daily", "at": "12:00"}),
         _job("Mango", job_id="mango", next_epoch=None,
              chip="", sched={"type": "none"}),
-        _job("Zeta", job_id="zeta", next_epoch=_NOW + 600,
+        _job("Zeta", job_id="zeta", next_epoch=now + 600,
              chip="daily 06:00", sched={"type": "daily", "at": "06:00"}),
     ]
     page.route(
@@ -137,10 +140,11 @@ def test_sort_toggle_switches_to_alphabetical(
 def test_external_schedule_card_only_offers_history(
     authed_page: Page, base_url: str
 ) -> None:
+    # Computed at call time (#646) — see _wire_jobs for why.
     external = _job(
         "HWiNFO restart",
         job_id="hwinfo-restart",
-        next_epoch=_NOW + 3600,
+        next_epoch=int(time.time()) + 3600,
         chip="every 8 h",
         sched={"type": "hourly", "every": 8},
         elevated=True,
@@ -168,10 +172,11 @@ def test_external_schedule_card_only_offers_history(
 def test_manual_run_state_is_distinct_from_next_scheduled_fire(
     authed_page: Page, base_url: str
 ) -> None:
+    # Computed at call time (#646) — see _wire_jobs for why.
     running = _job(
         "LI scrape",
         job_id="linkedin-scrape",
-        next_epoch=_NOW + 14 * 60,
+        next_epoch=int(time.time()) + 14 * 60,
         chip="daily 06:15 12:00 18:00",
         sched={"type": "daily_times", "at": ["06:15", "12:00", "18:00"]},
     )
