@@ -497,6 +497,14 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-label);
 }
 .toggles .switch-row { flex: 1 1 180px; }
+/* The Visible agents list (issue #666) is a *list*, not a pair of related
+   switches like Verbose/Debug: one entry per line, name left and switch
+   pinned right, on the shared list-row divider. Wrapping three-to-a-line
+   (the default .toggles flow) made it ambiguous which switch belonged to
+   which agent, and the list grows with every new harness. */
+#agentVisibility.toggles { display: block; margin-bottom: 4px; }
+#agentVisibility .switch-row { display: flex; }
+#agentVisibility .switch-row + .switch-row { border-top: 1px solid var(--line-muted); }
 .flags-preview {
   font-family: "SF Mono", "Fira Mono", monospace;
   font-size: var(--font-caption);
