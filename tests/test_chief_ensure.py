@@ -13,6 +13,7 @@ daily-respawn setting and its job-resync path — see the closed issue for why.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -454,6 +455,19 @@ def _chief_state_row(session_id, updated_at, **extra):
     return row
 
 
+def _recent_iso(**delta_kwargs) -> str:
+    """An ISO-8601 UTC stamp ``delta_kwargs`` in the past from the *real*
+    current time (issue #658) — for rows exercised through the HTTP-level
+    ``/api/board/chief/ensure`` endpoint, which calls ``board._now()``
+    internally with no way to inject a frozen clock. A hardcoded calendar
+    date here goes permanently stale the moment real wall-clock time
+    crosses ``board.STATE_STALE_AFTER`` (24h) past it — this stays valid
+    on any run date. Tests that already control ``now=`` directly (see
+    ``test_stale_row_past_24h_is_excluded``) don't need this."""
+    stamp = datetime.now(timezone.utc) - timedelta(**delta_kwargs)
+    return stamp.isoformat().replace("+00:00", "Z")
+
+
 class TestFindResumableChiefSessionId:
     """Unit coverage for ``_find_resumable_chief_session_id`` (#633): the
     lookup that turns "the most recent chief conversation" into a concrete
@@ -464,8 +478,8 @@ class TestFindResumableChiefSessionId:
 
     def test_picks_newest_matching_row(self):
         rows = {
-            "old-uuid": _chief_state_row("old-sess", "2026-07-27T06:00:00Z"),
-            "new-uuid": _chief_state_row("new-sess", "2026-07-27T07:00:00Z"),
+            "old-uuid": _chief_state_row("old-sess", _recent_iso(hours=2)),
+            "new-uuid": _chief_state_row("new-sess", _recent_iso(hours=1)),
         }
         assert board_router._find_resumable_chief_session_id(rows) == "new-uuid"
 
@@ -489,7 +503,7 @@ class TestFindResumableChiefSessionId:
     def test_name_match_is_case_insensitive(self):
         rows = {
             "uuid-1": _chief_state_row(
-                "s1", "2026-07-27T07:00:00Z", name="Chief",
+                "s1", _recent_iso(hours=1), name="Chief",
             ),
         }
         assert board_router._find_resumable_chief_session_id(rows) == "uuid-1"
@@ -504,7 +518,7 @@ class TestFindResumableChiefSessionId:
     def test_project_field_used_over_cwd_basename(self):
         rows = {
             "uuid-1": _chief_state_row(
-                "s1", "2026-07-27T07:00:00Z",
+                "s1", _recent_iso(hours=1),
                 cwd="E:/automation/app-launcher-wt-42", project="fleet-config",
             ),
         }
@@ -548,7 +562,7 @@ class TestEnsureResume:
         Path(cfg.sessions_state_file).write_text(
             json.dumps({
                 "old-chief-sess": _chief_state_row(
-                    "chief-1", "2026-07-27T07:14:05Z",
+                    "chief-1", _recent_iso(minutes=5),
                 ),
             }),
             encoding="utf-8",
@@ -579,7 +593,7 @@ class TestEnsureResume:
         Path(cfg.sessions_state_file).write_text(
             json.dumps({
                 "chief-old": _chief_state_row(
-                    "chief-old", "2026-07-27T07:14:05Z",
+                    "chief-old", _recent_iso(minutes=5),
                 ),
             }),
             encoding="utf-8",
