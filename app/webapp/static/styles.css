@@ -824,8 +824,8 @@ summary + .opt-group { border-top: 0; }
 .git-swatch.dirty { background: var(--danger); }
 
 .row-actions.agent-actions { flex-direction: row; }
-/* Five agent icons (Claude · Codex · Antigravity · Copilot · GitHub) now
-   share the row with the folder name (issue #120). Buttons are tightened
+/* The agent icon strip (one button per registry agent + GitHub + star)
+   shares the row with the folder name (issue #120). Buttons are tightened
    to 52px — still a comfortable ≥44px tap target — so the set fits one
    row on PC and wider phones. On narrow phones the tile stacks (see the
    media query below) and the icon strip wraps as the final fallback. */
@@ -860,7 +860,7 @@ summary + .opt-group { border-top: 0; }
      phone. Opt them back out of the stack-on-narrow rule above (issue
      #124): the higher-specificity .coding-item.lifeos-item selectors win
      over the bare .coding-item ones, restoring the default inline row +
-     side border. The Code tab's five-icon stack is untouched. */
+     side border. The Code tab's agent-icon stack is untouched. */
   .coding-item.lifeos-item { flex-direction: row; align-items: stretch; }
   .coding-item.lifeos-item .row-actions.agent-actions {
     border-left: 1px solid var(--line);

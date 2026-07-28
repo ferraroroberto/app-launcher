@@ -75,7 +75,7 @@ flowchart TB
   subgraph srclib["src/ — shared library"]
     SESSHOST["session_host.py\nPtySession + SessionManager\nConPTY via winpty (Windows-only)"]
     VTSNAP["vt_snapshot.py\nheadless pyte VT mirror per\nfullscreen session — reconnect snapshot"]
-    AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi"]
+    AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi · grok"]
     SESSCLIENT["session_client.py\nHTTP client → session-host over loopback"]
     REGISTRY["registry.py\nconfig/apps.json load/save/scan"]
     SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]

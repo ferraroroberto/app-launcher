@@ -23,6 +23,9 @@ class TestCommandFor:
     def test_pi_resolves(self):
         assert agents.command_for("pi") == "pi"
 
+    def test_grok_resolves(self):
+        assert agents.command_for("grok") == "grok"
+
     def test_ssh_resolves_for_loopback_session_host(self):
         assert agents.command_for("ssh") == "ssh"
 
@@ -40,6 +43,9 @@ class TestQuitCommandFor:
 
     def test_pi_quits_with_slash_quit(self):
         assert agents.quit_command_for("pi") == "/quit"
+
+    def test_grok_quits_with_slash_quit(self):
+        assert agents.quit_command_for("grok") == "/quit"
 
     def test_unknown_agent_falls_back_to_default(self):
         # A bad id must never block a stop — fall back, don't raise.
@@ -67,6 +73,11 @@ class TestResumeCommandFor:
         # pi's -r renders its own session picker over the PTY.
         assert agents.resume_command_for("pi") == "-r"
 
+    def test_grok_resumes_most_recent_with_flag(self):
+        # grok's bare --resume reopens the cwd's most recent session
+        # (Antigravity's --continue shape, not a Claude-style picker).
+        assert agents.resume_command_for("grok") == "--resume"
+
     def test_unknown_agent_returns_empty(self):
         # A bad id is "not resumable", never a raise.
         assert agents.resume_command_for("bogus") == ""
@@ -80,7 +91,7 @@ class TestNativeSessionNameFlags:
             == '--name "Issue 556: sync picker"'
         )
 
-    @pytest.mark.parametrize("agent", ["codex", "antigravity", "bogus"])
+    @pytest.mark.parametrize("agent", ["codex", "antigravity", "grok", "bogus"])
     def test_unsupported_agents_skip_native_name(self, agent: str):
         assert agents.native_session_name_flags_for(agent, "Issue 556") == ""
 
@@ -124,6 +135,11 @@ class TestIsFullscreen:
         # it repaints its chrome in place via synchronized output, so its ring
         # is replay-unsafe and it takes Codex's forced-repaint path (#291).
         assert agents.is_fullscreen("pi") is True
+
+    def test_grok_is_fullscreen(self):
+        # Empirical (issue #626): a ConPTY probe of grok 0.2.112 showed an
+        # alt-screen enter + DEC 2026 synchronized-output writes at startup.
+        assert agents.is_fullscreen("grok") is True
 
     def test_unknown_agent_defaults_to_inline(self):
         # Unknown id → safe inline default (matches Claude), never raises.

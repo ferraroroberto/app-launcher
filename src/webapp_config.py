@@ -776,6 +776,18 @@ def build_pi_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
+def build_grok_flags(cfg: WebappConfig) -> str:
+    """Compose the `grok` CLI flags (issue #626).
+
+    Grok Build has no persisted launch knobs yet — model and permission
+    mode are chosen in-TUI — so the CLI is launched bare, matching the
+    Antigravity/Copilot all-default shape. The builder exists so the
+    launch router's ``flag_builders`` dispatch stays uniform and a future
+    toggle has an obvious home.
+    """
+    return ""
+
+
 def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
     session_id: Optional[str] = None,
@@ -825,6 +837,8 @@ def build_resume_flags(
         base = build_copilot_flags(cfg)
     elif agent_id == "pi":  # keep the SDK provider/model on resume (issue #273)
         base = build_pi_flags(cfg)
+    elif agent_id == "grok":  # no launch knobs — bare `--resume` (issue #626)
+        base = build_grok_flags(cfg)
     else:
         base = ""
     return f"{token} {base}".strip()
