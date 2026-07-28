@@ -15,6 +15,7 @@ import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
+import { patchConfig } from './claude-options.js';
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -31,6 +32,66 @@ export function renderApps() {
   els.claudeEmpty.hidden = codingApps.length !== 0;
   els.registeredTraysEmpty.hidden = trayApps.length !== 0;
   els.appsEmpty.hidden = otherApps.length !== 0;
+}
+
+// ------------------------------------------- Coding row button visibility
+// The row strip grew to one button per registered agent plus GitHub plus the
+// star (issue #666: six agents made it crowded on the phone). The user hides
+// the ones they don't use from the options card. Persisted server-side as
+// `coding_hidden_agents` — a *hidden* list, so a newly registered agent shows
+// up by default and needs no config migration.
+//
+// `github` is a pseudo-agent id: the repo-issues button is hideable the same
+// way, without inventing a second config key for one button.
+const GITHUB_BUTTON_ID = 'github';
+const GITHUB_BUTTON_LABEL = 'GitHub issues';
+
+function hiddenButtons() {
+  const cfg = state.config || {};
+  return new Set((cfg.coding_hidden_agents || []).map(String));
+}
+
+// The toggle list is *generated* from the live agent registry, never
+// hand-written per agent: adding an agent to src/agents.py puts it in this
+// list with no further code change (the whole point of issue #666).
+export function renderAgentVisibility() {
+  const host = els.agentVisibility;
+  if (!host) return;
+  const hidden = hiddenButtons();
+  host.innerHTML = '';
+  const rows = (state.agents || []).map(function (agent) {
+    return { id: agent.id, label: agent.label };
+  });
+  rows.push({ id: GITHUB_BUTTON_ID, label: GITHUB_BUTTON_LABEL });
+
+  rows.forEach(function (row) {
+    const wrap = document.createElement('span');
+    wrap.className = 'switch-row';
+    const name = document.createElement('span');
+    name.textContent = row.label;
+    wrap.appendChild(name);
+    const sw = switchEl(!hidden.has(row.id), {
+      label: 'Show the ' + row.label + ' button on project rows',
+      onToggle: function (next) {
+        // Optimistic flip, then persist the whole list and repaint the rows.
+        // patchConfig round-trips through GET /api/config, so re-rendering
+        // this list afterwards also self-corrects a failed save.
+        setSwitch(sw, next);
+        const wanted = hiddenButtons();
+        if (next) wanted.delete(row.id);
+        else wanted.add(row.id);
+        patchConfig({ coding_hidden_agents: Array.from(wanted) }).then(
+          function () {
+            renderApps();
+            renderAgentVisibility();
+          }
+        );
+      },
+    });
+    sw.dataset.visibilityToggle = row.id;
+    wrap.appendChild(sw);
+    host.appendChild(wrap);
+  });
 }
 
 // ------------------------------------------------------ Coding tab tiles
@@ -75,7 +136,13 @@ function renderCodingList(host, items) {
     const actions = document.createElement('div');
     actions.className = 'row-actions agent-actions';
 
+    // Buttons the user hid in the options card (issue #666). Re-derived on
+    // every render (like syncFavFilterBtn) so the ~4 s poll can't resurrect
+    // a hidden button.
+    const hidden = hiddenButtons();
+
     state.agents.forEach(function (agent) {
+      if (hidden.has(agent.id)) return;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'icon-btn agent-btn';
@@ -101,27 +168,30 @@ function renderCodingList(host, items) {
     // updated, excluding audit-meta ledger/metadata issues — #341) in a new
     // browser tab. Spawns no process and creates no session. Disabled with a
     // hover hint when the project has no GitHub remote (a.repo_url is unset).
-    const ghBtn = document.createElement('button');
-    ghBtn.type = 'button';
-    ghBtn.className = 'icon-btn agent-btn';
-    const ghIcon = document.createElement('img');
-    ghIcon.className = 'agent-icon';
-    ghIcon.src = iconUrl('github');
-    ghIcon.alt = 'GitHub';
-    ghBtn.appendChild(ghIcon);
-    if (a.repo_url) {
-      ghBtn.title = 'Open GitHub issues';
-      ghBtn.setAttribute('aria-label', 'Open GitHub issues');
-      ghBtn.addEventListener('click', function () {
-        const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
-        window.open(issuesUrl, '_blank', 'noopener,noreferrer');
-      });
-    } else {
-      ghBtn.disabled = true;
-      ghBtn.title = 'No GitHub remote';
-      ghBtn.setAttribute('aria-label', 'No GitHub remote');
+    // Hideable under the same pseudo-id as the agents (issue #666).
+    if (!hidden.has(GITHUB_BUTTON_ID)) {
+      const ghBtn = document.createElement('button');
+      ghBtn.type = 'button';
+      ghBtn.className = 'icon-btn agent-btn';
+      const ghIcon = document.createElement('img');
+      ghIcon.className = 'agent-icon';
+      ghIcon.src = iconUrl('github');
+      ghIcon.alt = 'GitHub';
+      ghBtn.appendChild(ghIcon);
+      if (a.repo_url) {
+        ghBtn.title = 'Open GitHub issues';
+        ghBtn.setAttribute('aria-label', 'Open GitHub issues');
+        ghBtn.addEventListener('click', function () {
+          const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
+          window.open(issuesUrl, '_blank', 'noopener,noreferrer');
+        });
+      } else {
+        ghBtn.disabled = true;
+        ghBtn.title = 'No GitHub remote';
+        ghBtn.setAttribute('aria-label', 'No GitHub remote');
+      }
+      actions.appendChild(ghBtn);
     }
-    actions.appendChild(ghBtn);
 
     // Favorite star — rightmost in the action strip, a toggle distinct from
     // the agent-launch buttons. Filled when starred, outline otherwise
@@ -539,6 +609,11 @@ export async function fetchAgents() {
   } catch (exc) {
     logPollFailure('agents fetch failed', exc);
   }
+  // The visibility list is keyed off the registry, so it renders once the
+  // agents are known (boot order: fetchConfig → fetchAgents). Rendering from
+  // the conservative fallback on a failed fetch is fine — same ids, same
+  // labels.
+  renderAgentVisibility();
 }
 
 // -------------------------------------------------- running apps panel

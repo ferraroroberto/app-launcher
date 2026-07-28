@@ -50,6 +50,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
+        # Coding-row buttons the user hid (issue #666) — agent ids plus the
+        # pseudo-id `github`. The SPA filters the row strip on this.
+        "coding_hidden_agents": cfg.coding_hidden_agents,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
@@ -101,6 +104,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     allowed = {
         "projects_dir",
         "projects_ignore",
+        "coding_hidden_agents",
         "apps_scan_root",
         "life_os_dir",
         "claude_config_dir",
@@ -126,6 +130,13 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     if "projects_ignore" in patch:
         raw = patch["projects_ignore"]
         patch["projects_ignore"] = [
+            str(p).strip() for p in (raw or []) if str(p).strip()
+        ]
+    # Same coercion for the hidden-button list (issue #666) — a stray scalar
+    # must never reach the config as anything but a clean string list.
+    if "coding_hidden_agents" in patch:
+        raw = patch["coding_hidden_agents"]
+        patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
     try:
