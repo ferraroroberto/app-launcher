@@ -308,10 +308,21 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     upstream_url = session_client.ws_url(cfg.session_host_port, sid, role)
     try:
         async with ws_connect(upstream_url) as upstream:
-            audit.audit_event(
-                "ws_open", session=sid, client=client_ip_ws(websocket)
+            # Off the event loop (issue #610): audit_event/session_log do
+            # synchronous file I/O (open/write/close). This single uvicorn
+            # worker's event loop also hosts every OTHER live session's WS
+            # pump (_proxy_websocket below) — a blocked write here freezes
+            # every other terminal's in-flight frames for its duration, the
+            # same failure class #639 fixed for the session-host's spawn
+            # call. Gates first paint on THIS connection too, since the
+            # pump doesn't start until this returns.
+            await asyncio.to_thread(
+                audit.audit_event,
+                "ws_open", session=sid, client=client_ip_ws(websocket),
             )
-            audit.session_log(sid, "ws_open", client=client_ip_ws(websocket))
+            await asyncio.to_thread(
+                audit.session_log, sid, "ws_open", client=client_ip_ws(websocket)
+            )
             await _proxy_websocket(websocket, upstream, sid)
     except (OSError, WebSocketDisconnect, InvalidHandshake) as exc:
         # InvalidHandshake covers an upstream WS upgrade rejected at the
@@ -327,7 +338,7 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         except RuntimeError:
             pass
     finally:
-        audit.session_log(sid, "ws_close")
+        await asyncio.to_thread(audit.session_log, sid, "ws_close")
 
 
 async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
@@ -344,7 +355,14 @@ async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
             try:
                 msg = json.loads(raw)
                 if isinstance(msg, dict) and msg.get("type") == "input":
-                    audit.session_input(sid, str(msg.get("data") or ""))
+                    # Off the event loop (issue #610): fires on every
+                    # keystroke/paste frame for as long as the terminal
+                    # stays open, sharing this one worker's loop with every
+                    # other live session's pump — the highest-frequency
+                    # blocking-I/O candidate in the whole WS hot path.
+                    await asyncio.to_thread(
+                        audit.session_input, sid, str(msg.get("data") or "")
+                    )
             except (ValueError, TypeError):
                 pass
             await upstream.send(raw)
