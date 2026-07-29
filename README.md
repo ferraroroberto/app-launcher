@@ -87,10 +87,10 @@ suits you. Verify with `codex --version`.
 > Claude's: *Auto mode* runs with no prompts but keeps the sandbox; *Skip
 > permissions* is the all-bypass switch.
 >
-> Like `agy`, `codex` is detected on `PATH` at process start — after installing
-> it, **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445`
-> webapp; the `:8446` session-host that spawns `codex` needs a full tray restart
-> to inherit the new `PATH`).
+> Like `agy`, `codex` is resolved against the **effective** `PATH` (issue #668
+> — the inherited environment plus the machine and user registry values), so
+> installing it enables the button on the next detection poll, no restart
+> required.
 
 ### Installing the Antigravity CLI
 
@@ -109,10 +109,11 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > **Not** `winget install Google.Antigravity` — that package is the Antigravity
 > *IDE* (a desktop app), not the `agy` terminal CLI.
 >
-> The launcher detects `agy` on `PATH` at process start. After installing it,
-> **restart the tray** (`🔄 Restart webapp` only refreshes the `:8445` webapp —
-> the `:8446` session-host, which actually spawns `agy`, needs a full tray
-> restart to inherit the new `PATH`). A bare `tray.bat` re-run is a no-op when a
+> The launcher resolves `agy` against the **effective** `PATH` — the inherited
+> environment plus the machine and user registry values (issue #668) — so an
+> install lands on the next detection poll with **no restart at all**. A tray
+> restart is only needed when `src/agents.py` itself changes (a newly
+> *registered* agent, not a newly *installed* one). A bare `tray.bat` re-run is a no-op when a
 > tray is already alive — use `tray.bat --restart` to stop the running tray and
 > its tree (webapp, session-host, cloudflared, **any full-control Coding
 > sessions**) and start a fresh one. **Detached (☁️) sessions survive** the
@@ -138,11 +139,10 @@ for the channel that suits you. Verify with `copilot --version`.
 > on-screen instructions; it needs an active GitHub Copilot subscription. The
 > launcher only resolves the `copilot` binary on `PATH` and spawns it.
 >
-> Like `agy`, `copilot` is detected on `PATH` at process start — after
-> installing it, **restart the tray** (`🔄 Restart webapp` refreshes only the
-> `:8445` webapp; the `:8446` session-host that spawns `copilot` needs a full
-> tray restart to inherit the new `PATH`). Use `tray.bat --restart` for that;
-> a bare `tray.bat` is a no-op when a tray is already running.
+> Like `agy`, `copilot` is resolved against the **effective** `PATH` (issue
+> #668 — inherited plus both registry values), so installing it enables the
+> button on the next detection poll without restarting anything. Only a change
+> to `src/agents.py` itself needs a restart.
 
 ### Installing Pi
 
@@ -179,12 +179,15 @@ default high → `--thinking`), and **project-trust** controls.
 > and effort inside the session with `/model` / `Shift+Tab`. Details:
 > [`docs/pi-coding-agent.md`](docs/pi-coding-agent.md).
 >
-> Pi is detected on `PATH` *and* registered in `src/agents.py`, which the
-> `:8446` session-host imports at start — so after installing Pi (or upgrading
-> the launcher to a build that adds it), a `🔄 Restart webapp` / `tray.bat
-> --restart` is **not** enough: the session-host that spawns `pi` needs a
-> **full tray restart** (which ends open Coding/PTY sessions) before the Pi
-> button works, otherwise the launch fails with `unknown agent: pi`.
+> Two different things are needed for the Pi button to work, and only one of
+> them costs a restart. **Installing** the CLI is free: `pi` is resolved
+> against the effective `PATH` (issue #668), so a fresh install lands on the
+> next detection poll. **Registering** the agent in `src/agents.py` is not:
+> the `:8446` session-host imports that module at *its* start, so upgrading
+> the launcher to a build that adds a new agent needs a session-host restart
+> (`scripts/restart-session-host.ps1 -Confirm`, which ends every live PTY)
+> before the button works — otherwise the launch fails with
+> `unknown agent: pi`.
 
 ### Installing the Grok Build CLI
 
@@ -217,12 +220,12 @@ self-updates thereafter. Verify with `grok --version`.
 > **most recent** session (bare `--resume`, Antigravity's shape rather than a
 > Claude-style picker).
 >
-> Like the other agents, `grok` is detected on `PATH` at process start and
-> registered in `src/agents.py`, which the `:8446` session-host imports at
-> start — after installing it (or upgrading the launcher to the build that
-> adds it), the session-host needs a **full restart** before the Grok button
-> works, otherwise the launch fails with `unknown agent: grok` (same caveat as
-> Pi above).
+> Same split as Pi above: **installing** `grok` needs no restart — it resolves
+> against the effective `PATH` (issue #668) and appears on the next detection
+> poll — but **registering** the agent (`src/agents.py`, imported by the
+> `:8446` session-host at its own start) does, so upgrading to the build that
+> first added Grok needed a session-host restart before the button worked,
+> otherwise the launch failed with `unknown agent: grok`.
 
 ---
 

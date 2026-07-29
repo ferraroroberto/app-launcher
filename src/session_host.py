@@ -35,6 +35,7 @@ from src.agents import (
     quit_command_for,
 )
 from src.audit import transcript_path
+from src.env_path import effective_path
 from src.subprocess_flags import NO_WINDOW
 from src.vt_snapshot import VtSnapshot
 
@@ -1006,13 +1007,24 @@ def agent_child_env(session_id: str, agent: str) -> Dict[str, str]:
     """Build the environment for a launcher-spawned agent process.
 
     The host's own environment minus :data:`_INHERITED_AGENT_MARKERS`, plus
-    this session's ``APP_LAUNCHER_SESSION_ID``/``APP_LAUNCHER_AGENT`` stamp.
+    this session's ``APP_LAUNCHER_SESSION_ID``/``APP_LAUNCHER_AGENT`` stamp,
+    plus the **effective** ``PATH`` (issue #668).
+
+    That last part is what lets ``cmd /c <exe>`` find a CLI installed after
+    this host process started: the inherited block is frozen at spawn, so
+    without it the child inherits a ``PATH`` that predates the install. It
+    must be the *same* path :func:`src.agents.is_installed` resolves against
+    — a button that lights up for a launch that then dies with "is not
+    recognized as an internal or external command" is the worse failure.
+    Only ``PATH`` is refreshed: the marker-scrubbing policy above is
+    deliberate and stays exactly as it is.
     """
     env = {
         key: value
         for key, value in os.environ.items()
         if key.upper() not in _INHERITED_AGENT_MARKERS
     }
+    env["PATH"] = effective_path()
     env["APP_LAUNCHER_SESSION_ID"] = session_id
     env["APP_LAUNCHER_AGENT"] = agent
     return env

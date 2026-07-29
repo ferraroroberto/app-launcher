@@ -15,6 +15,8 @@ Observed live on 2026-07-28: session-host pid 20272 running with
 
 from __future__ import annotations
 
+import os
+
 from src.session_host import agent_child_env
 
 # The full block captured off the polluted live session-host.
@@ -77,4 +79,8 @@ def test_user_scope_settings_survive(monkeypatch):
     assert env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] == "70"
     assert env["CLAUDE_CODE_ENABLE_TELEMETRY"] == "1"
     assert env["GIT_TERMINAL_PROMPT"] == "0"
-    assert env["PATH"] == "C:\\Windows\\System32"
+    # PATH is the one variable deliberately *not* passed through verbatim
+    # (issue #668): the child gets the effective path — inherited plus the
+    # registry values — so a CLI installed after this host started still
+    # resolves. The inherited entry keeps its precedence at the front.
+    assert env["PATH"].split(os.pathsep)[0] == "C:\\Windows\\System32"

@@ -108,11 +108,17 @@ class TestNativeSessionNameFlags:
 
 class TestIsInstalled:
     def test_true_when_command_on_path(self, monkeypatch):
-        monkeypatch.setattr(agents.shutil, "which", lambda cmd: f"C:\\bin\\{cmd}")
+        # `path=` since #668 — is_installed resolves against the effective
+        # PATH, not implicitly against the process environment.
+        monkeypatch.setattr(
+            agents.shutil, "which", lambda cmd, path=None: f"C:\\bin\\{cmd}"
+        )
         assert agents.is_installed("antigravity") is True
 
     def test_false_when_command_missing(self, monkeypatch):
-        monkeypatch.setattr(agents.shutil, "which", lambda cmd: None)
+        monkeypatch.setattr(
+            agents.shutil, "which", lambda cmd, path=None: None
+        )
         assert agents.is_installed("claude") is False
 
     def test_false_for_unknown_agent(self):
@@ -148,7 +154,9 @@ class TestIsFullscreen:
 
 class TestDetectAgents:
     def test_shape_and_keys(self, monkeypatch):
-        monkeypatch.setattr(agents.shutil, "which", lambda cmd: None)
+        monkeypatch.setattr(
+            agents.shutil, "which", lambda cmd, path=None: None
+        )
         detected = agents.detect_agents()
         # One entry per known agent, each with the SPA-facing keys.
         assert {d["id"] for d in detected} == set(agents.AGENTS)
@@ -169,7 +177,7 @@ class TestDetectAgents:
         monkeypatch.setattr(
             agents.shutil,
             "which",
-            lambda cmd: "C:\\bin\\claude" if cmd == "claude" else None,
+            lambda cmd, path=None: "C:\\bin\\claude" if cmd == "claude" else None,
         )
         by_id = {d["id"]: d["available"] for d in agents.detect_agents()}
         assert by_id["claude"] is True
