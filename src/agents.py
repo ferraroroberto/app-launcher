@@ -30,6 +30,8 @@ import shutil
 from dataclasses import dataclass
 from typing import Dict, List
 
+from src.env_path import effective_path
+
 
 @dataclass(frozen=True)
 class Agent:
@@ -210,11 +212,20 @@ def is_fullscreen(agent_id: str) -> bool:
 
 
 def is_installed(agent_id: str) -> bool:
-    """Whether ``agent_id``'s command resolves on ``PATH``."""
+    """Whether ``agent_id``'s command resolves on the **effective** PATH.
+
+    Not the inherited one (issue #668): a CLI installed while the launcher
+    is running writes its directory into the registry, which no running
+    process ever re-reads — so ``shutil.which`` against ``os.environ`` would
+    keep reporting "not installed" until Explorer restarted or the user
+    logged off. :func:`src.env_path.effective_path` folds the registry
+    values in, and the session-host spawns children with the same merged
+    path, so detection and launch can't disagree.
+    """
     agent = SESSION_HOST_AGENTS.get(agent_id)
     if agent is None:
         return False
-    return shutil.which(agent.command) is not None
+    return shutil.which(agent.command, path=effective_path()) is not None
 
 
 def detect_agents() -> List[Dict[str, object]]:
