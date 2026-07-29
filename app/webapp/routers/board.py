@@ -65,7 +65,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import agents, audit, board, github_client, session_client
+from src import agents, audit, board, chief_pointer, github_client, session_client
 from src.board_exchange import resolve_exchange, unavailable
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.registry import AppEntry, live_claude_code_entries
@@ -817,7 +817,9 @@ async def _live_sessions_with_chief_label(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
-    return _reconcile_chief_labels(live, state["rows"]), state
+    reconciled = _reconcile_chief_labels(live, state["rows"])
+    _note_chief_conversation(reconciled, state["rows"])
+    return reconciled, state
 
 
 def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -830,6 +832,62 @@ def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
         if sess.get("label") == _CHIEF_LABEL or sess.get("name") == _CHIEF_LABEL:
             return sess
     return {}
+
+
+# The conversation id last persisted to the pointer sidecar. A module-level
+# memo so the steady-state 5s board poll does **zero** file IO (#675): a write
+# fires only when the chief's conversation actually changes — about once per
+# chief lifetime. Set optimistically, before the write lands: a failed write
+# costs one missed pointer refresh, never a write attempt every 5 seconds.
+_last_noted_chief_conversation = ""
+
+
+def _note_chief_conversation(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Any]
+) -> None:
+    """Persist which conversation the live chief is, when that changes (#675).
+
+    This is the write half of the durable pointer (:mod:`src.chief_pointer`).
+    It hangs off the *identification* path rather than ``ensure_chief``,
+    because the two shapes the pointer exists for are precisely the ones
+    ``ensure`` never sees: a chief the launcher never spawned (recognised only
+    by :func:`_reconcile_chief_label`'s self-heal) and a chief whose row is
+    about to age past ``board.STATE_STALE_AFTER``. Recording the id while the
+    PTY is alive is what makes both resumable once it isn't.
+
+    Two properties keep this off ``GET /api/board``'s 5s poll budget: the
+    module-level memo above (an unchanged chief does no IO at all) and
+    ``create_task`` (the one write per transition runs in a worker thread,
+    never on the response path — the same fire-and-forget shape the mirror
+    window spawn uses in ``routers/_helpers.py``).
+
+    Silent no-op when there's no live chief, when the claim walk can't resolve
+    its conversation, or when that row carries no transcript path — a pointer
+    without a transcript can't be substance-checked or resumed, so it is worth
+    less than no pointer at all.
+    """
+    global _last_noted_chief_conversation
+    chief = _find_chief(live)
+    if not chief:
+        return
+    conversation = str(
+        board.state_sid_for_session(
+            live, state_rows, str(chief.get("session_id") or "")
+        )
+        or ""
+    )
+    if not conversation or conversation == _last_noted_chief_conversation:
+        return
+    row = state_rows.get(conversation)
+    transcript = row.get("transcript_path") if isinstance(row, dict) else None
+    if not transcript:
+        return
+    _last_noted_chief_conversation = conversation
+    asyncio.create_task(
+        asyncio.to_thread(
+            chief_pointer.write_chief_pointer, conversation, transcript, "live"
+        )
+    )
 
 
 def _fresh_fleet_config_stamp(row: Any, now: datetime) -> Optional[datetime]:
@@ -905,6 +963,22 @@ def _find_resumable_chief_session_id(
     A row whose transcript is *confirmed* to hold no typed prompt is never
     resumed at any tier — reattaching it is worth strictly less than the
     fresh spawn the caller falls back to, which at least re-runs ``/chief``.
+
+    **The durable pointer (#675).** Tiers 2 and 3 above can only ever see what
+    ``sessions-state.json`` still holds, and two perfectly resumable chiefs are
+    invisible to it: one the launcher never spawned (its row is named after the
+    project, so the name scan skips it) once its PTY is gone, and any chief
+    dead longer than the hook writer's 24h prune (no row left at all). So the
+    remembered conversation (:mod:`src.chief_pointer`, written by
+    :func:`_note_chief_conversation` while the chief was alive) joins the scan
+    as one more candidate — exempt from the name check and the row-freshness
+    gate, since bypassing exactly those two is its purpose, but subject to
+    every other rule. It is deliberately **not** a tier of its own: above the
+    scan it would override a better live answer, and below it an older
+    launcher-spawned row would outrank the newer conversation the pointer
+    names. Ranked by its row's ``updated_at`` when that row still exists
+    (a live conversation's true recency) and by the pointer's own ``seen_at``
+    when it doesn't.
     """
     now = now or board._now()
     if preferred_sid:
@@ -921,27 +995,52 @@ def _find_resumable_chief_session_id(
     # (stamp, sid) of the newest candidate in each substance tier.
     confirmed: Tuple[Optional[datetime], str] = (None, "")
     unknown: Tuple[Optional[datetime], str] = (None, "")
+
+    def consider(sid: str, stamp: datetime, transcript: Any, origin: str) -> None:
+        """Rank one candidate into its substance tier, newest-first. The one
+        place the "confirmed bootstrap-only is never resumable" rule lives, so
+        a state row and the pointer can't drift apart on it."""
+        nonlocal confirmed, unknown
+        typed = board.has_typed_user_prompt(transcript)
+        if typed is False:
+            # The #670 breadcrumb: this is the conversation the old
+            # recency-only lookup would have handed back.
+            logger.info(
+                "↩️ chief resume: skipping %s (%s) — bootstrap-only conversation",
+                sid[:8], origin,
+            )
+            return
+        tier = confirmed if typed else unknown
+        if tier[0] is None or stamp > tier[0]:
+            if typed:
+                confirmed = (stamp, sid)
+            else:
+                unknown = (stamp, sid)
+
     for sid, row in state_rows.items():
         stamp = _fresh_fleet_config_stamp(row, now)
         if stamp is None:
             continue
         if str(row.get("name") or "").strip().lower() != _CHIEF_TITLE:
             continue
-        typed = board.has_typed_user_prompt(row.get("transcript_path"))
-        if typed is False:
-            # The #670 breadcrumb: this is the conversation the old
-            # recency-only lookup would have handed back.
-            logger.info(
-                "↩️ chief resume: skipping %s — bootstrap-only conversation",
-                str(sid)[:8],
+        consider(str(sid), stamp, row.get("transcript_path"), "state row")
+
+    pointer = chief_pointer.read_chief_pointer(now=now)
+    if pointer:
+        pointer_sid = str(pointer.get("session_id") or "")
+        pointer_row = state_rows.get(pointer_sid)
+        pointer_row = pointer_row if isinstance(pointer_row, dict) else {}
+        pointer_stamp = board._parse_iso(
+            pointer_row.get("updated_at")
+        ) or board._parse_iso(pointer.get("seen_at"))
+        if pointer_stamp is not None:
+            consider(
+                pointer_sid,
+                pointer_stamp,
+                pointer.get("transcript_path"),
+                "pointer",
             )
-            continue
-        tier = confirmed if typed else unknown
-        if tier[0] is None or stamp > tier[0]:
-            if typed:
-                confirmed = (stamp, str(sid))
-            else:
-                unknown = (stamp, str(sid))
+
     chosen = confirmed[1] or unknown[1]
     logger.info(
         "↩️ chief resume: %s",
@@ -950,6 +1049,35 @@ def _find_resumable_chief_session_id(
         else "nothing resumable — falling back to a fresh spawn",
     )
     return chosen
+
+
+def _refresh_chief_pointer_after_resume(
+    state_rows: Dict[str, Any], resumed_sid: str
+) -> None:
+    """Re-stamp the pointer at the conversation a Resume just reattached (#675).
+
+    Blocking IO — callers wrap in ``asyncio.to_thread``; this only ever runs on
+    the explicit ensure path, never on the board poll.
+
+    The identification writer would eventually record the same id off the next
+    poll, but only once a hook has fired and only while a row still exists.
+    Doing it here means the 7-day expiry clock restarts the moment Roberto
+    presses Resume — which matters most for exactly the conversation that had
+    no row left to find (the transcript path then comes from the pointer that
+    named it in the first place). Also primes the memo, so the poll that
+    follows doesn't write the same id a second time.
+    """
+    global _last_noted_chief_conversation
+    row = state_rows.get(resumed_sid)
+    transcript = row.get("transcript_path") if isinstance(row, dict) else None
+    if not transcript:
+        pointer = chief_pointer.read_chief_pointer()
+        if str(pointer.get("session_id") or "") == resumed_sid:
+            transcript = pointer.get("transcript_path")
+    if not transcript:
+        return
+    chief_pointer.write_chief_pointer(resumed_sid, transcript, "ensure-resume")
+    _last_noted_chief_conversation = resumed_sid
 
 
 def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
@@ -1036,8 +1164,10 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     shared stop-first ordering with ``fresh`` — *unless* that conversation is
     a bootstrap-only one, in which case the substantive conversation it
     displaced wins instead (#670: that is exactly the case where resuming
-    "itself" is what loses the real chief). No resumable id (state pruned
-    past the 24h window, no prior chief, or nothing but bootstrap-only
+    "itself" is what loses the real chief). The lookup also consults the
+    durable pointer (#675), so a chief the launcher never spawned, or one
+    dead past the 24h row-prune, is still reachable. No resumable id (state
+    pruned past the 24h window, no prior chief, or nothing but bootstrap-only
     conversations) degrades to today's fresh-spawn-
     and-``/chief`` path, never a hard failure — the response's ``resumed`` /
     ``resume_fallback_reason`` fields tell the caller which happened.
@@ -1116,6 +1246,11 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             raise HTTPException(status_code=400, detail=str(exc))
 
         sid = str(session.get("session_id") or "")
+        if resumed_session_id:
+            await asyncio.to_thread(
+                _refresh_chief_pointer_after_resume,
+                state["rows"], resumed_session_id,
+            )
         # Order matters (#245 review): rename FIRST, then /chief. The rename
         # also forwards the agent-native /rename into the PTY, so it must
         # land after boot but before the skill invocation — typed the other

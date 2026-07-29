@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import board as board_router
+from src import chief_pointer
 
 
 @pytest.fixture
@@ -848,6 +849,324 @@ class TestEnsureResume:
         )
         client.post("/api/board/chief/ensure", json={"resume": True})
         assert "--model opus" in _spawn["flags"]
+
+
+def _write_pointer(session_id, transcript_path, *, age=None, source="live"):
+    """Put a pointer on disk with an explicit ``seen_at`` age.
+
+    Writes raw rather than going through ``write_chief_pointer`` because these
+    tests care about a pointer that was stamped days ago — the writer always
+    stamps *now*. The path comes from the module global the autouse
+    ``_isolated_chief_pointer`` fixture has already redirected at ``tmp_path``.
+    """
+    seen = datetime.now(timezone.utc) - (age or timedelta(minutes=1))
+    chief_pointer.CHIEF_POINTER_FILE.write_text(
+        json.dumps({
+            "session_id": session_id,
+            "transcript_path": str(transcript_path),
+            "seen_at": seen.isoformat().replace("+00:00", "Z"),
+            "source": source,
+        }),
+        encoding="utf-8",
+    )
+
+
+class TestResumeConsultsTheDurablePointer:
+    """#675: the row scan can only see what ``sessions-state.json`` still
+    holds. These pin the two conversations it structurally cannot answer for —
+    a chief the launcher never spawned once its PTY is gone, and one dead past
+    the hook writer's 24h prune — and pin that the pointer never wins where a
+    live answer is better."""
+
+    def test_hand_started_chief_is_resumable_after_its_pty_is_gone(
+        self, tmp_path
+    ):
+        """Shape 1: never renamed, so its row reads ``fleet-config-79`` and the
+        name scan skips it; no live PTY left to prefer either. The pointer
+        written while it was alive is the only thing that can still find it."""
+        transcript = _transcript(tmp_path, "hand", typed=True)
+        rows = {
+            "hand-conv": _chief_state_row(
+                "hand-sess", _recent_iso(minutes=20),
+                name="fleet-config-79", transcript_path=transcript,
+            ),
+        }
+        _write_pointer("hand-conv", transcript)
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "hand-conv"
+        )
+
+    def test_conversation_past_the_24h_row_prune_is_resumable(self, tmp_path):
+        """Shape 2: no row left at all — the hook writer pruned it on the same
+        24h horizon ``board.STATE_STALE_AFTER`` applies. The transcript is
+        intact, so ``claude --resume`` still works and so must the launcher."""
+        transcript = _transcript(tmp_path, "old", typed=True)
+        _write_pointer("pruned-conv", transcript, age=timedelta(days=3))
+        assert (
+            board_router._find_resumable_chief_session_id({}) == "pruned-conv"
+        )
+
+    def test_newer_substantive_chief_row_outranks_the_pointer(self, tmp_path):
+        """The pointer joins the ranking, it doesn't jump it: a genuinely
+        fresher confirmed chief conversation is still the better answer."""
+        _write_pointer(
+            "pointed-conv", _transcript(tmp_path, "pointed", typed=True),
+            age=timedelta(days=2),
+        )
+        rows = {
+            "fresh-conv": _chief_state_row(
+                "fresh-sess", _recent_iso(minutes=5),
+                transcript_path=_transcript(tmp_path, "fresh", typed=True),
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "fresh-conv"
+        )
+
+    def test_pointer_is_ranked_by_its_row_when_the_row_still_exists(
+        self, tmp_path
+    ):
+        """A long-lived chief is pointed at once and never re-stamped, so its
+        ``seen_at`` can be days old while the conversation is minutes fresh.
+        Ranking it on the row it still has is what keeps an older
+        launcher-spawned conversation from outranking the real current one."""
+        transcript = _transcript(tmp_path, "hand", typed=True)
+        _write_pointer("hand-conv", transcript, age=timedelta(days=3))
+        rows = {
+            "hand-conv": _chief_state_row(
+                "hand-sess", _recent_iso(minutes=2),
+                name="fleet-config-79", transcript_path=transcript,
+            ),
+            "older-conv": _chief_state_row(
+                "older-sess", _recent_iso(hours=6),
+                transcript_path=_transcript(tmp_path, "older", typed=True),
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "hand-conv"
+        )
+
+    def test_bootstrap_only_pointer_is_never_resumed(self, tmp_path):
+        """#670's rule applies to the pointer too — reattaching a conversation
+        holding nothing but its own ``/chief`` is worth less than the fresh
+        spawn the caller falls back to."""
+        _write_pointer(
+            "blank-conv", _transcript(tmp_path, "blank", typed=False)
+        )
+        assert board_router._find_resumable_chief_session_id({}) == ""
+
+    def test_live_preferred_sid_still_wins_over_the_pointer(self, tmp_path):
+        """Tier 1 is unchanged: the conversation behind the PTY this resume is
+        about to stop is the most direct evidence there is."""
+        _write_pointer(
+            "pointed-conv", _transcript(tmp_path, "pointed", typed=True)
+        )
+        rows = {
+            "live-conv": _chief_state_row(
+                "live-sess", _recent_iso(minutes=1),
+                name="fleet-config-79",
+                transcript_path=_transcript(tmp_path, "live", typed=True),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(
+            rows, preferred_sid="live-conv"
+        ) == "live-conv"
+
+    def test_expired_pointer_is_ignored(self, tmp_path):
+        _write_pointer(
+            "old-conv", _transcript(tmp_path, "old", typed=True),
+            age=timedelta(days=8),
+        )
+        assert board_router._find_resumable_chief_session_id({}) == ""
+
+    def test_pointer_at_a_deleted_transcript_is_ignored(self, tmp_path):
+        transcript = Path(_transcript(tmp_path, "gone", typed=True))
+        _write_pointer("gone-conv", transcript)
+        transcript.unlink()
+        assert board_router._find_resumable_chief_session_id({}) == ""
+
+    def test_missing_pointer_degrades_to_the_scan(self, tmp_path):
+        """AC: a missing/corrupt pointer is never an error — the lookup is
+        exactly what it was before #675."""
+        chief_pointer.CHIEF_POINTER_FILE.write_text("{corrupt", encoding="utf-8")
+        rows = {
+            "real-conv": _chief_state_row(
+                "real-sess", _recent_iso(hours=2),
+                transcript_path=_transcript(tmp_path, "real", typed=True),
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "real-conv"
+        )
+
+    def test_pointer_naming_a_row_already_in_the_scan_is_harmless(
+        self, tmp_path
+    ):
+        transcript = _transcript(tmp_path, "same", typed=True)
+        _write_pointer("same-conv", transcript)
+        rows = {
+            "same-conv": _chief_state_row(
+                "same-sess", _recent_iso(minutes=5), transcript_path=transcript,
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "same-conv"
+        )
+
+
+class TestNoteChiefConversation:
+    """#675's write half: the pointer is recorded while the chief is alive —
+    that is the only moment both shapes above are knowable — without putting
+    file IO on ``GET /api/board``'s 5s poll."""
+
+    async def _drain(self):
+        """Await the fire-and-forget write task the noter schedules."""
+        import asyncio
+        pending = [
+            task for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+        ]
+        if pending:
+            await asyncio.gather(*pending)
+
+    async def test_live_chief_is_recorded_with_its_transcript(self, tmp_path):
+        transcript = _transcript(tmp_path, "live", typed=True)
+        rows = {
+            "live-conv": _chief_state_row(
+                "chief-old", _recent_iso(minutes=1), transcript_path=transcript,
+            ),
+        }
+        board_router._note_chief_conversation([_chief_row()], rows)
+        await self._drain()
+        pointer = chief_pointer.read_chief_pointer()
+        assert pointer["session_id"] == "live-conv"
+        assert pointer["transcript_path"] == transcript
+        assert pointer["source"] == "live"
+
+    async def test_self_healed_chief_is_recorded_too(self, tmp_path):
+        """The case the pointer exists for: a chief the launcher never spawned
+        carries no ``label`` of its own until ``_reconcile_chief_label`` heals
+        it, and its row is named after the project."""
+        transcript = _transcript(tmp_path, "hand", typed=True)
+        rows = {
+            "hand-conv": _chief_state_row(
+                "chief-old", _recent_iso(minutes=1),
+                name="fleet-config-79", transcript_path=transcript,
+            ),
+        }
+        live = board_router._reconcile_chief_labels(
+            [_chief_row(
+                label="", name="fleet-config", live_title="✳ chief",
+                project_dir="E:/automation/fleet-config",
+            )],
+            rows,
+        )
+        board_router._note_chief_conversation(live, rows)
+        await self._drain()
+        assert chief_pointer.read_chief_pointer()["session_id"] == "hand-conv"
+
+    async def test_unchanged_chief_writes_nothing_on_the_next_poll(
+        self, tmp_path, monkeypatch
+    ):
+        """The poll-budget contract: the memo means a steady-state
+        ``GET /api/board`` does no pointer IO at all."""
+        rows = {
+            "live-conv": _chief_state_row(
+                "chief-old", _recent_iso(minutes=1),
+                transcript_path=_transcript(tmp_path, "live", typed=True),
+            ),
+        }
+        writes = []
+        monkeypatch.setattr(
+            chief_pointer, "write_chief_pointer",
+            lambda *a, **k: writes.append(a[0]),
+        )
+        for _ in range(3):
+            board_router._note_chief_conversation([_chief_row()], rows)
+            await self._drain()
+        assert writes == ["live-conv"]
+
+    async def test_a_different_chief_conversation_rewrites_the_pointer(
+        self, tmp_path, monkeypatch
+    ):
+        writes = []
+        monkeypatch.setattr(
+            chief_pointer, "write_chief_pointer",
+            lambda *a, **k: writes.append(a[0]),
+        )
+        for conv in ("first-conv", "second-conv"):
+            rows = {
+                conv: _chief_state_row(
+                    "chief-old", _recent_iso(minutes=1),
+                    transcript_path=_transcript(tmp_path, conv, typed=True),
+                ),
+            }
+            board_router._note_chief_conversation([_chief_row()], rows)
+            await self._drain()
+        assert writes == ["first-conv", "second-conv"]
+
+    async def test_no_live_chief_records_nothing(self, tmp_path):
+        rows = {
+            "some-conv": _chief_state_row(
+                "other-sess", _recent_iso(minutes=1),
+                transcript_path=_transcript(tmp_path, "some", typed=True),
+            ),
+        }
+        board_router._note_chief_conversation(
+            [_chief_row(label="", name="fleet-config", alive=True)], rows
+        )
+        await self._drain()
+        assert chief_pointer.read_chief_pointer() == {}
+
+    async def test_row_without_a_transcript_records_nothing(self):
+        """A pointer that can't be substance-checked or resumed is worth less
+        than no pointer."""
+        rows = {"live-conv": _chief_state_row("chief-old", _recent_iso(minutes=1))}
+        board_router._note_chief_conversation([_chief_row()], rows)
+        await self._drain()
+        assert chief_pointer.read_chief_pointer() == {}
+
+
+class TestEnsureRefreshesThePointer:
+
+    def test_resume_restamps_the_pointer_it_reattached(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session, tmp_path,
+    ):
+        """A conversation past the row prune has no row to re-derive from, so
+        pressing Resume is the moment that restarts its 7-day clock."""
+        client, _, _ = webapp_client
+        transcript = _transcript(tmp_path, "pruned", typed=True)
+        _write_pointer("pruned-conv", transcript, age=timedelta(days=6))
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        assert resp.json()["resumed"] is True
+        assert "--resume pruned-conv" in _spawn["flags"]
+        pointer = chief_pointer.read_chief_pointer()
+        assert pointer["session_id"] == "pruned-conv"
+        assert pointer["source"] == "ensure-resume"
+        # Restamped: it was 6 days old going in, and would expire in one more.
+        assert (
+            datetime.now(timezone.utc)
+            - board_router.board._parse_iso(pointer["seen_at"])
+        ) < timedelta(minutes=5)
+
+    def test_fresh_spawn_does_not_touch_the_pointer(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session, tmp_path,
+    ):
+        """Nothing was reattached, so nothing is known yet — the brand-new
+        conversation's id only exists once a hook fires, and the poll-side
+        noter records it then."""
+        client, _, _ = webapp_client
+        _write_pointer(
+            "blank-conv", _transcript(tmp_path, "blank", typed=False)
+        )
+        resp = client.post("/api/board/chief/ensure", json={})
+        assert resp.status_code == 200
+        assert chief_pointer.read_chief_pointer().get("session_id") == (
+            "blank-conv"
+        )
 
 
 class TestChiefSettings:

@@ -39,6 +39,8 @@ webapp/cloudflared.yml
 webapp/terminal-themes.json
 webapp/sessions/
 webapp/jobs/
+# durable chief-conversation pointer (issue #675) — machine-written state
+webapp/chief-pointer.json
 # e2e-gate temp copy of the real config (issue #441) — carries auth secrets
 webapp/e2e-autoboot-webapp-config.json
 

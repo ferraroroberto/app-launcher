@@ -133,6 +133,7 @@ flowchart TB
   BOARD --> GHCLIENT
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
+  R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief_pointer.py →\nwebapp/chief-pointer.json"]
   R_CONFIG --> WEBAPPCFG
   R_CONFIG --> APPCFG
   R_TOKENS --> APITOKENS
