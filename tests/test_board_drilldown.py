@@ -122,6 +122,52 @@ def test_last_exchange_no_assistant_text_in_tail(tmp_path: Path):
     assert board.last_exchange(target)["available"] is False
 
 
+# ------------------------------------------------- has_typed_user_prompt (#670)
+
+# The exact user-line shapes a launcher-spawned, never-talked-to session
+# writes — verified against the real 2026-07-28 blank chief transcript: the
+# slash-command wrapper is a plain string, the skill body it expands to rides
+# as a content *list*, and the rename lands as a <system-reminder>.
+_BOOTSTRAP_ONLY = [
+    _user_line("<command-message>chief</command-message>\n"
+               "<command-name>/chief</command-name>"),
+    _user_line([{"type": "text", "text": "Base directory for this skill: ..."}]),
+    _assistant_line([{"type": "text", "text": "reading the handover"}]),
+    _user_line([{"type": "tool_result", "content": "..."}]),
+    _user_line('<system-reminder>\nThe user named this session "chief".\n'
+               "</system-reminder>"),
+]
+
+
+def test_typed_prompt_detected(tmp_path: Path):
+    target = _write_jsonl(
+        tmp_path / "t.jsonl", _BOOTSTRAP_ONLY + [_user_line("how is it going?")]
+    )
+    assert board.has_typed_user_prompt(target) is True
+
+
+def test_bootstrap_only_transcript_is_a_confident_no(tmp_path: Path):
+    target = _write_jsonl(tmp_path / "t.jsonl", _BOOTSTRAP_ONLY)
+    assert board.has_typed_user_prompt(target) is False
+
+
+def test_unreadable_transcript_is_unknown_not_no():
+    assert board.has_typed_user_prompt(None) is None
+    assert board.has_typed_user_prompt("") is None
+    assert board.has_typed_user_prompt("C:/nope/missing.jsonl") is None
+
+
+def test_oversized_tail_without_a_prompt_is_unknown_not_no(tmp_path: Path):
+    """A file bigger than the tail window can hold a typed prompt the window
+    never saw (a long autonomous stretch pushes it out of view) — that has to
+    read as unknown, never as a confident "nothing was ever typed"."""
+    filler = [_assistant_line([{"type": "text", "text": "x" * 4000}], f"m{i}")
+              for i in range(80)]
+    target = _write_jsonl(tmp_path / "t.jsonl", _BOOTSTRAP_ONLY + filler)
+    assert Path(target).stat().st_size > 256 * 1024
+    assert board.has_typed_user_prompt(target) is None
+
+
 # ------------------------------------------ agent-aware source fallbacks (#457)
 
 

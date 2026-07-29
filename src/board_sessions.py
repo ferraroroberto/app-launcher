@@ -250,6 +250,30 @@ def state_row_for_session(
     return None
 
 
+def state_sid_for_session(
+    live: List[Dict[str, Any]],
+    state_rows: Dict[str, Dict[str, Any]],
+    session_id: str,
+) -> Optional[str]:
+    """The *conversation* id (the claimed row's own key) the board's merge
+    assigns to this live session, or None — the sibling of
+    :func:`state_row_for_session`, resolved through the identical claim walk
+    so both answer about the same row.
+
+    A live PTY's own id is the session-host's, not Claude Code's; the id
+    ``claude --resume <id>`` needs is the state row's key. The chief resume
+    lookup (#670) needs exactly that for the chief it is about to stop, so a
+    chief nobody launched through ``ensure`` — whose row is therefore named
+    after its project rather than ``"chief"`` — is still resumable back into
+    itself.
+    """
+    pairs, _ = _claim_walk(live, state_rows)
+    for sess, _row, sid in pairs:
+        if str(sess.get("session_id")) == str(session_id):
+            return sid
+    return None
+
+
 def attach_shared_names(
     live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
 ) -> List[Dict[str, Any]]:

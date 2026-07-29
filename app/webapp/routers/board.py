@@ -13,8 +13,9 @@
                                             (?fresh=1 kills + restarts, an
                                             explicit operator action, #616;
                                             ?resume=1 reattaches the most
-                                            recent chief conversation instead
-                                            of starting fresh, #633) —
+                                            recent *substantive* chief
+                                            conversation instead of starting
+                                            fresh, #633/#670) —
                                             Tailscale + passkey
     GET  /api/board/chief/settings        → chief settings block (also read
                                             by the /chief skill over loopback)
@@ -831,46 +832,124 @@ def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {}
 
 
+def _fresh_fleet_config_stamp(row: Any, now: datetime) -> Optional[datetime]:
+    """This ``sessions-state.json`` row's ``updated_at``, if it is a
+    live-enough fleet-config row — else ``None``.
+
+    Qualifying means: in the fleet-config checkout (``project``, falling back
+    to ``Path(cwd).name`` — the same fallback ``board_sessions._external_row``
+    already applies) and stamped within ``board.STATE_STALE_AFTER``. The 24h
+    window is applied **per row** rather than trusting the file-level
+    ``stale`` flag some *other* row could keep looking fresh: a chief
+    conversation that's individually gone cold must not be resumed just
+    because a different session kept the file's newest timestamp recent.
+
+    Returns the parsed stamp rather than a bool because every caller that
+    cares whether a row qualifies also ranks it by that same stamp.
+    """
+    if not isinstance(row, dict):
+        return None
+    cwd = row.get("cwd")
+    project = str(row.get("project") or Path(str(cwd or "")).name)
+    if project != _CHIEF_PROJECT_DIR_NAME:
+        return None
+    stamp = board._parse_iso(row.get("updated_at"))
+    if stamp is None or now - stamp > board.STATE_STALE_AFTER:
+        return None
+    return stamp
+
+
 def _find_resumable_chief_session_id(
-    state_rows: Dict[str, Any], *, now: Optional[datetime] = None
+    state_rows: Dict[str, Any],
+    *,
+    now: Optional[datetime] = None,
+    preferred_sid: str = "",
 ) -> str:
-    """The most recent fleet-config chief conversation id, or ``""`` (#633).
+    """The chief conversation worth reattaching, or ``""`` (#633, fixed #670).
 
-    Filters ``sessions-state.json`` rows to the ones that are both in the
-    fleet-config checkout (``project``, falling back to ``Path(cwd).name`` —
-    the same fallback ``board_sessions._external_row`` already applies) and
-    named ``"chief"`` (case-insensitive, mirroring ``_CHIEF_TITLE``), then
-    returns the dict key — Claude's own session UUID, exactly what
-    ``claude --resume <id>`` needs — of the newest by ``updated_at``.
+    Returns the dict key — Claude's own session UUID, exactly what
+    ``claude --resume <id>`` needs. Returns ``""`` (never raises) when
+    nothing qualifies — same degradation contract every other
+    ``board_state`` reader already follows; the caller treats that as "fall
+    back to a fresh spawn", not an error.
 
-    Applies ``board.STATE_STALE_AFTER`` (24h) per row rather than trusting
-    the file-level ``stale`` flag some *other* row could keep looking fresh:
-    a chief conversation that's individually gone cold must not be resumed
-    just because a different session kept the file's newest timestamp
-    recent. Returns ``""`` (never raises) when nothing qualifies — same
-    degradation contract every other ``board_state`` reader already follows;
-    the caller treats that as "fall back to a fresh spawn", not an error.
+    **Newest is not the same as right (#670).** The original lookup ranked
+    candidates on ``updated_at`` alone, which inverts after any event that
+    kills the chief's PTY: the real conversation's row freezes at the moment
+    of death, while the blank chief spawned seconds later by the fallback
+    path — renamed ``"chief"`` by ``ensure_chief`` itself, so indistinguishable
+    by name — keeps writing rows and always wins the recency race. Resume
+    then reattached a conversation whose entire content was ``/chief`` and
+    the handover file, and it ratcheted: with #640's stop-the-live-chief-first
+    ordering, the live blank chief won every subsequent press too, so no
+    amount of pressing Resume could get back to the real conversation
+    (observed live 2026-07-28: a 95-line, 10-minute-old conversation resumed
+    over a 6 468-line one that had been running for three days).
+
+    So substance decides, not just recency. Candidates are ranked in tiers,
+    newest-first within each:
+
+    1. ``preferred_sid`` — the conversation of the live chief this resume is
+       about to stop, when it has substance. Honors #640's context-preserving
+       restart *and* covers a chief the launcher never spawned (its row is
+       named after the project, never ``"chief"``, so the name scan below
+       cannot see it at all).
+    2. Rows named ``"chief"`` (case-insensitive, mirroring ``_CHIEF_TITLE``)
+       with a **confirmed** typed human prompt.
+    3. The same rows with *unknown* substance — an unreadable transcript, or
+       one too big for the tail window to answer over. Unknown is not a
+       negative (:func:`board.has_typed_user_prompt`); it just ranks below a
+       confirmed one, so a long autonomous chief is still resumable when
+       nothing better exists.
+
+    A row whose transcript is *confirmed* to hold no typed prompt is never
+    resumed at any tier — reattaching it is worth strictly less than the
+    fresh spawn the caller falls back to, which at least re-runs ``/chief``.
     """
     now = now or board._now()
-    best_sid = ""
-    best_stamp = None
+    if preferred_sid:
+        row = state_rows.get(preferred_sid)
+        if _fresh_fleet_config_stamp(row, now) is not None and (
+            board.has_typed_user_prompt(row.get("transcript_path")) is not False
+        ):
+            logger.info(
+                "↩️ chief resume: reattaching the stopped PTY's own conversation %s",
+                str(preferred_sid)[:8],
+            )
+            return str(preferred_sid)
+
+    # (stamp, sid) of the newest candidate in each substance tier.
+    confirmed: Tuple[Optional[datetime], str] = (None, "")
+    unknown: Tuple[Optional[datetime], str] = (None, "")
     for sid, row in state_rows.items():
-        if not isinstance(row, dict):
+        stamp = _fresh_fleet_config_stamp(row, now)
+        if stamp is None:
             continue
-        name = str(row.get("name") or "").strip().lower()
-        if name != _CHIEF_TITLE:
+        if str(row.get("name") or "").strip().lower() != _CHIEF_TITLE:
             continue
-        cwd = row.get("cwd")
-        project = str(row.get("project") or Path(str(cwd or "")).name)
-        if project != _CHIEF_PROJECT_DIR_NAME:
+        typed = board.has_typed_user_prompt(row.get("transcript_path"))
+        if typed is False:
+            # The #670 breadcrumb: this is the conversation the old
+            # recency-only lookup would have handed back.
+            logger.info(
+                "↩️ chief resume: skipping %s — bootstrap-only conversation",
+                str(sid)[:8],
+            )
             continue
-        stamp = board._parse_iso(row.get("updated_at"))
-        if stamp is None or now - stamp > board.STATE_STALE_AFTER:
-            continue
-        if best_stamp is None or stamp > best_stamp:
-            best_stamp = stamp
-            best_sid = str(sid)
-    return best_sid
+        tier = confirmed if typed else unknown
+        if tier[0] is None or stamp > tier[0]:
+            if typed:
+                confirmed = (stamp, str(sid))
+            else:
+                unknown = (stamp, str(sid))
+    chosen = confirmed[1] or unknown[1]
+    logger.info(
+        "↩️ chief resume: %s",
+        f"resuming {chosen[:8]} ({'confirmed' if confirmed[1] else 'unknown'} substance)"
+        if chosen
+        else "nothing resumable — falling back to a fresh spawn",
+    )
+    return chosen
 
 
 def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
@@ -942,18 +1021,24 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     Body/query: ``fresh`` truthy → kill the current chief first and respawn
     — the manual Restart button's mode (#616/#617; the query form keeps a
     bodyless ``curl -X POST`` usable for a manual operator restart). ``resume``
-    truthy → reattach the most recent chief conversation instead of starting
-    fresh (#633): stops any live chief first (same as ``fresh`` — never end up
-    with two), looks up the newest same-day ``name == "chief"`` row in
-    ``sessions-state.json`` for the fleet-config checkout
-    (:func:`_find_resumable_chief_session_id`), and — if found — spawns with
+    truthy → reattach the chief conversation worth continuing instead of
+    starting fresh (#633): stops any live chief first (same as ``fresh`` —
+    never end up with two), looks up the newest *substantive* same-day chief
+    conversation in ``sessions-state.json`` for the fleet-config checkout —
+    preferring the one the just-stopped PTY was attached to, and never a
+    conversation confirmed to hold nothing but its own ``/chief`` bootstrap
+    (:func:`_find_resumable_chief_session_id`, #670) — and — if found — spawns with
     ``label="chief"`` declared at spawn time and a direct
     ``claude --resume <id>`` (never the bare interactive picker), skipping the
     ``/chief`` type-in entirely since a resumed conversation is already past
     that point. A chief stopped for a ``resume`` request is thus resumed right
     back into itself — a context-preserving restart, not a coincidence of the
-    shared stop-first ordering with ``fresh``. No resumable id (state pruned
-    past the 24h window, or no prior chief) degrades to today's fresh-spawn-
+    shared stop-first ordering with ``fresh`` — *unless* that conversation is
+    a bootstrap-only one, in which case the substantive conversation it
+    displaced wins instead (#670: that is exactly the case where resuming
+    "itself" is what loses the real chief). No resumable id (state pruned
+    past the 24h window, no prior chief, or nothing but bootstrap-only
+    conversations) degrades to today's fresh-spawn-
     and-``/chief`` path, never a hard failure — the response's ``resumed`` /
     ``resume_fallback_reason`` fields tell the caller which happened.
     ``rows``/``cols`` size the PTY like every other launch. Returns
@@ -973,14 +1058,28 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     async with _CHIEF_ENSURE_LOCK:
         live, state = await _live_sessions_with_chief_label(cfg)
         chief = _find_chief(live)
+        preferred_sid = ""
         if chief:
             sid = str(chief.get("session_id") or "")
             if not fresh and not resume:
                 return {"session_id": sid, "spawned": False}
+            # Resolve the conversation behind the PTY *before* stopping it —
+            # the live list is the only place that join can be made, and a
+            # chief the launcher never spawned is invisible to the name-based
+            # scan (#670).
+            preferred_sid = str(
+                board.state_sid_for_session(live, state["rows"], sid) or ""
+            )
             await _stop_chief_for_respawn(cfg.session_host_port, sid)
 
         resumed_session_id = (
-            _find_resumable_chief_session_id(state["rows"]) if resume else ""
+            await asyncio.to_thread(
+                _find_resumable_chief_session_id,
+                state["rows"],
+                preferred_sid=preferred_sid,
+            )
+            if resume
+            else ""
         )
         resume_fallback_reason = (
             "no resumable chief conversation found in the last 24h"

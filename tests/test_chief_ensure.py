@@ -455,6 +455,42 @@ def _chief_state_row(session_id, updated_at, **extra):
     return row
 
 
+def _transcript(tmp_path: Path, stem: str, *, typed: bool) -> str:
+    """A chief transcript JSONL, with or without a typed human prompt (#670).
+
+    The bootstrap lines mirror what a launcher-spawned, never-talked-to chief
+    actually writes (verified against the real 2026-07-28 blank chief): the
+    slash-command wrapper as a plain string, the skill body it expands to as
+    a content *list*, and the post-spawn rename as a ``<system-reminder>`` —
+    three user lines, none of them typed by a person.
+    """
+    lines = [
+        {"type": "user", "timestamp": "2026-07-28T19:12:55Z", "message": {
+            "role": "user",
+            "content": "<command-message>chief</command-message>\n"
+                       "<command-name>/chief</command-name>"}},
+        {"type": "user", "timestamp": "2026-07-28T19:12:55Z", "message": {
+            "role": "user",
+            "content": [{"type": "text", "text": "Base directory for this skill: ..."}]}},
+        {"type": "assistant", "timestamp": "2026-07-28T19:13:20Z", "message": {
+            "id": "m1", "role": "assistant",
+            "content": [{"type": "text", "text": "read the handover"}]}},
+        {"type": "user", "timestamp": "2026-07-28T19:22:21Z", "message": {
+            "role": "user",
+            "content": '<system-reminder>The user named this session "chief".'
+                       "</system-reminder>"}},
+    ]
+    if typed:
+        lines.append({
+            "type": "user", "timestamp": "2026-07-28T19:30:00Z",
+            "message": {"role": "user", "content": "how is it going?"}})
+    target = tmp_path / f"{stem}.jsonl"
+    target.write_text(
+        "\n".join(json.dumps(line) for line in lines) + "\n", encoding="utf-8"
+    )
+    return str(target)
+
+
 def _recent_iso(**delta_kwargs) -> str:
     """An ISO-8601 UTC stamp ``delta_kwargs`` in the past from the *real*
     current time (issue #658) — for rows exercised through the HTTP-level
@@ -527,6 +563,146 @@ class TestFindResumableChiefSessionId:
     def test_non_dict_row_is_skipped(self):
         rows = {"uuid-1": "not-a-row"}
         assert board_router._find_resumable_chief_session_id(rows) == ""
+
+
+class TestResumeRanksBySubstance:
+    """#670: recency alone picks the wrong conversation after anything that
+    kills the chief's PTY. The real chief's row freezes at the moment of
+    death; the blank chief the fallback path spawns seconds later — renamed
+    ``"chief"`` by ``ensure_chief`` itself — is newer forever after. These
+    pin that substance decides first, and that "couldn't tell" never
+    masquerades as "confirmed empty"."""
+
+    def test_bootstrap_only_newest_loses_to_the_substantive_older_one(
+        self, tmp_path
+    ):
+        """The exact 2026-07-28 incident: a 10-minute-old ``/chief``-and-
+        handover conversation must not win over the three-day one it
+        displaced."""
+        rows = {
+            "real-uuid": _chief_state_row(
+                "real-sess", _recent_iso(hours=3),
+                transcript_path=_transcript(tmp_path, "real", typed=True),
+            ),
+            "blank-uuid": _chief_state_row(
+                "blank-sess", _recent_iso(minutes=1),
+                transcript_path=_transcript(tmp_path, "blank", typed=False),
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "real-uuid"
+        )
+
+    def test_newest_still_wins_between_two_substantive_conversations(
+        self, tmp_path
+    ):
+        rows = {
+            "old-uuid": _chief_state_row(
+                "old-sess", _recent_iso(hours=3),
+                transcript_path=_transcript(tmp_path, "old", typed=True),
+            ),
+            "new-uuid": _chief_state_row(
+                "new-sess", _recent_iso(minutes=5),
+                transcript_path=_transcript(tmp_path, "new", typed=True),
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "new-uuid"
+        )
+
+    def test_confirmed_substance_outranks_unknown_substance(self, tmp_path):
+        rows = {
+            "known-uuid": _chief_state_row(
+                "known-sess", _recent_iso(hours=3),
+                transcript_path=_transcript(tmp_path, "known", typed=True),
+            ),
+            "unknown-uuid": _chief_state_row(
+                "unknown-sess", _recent_iso(minutes=5),
+                transcript_path="C:/nope/missing.jsonl",
+            ),
+        }
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "known-uuid"
+        )
+
+    def test_unknown_substance_is_still_resumable_when_nothing_better(self):
+        """Unknown is not a negative — an unreadable transcript still beats
+        throwing the conversation away for a fresh spawn."""
+        rows = {"uuid-1": _chief_state_row("s1", _recent_iso(hours=1))}
+        assert (
+            board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+        )
+
+    def test_only_bootstrap_only_conversations_resumes_nothing(self, tmp_path):
+        rows = {
+            "blank-uuid": _chief_state_row(
+                "blank-sess", _recent_iso(minutes=1),
+                transcript_path=_transcript(tmp_path, "blank", typed=False),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(rows) == ""
+
+    def test_preferred_sid_wins_even_with_a_project_derived_name(
+        self, tmp_path
+    ):
+        """A chief the launcher never spawned (Roberto's own ``/resume``, or a
+        plain Coding session he typed ``/chief`` into) has a project-derived
+        row name, so the name scan can't see it at all — but its own PTY was
+        just stopped for this resume, so it is exactly what to reattach."""
+        rows = {
+            "hand-uuid": _chief_state_row(
+                "hand-sess", _recent_iso(minutes=2), name="fleet-config-79",
+                transcript_path=_transcript(tmp_path, "hand", typed=True),
+            ),
+            "other-uuid": _chief_state_row(
+                "other-sess", _recent_iso(hours=1),
+                transcript_path=_transcript(tmp_path, "other", typed=True),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(
+            rows, preferred_sid="hand-uuid"
+        ) == "hand-uuid"
+
+    def test_preferred_sid_is_ignored_when_bootstrap_only(self, tmp_path):
+        """The ratchet #670 filed over: stopping the live chief first (#640)
+        means the blank one is always the preferred candidate, so preference
+        must not survive a confirmed-empty transcript."""
+        rows = {
+            "blank-uuid": _chief_state_row(
+                "blank-sess", _recent_iso(minutes=1),
+                transcript_path=_transcript(tmp_path, "blank", typed=False),
+            ),
+            "real-uuid": _chief_state_row(
+                "real-sess", _recent_iso(hours=3),
+                transcript_path=_transcript(tmp_path, "real", typed=True),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(
+            rows, preferred_sid="blank-uuid"
+        ) == "real-uuid"
+
+    def test_preferred_sid_outside_fleet_config_is_ignored(self, tmp_path):
+        rows = {
+            "elsewhere-uuid": _chief_state_row(
+                "elsewhere-sess", _recent_iso(minutes=1),
+                cwd="E:/automation/app-launcher", name="app-launcher-11",
+                transcript_path=_transcript(tmp_path, "elsewhere", typed=True),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(
+            rows, preferred_sid="elsewhere-uuid"
+        ) == ""
+
+    def test_unknown_preferred_sid_falls_through_to_the_scan(self, tmp_path):
+        rows = {
+            "real-uuid": _chief_state_row(
+                "real-sess", _recent_iso(hours=3),
+                transcript_path=_transcript(tmp_path, "real", typed=True),
+            ),
+        }
+        assert board_router._find_resumable_chief_session_id(
+            rows, preferred_sid="ghost-uuid"
+        ) == "real-uuid"
 
 
 class TestEnsureResume:
@@ -615,6 +791,45 @@ class TestEnsureResume:
             8446, "chief-old", "quit"
         )
         assert "--resume chief-old" in _spawn["flags"]
+
+    def test_resume_skips_the_live_blank_chief_for_the_real_conversation(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, tmp_path,
+    ):
+        """End-to-end shape of the #670 incident: the chief alive right now is
+        the blank one a fallback spawned after a deploy killed the real PTY.
+        Stop-first preference must not hand it back — the conversation it
+        displaced is the one to reattach."""
+        client, app, overrides = webapp_client
+        cfg = app.state.webapp_config
+        overrides["session"].list_sessions.return_value = [_chief_row()]
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "blank-conv": _chief_state_row(
+                    "chief-old", _recent_iso(minutes=1),
+                    transcript_path=_transcript(tmp_path, "blank", typed=False),
+                ),
+                "real-conv": _chief_state_row(
+                    "dead-sess", _recent_iso(hours=3),
+                    transcript_path=_transcript(tmp_path, "real", typed=True),
+                ),
+            }),
+            encoding="utf-8",
+        )
+        probes = iter([{"alive": False}])
+
+        def _get_session(port, sid):
+            try:
+                return next(probes)
+            except StopIteration:
+                return {"alive": True, "output_chars": 64}
+
+        overrides["session"].get_session.side_effect = _get_session
+        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        assert resp.status_code == 200
+        assert resp.json()["resumed"] is True
+        assert "--resume real-conv" in _spawn["flags"]
+        assert "blank-conv" not in _spawn["flags"]
 
     def test_resume_honors_chief_model(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
