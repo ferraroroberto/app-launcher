@@ -53,6 +53,7 @@ from src.webapp_config import (
 )
 
 from app.webapp.routers._helpers import (
+    audit_off_loop,
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
@@ -263,7 +264,8 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             except OSError as exc:
                 raise HTTPException(status_code=400, detail=str(exc))
             sid = str(session.get("session_id") or "")
-            audit.audit_event(
+            await audit_off_loop(
+                audit.audit_event,
                 "remote_launch",
                 session=sid,
                 agent=agent,

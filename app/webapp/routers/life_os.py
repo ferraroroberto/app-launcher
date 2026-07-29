@@ -43,6 +43,7 @@ from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, build_claude_flags
 
 from app.webapp.routers._helpers import (
+    audit_off_loop,
     client_ip,
     maybe_json,
     mirror_url,
@@ -234,7 +235,8 @@ async def _spawn_skill_session(
 
     sid = str(session.get("session_id") or "")
     event = "remote_launch" if kind == "remote" else "session_start"
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         event,
         session=sid,
         agent="claude",
@@ -244,7 +246,8 @@ async def _spawn_skill_session(
         resume=resume,
         client=client_ip(request),
     )
-    audit.session_log(
+    await audit_off_loop(
+        audit.session_log,
         sid, "start", agent="claude", skill=audit_skill, name=name,
         project=str(life_os_dir),
     )
@@ -492,7 +495,8 @@ async def get_file(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc))
     truncated = len(raw) > _MAX_FILE_BYTES
     content = raw[:_MAX_FILE_BYTES].decode("utf-8", errors="replace")
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "lifeos_read", path=rel, bytes=len(raw), client=client_ip(request)
     )
     return {"path": rel, "name": resolved.name, "content": content, "truncated": truncated}
@@ -525,7 +529,9 @@ async def delete_file(request: Request) -> Dict[str, Any]:
         resolved.unlink()
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    audit.audit_event("lifeos_delete", path=rel, client=client_ip(request))
+    await audit_off_loop(
+        audit.audit_event, "lifeos_delete", path=rel, client=client_ip(request)
+    )
     return {"deleted": rel}
 
 
@@ -602,7 +608,8 @@ async def rename_file(request: Request) -> Dict[str, Any]:
         resolved.rename(target)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "lifeos_rename", path=rel, to=new_rel, client=client_ip(request)
     )
     return {"renamed": rel, "to": new_rel, "name": target.name}
