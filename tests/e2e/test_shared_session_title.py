@@ -99,6 +99,15 @@ def _mock_board(page: Page) -> None:
             body=_json.dumps({"fetched_at": "2026-07-08T12:00:00Z", "error": None}),
         ),
     )
+    # Boot-time git-status is git-subprocess-backed and re-renders the Board
+    # on arrival (#510/#680) — keep it off the real server and deterministic.
+    page.route(
+        re.compile(r".*/api/claude-code/git-status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"projects": []}),
+        ),
+    )
 
 
 def test_board_and_coding_tab_show_identical_shared_title(

@@ -103,6 +103,39 @@ def _autoboot_enabled(config: pytest.Config) -> bool:
     )
 
 
+def stable_read(read: Callable[[], object], attempts: int = 50,
+                interval_s: float = 0.1) -> object:
+    """Retry a raw DOM measurement past a mid-render stale element handle.
+
+    Playwright's ``locator.evaluate()`` / ``bounding_box()`` resolve the
+    selector to an element handle and *then* read from it. Any surface that
+    rebuilds its DOM on a timer can invalidate that handle in between, and the
+    read silently returns an artifact rather than raising: WebKit yields ``''``
+    from ``getComputedStyle`` (shorthand *and* longhand) and ``None`` from
+    ``bounding_box()``; ``scrollWidth``/``clientWidth`` both read ``0``.
+
+    The Board is exactly such a surface — ``renderBoard()`` unconditionally
+    calls ``list.replaceChildren()`` on every column, and ``fetchBoard()``
+    re-renders every ``BOARD_POLL_MS`` (5 s) while the Board tab is up with no
+    drawer open. So a board test that runs longer than 5 s *will* eventually
+    read across a rebuild (#680: measured 3 bad reads in 700 with every fetch
+    stubbed, at the 5 s cadence). Auto-retrying ``expect()`` assertions
+    re-resolve and are immune; these raw reads are not.
+
+    Returns the first read that isn't one of those artifacts, so the caller
+    asserts on a real measurement. Assertion strength is unchanged — only
+    known-invalid readings are skipped, and a genuinely wrong value is
+    returned as-is on the first attempt.
+    """
+    value: object = None
+    for _ in range(attempts):
+        value = read()
+        if value not in ("", None):
+            return value
+        time.sleep(interval_s)
+    return value
+
+
 def _free_tcp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
