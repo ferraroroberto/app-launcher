@@ -93,22 +93,38 @@ async def test_slow_audit_write_does_not_stall_the_input_endpoint(monkeypatch):
     )
 
 
-async def test_every_audit_write_in_the_router_goes_through_the_helper():
-    """AC1 as an executable check: no ``audit.*`` call site in this router may
-    be invoked directly again. A new handler that writes an audit line
-    unthreaded re-opens #661 silently — a grep-shaped assertion catches it at
-    the one place the pattern must hold, without needing a load probe per
-    endpoint."""
+#: ``audit`` members that only build a path — no I/O, so wrapping them in a
+#: thread hop would be pure noise (``board.py`` reads both to locate a
+#: session's files).
+_PURE_PATH_HELPERS = {"transcript_path", "session_log_path"}
+
+
+async def test_no_router_writes_audit_on_the_event_loop():
+    """AC as an executable check, across **every** router (#674 widened this
+    from #661's single file).
+
+    A new handler that writes an audit line unthreaded re-opens the defect
+    silently, and it has now re-opened three times in a row through a
+    different door each time (#660 the WS path, #661 the rest of
+    ``sessions.py``, #674 the four other routers). A grep-shaped assertion
+    over the whole package catches the next one at the one place the pattern
+    must hold, without needing a load probe per endpoint.
+    """
     import re
     from pathlib import Path
 
-    source = Path(sessions_router.__file__).read_text(encoding="utf-8")
-    direct = [
-        line.strip()
-        for line in source.splitlines()
-        if re.search(r"(?<!_)\baudit\.\w+\s*\(", line)
-    ]
-    assert direct == [], (
-        "audit writes must go through the _audit helper (off the event "
-        f"loop, #660/#661); found direct call(s): {direct}"
+    routers_dir = Path(sessions_router.__file__).parent
+    call = re.compile(r"(?<!_)\baudit\.(\w+)\s*\(")
+    offenders: list[str] = []
+    for path in sorted(routers_dir.glob("*.py")):
+        for lineno, line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            match = call.search(line)
+            if match and match.group(1) not in _PURE_PATH_HELPERS:
+                offenders.append(f"{path.name}:{lineno}: {line.strip()}")
+    assert offenders == [], (
+        "audit writes must go through _helpers.audit_off_loop (off the event "
+        "loop, #660/#661/#674); found direct call(s):\n"
+        + "\n".join(offenders)
     )

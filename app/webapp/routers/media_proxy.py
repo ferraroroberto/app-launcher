@@ -20,7 +20,7 @@ from starlette.responses import StreamingResponse
 from src import audit, llm_client, photo_ocr_client, tts_client, voice_client
 from src.webapp_config import WebappConfig
 
-from app.webapp.routers._helpers import client_ip, maybe_json
+from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -47,7 +47,9 @@ async def transcribe_create(request: Request) -> Dict[str, Any]:
         result = await asyncio.to_thread(voice_client.create_session, base, language)
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.audit_event("transcribe_create", client=client_ip(request))
+    await audit_off_loop(
+        audit.audit_event, "transcribe_create", client=client_ip(request)
+    )
     return result
 
 
@@ -77,7 +79,8 @@ async def transcribe_finish(vid: str, request: Request) -> Dict[str, Any]:
         result = await asyncio.to_thread(voice_client.finish, base, vid, language)
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "transcribe_finish", silent=bool(result.get("silent")), client=client_ip(request)
     )
     return result
@@ -150,7 +153,8 @@ async def transcribe_single_shot(
         )
     except voice_client.VoiceTranscriberError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "transcribe",
         bytes=len(content),
         silent=bool(result.get("silent")),
@@ -207,7 +211,8 @@ async def ocr_screenshot(
         )
     except photo_ocr_client.PhotoOcrError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "ocr",
         images=len(blobs),
         bytes=sum(len(b[1]) for b in blobs),
@@ -307,7 +312,9 @@ async def tts_speak(request: Request) -> StreamingResponse:
             await stream_cm.__aexit__(None, None, None)
             await client.aclose()
 
-    audit.audit_event("tts_speak", chars=len(text), client=client_ip(request))
+    await audit_off_loop(
+        audit.audit_event, "tts_speak", chars=len(text), client=client_ip(request)
+    )
     return StreamingResponse(
         _forward(),
         media_type="audio/L16",
@@ -338,7 +345,8 @@ async def tts_summarize(request: Request) -> Dict[str, Any]:
         summary = await asyncio.to_thread(llm_client.summarize, base, text)
     except llm_client.LlmError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "tts_summarize",
         chars=len(text),
         summary_chars=len(summary),

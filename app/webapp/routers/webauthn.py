@@ -17,7 +17,7 @@ from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
 from app.webapp.middleware import LOOPBACK_HOSTS
-from app.webapp.routers._helpers import client_ip, maybe_json
+from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 
 router = APIRouter()
 
@@ -52,7 +52,9 @@ async def webauthn_open_window(request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     seconds = min(max(float(body.get("seconds") or 300), 30.0), 900.0)
     gate.open_enrollment_window(seconds)
-    audit.audit_event("enroll_window_opened", seconds=int(seconds))
+    await audit_off_loop(
+        audit.audit_event, "enroll_window_opened", seconds=int(seconds)
+    )
     return {
         "enrollment_open": True,
         "seconds": gate.enrollment_seconds_left(),
@@ -71,7 +73,8 @@ async def webauthn_enroll_begin(request: Request) -> Dict[str, Any]:
         options = gate.begin_registration(cfg, label)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "enroll_begin", label=label, client=client_ip(request)
     )
     return options
@@ -87,13 +90,15 @@ async def webauthn_enroll_finish(request: Request) -> Dict[str, Any]:
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:  # noqa: BLE001 — verification failure
-        audit.audit_event(
+        await audit_off_loop(
+            audit.audit_event,
             "enroll_fail", error=str(exc), client=client_ip(request)
         )
         raise HTTPException(
             status_code=400, detail=f"registration failed: {exc}"
         )
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "enroll_ok",
         device=result.get("id"),
         label=result.get("label"),
@@ -122,18 +127,20 @@ async def webauthn_auth_finish(request: Request) -> Dict[str, Any]:
     try:
         token = gate.finish_authentication(cfg, credential)
     except PermissionError as exc:
-        audit.audit_event(
+        await audit_off_loop(
+            audit.audit_event,
             "auth_fail", error=str(exc), client=client_ip(request)
         )
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:  # noqa: BLE001 — verification failure
-        audit.audit_event(
+        await audit_off_loop(
+            audit.audit_event,
             "auth_fail", error=str(exc), client=client_ip(request)
         )
         raise HTTPException(
             status_code=400, detail=f"authentication failed: {exc}"
         )
-    audit.audit_event("auth_ok", client=client_ip(request))
+    await audit_off_loop(audit.audit_event, "auth_ok", client=client_ip(request))
     return {"terminal_token": token, "ttl_seconds": 12 * 3600}
 
 
@@ -144,7 +151,8 @@ async def webauthn_remove_device(
     gate: WebAuthnGate = request.app.state.webauthn_gate
     if not gate.remove_device(device_id):
         raise HTTPException(status_code=404, detail="unknown device")
-    audit.audit_event(
+    await audit_off_loop(
+        audit.audit_event,
         "device_removed", device=device_id, client=client_ip(request)
     )
     return {"removed": device_id}

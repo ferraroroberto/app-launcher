@@ -20,7 +20,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
 from starlette.websockets import WebSocketDisconnect
@@ -38,6 +38,7 @@ from app.webapp.middleware import (
 )
 from app.webapp.routers import media_proxy
 from app.webapp.routers._helpers import (
+    audit_off_loop,
     client_ip,
     client_ip_ws,
     maybe_json,
@@ -47,28 +48,6 @@ from app.webapp.routers._helpers import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(media_proxy.router)
-
-
-async def _audit(write: Callable[..., None], *args: Any, **kwargs: Any) -> None:
-    """Run one ``src.audit`` write off the event loop (#660, extended #661).
-
-    Every audit entry point does synchronous ``open``/``write``/``close`` on
-    ``webapp/sessions/*.log``. The webapp runs a **single** uvicorn worker
-    (``app/webapp/event_loop.py``), so a slow write here — disk contention, an
-    AV scanner walking that directory — freezes every other live session's
-    in-flight WS output, the "terminal opens blank and never paints" class
-    investigated in #610 (and fixed for the session-host's own handler in
-    #639). #660 threaded the WS proxy's writes; #661 found the same defect
-    still reachable through five HTTP handlers in this router and routed all
-    of them, plus the WS ones, through here rather than repeating the wrapper
-    ten times.
-
-    Deliberately no try/except: ``audit.session_log`` / ``session_input``
-    already swallow their own ``OSError``, and ``audit_event`` going bang is
-    a real fault worth surfacing — the failure semantics are exactly what
-    they were before the hop off the loop.
-    """
-    await asyncio.to_thread(write, *args, **kwargs)
 
 
 @router.get("/api/claude-code/sessions")
@@ -125,11 +104,11 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    await _audit(
+    await audit_off_loop(
         audit.audit_event,
         "session_stop", session=sid, mode=mode, client=client_ip(request),
     )
-    await _audit(audit.session_log, sid, "stop", mode=mode)
+    await audit_off_loop(audit.session_log, sid, "stop", mode=mode)
     return result
 
 
@@ -153,7 +132,7 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    await _audit(
+    await audit_off_loop(
         audit.audit_event, "session_rename", session=sid, client=client_ip(request)
     )
     return result
@@ -194,7 +173,7 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     action = await asyncio.to_thread(
         launcher.open_or_focus_mirror_window, pc_url, sid
     )
-    await _audit(
+    await audit_off_loop(
         audit.audit_event,
         "session_mirror", session=sid, action=action, client=client_ip(request),
     )
@@ -226,7 +205,7 @@ async def session_image(
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    await _audit(
+    await audit_off_loop(
         audit.session_log,
         sid, "image", path=result.get("path"), bytes=len(content), inline=inline,
     )
@@ -278,7 +257,7 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
         )
     except session_client.SessionHostError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    await _audit(audit.session_log, sid, "input", bytes=len(text), submit=submit)
+    await audit_off_loop(audit.session_log, sid, "input", bytes=len(text), submit=submit)
     return {"ok": True, "bytes": len(text), "submit": submit}
 
 
@@ -335,14 +314,14 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     upstream_url = session_client.ws_url(cfg.session_host_port, sid, role)
     try:
         async with ws_connect(upstream_url) as upstream:
-            # Off the event loop via _audit (issue #610) — and gating first
+            # Off the event loop via audit_off_loop (issue #610) — and gating first
             # paint on THIS connection too, since the pump doesn't start
             # until these return.
-            await _audit(
+            await audit_off_loop(
                 audit.audit_event,
                 "ws_open", session=sid, client=client_ip_ws(websocket),
             )
-            await _audit(
+            await audit_off_loop(
                 audit.session_log, sid, "ws_open", client=client_ip_ws(websocket)
             )
             await _proxy_websocket(websocket, upstream, sid)
@@ -360,7 +339,7 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         except RuntimeError:
             pass
     finally:
-        await _audit(audit.session_log, sid, "ws_close")
+        await audit_off_loop(audit.session_log, sid, "ws_close")
 
 
 async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
@@ -377,12 +356,12 @@ async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
             try:
                 msg = json.loads(raw)
                 if isinstance(msg, dict) and msg.get("type") == "input":
-                    # Off the event loop via _audit (issue #610): fires on
+                    # Off the event loop via audit_off_loop (issue #610): fires on
                     # every keystroke/paste frame for as long as the terminal
                     # stays open, sharing this one worker's loop with every
                     # other live session's pump — the highest-frequency
                     # blocking-I/O candidate in the whole WS hot path.
-                    await _audit(
+                    await audit_off_loop(
                         audit.session_input, sid, str(msg.get("data") or "")
                     )
             except (ValueError, TypeError):

@@ -44,6 +44,34 @@ def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
     }
 
 
+async def audit_off_loop(
+    write: Callable[..., None], *args: Any, **kwargs: Any
+) -> None:
+    """Run one ``src.audit`` write off the event loop (#660 → #661 → #674).
+
+    Every audit entry point does synchronous ``open``/``write``/``close``:
+    ``session_log``/``session_input`` on ``webapp/sessions/<sid>.log``,
+    ``audit_event`` on the cross-session log through a logging handler. The
+    webapp runs a **single** uvicorn worker (``app/webapp/event_loop.py``), so
+    a slow write — disk contention, an AV scanner walking that directory —
+    freezes every other live session's in-flight WS output: the "terminal
+    opens blank and never paints" class investigated in #610, and fixed for
+    the session-host's own handler in #639.
+
+    Fixed one path at a time until it stopped being one path: #660 threaded
+    the WS proxy's writes, #661 the five remaining HTTP handlers in that same
+    router (behind a local helper), #674 the twenty sites across the four
+    *other* routers — at which point five callers made this the obvious home
+    rather than a helper copied per router.
+
+    Deliberately no try/except: ``audit.session_log``/``session_input``
+    already swallow their own ``OSError``, and ``audit_event`` going bang is a
+    real fault worth surfacing — the failure semantics are exactly what they
+    were before the hop off the loop.
+    """
+    await asyncio.to_thread(write, *args, **kwargs)
+
+
 async def maybe_json(request: Request) -> Dict[str, Any]:
     if request.headers.get("content-type", "").startswith("application/json"):
         try:
