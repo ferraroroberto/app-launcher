@@ -618,6 +618,20 @@
           <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>GPT</strong> runs on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Effort maps to <code>--thinking</code>; switch models/effort in-session with <code>/model</code> / <code>Shift+Tab</code>. <strong>Trust</strong> loads project-local <code>.pi/</code> resources (not a tool-permission gate — pi has no sandbox).</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
         </div>
+
+        <div class="opt-group">
+          <h3 class="opt-group-title">Grok Build</h3>
+          <div class="opt-row">
+            <span class="opt-name">Reasoning</span>
+            <div id="grokEffort" class="segmented" role="radiogroup" aria-label="Grok reasoning"></div>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Permission</span>
+            <div id="grokPermission" class="segmented" role="radiogroup" aria-label="Grok permission mode"></div>
+          </div>
+          <p class="opt-hint">Runs on your <code>grok.com</code> login (<code>grok login</code>) — model stays the account default (<code>grok-4.5</code>, the only one <code>grok models</code> lists); the tiers map to <code>--reasoning-effort</code>.</p>
+          <div id="grokFlagsPreview" class="flags-preview">grok</div>
+        </div>
       </details>
     </section>
 

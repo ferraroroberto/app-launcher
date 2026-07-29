@@ -189,6 +189,25 @@ DEFAULT_PI_EFFORT = "high"
 VALID_PI_TRUST_MODES = ("trust", "ask")
 DEFAULT_PI_TRUST_MODE = "trust"
 
+# Grok Build launch knobs (issue #667, filling in #626's deliberate stub).
+# Reasoning tier for `--reasoning-effort` — the exact set the CLI accepts,
+# probed off the binary rather than the docs (`grok --reasoning-effort bogus`
+# answers "use one of: high, medium, low", verified on 0.2.114). No model
+# picker: `grok models` still lists only `grok-4.5`, and the launcher already
+# omits a one-option control for the same reason on Antigravity.
+VALID_GROK_EFFORTS = ("low", "medium", "high")
+DEFAULT_GROK_EFFORT = "high"
+
+# Permission mode for the `grok` launch, mirroring Claude's and Codex's
+# auto/skip rather than exposing grok's own six-value `--permission-mode`
+# space (default|acceptEdits|auto|dontAsk|bypassPermissions|plan). "auto" →
+# `--permission-mode auto` (no prompts, guard rails intact); "skip" →
+# `--permission-mode bypassPermissions`. `--always-approve` is deliberately
+# not surfaced — it is a third spelling of the same idea, so it would add
+# surface without adding capability.
+VALID_GROK_PERMISSION_MODES = ("auto", "skip")
+DEFAULT_GROK_PERMISSION_MODE = "auto"
+
 # `--remote-control` is *always* added to the generated claude command
 # line — that's the whole point of the Coding tab, and the UI can't turn
 # it off without breaking the workflow. The permission flag used to live
@@ -296,6 +315,11 @@ class WebappConfig:
     # `copilot_skip_permissions` is the opt-in allow-all switch.
     copilot_skip_permissions: bool = False
     copilot_model: str = ""
+    # Grok Build launch settings (issue #667). `grok_effort` is the
+    # reasoning tier (low/medium/high); `grok_permission_mode` mirrors
+    # Claude's and Codex's auto/skip. No model picker — see VALID_GROK_*.
+    grok_effort: str = DEFAULT_GROK_EFFORT
+    grok_permission_mode: str = DEFAULT_GROK_PERMISSION_MODE
     # Pi coding agent launch settings (issues #273, #288). `pi_model` is one
     # of three segmented options (Opus/Sonnet on the claude-agent-sdk
     # subscription path, GPT on the openai-codex ChatGPT-plan path) — never
@@ -526,6 +550,10 @@ def load_webapp_config(
             raw.get("copilot_skip_permissions", False)
         ),
         copilot_model=str(raw.get("copilot_model", "")),
+        grok_effort=str(raw.get("grok_effort", DEFAULT_GROK_EFFORT)),
+        grok_permission_mode=str(
+            raw.get("grok_permission_mode", DEFAULT_GROK_PERMISSION_MODE)
+        ),
         pi_model=str(raw.get("pi_model", DEFAULT_PI_MODEL)),
         pi_effort=str(raw.get("pi_effort", DEFAULT_PI_EFFORT)),
         pi_trust_mode=str(raw.get("pi_trust_mode", DEFAULT_PI_TRUST_MODE)),
@@ -609,6 +637,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "codex_permission_mode": cfg.codex_permission_mode,
         "copilot_skip_permissions": cfg.copilot_skip_permissions,
         "copilot_model": cfg.copilot_model,
+        "grok_effort": cfg.grok_effort,
+        "grok_permission_mode": cfg.grok_permission_mode,
         "pi_model": cfg.pi_model,
         "pi_effort": cfg.pi_effort,
         "pi_trust_mode": cfg.pi_trust_mode,
@@ -787,15 +817,30 @@ def build_pi_flags(cfg: WebappConfig) -> str:
 
 
 def build_grok_flags(cfg: WebappConfig) -> str:
-    """Compose the `grok` CLI flags (issue #626).
+    """Compose the `grok` CLI flags from the persisted Grok knobs (#626, #667).
 
-    Grok Build has no persisted launch knobs yet — model and permission
-    mode are chosen in-TUI — so the CLI is launched bare, matching the
-    Antigravity/Copilot all-default shape. The builder exists so the
-    launch router's ``flag_builders`` dispatch stays uniform and a future
-    toggle has an obvious home.
+    Two pieces, both verified against the running binary rather than the
+    docs (0.2.114) — #626's premise was that Grok's properties get probed,
+    not assumed:
+
+    - **permission mode** — ``--permission-mode auto`` (no prompts, guard
+      rails intact) or ``--permission-mode bypassPermissions`` for "skip".
+      Grok's own flag takes six values; the launcher presents the same
+      two-state auto/skip shape as Claude and Codex.
+    - **reasoning tier** — ``--reasoning-effort <low|medium|high>``, the
+      exact set the CLI's own rejection message names.
+
+    No ``--model``: ``grok models`` lists only ``grok-4.5`` today, and a
+    one-option picker is dead UI (the same call the launcher already makes
+    for Antigravity). Add it when xAI ships a second model.
     """
-    return ""
+    parts = [
+        "--permission-mode",
+        "bypassPermissions" if cfg.grok_permission_mode == "skip" else "auto",
+    ]
+    if cfg.grok_effort in VALID_GROK_EFFORTS:
+        parts.extend(["--reasoning-effort", cfg.grok_effort])
+    return " ".join(parts)
 
 
 def build_resume_flags(
@@ -889,6 +934,15 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"codex_permission_mode must be one of {VALID_CODEX_PERMISSION_MODES}; "
             f"got {cfg.codex_permission_mode!r}"
+        )
+    if cfg.grok_effort not in VALID_GROK_EFFORTS:
+        raise ValueError(
+            f"grok_effort must be one of {VALID_GROK_EFFORTS}; got {cfg.grok_effort!r}"
+        )
+    if cfg.grok_permission_mode not in VALID_GROK_PERMISSION_MODES:
+        raise ValueError(
+            f"grok_permission_mode must be one of {VALID_GROK_PERMISSION_MODES}; "
+            f"got {cfg.grok_permission_mode!r}"
         )
     if cfg.copilot_model and cfg.copilot_model not in VALID_COPILOT_MODELS:
         raise ValueError(

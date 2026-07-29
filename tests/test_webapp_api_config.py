@@ -85,6 +85,23 @@ class TestGetConfig:
         # All-default config → the CLI is launched bare.
         assert ag["computed_flags"] == ""
 
+    def test_grok_block_shape(self, webapp_client):
+        client, _, _ = webapp_client
+        gk = client.get("/api/config").json()["grok"]
+        assert set(gk) == {
+            "effort",
+            "permission_mode",
+            "efforts_available",
+            "permission_modes_available",
+            "computed_flags",
+        }
+        assert isinstance(gk["efforts_available"], list) and gk["efforts_available"]
+        # Default config → high reasoning + auto permission (guard rails
+        # intact), the same defaults every other agent's block carries.
+        assert gk["effort"] == "high"
+        assert gk["permission_mode"] == "auto"
+        assert gk["computed_flags"] == "--permission-mode auto --reasoning-effort high"
+
     def test_codex_block_shape(self, webapp_client):
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
@@ -335,6 +352,29 @@ class TestPatchConfig:
         assert ag["sandbox"] is True
         assert "--dangerously-skip-permissions" in ag["computed_flags"]
         assert "--sandbox" in ag["computed_flags"]
+
+    def test_grok_knobs_round_trip(self, webapp_client):
+        """Grok reasoning tier + permission mode patch through and surface as
+        composed `grok` flags (#667). 'skip' swaps `auto` for
+        `bypassPermissions`; an invalid tier is rejected with 400 rather
+        than silently launching a CLI that would reject it anyway."""
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config",
+            json={"grok_effort": "low", "grok_permission_mode": "skip"},
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.grok_effort == "low"
+        assert app.state.webapp_config.grok_permission_mode == "skip"
+        gk = client.get("/api/config").json()["grok"]
+        assert gk["effort"] == "low"
+        assert gk["permission_mode"] == "skip"
+        assert "--permission-mode bypassPermissions" in gk["computed_flags"]
+        assert "--reasoning-effort low" in gk["computed_flags"]
+        # No model flag while `grok models` lists a single entry (#667).
+        assert "--model" not in gk["computed_flags"]
+        bad = client.post("/api/config", json={"grok_effort": "ultra"})
+        assert bad.status_code == 400
 
     def test_codex_knobs_round_trip(self, webapp_client):
         """Codex reasoning tier + permission mode patch through and surface

@@ -18,6 +18,8 @@ from src.webapp_config import (
     VALID_CODEX_EFFORTS,
     VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
+    VALID_GROK_EFFORTS,
+    VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
     VALID_PI_MODELS,
     VALID_PI_TRUST_MODES,
@@ -27,6 +29,7 @@ from src.webapp_config import (
     build_claude_flags,
     build_codex_flags,
     build_copilot_flags,
+    build_grok_flags,
     build_pi_flags,
     update_webapp_config,
 )
@@ -90,6 +93,13 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "trust_modes_available": list(VALID_PI_TRUST_MODES),
             "computed_flags": build_pi_flags(cfg),
         },
+        "grok": {
+            "effort": cfg.grok_effort,
+            "permission_mode": cfg.grok_permission_mode,
+            "efforts_available": list(VALID_GROK_EFFORTS),
+            "permission_modes_available": list(VALID_GROK_PERMISSION_MODES),
+            "computed_flags": build_grok_flags(cfg),
+        },
         "auth_password_set": bool(cfg.auth_password),
         # Boot-autostart toggle (issue #456): live-queried, not stored in
         # webapp_config.json — the Startup-folder wrapper bat's presence
@@ -123,6 +133,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "pi_model",
         "pi_effort",
         "pi_trust_mode",
+        "grok_effort",
+        "grok_permission_mode",
     }
     patch = {k: v for k, v in body.items() if k in allowed}
     # projects_ignore is a list of patterns — coerce to a clean string
