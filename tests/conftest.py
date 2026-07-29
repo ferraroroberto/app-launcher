@@ -121,6 +121,31 @@ def _no_real_mirror_window(request, monkeypatch):
             )
 
 
+@pytest.fixture(autouse=True)
+def _isolated_chief_pointer(request, tmp_path, monkeypatch):
+    """Never read or write the real chief pointer from a test (issue #675).
+
+    ``src.chief_pointer`` resolves ``webapp/chief-pointer.json`` off the repo
+    root, and the chief resume lookup consults it on every call — so without
+    this, a pointer sitting on the dev box would silently steer
+    ``_find_resumable_chief_session_id`` tests, and a test that exercised the
+    write path would clobber the real standing chief's pointer. Autouse rather
+    than opt-in for exactly that reason: the risk is to tests that never
+    mention the pointer at all. Skipped for the ``smoke`` suite, which drives a
+    separate webapp process this in-process patch can't reach.
+    """
+    if request.node.get_closest_marker("smoke"):
+        return
+    from app.webapp.routers import board as board_router
+    from src import chief_pointer as chief_pointer_mod
+    monkeypatch.setattr(
+        chief_pointer_mod, "CHIEF_POINTER_FILE", tmp_path / "chief-pointer.json"
+    )
+    # The write-side memo is module-level and would otherwise leak one test's
+    # chief into the next (a second test would then observe "no write").
+    monkeypatch.setattr(board_router, "_last_noted_chief_conversation", "")
+
+
 @pytest.fixture
 def sample_webapp_config() -> dict:
     """Parse the committed sample once per test."""
