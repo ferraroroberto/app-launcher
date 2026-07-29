@@ -60,9 +60,13 @@ jobs:
         # (issue #184): 20 s on CI vs the 5 s local default in conftest.py.
         # Likewise widen the stop/kill overlay-hide budget (#286) so the
         # graceful-then-force stop window doesn't time the WebKit test out.
+        # And widen the real-agent echo budget (#678) so a slow hosted-runner
+        # cold boot of the real Claude Code process doesn't time the
+        # reconnect-replay test out on the WebKit projection.
         env:
           E2E_LOG_POLL_DEADLINE_MS: '20000'
           E2E_STOP_OVERLAY_HIDE_MS: '30000'
+          E2E_REAL_AGENT_ECHO_MS: '90000'
         run: pwsh -File scripts/verify-before-ship.ps1
 
       - name: Upload e2e diagnostic logs

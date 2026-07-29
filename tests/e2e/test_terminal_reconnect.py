@@ -19,10 +19,25 @@ This test exercises the JS half of the fix by:
 
 from __future__ import annotations
 
+import os
+
 import pytest
 from playwright.sync_api import Page
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 pytestmark = pytest.mark.smoke
+
+# How long to wait for a typed marker to echo back through a REAL Claude Code
+# process's composer (issue #678). Unlike the UI-transition budgets this is
+# not comparable to (#186's 15s default action timeout), this one has to
+# cover a real agent's cold boot — on a box already running several other
+# live agent PTYs plus the dual-projection browser suite, that boot can run
+# long, especially on the slower WebKit/iPhone projection. Env-tunable like
+# ``E2E_LOG_POLL_DEADLINE_MS`` (#184) and ``E2E_STOP_OVERLAY_HIDE_MS`` (#286)
+# so a loaded host gets headroom without slowing the common-case local pass.
+# 60s is roughly two cold boots' worth of headroom and still fails fast
+# against a genuinely broken replay.
+_REAL_AGENT_ECHO_MS = int(os.environ.get("E2E_REAL_AGENT_ECHO_MS", "60000"))
 
 # Wrap WebSocket so we can see every instance the SPA constructs. Runs
 # before any page script, so connectWs() in terminal.js uses the wrapped
@@ -197,11 +212,23 @@ def test_reconnect_replay_does_not_duplicate_scrollback(
         "JSON.stringify({ type: 'input', data: text }))",
         marker,
     )
-    # The echo lands once the agent has painted its composer; give the
-    # slower projections headroom.
-    authed_page.wait_for_function(
-        "(m) => window.__bufCount(m) >= 1", arg=marker, timeout=30_000
-    )
+    # The echo lands once a REAL Claude Code process has painted its
+    # composer — a real cold boot, not a UI transition, so this budget is
+    # env-tunable and wide (see _REAL_AGENT_ECHO_MS above), unlike the
+    # slower projections' usual fixed headroom for pure UI waits.
+    try:
+        authed_page.wait_for_function(
+            "(m) => window.__bufCount(m) >= 1",
+            arg=marker,
+            timeout=_REAL_AGENT_ECHO_MS,
+        )
+    except PlaywrightTimeoutError as exc:
+        raise AssertionError(
+            f"marker echo did not land within {_REAL_AGENT_ECHO_MS}ms — the "
+            "real Claude Code process backing this session likely hasn't "
+            "finished its cold boot (see #678); check host load before "
+            "assuming this is a diff regression"
+        ) from exc
     before = _stable_marker_count(authed_page, marker)
     assert before >= 1
 
