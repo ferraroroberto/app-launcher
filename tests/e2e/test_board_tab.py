@@ -25,6 +25,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import stable_read
+
 pytestmark = pytest.mark.smoke
 
 
@@ -108,6 +110,20 @@ def _mock_board(page: Page, payload: dict | None = None) -> None:
             body=_json.dumps(
                 {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}
             ),
+        ),
+    )
+    # Same reasoning for the boot-time git-status fetch, which is backed by a
+    # real `git` subprocess per project and so lands whenever it likes; its
+    # completion calls renderBoard() whenever the Board tab is up with no
+    # drawer open (apps.js), rebuilding the DOM mid-test (#510/#680). Clean
+    # payload so it can't perturb the rendered annotations other tests read.
+    # test_board_chief.py's own _mock_board already does this; the two tests
+    # below that care about the response register their route *after* this.
+    page.route(
+        re.compile(r".*/api/claude-code/git-status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"projects": []}),
         ),
     )
 
@@ -523,13 +539,13 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     # shared background/border/radius box actually lives (every other tab's
     # tile uses it), so clearing only the button's own chrome isn't enough;
     # a prior build regressed exactly this way.
-    li_radius = tile.evaluate("el => getComputedStyle(el).borderRadius")
-    assert li_radius in ("0px", "0"), f"expected no border-radius on the row <li>, got {li_radius!r}"
-    li_border = tile.evaluate("el => getComputedStyle(el).borderTopStyle")
-    assert li_border == "none", f"expected no top border on the row <li>, got {li_border!r}"
-    card = tile.locator(".board-card-flat")
-    radius = card.evaluate("el => getComputedStyle(el).borderRadius")
-    assert radius in ("0px", "0"), f"expected no border-radius on the flat row, got {radius!r}"
+    # to_have_css (not a raw getComputedStyle read) because it re-resolves the
+    # locator on every retry: the 5 s board poll rebuilds this <li>, and a raw
+    # read landing mid-rebuild returns '' on WebKit (#680).
+    zero_radius = re.compile(r"^0(px)?$")
+    expect(tile).to_have_css("border-radius", zero_radius)
+    expect(tile).to_have_css("border-top-style", "none")
+    expect(tile.locator(".board-card-flat")).to_have_css("border-radius", zero_radius)
 
     # Same /api/apps-population race as test_backlog_start_button_posts_issue_start
     # above: the ▶/⚡ actions only render once state.apps has landed, which can
@@ -540,8 +556,8 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(actions.nth(0)).to_have_attribute("aria-label", re.compile(r"^Start issue"))
     expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
-    tile_box = tile.bounding_box()
-    action_box = actions.first.bounding_box()
+    tile_box = stable_read(tile.bounding_box)
+    action_box = stable_read(actions.first.bounding_box)
     assert tile_box is not None and action_box is not None
     tile_center = tile_box["y"] + tile_box["height"] / 2
     action_center = action_box["y"] + action_box["height"] / 2
@@ -629,12 +645,23 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     # The full title can't possibly render on one line at this viewport width
     # — scrollWidth exceeding clientWidth proves the box is actually clipping
     # (truncating) rather than having silently grown/wrapped to fit it all.
-    overflowing = title_el.evaluate("el => el.scrollWidth > el.clientWidth")
-    assert overflowing, "title box did not overflow — the long-title fixture isn't exercising truncation"
+    # Read the two widths (not the comparison) so a mid-rebuild read is
+    # recognisable as the 0/0 artifact it is rather than a silent False (#680).
+    widths = stable_read(
+        lambda: title_el.evaluate(
+            "el => el.scrollWidth && el.clientWidth"
+            " ? [el.scrollWidth, el.clientWidth] : null"
+        )
+    )
+    assert widths is not None, "title box never reported non-zero widths"
+    assert widths[0] > widths[1], (
+        "title box did not overflow — the long-title fixture isn't exercising "
+        f"truncation (scrollWidth={widths[0]}, clientWidth={widths[1]})"
+    )
 
     # The title's own line stays single-line height — bounded well under
     # what two wrapped lines of 14px/1.3 text would need.
-    box = title_el.bounding_box()
+    box = stable_read(title_el.bounding_box)
     assert box is not None
     assert box["height"] < 26, f"title is {box['height']}px tall — looks like it wrapped to 2+ lines"
 

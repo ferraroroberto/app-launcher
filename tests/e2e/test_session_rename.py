@@ -99,6 +99,19 @@ def _mock_board(page: Page) -> None:
             body=_json.dumps({"available": False, "reason": "no_exchange"}),
         ),
     )
+    # #510/#680: the real /api/claude-code/git-status boot fetch is
+    # git-subprocess-backed and non-deterministic in timing; its completion
+    # calls renderBoard() whenever the Board tab is active (apps.js), which
+    # rebuilds the DOM — including an open drawer's rename button — out from
+    # under an in-progress interaction. Stubbed in the shared helper so every
+    # test here gets it, not just the ones that remembered to ask.
+    page.route(
+        re.compile(r".*/api/claude-code/git-status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"projects": []}),
+        ),
+    )
 
 
 def test_coding_tab_rename_wins_over_launch_name(
@@ -136,21 +149,7 @@ def test_board_drawer_rename_patches_card_in_place(
     captured: dict = {}
     _mock_board(authed_page)
     _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)
-    # #510: the real /api/claude-code/git-status boot fetch is unmocked and
-    # non-deterministic in timing; its completion calls renderBoard() whenever
-    # the Board tab is active (apps.js), which rebuilds the open drawer's DOM
-    # (including this test's rename button) out from under it if the response
-    # lands mid-interaction — the same class of race test_board_tab.py's
-    # test_backlog_cards_color_coded_from_shared_git_cache mocks around.
-    # Mocked BEFORE navigation so the boot call resolves immediately, well
-    # before the drawer is even opened.
-    authed_page.route(
-        re.compile(r".*/api/claude-code/git-status$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"projects": []}),
-        ),
-    )
+    # git-status is stubbed by _mock_board above (#510/#680).
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabBoard").click()
