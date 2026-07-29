@@ -206,10 +206,16 @@ self-updates thereafter. Verify with `grok --version`.
 > alternative). The launcher only resolves the `grok` binary on `PATH` and
 > spawns it.
 >
-> Grok has no persisted launch knobs in the ⚙️ Coding options card — model and
-> permission mode are chosen in-TUI (`/model`; `--permission-mode` exists but
-> stays at its default). Resume reopens the folder's **most recent** session
-> (bare `--resume`, Antigravity's shape rather than a Claude-style picker).
+> The ⚙️ Coding options card carries a **Grok Build** subsection (issue #667):
+> **Reasoning** (`low`/`medium`/`high` → `--reasoning-effort`) and
+> **Permission** (Auto mode → `--permission-mode auto`; Skip permissions →
+> `--permission-mode bypassPermissions`). Both persist as `grok_effort` /
+> `grok_permission_mode` and ride a Resume launch too. There is deliberately
+> **no model picker** while `grok models` lists only `grok-4.5` — the same
+> call the launcher makes for Antigravity — so the model stays the account
+> default, switchable in-TUI with `/model`. Resume reopens the folder's
+> **most recent** session (bare `--resume`, Antigravity's shape rather than a
+> Claude-style picker).
 >
 > Like the other agents, `grok` is detected on `PATH` at process start and
 > registered in `src/agents.py`, which the `:8446` session-host imports at
@@ -516,6 +522,8 @@ UI prefs + secrets, authored from the web UI:
 | `claude_verbose` | `true` | Pass `--verbose` |
 | `claude_debug` | `false` | Pass `--debug` |
 | `claude_permission_mode` | `"auto"` | Permission flag: `"auto"` → `--permission-mode auto`, `"skip"` → `--dangerously-skip-permissions` |
+| `grok_effort` | `"high"` | Reasoning tier for `grok` (`low`/`medium`/`high`) → `--reasoning-effort` (issue #667). Edited from the ⚙️ Coding options card's Grok Build subsection. |
+| `grok_permission_mode` | `"auto"` | Permission flag for `grok`: `"auto"` → `--permission-mode auto`, `"skip"` → `--permission-mode bypassPermissions` (issue #667). |
 | `auth_token` | `""` | Bearer token. Empty = gate off (unless `api_tokens` has entries). |
 | `auth_password` | `""` | Optional companion for `/api/login`. |
 | `secrets` | `{}` | One gitignored place for job secret values (issues #73, #72): a job's `webhook.secret` and any `Job.env` value can be `$secret:<key>` resolved against this dict at fire time. Legacy key `webhook_secrets` still loads. |

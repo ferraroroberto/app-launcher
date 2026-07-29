@@ -57,6 +57,7 @@ export function renderClaudeOptions() {
   renderAntigravitySubsection();
   renderCopilotSubsection();
   renderPiSubsection();
+  renderGrokSubsection();
 }
 
 // One host, one array of items, the currently-active value, a label
@@ -218,6 +219,32 @@ function renderPiSubsection() {
   );
   els.piFlagsPreview.textContent =
     'pi' + (p.computed_flags ? ' ' + p.computed_flags : '');
+}
+
+function renderGrokSubsection() {
+  const g = state.config && state.config.grok;
+  if (!g) return;
+  // Reasoning tier — mirrors Codex's Effort control. Grok has one model
+  // (`grok models` lists only grok-4.5), so this is the only quality knob
+  // and there is deliberately no model picker to render.
+  renderSegmentedControl(
+    els.grokEffort,
+    g.efforts_available,
+    g.effort,
+    function (e) { return e.charAt(0).toUpperCase() + e.slice(1); },
+    function (e) { patchConfig({ grok_effort: e }); }
+  );
+  // Permission mode — auto (no prompts, guard rails intact) vs skip
+  // (bypassPermissions). Same two-state shape as Claude and Codex, rather
+  // than grok's own six-value flag space.
+  renderSegmentedControl(
+    els.grokPermission,
+    g.permission_modes_available,
+    g.permission_mode,
+    function (p) { return p === 'skip' ? 'Skip permissions' : 'Auto mode'; },
+    function (p) { patchConfig({ grok_permission_mode: p }); }
+  );
+  els.grokFlagsPreview.textContent = 'grok ' + (g.computed_flags || '');
 }
 
 export async function patchConfig(patch) {

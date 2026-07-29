@@ -263,7 +263,8 @@ class TestClaudeCodeDiscovery:
 
     def test_launch_with_grok_agent(self, webapp_client, monkeypatch):
         """The Grok button posts agent=grok — threaded to
-        spawn_claude_session bare (no persisted launch knobs, #626)."""
+        spawn_claude_session with the composed permission + reasoning
+        flags (#626 launched it bare; #667 gave it knobs)."""
         client, _, overrides = webapp_client
         from app.webapp.routers import apps as apps_router
 
@@ -286,14 +287,19 @@ class TestClaudeCodeDiscovery:
         )
         assert resp.status_code == 200
         assert captured["agent"] == "grok"
-        assert captured["flags"] == ""
+        # Default config → auto permission + high reasoning (#667).
+        assert captured["flags"] == "--permission-mode auto --reasoning-effort high"
         assert resp.json()["agent"] == "grok"
-        # Resume swaps in grok's bare --resume (most-recent session, #626).
+        # Resume prepends grok's bare --resume (most-recent session, #626)
+        # and keeps the knobs — build_resume_flags routes through the same
+        # builder, so a resumed launch is configured identically.
         client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "grok", "resume": True},
         )
-        assert captured["flags"] == "--resume"
+        assert captured["flags"].startswith("--resume")
+        assert "--permission-mode auto" in captured["flags"]
+        assert "--reasoning-effort high" in captured["flags"]
 
     def test_launch_with_codex_agent(self, webapp_client, monkeypatch):
         """The Codex button posts agent=codex — threaded to
