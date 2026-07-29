@@ -787,6 +787,61 @@ def _assistant_text(content: Any) -> str:
     return "\n\n".join(p for p in parts if p)
 
 
+def has_typed_user_prompt(transcript_path: Any) -> Optional[bool]:
+    """Whether this conversation ever received a **typed human prompt** —
+    ``None`` when that can't be established (#670).
+
+    The discriminator between a real conversation and a bootstrap-only one:
+    a session spawned by the launcher and handed a slash command has user
+    lines, but every one of them is harness plumbing — the ``<command-…>``
+    wrapper, the skill body it expands to, ``<system-reminder>`` blocks. Only
+    a line whose content is a plain string that isn't one of those was
+    actually typed by a person (or pasted in by the dispatch bar, which is
+    the same thing from the transcript's side). Same predicate
+    :func:`last_exchange` already uses to pick the ``user`` half of an
+    exchange, applied as a yes/no over the tail.
+
+    Three-valued on purpose, because the read is bounded to the last
+    :data:`_EXCHANGE_TAIL_BYTES` like every other reader here:
+
+    * ``True`` — a typed prompt is present.
+    * ``False`` — the **whole file** fit in the window and held none. This is
+      the only confident negative: nothing was ever typed into this
+      conversation.
+    * ``None`` — unknown. Missing/unreadable path, or a file bigger than the
+      window whose tail happened to hold no typed prompt (a long autonomous
+      stretch can push the last human turn out of view). Never folded into
+      ``False``: "couldn't tell" and "confirmed empty" lead to different
+      decisions in :func:`board_router._find_resumable_chief_session_id`.
+    """
+    if not transcript_path:
+        return None
+    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
+    if not lines:
+        return None
+    if truncated:
+        lines = lines[1:]  # first line is almost certainly a partial record
+    for raw in lines:
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "user":
+            continue
+        msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+        content = msg.get("content")
+        if not isinstance(content, str):
+            continue  # tool results ride as content lists
+        stripped = content.strip()
+        if not stripped or any(stripped.startswith(p) for p in _SKIP_USER_PREFIXES):
+            continue
+        return True
+    return None if truncated else False
+
+
 def last_exchange(transcript_path: Any) -> Dict[str, Any]:
     """The last completed user→assistant exchange from a transcript JSONL.
 

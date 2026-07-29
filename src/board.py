@@ -66,8 +66,12 @@ from src.board_sessions import (  # noqa: F401 — re-exported for board.<name> 
     attach_shared_names,
     merge_sessions,
     state_row_for_session,
+    state_sid_for_session,
 )
-from src.board_transcript import last_exchange  # noqa: F401 — re-exported
+from src.board_transcript import (  # noqa: F401 — re-exported
+    has_typed_user_prompt,
+    last_exchange,
+)
 
 logger = logging.getLogger(__name__)
 
