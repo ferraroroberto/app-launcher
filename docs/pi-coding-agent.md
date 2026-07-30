@@ -1,6 +1,6 @@
 # Pi as a Coding-tab agent on the Claude subscription (via the Agent SDK) — #273
 
-**Status: implemented as an optional 5th Coding-tab agent; phone validation owed.** This started as a feasibility spike for the [Pi coding agent](https://pi.dev) (`@earendil-works/pi-coding-agent`, `pi`) and the findings below proved it out, so Pi is now wired into the registry/options/launch exactly like the other agents. It answers the gate question — *can Pi join the Coding tab as a drop-in terminal agent, driven by the Claude subscription with **no API credits**?* — **yes**, via the `claude-agent-sdk` provider. It is added **alongside** Copilot (not replacing it) pending the on-device checklist at the end.
+**Status: implemented and live as an optional 5th Coding-tab agent (#273); most of the on-device checklist below is now confirmed through real usage, not just the bench.** This started as a feasibility spike for the [Pi coding agent](https://pi.dev) (`@earendil-works/pi-coding-agent`, `pi`) and the findings below proved it out, so Pi is wired into the registry/options/launch exactly like the other agents — README documents its model/effort/trust controls as a shipped feature (`README.md:147-190`), and `src/agents.py` registers it alongside Claude/Codex/Antigravity/Copilot/Grok. It answers the gate question — *can Pi join the Coding tab as a drop-in terminal agent, driven by the Claude subscription with **no API credits**?* — **yes**, via the `claude-agent-sdk` provider. It shipped **alongside** Copilot (not replacing it); see the closing checklist for exactly which on-device items are confirmed and which remain open.
 
 **Headline result (2026-06-21, this machine):** **Yes, feasible — with one decisive routing caveat.** Pi 0.79.9 is a registry-shaped interactive terminal CLI that loads this repo's `AGENTS.md`/`CLAUDE.md`, quits on `/quit`, and resumes via `-r` — so it slots into the existing agent registry + session-host model the same way Codex/Antigravity/Copilot do. The Claude-subscription path **works, but only through the SDK extension**: pi's *native* `anthropic` provider bills metered API "extra usage" credits (verified: it fails `400 You're out of extra usage` on this account), whereas the [`claude-agent-sdk-pi`](https://github.com/prateekmedia/claude-agent-sdk-pi) extension routes through the Claude Agent SDK / Claude Code **subscription quota** and returns a clean completion with **no `ANTHROPIC_API_KEY` set**. For Claude on this machine the SDK extension isn't *a* no-credit path — it's the *only* working one.
 
@@ -51,15 +51,17 @@ Setting `~/.pi/agent/settings.json` `defaultProvider: "claude-agent-sdk"` (+ mat
 
 This may be a headless-vs-interactive quirk: `defaultProvider`/`defaultModel` in `settings.json` are most likely consumed by the *interactive* TUI startup, which `-p` bypasses. The launcher spawns pi **interactively** (`cmd /c pi …`), so the settings default *might* suffice there — but that is unverified and is the kind of thing that fails silently into paid credits. **Safe recommendation:** the launcher should pass explicit provider/model flags rather than trust the user's pi default. That slots cleanly into the existing per-agent flag-builder pattern (Codex/Copilot already have dedicated flag blocks in `app/webapp/routers/apps.py`).
 
-### 4. Fullscreen / repaint: leans inline (like Claude), needs phone confirm
+### 4. Fullscreen / repaint: the static "leans inline" read was wrong — phone use caught it (#291)
 
-The launcher's `fullscreen` flag marks an **alternate-screen differential TUI** (Codex's ratatui) that must skip scrollback replay and force a clean repaint on reconnect (issue #128). Static inspection of the pi packages found **no alternate-screen-buffer escapes** (`?1049h`/`?1047`/`?47h`) in the main TUI — only the *external-editor* feature uses the alternate buffer. That leans toward pi rendering **inline like Claude Code** (`fullscreen=False`), not like Codex. This is a static signal, not a device measurement — the reconnect/repaint behaviour over the phone PTY is on the validation list below.
+The launcher's `fullscreen` flag marks a TUI whose scrollback ring is **replay-unsafe** and must instead skip replay and force a clean repaint on reconnect (issue #128). Static inspection of the pi packages at spike time found **no alternate-screen-buffer escapes** (`?1049h`/`?1047`/`?47h`) in the main TUI — only the *external-editor* feature uses the alternate buffer — and that led this spike to register Pi with `fullscreen=False`, reasoning it renders **inline like Claude Code**.
+
+That static signal was **incomplete, and the on-device validation this doc originally deferred caught it**: `fullscreen` governs replay-safety, not alternate-screen use, and those are different properties. Opening a Pi session in the phone's in-page (full-control) terminal flooded the screen with endless, never-settling scroll (#291). An empirical ConPTY capture of a real response showed Pi is a **differential in-place repainter** — during an active reply it wraps ~4.4 redraw ops per output line (cursor-up, clear-line, synchronized-output framing) to repaint its bottom chrome — even though it never touches the alternate screen. Replaying that raw byte ring into a fresh xterm on reconnect cannot reconstruct the final frame; it replays the whole redraw history instead. Detached mode was unaffected (a live console receives the deltas in real time and is never rebuilt from a replayed ring). Fixed by flipping `fullscreen=True` in `src/agents.py`, putting Pi on the same skip-replay + forced-repaint path as Codex/Antigravity/Copilot/Grok.
 
 ## How it's wired (as implemented)
 
 Pi is added the same way as the other terminal agents — registry row + flag builder + options block + icon — and touches **none** of the Apps, Jobs, Life OS, terminal-gate, Cloudflare, or Tailscale flows:
 
-1. **Registry row** — `src/agents.py` `AGENTS["pi"]`: `command="pi"`, `quit_command="/quit"`, `fullscreen=False` (pi's TUI is inline like Claude), `resume_token="-r"` (native picker).
+1. **Registry row** — `src/agents.py` `AGENTS["pi"]`: `command="pi"`, `quit_command="/quit"`, `fullscreen=True`, `resume_token="-r"` (native picker), `native_name_flag="--name"`. `fullscreen` was flipped from an assumed `False` to a phone-validated `True` by #291 (see "Fullscreen / repaint" below) — pi is a differential in-place repainter during an active response, not a plain inline emitter, so it takes the skip-replay + forced-repaint path like Codex/Antigravity/Copilot/Grok.
 2. **Explicit provider/model + thinking + trust** — `build_pi_flags` (`src/webapp_config.py`) emits `--provider <p> --model <p>/<id> --thinking <effort> <--approve|--no-approve>`, all explicit because pi's settings.json defaults don't reliably reroute a launch. The provider switches on the chosen model (see point 3) so a launch can never fall back to the billing `anthropic` provider. Wired into the launch dispatch + resume path in `app/webapp/routers/apps.py`.
 3. **Segmented model / effort / trust controls (#288)** — exposed in `/api/config` and the Coding **options** card's "Pi" block (`index.html`, `state.js`, `claude-options.js`) as segmented `<button>` rows mirroring the Claude/Codex blocks:
    - **Model** — `pi_model` over `PI_MODEL_SPECS` (default `claude-opus-4-8`): a deliberately small three-option set spanning two subscription providers — **Opus** (`claude-agent-sdk/claude-opus-4-8`) and **Sonnet** (`claude-agent-sdk/claude-sonnet-4-6`) on the Claude-subscription SDK path, and **GPT** (`openai-codex/gpt-5.5`) on the ChatGPT-plan path (verified no-API-credit). GPT is the one cross-provider option, so `build_pi_flags` switches `--provider`/`--model` on it. `models_available` is `{value,label}` so the buttons read "Opus/Sonnet/GPT".
@@ -67,36 +69,41 @@ Pi is added the same way as the other terminal agents — registry row + flag bu
    - **Project trust** — `pi_trust_mode` (`VALID_PI_TRUST_MODES` trust/ask, default trust) → `--approve`/`--no-approve`. This is project *trust* (whether pi loads project-local `.pi/` settings/extensions/skills), **not** a tool-permission gate: pi has no tool sandbox or per-action prompt (see pi's `security.md`). Default "trust" so an interactive phone launch never stalls on a startup trust prompt.
 
    Detached/Resume use the existing global toggles.
-4. **Icon** — `app/webapp/static/icons/pi.svg` (the SPA loads `/static/icons/<agent-id>.svg`).
-5. **Prereq (one-time, on the PC):** `pi install npm:claude-agent-sdk-pi`, logged into the Claude subscription (for Opus/Sonnet) and pi's `openai-codex` OAuth (for GPT), no `ANTHROPIC_API_KEY`. Pi's native `anthropic` OAuth is left **disconnected** (removed from `~/.pi/agent/auth.json`) so a launch can never slip onto the metered billing path — the SDK (Claude) and `openai-codex` (GPT) subscription paths are the only ones that remain. See README "Installing Pi".
-6. **Copilot kept** — Pi is the 5th agent; flip to replacing Copilot (a one-line registry swap) only after the on-device checklist holds.
+4. **Native spawn-time title (#503, superseded #555, landed via "name Board sessions in native pickers")** — Pi is one of the agents (with Claude Code and Copilot) whose documented `--name` flag receives a known Board issue title at spawn, syncing pi's own `-r` session picker without touching the live TUI (`README.md:317`). This is distinct from the launcher-side rename, which never forwards into any agent's CLI (issue #555 removed that path as unfixably racy).
+5. **Icon** — `app/webapp/static/icons/pi.svg` (the SPA loads `/static/icons/<agent-id>.svg`) — confirmed present.
+6. **Prereq (one-time, on the PC):** `pi install npm:claude-agent-sdk-pi`, logged into the Claude subscription (for Opus/Sonnet) and pi's `openai-codex` OAuth (for GPT), no `ANTHROPIC_API_KEY`. Pi's native `anthropic` OAuth is left **disconnected** (removed from `~/.pi/agent/auth.json`) so a launch can never slip onto the metered billing path — the SDK (Claude) and `openai-codex` (GPT) subscription paths are the only ones that remain. See README "Installing Pi".
+7. **Copilot kept** — Pi shipped as the 5th agent, not a Copilot replacement; that swap (a one-line registry change) was never revisited and isn't blocked on anything left in this doc.
 
 ### The session-host must reload to see Pi
 
 Adding an agent changes `src/agents.py`, which is imported by **both** the webapp (`:8445`) **and** the session-host (`:8446`). `tray.bat --restart` restarts only the webapp and deliberately **preserves `:8446`** (to keep open PTY sessions alive), so after a plain `--restart` the session-host still rejects `pi` with `unknown agent: pi` (`app/session_host/server.py`). Pi only becomes launchable after a **full restart that also cycles the session-host** — which ends every open Coding/PTY session. The pre-ship gate sidesteps this by spawning its own disposable session-host (issue #260).
 
-## What still needs the phone (interactive validation — owed)
+## On-device validation status
 
-The bench proved auth + CLI shape; these need a real run through the launcher over the tunnel (ideally via a throwaway branch-only registry row + the SDK flag block, reverted before any docs-only PR):
+The bench proved auth + CLI shape. Pi has since been live in the Coding tab for real phone use, and the items below are the same checklist this doc originally deferred, updated against what has actually surfaced since — ticked items name the evidence; unticked ones are still genuinely unconfirmed (no issue or observation has exercised them), not assumed fine by omission.
 
-- [ ] **Full-control PTY from the phone:** launch pi in a project dir, confirm the TUI renders and accepts input.
-- [ ] **Detached console mode:** same via the detached path.
-- [ ] **Model switch over PTY:** `/model` / `Ctrl+L` usable from the phone keyboard.
-- [ ] **Resume over PTY:** `-r` renders pi's session picker correctly through the session-host.
-- [ ] **Stop + kill:** graceful `/quit` stop, and the unified hard-kill (issue #253).
-- [ ] **Reconnect/repaint:** confirm `fullscreen=False` (inline) is correct, or flip it if pi leaves stale frames on reconnect (issue #128 behaviour).
-- [ ] **Confirm interactive provider routing:** verify the launched pi is actually on `claude-agent-sdk` (not silently on the billing `anthropic` provider) — the explicit-flag recipe above is the guaranteed answer.
-- [ ] **Icon:** `pi.svg` present and rendering on the tile + running-session chip.
+- [x] **Full-control PTY from the phone:** confirmed — #291 was found *by* running pi in the phone's in-page full-control terminal (that's how the scroll-flood was reproduced), and the TUI renders and accepts input correctly post-fix.
+- [x] **Detached console mode:** confirmed fine — #291 states directly: "Detached mode is fine — when the session opens a real console window on the PC, Pi renders correctly."
+- [ ] **Model switch over PTY:** `/model` / `Ctrl+L` usable from the phone keyboard — still unvalidated, no issue or observation on record.
+- [ ] **Resume over PTY:** `-r` renders pi's session picker correctly through the session-host — still unvalidated.
+- [x] **Stop + kill:** the unified graceful-then-force stop (issue #253) is a single generic code path keyed off each agent's `quit_command`/`fullscreen` registry fields, applied uniformly to every agent including Pi — not a Pi-specific mechanism, and no Pi-specific gap has surfaced.
+- [x] **Reconnect/repaint:** resolved by #291 — `fullscreen=True` (see "Fullscreen / repaint" above); this doc's own wiring section previously described the pre-fix `fullscreen=False` and has been corrected in this pass.
+- [ ] **Confirm interactive provider routing:** only the *headless* `-p --provider claude-agent-sdk` recipe (bench section above) is proven; whether an interactive phone launch actually lands on the SDK provider rather than silently falling back to the billing `anthropic` provider is still unconfirmed.
+- [x] **Icon:** `pi.svg` present at `app/webapp/static/icons/pi.svg` and loaded by the SPA's `/static/icons/<agent-id>.svg` convention.
+
+Three items remain genuinely open: model switch over PTY, resume over PTY, and interactive provider-routing confirmation. None have blocked Pi's adoption as a daily-use 5th agent, but none should be marked done without an actual observation the way #291 supplied one for reconnect/repaint.
 
 ## Recommendation
 
-**Adopt Pi as an optional 5th Coding-tab agent for a trial, driven by the `claude-agent-sdk` provider via explicit launch flags.** It is feasible, fits the existing registry/session-host architecture with no cross-tab blast radius, and — crucially — gives a *working, no-API-credit* Claude path on this account where pi's native provider does not. Do **not** replace Copilot until the phone validation checklist is green; the swap is trivial once it is. File a follow-up implementation issue covering the registry row, the SDK-provider flag block (+ model config knob), and the `pi.svg` icon; keep this spike docs-only.
+**Pi shipped as an optional 5th Coding-tab agent, driven by the `claude-agent-sdk` provider via explicit launch flags** — feasible, fits the existing registry/session-host architecture with no cross-tab blast radius, and gives a *working, no-API-credit* Claude path on this account where pi's native provider does not. It is documented in README as a live agent alongside Claude/Codex/Antigravity/Copilot/Grok. Copilot has **not** been replaced; that swap (a one-line registry change) is still available but was never revisited, and isn't gated on anything in this doc. The three open checklist items above are worth closing opportunistically the next time Pi is in daily use, rather than as a blocking follow-up.
 
 Secondary note worth a line in any implementation issue: the same extension would let the `openai-codex` subscription drive pi too, and pi additionally supports custom providers via `~/.pi/agent/models.json` (OpenAI/Anthropic-compatible) pointed at the local LLM hub (`127.0.0.1:8000`) — both out of scope here but cheap future options.
 
 ## Related
 
 - Issue #273 — this spike.
+- Issue #291 — the phone-validated reconnect/repaint bug and fix (`fullscreen=True`).
+- Issue #253 — the unified graceful-then-force stop, applied uniformly across all registered agents including Pi.
 - Base reference: [`prateekmedia/claude-agent-sdk-pi`](https://github.com/prateekmedia/claude-agent-sdk-pi) (the pi extension that routes reasoning through the Claude Agent SDK on a Pro/Max subscription).
 - Pi docs: <https://pi.dev/docs/latest/quickstart> (subscription login, model switching, session continue/resume).
 - `src/agents.py` — the agent registry the implementation extends.
