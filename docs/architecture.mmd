@@ -88,6 +88,7 @@ flowchart TB
     JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
+    JOBSTRIGGER["jobs_trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
     BOARD["board.py\npure assembly: sessions + jobs + GitHub"]
     GHCLIENT["github_client.py\ngh CLI reads, cached snapshot"]
     NOTIFY["notifications.py\nPushover on job failure"]
@@ -139,6 +140,8 @@ flowchart TB
   R_TOKENS --> APITOKENS
   MW --> APITOKENS
   RUNJOBCMD --> JOBSSECRETS
+  RUNJOBCMD --> JOBSTRIGGER
+  JOBSQUEUE --> JOBSTRIGGER
   R_TOKENS --> WEBAPPCFG
   R_WEBAUTHN --> WEBAUTHNGATE
   WSERVER --> STATICVER

@@ -32,6 +32,7 @@ from src.jobs_history import (
     write_run_json,
 )
 from src.jobs_schtasks import spawn_run_job_detached
+from src.jobs_trigger import chain_trigger
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ def dispatch_chain_run(
     holder = mutex_collision(jobs, downstream)
     run_dir = new_run_dir(downstream.id, new_run_id())
     started_at = datetime.now().isoformat(timespec="seconds")
-    trigger = f"chain:{upstream_id}"
+    trigger = chain_trigger(upstream_id)
     meta: Dict[str, Any] = dict(
         run_id=run_dir.name,
         job_id=downstream.id,

@@ -491,6 +491,14 @@ Cross-surface settings (read by tray, CLI, server):
 }
 ```
 
+The `webapp` section also accepts three optional tuning knobs, omitted
+above because the defaults are almost always right:
+`startup_timeout_seconds` (`15.0`) — how long the tray waits for uvicorn
+to answer on `:8445` before declaring the boot failed; raise it on a
+loaded box that boots slowly. `request_timeout_seconds` (`1.0`) — per
+health-probe HTTP timeout. `poll_interval_seconds` (`0.4`) — gap between
+those probes while waiting for startup.
+
 `tailnet_host` is the Tailscale (MagicDNS) hostname of this PC. The Apps
 tab's **Running apps** section uses it to build each launched app's
 remote URL (`<scheme>://<tailnet_host>:<port>/`) so you can tap **🌐 Open**

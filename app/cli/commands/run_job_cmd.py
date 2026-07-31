@@ -55,6 +55,7 @@ from src.jobs import (
 from src.jobs_argv import compose_argv
 from src.jobs_config import Job, get_by_id, load_jobs
 from src.jobs_secrets import resolve_env_overlay
+from src.jobs_trigger import TRIGGER_SYNTAX, is_valid_trigger
 from src.notifications import (
     Notifier,
     NoopNotifier,
@@ -622,6 +623,25 @@ def _drain_mutex_queue_for(job: Job) -> None:
         logger.warning(f"⚠️  mutex drain {job.mutex_group!r} raised: {exc}")
 
 
+def _trigger_arg(value: str) -> str:
+    """argparse ``type=`` for ``--trigger``.
+
+    A plain ``choices=`` list cannot express the ``chain:<upstream_id>``
+    shape, and enumerating only the two literals the *user* ever types
+    silently rejected the two values the code itself constructs —
+    ``chain:<id>`` and ``webhook`` — killing every chained and every
+    webhook fire in argparse before the executor ran (issue #687). The
+    vocabulary lives in :mod:`src.jobs_trigger`; this only adapts it to
+    argparse's error protocol, so an unknown value still fails loudly
+    rather than being accepted as free text.
+    """
+    if not is_valid_trigger(value):
+        raise argparse.ArgumentTypeError(
+            f"invalid trigger {value!r}: expected {TRIGGER_SYNTAX}"
+        )
+    return value
+
+
 class RunJobCommand(BaseCommand):
     """Argparse subcommand: ``launcher.py run-job <id>``."""
 
@@ -635,8 +655,11 @@ class RunJobCommand(BaseCommand):
         p.add_argument(
             "--trigger",
             default="scheduled",
-            choices=["scheduled", "manual"],
-            help="Where the run was triggered from (recorded in run.json)",
+            type=_trigger_arg,
+            help=(
+                "Where the run was triggered from (recorded in run.json): "
+                f"{TRIGGER_SYNTAX}"
+            ),
         )
         p.add_argument(
             "--run-id",
