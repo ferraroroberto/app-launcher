@@ -43,8 +43,26 @@ TRAY_BAT_PATH = PROJECT_ROOT / "tray.bat"
 
 STARTUP_BAT_NAME = "AppLauncher.bat"
 
+# Env override for the resolved Startup directory. Set ONLY by the e2e
+# pre-ship gate's autoboot (tests/e2e/conftest.py) so the disposable webapp's
+# `/api/settings/boot-autostart` route — which calls `is_enabled()` /
+# `enable()` / `disable()` with no explicit `startup_dir` — reads and writes a
+# temp directory instead of the real per-user Startup folder. Without this,
+# the e2e boot-autostart test could only pass on a host with no
+# AppLauncher.bat already installed there, which is false on any machine that
+# actually boots the launcher at log on (issue #698). Matches the
+# SESSION_HOST_PORT_ENV / WEBAPP_CONFIG_PATH_ENV isolation pattern in
+# src/webapp_config.py. Not a user-facing knob; intentionally undocumented in
+# the config sample. Only consulted when a caller doesn't already pass an
+# explicit `startup_dir` — unit tests in tests/test_boot_autostart.py always
+# do, so they're unaffected.
+STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
+
 
 def _startup_dir() -> Path:
+    override = os.environ.get(STARTUP_DIR_ENV, "").strip()
+    if override:
+        return Path(override)
     appdata = os.environ.get("APPDATA")
     if not appdata:
         raise RuntimeError("APPDATA environment variable is not set")
