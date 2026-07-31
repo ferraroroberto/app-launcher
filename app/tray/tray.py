@@ -218,9 +218,8 @@ class TrayApp:
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            creationflags=NO_WINDOW,
         )
-        if sys.platform == "win32":
-            kw["creationflags"] = NO_WINDOW
         try:
             subprocess.Popen(cmd, **kw)
         except OSError as exc:
@@ -322,9 +321,8 @@ class TrayApp:
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            creationflags=NO_WINDOW_NEW_GROUP,
         )
-        if sys.platform == "win32":
-            kw["creationflags"] = NO_WINDOW_NEW_GROUP
         try:
             proc = subprocess.Popen(cmd, **kw)
         except OSError as exc:

@@ -656,6 +656,8 @@ In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern
 
 Runs in about a second. The `-m "not smoke"` flag excludes the live-tray Playwright suite below.
 
+The same suite carries a few static convention guards that parse the tree rather than exercise it — `test_icon_sprite_coverage.py` (every `#i-NAME` resolves to a vendored sprite `<symbol>`) and `test_subprocess_flags_guard.py` (every `subprocess.*` spawn under `src/`, `app/`, `scripts/` passes `creationflags` resolving to `src/subprocess_flags.py`'s `NO_WINDOW` / `NO_WINDOW_NEW_GROUP`). The spawn guard exists because an unsuppressed spawn only misbehaves under a *console-less* parent — the `pythonw` tray and its descendants — so it is invisible in the terminal where tests normally run, and drifted unnoticed after #585 consolidated the constant. A deliberately-visible console (the Apps tab's `cmd /k` window) is carved out by an explicit, reviewable `path::function` entry in that file's `_VISIBLE_CONSOLE_EXEMPT`.
+
 ### Playwright smoke + regression tests
 
 A `pytest-playwright` suite under `tests/e2e/` covers two things:
