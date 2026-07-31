@@ -11,7 +11,6 @@ from __future__ import annotations
 import logging
 import socket
 import subprocess
-import sys
 import time
 import tomllib
 from pathlib import Path
@@ -87,9 +86,8 @@ def _spawn_tray_bat_detached(bat_path: Path) -> None:
         cwd=str(bat_path.parent),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        creationflags=NO_WINDOW,
     )
-    if sys.platform == "win32":
-        kw["creationflags"] = NO_WINDOW
     subprocess.Popen(cmd, **kw)
 
 

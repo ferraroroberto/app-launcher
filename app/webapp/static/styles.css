@@ -1466,7 +1466,8 @@ summary + .opt-group { border-top: 0; }
   gap: 8px;
   padding-bottom: 12px;
 }
-.rename-dialog .dialog-head h2 {
+.rename-dialog .dialog-head h2,
+.scan-dialog .dialog-head h2 {
   margin: 0;
   font-size: var(--font-heading-lg);
   line-height: 1.2;
@@ -2484,7 +2485,8 @@ body.terminal-open {
 }
 /* Chief settings dialog rows: label/value on the modal contract's 12px
    rhythm, value control right-aligned (the rename-dialog base supplies the
-   surface, header, and the equal Cancel/Save footer pair). */
+   surface, the header with its ✕ close, and the one full-width primary
+   footer — #545). */
 .chief-settings-row {
   display: flex;
   align-items: center;

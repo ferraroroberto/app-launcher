@@ -32,6 +32,10 @@ from pathlib import Path
 from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.subprocess_flags import NO_WINDOW  # noqa: E402
+
 CERT_DIR = PROJECT_ROOT / "webapp" / "certificates"
 RENEW_WITHIN_DAYS = 30
 
@@ -41,6 +45,7 @@ def _tailscale_hostname() -> str:
         ["tailscale", "status", "--json"],
         capture_output=True,
         text=True,
+        creationflags=NO_WINDOW,
     )
     if result.returncode != 0:
         raise SystemExit("tailscale status failed. Is tailscale running?")
@@ -107,6 +112,7 @@ def _provision(hostname: str) -> None:
         ],
         capture_output=True,
         text=True,
+        creationflags=NO_WINDOW,
     )
     if result.returncode != 0:
         msg = (result.stderr or result.stdout).strip()

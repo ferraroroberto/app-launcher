@@ -1254,11 +1254,15 @@
     </div>
 
     <dialog id="scanDialog" class="scan-dialog">
-      <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> New entries</h2>
+      <div class="dialog-head">
+        <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> New entries</h2>
+        <button type="button" id="scanCancel" class="dialog-close" aria-label="Close">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+        </button>
+      </div>
       <div id="scanResults" class="scan-results"></div>
-      <div class="row dialog-actions">
-        <button id="scanCancel" type="button" class="button-ghost">Cancel</button>
-        <button id="scanSave" type="button" class="button-tint">Add selected</button>
+      <div class="dialog-actions dialog-actions--stacked">
+        <button id="scanSave" type="button" class="button-primary">Add selected</button>
       </div>
     </dialog>
 

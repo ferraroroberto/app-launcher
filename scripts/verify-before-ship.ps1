@@ -180,8 +180,10 @@ Write-Host ("[OK] Ready to ship -- all checks passed in {0:n1}s." -f $sw.Elapsed
 if ($routeReason -match "session-host") {
     Write-Host ""
     Write-Host "[!] SESSION-HOST PATHS TOUCHED -- this is NOT live after tray.bat --restart." -ForegroundColor Yellow
-    Write-Host "    Check GET /api/version's session_host.stale field before reporting this" -ForegroundColor Yellow
-    Write-Host "    change as shipped -- if stale, report it as merged but not yet live." -ForegroundColor Yellow
+    Write-Host "    Check GET /api/version's session_host.stale_relevant field before reporting" -ForegroundColor Yellow
+    Write-Host "    this change as shipped -- if true, report it as merged but not yet live." -ForegroundColor Yellow
+    Write-Host "    (Raw session_host.stale is true after ANY merge, not just a session-host" -ForegroundColor Yellow
+    Write-Host "    one -- #635; null in either field means unknown, never a confident false.)" -ForegroundColor Yellow
     Write-Host "    See CLAUDE.md's restart section for the one supported way to restart :8446." -ForegroundColor Yellow
 }
 exit 0

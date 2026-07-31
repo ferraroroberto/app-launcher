@@ -32,6 +32,10 @@ import yaml
 logger = logging.getLogger("run_named_tunnel")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP  # noqa: E402
+
 DEFAULT_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 SAMPLE_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.sample.yml"
 TUNNEL_URL_FILE = PROJECT_ROOT / "webapp" / "last_tunnel_url.txt"
@@ -65,6 +69,7 @@ def _spawn_uvicorn(port: int) -> subprocess.Popen:
                 capture_output=True,
                 timeout=90,
                 cwd=str(PROJECT_ROOT),
+                creationflags=NO_WINDOW,
             )
         except Exception as exc:
             logger.warning(f"⚠️  tailscale cert check failed (ignored): {exc}")
@@ -85,12 +90,11 @@ def _spawn_uvicorn(port: int) -> subprocess.Popen:
     if cert.exists() and key.exists():
         cmd.extend(["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)])
     logger.info(f"🚀 Starting uvicorn: {' '.join(cmd)}")
-    kw: dict = dict(cwd=str(PROJECT_ROOT))
-    if sys.platform == "win32":
-        kw["creationflags"] = (
-            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-        )
-    return subprocess.Popen(cmd, **kw)
+    return subprocess.Popen(
+        cmd,
+        cwd=str(PROJECT_ROOT),
+        creationflags=NO_WINDOW_NEW_GROUP,
+    )
 
 
 def _wait_for_uvicorn(port: int, timeout: float = 15.0) -> bool:
@@ -120,6 +124,7 @@ def _spawn_cloudflared(config_path: Path) -> subprocess.Popen:
         encoding="utf-8",
         errors="replace",
         bufsize=1,
+        creationflags=NO_WINDOW_NEW_GROUP,
     )
 
 

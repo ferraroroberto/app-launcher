@@ -25,7 +25,7 @@ import requests
 
 from app.tray.single_instance import cross_process_lock
 from app.webapp.event_loop import LOOP_FACTORY
-from src.subprocess_flags import NO_WINDOW_NEW_GROUP
+from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,7 @@ def check_tailscale_cert() -> None:
             text=True,
             timeout=90,
             cwd=str(PROJECT_ROOT),
+            creationflags=NO_WINDOW,
         )
         out = (result.stdout or "").strip()
         if out:
@@ -208,9 +209,8 @@ class WebappManager:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     env=env,
+                    creationflags=NO_WINDOW_NEW_GROUP,
                 )
-                if sys.platform == "win32":
-                    popen_kwargs["creationflags"] = NO_WINDOW_NEW_GROUP
                 self._proc = subprocess.Popen(cmd, **popen_kwargs)
             except FileNotFoundError as exc:
                 raise RuntimeError(f"❌ python launcher not found: {exc}") from exc
