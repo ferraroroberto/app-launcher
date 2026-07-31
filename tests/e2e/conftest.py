@@ -68,6 +68,13 @@ _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # exact shared-file design biting). Autoboot points the disposable webapp at
 # a temp COPY of the real config so it still boots with realistic values.
 _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
+# Env var the webapp honours to override the boot-autostart Startup directory
+# (see src/boot_autostart.py:STARTUP_DIR_ENV) — the injection that stops the
+# boot-autostart e2e test from ever reading/writing the real per-user Startup
+# folder (issue #698). Without it, `/api/settings/boot-autostart` resolves
+# the real folder, so the test could only pass on a host with no
+# AppLauncher.bat installed there for real login-time autostart.
+_STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
 # disposable session-host's PATH is prepended with a harness-generated
@@ -278,6 +285,7 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     """
     from app.webapp.event_loop import LOOP_FACTORY
     from app.webapp.manager import cert_paths
+    from src import boot_autostart
 
     logs_dir = _REPO_ROOT / "webapp"  # gitignored runtime dir
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -315,6 +323,20 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         # No real config (fresh checkout) — a stale copy from a prior run
         # must not leak its values into this one.
         cfg_copy.unlink()
+
+    # Startup-folder isolation (issue #698): give the disposable webapp its
+    # own temp Startup dir so `src.boot_autostart.enable()/disable()` (called
+    # with no override by `/api/settings/boot-autostart`) never touches the
+    # real per-user Startup folder. That lets the boot-autostart e2e test
+    # assume it starts OFF regardless of whether this host has
+    # AppLauncher.bat installed for real login-time autostart. Snapshot the
+    # real wrapper bat (existence + bytes) so the isolation can be *asserted*
+    # after the run, not just assumed — mirrors the webapp-config check below.
+    startup_dir = tmp_path_factory.mktemp("startup-dir")
+    real_wrapper_bat = boot_autostart.wrapper_bat_path()
+    real_wrapper_bytes = (
+        real_wrapper_bat.read_bytes() if real_wrapper_bat.is_file() else None
+    )
 
     try:
         # Session-host: ALWAYS spawn our own on a free port — never adopt a
@@ -382,6 +404,7 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
             extra_env={
                 _SESSION_HOST_PORT_ENV: str(sh_port),
                 _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
+                _STARTUP_DIR_ENV: str(startup_dir),
             },
         )
 
@@ -411,6 +434,21 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
                 f"its temp copy ({cfg_copy}). If you changed settings on the "
                 "live tray while the gate ran, rerun the gate; otherwise a "
                 "test wrote to the real config — fix that before shipping."
+            )
+        # Startup-folder isolation regression check (issue #698): the real
+        # wrapper bat must be byte-identical to the pre-run snapshot. A
+        # mismatch means some path wrote to the real Startup folder during
+        # the gate instead of the temp startup_dir — the owner boots the
+        # launcher from this file.
+        current_wrapper_bytes = (
+            real_wrapper_bat.read_bytes() if real_wrapper_bat.is_file() else None
+        )
+        if current_wrapper_bytes != real_wrapper_bytes:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: {real_wrapper_bat} changed "
+                "during the run. The disposable webapp must only ever write "
+                f"the temp Startup dir ({startup_dir}) — a test wrote to the "
+                "real Startup folder instead. Fix that before shipping."
             )
 
 
