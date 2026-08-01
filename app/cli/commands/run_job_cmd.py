@@ -28,6 +28,7 @@ import argparse
 import json
 import logging
 import os
+import queue
 import subprocess
 import sys
 import threading
@@ -110,28 +111,125 @@ def build_invocation(
     return kind_impl.build_argv(job, tail, param_env, run_dir)
 
 
+# The console half of a ``visible`` job's tee is best-effort live display
+# only (issue #694). A console that stops *draining* — a Windows console
+# put into mark/select mode by a click is the classic trigger — blocks
+# ``console.write()`` indefinitely with no exception and no timeout. When
+# that write sat on the reader thread it stopped the child's pipe being
+# drained, the pipe filled, and the whole process tree deadlocked. So the
+# console is fed through a bounded queue drained by its own thread, and a
+# full queue drops chunks instead of blocking. ``output.log`` stays the
+# complete, sequential, flushed record either way.
+#
+# 64 chunks × 4096 bytes ≈ 256 KB of slack — ample for a briefly-slow
+# console, small enough to stay bounded when one wedges for hours.
+_CONSOLE_QUEUE_MAX_CHUNKS = 64
+# How long to wait at EOF for the console writer to finish what it still
+# holds. Bounded on purpose: a wedged console costs this once per run,
+# never forever.
+_CONSOLE_DRAIN_TIMEOUT_SECONDS = 5.0
+
+
+def _log_console_tee_drops(dropped: int) -> None:
+    """Leave a breadcrumb that live console output was dropped.
+
+    Emitted from a throwaway daemon thread on purpose: the root logger's
+    ``StreamHandler`` writes to ``stderr``, which for a ``visible`` job is
+    the *same* console that just proved it isn't draining. Logging inline
+    would hand the reader thread back the exact block this whole helper
+    exists to avoid.
+    """
+    threading.Thread(
+        target=logger.warning,
+        args=(
+            "⚠️  console tee fell behind — dropped %d chunk(s) of live console "
+            "output for this run; output.log is unaffected and complete",
+            dropped,
+        ),
+        name="run-job-console-tee-log",
+        daemon=True,
+    ).start()
+
+
+def _console_writer_loop(console: Any, chunks: Any) -> None:
+    """Drain the ``chunks`` queue onto ``console`` until the ``None`` sentinel.
+
+    Runs on its own daemon thread (see
+    :func:`_tee_pipe_to_file_and_console`) so a console that stops
+    accepting writes can only ever stall itself — never the reader
+    draining the child's pipe. A broken / closed console raises
+    ``OSError``/``ValueError``; from then on the loop keeps consuming the
+    queue but discards it, so the producer's non-blocking put never
+    depends on this thread's health.
+    """
+    broken = False
+    while True:
+        chunk = chunks.get()
+        if chunk is None:
+            return
+        if broken:
+            continue
+        try:
+            console.write(chunk)
+            console.flush()
+        except (OSError, ValueError):
+            # Broken / closed console — stop teeing, keep filling the log.
+            broken = True
+
+
 def _tee_pipe_to_file_and_console(pipe: Any, fh: Any) -> None:
-    """Stream a child's output ``pipe`` to both ``fh`` and this process's console.
+    """Stream a child's output ``pipe`` to ``fh``, and best-effort to the console.
 
     Used for ``visible`` jobs: ``output.log`` (``fh``) is the remote
     run-history record, and the launcher's own console is what the user
     watches on the PC. A scheduled visible job runs under ``python.exe``
     (see ``src.jobs.task_run_command``) so ``sys.stdout.buffer`` is a real
     console; a pythonw / detached run has no console, so the console half
-    is silently dropped while the file half always works. Blocks until the
+    is never started while the file half always works. Blocks until the
     child closes the pipe (EOF at child exit); the caller then ``wait()``s.
+
+    This thread does pipe-read → file-write only, so nothing the console
+    does can stop the child's pipe being drained (issue #694). Console
+    chunks go onto a bounded queue consumed by :func:`_console_writer_loop`;
+    when that queue is full the chunk is **dropped** — the console is
+    lossy live display, ``fh`` is the record.
     """
     console = getattr(sys.stdout, "buffer", None)
-    for chunk in iter(lambda: pipe.read(4096), b""):
-        fh.write(chunk)
-        fh.flush()
-        if console is not None:
+    chunks: Optional[Any] = None
+    writer: Optional[threading.Thread] = None
+    if console is not None:
+        chunks = queue.Queue(maxsize=_CONSOLE_QUEUE_MAX_CHUNKS)
+        writer = threading.Thread(
+            target=_console_writer_loop,
+            args=(console, chunks),
+            name="run-job-console-tee",
+            daemon=True,
+        )
+        writer.start()
+    dropped = 0
+    try:
+        for chunk in iter(lambda: pipe.read(4096), b""):
+            fh.write(chunk)
+            fh.flush()
+            if chunks is not None:
+                try:
+                    chunks.put_nowait(chunk)
+                except queue.Full:
+                    # Console isn't keeping up — drop this chunk rather
+                    # than backpressure the child. ``fh`` already has it.
+                    dropped += 1
+    finally:
+        if chunks is not None and writer is not None:
             try:
-                console.write(chunk)
-                console.flush()
-            except (OSError, ValueError):
-                # Broken / closed console — stop teeing, keep filling the log.
-                console = None
+                chunks.put_nowait(None)
+            except queue.Full:
+                # Queue full means the console is wedged, so the writer
+                # would never reach the sentinel anyway. It's a daemon
+                # thread — abandoned at interpreter exit.
+                pass
+            writer.join(timeout=_CONSOLE_DRAIN_TIMEOUT_SECONDS)
+        if dropped:
+            _log_console_tee_drops(dropped)
 
 
 class _ResourceSampler:
