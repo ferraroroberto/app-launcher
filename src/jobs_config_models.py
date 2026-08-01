@@ -55,6 +55,11 @@ _PARAM_DATE_RE = _re_compile(r"^\d{4}-\d{2}-\d{2}$")
 # stack would render it confusingly.
 MAX_COOLDOWN_SECONDS = 86_400
 
+# Upper bound on either watchdog ceiling (issue #695) — a full week. The
+# watchdog is a last-resort backstop, so the ceiling is deliberately loose;
+# anything past a week is a units typo, not an intent.
+MAX_WATCHDOG_SECONDS = 7 * 86_400
+
 # Mutex group identifier — lowercase, alnum + hyphen/underscore, 1..32
 # chars. Same conservative shape as the job id slug; intentionally not a
 # free-form string so the UI can show it back as a pill without escaping
@@ -425,6 +430,16 @@ class Job:
     # opaque references, never a real credential. An unresolvable
     # reference finalises the run as failed with a clear note.
     env: Dict[str, str] = field(default_factory=dict)
+    # Executor watchdog ceilings (issue #695) — the last-resort backstop
+    # that kills a wedged run no matter *why* it wedged. Both are
+    # tri-state: ``None`` = "use the default" (a runtime ceiling derived
+    # from this job's own duration history; the module no-output default
+    # in the executor), an int > 0 = that many seconds, and ``0`` =
+    # "disable this signal for this job". Zero is deliberately NOT folded
+    # into ``None`` the way ``cooldown_seconds`` folds it — for a
+    # watchdog, "off" and "use the default" are opposite instructions.
+    max_runtime_seconds: Optional[int] = None
+    no_output_seconds: Optional[int] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
@@ -470,6 +485,12 @@ class Job:
             payload["webhook"] = self.webhook.to_dict()
         if self.env:
             payload["env"] = dict(self.env)
+        # Watchdog ceilings: `is not None`, not truthiness — an explicit 0
+        # means "disabled" and must survive a load → save round-trip.
+        if self.max_runtime_seconds is not None:
+            payload["max_runtime_seconds"] = self.max_runtime_seconds
+        if self.no_output_seconds is not None:
+            payload["no_output_seconds"] = self.no_output_seconds
         return payload
 
     @property
@@ -515,6 +536,41 @@ def _validate_cooldown(raw: Any) -> Optional[int]:
             f"cooldown_seconds must be <= {MAX_COOLDOWN_SECONDS}, got {raw}"
         )
     return raw
+
+
+def _validate_watchdog_seconds(field_name: str, raw: Any) -> Optional[int]:
+    """Parse + validate one of the executor watchdog ceilings (issue #695).
+
+    ``None`` / missing → ``None`` ("use the default"). Otherwise an
+    ``int`` in ``[0, MAX_WATCHDOG_SECONDS]``, with ``0`` preserved as
+    ``0`` — unlike :func:`_validate_cooldown`, zero here means "disable
+    this watchdog signal", which is the opposite of "unset". Bool is
+    rejected explicitly because ``bool`` subclasses ``int``.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(
+            f"{field_name} must be a non-negative int, got "
+            f"{type(raw).__name__}"
+        )
+    if raw < 0:
+        raise ValueError(f"{field_name} must be >= 0, got {raw}")
+    if raw > MAX_WATCHDOG_SECONDS:
+        raise ValueError(
+            f"{field_name} must be <= {MAX_WATCHDOG_SECONDS}, got {raw}"
+        )
+    return raw
+
+
+def _validate_max_runtime(raw: Any) -> Optional[int]:
+    """Single-argument adapter for the ``max_runtime_seconds`` field."""
+    return _validate_watchdog_seconds("max_runtime_seconds", raw)
+
+
+def _validate_no_output(raw: Any) -> Optional[int]:
+    """Single-argument adapter for the ``no_output_seconds`` field."""
+    return _validate_watchdog_seconds("no_output_seconds", raw)
 
 
 def _validate_chain_list(field_name: str, raw: Any) -> List[str]:
@@ -703,6 +759,8 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         kind_config=kind_config,
         webhook=webhook_from_dict(raw.get("webhook")),
         env=env_from_dict(raw.get("env")),
+        max_runtime_seconds=_validate_max_runtime(raw.get("max_runtime_seconds")),
+        no_output_seconds=_validate_no_output(raw.get("no_output_seconds")),
     )
     if not job.id:
         raise ValueError("job id is required")

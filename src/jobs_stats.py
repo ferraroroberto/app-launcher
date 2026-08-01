@@ -184,13 +184,70 @@ def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
             _stats_cache.pop(job_id, None)
 
 
+# How many *completed* runs a job needs before its derived duration
+# threshold is trusted to auto-kill (issue #695). The same threshold has
+# always been safe to *warn* on with zero history — a false ⚠️ costs a
+# glance — but killing a healthy run is not recoverable, so the executor's
+# watchdog refuses to derive a ceiling until the history can carry it. A
+# job with thinner history than this gets no derived ceiling at all
+# (``None`` — "can't tell", never "300 s"); set ``max_runtime_seconds``
+# explicitly to give it one.
+WATCHDOG_MIN_COMPLETED_RUNS = 5
+
+
+def _threshold_from_stats(
+    stats: Dict[str, Any], p95_factor: float, floor_seconds: float
+) -> float:
+    """``max(p95 × factor, floor_seconds)`` off an already-computed stats dict."""
+    p95 = stats.get("p95") or 0.0
+    return max(p95 * p95_factor, floor_seconds)
+
+
+def stuck_threshold_seconds(
+    job_id: str, *, p95_factor: float = 3.0, floor_seconds: float = 300.0
+) -> float:
+    """Seconds a run may sit ``running`` before it looks stuck.
+
+    The one place the "too long for *this* job" heuristic is defined.
+    :func:`is_stuck` (the surface-only ⚠️ badge) and the executor's
+    last-resort watchdog (issue #695) both read it, so the warning line
+    and the auto-kill ceiling can never drift apart.
+    """
+    return _threshold_from_stats(
+        run_stats(job_id, fresh=True), p95_factor, floor_seconds
+    )
+
+
+def derived_runtime_ceiling_seconds(
+    job_id: str,
+    *,
+    p95_factor: float = 3.0,
+    floor_seconds: float = 300.0,
+    min_completed: int = WATCHDOG_MIN_COMPLETED_RUNS,
+) -> Optional[float]:
+    """The watchdog's runtime ceiling for a job that sets none explicitly.
+
+    Same threshold as :func:`stuck_threshold_seconds`, but ``None`` when
+    the job has fewer than ``min_completed`` completed runs on record —
+    a first-ever run, or a job whose history was just pruned, has no
+    evidence for what "too long" means, and the floor would kill it at
+    five minutes. Unknown is returned as unknown, not as a threshold.
+    """
+    stats = run_stats(job_id, fresh=True)
+    if int(stats.get("completed_count") or 0) < min_completed:
+        return None
+    return _threshold_from_stats(stats, p95_factor, floor_seconds)
+
+
 def is_stuck(
     job_id: str, *, p95_factor: float = 3.0, floor_seconds: float = 300.0
 ) -> bool:
     """``True`` when the latest run is ``running`` past a sane threshold.
 
-    Threshold = ``max(p95 × factor, floor_seconds)``. Surface-only — the
-    UI shows ⚠️ and exposes a manual kill button; no auto-kill.
+    Threshold = :func:`stuck_threshold_seconds`. Surface-only — the UI
+    shows ⚠️ and exposes a manual kill button. The *auto*-kill lives in
+    the executor's watchdog (issue #695), which derives its ceiling from
+    the same helper but demands a minimum sample first.
     """
     latest = latest_run(job_id)
     if not latest or latest.get("status") != "running":
@@ -198,9 +255,9 @@ def is_stuck(
     started = _parse_iso(latest.get("started_at"))
     if not started:
         return False
-    stats = run_stats(job_id, fresh=True)
-    p95 = stats.get("p95") or 0.0
-    threshold = max(p95 * p95_factor, floor_seconds)
+    threshold = stuck_threshold_seconds(
+        job_id, p95_factor=p95_factor, floor_seconds=floor_seconds
+    )
     elapsed = (datetime.now() - started).total_seconds()
     return elapsed > threshold
 

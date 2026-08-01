@@ -495,6 +495,9 @@ Unpinned history is pruned to the most recent **20 runs per job** by the executo
 | `cpu_seconds` | float | executor | Accumulated user + system CPU across the tree — sum of per-PID maxima |
 | `killed` | bool | kill endpoint | `True` only when finalised via `/kill` |
 | `reaped` | bool | reap check (issue #591) | `True` only when finalised automatically because the recorded pid was provably dead and the executor never finalised it — distinct from `killed`, which means a human tapped Kill |
+| `watchdog` | bool | executor (issue #695) | `True` only when the executor's last-resort watchdog tore the run down — distinct again from `killed` (a human) and `reaped` (nobody; the executor had already died) |
+| `watchdog_reason` | `"no_output"` \| `"max_runtime"` | executor (issue #695) | Which signal breached. Only written alongside `watchdog: true` |
+| `note` | str | executor | Human one-liner for a non-obvious finalisation — `"cooldown"` on a skipped fire, an invocation error, or `"watchdog: no output for 68min"` |
 | `pinned` | bool | run update endpoint | Keep-forever flag; omitted/false for normal retention |
 
 Plain files remain the canonical store — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling. `webapp/jobs/_index.sqlite` is only a derived mirror: `runs` stores queryable metadata and `output_fts` maps FTS5 rowids to run rowids for cross-run grep. `src/jobs_index.py` rebuilds it from every `run.json` / `output.log` pair when the file is missing, corrupt, or carries an older `PRAGMA user_version`; deleting it and reloading the Jobs tab is the supported repair path. Canonical writes update the mirror after the atomic JSON swap, and finalization captures the completed output plus artifact presence.
@@ -626,6 +629,30 @@ POST /api/jobs/<id>/runs/<rid>/kill
 
 If the executor has already exited (orphan pid), the route still finalises the record — the UI is the authoritative "is this run done?" surface, and a stale `running` row that nothing is actually executing is the bug the kill button fixes.
 
+### Executor watchdog — the running-forever backstop (issue #695)
+
+The kill button above is manual, and the reap below only fires on a *provably dead* pid. Neither covers the case that actually happened: on 2026-07-30 `cleanup-fleet-all-weekly` froze at 14:06 on the visible-job tee's console-backpressure deadlock (#694) and sat `running` in the Jobs UI for **five hours** until someone noticed and tapped Kill. The inner safety net that should have caught it — `claude_progress.py`'s own 45-minute stall watchdog, several layers downstream inside the orchestrator that job spawns — had itself deadlocked, because it emitted its "killing the stalled run" message *before* calling the kill, and that emit blocked on the same jammed pipe chain (`fleet-config#514`).
+
+The lesson generalises: **every inner safety layer shares fate with the thing it guards.** The executor is the one layer whose health depends on nothing the child does — it needs only to keep a thread ticking and be able to call `kill_process_tree` — so that is where the backstop belongs, and it assumes nothing about *why* a run is stuck.
+
+`app/cli/commands/run_job_cmd.py::_RunWatchdog` is a daemon thread started alongside the resource sampler in `_spawn_and_wait`, watching two signals:
+
+- **No output growth** — `output.log` hasn't gained a byte for longer than `no_output_seconds`. Size, not mtime: Windows doesn't refresh a file's directory-entry timestamp while a handle is open, so mtime reads as frozen for a perfectly healthy run. A `stat` that fails is treated as *unknown* and skips the tick — never as "no growth".
+- **Total runtime** — wall-clock since spawn exceeds `max_runtime_seconds`.
+
+Either breach calls `src.diagnostics.kill_process_tree` on the child's whole tree. That also unwedges the main thread for free: the child's pipe closes, the tee loop hits EOF, `proc.wait()` returns, and the executor's ordinary finalisation runs — so the watchdog never finalises a run itself, it only records *why* it fired.
+
+**Per-job configuration.** Both `max_runtime_seconds` and `no_output_seconds` are optional `Job` fields (`config/jobs.json`, settable through `POST`/`PUT /api/jobs`), and both are **tri-state**: absent means "use the default", a positive int is that many seconds, and an explicit `0` **disables that signal** for the job. Zero is deliberately *not* folded into "unset" the way `cooldown_seconds` folds it — for a watchdog, "off" and "use the default" are opposite instructions.
+
+**Defaults.**
+
+- `no_output_seconds` → 1 hour (`_WATCHDOG_DEFAULT_NO_OUTPUT_SECONDS`). Generous on purpose: a job that prints nothing until it finishes is common and must not be killed for being quiet.
+- `max_runtime_seconds` → `src.jobs_stats.derived_runtime_ceiling_seconds(job_id)`, the same `max(p95 × 3, 300 s)` heuristic behind the ⚠️ stuck badge (`stuck_threshold_seconds`, now the single definition both read). **But only once the job has at least `WATCHDOG_MIN_COMPLETED_RUNS` (5) completed runs on record** — below that it returns `None` and the run gets *no* runtime ceiling. A false ⚠️ costs a glance; a false auto-kill of a healthy first-ever run is not recoverable, so thin history is reported as unknown rather than collapsed onto the 300 s floor. Give such a job a ceiling by setting `max_runtime_seconds` explicitly.
+
+**Discipline inside the thread.** Both ceilings are resolved on the *main* thread before it starts (`_resolve_watchdog_limits`), so the loop itself touches nothing but `Path.stat`, `Popen.poll`, and a bounded `Event.wait` — no config load, no run-history read, no notifier. It does not log inline either: the root logger writes to `stderr`, which for a `visible` job is the same console a wedge may already have jammed, so the kill happens **first** and the breadcrumb goes out afterwards on a throwaway daemon thread (`_log_off_thread`). That ordering is `fleet-config#514`'s lesson applied directly. A child that exited on its own a moment before a breach is caught by a `poll()` check and is never reported as watchdog-killed.
+
+**Finalisation.** `status: "failed"`, plus `watchdog: true`, `watchdog_reason`, and a human `note` — its own state, not folded into a normal failure or a manual kill. The Jobs UI run row renders one "who ended this" chip: ⏳ `watchdog <reason>`, or 🛑 `killed` for the manual path (`endedChip` in `app/webapp/static/jobs.js`); a run that ended by itself gets no chip. A watchdog kill is otherwise an ordinary failed run — it feeds the `on_failure` chain, the failure-streak gate, and the notification config exactly like any other failure. There is no auto-retry.
+
 ### Stranded-run reap (issue #591)
 
 If the **executor itself** dies before it reaches its own finalise (interrupt, reboot, OOM, a parent shell killing its process tree) — not just the child it's tracking — nothing ever writes a terminal status, and the record stays `running` forever even after the recorded pid is long gone. `src/jobs_reap.py` automates the same reconciliation the kill route already does by hand for that exact case:
@@ -634,7 +661,7 @@ If the **executor itself** dies before it reaches its own finalise (interrupt, r
 - **What counts as "provably dead".** Only a recorded `pid` that `psutil` confirms is gone (or has been recycled by Windows — a `pid_create_time` persisted alongside `pid` at spawn, and compared against the live process's actual `create_time()` within 1 s, rules out reuse). No `pid` yet, or a pid that's alive and unverifiable against a create-time hint, is left alone — a genuinely long-running job is never reconciled out from under itself.
 - **What gets swept.** Every non-terminal record in the job's history, not just the latest — an older `running` record superseded by a newer run is invisible to every behavioural consumer (mutex/streak/run-button all read only the latest), but still a lie if a user opens that specific historical run's detail view.
 - **What a reap does.** Writes `status: "failed"`, `finished_at`, `duration_seconds` (mirroring the kill route) plus `reaped: true` — distinct from `killed: true`, since this was never killed, just lost track of — invalidates the stats cache, and drains the job's mutex group once if anything was reaped.
-- **What it doesn't replace.** The ⚠️ stuck marker (a live-but-slow run) is untouched — reap only fires on a confirmed-dead pid.
+- **What it doesn't replace.** The ⚠️ stuck marker (a live-but-slow run) is untouched — reap only fires on a confirmed-dead pid. Nor does it replace the [executor watchdog](#executor-watchdog--the-running-forever-backstop-issue-695) above: reap handles "the executor is gone and the record lied", the watchdog handles "the executor is still here, still waiting, and the child will never finish".
 
 ### `next_run` cache
 

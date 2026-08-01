@@ -301,6 +301,22 @@ function triggerChip(r) {
   return escapeHtml(r.trigger || '?');
 }
 
+/* "Who ended this run" chip (issue #695). A bare `failed` covers three
+ * genuinely different outcomes and the row used to render them
+ * identically: the job exited non-zero on its own, an operator tapped
+ * Kill (`killed`), or the executor's last-resort watchdog tore down a
+ * wedged run (`watchdog` + `watchdog_reason`). Only one can apply, and a
+ * run that ended by itself gets no chip at all. */
+function endedChip(r) {
+  if (r.watchdog) {
+    const reason = String(r.watchdog_reason || '').replace(/_/g, ' ');
+    return ' · ' + icon('hourglass') + ' watchdog' +
+      (reason ? ' ' + escapeHtml(reason) : '');
+  }
+  if (r.killed) return ' · ' + icon('octagon-x') + ' killed';
+  return '';
+}
+
 function cssEscape(s) {
   if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(s);
   return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
@@ -350,7 +366,11 @@ function redrawRunsList(jobId, runs) {
       (ago ? ' · ' + escapeHtml(ago) + ' ago' : '') +
       ' · ' + triggerChip(r) + escapeHtml(exitText) +
       (r.dry_run ? ' · ' + icon('flask-conical') + ' dry' : '') +
+      endedChip(r) +
       (paramsChip ? ' · ' + escapeHtml(paramsChip) : '');
+    // A failed run says nothing about *who* ended it. The note carries
+    // the watchdog's own one-liner ("watchdog: no output for 68min").
+    if (r.note) meta.title = r.note;
     btn.appendChild(meta);
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
     li.appendChild(btn);

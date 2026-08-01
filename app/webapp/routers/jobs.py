@@ -75,6 +75,8 @@ router.include_router(jobs_run_store_routes.router)
 # passthrough, so they stay hand-written in each route.
 JOB_OPTIONAL_FIELDS = (
     "cooldown_seconds",
+    "max_runtime_seconds",
+    "no_output_seconds",
     "mutex_group",
     "on_success",
     "on_failure",

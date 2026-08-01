@@ -20,6 +20,11 @@ see that package's docstring for the dispatch shape each kind produces.
 ``args`` is split on whitespace before being appended to argv. Jobs that
 need arguments containing spaces should put the argument inside the
 script/wrapper itself rather than relying on shell quoting.
+
+Every spawned run is guarded by :class:`_RunWatchdog` (issue #695), the
+last-resort backstop that kills a wedged tree and finalises the record
+``failed`` no matter *why* it wedged — because every safety net further
+downstream shares fate with the thing it is guarding.
 """
 
 from __future__ import annotations
@@ -38,11 +43,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_kinds
+from src.diagnostics import kill_process_tree
 from src.jobs import (
     MAX_RUNS_PER_JOB,
     consecutive_failed_runs,
     cooldown_check,
     delete_schtasks,
+    derived_runtime_ceiling_seconds,
     dispatch_chain_run,
     drain_mutex_queue,
     enqueue_mutex,
@@ -75,6 +82,23 @@ logger = logging.getLogger(__name__)
 
 # How often the resource sampler thread walks the process tree.
 _RESOURCE_SAMPLE_INTERVAL_SECONDS = 1.0
+
+# --------------------------------------------------- executor watchdog (#695)
+# How often the watchdog thread re-checks its two signals. Coarse on
+# purpose: both thresholds are minutes-to-hours, and the tick costs one
+# ``stat`` plus one ``poll`` — there is nothing to gain from checking
+# faster and a wedged-run diagnosis is never 5 s sensitive.
+_WATCHDOG_POLL_INTERVAL_SECONDS = 5.0
+# Default ceiling on how long ``output.log`` may stay byte-for-byte
+# unchanged before the run is presumed wedged, for a job that doesn't set
+# ``no_output_seconds``. Deliberately generous — a job that only prints
+# when it finishes is common and must not be killed for being quiet — but
+# an hour of total silence from a job the executor is still waiting on is
+# the signature of a jam, not of work.
+_WATCHDOG_DEFAULT_NO_OUTPUT_SECONDS = 3600.0
+# Grace given to the child's tree between ``terminate()`` and ``kill()``,
+# matching the manual-kill route (``POST /api/jobs/…/kill``).
+_WATCHDOG_KILL_GRACE_SECONDS = 5.0
 
 
 def build_invocation(
@@ -132,25 +156,37 @@ _CONSOLE_QUEUE_MAX_CHUNKS = 64
 _CONSOLE_DRAIN_TIMEOUT_SECONDS = 5.0
 
 
-def _log_console_tee_drops(dropped: int) -> None:
-    """Leave a breadcrumb that live console output was dropped.
+def _log_off_thread(name: str, level: int, msg: str, *args: Any) -> None:
+    """Emit one log record from a throwaway daemon thread.
 
-    Emitted from a throwaway daemon thread on purpose: the root logger's
-    ``StreamHandler`` writes to ``stderr``, which for a ``visible`` job is
-    the *same* console that just proved it isn't draining. Logging inline
-    would hand the reader thread back the exact block this whole helper
-    exists to avoid.
+    The root logger's ``StreamHandler`` writes to ``stderr``, which for a
+    ``visible`` job is the console the user is watching — and a console
+    put into mark/select mode blocks every write to it indefinitely, with
+    no exception and no timeout. Any breadcrumb emitted *by* the machinery
+    that exists to survive a wedged console must therefore not be written
+    on that machinery's own thread; ``fleet-config#514`` is the same
+    lesson learned the expensive way (a stall watchdog that announced the
+    kill before performing it, and was captured by the very jam it was
+    built to break). Fire-and-forget on a daemon thread: worst case the
+    record is never written, which costs a log line, not a run.
     """
     threading.Thread(
-        target=logger.warning,
-        args=(
-            "⚠️  console tee fell behind — dropped %d chunk(s) of live console "
-            "output for this run; output.log is unaffected and complete",
-            dropped,
-        ),
-        name="run-job-console-tee-log",
+        target=logger.log,
+        args=(level, msg, *args),
+        name=name,
         daemon=True,
     ).start()
+
+
+def _log_console_tee_drops(dropped: int) -> None:
+    """Leave a breadcrumb that live console output was dropped."""
+    _log_off_thread(
+        "run-job-console-tee-log",
+        logging.WARNING,
+        "⚠️  console tee fell behind — dropped %d chunk(s) of live console "
+        "output for this run; output.log is unaffected and complete",
+        dropped,
+    )
 
 
 def _console_writer_loop(console: Any, chunks: Any) -> None:
@@ -309,6 +345,223 @@ class _ResourceSampler:
             # the child exits — no spinning, no 1 s tail latency.
             if self._stop.wait(_RESOURCE_SAMPLE_INTERVAL_SECONDS):
                 return
+
+
+def _positive_or_none(seconds: Optional[float]) -> Optional[float]:
+    """A watchdog ceiling, or ``None`` when there is nothing to enforce."""
+    if seconds is None or seconds <= 0:
+        return None
+    return float(seconds)
+
+
+def _fmt_seconds(seconds: float) -> str:
+    """Compact human duration for a watchdog note (``45s`` / ``42min`` / ``3h10m``)."""
+    total = max(int(seconds), 0)
+    if total < 60:
+        return f"{total}s"
+    if total < 3600:
+        return f"{total // 60}min"
+    hours, remainder = divmod(total, 3600)
+    minutes = remainder // 60
+    return f"{hours}h" if minutes == 0 else f"{hours}h{minutes:02d}m"
+
+
+class _RunWatchdog:
+    """Last-resort thread that kills a wedged run (issue #695).
+
+    Every *inner* safety net in a job's stack shares fate with the thing
+    it guards — the visible-job console tee, ``claude_progress``'s own
+    stall watchdog several layers downstream, whatever a future job kind
+    adds. On 2026-07-30 a run froze on a console-backpressure deadlock
+    and sat ``running`` for five hours because the inner watchdog that
+    should have caught it deadlocked on the same jammed pipe chain.
+
+    The executor is the one layer whose health depends on nothing the
+    child does: it needs only to keep a thread ticking and be able to
+    call :func:`~src.diagnostics.kill_process_tree`. So this watchdog
+    assumes nothing about *why* a run is stuck, and watches two signals
+    that need no cooperation from anything downstream:
+
+    * **no output growth** — ``output.log`` hasn't gained a byte in
+      ``no_output_seconds``;
+    * **total runtime** — wall-clock since spawn exceeds
+      ``max_runtime_seconds``.
+
+    Either breach kills the child's whole process tree. That also
+    unwedges the main thread for free: the child's pipe closes, the tee
+    loop hits EOF, ``proc.wait()`` returns, and ``execute()``'s normal
+    finalisation runs — so this class never finalises a run itself, it
+    only records *why* it fired for the caller to stamp.
+
+    Both ceilings are resolved on the **main** thread before the thread
+    starts (see :func:`_resolve_watchdog_limits`); ``None`` disables that
+    signal. Inside the loop nothing is touched but ``Path.stat``,
+    ``Popen.poll``, and a bounded ``Event.wait`` — no config load, no
+    notifier, no logging (see :func:`_log_off_thread`) — so the watchdog
+    can never become the thing that hangs the executor.
+    """
+
+    def __init__(
+        self,
+        proc: "subprocess.Popen[bytes]",
+        output_log: Path,
+        *,
+        max_runtime_seconds: Optional[float],
+        no_output_seconds: Optional[float],
+    ) -> None:
+        self._proc = proc
+        self._output_log = output_log
+        # Normalise "off" to a single representation. A non-positive
+        # ceiling is not a ceiling of zero seconds — it would fire on the
+        # first tick of every healthy run — so it disables its signal,
+        # exactly like ``None``.
+        self._max_runtime = _positive_or_none(max_runtime_seconds)
+        self._no_output = _positive_or_none(no_output_seconds)
+        self._reason: Optional[str] = None
+        self._note: Optional[str] = None
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._loop, name=f"run-job-watchdog-{proc.pid}", daemon=True
+        )
+
+    @property
+    def armed(self) -> bool:
+        """``True`` when at least one signal has a ceiling to enforce."""
+        return self._max_runtime is not None or self._no_output is not None
+
+    @property
+    def fired(self) -> bool:
+        return self._reason is not None
+
+    @property
+    def reason(self) -> Optional[str]:
+        """``"no_output"`` / ``"max_runtime"``, or ``None`` if it never fired."""
+        return self._reason
+
+    @property
+    def note(self) -> Optional[str]:
+        """Human one-liner for the run record, or ``None`` if it never fired."""
+        return self._note
+
+    def start(self) -> None:
+        if self.armed:
+            self._thread.start()
+
+    def stop(self, *, timeout: float = 2.0) -> None:
+        self._stop.set()
+        if self._thread.is_alive():
+            self._thread.join(timeout=timeout)
+
+    def _log_size(self) -> Optional[int]:
+        """``output.log``'s current size, or ``None`` when it can't be read.
+
+        Size rather than mtime on purpose: Windows does not refresh a
+        file's directory-entry timestamp while a handle is open, so mtime
+        would read as frozen for a perfectly healthy run. ``None`` is
+        "can't tell" and the caller must not treat it as "no growth".
+        """
+        try:
+            return self._output_log.stat().st_size
+        except OSError:
+            return None
+
+    def _loop(self) -> None:
+        started = time.monotonic()
+        last_growth = started
+        last_size = self._log_size()
+        while not self._stop.wait(_WATCHDOG_POLL_INTERVAL_SECONDS):
+            now = time.monotonic()
+            if self._max_runtime is not None and now - started > self._max_runtime:
+                self._fire(
+                    "max_runtime",
+                    f"max runtime {_fmt_seconds(self._max_runtime)} exceeded",
+                )
+                return
+            if self._no_output is None:
+                continue
+            size = self._log_size()
+            if size is None:
+                # Unknown, not stalled — skip this tick entirely rather
+                # than let an unreadable stat masquerade as no growth.
+                continue
+            if size != last_size:
+                last_size = size
+                last_growth = now
+                continue
+            quiet_for = now - last_growth
+            if quiet_for > self._no_output:
+                self._fire("no_output", f"no output for {_fmt_seconds(quiet_for)}")
+                return
+
+    def _fire(self, reason: str, detail: str) -> None:
+        """Kill the child's tree and record why — kill first, log after.
+
+        The ordering is the whole point (``fleet-config#514``): a
+        breadcrumb emitted before the kill can be swallowed by the same
+        wedge the kill exists to break, and then nothing happens at all.
+        The race where the child exits normally a moment before this
+        fires is closed by the ``poll()`` check — a run that finished on
+        its own must not be reported as watchdog-killed.
+        """
+        if self._proc.poll() is not None:
+            return
+        self._reason = reason
+        self._note = f"watchdog: {detail}"
+        try:
+            kill_process_tree(self._proc.pid, _WATCHDOG_KILL_GRACE_SECONDS)
+        except Exception:  # noqa: BLE001 — the record still has to be stamped
+            pass
+        _log_off_thread(
+            "run-job-watchdog-log",
+            logging.ERROR,
+            "🛑 watchdog killed run (pid=%s): %s",
+            self._proc.pid,
+            self._note,
+        )
+
+
+def _resolve_watchdog_limits(job: Job) -> Tuple[Optional[float], Optional[float]]:
+    """Resolve ``(max_runtime_seconds, no_output_seconds)`` for one run.
+
+    Called on the **main** thread before :class:`_RunWatchdog` starts, so
+    the watchdog thread itself never reads config or run history — the
+    "nothing that can block, inside the thread" constraint of issue #695.
+
+    Both fields are tri-state on :class:`~src.jobs_config.Job`: ``None``
+    means "use the default", a positive int is that many seconds, and
+    ``0`` means "disable this signal for this job".
+
+    The runtime default reuses the job's own duration history via
+    :func:`~src.jobs_stats.derived_runtime_ceiling_seconds` — the same
+    ``max(p95 × 3, 300 s)`` heuristic the UI's ⚠️ stuck badge shows — but
+    only once there are enough completed runs to trust it. A job with
+    thinner history gets no runtime ceiling rather than a fabricated one:
+    an unfounded auto-kill of a healthy run is a far worse failure than
+    the stuck run the watchdog is there to catch.
+    """
+    if job.max_runtime_seconds is None:
+        try:
+            max_runtime = derived_runtime_ceiling_seconds(job.id)
+        except Exception as exc:  # noqa: BLE001 — no ceiling beats a wrong one
+            logger.warning(f"⚠️  watchdog: could not derive runtime ceiling: {exc}")
+            max_runtime = None
+    else:
+        max_runtime = _positive_or_none(job.max_runtime_seconds)
+
+    if job.no_output_seconds is None:
+        no_output: Optional[float] = _WATCHDOG_DEFAULT_NO_OUTPUT_SECONDS
+    else:
+        no_output = _positive_or_none(job.no_output_seconds)
+
+    # One breadcrumb, on the main thread, before the child exists — so a
+    # later "why did / didn't the watchdog fire?" is answerable from the
+    # log alone without re-deriving the job's history.
+    logger.info(
+        f"🐕 watchdog for {job.id}: max_runtime="
+        f"{_fmt_seconds(max_runtime) if max_runtime else 'off'}, "
+        f"no_output={_fmt_seconds(no_output) if no_output else 'off'}"
+    )
+    return max_runtime, no_output
 
 
 def _maybe_notify_failure(
@@ -608,18 +861,23 @@ def _spawn_and_wait(
     cwd: Path,
     env: Dict[str, str],
     run_dir: Path,
-) -> Tuple[int, str, Optional[_ResourceSampler]]:
+) -> Tuple[int, str, Optional[_ResourceSampler], Optional[_RunWatchdog]]:
     """Spawn the job's process, tee output for ``visible`` jobs, sample
-    resource usage, and wait for it to exit.
+    resource usage, guard it with the last-resort watchdog, and wait for
+    it to exit.
 
-    Returns ``(exit_code, status, sampler)`` — ``status`` is ``"success"``
-    or ``"failed"``; ``sampler`` is ``None`` when resource sampling
-    couldn't start. Persists the child's ``pid`` onto the run record as
-    soon as it's known so the kill endpoint can find the tree even if
-    this executor crashes before ``wait()`` returns.
+    Returns ``(exit_code, status, sampler, watchdog)`` — ``status`` is
+    ``"success"`` or ``"failed"``; ``sampler`` / ``watchdog`` are ``None``
+    when that thread couldn't start. Persists the child's ``pid`` onto the
+    run record as soon as it's known so the kill endpoint can find the
+    tree even if this executor crashes before ``wait()`` returns.
     """
     output_log = run_dir / "output.log"
     sampler: Optional[_ResourceSampler] = None
+    watchdog: Optional[_RunWatchdog] = None
+    # Resolved here, on the main thread: the watchdog thread must never
+    # read run history or config itself (issue #695).
+    max_runtime_seconds, no_output_seconds = _resolve_watchdog_limits(job)
     try:
         with output_log.open("wb") as fh:
             # A ``visible`` job streams the child's combined output to
@@ -651,6 +909,17 @@ def _spawn_and_wait(
             except Exception as exc:  # noqa: BLE001 — sampling optional
                 logger.warning(f"⚠️  resource sampler init failed: {exc}")
                 sampler = None
+            try:
+                watchdog = _RunWatchdog(
+                    proc,
+                    output_log,
+                    max_runtime_seconds=max_runtime_seconds,
+                    no_output_seconds=no_output_seconds,
+                )
+                watchdog.start()
+            except Exception as exc:  # noqa: BLE001 — backstop is best-effort
+                logger.warning(f"⚠️  run watchdog init failed: {exc}")
+                watchdog = None
             if job.visible and proc.stdout is not None:
                 _tee_pipe_to_file_and_console(proc.stdout, fh)
             exit_code = proc.wait()
@@ -667,7 +936,13 @@ def _spawn_and_wait(
     finally:
         if sampler is not None:
             sampler.stop()
-    return exit_code, status, sampler
+        if watchdog is not None:
+            watchdog.stop()
+    if watchdog is not None and watchdog.fired:
+        # A watchdog kill is a failure whatever exit code the torn-down
+        # tree happened to report on its way out.
+        status = "failed"
+    return exit_code, status, sampler, watchdog
 
 
 def _finalize_run(
@@ -678,6 +953,7 @@ def _finalize_run(
     status: str,
     spawn_started: float,
     sampler: Optional[_ResourceSampler],
+    watchdog: Optional[_RunWatchdog] = None,
 ) -> None:
     """Stamp the run's terminal fields, prune history, invalidate the
     stats cache, and fire a failure notification if warranted.
@@ -685,6 +961,13 @@ def _finalize_run(
     Runs after the child process has exited (or failed to spawn) but
     before chain dispatch / once-cleanup / mutex drain — those steps read
     the finalised run record.
+
+    A watchdog kill (issue #695) is stamped as its own state —
+    ``watchdog: true`` plus a ``watchdog_reason`` and a human ``note`` —
+    so it is never confused with a plain ``failed`` (the job's own bad
+    exit code) or with ``killed: true`` (an operator tapped Kill). A run
+    the watchdog never touched gains none of those keys, so the common
+    case's record shape is unchanged.
     """
     finished_at = datetime.now().isoformat(timespec="seconds")
     duration_seconds = round(time.monotonic() - spawn_started, 3)
@@ -697,6 +980,10 @@ def _finalize_run(
     if sampler is not None:
         fields["peak_rss_bytes"] = sampler.peak_rss_bytes
         fields["cpu_seconds"] = round(sampler.cpu_seconds, 3)
+    if watchdog is not None and watchdog.fired:
+        fields["watchdog"] = True
+        fields["watchdog_reason"] = watchdog.reason
+        fields["note"] = watchdog.note
     write_run_json(run_dir, **fields)
     prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
     invalidate_stats_cache(job.id)
@@ -954,7 +1241,9 @@ class RunJobCommand(BaseCommand):
         if dry_run:
             env["JOB_DRY_RUN"] = "1"
         spawn_started = time.monotonic()
-        exit_code, status, sampler = _spawn_and_wait(job, argv, cwd, env, run_dir)
+        exit_code, status, sampler, watchdog = _spawn_and_wait(
+            job, argv, cwd, env, run_dir
+        )
 
         _finalize_run(
             job,
@@ -963,12 +1252,21 @@ class RunJobCommand(BaseCommand):
             status=status,
             spawn_started=spawn_started,
             sampler=sampler,
+            watchdog=watchdog,
         )
         _dispatch_chain(job, status)
         _cleanup_once_schedule(job, args)
         _drain_mutex_queue_for(job)
 
-        logger.info(
-            f"🏁 run-job {job.id} {status} (exit={exit_code}, run={run_dir.name})"
+        watchdog_note = (
+            f", {watchdog.note}" if watchdog is not None and watchdog.fired else ""
         )
+        logger.info(
+            f"🏁 run-job {job.id} {status} "
+            f"(exit={exit_code}, run={run_dir.name}{watchdog_note})"
+        )
+        # A watchdog kill is a failed run even in the pathological case
+        # where the torn-down tree still reported a zero exit code.
+        if status == "failed":
+            return 1
         return 0 if exit_code == 0 else 1
