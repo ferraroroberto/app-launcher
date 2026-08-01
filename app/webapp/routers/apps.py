@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Tuple
 import requests
 from fastapi import APIRouter, HTTPException, Request
 
-from src import agents, app_runtime, audit, session_client
+from src import agents, app_runtime, audit
 from src.app_config import AppConfig
 from src.diagnostics import (
     detect_local_scheme,
@@ -57,6 +57,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    spawn_session_or_400,
 )
 
 logger = logging.getLogger(__name__)
@@ -249,20 +250,15 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             flags = flag_builders[agent](cfg)
 
         if mode == "remote":
-            try:
-                session = await asyncio.to_thread(
-                    spawn_claude_session,
-                    Path(entry.project_dir),
-                    entry.name,
-                    flags,
-                    cfg.session_host_port,
-                    "remote",
-                    agent,
-                )
-            except session_client.SessionHostError as exc:
-                raise HTTPException(status_code=exc.status, detail=str(exc))
-            except OSError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
+            session = await spawn_session_or_400(
+                spawn_claude_session,
+                Path(entry.project_dir),
+                entry.name,
+                flags,
+                cfg.session_host_port,
+                "remote",
+                agent,
+            )
             sid = str(session.get("session_id") or "")
             await audit_off_loop(
                 audit.audit_event,
@@ -282,23 +278,18 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 "session": session,
             }
 
-        try:
-            session = await asyncio.to_thread(
-                spawn_claude_session,
-                Path(entry.project_dir),
-                entry.name,
-                flags,
-                cfg.session_host_port,
-                "pty",
-                agent,
-                rows,
-                cols,
-                history_lines=cfg.terminal_history_lines,
-            )
-        except session_client.SessionHostError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc))
-        except OSError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+        session = await spawn_session_or_400(
+            spawn_claude_session,
+            Path(entry.project_dir),
+            entry.name,
+            flags,
+            cfg.session_host_port,
+            "pty",
+            agent,
+            rows,
+            cols,
+            history_lines=cfg.terminal_history_lines,
+        )
         sid = str(session.get("session_id") or "")
         await audit_session_start_and_maybe_mirror(
             cfg, request, body,

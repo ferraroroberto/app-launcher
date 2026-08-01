@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlencode
 
-from fastapi import Request, WebSocket
+from fastapi import HTTPException, Request, WebSocket
 
+from src.session_client import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
@@ -207,6 +208,37 @@ def should_mirror_to_pc(
     if client_ip(request) not in LOOPBACK_HOSTS:
         return True
     return not bool(body.get("in_page"))
+
+
+async def spawn_session_or_400(
+    spawn_fn: Callable[..., Dict[str, Any]], /, *args: Any, **kwargs: Any
+) -> Dict[str, Any]:
+    """Run ``spawn_claude_session`` off the event loop, mapping its two
+    failure modes onto HTTP responses (issue #689).
+
+    The shared *head* of every session-launch route, the counterpart to
+    :func:`audit_session_start_and_maybe_mirror`'s tail: six call sites
+    across three routers — ``apps.py``'s Coding-tab remote + PTY launches,
+    ``board.py``'s issue-start, dispatch and chief-ensure, ``life_os.py``'s
+    skill launch — repeated this identical two-arm mapping verbatim, with
+    only the spawn arguments differing.
+
+    ``SessionHostError`` carries the session-host's own status through
+    (``exc.status``) so a 409 "already running" doesn't flatten into a 400;
+    an ``OSError`` — an unreadable project dir, a missing executable — is a
+    bad request by the time it reaches here.
+
+    ``spawn_fn`` is passed in rather than imported here so
+    ``tests/conftest.py``'s per-router ``spawn_claude_session``
+    monkeypatches still bite when the spawn runs on the caller's behalf —
+    same contract as ``audit_mod`` / ``mirror_fn`` below.
+    """
+    try:
+        return await asyncio.to_thread(spawn_fn, *args, **kwargs)
+    except SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 async def audit_session_start_and_maybe_mirror(

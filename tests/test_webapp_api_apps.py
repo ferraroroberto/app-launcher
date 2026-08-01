@@ -528,6 +528,51 @@ class TestClaudeCodeDiscovery:
         assert "not installed" in resp.json()["detail"]
 
 
+class TestLaunchSpawnErrorMapping:
+    """The spawn failure → HTTP mapping shared by every launch route.
+
+    Issue #689 lifted this out of six copy-pasted call sites into
+    ``_helpers.spawn_session_or_400``; nothing pinned it before, so a drift
+    in the surviving copy would have been silent. The session-host's own
+    status must survive (a 409 "already running" is not a 400), and a
+    plain OSError from the spawn must land as 400.
+    """
+
+    def test_session_host_error_status_is_passed_through(
+        self, webapp_client, monkeypatch
+    ):
+        client, _, overrides = webapp_client
+        from src.session_client import SessionHostError
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+
+        def boom(*_a, **_kw):
+            raise SessionHostError("session already running", status=409)
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", boom)
+        resp = client.post("/api/apps/live-proj/launch", json={})
+        assert resp.status_code == 409
+        assert resp.json()["detail"] == "session already running"
+
+    def test_os_error_maps_to_400(self, webapp_client, monkeypatch):
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+
+        def boom(*_a, **_kw):
+            raise OSError("project dir vanished")
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", boom)
+        # Remote mode takes the other call site in the same route.
+        resp = client.post(
+            "/api/apps/live-proj/launch", json={"mode": "remote"}
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == "project dir vanished"
+
+
 class TestScanApps:
     def test_returns_new_key_with_list(self, webapp_client, monkeypatch):
         client, _, _ = webapp_client

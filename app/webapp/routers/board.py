@@ -82,6 +82,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    spawn_session_or_400,
 )
 
 logger = logging.getLogger(__name__)
@@ -365,23 +366,18 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     flags = " ".join(
         part for part in (base_flags, native_name_flags, f'"{prompt}"') if part
     )
-    try:
-        session = await asyncio.to_thread(
-            spawn_claude_session,
-            Path(entry.project_dir),
-            entry.name,
-            flags,
-            cfg.session_host_port,
-            "pty",
-            agent,
-            rows,
-            cols,
-            history_lines=cfg.terminal_history_lines,
-        )
-    except session_client.SessionHostError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc))
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    session = await spawn_session_or_400(
+        spawn_claude_session,
+        Path(entry.project_dir),
+        entry.name,
+        flags,
+        cfg.session_host_port,
+        "pty",
+        agent,
+        rows,
+        cols,
+        history_lines=cfg.terminal_history_lines,
+    )
 
     sid = str(session.get("session_id") or "")
     await _mark_chief_managed(cfg, request, sid, entry.name, number)
@@ -622,23 +618,18 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
 
     entry = _resolve_repo_entry(cfg, repo)
 
-    try:
-        session = await asyncio.to_thread(
-            spawn_claude_session,
-            Path(entry.project_dir),
-            entry.name,
-            flags,
-            cfg.session_host_port,
-            "pty",
-            agent,
-            rows,
-            cols,
-            history_lines=cfg.terminal_history_lines,
-        )
-    except session_client.SessionHostError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc))
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    session = await spawn_session_or_400(
+        spawn_claude_session,
+        Path(entry.project_dir),
+        entry.name,
+        flags,
+        cfg.session_host_port,
+        "pty",
+        agent,
+        rows,
+        cols,
+        history_lines=cfg.terminal_history_lines,
+    )
 
     sid = str(session.get("session_id") or "")
     command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
@@ -1226,24 +1217,19 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             )
         else:
             agent, flags = _agent_and_flags(cfg, cfg.chief_model)
-        try:
-            session = await asyncio.to_thread(
-                spawn_claude_session,
-                Path(entry.project_dir),
-                _CHIEF_LABEL,
-                flags,
-                cfg.session_host_port,
-                "pty",
-                agent,
-                rows,
-                cols,
-                history_lines=cfg.terminal_history_lines,
-                label=_CHIEF_LABEL,
-            )
-        except session_client.SessionHostError as exc:
-            raise HTTPException(status_code=exc.status, detail=str(exc))
-        except OSError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+        session = await spawn_session_or_400(
+            spawn_claude_session,
+            Path(entry.project_dir),
+            _CHIEF_LABEL,
+            flags,
+            cfg.session_host_port,
+            "pty",
+            agent,
+            rows,
+            cols,
+            history_lines=cfg.terminal_history_lines,
+            label=_CHIEF_LABEL,
+        )
 
         sid = str(session.get("session_id") or "")
         if resumed_session_id:

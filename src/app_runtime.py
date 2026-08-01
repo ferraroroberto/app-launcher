@@ -23,10 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import List
 
-try:
-    import psutil  # type: ignore
-except ImportError:  # pragma: no cover — psutil is in requirements.txt
-    psutil = None  # type: ignore
+from src.diagnostics import is_pid_alive
 
 logger = logging.getLogger(__name__)
 
@@ -85,23 +82,15 @@ def _is_alive(inst: SpawnedInstance) -> bool:
     """True when the PID still exists and is the same process we recorded.
 
     The ``create_time`` check guards against Windows PID reuse: a recycled
-    PID would exist but have a creation time far from ``started_at``.
+    PID would exist but have a creation time far from ``started_at``. That
+    guard is a real correctness fix, so it lives in exactly one place —
+    :func:`src.diagnostics.is_pid_alive`, which ``src.jobs_reap`` calls for
+    the same reason on run records (issue #689). This is the spawned-app
+    binding of it: the recorded ``started_at`` is the create-time hint.
     """
-    if psutil is None:
-        return True  # can't introspect — assume alive, don't drop blindly
-    try:
-        if not psutil.pid_exists(inst.pid):
-            return False
-        proc = psutil.Process(inst.pid)
-        if not proc.is_running():
-            return False
-        try:
-            create_time = proc.create_time()
-        except (psutil.AccessDenied, psutil.NoSuchProcess):
-            return True  # exists but unreadable — keep it
-        return abs(create_time - inst.started_at) <= _CREATE_TIME_TOLERANCE_SECONDS
-    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-        return False
+    return is_pid_alive(
+        inst.pid, inst.started_at, _CREATE_TIME_TOLERANCE_SECONDS
+    )
 
 
 def prune_dead() -> None:
