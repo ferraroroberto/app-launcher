@@ -50,7 +50,7 @@ flowchart TB
       R_CC["claude_code.py — flags, git-status, generate"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
-      R_BOARD["board.py — /api/board (Board tab)\n+ dispatch & fleet-chief ensure/settings (#245)"]
+      R_BOARD["board.py — /api/board (Board tab) + dispatch\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_SYSMAP["system_map.py — fleet map section"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
     end
@@ -62,7 +62,7 @@ flowchart TB
   MGR --> WSERVER
 
   subgraph static["app/webapp/static/ — vanilla JS PWA"]
-    STATICJS["index.html, tabs.js, state.js,\nterminal*.js, sessions.js, jobs*.js,\nboard.js, apps.js, life-os.js, voice.js"]
+    STATICJS["index.html, tabs.js, state.js,\nterminal*.js, sessions.js, jobs*.js,\nboard*.js, apps.js, life-os.js, voice.js"]
   end
   R_MISC --> STATICJS
 
@@ -93,6 +93,7 @@ flowchart TB
     GHCLIENT["github_client.py\ngh CLI reads, cached snapshot"]
     NOTIFY["notifications.py\nPushover on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
+    LAUNCHFLAGS["launch_flags.py\nper-agent CLI flag builders"]
     APITOKENS["api_tokens.py\nscoped-token mint/hash/scope (#72)"]
     JOBSSECRETS["jobs_secrets.py\n$secret: reference resolution (#72/#73)"]
     APPCFG["app_config.py\nconfig/config.json"]
@@ -136,6 +137,9 @@ flowchart TB
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief_pointer.py →\nwebapp/chief-pointer.json"]
   R_CONFIG --> WEBAPPCFG
+  R_CONFIG --> LAUNCHFLAGS
+  R_APPS --> LAUNCHFLAGS
+  LAUNCHFLAGS --> WEBAPPCFG
   R_CONFIG --> APPCFG
   R_TOKENS --> APITOKENS
   MW --> APITOKENS

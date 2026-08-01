@@ -430,7 +430,8 @@ app-launcher/
 │
 ├── src/                       # logic layer (no UI imports)
 │   ├── app_config.py          # log level, webapp embed section
-│   ├── webapp_config.py       # host/port/scan-paths/claude flags/secrets/terminal knobs
+│   ├── webapp_config.py       # host/port/scan-paths/agent settings/secrets/terminal knobs
+│   ├── launch_flags.py        # per-agent CLI flag builders (claude/codex/agy/copilot/pi/grok + resume)
 │   ├── agents.py              # coding-agent registry (claude / codex / agy / copilot) + PATH detection
 │   ├── registry.py            # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py             # bat classifier + project-dir + life-os skill discovery
@@ -785,6 +786,7 @@ Since the #534 fixture split, the UI-only terminal tests run on CI too: their li
 - `src/scanner.py` — bat classifier + project-directory discovery
 - `src/agents.py` — coding-agent registry (Claude Code / Codex CLI / Antigravity CLI / GitHub Copilot CLI / Pi / Grok Build) + PATH detection
 - `src/webapp_config.py` — persisted UI prefs + auth secrets + terminal knobs
+- `src/launch_flags.py` — per-agent CLI flag composition (the `build_*_flags` builders, split off `webapp_config.py` in #691)
 - `scripts/gen_*.py` — token / password / icons / SSL cert / tunnel
 - `config/*.sample.json` — committed templates; real files are gitignored
 - `webapp/` — runtime state (certs, tunnel URL, audit logs, per-session logs)

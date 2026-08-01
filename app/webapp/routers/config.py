@@ -12,6 +12,14 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import boot_autostart
+from src.launch_flags import (
+    build_antigravity_flags,
+    build_claude_flags,
+    build_codex_flags,
+    build_copilot_flags,
+    build_grok_flags,
+    build_pi_flags,
+)
 from src.webapp_config import (
     MAX_TERMINAL_HISTORY_LINES,
     MIN_TERMINAL_HISTORY_LINES,
@@ -25,12 +33,6 @@ from src.webapp_config import (
     VALID_PI_TRUST_MODES,
     PI_MODEL_SPECS,
     WebappConfig,
-    build_antigravity_flags,
-    build_claude_flags,
-    build_codex_flags,
-    build_copilot_flags,
-    build_grok_flags,
-    build_pi_flags,
     update_webapp_config,
 )
 

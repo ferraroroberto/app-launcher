@@ -18,7 +18,8 @@ from pathlib import Path
 
 import pytest
 
-from app.webapp.routers import board as board_router
+from app.webapp.routers import board_chief as chief_router
+from app.webapp.routers import board_spawn
 from src import chief_pointer
 
 
@@ -37,15 +38,15 @@ def _bypass_gate(monkeypatch):
 @pytest.fixture
 def _fast_probe(monkeypatch):
     """Shrink every wait so no test ever really sleeps."""
-    monkeypatch.setattr(board_router, "DISPATCH_READY_CAP_S", 0.3)
-    monkeypatch.setattr(board_router, "DISPATCH_SETTLE_S", 0.0)
-    monkeypatch.setattr(board_router, "DISPATCH_POLL_S", 0.01)
-    monkeypatch.setattr(board_router, "DISPATCH_LEGACY_GRACE_S", 0.0)
-    monkeypatch.setattr(board_router, "CHIEF_STOP_WAIT_S", 0.1)
-    monkeypatch.setattr(board_router, "CHIEF_STOP_POLL_S", 0.01)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_STABLE_S", 0.02)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_CAP_S", 0.3)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_POLL_S", 0.01)
+    monkeypatch.setattr(board_spawn, "DISPATCH_READY_CAP_S", 0.3)
+    monkeypatch.setattr(board_spawn, "DISPATCH_SETTLE_S", 0.0)
+    monkeypatch.setattr(board_spawn, "DISPATCH_POLL_S", 0.01)
+    monkeypatch.setattr(board_spawn, "DISPATCH_LEGACY_GRACE_S", 0.0)
+    monkeypatch.setattr(chief_router, "CHIEF_STOP_WAIT_S", 0.1)
+    monkeypatch.setattr(chief_router, "CHIEF_STOP_POLL_S", 0.01)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_STABLE_S", 0.02)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_CAP_S", 0.3)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_POLL_S", 0.01)
 
 
 @pytest.fixture
@@ -62,7 +63,7 @@ def _spawn(webapp_client, monkeypatch):
         )
         return {"session_id": "chief-1", "kind": "pty", "name": name}
 
-    monkeypatch.setattr(board_router, "spawn_claude_session", fake_spawn)
+    monkeypatch.setattr(chief_router, "spawn_claude_session", fake_spawn)
     return captured
 
 
@@ -123,7 +124,7 @@ class TestReconcileChiefLabel:
 
     def test_unlabelled_chief_prompt_in_fleet_config_gets_healed(self):
         row = self._unlabelled_row(prompt_title="/chief")
-        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        healed = chief_router._reconcile_chief_label(row, shared_name=None)
         assert healed["label"] == "chief"
 
     def test_resumed_chief_healed_via_shared_name_despite_wrong_prompt(self):
@@ -131,38 +132,38 @@ class TestReconcileChiefLabel:
         first into the resumed PTY, never "/chief" — only shared_name (from
         Claude's own persisted identity) carries the signal."""
         row = self._unlabelled_row(prompt_title="ok restarted, check all is good")
-        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        healed = chief_router._reconcile_chief_label(row, shared_name="chief")
         assert healed["label"] == "chief"
 
     def test_already_labelled_row_is_untouched(self):
         row = self._unlabelled_row(label="chief", prompt_title="whatever")
-        assert board_router._reconcile_chief_label(row, shared_name=None) is row
+        assert chief_router._reconcile_chief_label(row, shared_name=None) is row
 
     def test_wrong_prompt_title_and_shared_name_is_not_healed(self):
         row = self._unlabelled_row(prompt_title="/chief please help")
-        healed = board_router._reconcile_chief_label(row, shared_name="fleet-config")
+        healed = chief_router._reconcile_chief_label(row, shared_name="fleet-config")
         assert healed["label"] == ""
 
     def test_wrong_project_dir_is_not_healed(self):
         row = self._unlabelled_row(
             prompt_title="/chief", project_dir="E:/automation/app-launcher"
         )
-        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        healed = chief_router._reconcile_chief_label(row, shared_name="chief")
         assert healed["label"] == ""
 
     def test_remote_kind_is_not_healed(self):
         row = self._unlabelled_row(prompt_title="/chief", kind="remote")
-        healed = board_router._reconcile_chief_label(row, shared_name="chief")
+        healed = chief_router._reconcile_chief_label(row, shared_name="chief")
         assert healed["label"] == ""
 
     def test_shared_name_match_is_case_insensitive(self):
         row = self._unlabelled_row(prompt_title="hi")
-        healed = board_router._reconcile_chief_label(row, shared_name="Chief")
+        healed = chief_router._reconcile_chief_label(row, shared_name="Chief")
         assert healed["label"] == "chief"
 
     def test_source_dict_is_never_mutated(self):
         row = self._unlabelled_row(prompt_title="/chief")
-        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        healed = chief_router._reconcile_chief_label(row, shared_name=None)
         assert healed is not row
         assert row["label"] == ""
 
@@ -177,17 +178,17 @@ class TestReconcileChiefLabel:
         row = self._unlabelled_row(
             prompt_title="can I compact now?", live_title="👑 chief"
         )
-        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        healed = chief_router._reconcile_chief_label(row, shared_name=None)
         assert healed["label"] == "chief"
 
     def test_live_title_match_is_case_insensitive_and_tolerates_prefix(self):
         row = self._unlabelled_row(prompt_title="hi", live_title="🔥 CHIEF")
-        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        healed = chief_router._reconcile_chief_label(row, shared_name=None)
         assert healed["label"] == "chief"
 
     def test_unrelated_live_title_is_not_healed(self):
         row = self._unlabelled_row(prompt_title="hi", live_title="fleet-config")
-        healed = board_router._reconcile_chief_label(row, shared_name=None)
+        healed = chief_router._reconcile_chief_label(row, shared_name=None)
         assert healed["label"] == ""
 
 
@@ -209,7 +210,7 @@ class TestReconcileChiefLabels:
                 "name": "chief", "updated_at": "2026-07-27T07:14:05Z",
             },
         }
-        healed = board_router._reconcile_chief_labels(live, state_rows)
+        healed = chief_router._reconcile_chief_labels(live, state_rows)
         assert healed[0]["label"] == "chief"
 
     def test_no_matching_state_row_leaves_label_empty(self):
@@ -218,7 +219,7 @@ class TestReconcileChiefLabels:
             "prompt_title": "hi", "project_dir": "E:/automation/fleet-config",
             "alive": True, "started_at": "2026-07-27T07:14:00Z",
         }]
-        healed = board_router._reconcile_chief_labels(live, {})
+        healed = chief_router._reconcile_chief_labels(live, {})
         assert healed[0]["label"] == ""
 
 
@@ -511,14 +512,14 @@ class TestFindResumableChiefSessionId:
     session id ``claude --resume <id>`` can reattach to."""
 
     def test_no_rows_returns_empty(self):
-        assert board_router._find_resumable_chief_session_id({}) == ""
+        assert chief_router._find_resumable_chief_session_id({}) == ""
 
     def test_picks_newest_matching_row(self):
         rows = {
             "old-uuid": _chief_state_row("old-sess", _recent_iso(hours=2)),
             "new-uuid": _chief_state_row("new-sess", _recent_iso(hours=1)),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == "new-uuid"
+        assert chief_router._find_resumable_chief_session_id(rows) == "new-uuid"
 
     def test_wrong_project_is_excluded(self):
         rows = {
@@ -527,7 +528,7 @@ class TestFindResumableChiefSessionId:
                 cwd="E:/automation/app-launcher",
             ),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == ""
+        assert chief_router._find_resumable_chief_session_id(rows) == ""
 
     def test_wrong_name_is_excluded(self):
         rows = {
@@ -535,7 +536,7 @@ class TestFindResumableChiefSessionId:
                 "s1", "2026-07-27T07:00:00Z", name="fleet-config",
             ),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == ""
+        assert chief_router._find_resumable_chief_session_id(rows) == ""
 
     def test_name_match_is_case_insensitive(self):
         rows = {
@@ -543,13 +544,13 @@ class TestFindResumableChiefSessionId:
                 "s1", _recent_iso(hours=1), name="Chief",
             ),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+        assert chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
 
     def test_stale_row_past_24h_is_excluded(self):
         rows = {"uuid-1": _chief_state_row("s1", "2026-07-26T00:00:00Z")}
-        now = board_router.board._parse_iso("2026-07-27T07:00:00Z")
+        now = chief_router.board._parse_iso("2026-07-27T07:00:00Z")
         assert (
-            board_router._find_resumable_chief_session_id(rows, now=now) == ""
+            chief_router._find_resumable_chief_session_id(rows, now=now) == ""
         )
 
     def test_project_field_used_over_cwd_basename(self):
@@ -559,11 +560,11 @@ class TestFindResumableChiefSessionId:
                 cwd="E:/automation/app-launcher-wt-42", project="fleet-config",
             ),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+        assert chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
 
     def test_non_dict_row_is_skipped(self):
         rows = {"uuid-1": "not-a-row"}
-        assert board_router._find_resumable_chief_session_id(rows) == ""
+        assert chief_router._find_resumable_chief_session_id(rows) == ""
 
 
 class TestResumeRanksBySubstance:
@@ -591,7 +592,7 @@ class TestResumeRanksBySubstance:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "real-uuid"
+            chief_router._find_resumable_chief_session_id(rows) == "real-uuid"
         )
 
     def test_newest_still_wins_between_two_substantive_conversations(
@@ -608,7 +609,7 @@ class TestResumeRanksBySubstance:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "new-uuid"
+            chief_router._find_resumable_chief_session_id(rows) == "new-uuid"
         )
 
     def test_confirmed_substance_outranks_unknown_substance(self, tmp_path):
@@ -623,7 +624,7 @@ class TestResumeRanksBySubstance:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "known-uuid"
+            chief_router._find_resumable_chief_session_id(rows) == "known-uuid"
         )
 
     def test_unknown_substance_is_still_resumable_when_nothing_better(self):
@@ -631,7 +632,7 @@ class TestResumeRanksBySubstance:
         throwing the conversation away for a fresh spawn."""
         rows = {"uuid-1": _chief_state_row("s1", _recent_iso(hours=1))}
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "uuid-1"
+            chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
         )
 
     def test_only_bootstrap_only_conversations_resumes_nothing(self, tmp_path):
@@ -641,7 +642,7 @@ class TestResumeRanksBySubstance:
                 transcript_path=_transcript(tmp_path, "blank", typed=False),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(rows) == ""
+        assert chief_router._find_resumable_chief_session_id(rows) == ""
 
     def test_preferred_sid_wins_even_with_a_project_derived_name(
         self, tmp_path
@@ -660,7 +661,7 @@ class TestResumeRanksBySubstance:
                 transcript_path=_transcript(tmp_path, "other", typed=True),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(
+        assert chief_router._find_resumable_chief_session_id(
             rows, preferred_sid="hand-uuid"
         ) == "hand-uuid"
 
@@ -678,7 +679,7 @@ class TestResumeRanksBySubstance:
                 transcript_path=_transcript(tmp_path, "real", typed=True),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(
+        assert chief_router._find_resumable_chief_session_id(
             rows, preferred_sid="blank-uuid"
         ) == "real-uuid"
 
@@ -690,7 +691,7 @@ class TestResumeRanksBySubstance:
                 transcript_path=_transcript(tmp_path, "elsewhere", typed=True),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(
+        assert chief_router._find_resumable_chief_session_id(
             rows, preferred_sid="elsewhere-uuid"
         ) == ""
 
@@ -701,7 +702,7 @@ class TestResumeRanksBySubstance:
                 transcript_path=_transcript(tmp_path, "real", typed=True),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(
+        assert chief_router._find_resumable_chief_session_id(
             rows, preferred_sid="ghost-uuid"
         ) == "real-uuid"
 
@@ -893,7 +894,7 @@ class TestResumeConsultsTheDurablePointer:
         }
         _write_pointer("hand-conv", transcript)
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "hand-conv"
+            chief_router._find_resumable_chief_session_id(rows) == "hand-conv"
         )
 
     def test_conversation_past_the_24h_row_prune_is_resumable(self, tmp_path):
@@ -903,7 +904,7 @@ class TestResumeConsultsTheDurablePointer:
         transcript = _transcript(tmp_path, "old", typed=True)
         _write_pointer("pruned-conv", transcript, age=timedelta(days=3))
         assert (
-            board_router._find_resumable_chief_session_id({}) == "pruned-conv"
+            chief_router._find_resumable_chief_session_id({}) == "pruned-conv"
         )
 
     def test_newer_substantive_chief_row_outranks_the_pointer(self, tmp_path):
@@ -920,7 +921,7 @@ class TestResumeConsultsTheDurablePointer:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "fresh-conv"
+            chief_router._find_resumable_chief_session_id(rows) == "fresh-conv"
         )
 
     def test_pointer_is_ranked_by_its_row_when_the_row_still_exists(
@@ -943,7 +944,7 @@ class TestResumeConsultsTheDurablePointer:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "hand-conv"
+            chief_router._find_resumable_chief_session_id(rows) == "hand-conv"
         )
 
     def test_bootstrap_only_pointer_is_never_resumed(self, tmp_path):
@@ -953,7 +954,7 @@ class TestResumeConsultsTheDurablePointer:
         _write_pointer(
             "blank-conv", _transcript(tmp_path, "blank", typed=False)
         )
-        assert board_router._find_resumable_chief_session_id({}) == ""
+        assert chief_router._find_resumable_chief_session_id({}) == ""
 
     def test_live_preferred_sid_still_wins_over_the_pointer(self, tmp_path):
         """Tier 1 is unchanged: the conversation behind the PTY this resume is
@@ -968,7 +969,7 @@ class TestResumeConsultsTheDurablePointer:
                 transcript_path=_transcript(tmp_path, "live", typed=True),
             ),
         }
-        assert board_router._find_resumable_chief_session_id(
+        assert chief_router._find_resumable_chief_session_id(
             rows, preferred_sid="live-conv"
         ) == "live-conv"
 
@@ -977,13 +978,13 @@ class TestResumeConsultsTheDurablePointer:
             "old-conv", _transcript(tmp_path, "old", typed=True),
             age=timedelta(days=8),
         )
-        assert board_router._find_resumable_chief_session_id({}) == ""
+        assert chief_router._find_resumable_chief_session_id({}) == ""
 
     def test_pointer_at_a_deleted_transcript_is_ignored(self, tmp_path):
         transcript = Path(_transcript(tmp_path, "gone", typed=True))
         _write_pointer("gone-conv", transcript)
         transcript.unlink()
-        assert board_router._find_resumable_chief_session_id({}) == ""
+        assert chief_router._find_resumable_chief_session_id({}) == ""
 
     def test_missing_pointer_degrades_to_the_scan(self, tmp_path):
         """AC: a missing/corrupt pointer is never an error — the lookup is
@@ -996,7 +997,7 @@ class TestResumeConsultsTheDurablePointer:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "real-conv"
+            chief_router._find_resumable_chief_session_id(rows) == "real-conv"
         )
 
     def test_pointer_naming_a_row_already_in_the_scan_is_harmless(
@@ -1010,7 +1011,7 @@ class TestResumeConsultsTheDurablePointer:
             ),
         }
         assert (
-            board_router._find_resumable_chief_session_id(rows) == "same-conv"
+            chief_router._find_resumable_chief_session_id(rows) == "same-conv"
         )
 
 
@@ -1036,7 +1037,7 @@ class TestNoteChiefConversation:
                 "chief-old", _recent_iso(minutes=1), transcript_path=transcript,
             ),
         }
-        board_router._note_chief_conversation([_chief_row()], rows)
+        chief_router._note_chief_conversation([_chief_row()], rows)
         await self._drain()
         pointer = chief_pointer.read_chief_pointer()
         assert pointer["session_id"] == "live-conv"
@@ -1054,14 +1055,14 @@ class TestNoteChiefConversation:
                 name="fleet-config-79", transcript_path=transcript,
             ),
         }
-        live = board_router._reconcile_chief_labels(
+        live = chief_router._reconcile_chief_labels(
             [_chief_row(
                 label="", name="fleet-config", live_title="✳ chief",
                 project_dir="E:/automation/fleet-config",
             )],
             rows,
         )
-        board_router._note_chief_conversation(live, rows)
+        chief_router._note_chief_conversation(live, rows)
         await self._drain()
         assert chief_pointer.read_chief_pointer()["session_id"] == "hand-conv"
 
@@ -1082,7 +1083,7 @@ class TestNoteChiefConversation:
             lambda *a, **k: writes.append(a[0]),
         )
         for _ in range(3):
-            board_router._note_chief_conversation([_chief_row()], rows)
+            chief_router._note_chief_conversation([_chief_row()], rows)
             await self._drain()
         assert writes == ["live-conv"]
 
@@ -1101,7 +1102,7 @@ class TestNoteChiefConversation:
                     transcript_path=_transcript(tmp_path, conv, typed=True),
                 ),
             }
-            board_router._note_chief_conversation([_chief_row()], rows)
+            chief_router._note_chief_conversation([_chief_row()], rows)
             await self._drain()
         assert writes == ["first-conv", "second-conv"]
 
@@ -1112,7 +1113,7 @@ class TestNoteChiefConversation:
                 transcript_path=_transcript(tmp_path, "some", typed=True),
             ),
         }
-        board_router._note_chief_conversation(
+        chief_router._note_chief_conversation(
             [_chief_row(label="", name="fleet-config", alive=True)], rows
         )
         await self._drain()
@@ -1122,7 +1123,7 @@ class TestNoteChiefConversation:
         """A pointer that can't be substance-checked or resumed is worth less
         than no pointer."""
         rows = {"live-conv": _chief_state_row("chief-old", _recent_iso(minutes=1))}
-        board_router._note_chief_conversation([_chief_row()], rows)
+        chief_router._note_chief_conversation([_chief_row()], rows)
         await self._drain()
         assert chief_pointer.read_chief_pointer() == {}
 
@@ -1148,7 +1149,7 @@ class TestEnsureRefreshesThePointer:
         # Restamped: it was 6 days old going in, and would expire in one more.
         assert (
             datetime.now(timezone.utc)
-            - board_router.board._parse_iso(pointer["seen_at"])
+            - chief_router.board._parse_iso(pointer["seen_at"])
         ) < timedelta(minutes=5)
 
     def test_fresh_spawn_does_not_touch_the_pointer(

@@ -23,6 +23,15 @@ from src.diagnostics import (
     kill_process_tree,
     listening_port_for_pid_tree,
 )
+from src.launch_flags import (
+    build_antigravity_flags,
+    build_claude_flags,
+    build_codex_flags,
+    build_copilot_flags,
+    build_grok_flags,
+    build_pi_flags,
+    build_resume_flags,
+)
 from src.launcher import (
     open_local_terminal_window,
     spawn_bat,
@@ -41,16 +50,7 @@ from src.registry import (
     set_autostart_by_id,
 )
 from src.scanner import KIND_CLAUDE_CODE, KIND_TRAY, KIND_TUNNEL
-from src.webapp_config import (
-    WebappConfig,
-    build_antigravity_flags,
-    build_claude_flags,
-    build_codex_flags,
-    build_copilot_flags,
-    build_grok_flags,
-    build_pi_flags,
-    build_resume_flags,
-)
+from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import (
     audit_off_loop,
