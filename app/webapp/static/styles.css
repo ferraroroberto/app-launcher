@@ -934,30 +934,6 @@ summary + .opt-group { border-top: 0; }
 
 /* ---------- running sessions ---------- */
 .sessions-card .card-list { margin-top: 4px; }
-.session-body {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.session-head {
-  display: flex;
-  align-items: center;
-  font-size: var(--font-body);
-  font-weight: 600;
-}
-.session-title {
-  font-size: var(--font-caption);
-  color: var(--accent);
-  word-break: break-word;
-}
-.session-body .meta {
-  font-size: var(--font-caption);
-  color: var(--muted);
-  font-weight: 400;
-  word-break: break-all;
-}
 
 /* ---------- jobs tab ---------- */
 /* The list lives inside a collapsible `.sessions-card.card--collapsible` (issue
@@ -1756,10 +1732,16 @@ summary + .opt-group { border-top: 0; }
   width: 100%;
   text-align: left;
 }
+/* Single declaration for `.session-head` (issue #690 — it used to be declared
+   twice, non-adjacently, and the two halves both mattered: the earlier copy
+   carried the font, this one the gap). Emitted by `sessions.js`, `apps.js`,
+   `jobs.js` and `jobs-row.js`. */
 .session-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-size: var(--font-body);
+  font-weight: 600;
 }
 /* Title on its own full-width line above the badges (issue #113), but
    clamped to a single line with an ellipsis (issue #120): a long title
@@ -2407,8 +2389,6 @@ body.terminal-open {
 }
 .board-repo-list li[data-repo]:hover,
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
-.board-repo-empty { color: var(--muted); cursor: default; }
-.board-repo-empty:hover { background: none; }
 /* Dispatch mode + model dropdowns (#500, mode collapsed from a 4-segment
    radiogroup into a matching select in #547 — the segments no longer fit an
    iPhone-width row once chat mode landed): native <select>s like the Copilot
