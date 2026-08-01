@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, WebSocket
 
+from src.launch_flags import build_claude_flags
 from src.session_client import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
@@ -19,7 +20,6 @@ from src.webapp_config import (
     VALID_CLAUDE_PERMISSION_MODES,
     WebappConfig,
     append_auth_token,
-    build_claude_flags,
 )
 from src.webauthn_gate import WebAuthnGate
 

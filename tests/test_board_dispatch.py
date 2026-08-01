@@ -19,6 +19,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.webapp.routers import board as board_router
+from app.webapp.routers import board_chief, board_spawn
 
 
 @pytest.fixture
@@ -37,13 +38,13 @@ def _bypass_gate(monkeypatch):
 def _fast_probe(monkeypatch):
     """Shrink the readiness + quiescence constants so no test ever really
     waits (#549: dispatch now also awaits PTY quiescence before typing)."""
-    monkeypatch.setattr(board_router, "DISPATCH_READY_CAP_S", 0.3)
-    monkeypatch.setattr(board_router, "DISPATCH_SETTLE_S", 0.0)
-    monkeypatch.setattr(board_router, "DISPATCH_POLL_S", 0.01)
-    monkeypatch.setattr(board_router, "DISPATCH_LEGACY_GRACE_S", 0.0)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_STABLE_S", 0.02)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_CAP_S", 0.3)
-    monkeypatch.setattr(board_router, "PTY_QUIESCENT_POLL_S", 0.01)
+    monkeypatch.setattr(board_spawn, "DISPATCH_READY_CAP_S", 0.3)
+    monkeypatch.setattr(board_spawn, "DISPATCH_SETTLE_S", 0.0)
+    monkeypatch.setattr(board_spawn, "DISPATCH_POLL_S", 0.01)
+    monkeypatch.setattr(board_spawn, "DISPATCH_LEGACY_GRACE_S", 0.0)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_STABLE_S", 0.02)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_CAP_S", 0.3)
+    monkeypatch.setattr(board_spawn, "PTY_QUIESCENT_POLL_S", 0.01)
 
 
 @pytest.fixture
@@ -156,7 +157,7 @@ class TestSpawnThenType:
         """#500: gpt5.6 = the Coding tab's Codex launch — agent codex,
         effort-only flags (Codex has no --model), same /issue-* typing."""
         monkeypatch.setattr(
-            board_router.agents, "is_installed", lambda a: a == "codex"
+            board_spawn.agents, "is_installed", lambda a: a == "codex"
         )
         client, _, overrides = webapp_client
         resp = _dispatch(client, overrides, model="gpt5.6")
@@ -174,7 +175,7 @@ class TestSpawnThenType:
         self, webapp_client, _bypass_gate, _fast_probe, _spawn, monkeypatch
     ):
         monkeypatch.setattr(
-            board_router.agents, "is_installed", lambda a: False
+            board_spawn.agents, "is_installed", lambda a: False
         )
         client, _, overrides = webapp_client
         resp = _dispatch(client, overrides, model="gpt5.6")
@@ -292,7 +293,7 @@ class TestChiefManagedMarking:
             calls.append(cmd)
             return MagicMock(returncode=0)
 
-        monkeypatch.setattr(board_router.subprocess, "run", fake_run)
+        monkeypatch.setattr(board_chief.subprocess, "run", fake_run)
         return calls
 
     def test_marks_when_chief_alive_and_loopback(

@@ -578,9 +578,9 @@ class TestIssueStart:
         """#505: gpt5.6 spawns Codex — shared Codex flags, and the same
         server-built ``/issue-*`` positional prompt appended (Codex takes
         ``codex [OPTIONS] [PROMPT]`` like claude)."""
-        from app.webapp.routers import board as board_router
+        from app.webapp.routers import board_spawn
         monkeypatch.setattr(
-            board_router.agents, "is_installed", lambda a: a == "codex"
+            board_spawn.agents, "is_installed", lambda a: a == "codex"
         )
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
@@ -598,9 +598,9 @@ class TestIssueStart:
     def test_gpt56_without_codex_installed_400s(
         self, webapp_client, _bypass_gate, _spawn, monkeypatch
     ):
-        from app.webapp.routers import board as board_router
+        from app.webapp.routers import board_spawn
         monkeypatch.setattr(
-            board_router.agents, "is_installed", lambda a: False
+            board_spawn.agents, "is_installed", lambda a: False
         )
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
@@ -673,10 +673,10 @@ class TestIssueStart:
         self, webapp_client, _bypass_gate, _spawn, monkeypatch
     ):
         """Codex exposes no verified spawn-time session-name interface."""
-        from app.webapp.routers import board as board_router
+        from app.webapp.routers import board_spawn
 
         monkeypatch.setattr(
-            board_router.agents, "is_installed", lambda agent: agent == "codex"
+            board_spawn.agents, "is_installed", lambda agent: agent == "codex"
         )
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
@@ -767,14 +767,14 @@ class TestChiefManagedMarking:
 
     @pytest.fixture
     def _fake_run(self, monkeypatch):
-        from app.webapp.routers import board as board_router
+        from app.webapp.routers import board_chief
         calls: list = []
 
         def fake_run(cmd, **kwargs):
             calls.append(cmd)
             return MagicMock(returncode=0)
 
-        monkeypatch.setattr(board_router.subprocess, "run", fake_run)
+        monkeypatch.setattr(board_chief.subprocess, "run", fake_run)
         return calls
 
     def _set_live_sessions(self, overrides, sessions):
@@ -818,12 +818,12 @@ class TestChiefManagedMarking:
         """Mirrors `test_rename_failure_does_not_fail_the_launch` -- a
         subprocess error while marking is best-effort, never fatal to the
         dispatch (matches `chief_ops.py cmd_dispatch`'s own try/except)."""
-        from app.webapp.routers import board as board_router
+        from app.webapp.routers import board_chief
 
         def raising_run(cmd, **kwargs):
             raise OSError("boom")
 
-        monkeypatch.setattr(board_router.subprocess, "run", raising_run)
+        monkeypatch.setattr(board_chief.subprocess, "run", raising_run)
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
         self._set_live_sessions(overrides, [

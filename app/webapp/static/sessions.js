@@ -15,11 +15,12 @@ import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { CHIEF_KILL_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
-// ensureChief lives in board.js, exported for this cross-tab use (#547);
-// board.js already imports stopSession/sessionTitle/openSessionRename from
-// this module, so this mirrors the existing sessions.js<->terminal.js
-// circular-import pattern rather than introducing a new risk.
-import { ensureChief } from './board.js';
+// ensureChief lives in board-dispatch.js (split off board.js in #691),
+// exported for this cross-tab use (#547); board.js already imports
+// stopSession/sessionTitle/openSessionRename from this module, so this
+// mirrors the existing sessions.js<->terminal.js circular-import pattern
+// rather than introducing a new risk.
+import { ensureChief } from './board-dispatch.js';
 
 export function fmtAgo(epochSeconds) {
   if (!epochSeconds) return '';

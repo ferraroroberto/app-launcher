@@ -38,9 +38,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
+from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import WebappConfig, build_claude_flags
+from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import (
     audit_off_loop,
