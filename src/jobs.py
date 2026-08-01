@@ -93,9 +93,11 @@ from src.jobs_schtasks import (
 from src.jobs_stats import (
     consecutive_failed_runs,
     cooldown_check,
+    derived_runtime_ceiling_seconds,
     invalidate_stats_cache,
     is_stuck,
     run_stats,
+    stuck_threshold_seconds,
 )
 
 __all__ = [
@@ -140,6 +142,8 @@ __all__ = [
     "run_stats",
     "invalidate_stats_cache",
     "is_stuck",
+    "stuck_threshold_seconds",
+    "derived_runtime_ceiling_seconds",
     "consecutive_failed_runs",
     "cooldown_check",
     "reap_stranded_runs",
