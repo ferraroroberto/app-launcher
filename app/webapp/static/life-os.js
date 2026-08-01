@@ -211,7 +211,6 @@ let openDocFile = null;
 async function openBrowser(s) {
   state.lifeOsBrowser = { skillId: s.id, name: s.name, files: [] };
   els.lifeOsBrowserTitle.textContent = s.name;
-  els.lifeOsBrowserStatus.hidden = true;
   closeDoc();                       // start on the full-screen file list
   els.lifeOsBrowser.hidden = false;
   await loadFileList();

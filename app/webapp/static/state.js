@@ -173,7 +173,6 @@ export const els = {
   lifeOsDocClose: document.getElementById('lifeOsDocClose'),
   lifeOsDocDelete: document.getElementById('lifeOsDocDelete'),
   lifeOsDocRename: document.getElementById('lifeOsDocRename'),
-  lifeOsBrowserStatus: document.getElementById('lifeOsBrowserStatus'),
   lifeOsFileList: document.getElementById('lifeOsFileList'),
   lifeOsFileContent: document.getElementById('lifeOsFileContent'),
 
