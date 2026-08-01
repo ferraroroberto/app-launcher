@@ -45,7 +45,9 @@ from src.jobs import (
     delete_schtasks,
     dispatch_chain_run,
     drain_mutex_queue,
+    enqueue_mutex,
     invalidate_stats_cache,
+    mutex_collision,
     new_run_dir,
     new_run_id,
     prune_runs,
@@ -448,6 +450,79 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     return 0
 
 
+def _finalize_mutex_queue(
+    job: Job,
+    jobs: List[Job],
+    args: argparse.Namespace,
+    values: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """Queue a **scheduled** fire that collides with a live sibling in the
+    same ``mutex_group`` instead of running it concurrently (issue #696).
+
+    ``mutex_group`` used to be enforced only on the webapp admission path
+    (``app/webapp/routers/jobs_run.py::_admit_and_spawn``), so a
+    schtasks-fired run walked straight past it — which is exactly where
+    cross-job serialisation matters most (the weekly fleet chain). This is
+    the executor-side half of that gate; the drain half already lived here
+    (:func:`_drain_mutex_queue_for`).
+
+    Returns ``0`` when the fire was queued and finalised, ``None`` when
+    there's nothing to queue and the caller should run normally.
+
+    Scoped to fires that have not already been through an admission gate:
+
+    * ``trigger != "scheduled"`` — manual / webhook / API fires are admitted
+      at the route, chain fires at :func:`~src.jobs_queue.dispatch_chain_run`.
+      A second gate here would re-queue a fire the caller was already told
+      would run. (Same shape as the ``scheduled``-only cooldown gate in
+      :func:`_finalize_cooldown_skip`.)
+    * ``args.run_id`` set — the run dir was pre-created by whoever admitted
+      it. Task Scheduler is the only caller that arrives without one
+      (``src.jobs_schtasks.task_run_command``); every admitted path
+      (route + :func:`~src.jobs_queue.drain_mutex_queue`) passes
+      ``--run-id``. This is what stops a *drained* queue entry — which
+      replays its original ``trigger="scheduled"`` — from being pushed
+      back onto the tail of the very queue it was just released from.
+    """
+    if args.trigger != "scheduled" or not job.mutex_group:
+        return None
+    if getattr(args, "run_id", None):
+        return None
+    holder = mutex_collision(jobs, job)
+    if holder is None:
+        return None
+    run_dir = new_run_dir(job.id, new_run_id())
+    write_run_json(
+        run_dir,
+        run_id=run_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger=args.trigger,
+        trigger_source="schtasks",
+        script_path=job.script_path,
+        args=job.args,
+        started_at=datetime.now().isoformat(timespec="seconds"),
+        status="queued",
+        mutex_group=job.mutex_group,
+        mutex_blocked_by=holder.id,
+        **({"params": values} if values else {}),
+    )
+    enqueue_mutex(
+        job.mutex_group,
+        {
+            "job_id": job.id,
+            "run_id": run_dir.name,
+            "trigger": args.trigger,
+            "params": values or None,
+        },
+    )
+    logger.info(
+        f"🪢 run-job {job.id}/{run_dir.name} queued behind {holder.id} "
+        f"(mutex_group={job.mutex_group!r}, trigger=scheduled)"
+    )
+    return 0
+
+
 def _record_failed_run(
     job: Job,
     args: argparse.Namespace,
@@ -804,6 +879,13 @@ class RunJobCommand(BaseCommand):
         skip_exit_code = _finalize_cooldown_skip(job, args)
         if skip_exit_code is not None:
             return skip_exit_code
+
+        # Mutex-group admission for schtasks-fired runs (issue #696). Runs
+        # after cooldown, matching the route's order: a cooled-down fire is
+        # a no-op that shouldn't occupy a slot in the group's queue.
+        queued_exit_code = _finalize_mutex_queue(job, cfg.jobs, args, values)
+        if queued_exit_code is not None:
+            return queued_exit_code
 
         # Webapp-spawned runs pre-create the run dir so the API can
         # return the run id immediately. Scheduled runs (Task Scheduler)

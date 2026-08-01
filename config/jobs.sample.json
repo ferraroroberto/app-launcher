@@ -25,7 +25,8 @@
       "args": "",
       "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
       "visible": true,
-      "cooldown_seconds": 3600
+      "cooldown_seconds": 3600,
+      "mutex_group": "fleet-weekly"
     },
     {
       "id": "design-sweep-fleet",
@@ -34,7 +35,8 @@
       "args": "",
       "schedule": { "type": "weekly", "day": "SAT", "at": "22:00" },
       "visible": true,
-      "cooldown_seconds": 3600
+      "cooldown_seconds": 3600,
+      "mutex_group": "fleet-weekly"
     },
     {
       "id": "fleet-health-weekly",
