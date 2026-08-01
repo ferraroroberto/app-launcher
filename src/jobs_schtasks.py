@@ -377,16 +377,36 @@ _TASK_NAME_RE = re.compile(
     r"^TaskName:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
 )
 
+# schtasks renders the enabled/disabled fact under two different keys
+# depending on Windows build: the explicit "Scheduled Task State" and the
+# coarser "Status" (Ready / Running / Disabled / Could not start). Both are
+# read; neither present leaves the fact *unknown* rather than assuming
+# enabled-or-disabled either way (see `_parse_bulk_records`).
+_STATE_KEYS = ("Scheduled Task State", "Status")
+_DISABLED_WORDS = {"DISABLED"}
+_ENABLED_WORDS = {"ENABLED", "READY", "RUNNING", "QUEUED"}
 
-def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
-    """Parse ``schtasks /Query /FO LIST /V`` into ``{task_name: next_run}``.
+
+def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
+    """Parse ``schtasks /Query /FO LIST /V`` into ``{task_name: record}``.
 
     Each task record is a block of ``Key: Value`` lines separated from
     the next by blank line(s). We walk records, pluck the first
-    ``TaskName:`` and ``Next Run Time:`` we find, and keep only entries
-    under ``\\AppLauncher\\`` so foreign tasks never leak into the cache.
+    ``TaskName:`` we find plus the fields we care about, and keep only
+    entries under ``\\AppLauncher\\`` so foreign tasks never leak into the
+    cache.
+
+    Each value is ``{"next_run": Optional[str], "enabled": Optional[bool]}``:
+
+    * ``next_run`` — the raw schtasks string, or ``None`` when it renders
+      ``N/A`` / ``Disabled`` / is absent.
+    * ``enabled`` — ``True``/``False`` when schtasks states it, and
+      ``None`` when *neither* state key is present in the record. A
+      registered-but-unreadable task is deliberately not collapsed into
+      "disabled": an unestablished fact gets its own value, never the
+      failing one (global CLAUDE.md "Verify before declaring done").
     """
-    out: Dict[str, Optional[str]] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     block: Dict[str, str] = {}
 
     def commit(b: Dict[str, str]) -> None:
@@ -397,9 +417,21 @@ def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
         # schtasks renders missing / disabled as "N/A" or "Disabled" —
         # both collapse to None at the UI layer.
         if not next_run or next_run.upper() in {"N/A", "DISABLED"}:
-            out[name] = None
+            resolved_next: Optional[str] = None
         else:
-            out[name] = next_run
+            resolved_next = next_run
+        enabled: Optional[bool] = None
+        for key in _STATE_KEYS:
+            word = b.get(key, "").strip().upper()
+            if not word:
+                continue
+            if word in _DISABLED_WORDS:
+                enabled = False
+                break
+            if word in _ENABLED_WORDS:
+                enabled = True
+                break
+        out[name] = {"next_run": resolved_next, "enabled": enabled}
 
     for raw in stdout.splitlines():
         line = raw.rstrip()
@@ -422,21 +454,35 @@ def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
     return out
 
 
-def _bulk_next_runs(
+def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
+    """``{task_name: next_run}`` view of :func:`_parse_bulk_records`."""
+    return {
+        name: record["next_run"]
+        for name, record in _parse_bulk_records(stdout).items()
+    }
+
+
+def _bulk_records(
     runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
-) -> Dict[str, Optional[str]]:
-    """One ``schtasks /Query /FO LIST /V`` covering every AppLauncher task."""
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """One ``schtasks /Query /FO LIST /V`` covering every AppLauncher task.
+
+    ``None`` when the query itself failed — distinct from ``{}`` ("the
+    query worked and there are no AppLauncher tasks"). The coverage check
+    (:mod:`src.jobs_coverage`) needs that distinction: without it, one
+    failed query would flag every scheduled job as missing its task.
+    """
     runner = runner or _run_schtasks
     proc = runner(["schtasks", "/Query", "/FO", "LIST", "/V"])
     if proc.returncode != 0 or not proc.stdout:
-        return {}
-    return _parse_bulk_query(proc.stdout)
+        return None
+    return _parse_bulk_records(proc.stdout)
 
 
-def _cached_bulk_next_runs(
+def _cached_bulk_records(
     runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
-) -> Dict[str, Optional[str]]:
-    """Return the bulk map, refreshing the process-local cache on TTL miss."""
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """Return the bulk record map, refreshing the cache on TTL miss."""
     global _next_run_cache
     now = time.monotonic()
     with _next_run_lock:
@@ -444,9 +490,36 @@ def _cached_bulk_next_runs(
             ts, snapshot = _next_run_cache
             if now - ts < _NEXT_RUN_TTL_SECONDS:
                 return snapshot
-        fresh = _bulk_next_runs(runner=runner)
+        fresh = _bulk_records(runner=runner)
         _next_run_cache = (now, fresh)
         return fresh
+
+
+def _cached_bulk_next_runs(
+    runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+) -> Dict[str, Optional[str]]:
+    """``{task_name: next_run}`` view of the cached bulk snapshot."""
+    snapshot = _cached_bulk_records(runner=runner)
+    if snapshot is None:
+        return {}
+    return {name: record["next_run"] for name, record in snapshot.items()}
+
+
+def registered_task_states(
+    runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+) -> Optional[Dict[str, Optional[bool]]]:
+    """``{task_name: enabled}`` for every ``\\AppLauncher\\`` task.
+
+    Backed by the same 30 s cached bulk query the "next run" column uses,
+    so the coverage check costs no extra ``schtasks`` shell-out on top of
+    what an ``/api/jobs`` poll already pays for. Returns ``None`` when the
+    query failed — callers must treat that as *unknown*, never as "no
+    tasks registered".
+    """
+    snapshot = _cached_bulk_records(runner=runner)
+    if snapshot is None:
+        return None
+    return {name: record["enabled"] for name, record in snapshot.items()}
 
 
 def invalidate_next_run_cache() -> None:
@@ -454,11 +527,18 @@ def invalidate_next_run_cache() -> None:
 
     Called after ``sync_schtasks`` / ``delete_schtasks`` so a Task
     Scheduler edit shows up on the next ``/api/jobs`` poll instead of
-    waiting out the TTL.
+    waiting out the TTL. The derived missed-fire/coverage cache
+    (:mod:`src.jobs_coverage`) is dropped with it — it reads this same
+    snapshot, so a stale one would keep a just-fixed job flagged.
     """
     global _next_run_cache
     with _next_run_lock:
         _next_run_cache = None
+    # Local import breaks the jobs_coverage -> jobs_schtasks module cycle,
+    # same pattern as jobs_reap's local jobs_queue import.
+    from src.jobs_coverage import invalidate_coverage_cache
+
+    invalidate_coverage_cache()
 
 
 def query_next_run(

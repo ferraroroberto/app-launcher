@@ -574,6 +574,7 @@ The row carries five lightweight signals on top of the schedule chip and last-ru
 - **Sparkline** — `●●●○●●●` over the last 7 runs, oldest-left. Green = success, red = failed, amber = running/pending, grey = unknown.
 - **Success rate / 30 d** — appears in the meta line when there has been at least one completed run in the last 30 days (`72% / 30d`).
 - **⚠️ stuck marker** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The marker is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act.
+- **⚠ not firing pill** — the schedule isn't producing runs at all: a missing/disabled Task Scheduler entry, or an elapsed slot with no run record. See [Missed-fire coverage](#missed-fire-coverage-issue-697); the pill renders only for a confirmed `problem`, never for `unknown`.
 - **CPU / peak RSS** — surfaced on the selected run's output label inside the expanded panel (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
 - **Tap-to-copy log (issue #97)** — tapping the selected run's output pane copies the whole log to the clipboard (toast `📋 Copied log`), so an error trace is one tap away from pasting into a report / chat. A manual text selection inside the pane is left alone (auto-copy is suppressed while a selection exists), and the empty placeholder is a no-op.
 
@@ -639,9 +640,10 @@ If the **executor itself** dies before it reaches its own finalise (interrupt, r
 
 The original v1 issued one `schtasks /Query` per job per `/api/jobs` poll — N+1 fork+exec on Windows. The decoration layer now reads `next_run` out of a single process-local snapshot:
 
-- One bulk `schtasks /Query /FO LIST /V` populates `{task_name: next_run_iso_or_none}` for every entry under `\AppLauncher\`.
-- The snapshot is cached for **30 s** (`_NEXT_RUN_TTL_SECONDS` in `src/jobs.py`).
-- `sync_schtasks` and `delete_schtasks` call `invalidate_next_run_cache()` at the end so user edits show up on the next poll without waiting out the TTL.
+- One bulk `schtasks /Query /FO LIST /V` populates `{task_name: {next_run, enabled}}` for every entry under `\AppLauncher\` — `next_run` backs the countdown, `enabled` backs the [missed-fire coverage](#missed-fire-coverage-issue-697) structural check, so both read one query.
+- The snapshot is cached for **30 s** (`_NEXT_RUN_TTL_SECONDS` in `src/jobs_schtasks.py`).
+- A *failed* query caches as `None`, distinct from `{}` ("the query worked and there are no `\AppLauncher\` tasks") — without that distinction one failed query would flag every scheduled job as missing its entry.
+- `sync_schtasks` and `delete_schtasks` call `invalidate_next_run_cache()` at the end so user edits show up on the next poll without waiting out the TTL. That also drops the derived coverage scan, which reads this same snapshot.
 
 Net effect: `GET /api/jobs` performs at most one `schtasks` invocation per cache window regardless of job count.
 
@@ -689,6 +691,34 @@ The channel is the fleet's vendored `src/notify/` Telegram primitive (byte-ident
 | `Job.alert_on_failure` | `false` | Per-job opt-in — set from the editor's toggle, or `"alert_on_failure": true` in `config/jobs.json` |
 
 The message is short and job-scoped: `❌ <job name> failed` as the title, `<timestamp> — run=<rid> exit=<code>` as the body — no LLM summary, no streak logic (those are Pushover-specific enrichments on the global channel). Same swallow-on-error contract as Pushover: a misconfigured token or a Telegram-side failure is logged at `WARNING` and never blocks the executor's normal exit. A job with the toggle on shows a 🔔 bell icon next to its name in the Jobs tab list.
+
+## Missed-fire coverage (issue #697)
+
+Failure alerting covers a run that **failed**; the ⚠️ stuck marker covers one that never **ended**. `src/jobs_coverage.py` covers the third case — a run that never **started**. A job whose Task Scheduler entry is missing, disabled, or was never created simply doesn't fire, and the absence is otherwise invisible: the row keeps showing its old stats and nothing alerts. This is not hypothetical — `config-map` and `sota-watch` shipped launchers plus "runs weekly unattended" docs with *no registered task at all* for weeks, found only by a manual coherence review.
+
+Two halves, both answered from data the tab already reads:
+
+- **Structural** — every non-paused, scheduled job must have a matching, **enabled** `\AppLauncher\<id>` entry (every fan-out slot for `daily_times`). This is what catches a deleted entry immediately, without waiting for the missed slot itself. It reads the *same* 30 s cached bulk `schtasks /Query` the `next_run` column already pays for (see [`next_run` cache](#next_run-cache)) — one batched query per cycle, never an N+1 shell-out storm.
+- **Behavioural** — the schedule is expanded across the last `COVERAGE_WINDOW_DAYS` (3) via `upcoming_fires`, and each elapsed slot is matched against the on-disk run records.
+
+The never-flag rules are the load-bearing half — a coverage check that cries wolf gets muted, and then it protects nothing:
+
+| Rule | Why |
+| --- | --- |
+| Paused jobs and `schedule: none` jobs report `exempt` | There is no schedule to miss |
+| `minutes` / `hourly` skip the behavioural half | Too dense to enumerate (same `FREQUENT_SCHEDULE_TYPES` the agenda summarises). The structural half still covers them, and that is what detects a deleted entry |
+| A slot counts as missed only once it is 15 min past (`MISSED_FIRE_GRACE_SECONDS`) | Task Scheduler starts late; a machine waking from sleep starts very late |
+| **Any** run record near the slot counts as a fire | Including `skipped` — a cooldown no-op *did* fire, it just declined to do work — and a manual run that happened to cover the slot |
+| The window never reaches past `added_at`, nor past the oldest retained run when history is at its 20-run cap | A pruned record is not evidence of a missed fire |
+| A failed `schtasks` query reports `unknown`, never "missing" | One bad query must not flag every job. An unestablished fact gets its own state and is never folded into the passing *or* the failing one |
+
+**Surfaces.** `GET /api/jobs` decorates each row with a `coverage` object — `{state, detail, problems, missing_tasks, disabled_tasks, missed_count, missed_fires}`, where `state` is `ok` / `problem` / `unknown` / `exempt`. Only `problem` renders: a red **⚠ not firing** pill on the row's chip line, titled with the detail.
+
+**Alerting** reuses the exact channels the failure path uses — global Pushover gated by `notify_on_failure`, per-job Telegram gated by `Job.alert_on_failure` — because a coverage problem is a job problem, not a new notification surface. A background tick in the webapp's lifespan re-scans on an interval (the whole point being that it does *not* depend on the Jobs tab being open); it is skipped entirely on a disposable instance (the e2e / verify-before-ship autoboot webapp, identified by `LAUNCHER_SESSION_HOST_PORT`) so a throwaway instance never pushes a real alert. Pings are de-duplicated through `webapp/jobs/coverage-alerts.json`: a job re-alerts only when its problem *signature* changes or 24 h have passed, and a job whose coverage recovers is dropped from the state so its next break alerts immediately.
+
+| Key | Default | Effect |
+| --- | --- | --- |
+| `jobs_coverage_interval_minutes` | `60` | Minutes between background coverage scans. `0` disables the tick entirely — the `/api/jobs` badge still computes lazily on poll. On by default because it pushes nothing on its own: alerts still route through the two opt-in gates above |
 
 ## Per-job secrets & env (issue #72)
 

@@ -86,6 +86,7 @@ flowchart TB
     JOBSHISTORY["jobs_history.py\nrun.json / output.log per run"]
     JOBSINDEX["jobs_index.py\nderived SQLite + FTS5 run mirror"]
     JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
+    JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
     JOBSTRIGGER["jobs_trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
@@ -125,6 +126,11 @@ flowchart TB
   R_JOBS --> JOBSINDEX
   JOBSINDEX --> JOBSHISTORY
   JOBSFACADE --> JOBSSTATS
+  JOBSFACADE --> JOBSCOVERAGE
+  JOBSCOVERAGE --> JOBSSCHTASKS
+  JOBSCOVERAGE --> JOBSHISTORY
+  JOBSCOVERAGE --> NOTIFY
+  WSERVER -->|"lifespan coverage tick (#697)"| JOBSCOVERAGE
   JOBSFACADE --> JOBSCFG
   JOBSFACADE --> JOBSPREFLIGHT
   JOBSFACADE --> JOBSARGV

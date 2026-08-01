@@ -99,6 +99,21 @@ def mocked_jobs_side_effects(monkeypatch):
             }
         ),
         "is_stuck": MagicMock(return_value=False),
+        # Issue #697 — decorate_job also asks for missed-fire coverage, whose
+        # structural half reads Task Scheduler. Stub it here for the same
+        # reason query_next_run above is stubbed: without it every decorated
+        # row shells out to the real schtasks on the developer's box.
+        "coverage_for_job": MagicMock(
+            return_value={
+                "state": "ok",
+                "detail": "",
+                "problems": [],
+                "missing_tasks": [],
+                "disabled_tasks": [],
+                "missed_count": 0,
+                "missed_fires": [],
+            }
+        ),
     }
     for name, m in mocks.items():
         monkeypatch.setattr(jobs_router.jobs_mod, name, m)

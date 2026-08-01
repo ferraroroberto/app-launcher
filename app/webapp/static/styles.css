@@ -1072,6 +1072,16 @@ summary + .opt-group { border-top: 0; }
   letter-spacing: 0;
 }
 
+/* Missed-fire coverage badge (issue #697) — "this schedule is not firing".
+   Same .kind-pill geometry as its row neighbours, danger-coloured because it
+   means the job silently produced nothing. Scoped under .launch-btn for the
+   same specificity reason as the countdown chip above. */
+.launch-btn .job-coverage-pill {
+  color: var(--danger);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 /* The history sits in its OWN <li> right under the job row — previously
    it was nested inside the row's <li> and the row's display:flex squeezed
    the row's contents into a vertical strip while the panel took the rest.

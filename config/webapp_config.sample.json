@@ -24,6 +24,7 @@
   "_comment_llm_hub_url": "Base URL of the local-llm-hub (issue #203). The Coding terminal's 🔊 read-aloud button synthesizes the agent's last reply through the hub's OpenAI-shape POST /v1/audio/speech with the high-quality Orpheus voice (streamed WAV), proxied over loopback so the phone never talks to the hub directly. Plain HTTP — the hub binds loopback only and serves no TLS. Defaults to http://127.0.0.1:8000. Set to empty string to disable the hub path (🔊 falls back to the on-device Web Speech voice).",
   "_comment_notifications": "Jobs-tab failure notifications (issue #66). Set both pushover_api_token + pushover_user_key and flip notify_on_failure: true to start receiving a push per failed run. notify_failure_streak: N also fires when N consecutive failures stack up (0 = disabled). notify_failure_summary: true pipes the output tail through the local LLM hub (http://127.0.0.1:8000, claude-haiku-4-5) for a one-line root-cause line prepended to the push body.",
   "_comment_telegram": "Per-job Telegram failure alerts (issue #597), via the vendored src/notify Telegram primitive. Set both telegram_bot_token + telegram_chat_id here, then flip the 'Alert to Telegram if failed' toggle on individual jobs in the Jobs tab edit dialog. Unlike notify_on_failure above (global, Pushover, fires for every job), this channel is opt-in per job so the shared Telegram chat isn't spammed by every failure.",
+  "_comment_jobs_coverage": "Missed-fire coverage for scheduled jobs (issue #697). jobs_coverage_interval_minutes is how often the webapp re-scans every scheduled job for a missing/disabled \\AppLauncher\\ Task Scheduler entry or an elapsed slot that produced no run record; 0 disables the background tick (the Jobs-tab '⚠ not firing' badge still computes on poll). On by default because it pushes nothing on its own — alerts route through the two opt-in gates above (notify_on_failure for Pushover, a job's alert_on_failure for Telegram). See docs/jobs-tab.md.",
   "_comment_secrets": "One gitignored place for job secret values (issues #73, #72). A job's webhook.secret and any Job.env value can be a literal string or a '$secret:<key>' reference resolved against this dict at fire time, so a rotated credential lives here instead of jobs.json. Example: {\"gh_key\": \"whsec_...\"} then a job sets webhook.secret to \"$secret:gh_key\", or env to {\"API_KEY\": \"$secret:gh_key\"}. The legacy 'webhook_secrets' key still loads. See docs/jobs-tab.md.",
   "_comment_api_tokens": "Scoped API bearer tokens (issue #72), minted/revoked from the Settings tab — don't hand-edit. Each record stores only a salted SHA-256 hash of the token plus its scope ('*' or {\"jobs\": [ids]}); a job-scoped token can only call POST /api/jobs/<id>/run for its allowed jobs, so it is safe to bake into a Stream Deck button URL. The legacy auth_token keeps working unchanged.",
   "host": "0.0.0.0",
@@ -67,6 +68,7 @@
   "notify_failure_summary": false,
   "telegram_bot_token": "",
   "telegram_chat_id": "",
+  "jobs_coverage_interval_minutes": 60,
   "secrets": {},
   "api_tokens": []
 }
