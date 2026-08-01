@@ -105,7 +105,9 @@ def _decorate_job(
     ``stats`` carries the p50/p95/success-rate aggregates plus the
     ``last7`` sparkline payload; ``stuck`` flags an over-long running run;
     ``queue_depth`` is the count of pending entries in this job's mutex
-    queue (0 when no group).
+    queue (0 when no group); ``coverage`` flags a schedule that isn't
+    firing at all (issue #697) — a missing/disabled Task Scheduler entry or
+    an elapsed slot with no run record, read from one cached scan per poll.
     """
     payload = job.to_dict()
     # Paused jobs render with a "paused — was X" chip so the user sees
@@ -151,6 +153,10 @@ def _decorate_job(
     payload["running"] = jobs_mod.is_running(job.id)
     payload["stats"] = jobs_mod.run_stats(job.id)
     payload["stuck"] = jobs_mod.is_stuck(job.id)
+    # Missed-fire coverage (issue #697). Reads a process-local cached scan —
+    # the schtasks half rides the same 30 s bulk-query cache `next_run` uses,
+    # so this adds no shell-out to the poll path.
+    payload["coverage"] = jobs_mod.coverage_for_job(job.id)
     payload["queue_depth"] = (
         len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
     )

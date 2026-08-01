@@ -99,6 +99,21 @@ function renderDurationChip(job) {
   return chip;
 }
 
+/* Missed-fire coverage badge (issue #697): the schedule isn't firing at all —
+ * a missing/disabled Task Scheduler entry, or an elapsed slot that produced no
+ * run record. Only 'problem' renders; 'ok'/'exempt'/'unknown' stay silent, so
+ * an unestablished fact never reads as an alert. */
+function renderCoveragePill(job) {
+  const coverage = job.coverage;
+  if (!coverage || coverage.state !== 'problem') return null;
+  const pill = document.createElement('span');
+  pill.className = 'kind-pill job-coverage-pill';
+  pill.innerHTML = icon('triangle-alert') + ' not firing';
+  pill.title = coverage.detail || 'This schedule is not firing';
+  pill.setAttribute('aria-label', 'Schedule not firing: ' + (coverage.detail || ''));
+  return pill;
+}
+
 function renderSparkline(job) {
   const last7 = job.stats && Array.isArray(job.stats.last7) ? job.stats.last7 : [];
   if (!last7.length) return null;
@@ -240,6 +255,11 @@ export function renderJobRow(job, options) {
       job.id + '/hook';
     pills.appendChild(webhook);
   }
+  // Last on the pills row so the poll-time patch can append/remove it
+  // without an anchor — see patchRowNodes.
+  const coverage = renderCoveragePill(job);
+  if (coverage) coverage.dataset.role = 'coverage-chip';
+  if (coverage) pills.appendChild(coverage);
   info.appendChild(pills);
 
   const load = document.createElement('div');
@@ -355,6 +375,7 @@ export function renderJobRow(job, options) {
     metaEl: meta,
     runBtnEl: run,
     countdownEl: countdown,
+    coverageEl: coverage,
     durationEl: duration,
     sparkEl: spark,
   };
@@ -386,6 +407,12 @@ export function patchRowNodes(nodes, job) {
   const mutex = nodes.pillsEl.querySelector('.job-mutex-pill');
   nodes.countdownEl = swapChip(
     nodes.pillsEl, nodes.countdownEl, freshCountdown, mutex
+  );
+
+  const freshCoverage = renderCoveragePill(job);
+  if (freshCoverage) freshCoverage.dataset.role = 'coverage-chip';
+  nodes.coverageEl = swapChip(
+    nodes.pillsEl, nodes.coverageEl, freshCoverage, null
   );
 
   const freshDuration = renderDurationChip(job);

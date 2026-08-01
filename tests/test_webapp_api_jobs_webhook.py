@@ -56,6 +56,15 @@ def mocked_jobs_side_effects(monkeypatch):
             }
         ),
         "is_stuck": MagicMock(return_value=False),
+        # Issue #697 — decorate_job's missed-fire coverage reads Task
+        # Scheduler; stub it for the same reason query_next_run is stubbed.
+        "coverage_for_job": MagicMock(
+            return_value={
+                "state": "ok", "detail": "", "problems": [],
+                "missing_tasks": [], "disabled_tasks": [],
+                "missed_count": 0, "missed_fires": [],
+            }
+        ),
     }
     for name, m in mocks.items():
         monkeypatch.setattr(jobs_router.jobs_mod, name, m)

@@ -421,6 +421,14 @@ class WebappConfig:
     # here, so the shared Telegram chat isn't spammed by every failure.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # --- Jobs missed-fire coverage (issue #697) --------------------------
+    # How often the webapp re-scans every scheduled job for coverage: a
+    # missing/disabled Task Scheduler entry, or an elapsed slot with no run
+    # record. 0 disables the background tick entirely (the `/api/jobs` badge
+    # still computes lazily on poll). Deliberately *on* by default — unlike
+    # the notify_* switches above it pushes nothing on its own: alerts still
+    # route through notify_on_failure / Job.alert_on_failure, both opt-in.
+    jobs_coverage_interval_minutes: int = 60
     # --- Job secrets (issues #73, #72) ----------------------------------
     # One gitignored place for secret values, referenced from jobs.json by
     # opaque "$secret:<key>" strings resolved at fire time
@@ -598,6 +606,9 @@ def load_webapp_config(
         notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
         telegram_bot_token=str(raw.get("telegram_bot_token", "")),
         telegram_chat_id=str(raw.get("telegram_chat_id", "")),
+        jobs_coverage_interval_minutes=int(
+            raw.get("jobs_coverage_interval_minutes", 60) or 0
+        ),
         secrets={
             str(k): str(v)
             for k, v in (
@@ -669,6 +680,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "notify_failure_summary": cfg.notify_failure_summary,
         "telegram_bot_token": cfg.telegram_bot_token,
         "telegram_chat_id": cfg.telegram_chat_id,
+        "jobs_coverage_interval_minutes": cfg.jobs_coverage_interval_minutes,
         "secrets": cfg.secrets,
         "api_tokens": cfg.api_tokens,
     }
@@ -775,6 +787,11 @@ def _validate(cfg: WebappConfig) -> None:
     if cfg.notify_failure_streak < 0:
         raise ValueError(
             f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"
+        )
+    if cfg.jobs_coverage_interval_minutes < 0:
+        raise ValueError(
+            "jobs_coverage_interval_minutes must be >= 0; got "
+            f"{cfg.jobs_coverage_interval_minutes}"
         )
     if cfg.chief_model not in VALID_CHIEF_MODELS:
         raise ValueError(

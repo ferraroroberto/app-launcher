@@ -214,10 +214,80 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
         _log.info("🧹 reconciled %d orphaned mirror window(s) on startup", closed)
 
 
+# --- Jobs missed-fire coverage tick (issue #697) -------------------------
+# First scan is delayed so it never competes with boot; then one scan per
+# interval. The whole point of this tick is that it does NOT depend on the
+# Jobs tab being open — the two real incidents (`config-map` / `sota-watch`
+# registered no task at all) went unnoticed for weeks precisely because
+# nothing looked when nobody was looking.
+_COVERAGE_FIRST_DELAY_SECONDS = 120.0
+
+
+def _coverage_interval_minutes(cfg: object) -> float:
+    """The configured scan interval, defensively coerced.
+
+    A config object without the key (an older ``webapp_config.json``, or a
+    stub in a test) reads as the schema default rather than raising inside
+    the lifespan.
+    """
+    try:
+        return float(getattr(cfg, "jobs_coverage_interval_minutes", 60) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+async def _coverage_tick(app: FastAPI) -> None:
+    """Periodically scan every job's schedule coverage and alert on breaks.
+
+    Skipped entirely on a *disposable* instance (the e2e / verify-before-ship
+    autoboot webapp, identified by ``LAUNCHER_SESSION_HOST_PORT`` exactly as
+    the mirror-window sweep above is): a throwaway instance pointed at a
+    scratch config must never push a real alert to the user's phone.
+
+    Every scan is wrapped by :func:`src.jobs_coverage.check_and_alert`, which
+    never raises — a wedged Task Scheduler or an unreachable Telegram must
+    not take the webapp's lifespan down.
+    """
+    from src import jobs_coverage
+
+    cfg = getattr(app.state, "webapp_config", None)
+    if cfg is None:
+        return
+    interval = max(60.0, _coverage_interval_minutes(cfg) * 60.0)
+    await asyncio.sleep(_COVERAGE_FIRST_DELAY_SECONDS)
+    while True:
+        alerted = await asyncio.to_thread(jobs_coverage.check_and_alert, cfg)
+        if alerted:
+            _log.warning(
+                "🕳️ coverage alerts pushed for %d job(s): %s",
+                len(alerted),
+                ", ".join(alerted),
+            )
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
-    yield
+    coverage_task = None
+    cfg = getattr(app.state, "webapp_config", None)
+    disposable = bool(os.environ.get(SESSION_HOST_PORT_ENV, "").strip())
+    if cfg is not None and not disposable and _coverage_interval_minutes(cfg) > 0:
+        coverage_task = asyncio.create_task(_coverage_tick(app))
+    elif disposable:
+        _log.debug(
+            "ℹ️ jobs coverage tick skipped — disposable instance (%s set)",
+            SESSION_HOST_PORT_ENV,
+        )
+    try:
+        yield
+    finally:
+        if coverage_task is not None:
+            coverage_task.cancel()
+            try:
+                await coverage_task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
 
 
 def create_app() -> FastAPI:

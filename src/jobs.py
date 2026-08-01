@@ -14,6 +14,8 @@ jobs_mod.X(...)``) keep working unchanged:
   detection.
 * :mod:`src.jobs_reap` — reconciles a run record stranded ``running`` by an
   executor that died before finalising it.
+* :mod:`src.jobs_coverage` — missed-fire coverage: a scheduled job whose
+  Task Scheduler entry vanished, or whose slot passed with no run record.
 
 New code should generally import directly from the module that actually
 owns what it needs; this facade exists for backward compatibility and as
@@ -63,6 +65,11 @@ from src.jobs_queue import (
     peek_mutex_queue,
     pop_mutex_entry,
     remove_queue_entry,
+)
+from src.jobs_coverage import (
+    coverage_for_job,
+    invalidate_coverage_cache,
+    scan_coverage,
 )
 from src.jobs_reap import reap_stranded_runs
 from src.jobs_schtasks import (
@@ -136,4 +143,7 @@ __all__ = [
     "consecutive_failed_runs",
     "cooldown_check",
     "reap_stranded_runs",
+    "coverage_for_job",
+    "scan_coverage",
+    "invalidate_coverage_cache",
 ]
