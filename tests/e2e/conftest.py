@@ -17,6 +17,13 @@ Two run modes:
   or spawning its own. In this mode a failure to boot is a hard *failure*,
   never a skip: the whole point of the gate is that a missing server can't
   silently pass. See issue #33.
+
+`pytest_sessionfinish` runs the vendor-verbatim leaked-browser-helper sweep
+(`tests/e2e/_browser_sweep.py`, project-scaffolding #203/#204) once the whole
+session — fixtures included — has torn down, so a run that orphaned a WebKit
+helper reclaims it *while it is still killable*, instead of leaving one
+pinning this checkout's directory (which is what makes a later `git worktree
+remove` fail as "busy"). See issue #709.
 """
 
 from __future__ import annotations
@@ -37,6 +44,8 @@ from typing import Callable, IO, Iterator, List, Optional
 import pytest
 import requests
 from playwright.sync_api import BrowserContext, Page
+
+from tests.e2e._browser_sweep import sweep_browser_helpers
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +518,28 @@ def pytest_configure(config: pytest.Config) -> None:
     selected = config.option.browser
     if not selected:
         selected.extend(["chromium", "webkit"])
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Sweep browser helpers this run orphaned inside *this* checkout (#709).
+
+    A session hook, not a fixture finalizer: it must run after *every* fixture
+    — including pytest-playwright's own session-scoped `browser` — has already
+    torn down, or the sweep would be looking at a browser that is still
+    legitimately running. The scope path is the only call-site argument, so
+    `_browser_sweep.py` stays byte-identical to project-scaffolding's copy.
+
+    Advisory by design: it reports and never touches `exitstatus`, because an
+    already-exited handle-held zombie is unkillable and is not a test failure
+    (see `_browser_sweep`'s module docstring for why those exist, and why
+    nothing is ever killed by image name alone — Chromium is deliberately out
+    of the sweep set, which matters on a box where the user's own Chrome is
+    always up).
+    """
+    result = sweep_browser_helpers(_REPO_ROOT)
+    print(f"\n{result.summary()}")
+    for entry in result.killed:
+        print(f"  reclaimed leaked helper: {entry}")
 
 
 @pytest.fixture(scope="session")

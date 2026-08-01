@@ -9,3 +9,4 @@ description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs �
 
 [vendored]
 switch = { src = "app/webapp/static/_vendored/switch", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/switch" }
+browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
