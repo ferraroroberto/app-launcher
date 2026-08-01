@@ -246,9 +246,12 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import sessions as sessions_router
 
     # Mock the session-host loopback client. Every route that talks to
-    # :8446 goes through this module; after the issue-#26 split the
-    # `session_client` reference lives in both routers/apps.py (launch)
-    # and routers/sessions.py (list/stop/image), so patch both.
+    # :8446 goes through this module, so patch each router that holds a
+    # module-level `session_client` reference of its own. The launch
+    # routers (apps.py, life_os.py) no longer do since #689 moved their
+    # spawn + error-mapping head into _helpers.spawn_session_or_400 —
+    # they reach the host only through the `spawn_claude_session` the
+    # per-test fakes replace.
     from src import session_client as real_session_client
     session_mock = MagicMock()
     session_mock.list_sessions.return_value = []
@@ -262,9 +265,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # freshness check degrades to "unreachable", never a real loopback call.
     session_mock.identity.return_value = None
     session_mock.SessionHostError = real_session_client.SessionHostError
-    monkeypatch.setattr(apps_router, "session_client", session_mock)
     monkeypatch.setattr(sessions_router, "session_client", session_mock)
-    monkeypatch.setattr(life_os_router, "session_client", session_mock)
     monkeypatch.setattr(board_router, "session_client", session_mock)
     monkeypatch.setattr(misc_router, "session_client", session_mock)
 

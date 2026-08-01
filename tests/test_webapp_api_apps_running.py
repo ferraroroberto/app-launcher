@@ -105,9 +105,13 @@ class FakePsutil:
 
 @pytest.fixture
 def fake_psutil(monkeypatch) -> Iterator[FakePsutil]:
-    """Swap a fresh FakePsutil into both modules; clear the tracker."""
+    """Swap a fresh FakePsutil into src.diagnostics; clear the tracker.
+
+    One patch point since #689: ``app_runtime._is_alive`` delegates its
+    PID-reuse-guarded liveness check to ``diagnostics.is_pid_alive`` rather
+    than keeping a second psutil import of its own.
+    """
     fake = FakePsutil()
-    monkeypatch.setattr(app_runtime, "psutil", fake)
     import src.diagnostics as diagnostics_mod
 
     monkeypatch.setattr(diagnostics_mod, "psutil", fake)

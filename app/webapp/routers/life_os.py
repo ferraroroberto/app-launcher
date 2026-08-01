@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, session_client
+from src import audit
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, build_claude_flags
@@ -48,6 +48,7 @@ from app.webapp.routers._helpers import (
     maybe_json,
     mirror_url,
     should_mirror_to_pc,
+    spawn_session_or_400,
 )
 
 logger = logging.getLogger(__name__)
@@ -215,23 +216,18 @@ async def _spawn_skill_session(
     # Coding-tab launch route (issue #126); ignored for kind="remote".
     rows = int(body.get("rows") or 40)
     cols = int(body.get("cols") or 120)
-    try:
-        session = await asyncio.to_thread(
-            spawn_claude_session,
-            life_os_dir,
-            name,
-            flags,
-            cfg.session_host_port,
-            kind,
-            "claude",
-            rows,
-            cols,
-            history_lines=cfg.terminal_history_lines,
-        )
-    except session_client.SessionHostError as exc:
-        raise HTTPException(status_code=exc.status, detail=str(exc))
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+    session = await spawn_session_or_400(
+        spawn_claude_session,
+        life_os_dir,
+        name,
+        flags,
+        cfg.session_host_port,
+        kind,
+        "claude",
+        rows,
+        cols,
+        history_lines=cfg.terminal_history_lines,
+    )
 
     sid = str(session.get("session_id") or "")
     event = "remote_launch" if kind == "remote" else "session_start"

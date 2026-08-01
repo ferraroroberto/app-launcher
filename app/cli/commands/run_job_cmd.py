@@ -350,6 +350,39 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     return 0
 
 
+def _record_failed_run(
+    job: Job,
+    args: argparse.Namespace,
+    run_dir: Path,
+    note: str,
+) -> None:
+    """Finalise ``run_dir`` as a visible ``failed`` record, then prune and
+    invalidate the stats cache (issue #689).
+
+    The shared bookkeeping of every pre-spawn failure path: the run
+    directory already exists, so leaving it empty would silently strand a
+    directory on each fire of a misconfigured job. ``note`` is the only
+    thing that differs between callers.
+    """
+    stamped = datetime.now().isoformat(timespec="seconds")
+    write_run_json(
+        run_dir,
+        run_id=run_dir.name,
+        job_id=job.id,
+        name=job.name,
+        trigger=args.trigger,
+        script_path=job.script_path,
+        args=job.args,
+        started_at=stamped,
+        finished_at=stamped,
+        status="failed",
+        exit_code=-1,
+        note=note,
+    )
+    prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
+    invalidate_stats_cache(job.id)
+
+
 def _build_invocation_or_record_failure(
     job: Job,
     args: argparse.Namespace,
@@ -359,33 +392,16 @@ def _build_invocation_or_record_failure(
     """Resolve the job's invocation, or finalise a ``failed`` run record
     on a build error and return ``None``.
 
-    ``run_dir`` already exists at this point (created by the caller so
-    inline-shell can write its temp script into it) — leaving it empty on
-    a build failure would silently strand a directory on every fire of a
-    misconfigured job. Finalises it as a visible failed record instead,
-    matching the Popen-spawn failure path in :func:`_spawn_and_wait`.
+    ``run_dir`` already exists at this point — created by the caller so
+    inline-shell can write its temp script into it — so the failure path
+    goes through :func:`_record_failed_run`, matching the Popen-spawn
+    failure path in :func:`_spawn_and_wait`.
     """
     try:
         return build_invocation(job, values, run_dir)
     except (OSError, ValueError) as exc:
         logger.error(f"❌ cannot run job {job.id}: {exc}")
-        stamped = datetime.now().isoformat(timespec="seconds")
-        write_run_json(
-            run_dir,
-            run_id=run_dir.name,
-            job_id=job.id,
-            name=job.name,
-            trigger=args.trigger,
-            script_path=job.script_path,
-            args=job.args,
-            started_at=stamped,
-            finished_at=stamped,
-            status="failed",
-            exit_code=-1,
-            note=f"invocation error: {exc}",
-        )
-        prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
-        invalidate_stats_cache(job.id)
+        _record_failed_run(job, args, run_dir, f"invocation error: {exc}")
         return None
 
 
@@ -409,23 +425,7 @@ def _resolve_job_env_or_record_failure(
         return resolve_env_overlay(job.env, cfg.secrets)
     except ValueError as exc:
         logger.error(f"❌ cannot run job {job.id}: {exc}")
-        stamped = datetime.now().isoformat(timespec="seconds")
-        write_run_json(
-            run_dir,
-            run_id=run_dir.name,
-            job_id=job.id,
-            name=job.name,
-            trigger=args.trigger,
-            script_path=job.script_path,
-            args=job.args,
-            started_at=stamped,
-            finished_at=stamped,
-            status="failed",
-            exit_code=-1,
-            note=str(exc),
-        )
-        prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
-        invalidate_stats_cache(job.id)
+        _record_failed_run(job, args, run_dir, str(exc))
         return None
 
 
