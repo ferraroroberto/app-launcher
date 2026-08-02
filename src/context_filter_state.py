@@ -95,8 +95,8 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
     {
         "id": "antigravity",
         "label": "Antigravity CLI",
-        "status": "planned",
-        "note": "fleet-config#546",
+        "status": "active",
+        "note": "agy plugin, PreToolUse overwrite (fleet-config#546)",
     },
 ]
 
