@@ -246,6 +246,18 @@ def _default_rate_limits_file() -> str:
     return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
 
 
+def _default_context_filter_mode_file() -> str:
+    """Where the fleet context filter's PreToolUse hook reads its machine-wide
+    off/shadow/rewrite switch (fleet-config#544, issue #713)."""
+    return str(Path.home() / ".fleet-context-filter" / "mode.json")
+
+
+def _default_context_filter_log_file() -> str:
+    """Where the fleet context filter appends its shadow/rewrite telemetry
+    (fleet-config#544, issue #713) — one JSON row per hook invocation."""
+    return str(Path.home() / ".fleet-context-filter" / "shadow.jsonl")
+
+
 @dataclass
 class WebappConfig:
     """User-authored, persisted webapp settings."""
@@ -295,6 +307,15 @@ class WebappConfig:
     # Read defensively like sessions_state_file: absent/corrupt/stale hides
     # the Board's usage badges, never an error.
     rate_limits_file: str = field(default_factory=_default_rate_limits_file)
+    # --- Context filter (issue #713, fleet-config#392/#541/#544) ---------
+    # The machine-wide mode switch (off/shadow/rewrite) and telemetry log the
+    # fleet's PreToolUse context-filter hook reads/writes. The mode itself is
+    # NOT stored here — it lives only in mode.json, so this launcher process
+    # and every coding-agent session on the machine always read the one true
+    # value. Read defensively like sessions_state_file / rate_limits_file:
+    # absent/corrupt degrades the Settings panel, never an error.
+    context_filter_mode_file: str = field(default_factory=_default_context_filter_mode_file)
+    context_filter_log_file: str = field(default_factory=_default_context_filter_log_file)
     # GitHub owner whose repos the Board's gh searches span (backlog / PRs /
     # done-today). One owner covers the whole fleet.
     github_owner: str = "ferraroroberto"
@@ -544,6 +565,12 @@ def load_webapp_config(
         rate_limits_file=str(
             raw.get("rate_limits_file") or _default_rate_limits_file()
         ),
+        context_filter_mode_file=str(
+            raw.get("context_filter_mode_file") or _default_context_filter_mode_file()
+        ),
+        context_filter_log_file=str(
+            raw.get("context_filter_log_file") or _default_context_filter_log_file()
+        ),
         github_owner=str(raw.get("github_owner", "ferraroroberto")),
         claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
         claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
@@ -642,6 +669,8 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
         "claude_config_dir": cfg.claude_config_dir,
         "sessions_state_file": cfg.sessions_state_file,
         "rate_limits_file": cfg.rate_limits_file,
+        "context_filter_mode_file": cfg.context_filter_mode_file,
+        "context_filter_log_file": cfg.context_filter_log_file,
         "github_owner": cfg.github_owner,
         "claude_model": cfg.claude_model,
         "claude_effort": cfg.claude_effort,
