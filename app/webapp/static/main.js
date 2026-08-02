@@ -10,6 +10,7 @@ import { apiFailToast, consumeUrlParam, jsonApi, readToken, toast, wireLoginForm
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
+import { fetchContextFilter } from './context-filter.js';
 import { fetchAgents, fetchApps, fetchListeners, fetchRunningApps, refreshGitStatus, wireApps } from './apps.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, wireLifeOs } from './life-os.js';
@@ -206,6 +207,7 @@ async function boot() {
   await safe(fetchSystemMapStatus);
   await safe(fetchSessions);
   await safe(fetchRateLimits);
+  await safe(fetchContextFilter);
   await safe(fetchListeners);
   await safe(fetchRunningApps);
   await safe(fetchStatus);
@@ -238,6 +240,9 @@ async function boot() {
   }, SESSIONS_POLL_MS);
   setInterval(function () {
     fetchRateLimits().catch(function () {});
+    // Context filter (issue #713) rides the same cadence as the usage
+    // badges above — no dedicated timer for one more lightweight GET.
+    fetchContextFilter().catch(function () {});
   }, SESSIONS_POLL_MS);
   setInterval(function () {
     fetchListeners().catch(function () {});

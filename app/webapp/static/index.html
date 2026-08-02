@@ -442,6 +442,14 @@
           <span id="codingUsageSession" class="usage-badge" hidden></span>
           <span id="codingUsageWeekly" class="usage-badge" hidden></span>
         </div>
+        <!-- Context filter "saved" badge (issue #713) — glanceable tokens-
+             saved readout beside the usage badges above; hidden entirely
+             when the filter's stats are unavailable (fleet-config#392/#544
+             telemetry never written, or 0 saved). renderContextFilterBadge()
+             only flips hidden/text, same contract as renderUsageBadgeRow. -->
+        <div id="codingFilterBadge" class="usage-badges" hidden>
+          <span id="codingFilterSavedBadge" class="usage-badge" hidden></span>
+        </div>
         <!-- Fleet chief status (#547) — Coding-tab parity with the Board's
              chat-mode status row: same crown + text + Start affordance so
              the chief can be spotted/started here too, not only in Board
@@ -1013,6 +1021,36 @@
             </div>
             <span id="tokenMintUrl" class="muted small"></span>
           </div>
+        </div>
+      </div>
+
+      <!-- Context filter (issue #713) — the fleet's PreToolUse token-reduction
+           hook (fleet-config#392/#541/#544): a machine-wide off/shadow/rewrite
+           switch, which coding agents it actually reaches and why, and savings
+           telemetry. context-filter.js is the single module that owns this
+           whole card + the Coding-tab badge above. -->
+      <div id="contextFilterPanel" class="card settings-card">
+        <div class="settings-head">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
+            <h3 class="collapse-title">Context filter</h3>
+          </span>
+        </div>
+        <div class="collapse-body">
+          <p class="muted small">Machine-wide token-reduction hook (fleet-config#392) — the mode you pick here takes effect immediately for every coding-agent session on this PC, no restart needed.</p>
+          <div id="contextFilterMode" class="segmented" role="group" aria-label="Context filter mode"></div>
+
+          <h4 class="context-filter-subhead">Harness support</h4>
+          <ul id="contextFilterHarnesses" class="card-list context-filter-harness-list" aria-label="Coding agents the filter reaches"></ul>
+
+          <h4 class="context-filter-subhead">Savings</h4>
+          <div id="contextFilterStats" class="context-filter-stats" hidden>
+            <span id="contextFilterSavedToday" class="context-filter-stat"></span>
+            <span id="contextFilterSavedWeek" class="context-filter-stat"></span>
+            <span id="contextFilterSavedTotal" class="context-filter-stat"></span>
+            <ul id="contextFilterPerAgent" class="context-filter-per-agent" aria-label="Savings by agent"></ul>
+          </div>
+          <p id="contextFilterStatsEmpty" class="empty muted small">No savings telemetry yet.</p>
         </div>
       </div>
     </section>

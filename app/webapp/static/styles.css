@@ -3054,3 +3054,69 @@ body.terminal-open {
   border: none;
   padding: 0;
 }
+
+/* ---------- context filter (issue #713) ---------- */
+/* The Settings-tab card's mode control reuses the existing .segmented
+   shape (same pattern as the Coding-options Claude model/effort rows) —
+   no new vendored component, just this app's own tokens. */
+.context-filter-subhead {
+  margin: 16px 0 6px;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.context-filter-harness-list .context-filter-harness {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+}
+.context-filter-harness-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.context-filter-status {
+  flex-shrink: 0;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.context-filter-status-active {
+  background: rgb(from var(--success) r g b / 0.16);
+  color: var(--success);
+}
+.context-filter-status-unsupported {
+  background: rgb(from var(--danger) r g b / 0.16);
+  color: var(--danger);
+}
+.context-filter-status-planned {
+  background: var(--card-off);
+  color: var(--muted);
+}
+.context-filter-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+.context-filter-stat {
+  font-size: var(--font-label);
+  color: var(--fg);
+}
+.context-filter-per-agent {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.context-filter-per-agent li {
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
