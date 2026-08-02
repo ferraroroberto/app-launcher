@@ -166,3 +166,39 @@ def test_settings_status_readout_has_no_tls_or_tunnel_url(
     assert "tls" not in text
     assert "tunnel" not in text
     assert "http" not in text
+
+
+def test_context_filter_card_renders_and_reflects_api_mode(
+    authed_page: Page, base_url: str
+) -> None:
+    """Context filter Settings card (issue #713) — segmented off/shadow/
+    rewrite control and harness matrix render from live server data.
+
+    Deliberately **read-only**: ``context_filter_mode_file`` defaults to
+    ``~/.fleet-context-filter/mode.json`` (fleet-config#544), and the e2e
+    autoboot's disposable webapp config is a byte-copy of the real
+    ``config/webapp_config.json`` with no isolation for that Path.home()
+    default — so clicking a mode button here would flip the *real*,
+    machine-wide filter switch every live coding-agent session on this box
+    reads. The write path is already covered against isolated tmp paths in
+    tests/test_webapp_api_context_filter.py; this test only asserts the
+    control renders with exactly one active button (impossible unless it
+    read a real mode string back from GET /api/context-filter, since no
+    button is marked active for a null/unknown value).
+    """
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+
+    panel = authed_page.locator("#contextFilterPanel")
+    expect(panel).to_be_visible()
+
+    control = authed_page.locator("#contextFilterMode")
+    expect(control.locator("button")).to_have_count(3)
+    active = control.locator("button.active")
+    expect(active).to_have_count(1)
+    expect(active).to_have_attribute(
+        "data-value", re.compile(r"^(off|shadow|rewrite)$")
+    )
+
+    harnesses = authed_page.locator("#contextFilterHarnesses li")
+    expect(harnesses).to_have_count(6)

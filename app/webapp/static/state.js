@@ -12,6 +12,7 @@
  *   state.terminal     — null when overlay closed, else { sid, ws, term, fit, onWindowResize }
  *   state.status       — /api/status payload (incl. terminal reachability)
  *   state.editMode     — boolean, persisted to localStorage (launcher.editMode)
+ *   state.contextFilter — /api/context-filter payload ({mode, harnesses, stats}, issue #713)
  *
  * Auth: a bearer token is stored in localStorage. The page extracts it
  * from ?token=… on first load and strips it from the URL. On 401, the
@@ -37,6 +38,9 @@ export const GIT_STATUS_POLL_MS = 45000;
 export const state = {
   tab: 'claude',
   config: null,
+  // /api/context-filter payload — {mode, harnesses, stats} (issue #713).
+  // null until the boot fetch lands.
+  contextFilter: null,
   apps: [],
   // Coding agents — overwritten by /api/agents at boot. The fallback
   // keeps the Coding tab usable if that fetch fails: Claude Code is the
@@ -285,6 +289,8 @@ export const els = {
   codingUsage: document.getElementById('codingUsage'),
   codingUsageSession: document.getElementById('codingUsageSession'),
   codingUsageWeekly: document.getElementById('codingUsageWeekly'),
+  codingFilterBadge: document.getElementById('codingFilterBadge'),
+  codingFilterSavedBadge: document.getElementById('codingFilterSavedBadge'),
   codingChiefStatus: document.getElementById('codingChiefStatus'),
   codingChiefStatusText: document.getElementById('codingChiefStatusText'),
   codingChiefStart: document.getElementById('codingChiefStart'),
@@ -306,6 +312,14 @@ export const els = {
   tokenMintValue: document.getElementById('tokenMintValue'),
   tokenMintUrl: document.getElementById('tokenMintUrl'),
   tokenCopyBtn: document.getElementById('tokenCopyBtn'),
+  contextFilterMode: document.getElementById('contextFilterMode'),
+  contextFilterHarnesses: document.getElementById('contextFilterHarnesses'),
+  contextFilterStats: document.getElementById('contextFilterStats'),
+  contextFilterStatsEmpty: document.getElementById('contextFilterStatsEmpty'),
+  contextFilterSavedToday: document.getElementById('contextFilterSavedToday'),
+  contextFilterSavedWeek: document.getElementById('contextFilterSavedWeek'),
+  contextFilterSavedTotal: document.getElementById('contextFilterSavedTotal'),
+  contextFilterPerAgent: document.getElementById('contextFilterPerAgent'),
   editMode: document.getElementById('editMode'),
   projectsDir: document.getElementById('projectsDir'),
   projectsIgnore: document.getElementById('projectsIgnore'),
