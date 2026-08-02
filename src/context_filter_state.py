@@ -83,8 +83,8 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
     {
         "id": "pi",
         "label": "Pi",
-        "status": "planned",
-        "note": "fleet-config#545",
+        "status": "active",
+        "note": "tool_result extension middleware (fleet-config#545) — compresses in place, no re-execution",
     },
     {
         "id": "copilot",
