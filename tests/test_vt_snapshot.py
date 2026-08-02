@@ -202,3 +202,49 @@ def test_render_is_thread_safe_lock_scoped():
     vt.feed("partial")
     # Render must not raise or hang even though pyte's screen is mid-line.
     assert isinstance(vt.render(), str)
+
+
+def test_feed_survives_private_device_status_query(caplog):
+    """Issue #711: pyte dispatches any private CSI as
+    ``csi_dispatch[char](*params, private=True)``, but upstream
+    ``Screen.report_device_status`` doesn't accept that keyword and raises
+    ``TypeError`` — the empirically-reproduced trigger being Copilot CLI
+    1.0.77's startup ``ESC[?996n`` light/dark colour-scheme query. Feeding
+    this used to raise straight out of ``feed()``, which on the real
+    reader thread (``session_host.py::PtySession._read_loop``) killed the
+    thread silently: the session kept reporting alive and input kept
+    working, but scrollback/transcript/every subscriber went dark forever.
+    ``feed()`` must swallow the parser error and keep mirroring."""
+    vt = VtSnapshot(5, 20)
+    vt.feed("before ")
+    vt.feed("\x1b[?996n")  # private DSR — must not raise
+    vt.feed("after\r\n")
+    assert "after" in vt.render()
+
+
+def test_feed_swallows_unexpected_parser_error_and_logs_breadcrumb(caplog):
+    """The private-DSR trigger above is now handled cleanly (no exception at
+    all) by ``_MutedQueryScreen`` — this pins the *generic* safety net in
+    ``feed()`` itself, for whatever pyte parser error isn't specifically
+    muted. A real reader thread must never die from this; a breadcrumb is
+    the only observable trace."""
+    import logging
+
+    vt = VtSnapshot(5, 20)
+    boom = RuntimeError("simulated pyte parser error")
+    vt._stream.feed = lambda chunk: (_ for _ in ()).throw(boom)
+
+    with caplog.at_level(logging.WARNING, logger="src.vt_snapshot"):
+        vt.feed("anything")  # must not raise
+
+    assert any("pyte parser error" in r.message for r in caplog.records)
+
+
+def test_feed_non_private_device_status_still_delegates():
+    """A non-private DSR (mode without ``private=True``) is not the bug
+    this issue is about — pyte's own default handling still applies, and
+    must not be swallowed by the private-only mute."""
+    vt = VtSnapshot(5, 20)
+    vt.feed("\x1b[5n")  # DSR mode 5, not private — pyte's default is a no-op
+    vt.feed("still works\r\n")
+    assert "still works" in vt.render()

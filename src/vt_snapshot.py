@@ -33,11 +33,15 @@ A single lock serializes all three against pyte's mutable screen state.
 
 from __future__ import annotations
 
+import logging
 import threading
+import time
 from typing import Optional
 
 import pyte
 from wcwidth import wcswidth
+
+logger = logging.getLogger(__name__)
 
 # Inverse of pyte's ANSI color tables (code -> name) so we can go the other
 # way: named color -> SGR code. Any fg/bg pyte hands back that isn't one of
@@ -71,18 +75,69 @@ _BG_CODE = {name: code for code, name in pyte.graphics.BG_ANSI.items() if name !
 # VtSnapshot(rows, cols) in a test).
 _HISTORY_LINES = 10_000
 
+# Minimum gap between "pyte parse error" warning breadcrumbs (issue #711):
+# a stuck agent could otherwise emit one every chunk and flood the log.
+_FEED_ERROR_LOG_INTERVAL = 30.0
+
+
+class _MutedQueryScreen(pyte.HistoryScreen):
+    """A ``pyte.HistoryScreen`` that never answers terminal queries.
+
+    :class:`VtSnapshot` is a passive mirror with no reply channel — the same
+    principle behind the session-host's OSC 10/11/12 colour-reply stripping
+    (``_strip_color_osc``, issue #270). ``report_device_status`` is the CSI
+    analogue: pyte dispatches *any* private CSI as
+    ``csi_dispatch[char](*params, private=True)`` (``pyte/streams.py``), but
+    upstream ``Screen.report_device_status(self, mode)`` doesn't accept that
+    keyword and raises ``TypeError``. A real terminal answers a private DSR
+    (e.g. Copilot CLI 1.0.77's ``ESC[?996n`` light/dark colour-scheme query)
+    over its PTY input; this mirror has no such channel, so the only correct
+    behaviour is to no-op rather than crash or answer. Non-private DSRs
+    (``mode`` without ``private=True``) still delegate to the real
+    implementation, matching pyte's own default behaviour.
+    """
+
+    def report_device_status(self, mode: int = 0, **kwargs) -> None:
+        if kwargs.get("private"):
+            return
+        super().report_device_status(mode)
+
 
 class VtSnapshot:
     """Thread-safe headless VT screen mirroring one PTY session's output."""
 
     def __init__(self, rows: int, cols: int, history: int = _HISTORY_LINES) -> None:
         self._lock = threading.Lock()
-        self._screen = pyte.HistoryScreen(cols, rows, history=history)
+        self._screen = _MutedQueryScreen(cols, rows, history=history)
         self._stream = pyte.Stream(self._screen)
+        self._last_feed_error_at = 0.0
 
     def feed(self, chunk: str) -> None:
+        """Feed one chunk of raw PTY output into the mirror.
+
+        Any exception pyte's parser raises here is swallowed rather than
+        propagated (issue #711): this runs on the PTY reader thread's hot
+        path (``session_host.py::PtySession._read_loop``), whose own
+        ``try`` covers only the ``read()`` call — an uncaught exception here
+        used to kill that thread silently, leaving the session reporting
+        alive (input still worked) while scrollback, transcript, and every
+        subscriber went permanently dark. Safe to degrade-and-continue:
+        pyte reinitialises its parser coroutine whenever a handler raises
+        (upstream PR #101), so the *next* chunk parses from a clean state —
+        only the chunk that triggered the error is incompletely mirrored.
+        """
         with self._lock:
-            self._stream.feed(chunk)
+            try:
+                self._stream.feed(chunk)
+            except Exception:
+                now = time.monotonic()
+                if now - self._last_feed_error_at >= _FEED_ERROR_LOG_INTERVAL:
+                    self._last_feed_error_at = now
+                    logger.warning(
+                        "VtSnapshot.feed: pyte parser error, chunk dropped "
+                        "from mirror (reader thread continues)",
+                        exc_info=True,
+                    )
 
     def resize(self, rows: int, cols: int) -> None:
         with self._lock:
