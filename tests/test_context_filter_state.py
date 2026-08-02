@@ -279,5 +279,5 @@ class TestHarnessSupport:
         assert by_id["codex"]["status"] == "active"
         assert by_id["grok"]["status"] == "unsupported"
         assert by_id["pi"]["status"] == "active"  # fleet-config#545 shipped
-        assert by_id["copilot"]["status"] == "planned"
+        assert by_id["copilot"]["status"] == "active"  # fleet-config#547 shipped (TUI caveat in note)
         assert by_id["antigravity"]["status"] == "active"  # fleet-config#546 shipped

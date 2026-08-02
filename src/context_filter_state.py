@@ -89,8 +89,8 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
     {
         "id": "copilot",
         "label": "GitHub Copilot CLI",
-        "status": "planned",
-        "note": "fleet-config#547 — upstream: interactive TUI sessions may fire no hooks",
+        "status": "active",
+        "note": "preToolUse+modifiedArgs (fleet-config#547) — non-interactive verified; TUI hook delivery upstream-unknown",
     },
     {
         "id": "antigravity",
