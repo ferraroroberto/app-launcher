@@ -278,6 +278,6 @@ class TestHarnessSupport:
         assert by_id["claude"]["status"] == "active"
         assert by_id["codex"]["status"] == "active"
         assert by_id["grok"]["status"] == "unsupported"
-        assert by_id["pi"]["status"] == "planned"
+        assert by_id["pi"]["status"] == "active"  # fleet-config#545 shipped
         assert by_id["copilot"]["status"] == "planned"
         assert by_id["antigravity"]["status"] == "planned"
