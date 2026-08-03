@@ -1293,19 +1293,10 @@ summary + .opt-group { border-top: 0; }
 .toast.good  { border-color: var(--success); }
 
 /* ---------- settings ---------- */
-/* Settings is its own tab (issue #383): a plain card whose head mirrors
-   the disclosure summary's box (52px, 0 14px, divider) without the
-   collapse behavior — a dedicated pane has nothing to collapse. */
-.settings-card { padding: 0; }
-.settings-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  height: 52px;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--line-muted);
-}
-.settings-edit-row { min-height: 0; font-size: var(--font-caption); }
+/* Settings is its own tab (issue #383) hosting three stacked disclosure
+   cards (issue #719 made them collapsible, closed by default, via the
+   vendored .card--collapsible + .collapse-summary contract) — .settings-card
+   only carries the app-specific body styling below, not the header box. */
 /* API-tokens panel (issue #72) */
 .token-row { justify-content: space-between; }
 .token-meta { min-width: 0; flex: 1; overflow-wrap: anywhere; }

@@ -320,7 +320,6 @@ export const els = {
   contextFilterSavedWeek: document.getElementById('contextFilterSavedWeek'),
   contextFilterSavedTotal: document.getElementById('contextFilterSavedTotal'),
   contextFilterPerAgent: document.getElementById('contextFilterPerAgent'),
-  editMode: document.getElementById('editMode'),
   projectsDir: document.getElementById('projectsDir'),
   projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),

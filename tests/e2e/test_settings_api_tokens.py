@@ -112,6 +112,9 @@ def _open_settings(page: Page, base_url: str) -> None:
     page.goto(base_url, wait_until="domcontentloaded")
     page.locator("#tabSettings").click()
     expect(page.locator("#paneSettings")).to_be_visible()
+    # The API-tokens card is a disclosure, closed by default (issue #719).
+    page.locator("#tokensPanel > summary").click()
+    expect(page.locator("#tokensPanel")).to_have_js_property("open", True)
 
 
 def test_mint_shows_token_once_and_lists_it(

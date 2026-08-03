@@ -256,6 +256,17 @@
     <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </symbol>
+  <symbol id="i-sliders-horizontal" viewBox="0 0 24 24" fill="none">
+    <path d="M10 5H3" />
+    <path d="M12 19H3" />
+    <path d="M14 3v4" />
+    <path d="M16 17v4" />
+    <path d="M21 12h-9" />
+    <path d="M21 19h-5" />
+    <path d="M21 5h-7" />
+    <path d="M8 10v4" />
+    <path d="M8 12H3" />
+  </symbol>
   <symbol id="i-smartphone" viewBox="0 0 24 24" fill="none">
     <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
     <path d="M12 18h.01" />
@@ -738,7 +749,7 @@
                 <span class="jobs-edit-label">Edit mode</span>
                 <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
                        aria-label="Edit mode"
-                       title="Edit mode — reveal Add job plus edit + remove on job rows (same switch as Settings)">
+                       title="Edit mode — reveal Add job plus edit + remove on job rows, and rename + remove on Apps tab rows">
                   <span class="knob"></span><span class="toggle-label">OFF</span>
                 </button>
               </span>
@@ -938,16 +949,14 @@
     </section>
 
     <section id="paneSettings" class="pane" role="tabpanel" aria-labelledby="tabSettings" hidden>
-      <div id="settingsPanel" class="card settings-card">
-        <div class="settings-head">
+      <details id="settingsPanel" class="card card--collapsible settings-card">
+        <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
             <h3 class="collapse-title">Settings</h3>
           </span>
-          <span class="summary-actions">
-            <span class="switch-row settings-edit-row"><span>Edit mode</span><button type="button" id="editMode" class="toggle" role="switch" aria-checked="false" aria-label="Edit mode" title="Edit mode — reveal rename + remove on Apps tab rows, Add on Jobs tab"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
-          </span>
-        </div>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
         <div class="collapse-body">
         <label class="stacked">
           <span>Projects dir (Claude Code)</span>
@@ -989,15 +998,16 @@
              (not every tab) since it's a dev/spike link, not app chrome. -->
         <p class="muted small"><a id="spikeVoiceLink" href="/spike/voice-loop"><svg class="icon" aria-hidden="true"><use href="#i-mic"></use></svg> Voice loop spike (#246)</a></p>
         </div>
-      </div>
+      </details>
 
-      <div id="tokensPanel" class="card settings-card">
-        <div class="settings-head">
+      <details id="tokensPanel" class="card card--collapsible settings-card">
+        <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
             <h3 class="collapse-title">API tokens</h3>
           </span>
-        </div>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
         <div class="collapse-body">
           <p class="muted small">Job-scoped bearer tokens (issue #72) — safe to bake into a Stream Deck button URL: each token can fire only its chosen job and nothing else, and revoking one never touches the main login.</p>
           <ul id="tokensList" class="card-list"></ul>
@@ -1022,20 +1032,22 @@
             <span id="tokenMintUrl" class="muted small"></span>
           </div>
         </div>
-      </div>
+      </details>
 
-      <!-- Context filter (issue #713) — the fleet's PreToolUse token-reduction
-           hook (fleet-config#392/#541/#544): a machine-wide off/shadow/rewrite
-           switch, which coding agents it actually reaches and why, and savings
-           telemetry. context-filter.js is the single module that owns this
-           whole card + the Coding-tab badge above. -->
-      <div id="contextFilterPanel" class="card settings-card">
-        <div class="settings-head">
+      <!-- Context filter (issue #713, icon + collapsible fix #719) — the
+           fleet's PreToolUse token-reduction hook (fleet-config#392/#541/#544):
+           a machine-wide off/shadow/rewrite switch, which coding agents it
+           actually reaches and why, and savings telemetry. context-filter.js
+           is the single module that owns this whole card + the Coding-tab
+           badge above. -->
+      <details id="contextFilterPanel" class="card card--collapsible settings-card">
+        <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
             <h3 class="collapse-title">Context filter</h3>
           </span>
-        </div>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
         <div class="collapse-body">
           <p class="muted small">Machine-wide token-reduction hook (fleet-config#392) — the mode you pick here takes effect immediately for every coding-agent session on this PC, no restart needed.</p>
           <div id="contextFilterMode" class="segmented" role="group" aria-label="Context filter mode"></div>
@@ -1052,7 +1064,7 @@
           </div>
           <p id="contextFilterStatsEmpty" class="empty muted small">No savings telemetry yet.</p>
         </div>
-      </div>
+      </details>
     </section>
 
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>
