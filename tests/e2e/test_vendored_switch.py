@@ -143,6 +143,7 @@ def test_static_boolean_controls_have_no_checkbox_markup(
         "#antigravitySandbox",
         "#copilotSkipPerms",
         "#jobsEditBtn",
+        "#bootAutostartToggle",
         "#jobAlertOnFailureInput",
         "#jobConfirmInput",
         "#jobRunDialogDryRun",
