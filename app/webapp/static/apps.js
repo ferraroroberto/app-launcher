@@ -498,7 +498,7 @@ function renderList(host, items) {
 
     li.appendChild(main);
 
-    // Rename + remove are gated behind Settings → Edit mode, so the
+    // Rename + remove are gated behind Jobs tab → Edit mode, so the
     // lists stay icon-free in normal use (no per-row icon inflation).
     // Only the Apps tab's bat-based rows reach renderList — Coding-tab
     // rows render via renderCodingList instead.

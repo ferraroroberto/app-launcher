@@ -23,11 +23,11 @@ import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
-// One edit-mode state, two switches: the Settings-head toggle and the
-// Registered-jobs summary toggle (the Jobs tab is where editing actually
-// happens, so it carries its own friendly entry point).
+// One edit-mode state, one switch: the Registered-jobs summary toggle on
+// the Jobs tab (issue #719 removed the duplicate Settings-head toggle —
+// the Jobs tab is where editing actually happens, so it carries the entry
+// point for both Jobs-tab and Apps-tab row editing).
 function syncEditModeButtons() {
-  setSwitch(els.editMode, state.editMode);
   if (els.jobsEditBtn) setSwitch(els.jobsEditBtn, state.editMode);
 }
 
@@ -66,7 +66,6 @@ async function toggleBootAutostart() {
 
 function wireSettings() {
   syncEditModeButtons();
-  els.editMode.addEventListener('click', toggleEditMode);
   if (els.jobsEditBtn) els.jobsEditBtn.addEventListener('click', toggleEditMode);
   if (els.bootAutostartToggle) {
     els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);

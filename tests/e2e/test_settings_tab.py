@@ -14,6 +14,12 @@ every tab into a sixth navigation tab. Contract under test:
 Issue #435 follow-up adds the terminal-scrollback-depth setting and removes
 the TLS-badge / tunnel-URL status readout (needless exposure of the tunnel
 hostname in the UI) — both covered below.
+
+Issue #719 made the three Settings cards collapsible disclosure cards,
+closed by default, and removed the duplicate Edit-mode switch from the
+Settings card's header (the Jobs tab's "Registered jobs" switch is now the
+only entry point) — tests below open ``#settingsPanel`` before asserting on
+its body fields.
 """
 
 from __future__ import annotations
@@ -24,6 +30,12 @@ import pytest
 from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
+
+
+def _open_card(page: Page, panel_id: str) -> None:
+    """Expand a Settings-tab disclosure card (issue #719: closed by default)."""
+    page.locator(f"#{panel_id} > summary").click()
+    expect(page.locator(f"#{panel_id}")).to_have_js_property("open", True)
 
 
 def test_settings_tab_opens_pane_with_controls(
@@ -41,10 +53,12 @@ def test_settings_tab_opens_pane_with_controls(
         "aria-selected", "true"
     )
 
-    # The settings controls render inside the pane, no disclosure to open.
+    # The Settings card is a disclosure, closed by default (issue #719) — its
+    # body fields are hidden until the summary is tapped.
+    expect(authed_page.locator("#projectsDir")).to_be_hidden()
+    authed_page.locator("#settingsPanel > summary").click()
     expect(authed_page.locator("#projectsDir")).to_be_visible()
     expect(authed_page.locator("#saveSettings")).to_be_visible()
-    expect(authed_page.locator("#editMode")).to_be_visible()
 
 
 def test_settings_panel_absent_from_other_tabs(
@@ -87,6 +101,7 @@ def test_terminal_history_lines_field_loads_and_saves(
     from GET /api/config and a new value survives a Save + page reload."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     field = authed_page.locator("#terminalHistoryLines")
     expect(field).to_be_visible()
     # Pre-filled from the server default, not left blank.
@@ -100,6 +115,7 @@ def test_terminal_history_lines_field_loads_and_saves(
     # Reload to confirm it actually persisted server-side, not just DOM.
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#terminalHistoryLines")).to_have_value("5000")
 
 
@@ -113,6 +129,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     off and confirm the same across a reload."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     toggle = authed_page.locator("#bootAutostartToggle")
     expect(toggle).to_be_visible()
     expect(toggle).to_have_attribute("aria-checked", "false")
@@ -121,6 +138,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     expect(toggle).to_have_attribute("aria-checked", "true")
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
         "aria-checked", "true"
     )
@@ -131,6 +149,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
         "aria-checked", "false"
     )
@@ -142,8 +161,9 @@ def test_settings_boolean_controls_use_vendored_switch(
     """Settings booleans use the fleet switch track + sliding thumb."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
 
-    for selector in ("#editMode", "#bootAutostartToggle"):
+    for selector in ("#bootAutostartToggle",):
         toggle = authed_page.locator(selector)
         expect(toggle).to_have_class(re.compile(r"(?:^|\s)toggle(?:\s|$)"))
         expect(toggle.locator(".knob")).to_have_count(1)
@@ -161,6 +181,7 @@ def test_settings_status_readout_has_no_tls_or_tunnel_url(
     reachability warning may still render; TLS/tunnel text must not."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
     readout = authed_page.locator("#statusReadout")
     text = (readout.text_content() or "").lower()
     assert "tls" not in text
@@ -188,6 +209,7 @@ def test_context_filter_card_renders_and_reflects_api_mode(
     """
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "contextFilterPanel")
 
     panel = authed_page.locator("#contextFilterPanel")
     expect(panel).to_be_visible()
