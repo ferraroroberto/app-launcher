@@ -15,8 +15,10 @@ flowchart TB
     WEBAPPCMD["webapp_cmd.py"]
     HOSTCMD["session_host_cmd.py"]
     SCANCMD["scan_cmd.py"]
-    RUNJOBCMD["run_job_cmd.py\n(job executor)"]
+    RUNJOBCMD["run_job_cmd.py\n(job executor: orchestration + CLI)"]
+    RUNJOBSUP["run_job_supervision.py\noutput tee, resource sampler, watchdog (#723)"]
   end
+  RUNJOBCMD --> RUNJOBSUP
   CLIMAIN --> TRAYCMD
   CLIMAIN --> WEBAPPCMD
   CLIMAIN --> HOSTCMD
@@ -62,7 +64,7 @@ flowchart TB
   MGR --> WSERVER
 
   subgraph static["app/webapp/static/ — vanilla JS PWA"]
-    STATICJS["index.html, tabs.js, state.js,\nterminal*.js, sessions.js, jobs*.js,\nboard*.js, apps.js, life-os.js, voice.js"]
+    STATICJS["index.html, tabs.js, state.js,\nterminal*.js, sessions.js, jobs*.js,\nboard*.js, apps*.js, life-os.js, voice.js"]
   end
   R_MISC --> STATICJS
 

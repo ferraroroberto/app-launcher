@@ -14,8 +14,10 @@ import threading
 from types import SimpleNamespace
 from typing import List
 
-from app.cli.commands import run_job_cmd
-from app.cli.commands.run_job_cmd import _tee_pipe_to_file_and_console
+from app.cli.commands import run_job_supervision
+from app.cli.commands.run_job_supervision import (
+    tee_pipe_to_file_and_console,
+)
 from src import jobs as jobs_mod
 from src import jobs_config as jc
 from src.jobs_config import (
@@ -104,7 +106,7 @@ class TestTeeHelper:
             "sys.stdout", SimpleNamespace(buffer=console_buf), raising=False
         )
         fh = io.BytesIO()
-        _tee_pipe_to_file_and_console(io.BytesIO(data), fh)
+        tee_pipe_to_file_and_console(io.BytesIO(data), fh)
         assert fh.getvalue() == data
         assert console_buf.getvalue() == data
 
@@ -113,7 +115,7 @@ class TestTeeHelper:
         data = b"only file\n"
         monkeypatch.setattr("sys.stdout", SimpleNamespace(), raising=False)
         fh = io.BytesIO()
-        _tee_pipe_to_file_and_console(io.BytesIO(data), fh)
+        tee_pipe_to_file_and_console(io.BytesIO(data), fh)
         assert fh.getvalue() == data
 
 
@@ -159,7 +161,7 @@ class TestTeeStalledConsole:
     def test_stalled_console_does_not_block_file_half(self, monkeypatch):
         # More chunks than the console queue can hold, so a stalled
         # console is guaranteed to hit the drop path rather than block.
-        chunk_count = run_job_cmd._CONSOLE_QUEUE_MAX_CHUNKS * 4
+        chunk_count = run_job_supervision._CONSOLE_QUEUE_MAX_CHUNKS * 4
         data = b"".join(bytes([65 + (i % 26)]) * 4096 for i in range(chunk_count))
         console = _StalledConsole()
         monkeypatch.setattr(
@@ -167,15 +169,15 @@ class TestTeeStalledConsole:
         )
         # A wedged console can't consume the EOF sentinel, so the helper
         # waits out this bounded join; keep the test fast.
-        monkeypatch.setattr(run_job_cmd, "_CONSOLE_DRAIN_TIMEOUT_SECONDS", 0.5)
+        monkeypatch.setattr(run_job_supervision, "_CONSOLE_DRAIN_TIMEOUT_SECONDS", 0.5)
         drops: List[int] = []
-        monkeypatch.setattr(run_job_cmd, "_log_console_tee_drops", drops.append)
+        monkeypatch.setattr(run_job_supervision, "_log_console_tee_drops", drops.append)
 
         fh = io.BytesIO()
         done = threading.Event()
 
         def run() -> None:
-            _tee_pipe_to_file_and_console(io.BytesIO(data), fh)
+            tee_pipe_to_file_and_console(io.BytesIO(data), fh)
             done.set()
 
         reader = threading.Thread(target=run, daemon=True)
@@ -202,7 +204,7 @@ class TestTeeStalledConsole:
             "sys.stdout", SimpleNamespace(buffer=console), raising=False
         )
         fh = io.BytesIO()
-        _tee_pipe_to_file_and_console(io.BytesIO(data), fh)
+        tee_pipe_to_file_and_console(io.BytesIO(data), fh)
         assert fh.getvalue() == data
         # Stopped writing after the first failure instead of retrying.
         assert console.attempts == 1
