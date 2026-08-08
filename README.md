@@ -445,7 +445,8 @@ app-launcher/
 │   └── diagnostics.py         # log ring buffer + port-owner introspection
 │
 ├── scripts/
-│   ├── gen_icons.py           # thin caller onto project-scaffolding's shared brand_gen.py (rocket master)
+│   ├── gen_icons.py           # thin caller onto project-scaffolding's shared brand_gen.py (rocket master);
+│   │                          #   finds that checkout as this repo's sibling — PROJECT_SCAFFOLDING_DIR overrides
 │   ├── gen_tailscale_cert.py  # tailscale cert (real LE) + --check auto-renew
 │   ├── gen_token.py           # bearer token rotate / clear
 │   ├── set_password.py        # login password set / clear
