@@ -456,6 +456,18 @@ class PtySession:
     cols: int = 120
     _ring: str = ""
     _ring_lock: threading.Lock = field(default_factory=threading.Lock)
+    # Serializes the *input* side (issue #721). ``_ring_lock`` guards output
+    # only, and the manager's own lock guards the sessions registry — neither
+    # covers the PTY write path, which has had two concurrent writers since
+    # #611 added the HTTP ``/sessions/{sid}/input`` route alongside the
+    # WebSocket pump. A PC mirror (``role=pc``) and a phone (``role=phone``)
+    # attached to the same session is the intended shape, so two writers on
+    # one PTY is normal, not exotic. Held across the whole chunk loop in
+    # :meth:`write` and across the whole text→settle→CR sequence in
+    # :meth:`submit_input`, so a keystroke can neither interleave at ~512 B
+    # chunk granularity inside somebody else's paste nor land between a
+    # paste and its submitting CR.
+    _write_lock: threading.Lock = field(default_factory=threading.Lock)
     _subscribers: "set[asyncio.Queue]" = field(default_factory=set)
     _reader: Optional[threading.Thread] = None
     _exited: bool = False
@@ -649,6 +661,19 @@ class PtySession:
         drop into an honest failure instead of the previous unconditional
         ``{"ok": true}`` regardless of outcome. An empty payload is trivially
         ``True``: there was nothing to deliver, so nothing was dropped.
+
+        Serialized on ``_write_lock`` (issue #721) so a concurrent writer
+        can't interleave its own bytes between this payload's chunks.
+        """
+        with self._write_lock:
+            return self._write_locked(data)
+
+    def _write_locked(self, data: str) -> bool:
+        """:meth:`write`'s body, assuming ``_write_lock`` is already held.
+
+        Exists so :meth:`submit_input` can hold the lock across its whole
+        text→settle→CR sequence while still reusing the chunk-and-pace
+        logic, without needing a reentrant lock.
         """
         if not data:
             return True
@@ -716,14 +741,25 @@ class PtySession:
         Returns whether everything asked for reached the PTY — ``False`` on
         the same drop conditions as :meth:`write` (matches #607's contract:
         never claim delivery for a message that didn't land).
+
+        The whole sequence runs under ``_write_lock`` (issue #721): the CR is
+        a separate PTY write from the text it submits, so without the lock a
+        concurrent writer — the WebSocket pump serving a PC mirror on the
+        same session — can land its own bytes *between* them and turn a
+        submit into a literal newline in somebody else's message.
         """
+        with self._write_lock:
+            return self._submit_input_locked(data, submit)
+
+    def _submit_input_locked(self, data: str, submit: bool) -> bool:
+        """:meth:`submit_input`'s body, assuming ``_write_lock`` is held."""
         if not data:
             if not submit:
                 return True
-            return self.write("\r")
+            return self._write_locked("\r")
         framed = "\x1b[200~" + data + "\x1b[201~" if self._bracketed_paste_mode else data
         sent_at = time.time()
-        if not self.write(framed):
+        if not self._write_locked(framed):
             return False
         if not submit:
             return True
@@ -743,7 +779,7 @@ class PtySession:
                 if settled or now >= deadline:
                     break
                 time.sleep(_BULK_POLL_S)
-        return self.write("\r")
+        return self._write_locked("\r")
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))

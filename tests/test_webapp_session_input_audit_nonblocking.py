@@ -114,7 +114,12 @@ async def test_no_router_writes_audit_on_the_event_loop():
     from pathlib import Path
 
     routers_dir = Path(sessions_router.__file__).parent
-    call = re.compile(r"(?<!_)\baudit\.(\w+)\s*\(")
+    # ``audit_mod.`` is matched too (issue #721): ``_helpers.py``'s shared
+    # PTY-spawn tail takes the caller's own audit module as a parameter named
+    # ``audit_mod`` so per-router monkeypatches still apply, and that alias
+    # walked straight past the original ``audit.``-only pattern — the missed
+    # call site of the #660/#661/#674 sweep.
+    call = re.compile(r"(?<!_)\baudit(?:_mod)?\.(\w+)\s*\(")
     offenders: list[str] = []
     for path in sorted(routers_dir.glob("*.py")):
         for lineno, line in enumerate(

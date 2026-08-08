@@ -15,6 +15,7 @@ truncation or the retry-loop regression.
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from unittest.mock import MagicMock
 
@@ -166,3 +167,88 @@ async def test_write_swallows_pty_exception_but_reports_failure():
     # Must not raise, but must report the drop.
     assert session.write("hello") is False
     assert session.write("x" * (_WRITE_CHUNK_SIZE * 2)) is False
+
+
+# --------------------------------------------------------------------------
+# Issue #721: two concurrent writers on one PTY.
+#
+# Since #611 the session-host has had two independent write paths — the
+# WebSocket pump (``app/session_host/server.py`` per-message
+# ``asyncio.to_thread(session.write, …)``) and the HTTP ``/input`` route
+# (``asyncio.to_thread(session.submit_input, …)``) — and a PC mirror plus a
+# phone attached to the same session at once is the documented, intended
+# shape. Nothing serialized them: ``_ring_lock`` guards the *output* ring and
+# the manager's lock guards the registry. So a keystroke could land between
+# two ~512 B chunks of somebody else's paste, or between a paste and its
+# submitting CR.
+# --------------------------------------------------------------------------
+
+
+def _slow_write_session(
+    loop, per_write_s: float = 0.005
+) -> tuple[PtySession, list[str]]:
+    """A session whose PTY write is slow enough that an unserialized second
+    writer is near-certain to interleave, and which records call order."""
+    session = _make_session(loop)
+    calls: list[str] = []
+    record_lock = threading.Lock()
+
+    def _record(chunk: str) -> None:
+        time.sleep(per_write_s)
+        with record_lock:
+            calls.append(chunk)
+
+    session._pty.write.side_effect = _record
+    return session, calls
+
+
+@pytest.mark.asyncio
+async def test_concurrent_writes_do_not_interleave_chunks():
+    """A single keystroke arriving mid-paste must land wholly before or
+    wholly after it — never spliced between the paste's own chunks."""
+    loop = asyncio.get_running_loop()
+    session, calls = _slow_write_session(loop)
+    paste = "A" * (_WRITE_CHUNK_SIZE * 4)  # 4 chunks, paced
+
+    paster = threading.Thread(target=session.write, args=(paste,))
+    paster.start()
+    time.sleep(0.008)  # land the keystroke while the paste is mid-flight
+    session.write("B")
+    paster.join()
+
+    joined = "".join(calls)
+    assert joined in (paste + "B", "B" + paste), (
+        "a concurrent single-char write interleaved with a chunked paste — "
+        f"got {len(calls)} chunks in an order that splices them: {joined[:40]}…"
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch):
+    """``submit_input`` writes the text, waits for the paste to settle, then
+    writes the submitting CR as a *separate* PTY write (#166). A byte landing
+    in that gap turns the CR into a literal newline inside another user's
+    message, so the lock has to span the whole sequence, not just each
+    ``write()`` call."""
+    import src.session_host as sh
+
+    monkeypatch.setattr(sh, "_BULK_CAP_MS", 400)  # keep the settle wait short
+
+    loop = asyncio.get_running_loop()
+    session, calls = _slow_write_session(loop, per_write_s=0.001)
+    payload = "A" * 600  # >= _BULK_SUBMIT_THRESHOLD_CHARS -> takes the settle path
+
+    submitter = threading.Thread(
+        target=session.submit_input, args=(payload, True)
+    )
+    submitter.start()
+    time.sleep(0.05)  # squarely inside the settle wait
+    session.write("B")
+    submitter.join()
+
+    joined = "".join(calls)
+    assert joined == payload + "\r" + "B", (
+        "a concurrent write landed between the paste and its submitting CR "
+        f"(tail was {joined[-4:]!r}) — the lock must span text→settle→CR, "
+        "not just each write() call"
+    )
