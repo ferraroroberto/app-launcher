@@ -28,9 +28,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import MISSING, asdict, dataclass, field, replace
+from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from src._json_io import atomic_write_json
@@ -498,6 +499,102 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
     return cfg
 
 
+def _load_secrets(raw: dict, default: Any) -> Dict[str, str]:
+    """``secrets``, honouring the legacy ``webhook_secrets`` key.
+
+    The block shipped under ``webhook_secrets`` before #72 generalized it
+    from webhook secrets to every ``Job.env`` value, and old config files in
+    the wild still spell it that way.
+    """
+    return {
+        str(key): str(value)
+        for key, value in (
+            raw.get("secrets") or raw.get("webhook_secrets") or {}
+        ).items()
+    }
+
+
+def _load_api_tokens(raw: dict, default: Any) -> list:
+    """``api_tokens`` — a list of *records*, not of strings, and a malformed
+    entry is dropped rather than stringified: a half-written token record can
+    only ever fail closed."""
+    return [
+        dict(token)
+        for token in (raw.get("api_tokens") or [])
+        if isinstance(token, dict)
+    ]
+
+
+#: Fields whose on-disk shape can't be derived from the annotation alone.
+#: Everything else is handled by the generic loop in
+#: :func:`load_webapp_config`, so a new setting is declared once — on
+#: :class:`WebappConfig` — and both directions follow it.
+_CUSTOM_LOADERS: Dict[str, Callable[[dict, Any], Any]] = {
+    "secrets": _load_secrets,
+    "api_tokens": _load_api_tokens,
+}
+
+
+def _coerce(value: Any, annotation: Any, default: Any) -> Any:
+    """Cast one raw JSON value to the type its dataclass field declares.
+
+    ``from __future__ import annotations`` is active, so a field's ``type``
+    arrives as the *string* ``"str"`` / ``"int"`` / ``"bool"`` / ``"list"``;
+    both spellings are accepted so this keeps working if that import ever
+    goes away. An unusable number falls back to the declared default rather
+    than raising — a hand-edited config with a null in an int field
+    shouldn't take the whole webapp down. Unknown annotations pass through
+    untouched; those are the ones that belong in ``_CUSTOM_LOADERS``.
+    """
+    if annotation in (str, "str"):
+        return str(value)
+    if annotation in (bool, "bool"):
+        return bool(value)
+    if annotation in (int, "int"):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+    if annotation in (list, "list"):
+        return [str(item) for item in value]
+    return value
+
+
+def _load_field(spec, raw: dict) -> Any:
+    """Read one :class:`WebappConfig` field out of the parsed JSON.
+
+    Two default disciplines, both inherited from the per-field block this
+    replaced and both derivable from the field itself:
+
+    - A ``default_factory`` field (every path-ish setting, plus the list and
+      dict ones) treats *any* falsy on-disk value as absent and re-derives
+      the default — an empty ``projects_dir`` means "you never set one", not
+      "scan the filesystem root".
+    - A literal-default field keeps a falsy value as authored, because that
+      is how features here are switched off: an empty ``voice_transcriber_url``
+      hides the 🎤 button, an empty ``auth_token`` disables the bearer gate.
+
+    Collapsing the two would silently re-enable whatever the user turned off,
+    so the distinction is load-bearing rather than incidental. An explicit
+    JSON ``null`` is the one falsy value treated as absent everywhere: it is
+    never a meaningful "off" for any setting here (``""`` and ``0`` are), and
+    the old per-field block turned it into ``"None"`` or a ``TypeError``
+    depending on the field.
+    """
+    custom = _CUSTOM_LOADERS.get(spec.name)
+    if custom is not None:
+        return custom(raw, None)
+    if spec.default_factory is not MISSING:  # type: ignore[misc]
+        default = spec.default_factory()
+        value = raw.get(spec.name)
+        return _coerce(value, spec.type, default) if value else default
+    default = spec.default
+    value = raw.get(spec.name, default)
+    if value is None:
+        return default
+    return _coerce(value, spec.type, default)
+
+
 def _resolve_config_path(path: Optional[Path]) -> Path:
     """Resolve the config file path: explicit arg > ``LAUNCHER_WEBAPP_CONFIG``
     env override (e2e-gate isolation, issue #441) > the repo default.
@@ -545,106 +642,25 @@ def load_webapp_config(
         cfg = WebappConfig()
         return _apply_session_host_override(cfg) if apply_env_override else cfg
 
+    if not isinstance(raw, dict):
+        logger.warning(
+            f"⚠️  {target} is not a JSON object; falling back to defaults"
+        )
+        cfg = WebappConfig()
+        return _apply_session_host_override(cfg) if apply_env_override else cfg
+
+    # One generic pass over the dataclass's own field list (issue #722).
+    # The ~55 settings used to be enumerated three times — once as fields,
+    # once as a per-field ``raw.get`` block here, once as a payload dict in
+    # ``save_webapp_config`` — which meant three edits per new setting and a
+    # field silently stuck on its default whenever one was forgotten. The
+    # dataclass already carries the name, the type and the default, so it is
+    # the single declaration both directions now read.
     cfg = WebappConfig(
-        host=str(raw.get("host", DEFAULT_HOST)),
-        port=int(raw.get("port", DEFAULT_PORT)),
-        projects_dir=str(raw.get("projects_dir") or _default_projects_dir()),
-        projects_ignore=[str(p) for p in (raw.get("projects_ignore") or [])],
-        coding_favorites=[str(p) for p in (raw.get("coding_favorites") or [])],
-        coding_hidden_agents=[
-            str(p) for p in (raw.get("coding_hidden_agents") or [])
-        ],
-        apps_scan_root=str(raw.get("apps_scan_root") or _default_projects_dir()),
-        life_os_dir=str(raw.get("life_os_dir") or _default_life_os_dir()),
-        claude_config_dir=str(
-            raw.get("claude_config_dir") or _default_claude_config_dir()
-        ),
-        sessions_state_file=str(
-            raw.get("sessions_state_file") or _default_sessions_state_file()
-        ),
-        rate_limits_file=str(
-            raw.get("rate_limits_file") or _default_rate_limits_file()
-        ),
-        context_filter_mode_file=str(
-            raw.get("context_filter_mode_file") or _default_context_filter_mode_file()
-        ),
-        context_filter_log_file=str(
-            raw.get("context_filter_log_file") or _default_context_filter_log_file()
-        ),
-        github_owner=str(raw.get("github_owner", "ferraroroberto")),
-        claude_model=str(raw.get("claude_model", DEFAULT_CLAUDE_MODEL)),
-        claude_effort=str(raw.get("claude_effort", DEFAULT_CLAUDE_EFFORT)),
-        claude_verbose=bool(raw.get("claude_verbose", True)),
-        claude_debug=bool(raw.get("claude_debug", False)),
-        claude_permission_mode=str(
-            raw.get("claude_permission_mode", DEFAULT_CLAUDE_PERMISSION_MODE)
-        ),
-        antigravity_skip_permissions=bool(
-            raw.get("antigravity_skip_permissions", False)
-        ),
-        antigravity_sandbox=bool(raw.get("antigravity_sandbox", False)),
-        codex_effort=str(raw.get("codex_effort", DEFAULT_CODEX_EFFORT)),
-        codex_permission_mode=str(
-            raw.get("codex_permission_mode", DEFAULT_CODEX_PERMISSION_MODE)
-        ),
-        copilot_skip_permissions=bool(
-            raw.get("copilot_skip_permissions", False)
-        ),
-        copilot_model=str(raw.get("copilot_model", "")),
-        grok_effort=str(raw.get("grok_effort", DEFAULT_GROK_EFFORT)),
-        grok_permission_mode=str(
-            raw.get("grok_permission_mode", DEFAULT_GROK_PERMISSION_MODE)
-        ),
-        pi_model=str(raw.get("pi_model", DEFAULT_PI_MODEL)),
-        pi_effort=str(raw.get("pi_effort", DEFAULT_PI_EFFORT)),
-        pi_trust_mode=str(raw.get("pi_trust_mode", DEFAULT_PI_TRUST_MODE)),
-        chief_model=str(raw.get("chief_model", DEFAULT_CHIEF_MODEL)),
-        chief_worker_cap=int(
-            raw.get("chief_worker_cap", DEFAULT_CHIEF_WORKER_CAP)
-        ),
-        auth_token=str(raw.get("auth_token", "")),
-        auth_password=str(raw.get("auth_password", "")),
-        session_host_port=int(
-            raw.get("session_host_port", DEFAULT_SESSION_HOST_PORT)
-        ),
-        tailnet_allowlist=list(raw.get("tailnet_allowlist") or []),
-        claude_show_local_window=bool(
-            raw.get("claude_show_local_window", True)
-        ),
-        terminal_history_lines=int(
-            raw.get("terminal_history_lines", DEFAULT_TERMINAL_HISTORY_LINES)
-        ),
-        webauthn_rp_id=str(raw.get("webauthn_rp_id", "")),
-        webauthn_rp_name=str(raw.get("webauthn_rp_name", "Launcher")),
-        webauthn_origin=str(raw.get("webauthn_origin", "")),
-        voice_transcriber_url=str(
-            raw.get("voice_transcriber_url", "https://127.0.0.1:8443")
-        ),
-        photo_ocr_url=str(
-            raw.get("photo_ocr_url", "https://127.0.0.1:8444")
-        ),
-        llm_hub_url=str(
-            raw.get("llm_hub_url", "http://127.0.0.1:8000")
-        ),
-        pushover_api_token=str(raw.get("pushover_api_token", "")),
-        pushover_user_key=str(raw.get("pushover_user_key", "")),
-        notify_on_failure=bool(raw.get("notify_on_failure", False)),
-        notify_failure_streak=int(raw.get("notify_failure_streak", 0) or 0),
-        notify_failure_summary=bool(raw.get("notify_failure_summary", False)),
-        telegram_bot_token=str(raw.get("telegram_bot_token", "")),
-        telegram_chat_id=str(raw.get("telegram_chat_id", "")),
-        jobs_coverage_interval_minutes=int(
-            raw.get("jobs_coverage_interval_minutes", 60) or 0
-        ),
-        secrets={
-            str(k): str(v)
-            for k, v in (
-                raw.get("secrets") or raw.get("webhook_secrets") or {}
-            ).items()
-        },
-        api_tokens=[
-            dict(t) for t in (raw.get("api_tokens") or []) if isinstance(t, dict)
-        ],
+        **{
+            spec.name: _load_field(spec, raw)
+            for spec in dataclass_fields(WebappConfig)
+        }
     )
     if apply_env_override:
         _apply_session_host_override(cfg)
@@ -657,63 +673,10 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     target = _resolve_config_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    payload = {
-        "host": cfg.host,
-        "port": cfg.port,
-        "projects_dir": cfg.projects_dir,
-        "projects_ignore": cfg.projects_ignore,
-        "coding_favorites": cfg.coding_favorites,
-        "coding_hidden_agents": cfg.coding_hidden_agents,
-        "apps_scan_root": cfg.apps_scan_root,
-        "life_os_dir": cfg.life_os_dir,
-        "claude_config_dir": cfg.claude_config_dir,
-        "sessions_state_file": cfg.sessions_state_file,
-        "rate_limits_file": cfg.rate_limits_file,
-        "context_filter_mode_file": cfg.context_filter_mode_file,
-        "context_filter_log_file": cfg.context_filter_log_file,
-        "github_owner": cfg.github_owner,
-        "claude_model": cfg.claude_model,
-        "claude_effort": cfg.claude_effort,
-        "claude_verbose": cfg.claude_verbose,
-        "claude_debug": cfg.claude_debug,
-        "claude_permission_mode": cfg.claude_permission_mode,
-        "antigravity_skip_permissions": cfg.antigravity_skip_permissions,
-        "antigravity_sandbox": cfg.antigravity_sandbox,
-        "codex_effort": cfg.codex_effort,
-        "codex_permission_mode": cfg.codex_permission_mode,
-        "copilot_skip_permissions": cfg.copilot_skip_permissions,
-        "copilot_model": cfg.copilot_model,
-        "grok_effort": cfg.grok_effort,
-        "grok_permission_mode": cfg.grok_permission_mode,
-        "pi_model": cfg.pi_model,
-        "pi_effort": cfg.pi_effort,
-        "pi_trust_mode": cfg.pi_trust_mode,
-        "chief_model": cfg.chief_model,
-        "chief_worker_cap": cfg.chief_worker_cap,
-        "auth_token": cfg.auth_token,
-        "auth_password": cfg.auth_password,
-        "session_host_port": cfg.session_host_port,
-        "tailnet_allowlist": cfg.tailnet_allowlist,
-        "claude_show_local_window": cfg.claude_show_local_window,
-        "terminal_history_lines": cfg.terminal_history_lines,
-        "webauthn_rp_id": cfg.webauthn_rp_id,
-        "webauthn_rp_name": cfg.webauthn_rp_name,
-        "webauthn_origin": cfg.webauthn_origin,
-        "voice_transcriber_url": cfg.voice_transcriber_url,
-        "photo_ocr_url": cfg.photo_ocr_url,
-        "llm_hub_url": cfg.llm_hub_url,
-        "pushover_api_token": cfg.pushover_api_token,
-        "pushover_user_key": cfg.pushover_user_key,
-        "notify_on_failure": cfg.notify_on_failure,
-        "notify_failure_streak": cfg.notify_failure_streak,
-        "notify_failure_summary": cfg.notify_failure_summary,
-        "telegram_bot_token": cfg.telegram_bot_token,
-        "telegram_chat_id": cfg.telegram_chat_id,
-        "jobs_coverage_interval_minutes": cfg.jobs_coverage_interval_minutes,
-        "secrets": cfg.secrets,
-        "api_tokens": cfg.api_tokens,
-    }
-
+    # Derived straight from the dataclass (issue #722) — the field list, in
+    # declaration order, IS the on-disk schema. asdict() also deep-copies the
+    # list/dict fields, so the writer can never alias live config state.
+    payload = asdict(cfg)
     atomic_write_json(target, payload)
     logger.info(f"💾 Saved webapp_config to {target}")
     return target
