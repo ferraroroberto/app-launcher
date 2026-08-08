@@ -272,7 +272,12 @@ async def audit_session_start_and_maybe_mirror(
     real windows or writing real audit logs — still take effect when this
     helper runs on the caller's behalf.
     """
-    audit_mod.audit_event(
+    # Both writes go off the event loop (issue #721, the missed call site of
+    # the #610/#660/#661/#674 sweep): this is the shared tail every PTY spawn
+    # runs — Coding tab, Board issue-start/dispatch, and the fleet chief — so
+    # a slow audit write here freezes the single-worker loop on every launch.
+    await audit_off_loop(
+        audit_mod.audit_event,
         "session_start",
         session=sid,
         agent=agent,
@@ -282,7 +287,8 @@ async def audit_session_start_and_maybe_mirror(
         resume=resume,
         client=client_ip(request),
     )
-    audit_mod.session_log(
+    await audit_off_loop(
+        audit_mod.session_log,
         sid, "start", agent=agent, skill=skill, name=name, project=project,
     )
     # Mirror the session into a dedicated interactive terminal window on the
