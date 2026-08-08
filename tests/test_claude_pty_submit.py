@@ -10,10 +10,16 @@ idle-machine probe missed it.
 
 This test launches a real Claude Code ConPTY, pastes a dictation-sized
 payload through the production framing, and asserts that one carriage return
-actually submits it.  The payload is framed as an unknown slash command
-(``/probe-499-nonexistent ...``) so Claude Code answers locally ("Unknown
-slash command") — submit is observable with no model request.  Machines
-without the Claude CLI (CI included) skip cleanly.
+actually submits it.  Submit is observed as **the paste leaving the
+composer** — Claude Code's own local, synchronous reaction to Enter, so the
+assertion needs no model round trip and is not coupled to the wording of
+whatever answer comes back.  The payload is framed as an unknown slash
+command (``/probe-499-nonexistent ...``) purely so that a submission is
+harmless; it used to double as a local-answer trick ("Unknown slash
+command"), but Claude Code v2.1.225 routes unknown slash commands to the
+model instead, which silently turned that signal into a permanent red and a
+misleading "CR was swallowed" diagnostic (issue #728).  Machines without the
+Claude CLI (CI included) skip cleanly.
 
 Timing: like the Codex sibling (issue #493), the CR is sent only once the
 pasted payload has visibly rendered in the composer, and the response wait is
@@ -26,10 +32,11 @@ with the loaded-probe loop recorded on the issue.
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import sys
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, List, Tuple
 
 import pytest
 
@@ -45,12 +52,53 @@ pytestmark = pytest.mark.skipif(
 # NB: Claude renders a NO-BREAK SPACE (U+00A0) after the ">", so the marker
 # must not span that gap.  Present on every fresh composer paint.
 _COMPOSER_MARKER = 'Try "'
-# Unknown-slash-command payload: Claude Code answers it locally, so the probe
-# proves Submit without any model call.  One long line, no newlines — the
-# shape of a real dictation transcript (#499).
+# Unknown-slash-command payload: submitting it is harmless.  One long line,
+# no newlines — the shape of a real dictation transcript (#499).
 _PAYLOAD = "/probe-499-nonexistent " + (
     "the quick brown fox jumps over the lazy dog and keeps narrating " * 30
 ).strip()
+# Anything still sitting in the composer means the CR never submitted — the
+# payload renders either literally or as a collapsed chip (#499's loaded probe
+# saw both).
+_IN_COMPOSER = ("probe-499-nonexistent", "[Pasted text")
+# ``VtSnapshot.render()`` paints the live frame with one absolute
+# ``ESC[<row>;1H`` per row, after the plain-text scrollback history (#432).
+_FRAME_ROW = re.compile(r"\x1b\[(\d+);1H")
+_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# A composer border is a full-width run of box-drawing dashes; 20 is well
+# above anything that turns up inside real content.
+_RULE_MIN_DASHES = 20
+
+
+def _live_rows(frame: str) -> List[str]:
+    """The rows of the *current screen* out of a rendered frame.
+
+    Splitting on the absolute cursor-position escapes drops the scrolled-off
+    history ``render()`` prepends, which is what "what is on screen right
+    now" has to mean here — after a submit the payload is still in the
+    transcript above, and only its absence from the composer proves anything.
+    """
+    parts = _FRAME_ROW.split(frame)
+    rows: Dict[int, str] = {}
+    for i in range(1, len(parts) - 1, 2):
+        rows[int(parts[i])] = _ANSI.sub("", parts[i + 1])
+    return [rows[key] for key in sorted(rows)]
+
+
+def _composer_text(frame: str) -> str:
+    """The text sitting in Claude Code's composer box right now.
+
+    The composer is the region between the last two horizontal rules of the
+    live frame — below them sit only the model/branch status line and the
+    hint line. Falls back to the whole frame when the rules can't be located,
+    so a parse miss keeps the caller waiting rather than reporting a false
+    submit.
+    """
+    rows = _live_rows(frame)
+    rules = [i for i, row in enumerate(rows) if row.count("─") >= _RULE_MIN_DASHES]
+    if len(rules) < 2:
+        return "\n".join(rows) or frame
+    return "\n".join(rows[rules[-2] + 1 : rules[-1]])
 
 
 async def _wait_for_any(
@@ -130,30 +178,47 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
             elif now - quiet_since >= 0.35:
                 break
             await asyncio.sleep(0.05)
+
+        # The composer must be holding the payload right now, or the assertion
+        # below would pass without ever proving a submit happened.
+        before = _composer_text(session.snapshot_frame() or "")
+        assert any(marker in before for marker in _IN_COMPOSER), (
+            "the pasted payload is not in the composer before the CR is sent, "
+            "so the submit assertion below would pass vacuously; composer "
+            "reads as: " + repr(before[:200])
+        )
+
         session.write("\r")
 
-        # Submitted = Claude answered the unknown slash command locally.
-        # Checked against the raw output ring, not just the current VT frame
-        # — under load the error line can scroll or clear off-screen before
-        # a poll sees it (observed in the #499 probe loop). Swallowed = the
-        # payload (or its chip) is still sitting in the composer.
+        # Submitted = the payload left the composer. Enter empties the composer
+        # locally and synchronously, before any answer comes back, so this
+        # proves the submit itself without a model round trip and without
+        # depending on how a given Claude Code version words its reply (#728).
+        # A swallowed CR — the #499 defect this test exists for — leaves the
+        # payload sitting exactly where it was.
+        #
+        # Three consecutive clear reads, because a frame caught mid-repaint can
+        # momentarily show an empty composer while the paste is still there.
+        clear_reads = 0
         submitted = False
         for _ in range(150):  # 15 s ceiling
-            if "Unknown" in session._ring:
-                submitted = True
-                break
+            composer = _composer_text(session.snapshot_frame() or "")
+            if any(marker in composer for marker in _IN_COMPOSER):
+                clear_reads = 0
+            else:
+                clear_reads += 1
+                if clear_reads >= 3:
+                    submitted = True
+                    break
             if not session.alive:
                 break
             await asyncio.sleep(0.1)
         if not submitted:
-            frame = session.snapshot_frame() or ""
             pytest.fail(
-                "one Enter did not submit the bulk paste within 15 s — "
-                + (
-                    "payload still in the composer (CR was swallowed)"
-                    if "probe-499-nonexistent" in frame or "[Pasted text" in frame
-                    else "payload left the composer but no local response rendered"
-                )
+                "one Enter did not submit the bulk paste within 15 s — the "
+                "payload is still sitting in the composer, so the CR was "
+                "swallowed (issue #499). Composer reads as: "
+                + repr(_composer_text(session.snapshot_frame() or "")[:200])
             )
     finally:
         if session.alive:
