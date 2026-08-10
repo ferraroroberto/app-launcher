@@ -61,7 +61,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import launcher, session_client
+from src import instance_role, launcher, session_client
 from src.app_config import load_app_config
 from src.static_versioning import (
     compute_asset_hashes,
@@ -240,10 +240,14 @@ def _coverage_interval_minutes(cfg: object) -> float:
 async def _coverage_tick(app: FastAPI) -> None:
     """Periodically scan every job's schedule coverage and alert on breaks.
 
-    Skipped entirely on a *disposable* instance (the e2e / verify-before-ship
-    autoboot webapp, identified by ``LAUNCHER_SESSION_HOST_PORT`` exactly as
-    the mirror-window sweep above is): a throwaway instance pointed at a
-    scratch config must never push a real alert to the user's phone.
+    Started only on the **canonical** instance
+    (:func:`src.instance_role.canonical_instance`): a non-canonical checkout
+    carries the real config and real credentials but derives coverage from
+    its own empty ``webapp/jobs/``, so it must never push a real alert to
+    the user's phone. That covers the e2e / verify-before-ship autoboot
+    webapp — the ``LAUNCHER_SESSION_HOST_PORT`` case #697 anticipated, and
+    the same marker the mirror-window sweep above uses — *and* the git
+    worktree that actually pushed three false alerts (#736).
 
     Every scan is wrapped by :func:`src.jobs_coverage.check_and_alert`, which
     never raises — a wedged Task Scheduler or an unreachable Telegram must
@@ -272,13 +276,24 @@ async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
     coverage_task = None
     cfg = getattr(app.state, "webapp_config", None)
-    disposable = bool(os.environ.get(SESSION_HOST_PORT_ENV, "").strip())
-    if cfg is not None and not disposable and _coverage_interval_minutes(cfg) > 0:
+    canonical, role_reason = instance_role.canonical_instance()
+    if cfg is not None and canonical and _coverage_interval_minutes(cfg) > 0:
         coverage_task = asyncio.create_task(_coverage_tick(app))
-    elif disposable:
-        _log.debug(
-            "ℹ️ jobs coverage tick skipped — disposable instance (%s set)",
-            SESSION_HOST_PORT_ENV,
+    elif not canonical:
+        # The autoboot case is expected on every gate run, so it stays quiet;
+        # any *other* non-canonical instance is a surprise worth finding in
+        # the log after the phone buzzes (#736).
+        emit, mark = (
+            (_log.debug, "ℹ️")
+            if role_reason == instance_role.REASON_DISPOSABLE
+            else (_log.warning, "⚠️")
+        )
+        emit(
+            "%s jobs coverage tick skipped — non-canonical instance "
+            "(%s, root=%s); only the canonical checkout may alert (#736)",
+            mark,
+            role_reason,
+            instance_role.PROJECT_ROOT,
         )
     try:
         yield
