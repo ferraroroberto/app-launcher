@@ -21,7 +21,8 @@ Two independent halves, both answered from data the Jobs tab already reads:
   each expected fire against the on-disk run history.
 
 Never-flag rules (the acceptance criterion is "no false positives across a
-normal week"), all enforced in :func:`missed_fires` / :func:`coverage_for`:
+normal week"), all enforced in :func:`behavioural_coverage` /
+:func:`coverage_for`:
 
 * Paused jobs and ``schedule: none`` jobs are **exempt** — no state at all.
 * ``minutes``/``hourly`` jobs skip the behavioural half: their cadence is too
@@ -39,6 +40,18 @@ normal week"), all enforced in :func:`missed_fires` / :func:`coverage_for`:
 * A failed ``schtasks`` query yields ``unknown``, never "missing". An
   unestablished fact gets its own state and is never folded into the
   passing *or* the failing one.
+* A job with **no run records at all** yields ``unknown``, never
+  "missed fire" (issue #737). :func:`src.jobs_history.list_runs` returns
+  ``[]`` both for a job that genuinely never ran and for a checkout with no
+  run history to read, and the behavioural half cannot tell those apart —
+  so it says so. Run history counts as evidence only where some exists;
+  a job with *some* history that skipped a slot is still a ``problem``,
+  which is the case #697 exists for. The same rule as the ``schtasks`` one
+  above, applied to the other half. This is not hypothetical: a stray webapp
+  booted out of a git worktree (tracked files only, hence an empty
+  ``webapp/jobs/``) while holding a full real ``jobs.json`` flagged seven
+  jobs and pushed three false "never fired" alerts to the phone on
+  2026-08-10.
 
 Alerting reuses the exact channels the failure path uses
 (:func:`app.cli.commands.run_job_cmd._maybe_notify_failure`): global Pushover
@@ -55,7 +68,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_history
 from src._json_io import atomic_write_json
@@ -157,24 +170,59 @@ def _result(
     }
 
 
-def missed_fires(
+def _no_history_detail() -> str:
+    """The honest "cannot establish" line for a job with zero run records.
+
+    Two materially different diagnoses, so two messages (issue #737):
+
+    * The run-history store holds no per-job history at all — either the
+      directory is absent or nothing has ever been recorded under it. That is
+      the git-worktree shape that caused the false alerts, and naming the
+      resolved path is the breadcrumb that identifies the stray checkout on
+      sight, since :data:`src.jobs_history.JOBS_RUNS_DIR` is derived from the
+      module's own ``PROJECT_ROOT``.
+    * The store is live for other jobs but has nothing for this one.
+
+    Either way the verdict is ``unknown`` — this only picks the wording.
+    """
+    store = jobs_history.JOBS_RUNS_DIR
+    try:
+        populated = any(child.is_dir() for child in store.iterdir())
+    except OSError:
+        populated = False
+    if populated:
+        return (
+            "no run history for this job — a missed fire and a missing "
+            "history are indistinguishable"
+        )
+    return f"no run history at all under {store} — coverage not established"
+
+
+def behavioural_coverage(
     job: Job,
     *,
     now: Optional[datetime] = None,
     window_days: int = COVERAGE_WINDOW_DAYS,
     grace_seconds: float = MISSED_FIRE_GRACE_SECONDS,
-) -> List[datetime]:
-    """Expected fires of ``job`` in the recent window with no run record.
+) -> Tuple[List[datetime], Optional[str]]:
+    """The behavioural half's verdict: ``(missed fires, unknown reason)``.
 
-    Oldest first. Empty for the dense
+    Exactly one of the two is ever meaningful. ``(missed, None)`` is an
+    established answer — the run history was usable and these slots are
+    genuinely uncovered (``[]`` meaning "all covered", or nothing to check).
+    ``([], reason)`` means the question could not be answered at all, and the
+    caller must report ``unknown`` rather than either passing or failing the
+    job (issue #737; see the module docstring's never-flag rules).
+
+    Missed slots are oldest first. Both lists are empty for the dense
     :data:`~src.jobs_schtasks.FREQUENT_SCHEDULE_TYPES`, for a schedule with
-    no computable fires, and whenever the usable window collapses (see the
-    module docstring's never-flag rules — the window is clamped by
-    ``added_at`` and by the oldest retained run once history is at its
-    :data:`~src.jobs_history.MAX_RUNS_PER_JOB` cap).
+    no computable fires, and whenever the usable window collapses — the
+    window is clamped by ``added_at`` and by the oldest retained run once
+    history is at its :data:`~src.jobs_history.MAX_RUNS_PER_JOB` cap. Those
+    are not ``unknown``: nothing was expected, so nothing is unestablished.
     """
     if job.schedule.type in FREQUENT_SCHEDULE_TYPES:
-        return []
+        return [], None
     now = now or datetime.now()
     deadline = now - timedelta(seconds=grace_seconds)
     window_start = now - timedelta(days=window_days)
@@ -197,17 +245,46 @@ def missed_fires(
             window_start = oldest
 
     if deadline <= window_start:
-        return []
+        return [], None
+
+    fires = upcoming_fires(job.schedule, start=window_start, end=deadline)
+    if not fires:
+        return [], None
+    if not runs:
+        # Slots elapsed and not one run record exists to check them against.
+        # "Never fired" and "no history here to read" look identical from
+        # here, so neither is claimed.
+        detail = _no_history_detail()
+        logger.debug(f"coverage for {job.id} not established: {detail}")
+        return [], detail
 
     starts.sort()
     early = timedelta(seconds=MISSED_FIRE_EARLY_TOLERANCE_SECONDS)
     late = timedelta(seconds=grace_seconds)
     missed: List[datetime] = []
-    for fire in upcoming_fires(job.schedule, start=window_start, end=deadline):
+    for fire in fires:
         covered = any(fire - early <= s <= fire + late for s in starts)
         if not covered:
             missed.append(fire)
-    return missed
+    return missed, None
+
+
+def missed_fires(
+    job: Job,
+    *,
+    now: Optional[datetime] = None,
+    window_days: int = COVERAGE_WINDOW_DAYS,
+    grace_seconds: float = MISSED_FIRE_GRACE_SECONDS,
+) -> List[datetime]:
+    """Expected fires of ``job`` in the recent window with no run record.
+
+    The list half of :func:`behavioural_coverage`. Slots are only reported
+    where the run history could actually back them up; a job with no usable
+    history yields ``[]`` here and its ``unknown`` reason there.
+    """
+    return behavioural_coverage(
+        job, now=now, window_days=window_days, grace_seconds=grace_seconds
+    )[0]
 
 
 def coverage_for(
@@ -223,6 +300,13 @@ def coverage_for(
     half reports ``unknown`` instead of inventing missing tasks. A per-task
     ``None`` value means "registered, enabled-state unreadable": not a
     problem, because the task demonstrably exists.
+
+    Either half may come back unestablished, and the precedence is: a real
+    problem first (it rests on its own evidence and outranks the other
+    half's silence), then ``unknown`` if *either* half could not establish
+    its fact, then ``ok``. So a job whose Task Scheduler entry is missing is
+    still a ``problem`` even with no run history to read (issue #737), which
+    is the shape of both incidents #697 was built for.
     """
     if job.is_paused or job.schedule.type == "none":
         return _result(STATE_EXEMPT, detail="no active schedule")
@@ -238,7 +322,7 @@ def coverage_for(
             elif enabled is False:
                 disabled.append(name)
 
-    missed = missed_fires(job, now=now)
+    missed, behavioural_unknown = behavioural_coverage(job, now=now)
 
     problems: List[str] = []
     bits: List[str] = []
@@ -270,11 +354,13 @@ def coverage_for(
             disabled_tasks=disabled,
             missed=missed,
         )
+    unresolved: List[str] = []
     if structural_unknown:
-        return _result(
-            STATE_UNKNOWN,
-            detail="Task Scheduler query failed — coverage not established",
-        )
+        unresolved.append("Task Scheduler query failed — coverage not established")
+    if behavioural_unknown:
+        unresolved.append(behavioural_unknown)
+    if unresolved:
+        return _result(STATE_UNKNOWN, detail="; ".join(unresolved))
     return _result(STATE_OK, detail="schedule registered and firing")
 
 

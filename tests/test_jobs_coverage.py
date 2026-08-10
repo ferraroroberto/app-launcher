@@ -168,10 +168,16 @@ class TestStructuralCheck:
 class TestMissedFires:
     def test_elapsed_slot_with_no_run_is_missed(self, runs_root):
         job = _daily_job()
+        # One covered slot, so the job's history is usable evidence at all
+        # (issue #737 — a job with *zero* records is `unknown`, not missed).
+        _seed_run(
+            runs_root, "demo", "20260730",
+            started_at="2026-07-30T09:00:05", status="success",
+        )
         missed = cov.missed_fires(job, now=NOW)
-        # 3-day window ending 15 min before NOW → 2026-07-30/31 + 08-01 09:00.
+        # 3-day window ending 15 min before NOW → 2026-07-30/31 + 08-01 09:00,
+        # of which 07-30 fired.
         assert [m.isoformat(timespec="minutes") for m in missed] == [
-            "2026-07-30T09:00",
             "2026-07-31T09:00",
             "2026-08-01T09:00",
         ]
@@ -197,11 +203,15 @@ class TestMissedFires:
 
     def test_slot_inside_the_grace_window_is_not_yet_missed(self, runs_root):
         job = _daily_job(schedule=Schedule(type="daily", at="11:55"))
+        # Earlier slots covered, so the grace window — not a missing history
+        # (issue #737) — is what keeps today's 11:55 off the missed list.
+        for day in (30, 31):
+            _seed_run(
+                runs_root, "demo", f"202607{day}",
+                started_at=f"2026-07-{day}T11:55:03", status="success",
+            )
         # 11:55 is 5 min before NOW — inside the 15 min grace.
-        assert all(
-            m.isoformat(timespec="minutes") != "2026-08-01T11:55"
-            for m in cov.missed_fires(job, now=NOW)
-        )
+        assert cov.missed_fires(job, now=NOW) == []
 
     def test_frequent_schedules_are_not_enumerated(self, runs_root):
         job = _daily_job(schedule=Schedule(type="minutes", every=5))
@@ -241,11 +251,104 @@ class TestMissedFires:
 
     def test_missed_fire_reported_even_when_task_is_registered(self, runs_root):
         job = _daily_job()
+        for day in (30, 31):
+            _seed_run(
+                runs_root, "demo", f"202607{day}",
+                started_at=f"2026-07-{day}T09:00:05", status="success",
+            )
         result = cov.coverage_for(job, _states("\\AppLauncher\\demo"), now=NOW)
         assert result["state"] == cov.STATE_PROBLEM
         assert result["problems"] == [cov.PROBLEM_MISSED_FIRE]
-        assert result["missed_count"] == 3
+        assert result["missed_count"] == 1
         assert result["missed_fires"][-1] == "2026-08-01T09:00"
+
+
+# ----------------------------------------------- unestablished history (#737)
+
+
+class TestUnestablishedHistory:
+    """Absence of evidence is not evidence of failure (issue #737).
+
+    The 2026-08-10 incident: a stray webapp booted out of the git worktree
+    ``app-launcher-wt-727`` resolved ``JOBS_RUNS_DIR`` to *its own* empty
+    ``webapp/jobs/`` (worktrees carry tracked files only) while holding a
+    full, real ``config/jobs.json``. Every scheduled slot in the 3-day window
+    looked missed, seven jobs went ``problem``, and three Telegram alerts
+    reached the phone — all false. The behavioural half could not tell "this
+    job never ran" from "there is no history here to read", exactly the
+    conflation the structural half already refuses for a failed ``schtasks``
+    query.
+    """
+
+    def test_empty_history_store_is_unknown_not_problem(self, runs_root):
+        """The incident, reduced: long-standing job, registered task, no runs."""
+        job = _daily_job()
+        result = cov.coverage_for(job, _states("\\AppLauncher\\demo"), now=NOW)
+        assert result["state"] == cov.STATE_UNKNOWN
+        assert result["problems"] == []
+        assert result["missed_count"] == 0
+        assert result["missed_fires"] == []
+
+    def test_behavioural_half_reports_its_own_reason(self, runs_root):
+        missed, unknown = cov.behavioural_coverage(_daily_job(), now=NOW)
+        assert missed == []
+        assert unknown and "history" in unknown
+
+    def test_missed_fires_stays_empty_without_evidence(self, runs_root):
+        """The list API must not carry slots it can't back with evidence."""
+        assert cov.missed_fires(_daily_job(), now=NOW) == []
+
+    def test_absent_store_and_absent_job_dir_read_differently(self, runs_root):
+        """Distinct conditions, distinct details.
+
+        "nothing in this checkout has ever run" (the worktree shape) is a
+        different diagnosis from "the store is live, this job isn't in it".
+        """
+        job = _daily_job()
+        states = _states("\\AppLauncher\\demo")
+        empty_store = cov.coverage_for(job, states, now=NOW)["detail"]
+        _seed_run(
+            runs_root, "other", "20260801",
+            started_at="2026-08-01T09:00:01", status="success",
+        )
+        live_store = cov.coverage_for(job, states, now=NOW)["detail"]
+        assert empty_store != live_store
+        assert str(runs_root) in empty_store
+
+    def test_partial_history_still_flags_a_real_missed_fire(self, runs_root):
+        """The point of #697 survives: some history + a skipped slot = problem."""
+        job = _daily_job()
+        for day in (30, 31):
+            _seed_run(
+                runs_root, "demo", f"202607{day}",
+                started_at=f"2026-07-{day}T09:00:05", status="success",
+            )
+        result = cov.coverage_for(job, _states("\\AppLauncher\\demo"), now=NOW)
+        assert result["state"] == cov.STATE_PROBLEM
+        assert result["problems"] == [cov.PROBLEM_MISSED_FIRE]
+        assert result["missed_fires"] == ["2026-08-01T09:00"]
+
+    def test_structural_problem_still_wins_over_unknown_history(self, runs_root):
+        """A missing Task Scheduler entry has its own evidence — still a problem.
+
+        Both original #697 incidents were this shape, and they must keep
+        firing whether or not any run history exists.
+        """
+        result = cov.coverage_for(_daily_job(), {}, now=NOW)
+        assert result["state"] == cov.STATE_PROBLEM
+        assert result["problems"] == [cov.PROBLEM_TASK_MISSING]
+
+    def test_brand_new_job_with_no_history_is_ok_not_unknown(self, runs_root):
+        """Nothing was expected yet, so there is nothing left unestablished."""
+        job = _daily_job(added_at="2026-08-01T11:00:00")
+        result = cov.coverage_for(job, _states("\\AppLauncher\\demo"), now=NOW)
+        assert result["state"] == cov.STATE_OK
+
+    def test_frequent_schedule_with_no_history_is_ok_not_unknown(self, runs_root):
+        """`minutes`/`hourly` skip the behavioural half entirely — no state."""
+        job = _daily_job(schedule=Schedule(type="minutes", every=5))
+        result = cov.coverage_for(job, _states("\\AppLauncher\\demo"), now=NOW)
+        assert result["state"] == cov.STATE_OK
 
 
 # ------------------------------------------------------------------ scan
@@ -352,6 +455,23 @@ class TestCheckAndAlert:
         assert second == []
         assert telegram.notify.call_count == 1
 
+    def test_no_alert_for_a_job_with_no_run_history(self, runs_root, monkeypatch):
+        """End-to-end pin on the 2026-08-10 false alerts (issue #737).
+
+        Registered, enabled task + a long-standing schedule + an empty run
+        history is ``unknown``, and ``unknown`` never reaches the phone.
+        """
+        monkeypatch.setattr(
+            cov, "registered_task_states", lambda *a, **k: {"\\AppLauncher\\demo": True}
+        )
+        job = _daily_job(alert_on_failure=True)
+        telegram = MagicMock()
+        assert cov.check_and_alert(
+            self._cfg(notify_on_failure=True),
+            jobs=[job], now=NOW, telegram_notifier=telegram,
+        ) == []
+        telegram.notify.assert_not_called()
+
     def test_no_alert_when_job_flag_off(self, runs_root, monkeypatch):
         monkeypatch.setattr(
             cov, "registered_task_states", lambda *a, **k: {}
@@ -375,14 +495,14 @@ class TestCheckAndAlert:
         monkeypatch.setattr(
             cov, "registered_task_states", lambda *a, **k: registered["value"]
         )
-        real_missed_fires = cov.missed_fires
+        real_behavioural = cov.behavioural_coverage
         monkeypatch.setattr(
             cov,
-            "missed_fires",
+            "behavioural_coverage",
             lambda j, **k: (
-                missed["value"]
+                (missed["value"], None)
                 if missed["value"] is not None
-                else real_missed_fires(j, **k)
+                else real_behavioural(j, **k)
             ),
         )
 
