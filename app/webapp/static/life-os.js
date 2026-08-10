@@ -668,7 +668,11 @@ function convoActions(r) {
   if (r.resumable && r.skill) {
     const resumeBtn = document.createElement('button');
     resumeBtn.type = 'button';
-    resumeBtn.className = 'button-tint lifeos-convo-resume';
+    // Ghost + accent-btn, not button-tint: this app sizes every .button-tint
+    // at width:100%, which in a list row reads as the *view's* primary action
+    // and swamps the rest of the row. The accent-btn modifier gives the same
+    // accent emphasis at row scale.
+    resumeBtn.className = 'button-ghost accent-btn lifeos-convo-resume';
     resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume this';
     resumeBtn.addEventListener('click', function () { resumeConversation(r); });
     wrap.appendChild(resumeBtn);

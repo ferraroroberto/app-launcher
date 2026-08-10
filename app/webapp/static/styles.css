@@ -2429,8 +2429,7 @@ body.terminal-open {
 /* Real 44px geometry rather than an invisible expansion: these sit side by
    side, so expanded hit rectangles would overlap and land taps on the wrong
    control. */
-.lifeos-convo-actions .button-ghost,
-.lifeos-convo-actions .button-tint {
+.lifeos-convo-actions .button-ghost {
   min-height: var(--row-sm);
   min-width: var(--row-sm);
   display: inline-flex;
@@ -2438,7 +2437,7 @@ body.terminal-open {
   justify-content: center;
   gap: 6px;
 }
-.lifeos-convo-resume { padding: 0 14px; }
+.lifeos-convo-resume { padding-inline: 14px; }
 /* Not a disabled button: a phone has no hover to explain one, and a capture
    with no stored session id is a normal state for a quarter of the archive. */
 .lifeos-convo-nosession {
