@@ -86,14 +86,30 @@ def resolve_venv_python(script_path: Path) -> Optional[Path]:
 # ----------------------------------------------------------- schtasks I/O
 
 
+#: ``schtasks.exe`` writes the **OEM** code page (cp850 on this fleet), which
+#: is not valid UTF-8. Decoding is pinned here rather than left to the ambient
+#: locale because the webapp is spawned with ``PYTHONUTF8=1`` /
+#: ``PYTHONIOENCODING=utf-8`` (``app/webapp/manager.py``), which makes
+#: ``text=True`` decode as UTF-8 — and a UTF-8 decode of OEM bytes yields *no
+#: stdout at all*, so `_bulk_records` concluded "query failed" and every
+#: schtasks-backed feature degraded silently: blank ``next_run`` on all 20
+#: jobs and the structural half of missed-fire coverage stuck at ``unknown``
+#: fleet-wide, for weeks (issue #743). ``errors="replace"`` keeps one odd byte
+#: from costing the whole query — a mangled character in a task name is
+#: recoverable, a dead scheduler view is not.
+SCHTASKS_ENCODING = "oem"
+SCHTASKS_ENCODING_ERRORS = "replace"
+
+
 def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
     """Invoke ``schtasks.exe`` with ``argv``. Module-level so tests can mock it."""
     return subprocess.run(
         argv,
         capture_output=True,
-        text=True,
         check=False,
         creationflags=NO_WINDOW,
+        encoding=SCHTASKS_ENCODING,
+        errors=SCHTASKS_ENCODING_ERRORS,
     )
 
 
@@ -475,6 +491,16 @@ def _bulk_records(
     runner = runner or _run_schtasks
     proc = runner(["schtasks", "/Query", "/FO", "LIST", "/V"])
     if proc.returncode != 0 or not proc.stdout:
+        # Silence here is what let #743 hide for weeks: every consumer
+        # degrades politely to "unknown"/blank, so a dead query looks like a
+        # quiet system. Say so once, with the two facts needed to diagnose it.
+        logger.warning(
+            "⚠️  schtasks bulk query failed (rc=%s, stdout=%d chars) — "
+            "next-run and coverage will report unknown: %s",
+            proc.returncode,
+            len(proc.stdout or ""),
+            (proc.stderr or "").strip()[:200] or "<no stderr>",
+        )
         return None
     return _parse_bulk_records(proc.stdout)
 
