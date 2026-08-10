@@ -149,6 +149,21 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Life OS per-skill file tree (#102) — same sensitivity as the file endpoint above.",
     ),
     (
+        lambda p: (
+            p.startswith("/api/life-os/skills/") and p.endswith("/conversations")
+        ),
+        "passkey",
+        "Life OS conversation index (#727): the digest — topic, decisions, open "
+        "loops — is a distillation of terminal content, so it is gated exactly "
+        "like the captures it summarises.",
+    ),
+    (
+        lambda p: p == "/api/life-os/conversations/search",
+        "passkey",
+        "Life OS conversation search (#727): searches the full capture text, so "
+        "a hit can quote anything the terminal ever showed.",
+    ),
+    (
         lambda p: p == "/api/system-map/image",
         "tailnet",
         "Fleet system map (#173): rendered PNG can carry fleet topology. No passkey "

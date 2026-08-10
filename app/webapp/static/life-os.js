@@ -70,6 +70,17 @@ export function renderSkills() {
     browseBtn.addEventListener('click', function () { openBrowser(s); });
     actions.appendChild(browseBtn);
 
+    // 🕘 Conversations — the digested index for this skill, with a per-row ↺
+    // that reattaches to that exact session (#727).
+    const convoBtn = document.createElement('button');
+    convoBtn.type = 'button';
+    convoBtn.className = 'icon-btn agent-btn lifeos-convo-btn';
+    convoBtn.innerHTML = icon('messages-square');
+    convoBtn.title = 'Past conversations with ' + s.name;
+    convoBtn.setAttribute('aria-label', 'Conversations with ' + s.name);
+    convoBtn.addEventListener('click', function () { openConvos(s); });
+    actions.appendChild(convoBtn);
+
     // Launch — fires a fresh Claude session that auto-invokes /<skill>.
     const launchBtn = document.createElement('button');
     launchBtn.type = 'button';
@@ -207,8 +218,13 @@ async function launchSkill(s) {
 // The file currently shown in the doc view — drives the toolbar 🗑️ (which
 // deletes conversation logs only). Null while we're on the file list.
 let openDocFile = null;
+// True when the browser overlay was opened *only* to read one capture from
+// the Conversations view (#727) — there is no file list behind it, so
+// closing the document closes the whole overlay and lands back on that view.
+let captureOnlyDoc = false;
 
 async function openBrowser(s) {
+  captureOnlyDoc = false;
   state.lifeOsBrowser = { skillId: s.id, name: s.name, files: [] };
   els.lifeOsBrowserTitle.textContent = s.name;
   closeDoc();                       // start on the full-screen file list
@@ -298,10 +314,24 @@ async function deleteFile(f) {
     );
     toast('Deleted ' + f.name, 'good', { icon: 'trash-2' });
     closeDoc();             // in case the deleted file was the open one
-    await loadFileList();
+    await refreshAfterLogChange();
   } catch (exc) {
     apiFailToast('Delete failed', exc);
   }
+}
+
+// A conversation log can be deleted or renamed from either surface — the
+// Browse file list or the Conversations view (#727). Refresh whichever one
+// is actually on screen; refreshing the other would render into a hidden
+// overlay and leave the visible list stale.
+async function refreshAfterLogChange() {
+  if (els.lifeOsConvos && !els.lifeOsConvos.hidden) {
+    const query = els.lifeOsConvoQuery.value.trim();
+    if (query) await runConvoSearch(query);
+    else if (convoScope()) await loadConvos();
+    return;
+  }
+  await loadFileList();
 }
 
 // Lower-case, spaces (and any other punctuation) → single dashes, trimmed —
@@ -330,7 +360,7 @@ async function renameFile(f) {
     });
     toast('Renamed to ' + (body.name || slug), 'good', { icon: 'pencil' });
     closeDoc();             // name (and path) changed — back to the list
-    await loadFileList();
+    await refreshAfterLogChange();
   } catch (exc) {
     apiFailToast('Rename failed', exc);
   }
@@ -384,8 +414,14 @@ function openDoc(f) {
   if (els.lifeOsDocRename) els.lifeOsDocRename.hidden = !editable;
 }
 
-// Close the open file → back to the full-screen file list.
+// Close the open file → back to the full-screen file list, or — when the
+// overlay only ever held this one capture — back to the Conversations view.
 function closeDoc() {
+  if (captureOnlyDoc) {
+    captureOnlyDoc = false;
+    closeBrowser();
+    return;
+  }
   openDocFile = null;
   els.lifeOsFileContent.hidden = true;
   els.lifeOsFileContent.innerHTML = '';
@@ -403,6 +439,326 @@ function closeBrowser() {
   state.lifeOsBrowser = null;
   closeDoc();
   els.lifeOsBrowser.hidden = true;
+}
+
+// --------------------------------------------------- conversations (#727)
+// The digested conversation index + ranked cross-skill search, with a ↺ that
+// reattaches to one exact session instead of opening Claude's native picker.
+// Opened scoped from a tile's 🕘, or unscoped from the Skills header's 🔎.
+//
+// { skill: <id|null>, name: <label>, allSkills: bool, rows: [] }
+let convoView = null;
+let convoQueryTimer = null;
+
+function convoScope() {
+  // The skill filter actually sent to the server: null once the view has been
+  // widened to every skill, even though it was opened from one tile.
+  return (convoView && !convoView.allSkills) ? convoView.skill : null;
+}
+
+export function openConvos(skill) {
+  // A cached older index.html with this newer bundle would have no overlay to
+  // render into — bail rather than throwing on the first property access.
+  if (!els.lifeOsConvos || !els.lifeOsConvoQuery) return;
+  convoView = {
+    skill: skill ? skill.id : null,
+    name: skill ? skill.name : 'Conversations',
+    allSkills: !skill,
+    rows: [],
+  };
+  els.lifeOsConvosTitle.textContent = convoView.name;
+  els.lifeOsConvoQuery.value = '';
+  // The scope toggle only means something for a view that started scoped.
+  if (els.lifeOsConvosScope) {
+    els.lifeOsConvosScope.hidden = !skill;
+    els.lifeOsConvosScope.setAttribute('aria-pressed', 'false');
+  }
+  els.lifeOsConvos.hidden = false;
+  if (skill) loadConvos();
+  else showConvoState('empty', 'Search every skill’s conversations.');
+}
+
+function closeConvos() {
+  convoView = null;
+  window.clearTimeout(convoQueryTimer);
+  els.lifeOsConvos.hidden = true;
+  els.lifeOsConvoList.innerHTML = '';
+}
+
+// The five lifecycle states render through one canonical block — a glyph, a
+// one-line reason, and at most one Retry — never a blank pane and never a
+// toast for something that isn't a user-initiated command.
+const CONVO_STATE_ICON = {
+  loading: 'hourglass',
+  empty: 'messages-square',
+  error: 'triangle-alert',
+};
+
+function showConvoState(kind, message, retry) {
+  const host = els.lifeOsConvoState;
+  if (!host) return;
+  els.lifeOsConvoList.innerHTML = '';
+  host.innerHTML = '';
+  host.hidden = false;
+  const glyph = document.createElement('div');
+  glyph.innerHTML = icon(CONVO_STATE_ICON[kind] || 'messages-square');
+  host.appendChild(glyph);
+  const text = document.createElement('div');
+  text.textContent = message;
+  host.appendChild(text);
+  if (retry) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'button-ghost lifeos-convo-retry';
+    btn.textContent = 'Retry';
+    btn.addEventListener('click', retry);
+    host.appendChild(btn);
+  }
+}
+
+function hideConvoState() {
+  if (els.lifeOsConvoState) els.lifeOsConvoState.hidden = true;
+}
+
+// Browse one skill's index — the no-query view. `available: false` means the
+// indexer simply hasn't digested this skill yet; that's an honest empty
+// state, not an error.
+async function loadConvos() {
+  const skill = convoView && convoView.skill;
+  if (!skill) return;
+  showConvoState('loading', 'Reading conversations…');
+  try {
+    const body = await jsonApi(
+      '/api/life-os/skills/' + encodeURIComponent(skill) + '/conversations'
+    );
+    if (!convoView || convoView.skill !== skill) return;   // view moved on
+    if (!body.available) {
+      showConvoState('empty', 'No conversation index yet for this skill.');
+      return;
+    }
+    renderConvoRows(body.conversations || [], { scoped: true });
+  } catch (exc) {
+    showConvoState('error', convoFailure(exc), loadConvos);
+  }
+}
+
+// Ranked search across every skill (or the current scope). The server owns
+// the ranking; a missing CLI or database comes back as available:false with a
+// short reason, which reads as "search unavailable" — never an error toast.
+async function runConvoSearch(query) {
+  const scope = convoScope();
+  showConvoState('loading', 'Searching…');
+  let url = '/api/life-os/conversations/search?q=' + encodeURIComponent(query);
+  if (scope) url += '&skill=' + encodeURIComponent(scope);
+  try {
+    const body = await jsonApi(url);
+    if (!convoView || els.lifeOsConvoQuery.value.trim() !== query) return;
+    if (!body.available) {
+      showConvoState('error', 'Search unavailable — ' + (body.reason || 'try again later.'));
+      return;
+    }
+    const rows = body.results || [];
+    if (!rows.length) {
+      showConvoState('empty', 'Nothing matched “' + query + '”.');
+      return;
+    }
+    renderConvoRows(rows, { scoped: !!scope });
+  } catch (exc) {
+    showConvoState('error', convoFailure(exc), function () { runConvoSearch(query); });
+  }
+}
+
+// The content endpoints are Tailscale + passkey gated — say that plainly
+// rather than leaking a status code onto the phone.
+function convoFailure(exc) {
+  if (exc && exc.status === 403) {
+    return 'Conversations are Tailscale-only (and passkey-gated). Open the ' +
+      'launcher over your Tailscale URL on an enrolled device.';
+  }
+  return 'Could not load conversations.';
+}
+
+function onConvoQuery() {
+  window.clearTimeout(convoQueryTimer);
+  const query = els.lifeOsConvoQuery.value.trim();
+  convoQueryTimer = window.setTimeout(function () {
+    if (query) { runConvoSearch(query); return; }
+    // Cleared box: back to whatever the view shows with no query.
+    if (convoScope()) loadConvos();
+    else showConvoState('empty', 'Search every skill’s conversations.');
+  }, 250);
+}
+
+function renderConvoRows(rows, opts) {
+  const host = els.lifeOsConvoList;
+  hideConvoState();
+  host.innerHTML = '';
+  convoView.rows = rows;
+  if (!rows.length) {
+    showConvoState('empty', 'No conversations yet.');
+    return;
+  }
+  rows.forEach(function (r) {
+    host.appendChild(convoRow(r, opts && opts.scoped));
+  });
+}
+
+function convoRow(r, scoped) {
+  const li = document.createElement('li');
+  li.className = 'lifeos-convo-row';
+
+  const head = document.createElement('button');
+  head.type = 'button';
+  head.className = 'lifeos-convo-head';
+  head.setAttribute('aria-expanded', 'false');
+  const when = document.createElement('span');
+  when.className = 'lifeos-convo-when';
+  when.textContent = r.date || '';
+  head.appendChild(when);
+  const topic = document.createElement('span');
+  topic.className = 'lifeos-convo-topic';
+  topic.textContent = r.topic || r.slug || r.file || 'untitled';
+  head.appendChild(topic);
+  // Which skill a hit came from only matters when the list spans several.
+  if (!scoped && r.skill) {
+    const tag = document.createElement('span');
+    tag.className = 'lifeos-convo-tag';
+    tag.textContent = r.skill;
+    head.appendChild(tag);
+  }
+  li.appendChild(head);
+
+  const detail = document.createElement('div');
+  detail.className = 'lifeos-convo-detail';
+  detail.hidden = true;
+  appendConvoField(detail, 'Decisions', r.decisions);
+  appendConvoField(detail, 'Open loops', r.open_loops);
+  detail.appendChild(convoActions(r));
+  li.appendChild(detail);
+
+  head.addEventListener('click', function () {
+    const open = detail.hidden;
+    detail.hidden = !open;
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  return li;
+}
+
+// The digest writes a literal "none" when a section is empty — showing that
+// back as a field is noise, so it's dropped.
+function appendConvoField(host, label, value) {
+  const text = String(value || '').trim();
+  if (!text || text.toLowerCase() === 'none') return;
+  const p = document.createElement('p');
+  p.className = 'lifeos-convo-field';
+  const b = document.createElement('strong');
+  b.textContent = label + ': ';
+  p.appendChild(b);
+  p.appendChild(document.createTextNode(text));
+  host.appendChild(p);
+}
+
+function convoActions(r) {
+  const wrap = document.createElement('div');
+  wrap.className = 'lifeos-convo-actions';
+
+  // The launch route is per-skill, so a hit with no skill has nowhere to
+  // resume into — treat it exactly like a missing session id rather than
+  // rendering a button that can only 404.
+  if (r.resumable && r.skill) {
+    const resumeBtn = document.createElement('button');
+    resumeBtn.type = 'button';
+    resumeBtn.className = 'button-tint lifeos-convo-resume';
+    resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume this';
+    resumeBtn.addEventListener('click', function () { resumeConversation(r); });
+    wrap.appendChild(resumeBtn);
+  } else {
+    // No stored session id (or a non-claude agent): the conversation is
+    // readable but cannot be reopened. Said out loud, because a phone has no
+    // hover to explain a greyed-out button — and roughly a quarter of the
+    // archive predates the stored id.
+    const chip = document.createElement('span');
+    chip.className = 'lifeos-convo-nosession';
+    chip.textContent = 'no session';
+    chip.title = 'This conversation was captured before its session id was ' +
+      'stored, so it can be read but not reopened.';
+    wrap.appendChild(chip);
+  }
+
+  if (r.path) {
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'button-ghost';
+    openBtn.innerHTML = icon('book-open');
+    openBtn.title = 'Open the raw capture';
+    openBtn.setAttribute('aria-label', 'Open the raw capture');
+    openBtn.addEventListener('click', function () { openCapture(r); });
+    wrap.appendChild(openBtn);
+
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.className = 'button-ghost';
+    delBtn.innerHTML = icon('trash-2');
+    delBtn.title = 'Delete this conversation log';
+    delBtn.setAttribute('aria-label', 'Delete this conversation log');
+    delBtn.addEventListener('click', function () {
+      deleteFile({ path: r.path, name: r.file });
+    });
+    wrap.appendChild(delBtn);
+
+    const renBtn = document.createElement('button');
+    renBtn.type = 'button';
+    renBtn.className = 'button-ghost';
+    renBtn.innerHTML = icon('pencil');
+    renBtn.title = 'Rename this conversation log';
+    renBtn.setAttribute('aria-label', 'Rename this conversation log');
+    renBtn.addEventListener('click', function () {
+      renameFile({ path: r.path, name: r.file });
+    });
+    wrap.appendChild(renBtn);
+  }
+  return wrap;
+}
+
+// Read one capture in the existing document viewer, layered over this view —
+// closing it comes straight back here, not to a file list we never loaded.
+function openCapture(r) {
+  captureOnlyDoc = true;
+  els.lifeOsBrowserTitle.textContent = r.skill || 'conversation';
+  els.lifeOsFileList.innerHTML = '';
+  els.lifeOsBrowser.hidden = false;
+  loadFile({ path: r.path, name: r.file, category: 'conversations' });
+}
+
+// ↺ — reattach to this exact conversation. Honours the same Detached toggle
+// and model combo as every other Life OS launch; the server validates the id
+// and composes `--resume <sid>`.
+async function resumeConversation(r) {
+  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
+    ? 'remote' : 'pty';
+  const model = lifeOsModel();
+  const payload = { mode: mode, model: model, resume_sid: r.sid };
+  if (mode !== 'remote') applyLaunchSizePayload(payload);
+  try {
+    const body = await jsonApi(
+      '/api/life-os/skills/' + encodeURIComponent(r.skill) + '/launch',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    );
+    toast(
+      'Resumed ' + (r.topic || r.skill) + modelTag(model) +
+        (mode === 'remote' ? ' (detached)' : ''),
+      'good',
+      { icon: 'rotate-ccw' }
+    );
+    closeConvos();
+    handleLaunchResponse(body.session);
+  } catch (exc) {
+    apiFailToast('Resume failed', exc);
+  }
 }
 
 // ------------------------------------------------ minimal markdown render
@@ -498,6 +854,37 @@ export function wireLifeOs() {
   }
   if (els.lifeOsRecapLaunch) {
     els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
+  }
+  // Conversations view (#727): ✕ back to the tiles, the debounced query box,
+  // and the scope toggle that widens a skill-scoped view to every skill.
+  if (els.lifeOsConvosBack) {
+    els.lifeOsConvosBack.addEventListener('click', closeConvos);
+  }
+  if (els.lifeOsConvoQuery) {
+    els.lifeOsConvoQuery.addEventListener('input', onConvoQuery);
+  }
+  if (els.lifeOsConvosScope) {
+    els.lifeOsConvosScope.addEventListener('click', function () {
+      if (!convoView) return;
+      convoView.allSkills = !convoView.allSkills;
+      els.lifeOsConvosScope.setAttribute(
+        'aria-pressed', convoView.allSkills ? 'true' : 'false'
+      );
+      els.lifeOsConvosTitle.textContent =
+        convoView.allSkills ? 'All skills' : convoView.name;
+      onConvoQuery();
+    });
+  }
+  // The Skills header 🔎 opens the same view unscoped. It shares the summary
+  // with the model combo and the toggles, so a tap must not also collapse
+  // the panel (same reason as the switches below).
+  if (els.lifeOsConvoSearch) {
+    els.lifeOsConvoSearch.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      ev.preventDefault();
+      openConvos(null);
+      if (els.lifeOsConvoQuery) els.lifeOsConvoQuery.focus();
+    });
   }
   // Detached/Resume are plain client-side switches (issue #355) — no server
   // config, just read at launch time above. They live in the Skills card's

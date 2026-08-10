@@ -816,6 +816,15 @@
                   <button type="button" role="option" data-value="fable" aria-selected="false">Fable</button>
                 </span>
               </span>
+              <!-- Cross-skill conversation search (#727): opens the same
+                   Conversations view a tile's 🕘 opens, but unscoped — every
+                   skill at once, which is the only way to find a conversation
+                   when you can't remember which skill it happened in. -->
+              <button type="button" id="lifeOsConvoSearch" class="lifeos-convo-open"
+                     aria-label="Search all conversations"
+                     title="Search conversations across every skill">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+              </button>
               <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
                      aria-label="Launch detached"
                      title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
@@ -1080,6 +1089,34 @@
       <div class="lifeos-browser-body">
         <ul id="lifeOsFileList" class="lifeos-file-list" aria-label="Skill files"></ul>
         <div id="lifeOsFileContent" class="lifeos-file-content" hidden></div>
+      </div>
+    </div>
+
+    <!-- Conversations (#727): the digested conversation index + ranked
+         cross-skill search, with a per-row ↺ that reattaches to that exact
+         session instead of opening Claude's native picker. Same overlay
+         chrome as the Browse viewer above. -->
+    <div id="lifeOsConvos" class="terminal-overlay" hidden>
+      <div class="terminal-bar">
+        <button id="lifeOsConvosBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
+        <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
+        <div class="terminal-bar-actions">
+          <!-- Scope toggle: a view opened from a skill tile starts scoped to
+               that skill; this widens it to every skill without leaving the
+               view. Hidden when the view was already opened unscoped. -->
+          <button id="lifeOsConvosScope" type="button" class="term-btn"
+                  aria-pressed="false" title="Search every skill, not just this one" hidden>All skills</button>
+        </div>
+      </div>
+      <div class="lifeos-convos-body">
+        <div class="lifeos-convo-search">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="lifeOsConvoQuery" type="search" class="input-native"
+                 autocomplete="off" autocapitalize="none" spellcheck="false"
+                 placeholder="Search conversations…" aria-label="Search conversations">
+        </div>
+        <ul id="lifeOsConvoList" class="lifeos-convo-list" aria-label="Conversations"></ul>
+        <div id="lifeOsConvoState" class="empty" role="status" aria-live="polite" hidden></div>
       </div>
     </div>
 
