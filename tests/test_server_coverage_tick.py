@@ -127,14 +127,23 @@ class TestCanonicalInstancePredicate:
         assert canonical is True
         assert reason == instance_role.REASON_FORCED_ON
 
-    def test_this_very_checkout_is_canonical(self, monkeypatch):
+    def test_this_very_checkout_matches_its_own_git_shape(self, monkeypatch):
         # The regression guard's other half: whatever the predicate does to
-        # strays, the real installed instance must keep alerting.
+        # synthetic roots, it must classify the checkout it is *actually*
+        # running in correctly.
+        #
+        # The expectation is derived, not hardcoded (#740). Linked worktrees
+        # are how this fleet does concurrent same-repo work, so this file is
+        # routinely run from one; asserting a flat `True` here passes only in
+        # the primary tree and fails every worktree agent — which is exactly
+        # what happened to #737's gate run.
         monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
-        assert instance_role.canonical_instance() == (
-            True,
-            instance_role.REASON_CANONICAL,
+        expected = (
+            (True, instance_role.REASON_CANONICAL)
+            if (instance_role.PROJECT_ROOT / ".git").is_dir()
+            else (False, instance_role.REASON_LINKED_WORKTREE)
         )
+        assert instance_role.canonical_instance() == expected
 
 
 @pytest.mark.asyncio
@@ -178,6 +187,15 @@ class TestLifespanGate:
         self, monkeypatch
     ):
         monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
+        # Assert the gate's *wiring*, not the filesystem this test happens to
+        # run on (#740). Run from a linked worktree the real predicate
+        # correctly returns False, the gate correctly starts no tick, and this
+        # test's subject would never exist.
+        monkeypatch.setattr(
+            instance_role,
+            "canonical_instance",
+            lambda project_root=None: (True, instance_role.REASON_CANONICAL),
+        )
         created = await self._run_lifespan(_app(), monkeypatch)
         assert len(created) == 1
         # Shutdown must not leave the tick running against a torn-down app.
