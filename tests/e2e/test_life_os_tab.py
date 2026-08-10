@@ -368,12 +368,16 @@ def test_life_os_detached_resume_posts_remote_console(
 def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     authed_page: Page, base_url: str
 ) -> None:
-    """Regression for #124: a Life tile carries only two actions (📖 + 🚀),
-    so the name and both buttons stay on a single inline row even on a
-    narrow phone — they must NOT inherit the Coding tab's stack-on-narrow
-    rule (#120) via the shared ``.coding-item`` class. On the WebKit
-    projection this runs at the iPhone width (430px < the 520px breakpoint),
-    so it exercises the media query directly.
+    """Regression for #124: a Life tile's name and its action strip stay on a
+    single inline row even on a narrow phone — they must NOT inherit the
+    Coding tab's stack-on-narrow rule (#120) via the shared ``.coding-item``
+    class. On the WebKit projection this runs at the iPhone width (430px <
+    the 520px breakpoint), so it exercises the media query directly.
+
+    The tile carried two actions (📖 + 🚀) when this was written and three
+    (📖 + 🕘 + 🚀) since #727 added Conversations — which is exactly why the
+    assertion is geometric rather than a count: what matters is that the row
+    never stacks, whatever it holds.
 
     Asserted via geometry: when inline, the name and the action strip both
     span the tile's full height and so overlap vertically; when wrongly
@@ -575,3 +579,266 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     expect(
         authed_page.locator(".lifeos-file-btn:has-text('trial.md')")
     ).to_have_count(0)
+
+
+# ------------------------------------------------- conversations (issue #727)
+
+_RESUMABLE_SID = "e70b4cb1-9f3d-4a21-8c55-2b7d19a4f6e0"
+
+_FAKE_CONVERSATIONS = {
+    "skill": "journal-daily",
+    "available": True,
+    "conversations": [
+        {
+            "skill": "journal-daily",
+            "file": "2026-08-01-0900-ferry-booking.md",
+            "path": ".claude/skills/journal-daily/conversations/"
+                    "2026-08-01-0900-ferry-booking.md",
+            "date": "2026-08-01", "slug": "ferry-booking", "turns": 12,
+            "sid": _RESUMABLE_SID, "agent": "claude",
+            "topic": "booking the ferry", "decisions": "took the 07:40",
+            "open_loops": "confirm the return leg", "resumable": True,
+        },
+        {
+            "skill": "journal-daily",
+            "file": "2026-06-01-1917-trial.md",
+            "path": ".claude/skills/journal-daily/conversations/"
+                    "2026-06-01-1917-trial.md",
+            "date": "2026-06-01", "slug": "trial", "turns": 4,
+            "sid": "", "agent": "claude",
+            "topic": "an early trial run", "decisions": "none",
+            "open_loops": "none", "resumable": False,
+        },
+    ],
+}
+
+
+def _mock_conversations(page: Page, body: dict = None) -> None:
+    page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(body if body is not None else _FAKE_CONVERSATIONS),
+        ),
+    )
+
+
+def _open_conversations(page: Page, base_url: str) -> None:
+    """Open the Life OS tab and the per-skill Conversations view."""
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabLifeOS").click()
+    expect(page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
+    ).click()
+    expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+
+
+def test_life_os_conversations_open_from_tile(
+    authed_page: Page, base_url: str
+) -> None:
+    """#727: a tile's 🕘 opens that skill's digested conversation index —
+    newest-first, each row showing its date and topic, expandable to the
+    decisions / open loops the digest recorded."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(2)
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
+        "booking the ferry"
+    )
+    expect(rows.first.locator(".lifeos-convo-when")).to_have_text("2026-08-01")
+
+    # Collapsed by default; tapping the row reveals the digest + actions.
+    detail = rows.first.locator(".lifeos-convo-detail")
+    expect(detail).to_be_hidden()
+    rows.first.locator(".lifeos-convo-head").click()
+    expect(detail).to_be_visible()
+    expect(detail).to_contain_text("confirm the return leg")
+
+
+def test_life_os_conversations_empty_state_when_no_index(
+    authed_page: Page, base_url: str
+) -> None:
+    """A skill the indexer hasn't digested yet gets an honest empty state —
+    not a blank pane and not an error toast."""
+    _mock_skills(authed_page)
+    _mock_conversations(
+        authed_page,
+        {"skill": "journal-daily", "available": False, "conversations": []},
+    )
+    _open_conversations(authed_page, base_url)
+
+    expect(authed_page.locator("#lifeOsConvoState")).to_be_visible()
+    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
+        "No conversation index yet"
+    )
+    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(0)
+
+
+def test_life_os_unresumable_row_says_so(
+    authed_page: Page, base_url: str
+) -> None:
+    """#727: a capture with no stored session id is readable but cannot be
+    reopened. A phone has no hover, so the reason is a visible chip rather
+    than a disabled button with a tooltip — and roughly a quarter of the
+    archive is in this state, so it must not read as breakage."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows.nth(1).locator(".lifeos-convo-head").click()
+    detail = rows.nth(1).locator(".lifeos-convo-detail")
+    expect(detail).to_be_visible()
+    expect(detail.locator(".lifeos-convo-nosession")).to_be_visible()
+    expect(detail.locator(".lifeos-convo-resume")).to_have_count(0)
+
+    # The resumable row is the contrast: it offers the action.
+    rows.first.locator(".lifeos-convo-head").click()
+    expect(
+        rows.first.locator(".lifeos-convo-detail .lifeos-convo-resume")
+    ).to_be_visible()
+
+
+def test_life_os_conversation_resume_posts_the_session_id(
+    authed_page: Page, base_url: str
+) -> None:
+    """#727, the point of the whole feature: ↺ on a row posts that exact
+    ``resume_sid`` — no native picker — honouring the Skills header's
+    Detached toggle and model combo like every other Life OS launch."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+
+    captured: dict = {}
+
+    def _capture_launch(route):
+        captured["body"] = route.request.post_data or ""
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "journal-daily", "name": "journal-daily",
+                "agent": "claude", "mode": "remote", "model": "opus",
+                "resume": True, "resume_sid": _RESUMABLE_SID,
+                "session": {"session_id": "x", "kind": "remote"},
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
+        _capture_launch,
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    # Detached on, so the resume lands in a console instead of opening the
+    # terminal overlay (nothing to tear down in the assertion).
+    authed_page.locator("#lifeOsModelBtn").click()
+    authed_page.locator("#lifeOsModelMenu button[data-value='opus']").click()
+    authed_page.locator("#lifeOsDetached").click()
+
+    authed_page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
+    ).click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows.first.locator(".lifeos-convo-head").click()
+    rows.first.locator(".lifeos-convo-resume").click()
+
+    authed_page.wait_for_timeout(400)
+    assert "body" in captured, "resume POST was never intercepted"
+    payload = _json.loads(captured["body"])
+    assert payload == {
+        "mode": "remote", "model": "opus", "resume_sid": _RESUMABLE_SID,
+    }, payload
+
+
+def test_life_os_header_search_spans_every_skill(
+    authed_page: Page, base_url: str
+) -> None:
+    """#727: the Skills header's 🔎 opens the same view unscoped, and a query
+    returns ranked hits from every skill, each tagged with the skill it came
+    from — the case the per-skill index cannot answer."""
+    _mock_skills(authed_page)
+
+    seen: dict = {}
+
+    def _capture_search(route):
+        seen["url"] = route.request.url
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": True, "query": "ferry", "skill": "",
+                "results": [
+                    dict(_FAKE_CONVERSATIONS["conversations"][0]),
+                    dict(
+                        _FAKE_CONVERSATIONS["conversations"][1],
+                        skill="sparring-work",
+                        topic="the ferry conversation at work",
+                    ),
+                ],
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/conversations/search.*"), _capture_search
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    authed_page.locator("#lifeOsConvoSearch").click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    # Opened unscoped: the scope toggle is meaningless and stays hidden.
+    expect(authed_page.locator("#lifeOsConvosScope")).to_be_hidden()
+
+    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(2, timeout=5_000)
+    # No skill filter in the request, and every row names its own skill.
+    assert "skill=" not in seen.get("url", ""), seen
+    expect(rows.first.locator(".lifeos-convo-tag")).to_have_text("journal-daily")
+    expect(rows.nth(1).locator(".lifeos-convo-tag")).to_have_text("sparring-work")
+
+
+def test_life_os_search_unavailable_is_not_an_error(
+    authed_page: Page, base_url: str
+) -> None:
+    """A missing search CLI or database degrades to a stated 'unavailable'
+    inside the view — never an error toast, and never a blank list."""
+    _mock_skills(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/life-os/conversations/search.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": False,
+                "reason": "no conversation index has been built yet",
+                "results": [],
+            }),
+        ),
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    authed_page.locator("#lifeOsConvoSearch").click()
+    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
+
+    state = authed_page.locator("#lifeOsConvoState")
+    expect(state).to_be_visible(timeout=5_000)
+    expect(state).to_contain_text("Search unavailable")
+    # Passive/background status belongs beside the surface it describes; a
+    # toast is for user-initiated command results only.
+    expect(authed_page.locator("#toast")).to_be_hidden()

@@ -2313,6 +2313,152 @@ body.terminal-open {
   margin: 4px 0;
 }
 
+/* ---------- Life OS conversations (issue #727) ---------- */
+/* The 🔎 shares the Skills summary with ☁️/↺ and so borrows their box, but
+   deliberately NOT their 0.55 opacity: that shading is what marks those two
+   as toggles with an off state (#540). This is a one-shot action — it opens
+   a view — so it reads at full strength.
+   No co-applied .hit-target: this is an *adjacent cluster* (combo · 🔎 · ☁️ ·
+   ↺) at a 6px gap, so a ±5px invisible expansion would overlap its
+   neighbours and land taps on the wrong control — worse than a small target,
+   per the spec's own carve-out. It matches its neighbours' geometry instead;
+   widening the whole cluster to 44px is a separate change to that row. */
+.lifeos-convo-open {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  min-width: var(--control-h);
+  min-height: var(--control-h);
+  border: 1px solid var(--line-muted);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.lifeos-convo-open .icon { font-size: var(--icon-title); }
+.lifeos-convo-open:active { background: var(--card-2); }
+
+/* Sits one layer *below* the Browse viewer and the terminal (both z-index
+   300) on purpose: tapping a row's 📖 opens the document viewer over this
+   list, and ↺ opens the terminal over it — closing either lands back here
+   rather than on the skill tiles. Explicit, so it doesn't depend on which
+   overlay happens to come later in the markup. */
+#lifeOsConvos.terminal-overlay { background: var(--bg); z-index: 290; }
+
+.lifeos-convos-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  /* minmax(0, 1fr) — the row list holds long, no-wrap topic text; a bare
+     track would inherit its min-content width and widen the overlay. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px;
+}
+.lifeos-convo-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  color: var(--muted);
+}
+.lifeos-convo-search .input-native { flex: 1; min-width: 0; }
+
+.lifeos-convo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+/* Flat full-bleed rows on a hairline — the shared list-row contract, never a
+   card per entry. */
+.lifeos-convo-row + .lifeos-convo-row { border-top: 1px solid var(--line-muted); }
+
+.lifeos-convo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 8px 4px;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.lifeos-convo-when {
+  flex: none;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lifeos-convo-topic {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lifeos-convo-tag {
+  flex: none;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 2px 8px;
+}
+.lifeos-convo-detail { padding: 0 4px 10px; }
+.lifeos-convo-field {
+  margin: 0 0 6px;
+  font-size: var(--font-label);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.lifeos-convo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* Real 44px geometry rather than an invisible expansion: these sit side by
+   side, so expanded hit rectangles would overlap and land taps on the wrong
+   control. */
+.lifeos-convo-actions .button-ghost {
+  min-height: var(--row-sm);
+  min-width: var(--row-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.lifeos-convo-resume { padding-inline: 14px; }
+/* Not a disabled button: a phone has no hover to explain one, and a capture
+   with no stored session id is a normal state for a quarter of the archive. */
+.lifeos-convo-nosession {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+}
+/* The one lifecycle block — glyph, one-line reason, at most one Retry. */
+#lifeOsConvoState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  align-self: start;
+}
+#lifeOsConvoState .icon { font-size: var(--icon-feature); }
+.lifeos-convo-retry { min-width: 96px; }
+
 /* ---------- Board tab (issue #300 / #164) ---------- */
 /* Dispatch bar (#302): speak/type a goal → a fresh /issue-* session.
    Static markup above the column strip — renderBoard() never touches it,

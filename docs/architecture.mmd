@@ -168,7 +168,8 @@ flowchart TB
   subgraph external["External dependencies"]
     SCHTASKS["Windows Task Scheduler\n(\\AppLauncher\\ folder)"]
     GH["gh CLI / GitHub"]
-    LIFEOSREPO["life-os repo (sibling)\nskills invoked via claude session"]
+    LIFEOSREPO["life-os repo (sibling)\nskills invoked via claude session\nconversations/index.json read directly (#727)"]
+    FLEETCFG["fleet-config repo (sibling)\nhooks/conversation_search.py (#727)\nskills/_lib/chief_managed.py (#443)\nboth run as subprocesses"]
     PHOTOOCR["photo-ocr repo (sibling)\nsession API, loopback"]
     VOICETRANS["voice-transcriber repo (sibling)\nsession API, loopback"]
     LLMHUB["claude-local-calls hub\n127.0.0.1:8000, chat + TTS"]
@@ -178,6 +179,8 @@ flowchart TB
   JOBSSCHTASKS --> SCHTASKS
   GHCLIENT --> GH
   R_LIFEOS --> LIFEOSREPO
+  R_LIFEOS -->|conversation search| FLEETCFG
+  R_BOARD -->|chief-managed mark| FLEETCFG
   OCRCLIENT --> PHOTOOCR
   VOICECLIENT --> VOICETRANS
   TTSCLIENT --> LLMHUB

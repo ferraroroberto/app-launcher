@@ -7,6 +7,10 @@ specialised to the skills in the sibling ``life-os`` repo:
     POST /api/life-os/skills/{id}/launch      → spawn a claude session that
                                                  auto-invokes /<skill> (public)
     GET  /api/life-os/skills/{id}/files        → file tree   (Tailscale + passkey)
+    GET  /api/life-os/skills/{id}/conversations → digested conversation index
+                                                 (Tailscale + passkey)
+    GET  /api/life-os/conversations/search     → ranked cross-skill search
+                                                 (Tailscale + passkey)
     GET  /api/life-os/file?path=…              → file content (Tailscale + passkey)
 
 Launch reuses the Coding tab's session-host / ConPTY machinery wholesale
@@ -17,20 +21,32 @@ slash-command is passed as the positional prompt. **No** free text is
 ever interpolated into the launch — the user types their input into the
 live terminal once the skill reports ready.
 
-The two content endpoints surface private, gitignored knowledge
+The content endpoints surface private, gitignored knowledge
 (``context/`` ``memory/`` ``examples/`` ``conversations/`` + the shared
 ``identity/``). They are gated like the live terminal — refused over the
 Cloudflare tunnel, Tailscale-only, passkey-required (see
 ``app/webapp/middleware.py``) — and the file-content endpoint is
 **path-jailed** to ``life_os_dir`` (the jail is the whole security story
 for an endpoint that reads arbitrary files under a root).
+
+Conversations (issue #727) are the same private content one level up: the
+capture/index pipeline in life-os (life-os#68, fleet-config#586) writes a
+digested ``conversations/index.json`` per skill and keeps a cross-skill FTS5
+database, and this router surfaces both so the phone can *find* one
+conversation and reopen exactly it — rather than scrolling Claude's native
+session picker. Neither endpoint owns any of that logic: the list is a JSON
+read, and the search shells out to fleet-config's own ``conversation_search``
+CLI. Both degrade to ``available: false`` when the pipeline hasn't produced
+its artefacts yet, so the tab is honest rather than broken on a fresh machine.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -38,9 +54,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
-from src.launch_flags import build_claude_flags
+from src.launch_flags import build_claude_flags, build_resume_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
+from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import (
@@ -65,6 +82,33 @@ _TEXT_SUFFIXES = frozenset(
 _MAX_FILE_BYTES = 256 * 1024
 # Directory names never walked for the browser (VCS / caches).
 _BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+
+# --- conversations (issue #727) ----------------------------------------
+# The machine-readable twin of `conversations/index.md`, written by
+# fleet-config's conversation_index hook (life-os#68): one digested entry per
+# conversation, newest-first, carrying the full resumable session id.
+_CONVERSATIONS_DIR = "conversations"
+_CONVERSATIONS_INDEX = "index.json"
+# The cross-skill ranked search CLI lives in the fleet-config checkout
+# (`claude_config_dir`) — the same repo the Board already shells into for
+# `chief_managed.py`. Resolved per request so a Settings change takes effect
+# without a restart.
+_SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
+_SEARCH_TIMEOUT_S = 15
+# A query long enough to be a paste accident rather than a search; the CLI is
+# invoked with an argv list (never a shell), so this is a sanity cap, not the
+# injection guard.
+_MAX_QUERY_CHARS = 200
+_SEARCH_LIMIT_DEFAULT = 20
+_SEARCH_LIMIT_MAX = 100
+
+# A resumable session id, validated strictly because it reaches claude's
+# command line. Same by-construction stance as the skill slug: the value is
+# either a canonical UUID or the request is refused — never sanitised into
+# something "close enough".
+_SESSION_ID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$"
+)
 
 # --- weekly recap (issue #167) -----------------------------------------
 # The recap is the ``_recap`` infra skill; it is underscore-prefixed, so
@@ -201,6 +245,7 @@ async def _spawn_skill_session(
     resume: bool,
     audit_skill: str,
     body: Dict[str, Any],
+    resume_sid: str = "",
 ) -> Dict[str, Any]:
     """Spawn a claude session in life-os, audit it, mirror to PC, shape the reply.
 
@@ -241,6 +286,9 @@ async def _spawn_skill_session(
         name=name,
         project=str(life_os_dir),
         resume=resume,
+        # Which conversation was reattached (#727) — "" for a fresh launch or
+        # the native picker, where no id was chosen up front.
+        resume_sid=resume_sid,
         client=client_ip(request),
     )
     await audit_off_loop(
@@ -268,6 +316,7 @@ async def _spawn_skill_session(
         "mode": kind,
         "model": model,
         "resume": resume,
+        "resume_sid": resume_sid,
         "session": session,
     }
 
@@ -396,6 +445,15 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     the Coding tab): the requested ``mode`` still decides where the picker
     renders — a detached console window (``mode="remote"``) or a streamed PTY
     (``mode="pty"``). Resume no longer forces a PTY.
+
+    **Targeted resume** (issue #727) skips the picker entirely: a
+    ``resume_sid`` in the body reattaches to that exact conversation via
+    ``--resume <id>``, the non-interactive path :func:`build_resume_flags`
+    already implements for the fleet chief (issue #633). It is what the
+    Conversations view's ↺ posts, and it is orthogonal to Detached in the
+    same way. The id is validated as a canonical UUID before it goes
+    anywhere near a command line; a bare ``resume: true`` (the picker) is
+    unchanged.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     life_os_dir = Path(cfg.life_os_dir)
@@ -409,7 +467,12 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
     model = _resolve_launch_model(body)
-    resume = bool(body.get("resume", False))
+    resume_sid = str(body.get("resume_sid") or "").strip()
+    if resume_sid and not _SESSION_ID_RE.match(resume_sid):
+        raise HTTPException(
+            status_code=400, detail="resume_sid is not a valid session id"
+        )
+    resume = bool(resume_sid) or bool(body.get("resume", False))
 
     # Model override is per-launch (the tab's model combo, #540); the rest of
     # the flags (effort / permission / verbose / debug) come from the shared
@@ -420,7 +483,14 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     # build_claude_flags first is intentional: Claude Code can carry
     # `--resume --remote-control` in its process command without activating
     # Remote Control for the selected conversation (issue #526).
-    if resume:
+    # A targeted resume (#727) pins that same resume path to one conversation
+    # id instead of rendering the picker — same builder the fleet chief uses
+    # (#633), so there is one place where `--resume <id>` is composed.
+    if resume_sid:
+        flags = build_resume_flags(
+            cfg, "claude", model_override=model, session_id=resume_sid
+        )
+    elif resume:
         flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
     else:
         flags = (
@@ -435,7 +505,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
         flags=flags, name=name, kind=kind, model=model, resume=resume,
-        audit_skill=skill.id, body=body,
+        audit_skill=skill.id, body=body, resume_sid=resume_sid,
     )
     return {"launched": skill.id, **result}
 
@@ -466,6 +536,247 @@ async def list_skill_files(skill_id: str, request: Request) -> Dict[str, Any]:
     return {
         "skill": _skill_to_api(skill, life_os_root),
         "files": files,
+    }
+
+
+# ------------------------------------------------- conversations (issue #727)
+
+
+def _capture_rel(life_os_dir: Path, capture: Path) -> str:
+    """``capture`` relative to ``life_os_dir``, or ``""`` when it escapes it.
+
+    The shape ``/api/life-os/file`` accepts, so a conversation row can open
+    its own raw capture through the existing (path-jailed) viewer instead of
+    a second file-read surface. Deliberately **not** ``_rel_to_root``'s
+    fall-back-to-basename behaviour: a capture that resolves outside the root
+    has no viewable path at all, and saying ``""`` lets the UI hide the
+    control rather than offer one that 404s.
+    """
+    try:
+        return str(capture.resolve().relative_to(life_os_dir.resolve()))
+    except (OSError, ValueError):
+        return ""
+
+
+def _conversation_api(
+    row: Dict[str, Any],
+    life_os_dir: Path,
+    capture: Path,
+    *,
+    default_skill: str,
+) -> Dict[str, Any]:
+    """API shape for one conversation row (index entry or search hit).
+
+    ``resumable`` is computed here rather than trusted from the source, and
+    by exactly the rule :func:`launch_skill` enforces — a canonical session
+    id belonging to a claude conversation. That keeps the two in lockstep:
+    the UI can never enable a ↺ the launch route would reject with a 400.
+    Roughly a quarter of the existing archive predates the stored session id
+    and is legitimately unresumable, so this is a common state, not an edge
+    case — the client shows it, it never silently disappears.
+    """
+    sid = str(row.get("sid") or "")
+    agent = str(row.get("agent") or "")
+    return {
+        "skill": str(row.get("skill") or default_skill),
+        "file": str(row.get("file") or ""),
+        "path": _capture_rel(life_os_dir, capture),
+        "date": str(row.get("date") or ""),
+        "slug": str(row.get("slug") or ""),
+        "turns": row.get("turns") or 0,
+        "sid": sid,
+        "agent": agent,
+        "topic": str(row.get("topic") or ""),
+        "decisions": str(row.get("decisions") or ""),
+        "open_loops": str(row.get("open_loops") or ""),
+        "resumable": agent == "claude" and bool(_SESSION_ID_RE.match(sid)),
+    }
+
+
+def _read_conversation_index(path: Path) -> Optional[List[Dict[str, Any]]]:
+    """Parse a skill's ``conversations/index.json``, or ``None``.
+
+    ``None`` means "no usable index" — absent (the indexer hasn't run for
+    this skill yet), unreadable, or not the list of objects it should be.
+    Every one of those is an honest ``available: false`` to the caller, never
+    a 500: the launcher does not own this file and must not fail when the
+    pipeline that writes it hasn't caught up.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        logger.warning("⚠️ unreadable conversation index: %s", path)
+        return None
+    if not isinstance(data, list):
+        logger.warning("⚠️ conversation index is not a list: %s", path)
+        return None
+    return [row for row in data if isinstance(row, dict) and row.get("file")]
+
+
+@router.get("/api/life-os/skills/{skill_id}/conversations")
+async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str, Any]:
+    """One skill's digested conversation index (Tailscale + passkey, gated upstream).
+
+    Reads ``<skill>/conversations/index.json`` — the machine-readable twin of
+    ``index.md``, written by life-os's own capture/index pipeline
+    (life-os#68) — and returns its entries newest-first. Each carries the
+    digest (topic / decisions / open loops), the stored session id, and a
+    ``path`` to the raw capture for the existing file viewer.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+    skill = _resolve_skill(cfg, skill_id)
+
+    conv_dir = skill.skill_dir / _CONVERSATIONS_DIR
+    rows = _read_conversation_index(conv_dir / _CONVERSATIONS_INDEX)
+    if rows is None:
+        return {"skill": skill.id, "available": False, "conversations": []}
+
+    conversations = [
+        _conversation_api(
+            row, life_os_dir, conv_dir / str(row["file"]), default_skill=skill.id
+        )
+        for row in rows
+    ]
+    # The indexer already writes newest-first; re-sorting on the date-stamped
+    # filename makes that a property of this endpoint rather than a hope.
+    conversations.sort(key=lambda c: c["file"], reverse=True)
+    return {
+        "skill": skill.id,
+        "available": True,
+        "conversations": conversations,
+    }
+
+
+def _search_unavailable(reason: str) -> Dict[str, Any]:
+    """The degraded-but-honest search reply.
+
+    ``reason`` is a short, already-sanitised sentence for the phone — never
+    an exception string, a path, or a stderr dump (those go to the log). The
+    UI renders it as "search unavailable", not an error toast.
+    """
+    return {"available": False, "reason": reason, "results": []}
+
+
+def _search_cli(cfg: WebappConfig) -> Optional[List[str]]:
+    """``[python, script]`` for fleet-config's search CLI, or ``None``.
+
+    Resolved per request from ``claude_config_dir`` (the fleet-config
+    checkout the Board already shells into) so pointing Settings at a
+    different checkout takes effect without a restart. ``None`` when either
+    half is missing — a machine without fleet-config still gets a working
+    Life OS tab, minus search.
+    """
+    root = Path(cfg.claude_config_dir)
+    script = root.joinpath(*_SEARCH_SCRIPT_REL)
+    if not script.is_file():
+        return None
+    for rel in ((".venv", "Scripts", "python.exe"), (".venv", "bin", "python")):
+        python = root.joinpath(*rel)
+        if python.is_file():
+            return [str(python), str(script)]
+    return None
+
+
+def _search_limit(raw: Optional[str]) -> int:
+    """Clamp the caller's ``limit`` into a sane range."""
+    try:
+        limit = int(raw) if raw else _SEARCH_LIMIT_DEFAULT
+    except (TypeError, ValueError):
+        return _SEARCH_LIMIT_DEFAULT
+    return max(1, min(limit, _SEARCH_LIMIT_MAX))
+
+
+@router.get("/api/life-os/conversations/search")
+async def search_conversations(request: Request) -> Dict[str, Any]:
+    """Ranked conversation search across every skill (Tailscale + passkey).
+
+    Shells out to fleet-config's ``conversation_search`` CLI — the launcher
+    owns none of the ranking: that is an FTS5 index over the digests *and*
+    the full capture text, so an offhand detail no digest mentions still
+    finds the right conversation. ``--cwd`` (not ``--project``) resolves the
+    project from the configured ``life_os_dir``, so a non-default checkout
+    still works.
+
+    Every failure mode — no fleet-config, no database yet, a non-zero exit, a
+    timeout, unreadable output — degrades to ``available: false`` with a
+    short reason. This endpoint never 500s and never surfaces infrastructure
+    detail to the phone; the detail goes to the log.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    life_os_dir = Path(cfg.life_os_dir)
+
+    query = (request.query_params.get("q") or "").strip()
+    skill = (request.query_params.get("skill") or "").strip()
+    limit = _search_limit(request.query_params.get("limit"))
+    # An empty box is not a failure and not a search — answer it without
+    # spawning anything, so typing-then-clearing costs nothing.
+    if not query:
+        return {"available": True, "query": "", "skill": skill, "results": []}
+    if len(query) > _MAX_QUERY_CHARS:
+        raise HTTPException(status_code=400, detail="query too long")
+
+    cli = _search_cli(cfg)
+    if cli is None:
+        return _search_unavailable("conversation search is not installed")
+
+    argv = [
+        *cli, "--cwd", str(life_os_dir), "--query", query,
+        "--limit", str(limit), "--json",
+    ]
+    if skill:
+        argv.extend(["--skill", skill])
+    try:
+        proc = await asyncio.to_thread(
+            subprocess.run,
+            argv,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=_SEARCH_TIMEOUT_S,
+            creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("⚠️ conversation search did not run: %s", exc)
+        return _search_unavailable("search is not responding")
+    if proc.returncode != 0:
+        logger.warning(
+            "⚠️ conversation search exited %s: %s",
+            proc.returncode, (proc.stderr or "").strip()[:400],
+        )
+        return _search_unavailable("no conversation index has been built yet")
+    try:
+        rows = json.loads(proc.stdout or "[]")
+    except ValueError:
+        logger.warning("⚠️ conversation search returned unparseable JSON")
+        return _search_unavailable("search returned an unreadable result")
+    if not isinstance(rows, list):
+        return _search_unavailable("search returned an unreadable result")
+
+    results = [
+        _conversation_api(
+            row, life_os_dir, Path(str(row.get("path") or "")), default_skill=""
+        )
+        for row in rows
+        if isinstance(row, dict)
+    ]
+    # Audited like every other private-content read, but the query text is
+    # deliberately not recorded: it is the user's own words about their own
+    # life, and the hit count is all an audit trail needs to be useful here.
+    await audit_off_loop(
+        audit.audit_event,
+        "lifeos_search", skill=skill, hits=len(results), client=client_ip(request)
+    )
+    return {
+        "available": True,
+        "query": query,
+        "skill": skill,
+        "results": results,
     }
 
 
