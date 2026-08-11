@@ -79,19 +79,26 @@ export function renderAgentVisibility() {
     const sw = switchEl(!hidden.has(row.id), {
       label: 'Show the ' + row.label + ' button on project rows',
       onToggle: function (next) {
-        // Optimistic flip, then persist the whole list and repaint the rows.
-        // The payload is composed from the switches (including this flip),
-        // not from state.config, and writes are serialized — see
-        // hiddenFromSwitches. patchConfig round-trips through GET
-        // /api/config, so re-rendering afterwards self-corrects a failed
-        // save.
+        // Optimistic flip, then persist the whole list. The payload is
+        // composed from the switches (including this flip), not from
+        // state.config, and writes are serialized — see hiddenFromSwitches.
+        //
+        // renderApps() always repaints the (unrelated) coding tiles so their
+        // per-row agent buttons pick up the new hidden set. But
+        // renderAgentVisibility() — which tears down and rebuilds *these*
+        // switch elements — only runs to self-correct a *failed* save
+        // (patchConfig didn't round-trip through GET /api/config, so
+        // state.config is still the pre-flip truth). On success the
+        // optimistic flip is already the truth: rebuilding here too raced a
+        // fast second tap against the teardown and dropped its click on a
+        // detached element (issue #732).
         setSwitch(sw, next);
         const wanted = hiddenFromSwitches();
         visibilityWrite = visibilityWrite.then(function () {
           return patchConfig({ coding_hidden_agents: wanted }).then(
-            function () {
+            function (ok) {
               renderApps();
-              renderAgentVisibility();
+              if (!ok) renderAgentVisibility();
             }
           );
         });

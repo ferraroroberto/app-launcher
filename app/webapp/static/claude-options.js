@@ -247,6 +247,9 @@ function renderGrokSubsection() {
   els.grokFlagsPreview.textContent = 'grok ' + (g.computed_flags || '');
 }
 
+// Resolves true on a saved-and-refreshed patch, false on a failed one (the
+// toast already fired) — callers that only self-correct on failure (e.g.
+// apps-coding.js's agent-visibility switches, issue #732) branch on this.
 export async function patchConfig(patch) {
   try {
     await jsonApi('/api/config', {
@@ -255,8 +258,10 @@ export async function patchConfig(patch) {
       body: JSON.stringify(patch),
     });
     await fetchConfig();
+    return true;
   } catch (exc) {
     apiFailToast('Save failed', exc);
+    return false;
   }
 }
 
