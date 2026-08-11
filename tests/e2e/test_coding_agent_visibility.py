@@ -135,3 +135,51 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     authed_page.locator('[data-visibility-toggle="github"]').click()
     expect(_codex_btn(authed_page)).to_have_count(1)
     expect(_github_btn(authed_page)).to_have_count(1)
+
+
+def test_agent_visibility_switch_identity_survives_successful_save(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression pin for issue #732.
+
+    The flaky assertion in the test above only reproduces under full-suite
+    WebKit load: two back-to-back toggle taps race a click against a switch
+    element that a successful save's re-render had just detached. That race
+    itself isn't reliably forceable from a test, but its root cause is
+    deterministic and directly assertable — renderAgentVisibility() used to
+    tear down and rebuild every switch element (`host.innerHTML = ''`) after
+    *every* successful patchConfig() call, not just a failed one. This pins
+    that a switch element's identity survives a successful save, which is
+    what closes the window a fast second tap could land in.
+    """
+    _install_routes(authed_page)
+    _reset_visibility(authed_page, base_url)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_surfaces(authed_page)
+
+    codex_toggle = authed_page.locator('[data-visibility-toggle="codex"]')
+    expect(codex_toggle).to_have_attribute("aria-checked", "true", timeout=5_000)
+
+    authed_page.evaluate(
+        """() => {
+            document.querySelector('[data-visibility-toggle="github"]')
+                .dataset.probeMarker = 'still-me';
+        }"""
+    )
+
+    codex_toggle.click()
+    expect(codex_toggle).to_have_attribute("aria-checked", "false", timeout=5_000)
+    # The save is real (unmocked) and round-trips through GET /api/config;
+    # give any rebuild triggered by it time to run.
+    expect(_codex_btn(authed_page)).to_have_count(0)
+
+    survived = authed_page.evaluate(
+        """() => {
+            const el = document.querySelector('[data-visibility-toggle="github"]');
+            return !!el && el.dataset.probeMarker === 'still-me';
+        }"""
+    )
+    assert survived, (
+        "renderAgentVisibility() rebuilt the switch DOM on a successful "
+        "save — the exact window issue #732's click race lands in"
+    )
