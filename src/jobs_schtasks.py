@@ -113,6 +113,78 @@ def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
     )
 
 
+#: Absolute Windows PowerShell 5.1 — never the bare ``pwsh`` execution-alias
+#: stub, which is a 0-byte WindowsApps reparse point that fails when spawned
+#: non-interactively (global CLAUDE.md "Windows PowerShell in spawned
+#: commands"; same constant as ``src/session_host.py`` and
+#: ``src/jobs_kinds/powershell.py`` — not shared across modules to keep this
+#: one self-contained).
+_POWERSHELL_EXE = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
+
+def _ps_quote(value: str) -> str:
+    """Escape ``value`` for embedding inside a PowerShell single-quoted string."""
+    return value.replace("'", "''")
+
+
+def _apply_power_policy(
+    names: List[str],
+    runner: Callable[[List[str]], subprocess.CompletedProcess],
+) -> None:
+    """Flip the on-battery power policy for every task in ``names`` (issue #746).
+
+    ``schtasks /Create`` has no CLI flags for ``DisallowStartIfOnBatteries``,
+    ``StopIfGoingOnBatteries`` or ``StartWhenAvailable`` — Windows applies its
+    restrictive defaults (``True``/``True``/``False``). This host runs on an
+    APC Smart-UPS, which Windows' ``Win32_Battery`` reports as a battery, so
+    any mains blip or UPS self-test reads as "went on battery" and Task
+    Scheduler terminates every running job. ``schtasks /Change`` has no
+    equivalent flags either, so this is a follow-up ``Set-ScheduledTask``
+    write per created task — batched into a single ``powershell.exe`` spawn
+    (rather than one per task) so an N-slot ``daily_times`` job costs one
+    extra process, not N. Reads the existing ``Settings`` object first and
+    flips only these three fields, so every other schtasks-applied default
+    (execution time limit, compatibility, ...) survives untouched.
+
+    ``WakeToRun`` is deliberately left alone — waking the machine overnight
+    is a separate behavioural call, not part of this fix.
+
+    Best-effort: a failure here is logged and swallowed. The task(s) still
+    exist and still run under Task Scheduler's restrictive defaults, which
+    is the pre-existing bug, not a new regression introduced by this call.
+    """
+    if not names:
+        return
+    statements = ["$ErrorActionPreference = 'Stop'"]
+    quoted_folder = _ps_quote(TASK_FOLDER_PREFIX)
+    for full_name in names:
+        task_name = _ps_quote(full_name[len(TASK_FOLDER_PREFIX):])
+        statements.append(
+            f"$t = Get-ScheduledTask -TaskPath '{quoted_folder}' -TaskName '{task_name}'; "
+            "$s = $t.Settings; "
+            "$s.DisallowStartIfOnBatteries = $false; "
+            "$s.StopIfGoingOnBatteries = $false; "
+            "$s.StartWhenAvailable = $true; "
+            f"Set-ScheduledTask -TaskPath '{quoted_folder}' -TaskName '{task_name}' "
+            "-Settings $s | Out-Null"
+        )
+    argv = [
+        _POWERSHELL_EXE,
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "; ".join(statements),
+    ]
+    proc = runner(argv)
+    if proc.returncode != 0:
+        logger.warning(
+            "⚠️  on-battery power-policy update failed for %s: rc=%s stderr=%s",
+            names,
+            proc.returncode,
+            (proc.stderr or "").strip()[:200],
+        )
+
+
 def _launcher_python(*, visible: bool = False) -> str:
     """The launcher's own venv interpreter, with PATH fallback.
 
@@ -330,7 +402,11 @@ def sync_schtasks(
     """Re-create the Task Scheduler entries for ``job`` from its schedule.
 
     Deletes anything currently under ``\\AppLauncher\\<job.id>*`` first,
-    then creates one task per schedule slot. Returns the list of task
+    then creates one task per schedule slot. Every created task then gets
+    its on-battery power policy flipped off Windows' restrictive defaults
+    (issue #746, :func:`_apply_power_policy`) — otherwise this host's
+    UPS-backed power reporting reads a mains blip as "on battery" and Task
+    Scheduler silently terminates the running job. Returns the list of task
     names created (empty for ``schedule.type == "none"`` after the
     pre-existing tasks are deleted).
 
@@ -382,6 +458,7 @@ def sync_schtasks(
                 f"⚠️  schtasks create failed for {name}: "
                 f"rc={proc.returncode} stderr={proc.stderr!r}"
             )
+    _apply_power_policy(created, runner=runner)
     invalidate_next_run_cache()
     return created
 
