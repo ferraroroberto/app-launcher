@@ -54,7 +54,7 @@ normal week"), all enforced in :func:`behavioural_coverage` /
   2026-08-10.
 
 Alerting reuses the exact channels the failure path uses
-(:func:`app.cli.commands.run_job_cmd._maybe_notify_failure`): global Pushover
+(:func:`src.notifications.notify_failure`): global Pushover
 gated by ``WebappConfig.notify_on_failure``, per-job Telegram gated by
 ``Job.alert_on_failure``. De-duplicated through a small on-disk state file so
 a standing problem pings once, not once per check cycle.

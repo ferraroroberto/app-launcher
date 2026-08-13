@@ -49,7 +49,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from src import jobs_kinds
 from src.jobs import (
     MAX_RUNS_PER_JOB,
-    consecutive_failed_runs,
     cooldown_check,
     delete_schtasks,
     dispatch_chain_run,
@@ -60,7 +59,6 @@ from src.jobs import (
     new_run_dir,
     new_run_id,
     prune_runs,
-    read_output_tail,
     runs_dir,
     write_run_json,
 )
@@ -68,15 +66,9 @@ from src.jobs_argv import compose_argv
 from src.jobs_config import Job, get_by_id, load_jobs
 from src.jobs_secrets import resolve_env_overlay
 from src.jobs_trigger import TRIGGER_SYNTAX, is_valid_trigger
-from src.notifications import (
-    Notifier,
-    NoopNotifier,
-    build_notifier_from_config,
-    build_telegram_notifier_from_config,
-    summarise_failure,
-)
+from src.notifications import notify_failure
 from src.subprocess_flags import NO_WINDOW
-from src.webapp_config import WebappConfig, load_webapp_config
+from src.webapp_config import load_webapp_config
 
 from .base import BaseCommand
 from .run_job_supervision import (
@@ -123,76 +115,6 @@ def build_invocation(
     if run_dir is None:
         raise ValueError("run_dir is required to build a job invocation")
     return kind_impl.build_argv(job, tail, param_env, run_dir)
-
-
-def _maybe_notify_failure(
-    cfg: WebappConfig,
-    job: Job,
-    run_dir: Path,
-    *,
-    status: str,
-    exit_code: int,
-    notifier: Optional[Notifier] = None,
-    telegram_notifier: Optional[Notifier] = None,
-) -> None:
-    """Push failure notifications for a ``failed`` finalisation.
-
-    Two independent channels, both no-op on success:
-
-    * Pushover (global, issue #66) — gated by ``cfg.notify_on_failure``,
-      fires for every job.
-    * Telegram (per-job, issue #597) — gated by ``job.alert_on_failure``,
-      fires only for jobs that opted in.
-
-    Either resolving to :class:`NoopNotifier` (no creds) is a silent
-    no-op for that channel. The optional LLM summary (Pushover only) is
-    best-effort; hub down → raw tail only. Any error inside this path is
-    logged and swallowed — finalisation must keep going.
-    """
-    try:
-        if status != "failed":
-            return
-
-        if cfg.notify_on_failure:
-            notifier = notifier or build_notifier_from_config(cfg)
-            if not isinstance(notifier, NoopNotifier):
-                tail = read_output_tail(run_dir, max_bytes=8 * 1024)
-                body_parts: List[str] = []
-                if cfg.notify_failure_summary:
-                    summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
-                    if summary:
-                        body_parts.append(summary)
-                # The raw tail is what an operator wants when the summary is
-                # missing or wrong — always include the last 500 chars.
-                body_parts.append(tail[-500:] if tail else "(no output captured)")
-                body_parts.append(
-                    f"— job={job.id} run={run_dir.name} exit={exit_code}"
-                )
-                title = f"❌ {job.name}"
-                notifier.notify(title, "\n\n".join(body_parts), severity="error")
-
-                streak = cfg.notify_failure_streak
-                if streak and streak > 1:
-                    count = consecutive_failed_runs(job.id)
-                    if count == streak:
-                        notifier.notify(
-                            f"🔁 {job.name} — {count} consecutive failures",
-                            f"Failure streak reached {count} runs.\n"
-                            f"Most recent: {run_dir.name} (exit {exit_code}).",
-                            severity="error",
-                        )
-
-        if job.alert_on_failure:
-            telegram_notifier = telegram_notifier or build_telegram_notifier_from_config(cfg)
-            if not isinstance(telegram_notifier, NoopNotifier):
-                when = datetime.now().strftime("%Y-%m-%d %H:%M")
-                telegram_notifier.notify(
-                    f"❌ {job.name} failed",
-                    f"{when} — run={run_dir.name} exit={exit_code}",
-                    severity="error",
-                )
-    except Exception as exc:  # noqa: BLE001 — never block finalisation
-        logger.warning(f"⚠️  notification path raised: {exc}")
 
 
 def _parse_run_params(
@@ -557,7 +479,7 @@ def _finalize_run(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️  notify: could not load webapp config: {exc}")
     else:
-        _maybe_notify_failure(cfg, job, run_dir, status=status, exit_code=exit_code)
+        notify_failure(cfg, job, run_dir, status=status, exit_code=exit_code)
 
 
 def _dispatch_chain(job: Job, status: str) -> None:

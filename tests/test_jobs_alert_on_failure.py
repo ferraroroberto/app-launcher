@@ -10,10 +10,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
 from src import jobs_config as jc
 from src import jobs_history as jobs_history_mod
+from src import notifications as notif
 from src.jobs_config import Job, JobsConfig, job_from_dict, save_jobs, update_job
 
 
@@ -45,7 +45,7 @@ class TestAlertOnFailureRoundTrip:
         assert jc.get_by_id(cfg, "j").alert_on_failure is False
 
 
-class TestMaybeNotifyFailureTelegramChannel:
+class TestNotifyFailureTelegramChannel:
     def _cfg(self, **kw):
         defaults = dict(
             pushover_api_token="",
@@ -65,7 +65,7 @@ class TestMaybeNotifyFailureTelegramChannel:
         jobs_mod.write_run_json(rd, status="failed")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
         telegram_notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(), job, rd,
             status="failed", exit_code=1, telegram_notifier=telegram_notifier,
         )
@@ -81,7 +81,7 @@ class TestMaybeNotifyFailureTelegramChannel:
         # No telegram_notifier injected → falls through to
         # build_telegram_notifier_from_config, which resolves to
         # NoopNotifier when creds are missing.
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(telegram_bot_token="", telegram_chat_id=""), job, rd,
             status="failed", exit_code=1,
         )
@@ -94,7 +94,7 @@ class TestMaybeNotifyFailureTelegramChannel:
             id="demo", name="Demo", script_path="C:\\ok.py", alert_on_failure=True,
         )
         telegram_notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(), job, rd,
             status="success", exit_code=0, telegram_notifier=telegram_notifier,
         )
@@ -108,7 +108,7 @@ class TestMaybeNotifyFailureTelegramChannel:
             id="demo", name="Demo", script_path="C:\\ok.py", alert_on_failure=True,
         )
         telegram_notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(), job, rd,
             status="failed", exit_code=1, telegram_notifier=telegram_notifier,
         )
@@ -128,7 +128,7 @@ class TestMaybeNotifyFailureTelegramChannel:
         )
         pushover_notifier = MagicMock()
         telegram_notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(notify_on_failure=False), job, rd,
             status="failed", exit_code=1,
             notifier=pushover_notifier, telegram_notifier=telegram_notifier,
