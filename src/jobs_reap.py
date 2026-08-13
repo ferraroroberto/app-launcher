@@ -37,23 +37,73 @@ never triggers a re-entrant mutex-queue spawn off stale information:
   and ``src.board.jobs_attention``. Mirrors
   :func:`src.app_runtime.prune_dead`'s lazy-on-read pattern rather than a
   background sweep loop.
+
+The reconciler discovers a death lazily — sometimes hours after the process
+actually exited (issue #747: the machine had no live user session to poll
+``/api/jobs`` for 14+ hours). So ``finished_at`` is never stamped as "now" —
+that would fold a phantom multi-hour duration into the job's P50/P95. Instead
+:func:`_evidence_finished_at` prefers ``output.log``'s last-write mtime, the
+one signal every job kind already produces regardless of its script's own log
+format. When no usable evidence exists, the true end time is recorded as its
+own state (``end_time_unknown: True``) rather than guessed — no
+``finished_at``/``duration_seconds`` is written at all, which is also what
+keeps :func:`src.jobs_stats._duration_for` (and therefore the percentile
+pool) from counting a run whose duration was never actually measured.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.diagnostics import is_pid_alive
 from src.jobs_config import Job
 from src.jobs_history import list_runs, read_run, runs_dir, write_run_json
 from src.jobs_stats import invalidate_stats_cache
+from src.notifications import notify_failure
+from src.webapp_config import load_webapp_config
 
 logger = logging.getLogger(__name__)
 
 
-def _reap_one(job_id: str, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _evidence_finished_at(
+    run_dir: Path, started_at: Optional[str]
+) -> Tuple[Optional[str], Optional[float]]:
+    """Best-effort real end time for a run whose executor never finalised it.
+
+    Prefers ``output.log``'s last-modified time — the closest thing to "when
+    the dead process last did something" that's available for every job kind,
+    unlike a job-specific final log line. Rejected (treated as no evidence)
+    when it predates ``started_at``: a stale/untouched log from a run that
+    crashed before writing anything is not evidence of anything past its own
+    start.
+
+    Returns ``(finished_at_iso, duration_seconds)``, both ``None`` when no
+    usable evidence exists — the caller records that as its own
+    ``end_time_unknown`` state rather than fabricating a value.
+    """
+    log_path = run_dir / "output.log"
+    try:
+        mtime = log_path.stat().st_mtime
+    except OSError:
+        return None, None
+    finished = datetime.fromtimestamp(mtime)
+    if isinstance(started_at, str):
+        try:
+            started = datetime.fromisoformat(started_at)
+        except ValueError:
+            return None, None
+        if finished < started:
+            return None, None
+        duration = (finished - started).total_seconds()
+    else:
+        duration = None
+    return finished.isoformat(timespec="seconds"), duration
+
+
+def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Finalise a single non-terminal ``record`` if its pid is provably dead.
 
     No-ops (returns ``None``) whenever liveness can't be established with
@@ -68,9 +118,13 @@ def _reap_one(job_id: str, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
       ``pid_exists()`` isn't enough once we have a hint to check against).
 
     On a confirmed-dead pid, writes terminal fields mirroring the kill
-    route: ``status: "failed"``, ``finished_at``, ``duration_seconds``,
-    marked ``reaped: True`` rather than ``killed: True`` (this was never
-    killed, we just lost track of it) — and invalidates the stats cache.
+    route: ``status: "failed"``, ``finished_at``/``duration_seconds`` when
+    real evidence exists (:func:`_evidence_finished_at`) or ``end_time_unknown:
+    True`` when it doesn't, marked ``reaped: True`` rather than ``killed:
+    True`` (this was never killed, we just lost track of it) — invalidates
+    the stats cache, and fires the same failure alert (issue #747) a normal
+    finalise would, since nobody was told about this failure the moment it
+    actually happened.
     """
     pid = record.get("pid")
     if not isinstance(pid, int) or pid <= 0:
@@ -81,32 +135,38 @@ def _reap_one(job_id: str, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     run_id = record.get("run_id")
     if not run_id:
         return None
-    run_dir = runs_dir(job_id) / str(run_id)
+    run_dir = runs_dir(job.id) / str(run_id)
 
-    finished_at = datetime.now().isoformat(timespec="seconds")
-    duration_seconds: Optional[float] = None
-    started_at = record.get("started_at")
-    if isinstance(started_at, str):
-        try:
-            duration_seconds = (
-                datetime.fromisoformat(finished_at)
-                - datetime.fromisoformat(started_at)
-            ).total_seconds()
-        except ValueError:
-            duration_seconds = None
-
-    write_run_json(
-        run_dir,
-        status="failed",
-        finished_at=finished_at,
-        duration_seconds=duration_seconds,
-        reaped=True,
+    finished_at, duration_seconds = _evidence_finished_at(
+        run_dir, record.get("started_at")
     )
-    invalidate_stats_cache(job_id)
+    fields: Dict[str, Any] = {"status": "failed", "reaped": True}
+    if finished_at is not None:
+        fields["finished_at"] = finished_at
+        fields["duration_seconds"] = duration_seconds
+    else:
+        fields["end_time_unknown"] = True
+
+    write_run_json(run_dir, **fields)
+    invalidate_stats_cache(job.id)
     logger.info(
-        f"🧟 reaped stranded run {job_id}/{run_id} "
-        f"(pid={pid} confirmed dead, executor never finalised)"
+        f"🧟 reaped stranded run {job.id}/{run_id} "
+        f"(pid={pid} confirmed dead, executor never finalised, "
+        f"end_time={'confirmed' if finished_at else 'unknown'})"
     )
+
+    try:
+        cfg = load_webapp_config()
+    except Exception as exc:  # noqa: BLE001 — reap must keep going regardless
+        logger.warning(f"⚠️  reap notify: could not load webapp config: {exc}")
+    else:
+        notify_failure(
+            cfg, job, run_dir,
+            status="failed",
+            exit_code=record.get("exit_code"),
+            reaped=True,
+        )
+
     return read_run(run_dir)
 
 
@@ -119,7 +179,7 @@ def finalize_dead_runs(job: Job) -> List[Dict[str, Any]]:
     for record in list_runs(job.id):
         if record.get("status") not in ("running", "pending"):
             continue
-        updated = _reap_one(job.id, record)
+        updated = _reap_one(job, record)
         if updated is not None:
             reaped.append(updated)
     return reaped

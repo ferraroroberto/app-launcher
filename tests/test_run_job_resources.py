@@ -4,7 +4,7 @@
 The sampler is tested by pointing it at a live child process (a short
 ``time.sleep`` Python subprocess), letting it tick a couple of times,
 then asserting the on-disk run.json gained the resource fields. The
-notifier path is tested in isolation via :func:`_maybe_notify_failure`.
+notifier path is tested in isolation via :func:`src.notifications.notify_failure`.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from app.cli.commands import run_job_cmd as rjc
 from app.cli.commands import run_job_supervision as sup
 from src import jobs as jobs_mod
 from src import jobs_history as jobs_history_mod
+from src import notifications as notif
 
 
 # ============================================================== sampler
@@ -130,10 +131,10 @@ class TestExecutorFinalises:
         assert "cpu_seconds" in record
 
 
-# ================================================ _maybe_notify_failure
+# ==================================================== notify_failure
 
 
-class TestMaybeNotifyFailure:
+class TestNotifyFailure:
     def _cfg(self, **kw):
         defaults = dict(
             pushover_api_token="tok",
@@ -153,7 +154,7 @@ class TestMaybeNotifyFailure:
         jobs_mod.write_run_json(rd, status="success")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
         notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(), job, rd,
             status="success", exit_code=0, notifier=notifier,
         )
@@ -168,7 +169,7 @@ class TestMaybeNotifyFailure:
         (rd / "output.log").write_bytes(b"boom\n")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
         notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(notify_on_failure=False), job, rd,
             status="failed", exit_code=1, notifier=notifier,
         )
@@ -183,7 +184,7 @@ class TestMaybeNotifyFailure:
         jobs_mod.write_run_json(rd, status="failed")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
         notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(), job, rd,
             status="failed", exit_code=1, notifier=notifier,
         )
@@ -214,7 +215,7 @@ class TestMaybeNotifyFailure:
         (rd / "output.log").write_bytes(b"third failure\n")
         job = Job(id="demo", name="Demo", script_path="C:\\ok.py")
         notifier = MagicMock()
-        rjc._maybe_notify_failure(
+        notif.notify_failure(
             self._cfg(notify_failure_streak=3), job, rd,
             status="failed", exit_code=1, notifier=notifier,
         )

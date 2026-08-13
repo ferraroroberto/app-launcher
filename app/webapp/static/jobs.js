@@ -301,12 +301,15 @@ function triggerChip(r) {
   return escapeHtml(r.trigger || '?');
 }
 
-/* "Who ended this run" chip (issue #695). A bare `failed` covers three
- * genuinely different outcomes and the row used to render them
+/* "Who ended this run" chip (issue #695, #747). A bare `failed` covers
+ * several genuinely different outcomes and the row used to render them
  * identically: the job exited non-zero on its own, an operator tapped
- * Kill (`killed`), or the executor's last-resort watchdog tore down a
- * wedged run (`watchdog` + `watchdog_reason`). Only one can apply, and a
- * run that ended by itself gets no chip at all. */
+ * Kill (`killed`), the executor's last-resort watchdog tore down a
+ * wedged run (`watchdog` + `watchdog_reason`), or the launcher discovered
+ * the executor itself had died and reconciled the record after the fact
+ * (`reaped`) — `end_time_unknown` further flags that even the reconciled
+ * `finished_at` could not be established from real evidence. Only one can
+ * apply, and a run that ended by itself gets no chip at all. */
 function endedChip(r) {
   if (r.watchdog) {
     const reason = String(r.watchdog_reason || '').replace(/_/g, ' ');
@@ -314,6 +317,9 @@ function endedChip(r) {
       (reason ? ' ' + escapeHtml(reason) : '');
   }
   if (r.killed) return ' · ' + icon('octagon-x') + ' killed';
+  if (r.reaped) {
+    return ' · reaped' + (r.end_time_unknown ? ' (end time unknown)' : '');
+  }
   return '';
 }
 

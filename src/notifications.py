@@ -36,11 +36,15 @@ Two independent channels share this one finalisation hook:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Protocol
+from datetime import datetime
+from pathlib import Path
+from typing import Any, List, Optional, Protocol
 
 import requests
 
 from src import llm_client
+from src.jobs_history import read_output_tail
+from src.jobs_stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
 from src.notify import TelegramNotifier as _VendoredTelegramNotifier
 
@@ -210,3 +214,88 @@ def build_telegram_notifier_from_config(cfg: Any) -> Notifier:
     if not (bot_token and chat_id):
         return NoopNotifier()
     return TelegramNotifier(bot_token, chat_id)
+
+
+def notify_failure(
+    cfg: Any,
+    job: Any,
+    run_dir: Path,
+    *,
+    status: str,
+    exit_code: Optional[int],
+    reaped: bool = False,
+    notifier: Optional[Notifier] = None,
+    telegram_notifier: Optional[Notifier] = None,
+) -> None:
+    """Push failure notifications for a ``failed`` finalisation.
+
+    Shared by the executor's normal finalise
+    (:func:`app.cli.commands.run_job_cmd._finalize_run`) and the stranded-run
+    reconciler (:func:`src.jobs_reap._reap_one`, issue #747) — a run that
+    fails because the launcher discovered a dead executor pages the same way
+    a run that fails on its own exit code does.
+
+    Two independent channels, both no-op on success:
+
+    * Pushover (global, issue #66) — gated by ``cfg.notify_on_failure``,
+      fires for every job.
+    * Telegram (per-job, issue #597) — gated by ``job.alert_on_failure``,
+      fires only for jobs that opted in.
+
+    Either resolving to :class:`NoopNotifier` (no creds) is a silent
+    no-op for that channel. The optional LLM summary (Pushover only) is
+    best-effort; hub down → raw tail only. Any error inside this path is
+    logged and swallowed — finalisation must keep going.
+
+    ``exit_code`` is ``None`` for a reaped run — the dead executor never
+    reported one — and renders as ``exit=unknown`` rather than a
+    fabricated number; ``reaped=True`` appends a short note so the
+    recipient knows this failure was discovered late, not live.
+    """
+    try:
+        if status != "failed":
+            return
+
+        exit_text = "unknown" if exit_code is None else str(exit_code)
+        origin_note = " (reaped — end time not confirmed)" if reaped else ""
+
+        if cfg.notify_on_failure:
+            notifier = notifier or build_notifier_from_config(cfg)
+            if not isinstance(notifier, NoopNotifier):
+                tail = read_output_tail(run_dir, max_bytes=8 * 1024)
+                body_parts: List[str] = []
+                if cfg.notify_failure_summary:
+                    summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
+                    if summary:
+                        body_parts.append(summary)
+                # The raw tail is what an operator wants when the summary is
+                # missing or wrong — always include the last 500 chars.
+                body_parts.append(tail[-500:] if tail else "(no output captured)")
+                body_parts.append(
+                    f"— job={job.id} run={run_dir.name} exit={exit_text}{origin_note}"
+                )
+                title = f"❌ {job.name}"
+                notifier.notify(title, "\n\n".join(body_parts), severity="error")
+
+                streak = cfg.notify_failure_streak
+                if streak and streak > 1:
+                    count = consecutive_failed_runs(job.id)
+                    if count == streak:
+                        notifier.notify(
+                            f"🔁 {job.name} — {count} consecutive failures",
+                            f"Failure streak reached {count} runs.\n"
+                            f"Most recent: {run_dir.name} (exit {exit_text}).",
+                            severity="error",
+                        )
+
+        if job.alert_on_failure:
+            telegram_notifier = telegram_notifier or build_telegram_notifier_from_config(cfg)
+            if not isinstance(telegram_notifier, NoopNotifier):
+                when = datetime.now().strftime("%Y-%m-%d %H:%M")
+                telegram_notifier.notify(
+                    f"❌ {job.name} failed",
+                    f"{when} — run={run_dir.name} exit={exit_text}{origin_note}",
+                    severity="error",
+                )
+    except Exception as exc:  # noqa: BLE001 — never block finalisation
+        logger.warning(f"⚠️  notification path raised: {exc}")

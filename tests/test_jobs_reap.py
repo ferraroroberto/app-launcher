@@ -11,6 +11,7 @@ kill route already does by hand for an orphan pid.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -162,7 +163,40 @@ class TestFinalizeDeadRuns:
         record = jobs_mod.read_run(isolated_jobs / "solo" / "20260101T000000")
         assert record["status"] == "running"
 
-    def test_reaps_a_genuinely_dead_pid(self, isolated_jobs, monkeypatch):
+    def test_reaps_a_genuinely_dead_pid_with_output_log_evidence(
+        self, isolated_jobs, monkeypatch
+    ):
+        """output.log's mtime is the real end-time evidence — never the
+        moment reaping happens to run (issue #747)."""
+        started = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
+        rd = _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="running", pid=4242, started_at=started,
+        )
+        (rd / "output.log").write_text("job output\n", encoding="utf-8")
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+        reaped = jobs_reap_mod.finalize_dead_runs(job)
+
+        assert len(reaped) == 1
+        record = reaped[0]
+        assert record["status"] == "failed"
+        assert record["reaped"] is True
+        assert record.get("finished_at")
+        assert record["duration_seconds"] > 0
+        assert "end_time_unknown" not in record
+        assert "killed" not in record  # distinct from an explicit user kill
+        # Persisted, not just returned.
+        on_disk = jobs_mod.read_run(isolated_jobs / "solo" / "20260101T000000")
+        assert on_disk["status"] == "failed"
+
+    def test_reaps_with_no_output_log_marks_end_time_unknown(
+        self, isolated_jobs, monkeypatch
+    ):
+        """No output.log at all → no evidence of a real end time. The
+        launcher must never fabricate one — record the fact as its own
+        state instead (issue #747)."""
         started = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
         _seed_run(
             isolated_jobs, "solo", "20260101T000000",
@@ -177,12 +211,56 @@ class TestFinalizeDeadRuns:
         record = reaped[0]
         assert record["status"] == "failed"
         assert record["reaped"] is True
-        assert record.get("finished_at")
-        assert record["duration_seconds"] > 0
-        assert "killed" not in record  # distinct from an explicit user kill
-        # Persisted, not just returned.
-        on_disk = jobs_mod.read_run(isolated_jobs / "solo" / "20260101T000000")
-        assert on_disk["status"] == "failed"
+        assert record["end_time_unknown"] is True
+        assert "finished_at" not in record
+        assert "duration_seconds" not in record
+
+    def test_reaps_when_output_log_predates_started_at_marks_unknown(
+        self, isolated_jobs, monkeypatch
+    ):
+        """A stale/leftover output.log older than this run's own start is
+        not evidence of anything — treat it the same as no evidence."""
+        started = datetime.now().isoformat(timespec="seconds")
+        rd = _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="running", pid=4242, started_at=started,
+        )
+        stale_log = rd / "output.log"
+        stale_log.write_text("leftover\n", encoding="utf-8")
+        old_time = (datetime.now() - timedelta(hours=1)).timestamp()
+        os.utime(stale_log, (old_time, old_time))
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+        reaped = jobs_reap_mod.finalize_dead_runs(job)
+
+        assert reaped[0]["end_time_unknown"] is True
+        assert "finished_at" not in reaped[0]
+
+    def test_reap_fires_the_same_failure_alert_a_normal_finalise_would(
+        self, isolated_jobs, monkeypatch
+    ):
+        """Issue #747: nobody was told for 14 hours because the reap path
+        bypassed the executor's notification hook entirely — it must fire
+        the same alert channels a live-detected failure would."""
+        started = (datetime.now() - timedelta(minutes=5)).isoformat(timespec="seconds")
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="running", pid=4242, started_at=started,
+        )
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        spy = MagicMock()
+        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+        jobs_reap_mod.finalize_dead_runs(job)
+
+        spy.assert_called_once()
+        args, kwargs = spy.call_args
+        assert args[1] is job
+        assert kwargs["status"] == "failed"
+        assert kwargs["reaped"] is True
+        assert kwargs["exit_code"] is None
 
     def test_reaps_legacy_record_with_no_create_time_hint_when_pid_dead(
         self, isolated_jobs, monkeypatch
