@@ -864,10 +864,23 @@ class TestSyncSchtasks:
 
         created = jobs_mod.sync_schtasks(job, runner=runner)
         assert created == ["\\AppLauncher\\demo"]
-        # Last call is the /Create for the daily task.
-        last = calls[-1]
-        assert last[:5] == ["schtasks", "/Create", "/F", "/TN", "\\AppLauncher\\demo"]
-        assert "/SC" in last and "DAILY" in last and "06:00" in last
+        # /Create for the daily task, followed by one power-policy call.
+        create_calls = [c for c in calls if c[:2] == ["schtasks", "/Create"]]
+        assert len(create_calls) == 1
+        last_create = create_calls[0]
+        assert last_create[:5] == [
+            "schtasks", "/Create", "/F", "/TN", "\\AppLauncher\\demo",
+        ]
+        assert "/SC" in last_create and "DAILY" in last_create and "06:00" in last_create
+        # Exactly one batched PowerShell power-policy call, naming the task.
+        ps_calls = [c for c in calls if c[0] == jobs_schtasks_mod._POWERSHELL_EXE]
+        assert len(ps_calls) == 1
+        ps_script = ps_calls[0][-1]
+        assert "-TaskName 'demo'" in ps_script
+        assert "StartWhenAvailable = $true" in ps_script
+        assert "DisallowStartIfOnBatteries = $false" in ps_script
+        assert "StopIfGoingOnBatteries = $false" in ps_script
+        assert "WakeToRun" not in ps_script
 
     def test_daily_times_creates_three_tasks(self):
         job = Job(
@@ -876,13 +889,67 @@ class TestSyncSchtasks:
             script_path="C:\\stub\\scrape.py",
             schedule=Schedule(type="daily_times", at=["06:00", "12:00", "18:00"]),
         )
-        runner = MagicMock(return_value=_mk_completed(rc=0))
+        calls: List[List[str]] = []
+
+        def runner(argv):
+            calls.append(argv)
+            return _mk_completed(rc=0)
+
         created = jobs_mod.sync_schtasks(job, runner=runner)
         assert created == [
             "\\AppLauncher\\ls-1",
             "\\AppLauncher\\ls-2",
             "\\AppLauncher\\ls-3",
         ]
+        # All three slots are batched into a single PowerShell spawn, not
+        # one per task.
+        ps_calls = [c for c in calls if c[0] == jobs_schtasks_mod._POWERSHELL_EXE]
+        assert len(ps_calls) == 1
+        ps_script = ps_calls[0][-1]
+        for suffix in ("ls-1", "ls-2", "ls-3"):
+            assert f"-TaskName '{suffix}'" in ps_script
+
+    def test_power_policy_failure_is_logged_not_raised(self, caplog):
+        job = Job(
+            id="demo",
+            name="Demo",
+            script_path="C:\\stub\\demo.py",
+            schedule=Schedule(type="daily", at="06:00"),
+        )
+
+        def runner(argv):
+            if argv[0] == jobs_schtasks_mod._POWERSHELL_EXE:
+                return _mk_completed(stdout="", rc=1)
+            return _mk_completed(rc=0)
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger=jobs_schtasks_mod.logger.name):
+            created = jobs_mod.sync_schtasks(job, runner=runner)
+        # The task itself was still created — the power-policy write is
+        # best-effort and never blocks the create result.
+        assert created == ["\\AppLauncher\\demo"]
+        assert "power-policy" in caplog.text
+
+    def test_elevated_job_skips_power_policy(self):
+        job = Job(
+            id="hwinfo-restart",
+            name="hwinfo restart",
+            script_path="C:\\stub\\hwinfo.py",
+            schedule=Schedule(type="daily", at="03:00"),
+            elevated=True,
+        )
+        calls: List[List[str]] = []
+
+        def runner(argv):
+            calls.append(argv)
+            if argv[:2] == ["schtasks", "/Query"]:
+                return _mk_completed(stdout="", rc=0)
+            return _mk_completed(rc=0)
+
+        created = jobs_mod.sync_schtasks(job, runner=runner)
+        assert created == []
+        assert not any(c[0] == jobs_schtasks_mod._POWERSHELL_EXE for c in calls)
 
     def test_none_schedule_only_deletes(self):
         job = Job(
