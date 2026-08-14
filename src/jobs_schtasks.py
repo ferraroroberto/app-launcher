@@ -137,21 +137,35 @@ def _apply_power_policy(
     ``StopIfGoingOnBatteries`` or ``StartWhenAvailable`` — Windows applies its
     restrictive defaults (``True``/``True``/``False``). This host runs on an
     APC Smart-UPS, which Windows' ``Win32_Battery`` reports as a battery, so
-    any mains blip or UPS self-test reads as "went on battery" and Task
-    Scheduler terminates every running job. ``schtasks /Change`` has no
-    equivalent flags either, so this is a follow-up ``Set-ScheduledTask``
-    write per created task — batched into a single ``powershell.exe`` spawn
-    (rather than one per task) so an N-slot ``daily_times`` job costs one
-    extra process, not N. Reads the existing ``Settings`` object first and
-    flips only these three fields, so every other schtasks-applied default
-    (execution time limit, compatibility, ...) survives untouched.
+    those defaults mean a mains loss *would* let Task Scheduler terminate
+    every running job and skip every slot that elapses on battery, with no
+    catch-up. The hazard is real and standing — ``home-automation``'s UPS
+    monitor logs a genuine mains loss to its ``logs/power.jsonl`` roughly
+    monthly — which is why this guard stays.
+
+    It is a guard against a hazard, **not** a fix for a diagnosed incident:
+    no observed job failure on this host has been traced to this mechanism.
+    #746 originally attributed two to it and both attributions were wrong
+    (a Windows Update reboot and a logged-out session respectively; see the
+    correction on #746 for the evidence). **A silently-skipped scheduled
+    task is far more likely to be #757** — every ``\\AppLauncher\\`` task is
+    registered ``LogonType=InteractiveToken``, so none of them run at all
+    while the machine sits logged out. Check that before suspecting power.
+
+    ``schtasks /Change`` has no equivalent flags either, so this is a
+    follow-up ``Set-ScheduledTask`` write per created task — batched into a
+    single ``powershell.exe`` spawn (rather than one per task) so an N-slot
+    ``daily_times`` job costs one extra process, not N. Reads the existing
+    ``Settings`` object first and flips only these three fields, so every
+    other schtasks-applied default (execution time limit, compatibility,
+    ...) survives untouched.
 
     ``WakeToRun`` is deliberately left alone — waking the machine overnight
     is a separate behavioural call, not part of this fix.
 
     Best-effort: a failure here is logged and swallowed. The task(s) still
     exist and still run under Task Scheduler's restrictive defaults, which
-    is the pre-existing bug, not a new regression introduced by this call.
+    is the pre-existing gap, not a new regression introduced by this call.
     """
     if not names:
         return
@@ -404,11 +418,18 @@ def sync_schtasks(
     Deletes anything currently under ``\\AppLauncher\\<job.id>*`` first,
     then creates one task per schedule slot. Every created task then gets
     its on-battery power policy flipped off Windows' restrictive defaults
-    (issue #746, :func:`_apply_power_policy`) — otherwise this host's
-    UPS-backed power reporting reads a mains blip as "on battery" and Task
-    Scheduler silently terminates the running job. Returns the list of task
+    (issue #746, :func:`_apply_power_policy`) — otherwise a real mains loss
+    would let Task Scheduler terminate the running job, which this
+    UPS-backed host is exposed to about monthly. Returns the list of task
     names created (empty for ``schedule.type == "none"`` after the
     pre-existing tasks are deleted).
+
+    That power policy is the *only* schtasks default this function corrects.
+    The principal is still whatever ``schtasks /Create`` defaults to —
+    ``LogonType=InteractiveToken``, i.e. "run only when the user is logged
+    on" — so every task here silently does nothing while the machine sits at
+    the lock screen with no session (issue #757). If a scheduled job is
+    missing runs, look there before looking at power.
 
     ``job.elevated`` jobs are skipped entirely (issue #352): their real
     ``/RL HIGHEST`` entry can only be created by an already-elevated
