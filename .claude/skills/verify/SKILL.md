@@ -5,14 +5,12 @@ description: Boot this webapp and drive a real browser against it to visually co
 
 # Verifying app-launcher's webapp in a real browser
 
-This repo has no standing `verify`/`run` skill before this one — cold-start
-recipe that worked, captured so the next session skips it.
-
 ## Fastest path: reuse the e2e fixtures, don't hand-roll a browser session
 
 `tests/e2e/conftest.py` already gives you a real Playwright browser against a
-disposable, auto-booted webapp — no tray needed, no manual auth. Fastest way
-to *see* a change, not just assert on it:
+disposable, auto-booted webapp — no tray needed, no manual auth. Autoboot spins
+up `app.webapp.server:app` + a disposable session-host, so this is real
+rendering of the actual changed JS/CSS, not a DOM-assertion-only test run.
 
 1. Find (or write) the e2e test closest to the surface you touched — e.g.
    `tests/e2e/test_board_tab.py` for anything under the Board tab.
@@ -30,19 +28,15 @@ to *see* a change, not just assert on it:
    `authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")`
    — no reload needed, CSS reacts live.
 
-This is real rendering of the actual changed JS/CSS against a real webapp
-process (autoboot spins up `app.webapp.server:app` + a disposable
-session-host) — not a DOM-assertion-only test run.
-
 ## Alternative: the live tray webapp
 
-If you want to see a change against your actual running instance instead of
-a disposable one: `tray.bat --restart` (see the repo CLAUDE.md's restart
-contract), then hit `https://127.0.0.1:8445` directly — loopback bypasses
-the bearer-token gate. Terminal-grade surfaces (Board drawer reply/dispatch,
-live PTY) additionally need a WebAuthn passkey unless `webauthn_rp_id` is
-unset in `config/webapp_config.json`, so the e2e-fixture path above (which
-route-mocks past all of that) is usually less friction for a UI-only check.
+To see a change against your actual running instance instead of a disposable
+one: `tray.bat --restart` (see the repo CLAUDE.md's restart contract), then hit
+`https://127.0.0.1:8445` directly — loopback bypasses the bearer-token gate.
+Terminal-grade surfaces (Board drawer reply/dispatch, live PTY) additionally
+need a WebAuthn passkey unless `webauthn_rp_id` is unset in
+`config/webapp_config.json`, so the e2e-fixture path above (which route-mocks
+past all of that) is usually less friction for a UI-only check.
 
 ## Gotchas
 
