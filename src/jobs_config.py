@@ -35,6 +35,7 @@ Schedule types are a bounded set — no raw cron expressions:
 * ``daily``          — once a day at HH:MM           (``at: "HH:MM"``)
 * ``daily_times``    — N times a day at HH:MM list   (``at: ["HH:MM",…]``)
 * ``weekly``         — once a week                   (``day: "MON|…"``, ``at: "HH:MM"``)
+* ``once``           — a single one-off run          (``at: "YYYY-MM-DDTHH:MM"``)
 
 This module owns registry *storage* (load/save the JSON file) and CRUD
 (add/update/pause/resume/remove). The ``Schedule``/``Param``/``Job``/
@@ -229,8 +230,10 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
 
 
 def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
-    """In-place edit. Accepts ``name``, ``script_path``, ``args``, ``schedule``, ``params``,
-    ``kind``, ``kind_config``.
+    """In-place edit. Accepts every field named in ``_SIMPLE_UPDATE_FIELDS``
+    above (the source of truth for plain single-field edits), plus the
+    cross-field groups handled explicitly below: ``kind``/``script_path``/
+    ``kind_config`` and ``on_success``/``on_failure``.
     """
     job = get_by_id(cfg, job_id)
     if job is None:
