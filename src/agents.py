@@ -182,6 +182,41 @@ def resume_command_for(agent_id: str) -> str:
     return agent.resume_token if agent else ""
 
 
+# The command-line metacharacters ``is_safe_command_text`` always excludes
+# (no caller's ``extra_chars`` adds any of these back): ``& | < > ^ % ! $ `
+# ~ * + \ '`` — everything cmd.exe or PowerShell would treat specially
+# (redirection, piping, chaining, variable expansion, escape introducers)
+# when it lands unquoted on the line ``SessionManager`` builds.
+# ``is_safe_command_text`` is the *one* allowlist predicate behind every
+# externally-influenced fragment that reaches that line — a title fed to
+# ``native_session_name_flags_for`` below, and the assembled ``flags`` string
+# validated inside ``SessionManager.create``/``create_remote``
+# (``src/session_host.py``, issue #753) — so a future caller inherits the
+# invariant by construction instead of re-deriving it at its own call site.
+# Callers pass their own ``extra_chars`` because the safe punctuation differs
+# by context: a title is about to be wrapped in a literal ``"..."`` by this
+# module, so it must exclude ``"`` (a title containing one could break out of
+# that quoting); the assembled ``flags`` string already contains such
+# quoting (e.g. a quoted prompt), a literal ``=`` (config overrides like
+# ``model_reasoning_effort=high``), and ``@`` (the loopback SSH agent's
+# caller-supplied ``user@host`` target), so its allowlist includes all three
+# — none of which is a cmd.exe/PowerShell metacharacter.
+def is_safe_command_text(text: str, extra_chars: str) -> bool:
+    """True if every character of ``text`` is alnum or in ``extra_chars``.
+
+    Deliberately an allowlist, not a denylist: a fixed set of characters
+    known to be needed by legitimate flags/titles, rather than a list of
+    "bad" characters that a future shell quirk could extend around.
+    """
+    return all(char.isalnum() or char in extra_chars for char in text)
+
+
+# Title-only allowlist: excludes ``"`` (see ``is_safe_command_text`` above)
+# and ``=`` (a title has no legitimate use for it; keeping the set tight
+# costs nothing here).
+_SAFE_TITLE_CHARS = " .,:;()[]{}_-/#?"
+
+
 def native_session_name_flags_for(agent_id: str, title: str) -> str:
     """Return safe spawn-time picker-name flags for ``title`` (issue #556).
 
@@ -194,7 +229,7 @@ def native_session_name_flags_for(agent_id: str, title: str) -> str:
     clean = title.strip()[:60]
     if not agent or not agent.native_name_flag or not clean:
         return ""
-    if any(not (char.isalnum() or char in " .,:;()[]{}_-/#?") for char in clean):
+    if not is_safe_command_text(clean, _SAFE_TITLE_CHARS):
         return ""
     return f'{agent.native_name_flag} "{clean}"'
 

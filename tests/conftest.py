@@ -250,7 +250,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import board_chief as board_chief_router
     from app.webapp.routers import board_spawn as board_spawn_router
     from app.webapp.routers import life_os as life_os_router
-    from app.webapp.routers import media_proxy as media_proxy_router
+    from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
     from app.webapp.routers import misc as misc_router
     from app.webapp.routers import sessions as sessions_router
 
@@ -285,7 +285,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # Mock the voice-transcriber loopback client (issue #165) — the
     # /api/transcribe proxy goes through it; tests assert call args and set
     # the transcript without a live voice-transcriber on :8443. Lives in
-    # routers/media_proxy.py (split off routers/sessions.py, #521).
+    # routers/voice_ocr_tts.py (split off routers/sessions.py, #521).
     from src import voice_client as real_voice_client
     voice_mock = MagicMock()
     voice_mock.transcribe.return_value = {"transcript": "stub text", "language": "en"}
@@ -296,53 +296,54 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         lambda base, sid: f"{base.rstrip('/')}/api/sessions/{sid}/events"
     )
     voice_mock.VoiceTranscriberError = real_voice_client.VoiceTranscriberError
-    monkeypatch.setattr(media_proxy_router, "voice_client", voice_mock)
+    monkeypatch.setattr(voice_ocr_tts_router, "voice_client", voice_mock)
 
     # Mock the photo-ocr loopback client (issue #171) — the /api/ocr proxy
     # goes through it; tests assert call args and set the extracted text
-    # without a live photo-ocr on :8444. Lives in routers/media_proxy.py.
+    # without a live photo-ocr on :8444. Lives in routers/voice_ocr_tts.py.
     from src import photo_ocr_client as real_photo_ocr_client
     photo_ocr_mock = MagicMock()
     photo_ocr_mock.extract.return_value = {
         "text": "stub ocr text", "model": "gemini_flash", "session_id": "po-stub"
     }
     photo_ocr_mock.PhotoOcrError = real_photo_ocr_client.PhotoOcrError
-    monkeypatch.setattr(media_proxy_router, "photo_ocr_client", photo_ocr_mock)
+    monkeypatch.setattr(voice_ocr_tts_router, "photo_ocr_client", photo_ocr_mock)
 
     # Mock the local-llm-hub TTS loopback client (issue #203) — the
     # /api/tts/health probe goes through it; /api/tts/speak streams via httpx
     # (mocked per-test). Tests assert health/payload without a live hub on
     # :8000. build_speech_payload / speech_url keep their real behaviour so
     # the proxy builds the correct upstream call. Lives in
-    # routers/media_proxy.py.
+    # routers/voice_ocr_tts.py.
     from src import tts_client as real_tts_client
     tts_mock = MagicMock()
     tts_mock.health.return_value = True
     tts_mock.speech_url.side_effect = real_tts_client.speech_url
     tts_mock.build_speech_payload.side_effect = real_tts_client.build_speech_payload
     tts_mock.TtsError = real_tts_client.TtsError
-    monkeypatch.setattr(media_proxy_router, "tts_client", tts_mock)
+    monkeypatch.setattr(voice_ocr_tts_router, "tts_client", tts_mock)
 
     # Mock the local-llm-hub chat client (issue #210) — the /api/tts/summarize
     # proxy goes through it; tests assert the summary without a live hub on
     # :8000. summarize() returns a stub by default; LlmError keeps its real
-    # type so error-mapping tests can raise it. Lives in routers/media_proxy.py.
+    # type so error-mapping tests can raise it. Lives in
+    # routers/voice_ocr_tts.py.
     from src import llm_client as real_llm_client
     llm_mock = MagicMock()
     llm_mock.summarize.return_value = "Build is green. No decision needed."
     llm_mock.LlmError = real_llm_client.LlmError
-    monkeypatch.setattr(media_proxy_router, "llm_client", llm_mock)
+    monkeypatch.setattr(voice_ocr_tts_router, "llm_client", llm_mock)
 
     # Audit log writer — stub so no files land in webapp/sessions/ during
     # tests. The real audit module opens log files lazily. The `audit`
     # import lives in routers/apps.py, routers/sessions.py,
-    # routers/media_proxy.py (split off sessions.py, #521), and
+    # routers/voice_ocr_tts.py (split off sessions.py, #521), and
     # routers/webauthn.py — patch all four.
     audit_mock = MagicMock()
     from app.webapp.routers import webauthn as webauthn_router
     monkeypatch.setattr(apps_router, "audit", audit_mock)
     monkeypatch.setattr(sessions_router, "audit", audit_mock)
-    monkeypatch.setattr(media_proxy_router, "audit", audit_mock)
+    monkeypatch.setattr(voice_ocr_tts_router, "audit", audit_mock)
     monkeypatch.setattr(webauthn_router, "audit", audit_mock)
     monkeypatch.setattr(life_os_router, "audit", audit_mock)
     monkeypatch.setattr(board_router, "audit", audit_mock)

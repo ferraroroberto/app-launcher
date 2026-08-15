@@ -46,7 +46,7 @@ from src import llm_client
 from src.jobs_history import read_output_tail
 from src.jobs_stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
-from src.notify import TelegramNotifier as _VendoredTelegramNotifier
+from src.notify import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +70,15 @@ _FAILURE_SUMMARY_SYSTEM_PROMPT = (
 _FAILURE_SUMMARY_MAX_TOKENS = 120
 
 
-class Notifier(Protocol):
-    """Minimal push-notification surface — see :class:`PushoverNotifier`."""
+class JobNotifier(Protocol):
+    """Minimal push-notification surface — see :class:`PushoverNotifier`.
+
+    Named to say which channel family it belongs to (issue #753): this
+    module's own Jobs-tab failure-alert protocol, distinct from the
+    vendored, domain-free :class:`src.notify.Notifier` (single method
+    ``send_text``, no ``severity``) that :class:`JobTelegramNotifier` below
+    adapts to this shape.
+    """
 
     def notify(self, title: str, body: str, severity: str) -> None: ...
 
@@ -133,17 +140,22 @@ class PushoverNotifier:
             logger.warning(f"⚠️  pushover send failed: {exc}")
 
 
-class TelegramNotifier:
+class JobTelegramNotifier:
     """Adapts the vendored :class:`src.notify.TelegramNotifier` to the
-    ``Notifier`` protocol used by the executor (issue #597).
+    :class:`JobNotifier` protocol used by the executor (issue #597).
 
     ``title`` and ``body`` are joined into one plain-text message —
     Telegram has no separate subject line. Errors are logged and
-    swallowed, same contract as :class:`PushoverNotifier`.
+    swallowed, same contract as :class:`PushoverNotifier`. Named distinctly
+    from the vendored ``TelegramNotifier`` it wraps (issue #753) — the two
+    classes have incompatible methods (``notify(title, body, severity)``
+    here vs. ``send_text(text)`` there) and previously shared one name,
+    forcing an ``as _VendoredTelegramNotifier`` import alias purely to avoid
+    the collision.
     """
 
     def __init__(self, bot_token: str, chat_id: str) -> None:
-        self._notifier = _VendoredTelegramNotifier(bot_token, chat_id)
+        self._notifier = TelegramNotifier(bot_token, chat_id)
 
     def notify(self, title: str, body: str, severity: str = "warning") -> None:
         try:
@@ -190,8 +202,8 @@ def summarise_failure(
     return summary.splitlines()[0].strip() or None
 
 
-def build_notifier_from_config(cfg: Any) -> Notifier:
-    """Construct a Notifier from a :class:`WebappConfig`-shaped object.
+def build_notifier_from_config(cfg: Any) -> JobNotifier:
+    """Construct a JobNotifier from a :class:`WebappConfig`-shaped object.
 
     Returns :class:`NoopNotifier` when creds or the master switch are
     missing — every caller can unconditionally ``notifier.notify(...)``.
@@ -203,8 +215,8 @@ def build_notifier_from_config(cfg: Any) -> Notifier:
     return PushoverNotifier(api_token, user_key)
 
 
-def build_telegram_notifier_from_config(cfg: Any) -> Notifier:
-    """Construct a Telegram :class:`Notifier` from a :class:`WebappConfig`-shaped object.
+def build_telegram_notifier_from_config(cfg: Any) -> JobNotifier:
+    """Construct a Telegram :class:`JobNotifier` from a :class:`WebappConfig`-shaped object.
 
     Returns :class:`NoopNotifier` when either credential is missing —
     every caller can unconditionally ``notifier.notify(...)``.
@@ -213,7 +225,7 @@ def build_telegram_notifier_from_config(cfg: Any) -> Notifier:
     chat_id = getattr(cfg, "telegram_chat_id", "") or ""
     if not (bot_token and chat_id):
         return NoopNotifier()
-    return TelegramNotifier(bot_token, chat_id)
+    return JobTelegramNotifier(bot_token, chat_id)
 
 
 def notify_failure(
@@ -224,8 +236,8 @@ def notify_failure(
     status: str,
     exit_code: Optional[int],
     reaped: bool = False,
-    notifier: Optional[Notifier] = None,
-    telegram_notifier: Optional[Notifier] = None,
+    notifier: Optional[JobNotifier] = None,
+    telegram_notifier: Optional[JobNotifier] = None,
 ) -> None:
     """Push failure notifications for a ``failed`` finalisation.
 
