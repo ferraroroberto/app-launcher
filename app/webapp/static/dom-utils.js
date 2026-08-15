@@ -107,6 +107,33 @@ export function wireModelCombo(root, onChange) {
   };
 }
 
+// One duration formatter for the Board card's compact age chip and the
+// Coding tab's Running-sessions elapsed time (#750) — same quantity, kept at
+// the two granularities each surface has always used (compact chip: "3h";
+// the denser sessions row: "3h 24m"), parametrised over the two input
+// shapes: a pre-computed duration in seconds (`fromEpoch: false`, the
+// default), or an epoch second diffed against now (`fromEpoch: true`).
+// `granular: true` also switches sub-minute output from "now" to "Ns" and
+// caps the format at hours+minutes instead of rolling into days.
+export function fmtDuration(value, opts) {
+  const o = opts || {};
+  let secs;
+  if (o.fromEpoch) {
+    if (!value) return '';
+    secs = Math.max(0, Math.floor(Date.now() / 1000 - value));
+  } else {
+    if (value == null || isNaN(value)) return '';
+    secs = value;
+  }
+  if (secs < 60) return o.granular ? secs + 's' : 'now';
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return mins + 'm';
+  const hrs = Math.floor(mins / 60);
+  if (o.granular) return hrs + 'h ' + (mins % 60) + 'm';
+  if (secs < 86400) return hrs + 'h';
+  return Math.floor(secs / 86400) + 'd';
+}
+
 // The standing fleet chief (#245, cross-tab parity #547): one label="chief"
 // PTY session. Same label-first, name-fallback match everywhere a session
 // might be the chief — a session-host that predates the label field still

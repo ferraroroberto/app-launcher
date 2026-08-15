@@ -146,6 +146,24 @@ _STALLED_DISPATCH_AFTER = timedelta(minutes=30)
 _UNKNOWN_LAUNCH_STAMP = datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _read_tail_bytes(path: Any, n_bytes: int) -> bytes:
+    """Read the last ``n_bytes`` of ``path`` as raw bytes.
+
+    Best-effort: any OSError (missing file, read failure) returns ``b""`` —
+    callers degrade to "no signal" the same way a parse failure would.
+    Shared with :func:`board_exchange._read_tail`, which differs only in
+    decoding the result to ``str`` instead of splitting it into lines.
+    """
+    try:
+        with Path(str(path)).open("rb") as fh:
+            fh.seek(0, 2)
+            size = fh.tell()
+            fh.seek(max(0, size - n_bytes))
+            return fh.read()
+    except OSError:
+        return b""
+
+
 def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
     """Read the last ``n_bytes`` of ``path``, decoded and split into lines.
 
@@ -157,15 +175,12 @@ def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
     :func:`_last_activity` and :func:`last_exchange`, which differ only in
     the byte window and what they do with the lines.
     """
+    raw = _read_tail_bytes(path, n_bytes)
     try:
-        with Path(str(path)).open("rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            fh.seek(max(0, size - n_bytes))
-            lines = fh.read().decode("utf-8", errors="replace").splitlines()
-            return lines, size > n_bytes
+        size = Path(str(path)).stat().st_size
     except OSError:
         return [], False
+    return raw.decode("utf-8", errors="replace").splitlines(), size > n_bytes
 
 
 def _last_activity(transcript_path: Any) -> Optional[datetime]:

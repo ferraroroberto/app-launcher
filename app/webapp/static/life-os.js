@@ -13,7 +13,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
@@ -771,13 +771,6 @@ async function resumeConversation(r) {
 // comes from the user's own private files over a passkey-gated tailnet
 // link, but we still escape every byte before formatting so a stray
 // `<script>` in a note can never execute.
-function escapeHtml(s) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 function inlineMd(s) {
   return s
     .replace(/`([^`]+)`/g, '<code>$1</code>')

@@ -13,7 +13,7 @@ import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { CHIEF_KILL_CONFIRM, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
 // ensureChief lives in board-dispatch.js (split off board.js in #691),
 // exported for this cross-tab use (#547); board.js already imports
@@ -22,14 +22,11 @@ import { icon } from './_vendored/icons/icons.js';
 // rather than introducing a new risk.
 import { ensureChief } from './board-dispatch.js';
 
+// Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
+// module's own row render all import it) over the shared formatter in
+// dom-utils.js (#750) — same "3h 24m" elapsed-time granularity as before.
 export function fmtAgo(epochSeconds) {
-  if (!epochSeconds) return '';
-  const secs = Math.max(0, Math.floor(Date.now() / 1000 - epochSeconds));
-  if (secs < 60) return secs + 's';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + 'm';
-  const hrs = Math.floor(mins / 60);
-  return hrs + 'h ' + (mins % 60) + 'm';
+  return fmtDuration(epochSeconds, { fromEpoch: true, granular: true });
 }
 
 // Last path segment of a session's project dir, lowercased — the project

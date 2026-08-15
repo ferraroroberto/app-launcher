@@ -23,7 +23,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pyte
 
-from src.board_transcript import last_exchange
+from src.board_transcript import _read_tail_bytes, last_exchange
 
 _CAPTURE_TAIL_BYTES = 512 * 1024
 _CAPTURE_HISTORY_LINES = 2500
@@ -278,14 +278,7 @@ def launcher_last_exchange(
 
 
 def _read_tail(path: Path, n_bytes: int) -> str:
-    try:
-        with Path(path).open("rb") as fh:
-            fh.seek(0, 2)
-            size = fh.tell()
-            fh.seek(max(0, size - n_bytes))
-            return fh.read().decode("utf-8", errors="replace")
-    except OSError:
-        return ""
+    return _read_tail_bytes(path, n_bytes).decode("utf-8", errors="replace")
 
 
 def _nonempty_file(path: Path) -> bool:
