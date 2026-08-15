@@ -40,7 +40,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import {
   boardRepoFilter,
   isChiefCard,
@@ -62,14 +62,6 @@ const GH_STALE_MS = 2 * 60 * 1000;
 let refreshInFlight = false;
 
 // --------------------------------------------------------------- helpers
-
-function fmtAge(seconds) {
-  if (seconds == null || isNaN(seconds)) return '';
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
-  return Math.floor(seconds / 86400) + 'd';
-}
 
 // The exact same title resolution as the Coding tab's Running-sessions list
 // (#396) — board cards carry the same field names (shared_name/
@@ -138,7 +130,7 @@ function renderSessionCard(card) {
     isChiefCard(card) && CHIEF_STANDING_BY_STATUSES.has(card.status)
       ? CHIEF_STANDING_BY_META
       : STATUS_META[card.status] || STATUS_META.unknown;
-  const bits = [card.project || '', meta.text, fmtAge(card.age_seconds)].filter(Boolean);
+  const bits = [card.project || '', meta.text, fmtDuration(card.age_seconds)].filter(Boolean);
   const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
   // The chief's card is visually distinct (#245): accent tint + crown, so
   // the standing orchestrator never blends in with worker sessions.
@@ -559,7 +551,7 @@ function renderPrCard(card) {
 
 function renderJobCard(card) {
   const iconName = card.state === 'stuck' ? 'triangle-alert' : 'x';
-  const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtAge(card.age_seconds) : '');
+  const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
   const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
   shell.btn.addEventListener('click', function () { setTab('jobs'); });
   return shell.li;
