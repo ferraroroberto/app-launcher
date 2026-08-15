@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from webauthn import (
     base64url_to_bytes,
@@ -44,6 +44,9 @@ from webauthn.helpers.structs import (
 )
 
 from src._json_io import atomic_write_json
+
+if TYPE_CHECKING:
+    from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +82,7 @@ class WebAuthnGate:
 
     # ----------------------------------------------------------- config
     @staticmethod
-    def configured(cfg) -> bool:
+    def configured(cfg: WebappConfig) -> bool:
         """True when a relying party is set — i.e. the passkey gate is live."""
         return bool(
             getattr(cfg, "webauthn_rp_id", "")
@@ -142,7 +145,7 @@ class WebAuthnGate:
         return True
 
     # ----------------------------------------------------- registration
-    def begin_registration(self, cfg, label: str) -> Dict[str, Any]:
+    def begin_registration(self, cfg: WebappConfig, label: str) -> Dict[str, Any]:
         """Build registration options for a new platform passkey.
 
         Only allowed while the enrollment window is open.
@@ -178,7 +181,7 @@ class WebAuthnGate:
             )
         return json.loads(options_to_json(options))
 
-    def finish_registration(self, cfg, credential: Any) -> Dict[str, Any]:
+    def finish_registration(self, cfg: WebappConfig, credential: Any) -> Dict[str, Any]:
         """Verify a registration response and persist the new passkey."""
         with self._lock:
             challenge = self._reg_challenge
@@ -214,7 +217,7 @@ class WebAuthnGate:
         return {"id": device["id"], "label": device["label"]}
 
     # --------------------------------------------------- authentication
-    def begin_authentication(self, cfg) -> Dict[str, Any]:
+    def begin_authentication(self, cfg: WebappConfig) -> Dict[str, Any]:
         """Build an assertion challenge restricted to enrolled passkeys."""
         devices = self.load_devices()
         if not devices:
@@ -237,7 +240,7 @@ class WebAuthnGate:
             )
         return json.loads(options_to_json(options))
 
-    def finish_authentication(self, cfg, credential: Any) -> str:
+    def finish_authentication(self, cfg: WebappConfig, credential: Any) -> str:
         """Verify an assertion against the whitelist and mint a terminal token."""
         with self._lock:
             challenge = self._auth_challenge

@@ -14,7 +14,7 @@ from __future__ import annotations
 import hmac
 import ipaddress
 import logging
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -51,7 +51,7 @@ _TAILNET_CGNAT = ipaddress.ip_network("100.64.0.0/10")
 _CLOUDFLARE_HEADERS = ("cf-ray", "cf-connecting-ip")
 
 
-def via_cloudflare(headers) -> bool:
+def via_cloudflare(headers: Mapping[str, str]) -> bool:
     return any(h in headers for h in _CLOUDFLARE_HEADERS)
 
 
