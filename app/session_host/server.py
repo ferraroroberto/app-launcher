@@ -48,7 +48,12 @@ from starlette.websockets import WebSocketDisconnect
 
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
-from src.session_host import _EOF, SessionManager
+from src.session_host import (
+    _EOF,
+    INPUT_DROPPED,
+    INPUT_NOT_INGESTED,
+    SessionManager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -201,11 +206,11 @@ def create_app() -> FastAPI:
         data = str(body.get("data") or "")
         submit = bool(body.get("submit", True))
         # submit_input() blocks in real time — a bulk payload's settle wait
-        # (issue #611) plus write()'s own chunk-and-pace pauses over ~512
-        # bytes — so offload it like .stop (issue #253) so it doesn't stall
-        # every other live session's WS pump.
-        delivered = await asyncio.to_thread(session.submit_input, data, submit)
-        if not delivered:
+        # (issue #611) plus its ingest verification (#760) plus write()'s own
+        # chunk-and-pace pauses over ~512 bytes — so offload it like .stop
+        # (issue #253) so it doesn't stall every other live session's WS pump.
+        outcome = await asyncio.to_thread(session.submit_input, data, submit)
+        if outcome.reason == INPUT_DROPPED:
             # The session had already exited (or the PTY write raised) — it
             # can still be sitting in manager.get() for up to the 30s reap
             # window. Report the drop instead of the previous unconditional
@@ -214,7 +219,25 @@ def create_app() -> FastAPI:
             raise HTTPException(
                 status_code=409, detail=f"session {sid} not accepting input (exited)"
             )
-        return {"ok": True}
+        if outcome.reason == INPUT_NOT_INGESTED:
+            # Written, but the terminal never painted it back — the silent
+            # drop #760 was filed over. A distinct status from the 409 above:
+            # the session is alive and may well still take keyboard input, it
+            # just did not take *this*. No CR was sent, so nothing is
+            # half-done and a caller can safely resend once the terminal is
+            # back in a state that accepts a paste.
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"session {sid} never echoed the input after "
+                    f"{outcome.waited_ms}ms — NOT delivered, and no submit was "
+                    f"sent; the terminal may be in a modal/dialog state"
+                ),
+            )
+        # 200 carries the whole verdict: an ingested payload whose submit could
+        # not be confirmed (settle_cap) is a success-shaped response that must
+        # still say submit_confirmed=false rather than imply the message landed.
+        return {"ok": True, **outcome.to_api()}
 
     @app.post("/sessions/{sid}/resize")
     async def session_resize(sid: str, request: Request) -> Dict[str, Any]:

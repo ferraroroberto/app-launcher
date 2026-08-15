@@ -24,6 +24,13 @@ _TIMEOUT = 8.0
 # surfacing 'session-host unreachable' to the phone while the spawn was
 # still in flight, prompting retries that stacked orphan sessions.
 _CREATE_TIMEOUT = 45.0
+# A bulk write waits for the paste's ingest to become visible before it will
+# submit (up to _INGEST_CAP_MS, issue #760) on top of write()'s own
+# chunk-and-pace pauses, so the input call needs headroom over the 8 s
+# default — otherwise the client times out first and the caller sees
+# "session-host unreachable" instead of the host's actual delivery verdict,
+# which is the whole point of #760.
+_INPUT_TIMEOUT = 15.0
 # A graceful stop polls for the agent to exit on its quit command (up to the
 # host's ~5 s grace window) before force-falling-back, so the stop call needs
 # more headroom than the 8 s default (issue #253).
@@ -136,10 +143,15 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
     settle-then-submit sequence internally (``PtySession.submit_input``), so
     the caller no longer needs to send the text and the CR as two separate
     requests.
+
+    The returned body carries the host's delivery verdict (``reason``,
+    ``ingested``, ``submitted``, ``submit_confirmed`` — issue #760); a
+    payload the terminal never echoed raises ``SessionHostError`` with a 502
+    rather than returning a success body.
     """
     return _request(
         "POST", port, f"/sessions/{session_id}/input",
-        json={"data": data, "submit": submit},
+        json={"data": data, "submit": submit}, timeout=_INPUT_TIMEOUT,
     )
 
 

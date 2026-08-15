@@ -241,6 +241,17 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     exited session as a 409 instead of unconditionally claiming delivery
     (issue #607), and that propagates through the ``except`` below rather
     than a false 200.
+
+    Issue #760 makes the rest of that promise real. A 200 now carries the
+    session-host's whole verdict (``delivered``/``ingested``/``submitted``/
+    ``submit_confirmed``/``reason``): ``reason: "settle_cap"`` means the
+    payload reached the terminal but its submit could **not** be confirmed,
+    and ``reason: "unverified"`` means no verification was performed (a
+    short payload or a bare submit). A payload the terminal never echoed
+    back is a 502, not a 200 — three workers stalled on 2026-08-14 on the
+    strength of an ``{"ok": true}`` that only ever meant "the write didn't
+    raise". Callers that need certainty should treat anything other than
+    ``reason: "ok"`` as unconfirmed and check the exchange themselves.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -252,13 +263,34 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     if not text and not submit:
         raise HTTPException(status_code=400, detail="data must be a non-empty string")
     try:
-        await asyncio.to_thread(
+        result = await asyncio.to_thread(
             session_client.send_input, cfg.session_host_port, sid, text, submit
         )
     except session_client.SessionHostError as exc:
+        # Includes the 502 the host raises for a payload it wrote but never
+        # saw echoed (#760) — audited too, since a *failed* steer is the
+        # event worth finding in the log afterwards.
+        await audit_off_loop(
+            audit.session_log, sid, "input", bytes=len(text), submit=submit,
+            reason="error", detail=str(exc)[:200],
+        )
         raise HTTPException(status_code=exc.status, detail=str(exc))
-    await audit_off_loop(audit.session_log, sid, "input", bytes=len(text), submit=submit)
-    return {"ok": True, "bytes": len(text), "submit": submit}
+    verdict = result if isinstance(result, dict) else {}
+    # Audit the verdict, not just the byte count (#760): the three stalled
+    # sessions' logs recorded `bytes=6637 submit=True` for steers that were
+    # never submitted, which made the incident invisible in hindsight.
+    await audit_off_loop(
+        audit.session_log, sid, "input", bytes=len(text), submit=submit,
+        reason=verdict.get("reason"),
+        submit_confirmed=verdict.get("submit_confirmed"),
+        preview=text[:120] or None,
+    )
+    return {
+        "ok": True,
+        "bytes": len(text),
+        "submit": submit,
+        **{k: v for k, v in verdict.items() if k != "ok"},
+    }
 
 
 @router.websocket("/api/claude-code/sessions/{sid}/ws")
