@@ -185,7 +185,7 @@ class TestTranscribeStreaming:
     def test_events_proxies_sse_stream(self, webapp_client, monkeypatch):
         """The SSE proxy forwards the upstream event-stream chunk-for-chunk."""
         client, _, _ = webapp_client
-        from app.webapp.routers import media_proxy as media_proxy_router
+        from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
 
         sse_bytes = (
             b":ok\n\n"
@@ -218,7 +218,7 @@ class TestTranscribeStreaming:
             def stream(self, method, url):
                 return _FakeStream()
 
-        monkeypatch.setattr(media_proxy_router.httpx, "AsyncClient", _FakeClient)
+        monkeypatch.setattr(voice_ocr_tts_router.httpx, "AsyncClient", _FakeClient)
 
         with client.stream("GET", "/api/transcribe/sessions/vt-9/events") as resp:
             assert resp.status_code == 200
@@ -229,7 +229,7 @@ class TestTranscribeStreaming:
 
     def test_events_upstream_error_emits_sse_error(self, webapp_client, monkeypatch):
         client, _, _ = webapp_client
-        from app.webapp.routers import media_proxy as media_proxy_router
+        from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
 
         class _FakeStream:
             status_code = 404
@@ -257,7 +257,7 @@ class TestTranscribeStreaming:
             def stream(self, method, url):
                 return _FakeStream()
 
-        monkeypatch.setattr(media_proxy_router.httpx, "AsyncClient", _FakeClient)
+        monkeypatch.setattr(voice_ocr_tts_router.httpx, "AsyncClient", _FakeClient)
         with client.stream("GET", "/api/transcribe/sessions/vt-9/events") as resp:
             body = b"".join(resp.iter_bytes())
         assert b"event: error" in body

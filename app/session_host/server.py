@@ -182,7 +182,7 @@ def create_app() -> FastAPI:
                     rows=rows, cols=cols, history_lines=history_lines,
                     label=label,
                 )
-        except (OSError, RuntimeError) as exc:
+        except (OSError, RuntimeError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return session.to_api()
 

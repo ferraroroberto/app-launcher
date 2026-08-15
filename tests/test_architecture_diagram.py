@@ -25,7 +25,7 @@ ROUTERS_DIR = REPO_ROOT / "app" / "webapp" / "routers"
 
 def _mounted_routers() -> set[str]:
     """Router modules reachable from the app: mounted on the FastAPI app, or
-    mounted on another router that is (``board_chief``, ``media_proxy``, the
+    mounted on another router that is (``board_chief``, ``voice_ocr_tts``, the
     two ``jobs_*`` route modules)."""
     server = (REPO_ROOT / "app" / "webapp" / "server.py").read_text(encoding="utf-8")
     mounted = set(re.findall(r"app\.include_router\((\w+)\.router\)", server))

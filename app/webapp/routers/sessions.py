@@ -6,7 +6,7 @@ Starlette middleware doesn't see WebSocket handshakes, so the Tailscale
 
 Split off a single-file god-router (``/codebase-audit``): the
 voice-dictation, screenshot-OCR, and hub read-aloud proxy endpoints live
-in :mod:`app.webapp.routers.media_proxy` (mounted here via
+in :mod:`app.webapp.routers.voice_ocr_tts` (mounted here via
 ``include_router`` so ``app/webapp/server.py`` still registers one
 ``sessions.router``) — the same pattern ``app.webapp.routers.jobs`` uses
 for its own webhook/run-store split.
@@ -36,7 +36,7 @@ from app.webapp.middleware import (
     client_in_tailnet,
     via_cloudflare,
 )
-from app.webapp.routers import media_proxy
+from app.webapp.routers import voice_ocr_tts
 from app.webapp.routers._helpers import (
     audit_off_loop,
     client_ip,
@@ -47,7 +47,7 @@ from app.webapp.routers._helpers import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-router.include_router(media_proxy.router)
+router.include_router(voice_ocr_tts.router)
 
 
 @router.get("/api/claude-code/sessions")
