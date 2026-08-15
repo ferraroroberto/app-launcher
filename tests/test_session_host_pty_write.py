@@ -233,6 +233,7 @@ async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch
     import src.session_host as sh
 
     monkeypatch.setattr(sh, "_BULK_CAP_MS", 400)  # keep the settle wait short
+    monkeypatch.setattr(sh, "_INGEST_CAP_MS", 800)  # and its ingest wait (#760)
 
     loop = asyncio.get_running_loop()
     session, calls = _slow_write_session(loop, per_write_s=0.001)
@@ -242,7 +243,13 @@ async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch
         target=session.submit_input, args=(payload, True)
     )
     submitter.start()
-    time.sleep(0.05)  # squarely inside the settle wait
+    time.sleep(0.02)
+    # Stand in for the reader thread painting the paste back, so the CR is
+    # actually reached — without ingest evidence #760 withholds it.
+    with session._ring_lock:
+        session._output_total += len(payload)
+        session._ring += payload
+    time.sleep(0.03)  # squarely inside the settle wait
     session.write("B")
     submitter.join()
 

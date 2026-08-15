@@ -23,6 +23,13 @@ from src.session_host import (
     _BULK_FLOOR_MS,
     _BULK_QUIET_MS,
     _BULK_SUBMIT_THRESHOLD_CHARS,
+    _INGEST_CAP_MS,
+    INPUT_DROPPED,
+    INPUT_NOOP,
+    INPUT_NOT_INGESTED,
+    INPUT_OK,
+    INPUT_SETTLE_CAP,
+    INPUT_UNVERIFIED,
     _scan_bracketed_paste_mode,
     PtySession,
 )
@@ -40,6 +47,18 @@ def _make_session() -> PtySession:
         _loop=MagicMock(),
         _pty=pty,
     )
+
+
+def _echo(session: PtySession, text: str) -> None:
+    """Simulate the reader thread painting ``text`` back out of the PTY.
+
+    The real ingest signal (#760) is what the terminal *paints*, so a test
+    that wants a bulk payload to submit has to echo it — same as a live
+    Claude Code composer echoing a paste or collapsing it into a chip.
+    """
+    with session._ring_lock:
+        session._output_total += len(text)
+        session._ring += text
 
 
 class _FakeClock:
@@ -108,9 +127,14 @@ def test_short_payload_submits_with_no_wait(clock):
     session = _make_session()
     session._bracketed_paste_mode = True
 
-    delivered = session.submit_input("hello", True)
+    outcome = session.submit_input("hello", True)
 
-    assert delivered is True
+    assert outcome.delivered is True
+    assert outcome.submitted is True
+    # Nothing was observed, so nothing is claimed: a short send is reported
+    # as unverified, never as a confirmed submit (#760).
+    assert outcome.reason == INPUT_UNVERIFIED
+    assert outcome.submit_confirmed is None
     assert clock.sleep_calls == []  # no settle wait for a short payload
     assert session._pty.write.call_count == 2
 
@@ -131,18 +155,21 @@ def test_bare_submit_with_no_data_writes_only_cr(clock):
     session = _make_session()
     session._bracketed_paste_mode = True
 
-    delivered = session.submit_input("", True)
+    outcome = session.submit_input("", True)
 
-    assert delivered is True
+    assert outcome.delivered is True
+    assert outcome.submitted is True
+    assert outcome.reason == INPUT_UNVERIFIED  # no payload to verify against
     session._pty.write.assert_called_once_with("\r")
 
 
 def test_blank_data_without_submit_is_a_true_noop(clock):
     session = _make_session()
 
-    delivered = session.submit_input("", False)
+    outcome = session.submit_input("", False)
 
-    assert delivered is True
+    assert outcome.delivered is True
+    assert outcome.reason == INPUT_NOOP
     session._pty.write.assert_not_called()
 
 
@@ -154,7 +181,7 @@ def test_bulk_payload_waits_for_echo_then_quiet_before_submitting(clock):
     after the send AND has been silent for _BULK_QUIET_MS, not just a fixed
     delay."""
     session = _make_session()
-    payload = "x" * _BULK_SUBMIT_THRESHOLD_CHARS
+    payload = "steer " * 120  # past the bulk threshold, with real characters
 
     # Simulate the reader thread: echo arrives once the floor has passed,
     # then goes quiet. Scripted via the fake clock's sleep callback.
@@ -164,14 +191,18 @@ def test_bulk_payload_waits_for_echo_then_quiet_before_submitting(clock):
     def _on_sleep(c: _FakeClock) -> None:
         elapsed_ms = (c.now - sent_at_holder["t"]) * 1000
         if not state["echoed"] and elapsed_ms >= _BULK_FLOOR_MS:
+            _echo(session, payload)
             session._last_output_at = c.now
             state["echoed"] = True
 
     clock.on_sleep(_on_sleep)
 
-    delivered = session.submit_input(payload, True)
+    outcome = session.submit_input(payload, True)
 
-    assert delivered is True
+    assert outcome.delivered is True
+    assert outcome.reason == INPUT_OK
+    assert outcome.ingested is True
+    assert outcome.submit_confirmed is True
     assert len(clock.sleep_calls) > 0  # it actually waited, not instant
     calls = [c.args[0] for c in session._pty.write.call_args_list]
     assert calls[-1] == "\r"
@@ -182,24 +213,6 @@ def test_bulk_payload_waits_for_echo_then_quiet_before_submitting(clock):
     assert total_waited_ms >= _BULK_FLOOR_MS + _BULK_QUIET_MS - _poll_tolerance_ms
     assert total_waited_ms < _BULK_CAP_MS
     assert total_waited_ms >= _BULK_FLOOR_MS
-
-
-def test_bulk_payload_caps_out_if_output_never_settles(clock):
-    """If the session's output never goes quiet (or never arrives at all),
-    the CR still fires at the cap rather than hanging forever."""
-    session = _make_session()
-    payload = "x" * _BULK_SUBMIT_THRESHOLD_CHARS
-    # No _last_output_at update at all — output never arrives.
-
-    delivered = session.submit_input(payload, True)
-
-    assert delivered is True
-    total_waited_ms = sum(clock.sleep_calls) * 1000
-    assert total_waited_ms >= _BULK_CAP_MS
-    # Bounded — the poll loop must not run indefinitely past the cap.
-    assert total_waited_ms < _BULK_CAP_MS + 200
-    calls = [c.args[0] for c in session._pty.write.call_args_list]
-    assert calls[-1] == "\r"
 
 
 def test_bulk_payload_short_of_threshold_stays_instant(clock):
@@ -213,32 +226,166 @@ def test_bulk_payload_short_of_threshold_stays_instant(clock):
 
 def test_bulk_wait_aborts_early_if_session_exits_mid_wait(clock):
     session = _make_session()
-    payload = "x" * _BULK_SUBMIT_THRESHOLD_CHARS
+    payload = "steer " * 120
 
     def _on_sleep(c: _FakeClock) -> None:
         session._exited = True
 
     clock.on_sleep(_on_sleep)
 
-    delivered = session.submit_input(payload, True)
+    outcome = session.submit_input(payload, True)
 
     # The text write already landed (session wasn't exited at that point),
-    # but the final CR write() sees _exited and drops — must report False,
-    # not silently claim delivery for a message that never got its submit.
-    assert delivered is False
+    # but the session died before the submit — must report the drop, not
+    # silently claim delivery for a message that never got its submit.
+    assert outcome.delivered is False
+    assert outcome.reason == INPUT_DROPPED
 
 
 # ---------------------------------------------------------------- dropped
 
 
-def test_returns_false_when_already_exited(clock):
+def test_returns_dropped_when_already_exited(clock):
     session = _make_session()
     session._exited = True
 
-    delivered = session.submit_input("hello", True)
+    outcome = session.submit_input("hello", True)
 
-    assert delivered is False
+    assert outcome.delivered is False
+    assert outcome.reason == INPUT_DROPPED
     session._pty.write.assert_not_called()
+
+
+# ------------------------------------------------- ingest verification (#760)
+
+
+def test_bulk_payload_never_echoed_is_not_delivered_and_gets_no_cr(clock):
+    """#760's silent drop, pinned.
+
+    The PTY write returns without raising but the terminal never paints the
+    payload back. Before #760 that was reported as delivery (and a CR went
+    out blind); now it is a NOT-delivered verdict with no CR at all — firing
+    one into a terminal that never showed the text can answer whatever modal
+    dialog is open instead of submitting anything.
+    """
+    session = _make_session()
+    payload = "CHIEF - finish the issue and commit. " * 20
+    # Nothing ever comes back out of the PTY.
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.delivered is False
+    assert outcome.reason == INPUT_NOT_INGESTED
+    assert outcome.ingested is False
+    assert outcome.submitted is False
+    calls = [c.args[0] for c in session._pty.write.call_args_list]
+    assert "".join(calls) == payload  # the text only — no submitting CR
+    assert "\r" not in calls
+    # It waited for the echo past the settle cap, but stayed bounded.
+    total_waited_ms = sum(clock.sleep_calls) * 1000
+    assert total_waited_ms >= _BULK_CAP_MS
+    assert total_waited_ms < _INGEST_CAP_MS + 200
+
+
+def test_busy_agent_that_never_goes_quiet_reports_submit_unconfirmed(clock):
+    """The 2026-08-14 stall shape: the agent is working, so its spinner
+    repaints continuously and the stream never goes quiet. The CR still
+    fires at the settle cap (unchanged behaviour), but the outcome says the
+    submit could not be confirmed instead of reporting plain success."""
+    session = _make_session()
+    payload = "CHIEF - status check, please report. " * 20
+
+    def _on_sleep(c: _FakeClock) -> None:
+        # Echo lands early (the composer shows the paste), then output keeps
+        # arriving forever — a working agent's spinner.
+        if not session._ring:
+            _echo(session, payload)
+        session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_SETTLE_CAP
+    assert outcome.ingested is True
+    assert outcome.submitted is True
+    assert outcome.submit_confirmed is False
+    # delivered stays true — the payload really did reach the terminal; it is
+    # the *submit* that is unconfirmed, and the two are reported separately.
+    assert outcome.delivered is True
+    assert [c.args[0] for c in session._pty.write.call_args_list][-1] == "\r"
+
+
+def test_paste_chip_counts_as_ingest_evidence(clock):
+    """Claude Code collapses a bulk paste into "[Pasted text #N +M lines]"
+    instead of echoing it, so the chip is the only evidence there is."""
+    session = _make_session()
+    payload = "CHIEF - a long steer that gets collapsed. " * 20
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if not session._ring:
+            _echo(session, "\x1b[2m> [Pasted text #2 +53 lines]\x1b[0m\r\n")
+            session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.ingested is True
+    assert outcome.submitted is True
+
+
+def test_echo_is_matched_through_wrapping_and_escape_decoration(clock):
+    """A composer echo comes back hard-wrapped inside a box-drawn frame with
+    SGR runs through it — the match has to survive all of that."""
+    session = _make_session()
+    payload = "CHIEF - please finish the scope and commit your work now. " * 10
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if not session._ring:
+            decorated = "\x1b[38;5;250m│\x1b[0m ".join(
+                payload[i : i + 40] + "\r\n  " for i in range(0, 200, 40)
+            )
+            _echo(session, "\x1b[1;1H" + decorated)
+            session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.ingested is True
+
+
+def test_identical_earlier_output_is_not_mistaken_for_this_echo(clock):
+    """The chief resends a near-identical brief when the first is stranded.
+    Evidence has to come from output painted *after* this write, or the
+    resend would verify itself against the first attempt's echo."""
+    session = _make_session()
+    payload = "CHIEF - Setup message, establishing a convention. " * 12
+    _echo(session, payload)  # the earlier attempt's echo, already in the ring
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_NOT_INGESTED
+    assert outcome.ingested is False
+
+
+def test_outcome_is_recorded_on_the_session_and_exposed_to_the_api(clock):
+    """A session that has gone deaf to API input must be detectable as such
+    without a human trying the keyboard (#760's second acceptance point)."""
+    session = _make_session()
+    payload = "CHIEF - do the thing. " * 30
+
+    assert session.to_api()["last_input"] is None
+
+    session.submit_input(payload, True)
+
+    last_input = session.to_api()["last_input"]
+    assert last_input["reason"] == INPUT_NOT_INGESTED
+    assert last_input["delivered"] is False
+    assert last_input["bytes"] == len(payload)
+    assert last_input["submit"] is True
+    assert last_input["at"] > 0
 
 
 # ------------------------------------------------------- DECSET 2004 scan

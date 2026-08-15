@@ -95,6 +95,52 @@ _BULK_CAP_MS = 3000
 # 50ms setInterval terminal-compose.js polls at.
 _BULK_POLL_S = 0.05
 
+# Ingest verification for a server-initiated bulk write (issue #760). The
+# settle protocol above answers "has the terminal gone quiet", which is not
+# the same question as "did my payload actually land": three workers went
+# deaf to API input on 2026-08-14 while `_pty.write` kept returning without
+# raising, so the endpoint answered {"ok": true} for messages that were
+# never submitted (transcript evidence: the composer holding an unsent
+# "[Pasted text #N]" chip while the agent worked on). A busy agent never
+# goes quiet — its spinner repaints every few tens of ms — so the settle
+# wait always ran out to _BULK_CAP_MS and fired the CR blind, mid-repaint,
+# where Claude Code absorbs it as a newline instead of Submit.
+#
+# So before submitting we look for the payload in the PTY's *own output*:
+# either the text echoed back, or the "[Pasted text #N]" chip Claude Code
+# collapses a bulk paste into. No evidence → the payload demonstrably did
+# not reach the terminal, so the CR is NOT written (a blind CR into an
+# unknown TUI state is worse than no CR: with a modal dialog open — the
+# other state observed in the 2026-08-14 transcripts — it selects a menu
+# option) and the caller is told so, loudly.
+#
+# _INGEST_CAP_MS extends only the no-evidence-yet wait (under load the echo
+# itself is deferred — see terminal-compose.js's #499 note), and stays well
+# inside session_client's own input timeout so the caller sees this verdict
+# rather than a client-side read timeout.
+_INGEST_CAP_MS = 5000
+# How much of the ring's newly-appended tail to normalize and scan.
+_ECHO_SCAN_CHARS = 65536
+# Normalized payload fragments used as echo needles: long enough not to
+# collide with ordinary terminal furniture, short enough to survive the
+# composer wrapping and decorating a long paste — and sampled across the
+# payload so one mangled fragment doesn't hide the whole match.
+_ECHO_FRAGMENT_CHARS = 24
+_ECHO_SAMPLES = 4
+# Claude Code's collapsed-paste chip, normalized (see _normalize_echo) —
+# positive ingest evidence for a payload that is never echoed verbatim.
+_PASTE_CHIP_MARKER = "[pastedtext#"
+
+# Outcome reasons for a server-initiated write (issue #760). Distinct
+# conditions get distinct reasons — "couldn't establish delivery" is never
+# folded into the success state.
+INPUT_OK = "ok"                        # landed; submit (if asked) confirmed
+INPUT_UNVERIFIED = "unverified"        # short payload: submitted un-verified
+INPUT_SETTLE_CAP = "settle_cap"        # ingested, but never went quiet
+INPUT_NOT_INGESTED = "not_ingested"    # written, never echoed → not delivered
+INPUT_DROPPED = "dropped"              # a write never reached the PTY
+INPUT_NOOP = "noop"                    # nothing was asked for
+
 # First-prompt session title (issue #266). Only Claude Code emits a genuine
 # per-conversation OSC title; Antigravity/Copilot emit none and Codex/Pi emit
 # only the project folder, so for those agents we derive a human title from the
@@ -388,6 +434,94 @@ def _scan_bracketed_paste_mode(chunk: str, carry: str) -> Tuple[Optional[bool], 
     return latest, new_carry
 
 
+# Any escape sequence a TUI paints its composer with — CSI (cursor moves,
+# SGR), OSC (titles), and the two-char ESC forms. Stripped before matching a
+# payload against the terminal's own output, since a wrapped, re-decorated
+# echo of "CHIEF - do X" is interleaved with dozens of these.
+_ECHO_ESCAPE_RE = re.compile(
+    r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[@-_]"
+)
+# Whitespace and box-drawing runs: the two kinds of noise a TUI sprays
+# *through* an echoed payload. A bordered composer paints "│ text │" on
+# every wrapped line, so the border characters land inside the text as
+# reliably as the wrap itself does. Both sides of the comparison get the
+# same treatment, so a payload that genuinely contains box-drawing still
+# matches itself.
+_ECHO_NOISE_RE = re.compile(r"[\s─-╿]+")
+
+
+def _normalize_echo(text: str) -> str:
+    """Escape-free, whitespace-free, lowercased form of terminal text.
+
+    Dropping *all* whitespace and border decoration is what makes an echo
+    match survive the composer: the same payload comes back hard-wrapped at
+    the terminal width, re-indented inside a box-drawn frame, and split
+    across repaints, so any newline- or column-sensitive comparison misses
+    it. What survives that treatment is the sequence of content characters.
+    """
+    return _ECHO_NOISE_RE.sub("", _ECHO_ESCAPE_RE.sub("", text)).lower()
+
+
+def _echo_needles(data: str) -> List[str]:
+    """Normalized fragments of ``data`` to look for in the PTY's output.
+
+    Several fragments sampled across the payload rather than one, because
+    any single one can be broken up by decoration this normalizer doesn't
+    know about (an agent that numbers wrapped lines, a truncation ellipsis
+    in the middle of a collapsed paste). A match on *any* of them is
+    evidence the payload reached the terminal.
+
+    Empty list when the payload normalizes to less than one fragment's
+    worth of content — the caller treats that as "nothing to match on"
+    rather than as a failed match.
+    """
+    normalized = _normalize_echo(data)
+    if len(normalized) < _ECHO_FRAGMENT_CHARS:
+        return []
+    step = max(1, (len(normalized) - _ECHO_FRAGMENT_CHARS) // _ECHO_SAMPLES)
+    return [
+        normalized[i : i + _ECHO_FRAGMENT_CHARS]
+        for i in range(0, len(normalized) - _ECHO_FRAGMENT_CHARS + 1, step)
+    ][:_ECHO_SAMPLES]
+
+
+@dataclass(frozen=True)
+class InputOutcome:
+    """What actually happened to one server-initiated write (issue #760).
+
+    ``reason`` is the single source of truth; the booleans are the detail a
+    caller renders. ``ingested``/``submit_confirmed`` are tri-state on
+    purpose — ``None`` means *not established*, which is never the same as
+    ``False`` and never folded into the success state.
+    """
+
+    reason: str
+    ingested: Optional[bool] = None
+    submitted: bool = False
+    submit_confirmed: Optional[bool] = None
+    waited_ms: int = 0
+
+    @property
+    def delivered(self) -> bool:
+        """Whether everything this call attempted actually reached the PTY.
+
+        ``INPUT_NOT_INGESTED`` counts as *not* delivered: the write returned
+        without raising, but the terminal never showed the payload, which is
+        exactly the silent drop #760 was filed over.
+        """
+        return self.reason not in (INPUT_DROPPED, INPUT_NOT_INGESTED)
+
+    def to_api(self) -> Dict[str, Any]:
+        return {
+            "delivered": self.delivered,
+            "reason": self.reason,
+            "ingested": self.ingested,
+            "submitted": self.submitted,
+            "submit_confirmed": self.submit_confirmed,
+            "waited_ms": self.waited_ms,
+        }
+
+
 def _trim_ring_head(ring: str) -> str:
     """Advance a freshly hard-truncated ring to the next newline boundary.
 
@@ -492,6 +626,16 @@ class PtySession:
     _bracketed_paste_mode: bool = False
     _decset_carry: str = ""
     _last_output_at: float = 0.0
+    # Monotonic count of every character ever pumped out of this PTY (issue
+    # #760). Unlike to_api()'s output_chars — the ring's length, which
+    # saturates at _RING_MAX_CHARS — this keeps counting, so a write can mark
+    # a position and later ask "what has the terminal painted since?" even on
+    # a long-lived session whose ring has wrapped many times over.
+    _output_total: int = 0
+    # The most recent server-initiated write's outcome (issue #760), surfaced
+    # in to_api() so a session that has gone deaf to API input is visible as
+    # such instead of being indistinguishable from a busy agent.
+    last_input: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -554,6 +698,7 @@ class PtySession:
             if title:
                 self.live_title = title
             with self._ring_lock:
+                self._output_total += len(chunk)
                 self._ring += chunk
                 if len(self._ring) > _RING_MAX_CHARS:
                     self._ring = _trim_ring_head(self._ring[-_RING_MAX_CHARS:])
@@ -706,7 +851,27 @@ class PtySession:
             logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
             return False
 
-    def submit_input(self, data: str, submit: bool) -> bool:
+    def _echo_seen_since(self, mark: int, needles: List[str]) -> bool:
+        """Has the PTY painted evidence of this payload since ``mark``?
+
+        ``mark`` is an ``_output_total`` reading taken before the write, so
+        only output the terminal produced *after* it counts — an identical
+        payload sent earlier in the session can't be mistaken for this one's
+        echo. Evidence is either the payload itself coming back (normalized,
+        so wrapping and box-drawing don't hide it) or Claude Code's
+        collapsed-paste chip, which replaces the echo for a bulk paste.
+        """
+        with self._ring_lock:
+            appended = self._output_total - mark
+            if appended <= 0:
+                return False
+            window = self._ring[-min(appended, len(self._ring), _ECHO_SCAN_CHARS):]
+        normalized = _normalize_echo(window)
+        if _PASTE_CHIP_MARKER in normalized:
+            return True
+        return any(needle in normalized for needle in needles)
+
+    def submit_input(self, data: str, submit: bool) -> "InputOutcome":
         """Write ``data`` and, if ``submit``, follow it with a submitting CR.
 
         Ported from ``app/webapp/static/terminal-compose.js``'s
@@ -737,49 +902,148 @@ class PtySession:
           until the session's output stream shows the paste was echoed and
           has gone quiet (floor/quiet/cap — #499); shorter payloads submit
           immediately, matching ``sendSubmit``'s "short sends stay instant".
+        - A bulk payload is additionally checked for *ingest evidence*
+          before the CR is written at all (issue #760): the terminal must
+          have painted the payload back (or its ``[Pasted text #N]`` chip)
+          since the write. No evidence within ``_INGEST_CAP_MS`` → the CR is
+          withheld and the outcome says ``not_ingested``, because a blind CR
+          into a terminal that never showed the text can do real damage (it
+          answers whatever modal dialog is open).
 
-        Returns whether everything asked for reached the PTY — ``False`` on
-        the same drop conditions as :meth:`write` (matches #607's contract:
-        never claim delivery for a message that didn't land).
+        Returns an :class:`InputOutcome` describing what actually happened —
+        superseding the old bare ``bool`` (#607), which could only say "the
+        write didn't raise" and so reported ``True`` for every silently
+        stranded steer in #760's three occurrences.
 
         The whole sequence runs under ``_write_lock`` (issue #721): the CR is
         a separate PTY write from the text it submits, so without the lock a
         concurrent writer — the WebSocket pump serving a PC mirror on the
         same session — can land its own bytes *between* them and turn a
-        submit into a literal newline in somebody else's message.
+        submit into a literal newline in somebody else's message. The
+        ingest wait extends the hold to at most ``_INGEST_CAP_MS``, and only
+        on the failing path, so a keyboard writer is never blocked for long.
         """
         with self._write_lock:
-            return self._submit_input_locked(data, submit)
+            outcome = self._submit_input_locked(data, submit)
+        self.last_input = {
+            **outcome.to_api(),
+            "at": time.time(),
+            "bytes": len(data),
+            "submit": submit,
+        }
+        # Breadcrumbs for the next occurrence (#760): the whole defect was
+        # invisible in the logs, so both an outright non-delivery and an
+        # unconfirmed submit — the shape all three 2026-08-14 stalls took —
+        # get an INFO line naming which condition it was.
+        if not outcome.delivered:
+            logger.info(
+                f"⚠️ PTY {self.session_id[:8]} input not delivered "
+                f"({outcome.reason}, {len(data)} chars, "
+                f"waited {outcome.waited_ms}ms)"
+            )
+        elif outcome.submit_confirmed is False:
+            logger.info(
+                f"ℹ️ PTY {self.session_id[:8]} input ingested but submit "
+                f"unconfirmed ({outcome.reason}, {len(data)} chars, output "
+                f"never went quiet in {outcome.waited_ms}ms)"
+            )
+        return outcome
 
-    def _submit_input_locked(self, data: str, submit: bool) -> bool:
+    def _submit_input_locked(self, data: str, submit: bool) -> "InputOutcome":
         """:meth:`submit_input`'s body, assuming ``_write_lock`` is held."""
         if not data:
             if not submit:
-                return True
-            return self._write_locked("\r")
+                return InputOutcome(reason=INPUT_NOOP)
+            if not self._write_locked("\r"):
+                return InputOutcome(reason=INPUT_DROPPED)
+            # A bare submit carries no payload to look for, so there is
+            # nothing to verify — it releases whatever the composer already
+            # holds. Honest name for that: unverified, not "ok".
+            return InputOutcome(reason=INPUT_UNVERIFIED, submitted=True)
         framed = "\x1b[200~" + data + "\x1b[201~" if self._bracketed_paste_mode else data
+        mark = self._output_total
         sent_at = time.time()
         if not self._write_locked(framed):
-            return False
+            return InputOutcome(reason=INPUT_DROPPED)
+        if len(data) < _BULK_SUBMIT_THRESHOLD_CHARS:
+            # Short sends stay instant (sendSubmit's own rule) — and so stay
+            # unverified: there is no settle window to observe an echo in.
+            if not submit:
+                return InputOutcome(reason=INPUT_UNVERIFIED)
+            if not self._write_locked("\r"):
+                return InputOutcome(reason=INPUT_DROPPED)
+            return InputOutcome(reason=INPUT_UNVERIFIED, submitted=True)
+        needles = _echo_needles(data)
+        floor_at = sent_at + _BULK_FLOOR_MS / 1000
+        settle_deadline = sent_at + _BULK_CAP_MS / 1000
+        ingest_deadline = sent_at + _INGEST_CAP_MS / 1000
+        quiet_s = _BULK_QUIET_MS / 1000
+        ingested = False
+        settled = False
+        exited = False
+        # Only rescan when the terminal has actually painted something new —
+        # this loop polls 20×/s on a process hosting every live PTY, and in
+        # the case that matters most (nothing coming back at all) there is
+        # nothing new to normalize on any of those passes.
+        scanned_at = mark
+        while True:
+            if self._exited:
+                exited = True
+                break
+            if not ingested and self._output_total > scanned_at:
+                scanned_at = self._output_total
+                ingested = self._echo_seen_since(mark, needles)
+            now = time.time()
+            settled = (
+                now >= floor_at
+                and self._last_output_at > sent_at
+                and (now - self._last_output_at) >= quiet_s
+            )
+            if ingested and (settled or now >= settle_deadline):
+                break
+            # Not ingested yet: keep looking past the settle cap — under load
+            # the echo itself is deferred (terminal-compose.js's #499 note) —
+            # but never past the ingest cap.
+            if now >= ingest_deadline:
+                break
+            time.sleep(_BULK_POLL_S)
+        waited_ms = int((time.time() - sent_at) * 1000)
+        if exited:
+            return InputOutcome(
+                reason=INPUT_DROPPED, ingested=ingested, waited_ms=waited_ms
+            )
+        if not ingested:
+            # The write returned without raising, yet the terminal never
+            # painted the payload: treat it as undelivered and withhold the
+            # CR rather than firing it into an unknown TUI state.
+            return InputOutcome(
+                reason=INPUT_NOT_INGESTED, ingested=False, waited_ms=waited_ms
+            )
         if not submit:
-            return True
-        if len(data) >= _BULK_SUBMIT_THRESHOLD_CHARS:
-            floor_at = sent_at + _BULK_FLOOR_MS / 1000
-            deadline = sent_at + _BULK_CAP_MS / 1000
-            quiet_s = _BULK_QUIET_MS / 1000
-            while True:
-                if self._exited:
-                    break
-                now = time.time()
-                settled = (
-                    now >= floor_at
-                    and self._last_output_at > sent_at
-                    and (now - self._last_output_at) >= quiet_s
-                )
-                if settled or now >= deadline:
-                    break
-                time.sleep(_BULK_POLL_S)
-        return self._write_locked("\r")
+            return InputOutcome(reason=INPUT_OK, ingested=True, waited_ms=waited_ms)
+        if not self._write_locked("\r"):
+            return InputOutcome(
+                reason=INPUT_DROPPED, ingested=True, waited_ms=waited_ms
+            )
+        if settled:
+            return InputOutcome(
+                reason=INPUT_OK,
+                ingested=True,
+                submitted=True,
+                submit_confirmed=True,
+                waited_ms=waited_ms,
+            )
+        # Ingested, but the stream never went quiet — the CR went out at the
+        # cap, into a terminal that was still painting. That is exactly the
+        # window Claude Code absorbs a CR as a newline in, so the submit is
+        # reported as *not confirmed* rather than as success.
+        return InputOutcome(
+            reason=INPUT_SETTLE_CAP,
+            ingested=True,
+            submitted=True,
+            submit_confirmed=False,
+            waited_ms=waited_ms,
+        )
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(1, min(rows, 1000))
@@ -915,6 +1179,12 @@ class PtySession:
             # — not consumed anywhere yet, see board_transcript.py's
             # _live_title_is_busy docstring for why that's still open.
             "last_output_at": self._last_output_at,
+            # The most recent server-initiated write's verdict (issue #760),
+            # or None if nothing has been sent through /input yet. This is
+            # what makes "this session has gone deaf to API input" a visible
+            # state rather than something only a human with a keyboard can
+            # tell apart from a busy agent.
+            "last_input": self.last_input,
         }
 
 
