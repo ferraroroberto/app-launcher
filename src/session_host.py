@@ -16,7 +16,6 @@ is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 from __future__ import annotations
 
 import asyncio
-import ctypes
 import logging
 import os
 import re
@@ -27,6 +26,11 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
+
+try:
+    import psutil  # type: ignore
+except ImportError:  # pragma: no cover — psutil is in requirements.txt
+    psutil = None  # type: ignore
 
 from src.agents import (
     DEFAULT_AGENT,
@@ -233,35 +237,18 @@ def _parse_started_pid(stdout: Optional[str]) -> Optional[int]:
 
 
 def _pid_alive(pid: int) -> bool:
-    """True if ``pid`` names a live process (Windows, via ctypes).
+    """True if ``pid`` names a live process.
 
     Detached consoles are orphaned out of the host's process tree (issue
     #130) so we no longer hold a ``Popen`` handle for them — liveness is a
-    bare PID probe. ``ctypes.windll`` is touched only at call time, keeping
-    the module importable on non-Windows for ``py_compile``.
+    bare PID probe, answered by ``psutil`` (already a hard dependency —
+    ``src.diagnostics.is_pid_alive`` answers the identical question).
     """
     if not pid:
         return False
-    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    STILL_ACTIVE = 259
-    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-    kernel32.OpenProcess.restype = ctypes.c_void_p
-    kernel32.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
-    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-    if not handle:
-        return False
-    try:
-        code = ctypes.c_ulong()
-        kernel32.GetExitCodeProcess.argtypes = [
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_ulong),
-        ]
-        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-            return False
-        return code.value == STILL_ACTIVE
-    finally:
-        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
-        kernel32.CloseHandle(handle)
+    if psutil is None:  # pragma: no cover — psutil is in requirements.txt
+        return True  # can't introspect — assume alive, don't kill blindly
+    return psutil.pid_exists(pid)
 
 
 # Any escape sequence a TUI paints its composer with — CSI (cursor moves,
