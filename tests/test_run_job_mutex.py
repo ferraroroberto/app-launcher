@@ -10,6 +10,12 @@ schtasks-fired run whose group is already held must land in the queue
 with ``status="queued"`` instead of running concurrently, while every
 already-admitted path (manual/webhook/API at the route, chain fires, and
 the drain's own replay) must still run straight through.
+
+``TestCooldownSkipDrainsMutex`` covers a third case (issue #755): a
+drained replay (``--run-id`` set) that lands inside its own cooldown
+window used to finalise as ``skipped`` and return before the drain call
+at the bottom of ``execute()`` — stranding any sibling still queued
+behind it.
 """
 
 from __future__ import annotations
@@ -309,3 +315,120 @@ class TestExecutorScheduledAdmission:
         assert self._record(queued)["status"] == "success"
         assert self._beta_runs(isolated_jobs) == [queued]
         assert jobs_mod.peek_mutex_queue("fleet-weekly") == []
+
+
+class TestCooldownSkipDrainsMutex:
+    """A drained replay that lands inside its own cooldown must still
+    drain its mutex group (issue #755) — otherwise a sibling queued
+    behind it is stranded until an unrelated job in the group finishes.
+    """
+
+    def test_drained_replay_inside_cooldown_still_drains_sibling(
+        self, isolated_jobs, tmp_path, monkeypatch
+    ):
+        script = tmp_path / "ok.py"
+        script.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+        beta = Job(
+            id="beta", name="Beta", script_path=str(script),
+            mutex_group="chrome", cooldown_seconds=600,
+        )
+        # Anchor inside the cooldown window — e.g. a manual fire of beta
+        # landed while this replay sat queued.
+        _seed_run(
+            isolated_jobs, "beta", "20260101T000000",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            status="success",
+        )
+        # gamma is queued behind beta in the same mutex group.
+        _seed_run(
+            isolated_jobs, "gamma", "20260101T000010",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            status="queued",
+        )
+        jobs_mod.enqueue_mutex("chrome", {
+            "job_id": "gamma",
+            "run_id": "20260101T000010",
+            "trigger": "manual",
+            "params": None,
+        })
+        monkeypatch.setattr(rjc, "load_jobs", lambda: JobsConfig(jobs=[beta]))
+        _silence_notifier(monkeypatch)
+        popen = MagicMock(
+            side_effect=AssertionError("cooldown-skipped fire must not spawn a child")
+        )
+        monkeypatch.setattr(rjc.subprocess, "Popen", popen)
+        spawn = MagicMock(return_value=99999)
+        monkeypatch.setattr(jobs_queue_mod, "spawn_run_job_detached", spawn)
+
+        cmd = rjc.RunJobCommand(AppConfig())
+        rc = cmd.execute(SimpleNamespace(
+            job_id="beta", trigger="scheduled", run_id="20260101T000020",
+            params=None,
+        ))
+
+        assert rc == 0
+        assert not popen.called
+        skip_record = json.loads(
+            (isolated_jobs / "beta" / "20260101T000020" / "run.json")
+            .read_text(encoding="utf-8")
+        )
+        assert skip_record["status"] == "skipped"
+        assert skip_record["note"] == "cooldown"
+        # gamma, queued behind beta, was drained and spawned — not
+        # stranded behind beta's cooldown skip.
+        assert spawn.called
+        args = spawn.call_args.args
+        assert args[0] == "gamma"
+        assert args[1] == "20260101T000010"
+        assert jobs_mod.peek_mutex_queue("chrome") == []
+
+    def test_fresh_scheduled_cooldown_skip_does_not_drain(
+        self, isolated_jobs, tmp_path, monkeypatch
+    ):
+        """A fresh scheduled fire (no ``--run-id``) was never popped from
+        the queue — its group may still be held by a live sibling, so a
+        cooldown skip must NOT drain (that would spawn the queue's head
+        concurrently with the still-running holder instead of after it).
+        """
+        script = tmp_path / "ok.py"
+        script.write_text("import sys; sys.exit(0)\n", encoding="utf-8")
+        beta = Job(
+            id="beta", name="Beta", script_path=str(script),
+            mutex_group="chrome", cooldown_seconds=600,
+        )
+        _seed_run(
+            isolated_jobs, "beta", "20260101T000000",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            status="success",
+        )
+        _seed_run(
+            isolated_jobs, "gamma", "20260101T000010",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+            status="queued",
+        )
+        jobs_mod.enqueue_mutex("chrome", {
+            "job_id": "gamma",
+            "run_id": "20260101T000010",
+            "trigger": "manual",
+            "params": None,
+        })
+        monkeypatch.setattr(rjc, "load_jobs", lambda: JobsConfig(jobs=[beta]))
+        _silence_notifier(monkeypatch)
+        spawn = MagicMock()
+        monkeypatch.setattr(jobs_queue_mod, "spawn_run_job_detached", spawn)
+
+        cmd = rjc.RunJobCommand(AppConfig())
+        rc = cmd.execute(SimpleNamespace(
+            job_id="beta", trigger="scheduled", run_id=None, params=None,
+        ))
+
+        assert rc == 0
+        assert not spawn.called
+        assert jobs_mod.peek_mutex_queue("chrome") == [
+            {
+                "job_id": "gamma",
+                "run_id": "20260101T000010",
+                "trigger": "manual",
+                "params": None,
+            }
+        ]

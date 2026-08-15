@@ -150,6 +150,18 @@ class TestSpawnThenType:
         assert "--model sonnet" in _spawn["flags"]
         assert _spawn["agent"] == "claude"
 
+    def test_malformed_rows_cols_fall_back_instead_of_500(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session
+    ):
+        """A malformed ``rows``/``cols`` (issue #755) must 200 with the
+        legacy 40x120 default, not raise an uncaught ``ValueError`` that
+        FastAPI turns into a bare 500."""
+        client, _, overrides = webapp_client
+        resp = _dispatch(client, overrides, rows="abc", cols=None)
+        assert resp.status_code == 200
+        assert _spawn["rows"] == 40
+        assert _spawn["cols"] == 120
+
     def test_gpt56_spawns_codex_with_coding_tab_flags(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _ready_session, monkeypatch,

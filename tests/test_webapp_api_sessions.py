@@ -251,6 +251,46 @@ class TestStopSessionMirrorClose:
         assert resp.status_code == 200
         sess.stop.assert_called_once_with(8446, "abc-123", "kill")
 
+    def test_mirror_close_runs_off_the_event_loop(
+        self, webapp_client, monkeypatch
+    ):
+        """close_mirror_window does the same blocking Win32
+        EnumWindows/GetWindowText/PostMessage walk this file's other
+        session-host calls (mirror_claude_session's own spawn/focus,
+        .stop, .submit_input, .write) are all offloaded via
+        ``asyncio.to_thread`` (issue #755) — a stall here would otherwise
+        stall every other live session's WebSocket pump on the
+        single-worker loop.
+        """
+        client, _, overrides = webapp_client
+        sess = overrides["session"]
+        sess.stop.return_value = {"ok": True}
+        from app.webapp.routers import sessions as sessions_router
+        mock_close = MagicMock(return_value=True)
+        monkeypatch.setattr(
+            sessions_router.launcher, "close_mirror_window", mock_close
+        )
+
+        offloaded: list = []
+        real_to_thread = sessions_router.asyncio.to_thread
+
+        async def spy_to_thread(func, *args, **kwargs):
+            offloaded.append(func)
+            return await real_to_thread(func, *args, **kwargs)
+
+        monkeypatch.setattr(sessions_router.asyncio, "to_thread", spy_to_thread)
+
+        resp = client.post(
+            "/api/claude-code/sessions/abc-123/stop",
+            json={"mode": "quit"},
+        )
+
+        assert resp.status_code == 200
+        assert mock_close in offloaded, (
+            "close_mirror_window must run via asyncio.to_thread, not "
+            "directly on the event loop"
+        )
+
 
 class TestRenameSession:
     """Issue #458: a launcher-native rename that wins over every

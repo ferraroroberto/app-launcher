@@ -150,6 +150,26 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     Returns ``0`` when the run was skipped and finalised; ``None`` when
     there's no cooldown to apply and the caller should proceed with a
     real invocation.
+
+    Unlike :func:`_finalize_mutex_queue`, this used to have no "already
+    drained" scoping — a fire that was itself mutex-queued and later
+    released by :func:`_drain_mutex_queue_for` re-enters here with
+    ``trigger="scheduled"`` and ``--run-id`` set, and can still land
+    inside its own cooldown window (e.g. a manual fire of the same job
+    landed while it sat queued). Finalising that as skipped without
+    draining again stranded any sibling still queued behind it until some
+    unrelated job in the group happened to finish (issue #755).
+
+    Fixed by draining the job's own ``mutex_group`` here too — but only
+    for that replay case (``args.run_id`` set), mirroring
+    :func:`_finalize_mutex_queue`'s own "already admitted" scoping. A
+    *fresh* scheduled fire (no ``run_id``) was never popped from the
+    queue, so its group may currently be held by a live, still-running
+    sibling; draining unconditionally here would spawn the queue's head
+    concurrently with that holder instead of after it, defeating the
+    mutex entirely. Only a replay is guaranteed to mean the group's
+    previous holder already finished (that's the drain precondition that
+    let this fire be popped and spawned in the first place).
     """
     if args.trigger != "scheduled":
         return None
@@ -183,6 +203,10 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
         f"⏭ run-job {job.id} skipped (cooldown: {remaining}s "
         f"remaining of {cooldown_seconds}s; anchor={anchor_id!r})"
     )
+    # Only a replay of an already-popped queue entry (run_id set) is safe
+    # to drain here — see the scoping note in the docstring above.
+    if job.mutex_group and args.run_id:
+        _drain_mutex_queue_for(job)
     return 0
 
 
@@ -537,17 +561,22 @@ def _cleanup_once_schedule(job: Job, args: argparse.Namespace) -> None:
     try:
         delete_schtasks(job.id)
         # Mutate the registry so the row stops showing "once …"
-        # and surfaces as a plain manual job.
+        # and surfaces as a plain manual job. Under the shared
+        # jobs_file_lock (issue #755) so this unlocked-until-now
+        # load-mutate-save can't race the webapp's own PUT/POST
+        # /api/jobs/* mutators (which take the same lock) and silently
+        # clobber one writer's change with a stale os.replace.
         from src.jobs_config import (  # local import to avoid cycles
-            JobsConfig,
             Schedule,
+            jobs_file_lock,
             save_jobs,
         )
-        fresh_cfg = load_jobs()
-        fresh_job = next((j for j in fresh_cfg.jobs if j.id == job.id), None)
-        if fresh_job is not None and fresh_job.schedule.type == "once":
-            fresh_job.schedule = Schedule(type="none")
-            save_jobs(fresh_cfg)
+        with jobs_file_lock():
+            fresh_cfg = load_jobs()
+            fresh_job = next((j for j in fresh_cfg.jobs if j.id == job.id), None)
+            if fresh_job is not None and fresh_job.schedule.type == "once":
+                fresh_job.schedule = Schedule(type="none")
+                save_jobs(fresh_cfg)
     except Exception as exc:  # noqa: BLE001 — never block finalise
         logger.warning(f"⚠️  once cleanup for {job.id} raised: {exc}")
 

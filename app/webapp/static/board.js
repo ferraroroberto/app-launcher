@@ -184,6 +184,16 @@ function renderSessionCard(card) {
 let chiefExchangeTimer = null;
 const CHIEF_EXCHANGE_POLL_MS = 5000;
 
+// The current drawer's reply-box dictation instance (#755), same lifecycle
+// problem as chiefExchangeTimer above: buildDrawer() mounts a fresh
+// per-render `createDictation` instance (board.js:228), but a drawer
+// collapse (state.boardExpanded set to null, then renderBoard() rebuilds
+// the card list) drops that mic's DOM node with no stop()/dispose() call —
+// if a recording (or a still-finalizing one) was in flight, it stayed live
+// and held the app-wide dictation mutex indefinitely. Disposed
+// unconditionally at the top of renderBoard(), same as chiefExchangeTimer.
+let drawerDictation = null;
+
 function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
@@ -217,7 +227,10 @@ function buildDrawer(card) {
     input.placeholder = 'Reply to ' + (card.project || 'session') + '…';
     actions.appendChild(input);
     // Voice-reply (#302): a per-drawer dictation instance — the drawer is
-    // rebuilt on every render, so the mic and its state live and die with it.
+    // rebuilt on every render, so the mic and its state live and die with
+    // it. Tracked in the module-level `drawerDictation` (#755) so
+    // renderBoard() can dispose() it before the next rebuild drops this
+    // DOM node out from under a still-live recording.
     if (voiceDictationAvailable()) {
       const mic = document.createElement('button');
       mic.type = 'button';
@@ -229,6 +242,7 @@ function buildDrawer(card) {
         button: mic,
         getTextarea: function () { return input; },
       });
+      drawerDictation = dictation;
       mic.addEventListener('click', dictation.toggle);
       actions.appendChild(mic);
     }
@@ -615,6 +629,14 @@ export function renderBoard() {
   if (chiefExchangeTimer) {
     clearInterval(chiefExchangeTimer);
     chiefExchangeTimer = null;
+  }
+  // Same lifecycle rule for the reply-box mic (#755): dispose() before the
+  // rebuild below drops its DOM node, so a live or still-finalizing
+  // recording is force-stopped and the mic mutex released instead of
+  // wedging every other mic in the app.
+  if (drawerDictation) {
+    drawerDictation.dispose();
+    drawerDictation = null;
   }
   const body = state.board;
   if (!body || !els.boardColumns) return;

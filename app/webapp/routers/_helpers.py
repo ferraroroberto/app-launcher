@@ -83,6 +83,28 @@ async def maybe_json(request: Request) -> Dict[str, Any]:
     return {}
 
 
+def safe_int(body: Dict[str, Any], key: str, default: int) -> int:
+    """Read an ``int``-ish field out of a decoded request body, falling
+    back to ``default`` on anything that doesn't coerce (issue #755).
+
+    Five call sites (``board.py`` x2, ``board_chief.py``, ``apps.py``,
+    ``life_os.py`` — all the PTY-launch routes' ``rows``/``cols`` phone
+    terminal-size fields) used to do a bare ``int(body.get(key) or
+    default)``: a malformed body (e.g. ``{"rows": "abc"}``) raised an
+    uncaught ``ValueError`` that FastAPI turned into a bare 500 instead of
+    the 400 this is, from any authenticated caller. Mirrors the already-
+    guarded shape ``life_os.py``'s own ``_search_limit`` used for its
+    ``limit`` query param.
+    """
+    raw = body.get(key)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 def cert_present() -> bool:
     return (
         (PROJECT_ROOT / "webapp" / "certificates" / "cert.pem").exists()

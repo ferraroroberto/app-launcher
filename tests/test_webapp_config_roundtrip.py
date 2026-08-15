@@ -125,6 +125,25 @@ def test_unusable_number_falls_back_instead_of_raising(tmp_path):
     assert cfg.port == 8500  # numeric strings still coerce
 
 
+def test_non_boolean_bool_field_falls_back_instead_of_truthy_coercion(tmp_path):
+    """A hand-edited config with a string in a bool field must not be
+    coerced by Python truthiness — ``bool("false")`` is ``True`` (issue
+    #755), which would silently flip a feature the user just turned off.
+    The int branch already falls back to the declared default on an
+    unusable value; the bool branch must match that discipline.
+    """
+    target = _write(
+        tmp_path,
+        # claude_debug defaults False; claude_verbose defaults True.
+        {"claude_debug": "false", "claude_verbose": "no"},
+    )
+
+    cfg = load_webapp_config(target, apply_env_override=False)
+
+    assert cfg.claude_debug == WebappConfig().claude_debug
+    assert cfg.claude_verbose == WebappConfig().claude_verbose
+
+
 def test_legacy_webhook_secrets_key_still_loads(tmp_path):
     """``secrets`` shipped as ``webhook_secrets`` before #72 generalized it;
     old files in the wild still spell it that way."""

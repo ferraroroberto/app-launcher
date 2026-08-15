@@ -549,7 +549,12 @@ def _coerce(value: Any, annotation: Any, default: Any) -> Any:
     if annotation in (str, "str"):
         return str(value)
     if annotation in (bool, "bool"):
-        return bool(value)
+        # A hand-edited config's non-boolean value (e.g. the string
+        # ``"false"``, truthy under `bool()`) or an unusable null (were it
+        # ever to reach here) falls back to the declared default rather
+        # than being coerced by truthiness (issue #755) — matching the int
+        # branch's discipline just below.
+        return value if isinstance(value, bool) else default
     if annotation in (int, "int"):
         try:
             return int(value)

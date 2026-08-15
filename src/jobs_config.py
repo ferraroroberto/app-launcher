@@ -59,11 +59,12 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Tuple
 
-from src._json_io import atomic_write_json
+from src._json_io import atomic_write_json, file_lock
 from src.jobs_config_chain import (
     _validate_chain_consistency,
     detect_chain_cycle,
@@ -122,6 +123,7 @@ __all__ = [
     "DEFAULT_JOBS_PATH",
     "load_jobs",
     "save_jobs",
+    "jobs_file_lock",
     "get_by_id",
     "add_job",
     "update_job",
@@ -175,6 +177,32 @@ def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     return target
 
 
+@contextmanager
+def jobs_file_lock() -> Iterator[None]:
+    """Hold an exclusive interprocess lock for a registry read-modify-write.
+
+    ``config/jobs.json`` has two genuinely separate-process writers — the
+    webapp's ``PUT``/``POST /api/jobs/*`` routes and the spawned ``run-job``
+    executor's own unlocked mutation in ``_cleanup_once_schedule`` — so an
+    in-process lock alone can't prevent one writer's ``load_jobs()`` →
+    mutate → ``save_jobs()`` from clobbering a concurrent writer's change
+    with a stale ``os.replace`` (issue #755). Thin wrapper around the
+    shared :func:`src._json_io.file_lock` (same pattern as
+    ``src.jobs_queue._queue_file_lock`` / ``src.jobs_history._run_json_lock``)
+    on a dedicated sidecar file. Exported so callers outside this module
+    (``app.cli.commands.run_job_cmd._cleanup_once_schedule``) that bypass
+    the mutators below and hand-roll their own load-mutate-save can still
+    serialize against the same critical section.
+
+    Resolves the lock path from :data:`DEFAULT_JOBS_PATH` on every call
+    (rather than caching it) so tests that monkeypatch it redirect the
+    lock file too, instead of touching the real production runs dir.
+    """
+    lock_path = DEFAULT_JOBS_PATH.parent / (DEFAULT_JOBS_PATH.name + ".lock")
+    with file_lock(lock_path, label="jobs registry"):
+        yield
+
+
 # ----------------------------------------------------------- mutations
 
 
@@ -187,19 +215,29 @@ def add_job(cfg: JobsConfig, job: Job) -> Job:
     or on chain inconsistency (unknown downstream / cycle) — the cycle
     check sees the post-add registry, so adding the last edge of a cycle
     is rejected before the file is touched.
+
+    Re-reads the registry from disk under :func:`jobs_file_lock` rather
+    than trusting the caller's ``cfg`` snapshot (issue #755) — a snapshot
+    taken before the lock can already be stale by the time this runs.
+    ``cfg.jobs`` is refreshed in place on success so the caller's view
+    stays current; left untouched on a rejected add, matching the old
+    in-place-rollback behaviour.
     """
-    if any(j.id == job.id for j in cfg.jobs):
-        raise ValueError(f"job id already exists: {job.id}")
     if not job.added_at:
         job.added_at = datetime.now().isoformat(timespec="seconds")
-    cfg.jobs.append(job)
-    try:
-        _validate_chain_consistency(cfg)
-    except ValueError:
-        cfg.jobs.pop()
-        raise
-    cfg.jobs.sort(key=lambda j: j.name.lower())
-    save_jobs(cfg)
+    with jobs_file_lock():
+        fresh = load_jobs()
+        if any(j.id == job.id for j in fresh.jobs):
+            raise ValueError(f"job id already exists: {job.id}")
+        fresh.jobs.append(job)
+        try:
+            _validate_chain_consistency(fresh)
+        except ValueError:
+            fresh.jobs.pop()
+            raise
+        fresh.jobs.sort(key=lambda j: j.name.lower())
+        save_jobs(fresh)
+    cfg.jobs = fresh.jobs
     return job
 
 
@@ -234,65 +272,77 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
     above (the source of truth for plain single-field edits), plus the
     cross-field groups handled explicitly below: ``kind``/``script_path``/
     ``kind_config`` and ``on_success``/``on_failure``.
+
+    Re-reads the registry from disk under :func:`jobs_file_lock` rather
+    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    :func:`add_job` for why. ``cfg.jobs`` is refreshed in place before
+    every return, including an unknown-id ``None`` and a rejected edit,
+    so the caller's view is always at least as current as the reload.
     """
-    job = get_by_id(cfg, job_id)
-    if job is None:
-        return None
+    with jobs_file_lock():
+        fresh = load_jobs()
+        cfg.jobs = fresh.jobs
+        job = get_by_id(fresh, job_id)
+        if job is None:
+            return None
 
-    for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
-        if attr not in fields:
-            continue
-        raw = fields[attr]
-        if only_if_truthy and not raw:
-            continue
-        setattr(job, attr, transform(raw))
+        for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
+            if attr not in fields:
+                continue
+            raw = fields[attr]
+            if only_if_truthy and not raw:
+                continue
+            setattr(job, attr, transform(raw))
 
-    # kind / script_path / kind_config are validated together as the
-    # *effective* post-edit shape (issue #70) — an edit to any one of the
-    # three must still describe a structurally valid job, and validation
-    # runs before any of the three is mutated so a rejected edit leaves the
-    # job untouched.
-    if "kind" in fields or "script_path" in fields or "kind_config" in fields:
-        eff_kind = (
-            str(fields["kind"] or "").strip() if "kind" in fields else job.kind
-        )
-        if "script_path" in fields:
-            # Present-but-empty is meaningful here (clearing script_path
-            # when switching to inline-shell/http-check), not "no change".
-            eff_script_path = str(fields["script_path"] or "").strip()
-        else:
-            eff_script_path = job.script_path
-        eff_kind_config = (
-            kind_config_from_dict(fields["kind_config"])
-            if "kind_config" in fields
-            else job.kind_config
-        )
-        validate_kind_shape(eff_kind, eff_script_path, eff_kind_config)
-        if "kind" in fields:
-            job.kind = eff_kind
-        if "script_path" in fields:
-            # Unlike other fields, an explicit empty string here is
-            # meaningful (clearing script_path when switching to
-            # inline-shell/http-check) rather than "no change" — so this
-            # assigns whenever the key is present, not only when truthy.
-            job.script_path = eff_script_path
-        if "kind_config" in fields:
-            job.kind_config = eff_kind_config
+        # kind / script_path / kind_config are validated together as the
+        # *effective* post-edit shape (issue #70) — an edit to any one of
+        # the three must still describe a structurally valid job, and
+        # validation runs before any of the three is mutated so a rejected
+        # edit leaves the job untouched.
+        if "kind" in fields or "script_path" in fields or "kind_config" in fields:
+            eff_kind = (
+                str(fields["kind"] or "").strip() if "kind" in fields else job.kind
+            )
+            if "script_path" in fields:
+                # Present-but-empty is meaningful here (clearing
+                # script_path when switching to inline-shell/http-check),
+                # not "no change".
+                eff_script_path = str(fields["script_path"] or "").strip()
+            else:
+                eff_script_path = job.script_path
+            eff_kind_config = (
+                kind_config_from_dict(fields["kind_config"])
+                if "kind_config" in fields
+                else job.kind_config
+            )
+            validate_kind_shape(eff_kind, eff_script_path, eff_kind_config)
+            if "kind" in fields:
+                job.kind = eff_kind
+            if "script_path" in fields:
+                # Unlike other fields, an explicit empty string here is
+                # meaningful (clearing script_path when switching to
+                # inline-shell/http-check) rather than "no change" — so
+                # this assigns whenever the key is present, not only when
+                # truthy.
+                job.script_path = eff_script_path
+            if "kind_config" in fields:
+                job.kind_config = eff_kind_config
 
-    # Snapshot the chain edges so we can revert atomically on cycle.
-    prev_success, prev_failure = job.on_success, job.on_failure
-    if "on_success" in fields:
-        job.on_success = _validate_chain_list("on_success", fields["on_success"])
-    if "on_failure" in fields:
-        job.on_failure = _validate_chain_list("on_failure", fields["on_failure"])
-    if ("on_success" in fields) or ("on_failure" in fields):
-        try:
-            _validate_chain_consistency(cfg)
-        except ValueError:
-            job.on_success, job.on_failure = prev_success, prev_failure
-            raise
-    cfg.jobs.sort(key=lambda j: j.name.lower())
-    save_jobs(cfg)
+        # Snapshot the chain edges so we can revert atomically on cycle.
+        prev_success, prev_failure = job.on_success, job.on_failure
+        if "on_success" in fields:
+            job.on_success = _validate_chain_list("on_success", fields["on_success"])
+        if "on_failure" in fields:
+            job.on_failure = _validate_chain_list("on_failure", fields["on_failure"])
+        if ("on_success" in fields) or ("on_failure" in fields):
+            try:
+                _validate_chain_consistency(fresh)
+            except ValueError:
+                job.on_success, job.on_failure = prev_success, prev_failure
+                raise
+        fresh.jobs.sort(key=lambda j: j.name.lower())
+        save_jobs(fresh)
+        cfg.jobs = fresh.jobs
     return job
 
 
@@ -301,34 +351,48 @@ def pause_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     active ``schedule`` with ``none`` so the schtasks resync layer
     removes the entries on the next sync. Idempotent — pausing an
     already-paused job is a no-op (the original payload is preserved).
+
+    Re-reads the registry from disk under :func:`jobs_file_lock` rather
+    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    :func:`add_job` for why.
     """
-    job = get_by_id(cfg, job_id)
-    if job is None:
-        return None
-    if job.is_paused:
-        return job
-    if job.schedule.type == "none":
-        # Nothing to park — pausing a manual-only job would be a confusing
-        # no-op, so reject explicitly so the UI can surface it.
-        raise ValueError("cannot pause a job whose schedule is 'none'")
-    job.paused_schedule = job.schedule
-    job.schedule = Schedule(type="none")
-    save_jobs(cfg)
+    with jobs_file_lock():
+        fresh = load_jobs()
+        cfg.jobs = fresh.jobs
+        job = get_by_id(fresh, job_id)
+        if job is None:
+            return None
+        if job.is_paused:
+            return job
+        if job.schedule.type == "none":
+            # Nothing to park — pausing a manual-only job would be a
+            # confusing no-op, so reject explicitly so the UI can surface it.
+            raise ValueError("cannot pause a job whose schedule is 'none'")
+        job.paused_schedule = job.schedule
+        job.schedule = Schedule(type="none")
+        save_jobs(fresh)
     return job
 
 
 def resume_job(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     """Restore the parked ``paused_schedule`` onto ``schedule`` and clear
     the parked field. Resuming a job that was never paused is a no-op.
+
+    Re-reads the registry from disk under :func:`jobs_file_lock` rather
+    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    :func:`add_job` for why.
     """
-    job = get_by_id(cfg, job_id)
-    if job is None:
-        return None
-    if not job.is_paused or job.paused_schedule is None:
-        return job
-    job.schedule = job.paused_schedule
-    job.paused_schedule = None
-    save_jobs(cfg)
+    with jobs_file_lock():
+        fresh = load_jobs()
+        cfg.jobs = fresh.jobs
+        job = get_by_id(fresh, job_id)
+        if job is None:
+            return None
+        if not job.is_paused or job.paused_schedule is None:
+            return job
+        job.schedule = job.paused_schedule
+        job.paused_schedule = None
+        save_jobs(fresh)
     return job
 
 
@@ -337,18 +401,26 @@ def remove_by_id(cfg: JobsConfig, job_id: str) -> Optional[Job]:
     references to it from every other job's ``on_success`` /
     ``on_failure``. Cascade-strip is preferred over reject-if-referenced
     because reject would force users into a multi-step delete dance.
+
+    Re-reads the registry from disk under :func:`jobs_file_lock` rather
+    than trusting the caller's ``cfg`` snapshot (issue #755) — see
+    :func:`add_job` for why.
     """
-    removed: Optional[Job] = None
-    for i, job in enumerate(cfg.jobs):
-        if job.id == job_id:
-            removed = cfg.jobs.pop(i)
-            break
-    if removed is None:
-        return None
-    for j in cfg.jobs:
-        if job_id in (j.on_success or ()):
-            j.on_success = [x for x in j.on_success if x != job_id]
-        if job_id in (j.on_failure or ()):
-            j.on_failure = [x for x in j.on_failure if x != job_id]
-    save_jobs(cfg)
+    with jobs_file_lock():
+        fresh = load_jobs()
+        cfg.jobs = fresh.jobs
+        removed: Optional[Job] = None
+        for i, job in enumerate(fresh.jobs):
+            if job.id == job_id:
+                removed = fresh.jobs.pop(i)
+                break
+        if removed is None:
+            return None
+        for j in fresh.jobs:
+            if job_id in (j.on_success or ()):
+                j.on_success = [x for x in j.on_success if x != job_id]
+            if job_id in (j.on_failure or ()):
+                j.on_failure = [x for x in j.on_failure if x != job_id]
+        save_jobs(fresh)
+        cfg.jobs = fresh.jobs
     return removed
