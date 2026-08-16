@@ -22,7 +22,15 @@ import os
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile, WebSocket
+from fastapi import (
+    APIRouter,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+)
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
@@ -220,7 +228,7 @@ async def session_image(
 
 
 @router.post("/api/claude-code/sessions/{sid}/input")
-async def session_input(sid: str, request: Request) -> Dict[str, Any]:
+async def session_input(sid: str, request: Request, response: Response) -> Dict[str, Any]:
     """Write composed text into a session's PTY (Tailscale-only + passkey, #301).
 
     The Board drawer's reply path — chief's only way to steer a running
@@ -251,14 +259,24 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
 
     Issue #760 makes the rest of that promise real. A 200 now carries the
     session-host's whole verdict (``delivered``/``ingested``/``submitted``/
-    ``submit_confirmed``/``reason``): ``reason: "settle_cap"`` means the
-    payload reached the terminal but its submit could **not** be confirmed,
-    and ``reason: "unverified"`` means no verification was performed (a
-    short payload or a bare submit). A payload the terminal never echoed
+    ``submit_confirmed``/``reason``): ``reason: "unverified"`` means no
+    verification was performed (a short payload or a bare submit), and
+    anything other than ``"ok"`` means the submit was **not** confirmed.
+    A payload the terminal never echoed
     back is a 502, not a 200 — three workers stalled on 2026-08-14 on the
     strength of an ``{"ok": true}`` that only ever meant "the write didn't
     raise". Callers that need certainty should treat anything other than
     ``reason: "ok"`` as unconfirmed and check the exchange themselves.
+
+    Issue #763 adds one more: ``reason: "deferred"`` (HTTP **202**) means the
+    payload is in the composer but the agent was still working, so the
+    submitting CR is with a bounded background watcher that will press Enter
+    once the agent settles — the message is in flight, not stranded. It
+    replaces the former ``settle_cap``, which reported a CR already fired
+    blind mid-repaint. The watcher's own verdict (``ok`` /
+    ``defer_timeout`` / ``defer_vanished`` / ``defer_unclear``) lands on the
+    session's ``last_input``, readable via the session list, so a caller
+    follows it up there rather than by holding this request open.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -292,6 +310,10 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
         submit_confirmed=verdict.get("submit_confirmed"),
         preview=text[:120] or None,
     )
+    if verdict.get("reason") == session_client.INPUT_DEFERRED:
+        # Mirror the session-host's 202 (#763): accepted, submit still in
+        # flight with the watcher — not the completed delivery a 200 implies.
+        response.status_code = 202
     return {
         "ok": True,
         "bytes": len(text),

@@ -218,14 +218,34 @@ So a bulk payload (≥ `_BULK_SUBMIT_THRESHOLD_CHARS`) is now checked for **inge
 | `reason` | HTTP | Meaning |
 |---|---|---|
 | `ok` | 200 | Ingest seen, and the CR followed a genuine echo-then-quiet settle. |
-| `settle_cap` | 200 | Ingest seen, but the stream never went quiet — the CR went out at the cap, so `submit_confirmed: false`. The message may be sitting unsent. |
+| `deferred` | **202** | Ingest seen, but the agent is still working so the stream never went quiet. **No CR is sent yet** — the submit is with the deferred watcher below. |
 | `unverified` | 200 | Nothing was checked, by design: a short payload (instant submit, as `sendSubmit` has always done) or a bare submit, which has no payload to match. |
 | `not_ingested` | **502** | Written, never painted back within `_INGEST_CAP_MS`. Treated as **not delivered**, and **no CR is sent** — a blind CR into a terminal that never showed the text can answer whatever modal dialog is open instead of submitting anything. |
 | `dropped` | 409 | A write never reached the PTY (session exited, or the write raised). |
 
 `submit_confirmed` and `ingested` are tri-state: `null` means *not established*, which is never folded into the passing state. The same verdict is recorded on the session as `last_input` (visible in `GET /sessions/{sid}` / the session list alongside `alive` and `output_chars`), so "this session has gone deaf to API input" is a readable state rather than something only a human with a keyboard can tell apart from a busy agent. Every non-delivery also leaves an info-level breadcrumb in the session-host log and a `reason=` field in the session's own audit log, which previously recorded only `bytes=N submit=True` for steers that were never submitted.
 
-Callers should treat anything other than `reason: "ok"` as unconfirmed and verify independently — which is what `chief_ops.py say --verify` already does by polling the exchange, and it deliberately does not auto-resend (a blind resend of something like `/issue-finish` could double-execute).
+**Deferred submit (#763).** Ingest verification closed the *silent* half of the defect but not the stall itself: a steer to a busy agent was still reported honestly and still left sitting unsent, because the settle wait can never see a quiet window while the agent repaints. A human does not have that problem — they see the stranded chip, wait for the agent to finish, and press Enter. That retry-by-observation is now server-side, and it replaces the former `settle_cap` reason (which reported a CR already fired blind mid-repaint; there is no such CR any more).
+
+On reaching `_BULK_CAP_MS` ingested-but-noisy, `submit_input` releases `_write_lock` immediately — a keyboard writer is never blocked behind the wait — and hands the submit to a bounded background watcher. The watcher writes **one bare CR**, never a resend of the text, and only when all three of these hold:
+
+1. **A real quiet window** — `_DEFER_QUIET_MS` (1.5 s, deliberately far longer than the 350 ms paste-settle quiet) within `_DEFER_CAP_MS` (2 min). A working agent repaints far more often than that, so quiet means the turn is genuinely over.
+2. **The payload is still visible** in the terminal's *recent* output. The composer is repainted on essentially every frame, so a payload still sitting unsent keeps reappearing, whereas one that was submitted or scrolled away stops being repainted. The scan window is the oldest sample in a rolling `_DEFER_FRAME_LOOKBACK_MS` (6 s) ring of `_output_total` readings — which is what makes this "the payload is there *now*" rather than "it was there once".
+3. **No dialog in that same window** (`_DEFER_DIALOG_MARKERS`) — a bare CR into a permission or AskUserQuestion modal picks an option instead of submitting. The check is a heuristic and is allowed to be over-eager: a false positive only means the watcher declines to press Enter.
+
+Any of those failing means **nothing is written** and the steer stays stranded and honestly reported — the pre-#763 state, never worse. The watcher is also superseded (exits without firing, leaving `last_input` alone) by any newer `/input` call or any `stop()`, since somebody else writing to the PTY invalidates its premise. Raw keystrokes from the WebSocket pump deliberately do *not* supersede it — a PC mirror typing anywhere would otherwise cancel every steer, and check 2 already catches a composer the human has changed.
+
+The watcher's own verdict is recorded onto `last_input` in the same shape as an immediate write, with `deferred: true`:
+
+| `reason` | Meaning |
+|---|---|
+| `ok` | Quiet window reached, payload re-verified, CR sent — `submit_confirmed: true`. |
+| `defer_timeout` | Never went quiet within `_DEFER_CAP_MS`. Nothing written. |
+| `defer_vanished` | Quiet, but the payload is no longer visible — it either already went, or the terminal moved on. Nothing written. |
+| `defer_unclear` | Quiet and the payload is there, but so is a dialog. Nothing written. |
+| `dropped` | The session exited, or the CR write raised. |
+
+Callers should treat anything other than `reason: "ok"` as unconfirmed and verify independently — which is what `chief_ops.py say --verify` already does by polling the exchange, and it deliberately does not auto-resend (a blind resend of something like `/issue-finish` could double-execute). `deferred` specifically means *in flight, not stranded*: keep polling the exchange, and read the session's `last_input` for the watcher's final verdict.
 
 **One-tap issue start.** A Backlog card whose repo is in the projects folder carries **▶ Start / ⚡ YOLO** → `POST /api/board/issues/start`, body `{repo, number, mode, model, rows, cols}`. Both controls are disabled while the card's active-issue marker is fresh (#528), preventing a redundant conflicting session. Otherwise the route is injection-safe by construction: `prompt = "/issue-<mode> <number>"` with mode allowlisted and number int-validated. The dispatch bar's **model** selector governs these launches too (#505), overriding the shared Coding model per launch — same #500 semantics as dispatch (gpt5.6 → a Codex session, which takes the same positional prompt; absent model → the legacy persisted Coding model). It resolves the repo to a project dir (404 if not present locally) and spawns a streamed PTY session — the `/issue-*` skills inherit worktree isolation for free, claiming the repo and building in a sibling worktree when the primary checkout is busy. It opens the PC-mirror window by default — a desktop client, the phone, and a headless loopback API caller (the fleet chief's own dispatch) all get one (#609); only a genuine in-page loopback browser explicitly opts out (`in_page: true`, the SPA's own signal) and stays on the in-page terminal.
 
