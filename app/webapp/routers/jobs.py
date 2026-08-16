@@ -84,6 +84,7 @@ JOB_OPTIONAL_FIELDS = (
     "alert_on_failure",
     "visible",
     "elevated",
+    "session_less",
     "kind",
     "kind_config",
     "webhook",
@@ -125,7 +126,18 @@ def _decorate_job(
     # This non-elevated webapp can show its history and validate its target,
     # but cannot safely run it now or change the external task's state.
     payload["manual_run_allowed"] = not job.elevated
-    payload["schedule_controls_allowed"] = not job.elevated
+    # A session-less job's entry is externally managed too (issue #757), so
+    # pause/resume/schedule edits here would not reach Task Scheduler — the
+    # controls are withheld rather than allowed to lie. Manual "run now" is
+    # *not* withheld: that spawns the executor in this session directly and
+    # never touches the scheduled entry's principal.
+    payload["schedule_controls_allowed"] = not (job.elevated or job.session_less)
+    # The elevated PowerShell that registers (or re-registers) this job's
+    # session-less entries — the one thing this process cannot do itself.
+    # None for every other job, so a normal row's payload is unchanged.
+    payload["registration_command"] = (
+        jobs_mod.registration_script(job) if job.session_less else None
+    )
     payload["next_run"] = jobs_mod.query_next_run(job.id)
     # Computed next fire from the schedule shape (issue #229). Unlike the
     # schtasks string above, this is sortable + countdown-able. None for
@@ -417,7 +429,10 @@ async def pause(job_id: str) -> Dict[str, Any]:
     existing = get_by_id(cfg, job_id)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
-    if existing.elevated:
+    # elevated (#352) and session_less (#757) are both externally managed:
+    # sync_schtasks does not touch their entries, so parking the schedule
+    # here would leave Task Scheduler firing on the old one.
+    if existing.elevated or existing.session_less:
         raise HTTPException(
             status_code=409,
             detail="schedule is externally managed and cannot be paused here",
@@ -440,7 +455,7 @@ async def resume(job_id: str) -> Dict[str, Any]:
     existing = get_by_id(cfg, job_id)
     if existing is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
-    if existing.elevated:
+    if existing.elevated or existing.session_less:
         raise HTTPException(
             status_code=409,
             detail="schedule is externally managed and cannot be resumed here",

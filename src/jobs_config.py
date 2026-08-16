@@ -93,6 +93,7 @@ from src.jobs_config_models import (
     params_from_dict,
     schedule_from_dict,
     validate_kind_shape,
+    validate_principal_shape,
 )
 from src.jobs_webhook import webhook_from_dict
 
@@ -115,6 +116,7 @@ __all__ = [
     "make_job_id",
     "kind_config_from_dict",
     "validate_kind_shape",
+    "validate_principal_shape",
     "JobsConfig",
     # chain (src.jobs_config_chain)
     "detect_chain_cycle",
@@ -262,6 +264,7 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
     ("alert_on_failure", bool, False),
     ("visible", bool, False),
     ("elevated", bool, False),
+    ("session_less", bool, False),
     ("webhook", webhook_from_dict, False),
     ("env", env_from_dict, False),
 )
@@ -285,6 +288,19 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
         job = get_by_id(fresh, job_id)
         if job is None:
             return None
+
+        # visible/session_less are validated as the *effective* post-edit
+        # pair (issue #757) — same discipline as the kind/script_path block
+        # below, and checked before any mutation so a rejected edit leaves
+        # the job untouched. An edit naming only one of the two is still
+        # checked against the other's stored value.
+        if "visible" in fields or "session_less" in fields:
+            validate_principal_shape(
+                bool(fields["visible"]) if "visible" in fields else job.visible,
+                bool(fields["session_less"])
+                if "session_less" in fields
+                else job.session_less,
+            )
 
         for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
             if attr not in fields:
