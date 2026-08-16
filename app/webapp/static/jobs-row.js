@@ -237,6 +237,22 @@ export function renderJobRow(job, options) {
       'Run-now and schedule controls are unavailable here; tap the row to view history.';
     pills.appendChild(elevated);
   }
+  // Issue #757: this job's Task Scheduler entry is hand-registered with an
+  // S4U principal so it fires while the machine sits logged out. Like the
+  // elevated pill above, the entry is externally managed — the schedule
+  // controls are withheld and the row says why. Whether the *registered*
+  // entry actually carries that principal is a separate fact, reported by
+  // the coverage pill (`principal_interactive`), not asserted here.
+  if (job.session_less) {
+    const sessionLess = document.createElement('span');
+    sessionLess.className = 'kind-pill job-session-less-pill';
+    sessionLess.dataset.role = 'session-less-chip';
+    sessionLess.innerHTML = icon('moon') + ' logged-out';
+    sessionLess.title = 'Registered to run whether the user is logged on or ' +
+      'not (S4U). The Task Scheduler entry is externally managed, so schedule ' +
+      'controls are unavailable here; re-register it from an elevated shell.';
+    pills.appendChild(sessionLess);
+  }
   if (job.mutex_group) {
     const mutex = document.createElement('span');
     mutex.className = 'kind-pill job-mutex-pill';

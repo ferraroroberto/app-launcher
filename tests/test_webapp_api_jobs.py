@@ -786,6 +786,88 @@ class TestElevatedJobsSkipTaskScheduler:
         assert resp.status_code == 200
         assert_no_create()
 
+    def test_session_less_job_never_touches_task_scheduler(
+        self, webapp_client, real_schtasks_runner
+    ):
+        """Issue #757: a ``session_less`` job's entry is externally managed
+        *and* undeletable-by-us — the runner must not be called at all, not
+        even for the stale-entry delete the elevated path does. Run-now is
+        still allowed (it spawns the executor here, in this session, and
+        never touches the scheduled entry's principal)."""
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Session less",
+                "script_path": _stub_path("sessionless.bat"),
+                "schedule": {"type": "daily", "at": "03:00"},
+                "session_less": True,
+            },
+        )
+        assert resp.status_code == 200
+        created = resp.json()["job"]
+        assert created["session_less"] is True
+        assert created["schedule_controls_allowed"] is False
+        # Run-now is NOT withheld, unlike the elevated case above.
+        assert created["manual_run_allowed"] is True
+        # The elevated registration command is generated for the operator.
+        assert "-LogonType S4U" in created["registration_command"]
+        assert (
+            f"-TaskName '{created['id']}'" in created["registration_command"]
+        )
+        assert not real_schtasks_runner.called
+
+        job_id = created["id"]
+        for path in ("pause", "resume"):
+            resp = client.post(f"/api/jobs/{job_id}/{path}")
+            assert resp.status_code == 409
+            assert "externally managed" in resp.json()["detail"]
+        assert not real_schtasks_runner.called
+
+        # Editing any field must not start touching Task Scheduler either.
+        resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
+        assert resp.status_code == 200
+        assert not real_schtasks_runner.called
+
+    def test_session_less_with_visible_is_rejected(
+        self, webapp_client, real_schtasks_runner
+    ):
+        """An S4U task has no desktop, so the pair is refused at the boundary
+        rather than silently producing a job that shows nothing."""
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "Both",
+                "script_path": _stub_path("both.bat"),
+                "schedule": {"type": "daily", "at": "03:00"},
+                "session_less": True,
+                "visible": True,
+            },
+        )
+        assert resp.status_code == 400
+        assert "mutually exclusive" in resp.json()["detail"]
+
+    def test_plain_job_has_no_registration_command(
+        self, webapp_client, real_schtasks_runner
+    ):
+        client, _, _ = webapp_client
+        resp = client.post(
+            "/api/jobs",
+            json={
+                "name": "No registration",
+                "script_path": _stub_path("noreg.bat"),
+                "schedule": {"type": "daily", "at": "06:00"},
+            },
+        )
+        assert resp.status_code == 200
+        job = resp.json()["job"]
+        # session_less is omitted from the stored row when false (same
+        # round-trip discipline as visible/elevated), so absent == off.
+        assert not job.get("session_less")
+        assert job["registration_command"] is None
+        assert job["schedule_controls_allowed"] is True
+
     def test_non_elevated_job_still_calls_runner(
         self, webapp_client, real_schtasks_runner
     ):

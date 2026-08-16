@@ -19,6 +19,10 @@ Two independent halves, both answered from data the Jobs tab already reads:
   one batched query per cycle, never an N+1 shell-out storm.
 * **Behavioural** — expand the schedule across a recent window and check
   each expected fire against the on-disk run history.
+* **Principal** (``session_less`` jobs only, issue #757) — an entry that
+  exists, is enabled, and is *still* registered ``Interactive only`` passes
+  both halves above and silently does nothing whenever the machine sits
+  logged out. Read from the same cached bulk query as the structural half.
 
 Never-flag rules (the acceptance criterion is "no false positives across a
 normal week"), all enforced in :func:`behavioural_coverage` /
@@ -75,6 +79,7 @@ from src._json_io import atomic_write_json
 from src.jobs_config import Job, load_jobs
 from src.jobs_schtasks import (
     FREQUENT_SCHEDULE_TYPES,
+    registered_task_principals,
     registered_task_states,
     task_names_for,
     upcoming_fires,
@@ -121,6 +126,12 @@ STATE_EXEMPT = "exempt"
 PROBLEM_TASK_MISSING = "task_missing"
 PROBLEM_TASK_DISABLED = "task_disabled"
 PROBLEM_MISSED_FIRE = "missed_fire"
+#: A ``session_less`` job (issue #757) whose Task Scheduler entry is still
+#: registered ``Interactive only`` — it exists and looks healthy to every
+#: other check, and silently does nothing whenever the box sits logged out.
+#: Either it was never hand-registered from an elevated shell, or something
+#: re-registered it with Windows' default principal.
+PROBLEM_PRINCIPAL_INTERACTIVE = "principal_interactive"
 
 _MISSING = object()
 
@@ -152,6 +163,7 @@ def _result(
     problems: Optional[List[str]] = None,
     missing_tasks: Optional[List[str]] = None,
     disabled_tasks: Optional[List[str]] = None,
+    interactive_tasks: Optional[List[str]] = None,
     missed: Optional[List[datetime]] = None,
 ) -> Dict[str, Any]:
     """The JSON-serialisable coverage payload attached to a job row."""
@@ -162,6 +174,7 @@ def _result(
         "problems": problems or [],
         "missing_tasks": missing_tasks or [],
         "disabled_tasks": disabled_tasks or [],
+        "interactive_tasks": interactive_tasks or [],
         "missed_count": len(missed),
         "missed_fires": [
             f.isoformat(timespec="minutes")
@@ -291,6 +304,7 @@ def coverage_for(
     job: Job,
     task_states: Optional[Dict[str, Optional[bool]]],
     *,
+    principals: Optional[Dict[str, Optional[bool]]] = None,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Coverage verdict for one job.
@@ -300,6 +314,15 @@ def coverage_for(
     half reports ``unknown`` instead of inventing missing tasks. A per-task
     ``None`` value means "registered, enabled-state unreadable": not a
     problem, because the task demonstrably exists.
+
+    ``principals`` is :func:`src.jobs_schtasks.registered_task_principals`'
+    output, read from the same cached snapshot. It is only consulted for a
+    ``session_less`` job (issue #757), where "the entry exists and is
+    enabled" is *not* sufficient: an entry left on the default
+    ``InteractiveToken`` principal passes every other check here and still
+    does nothing whenever the machine sits logged out. Same tri-state rule
+    as everything else — an unreadable principal yields ``unknown``, never a
+    confident pass.
 
     Either half may come back unestablished, and the precedence is: a real
     problem first (it rests on its own evidence and outranks the other
@@ -322,6 +345,25 @@ def coverage_for(
             elif enabled is False:
                 disabled.append(name)
 
+    # Principal half (issue #757) — only meaningful for a job that declared
+    # it must run session-less. A task already reported missing is skipped:
+    # the structural half owns that, and "missing" plus "wrong principal"
+    # for one entry is one problem told twice.
+    interactive: List[str] = []
+    principal_unknown = False
+    if job.session_less:
+        if principals is None:
+            principal_unknown = True
+        else:
+            for name in task_names_for(job):
+                capable = principals.get(name, _MISSING)
+                if capable is _MISSING:
+                    continue
+                if capable is False:
+                    interactive.append(name)
+                elif capable is None:
+                    principal_unknown = True
+
     missed, behavioural_unknown = behavioural_coverage(job, now=now)
 
     problems: List[str] = []
@@ -338,6 +380,14 @@ def coverage_for(
             f"{len(disabled)} Task Scheduler entr"
             f"{'y' if len(disabled) == 1 else 'ies'} disabled"
         )
+    if interactive:
+        problems.append(PROBLEM_PRINCIPAL_INTERACTIVE)
+        bits.append(
+            f"{len(interactive)} Task Scheduler entr"
+            f"{'y is' if len(interactive) == 1 else 'ies are'} still "
+            "'Interactive only' — will not fire while logged out; "
+            "re-register from an elevated shell"
+        )
     if missed:
         problems.append(PROBLEM_MISSED_FIRE)
         bits.append(
@@ -352,11 +402,17 @@ def coverage_for(
             problems=problems,
             missing_tasks=missing,
             disabled_tasks=disabled,
+            interactive_tasks=interactive,
             missed=missed,
         )
     unresolved: List[str] = []
     if structural_unknown:
         unresolved.append("Task Scheduler query failed — coverage not established")
+    if principal_unknown:
+        unresolved.append(
+            "Task Scheduler logon mode unreadable — session-less principal "
+            "not established"
+        )
     if behavioural_unknown:
         unresolved.append(behavioural_unknown)
     if unresolved:
@@ -374,11 +430,15 @@ def scan_coverage(
     """
     jobs = load_jobs().jobs if jobs is None else jobs
     task_states = registered_task_states()
+    # Same cached snapshot as the line above — no second shell-out.
+    principals = registered_task_principals()
     now = now or datetime.now()
     out: Dict[str, Dict[str, Any]] = {}
     for job in jobs:
         try:
-            out[job.id] = coverage_for(job, task_states, now=now)
+            out[job.id] = coverage_for(
+                job, task_states, principals=principals, now=now
+            )
         except OSError as exc:
             logger.debug(f"coverage scan skipped {job.id}: {exc}")
             out[job.id] = _result(

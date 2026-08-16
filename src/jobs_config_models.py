@@ -402,6 +402,23 @@ class Job:
     # rights to do its work (e.g. restarting an app whose manifest requires
     # elevation). See ``src.jobs_schtasks.sync_schtasks``.
     elevated: bool = False
+    # When True, this job's Task Scheduler entry is expected to carry an
+    # **S4U** principal ("run whether the user is logged on or not") instead
+    # of the ``InteractiveToken`` principal ``schtasks /Create`` defaults to,
+    # so it still fires while the machine sits logged out (issue #757).
+    #
+    # Like ``elevated`` this makes the entry *externally managed*: registering
+    # an S4U principal needs elevation, which this webapp process never has
+    # (proven non-elevated on #757 — every route to an S4U principal returns
+    # ``Access is denied``, including the create-then-``Set-ScheduledTask``
+    # patch that works for *Settings*). See
+    # ``src.jobs_schtasks.registration_script`` for the command that registers
+    # it and ``sync_schtasks`` for the hands-off rule.
+    #
+    # Mutually exclusive with ``visible``: an S4U task runs in session 0 with
+    # no desktop, so a console window has nowhere to appear. Choosing one is
+    # the deliberate trade the job owner makes.
+    session_less: bool = False
     # When non-None, ``schedule`` is the placeholder ``Schedule(type="none")``
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
@@ -472,6 +489,8 @@ class Job:
             payload["visible"] = True
         if self.elevated:
             payload["elevated"] = True
+        if self.session_less:
+            payload["session_less"] = True
         if self.paused_schedule is not None:
             payload["paused_schedule"] = self.paused_schedule.to_dict()
         # kind / kind_config: omit when unset so legacy rows (and every
@@ -728,12 +747,36 @@ def validate_kind_shape(
         raise ValueError(f"kind {kind!r} requires script_path")
 
 
+def validate_principal_shape(visible: bool, session_less: bool) -> None:
+    """Raise ``ValueError`` if ``visible`` and ``session_less`` are both set.
+
+    An S4U ("run whether logged on or not") task runs in session 0 with no
+    interactive desktop, so ``visible``'s whole point — a console window the
+    user can watch on the PC — has nowhere to render. Combining them is not
+    a smaller version of either behaviour, it is a silently futile config:
+    the job would run logged-out *and* show nothing when it ran logged-in.
+
+    Enforced here rather than resolved by precedence because which one the
+    owner wants is a real trade, not a default (issue #757). Shared by
+    :func:`job_from_dict` and :func:`src.jobs_config.update_job` so the two
+    write paths can't drift.
+    """
+    if visible and session_less:
+        raise ValueError(
+            "visible and session_less are mutually exclusive: a session-less "
+            "(S4U) task has no desktop to show a console window on"
+        )
+
+
 def job_from_dict(raw: Dict[str, Any]) -> Job:
     """Build a :class:`Job` from one JSON row. Raises on invalid input."""
     kind = str(raw.get("kind") or "").strip()
     script_path = str(raw.get("script_path") or "").strip()
     kind_config = kind_config_from_dict(raw.get("kind_config"))
     validate_kind_shape(kind, script_path, kind_config)
+    validate_principal_shape(
+        bool(raw.get("visible", False)), bool(raw.get("session_less", False))
+    )
     job = Job(
         id=str(raw.get("id") or "").strip(),
         name=str(raw.get("name") or "").strip(),
@@ -750,6 +793,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         alert_on_failure=bool(raw.get("alert_on_failure", False)),
         visible=bool(raw.get("visible", False)),
         elevated=bool(raw.get("elevated", False)),
+        session_less=bool(raw.get("session_less", False)),
         paused_schedule=(
             schedule_from_dict(raw["paused_schedule"])
             if raw.get("paused_schedule") is not None

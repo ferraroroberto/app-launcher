@@ -169,6 +169,36 @@ schtasks /Create /F /TN "\AppLauncher\hwinfo-restart" /TR '"E:\automation\app-la
 
 (Single-quote the `/TR` value in PowerShell — double-quoted strings there don't pass embedded `"` through literally.) The Jobs tab marks an elevated job with a `🔒 external schedule` pill next to its schedule chip so it's visually obvious which jobs the app isn't managing. The row remains tappable for run history, and edit mode still offers the side-effect-free dry-run check. Run-now and pause/resume are omitted and their API endpoints return `409`: the non-elevated launcher cannot honor those actions safely against an externally managed `/RL HIGHEST` task. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
 
+### Logged-out (session-less) jobs (issue #757)
+
+`schtasks /Create` takes no principal flags here, so Windows applies its default: `LogonType=InteractiveToken`, the "Run only when the user is logged on" checkbox. When no interactive session for the user exists at the trigger moment, Task Scheduler skips the trigger **silently** — no run, no error, no `LastTaskResult`, no catch-up. All 23 live `\AppLauncher\` tasks are in that state, which is what cost `fleet-private-backup-daily` its 2026-08-13 03:00 run after a Windows Update servicing chain left the box logged out for four hours.
+
+A job opts out with `"session_less": true`:
+
+```json
+{
+  "id": "fleet-private-backup-daily",
+  "name": "Fleet private backup",
+  "script_path": "E:\\automation\\fleet-config\\scripts\\backup.py",
+  "schedule": { "type": "daily", "at": "03:00" },
+  "session_less": true
+}
+```
+
+**Mutually exclusive with `visible`** — an S4U task runs in session 0 with no desktop, so a console window has nowhere to render. Setting both is rejected with a 400 on `POST`/`PUT` and a `ValueError` on load, rather than resolved by precedence: which one you want is a real trade, not a default.
+
+**The launcher never touches a session-less job's Task Scheduler entry at all** — no `/Create`, and unlike the elevated carve-out above, no *delete* either. Registering an S4U principal ("run whether the user is logged on or not", no stored password) needs elevation, which the webapp process never has: #757 measured, from a non-elevated shell, that `/RU`+`/RP`, a direct `-LogonType S4U` registration at both `\AppLauncher\` and `\`, *and* the create-then-`Set-ScheduledTask` patch that works fine for *Settings* all return `Access is denied`. Deleting is skipped because a delete **would** succeed — and would destroy an entry this process can never recreate, silently killing the job. The cost of not deleting is that a schedule edit can leave a stale entry behind; that is reported loudly (see below) rather than papered over by destroying state.
+
+Capability is not in question: #757's probe ran a real S4U token on this host and got 12/12 — same SID, `SessionId=0`, both backup destinations writable, loopback hub and outbound HTTPS reachable, `gh`'s Credential-Manager token still resolving, and headless `claude -p` working. The one measured delta is a shorter `PATH` (1429 vs 1701 chars), harmless while every job invokes absolute interpreter paths per the fleet convention — but worth a glance for a job that depends on a tool only present on the interactive `PATH`.
+
+The registration command is generated for you: `GET /api/jobs` returns it as `registration_command` on any session-less row (`null` on every other job), built from the job's own schedule by `src.jobs_schtasks.registration_script`. Paste it into an **elevated** PowerShell. It fans out `daily_times` into the same `…-1`/`…-2` task names the rest of the app expects, and re-applies the `#746` on-battery/`StartWhenAvailable` settings, because `Register-ScheduledTask` replaces the whole settings object instead of merging into it.
+
+**Whether the entry actually carries that principal is checked, not assumed.** The missed-fire coverage scan (issue #697) reads `Logon Mode` out of the bulk `schtasks /Query /FO LIST /V` it already pays for, and reports a `principal_interactive` problem for a session-less job whose entry is still `Interactive only` — the failure mode where everything looks healthy (entry present, enabled, next-run populated) and nothing runs while logged out. An unreadable `Logon Mode` yields `unknown`, never a confident pass.
+
+The Jobs tab marks the row with a `🌙 logged-out` pill. Pause/resume are withheld and return `409` (the entry is externally managed, so parking the schedule here would leave Task Scheduler firing on the old one), but **Run-now stays available** — that spawns the executor in this session directly and never touches the scheduled entry. Like `visible` and `elevated`, there's no dedicated UI checkbox: set it in `config/jobs.json` or via the API.
+
+**Open: does `StartWhenAvailable` rescue a no-session skip?** `#746` set that flag fleet-wide on 2026-08-13, *after* the incident, so the incident is not evidence either way, and this host has had one continuous session since 2026-08-13 03:31:59 — no natural experiment exists in its event log. `scripts/probe-startwhenavailable-catchup.ps1` arranges one: `-Arm` registers a throwaway task at the root task path (never under `\AppLauncher\`) with the default interactive principal and `StartWhenAvailable`, you sign out (locking is not enough) across its trigger, and `-Check` reads the log against the Winlogon logon record and prints the verdict. `-Cleanup` removes it. Needs no elevation — interactive is the principal a non-elevated caller can already register, which is the defect itself.
+
 ### Cooldown (issue #68)
 
 A job can declare a per-job `cooldown_seconds`: a debounce window that prevents rapid manual fires (phone double-tap, Stream Deck button mash) from spawning overlapping runs of the same script.
@@ -441,6 +471,10 @@ The `/TR` (task run) command stored in Task Scheduler is quoted so paths contain
 ```
 
 An `elevated: true` job (see "Elevated (admin) jobs") is never *created/recreated* by the launcher — its Task Scheduler entry (created by hand with `/RL HIGHEST`) is externally-managed. A stale non-elevated entry from a prior schedule is still deleted, though.
+
+A `session_less: true` job (see "Logged-out (session-less) jobs") is not touched at all — neither created nor deleted, because the delete would succeed against an entry only an elevated shell can put back.
+
+Every entry the launcher creates itself carries Windows' default `LogonType=InteractiveToken` principal, so it does not fire while the machine sits logged out. That is the default, not an oversight — see "Logged-out (session-less) jobs" for the opt-out and why it cannot be applied from this process.
 
 Scheduled runs use `pythonw.exe` (silent — no console window appears on schedule fire). The repo's own `.venv` is preferred; a missing `.venv` falls back to `pythonw.exe` on PATH. A job with `"visible": true` (see "Visible console") instead runs under `python.exe` so a window appears on fire.
 

@@ -346,6 +346,137 @@ def schedule_argv_parts(sched: Schedule) -> List[List[str]]:
     return []
 
 
+# ------------------------------------------ session-less registration (#757)
+
+#: ``schtasks`` speaks three-letter days; ``New-ScheduledTaskTrigger`` wants
+#: the full ``DayOfWeek`` name. Same closed set as
+#: :data:`~src.jobs_config_models.WEEKLY_DAYS`.
+_PS_WEEKDAYS = {
+    "MON": "Monday",
+    "TUE": "Tuesday",
+    "WED": "Wednesday",
+    "THU": "Thursday",
+    "FRI": "Friday",
+    "SAT": "Saturday",
+    "SUN": "Sunday",
+}
+
+
+def _ps_trigger_exprs(sched: Schedule) -> List[str]:
+    """``New-ScheduledTaskTrigger`` expressions — one per task in
+    :func:`task_names_for` order.
+
+    The PowerShell counterpart of :func:`schedule_argv_parts`, and it fans
+    out identically: ``daily_times`` yields one expression per ``HH:MM`` so
+    the hand-registered entries carry the *same* ``…-1``/``…-2`` names the
+    rest of this module (and the coverage check) expects. Collapsing them
+    into one multi-trigger task would register a working schedule that
+    :mod:`src.jobs_coverage` then reports as N-1 missing entries.
+    """
+    if sched.type == "minutes":
+        return [
+            "New-ScheduledTaskTrigger -Once -At (Get-Date) "
+            f"-RepetitionInterval (New-TimeSpan -Minutes {sched.every})"
+        ]
+    if sched.type == "hourly":
+        return [
+            "New-ScheduledTaskTrigger -Once -At (Get-Date) "
+            f"-RepetitionInterval (New-TimeSpan -Hours {sched.every})"
+        ]
+    if sched.type == "daily":
+        return [f"New-ScheduledTaskTrigger -Daily -At '{_ps_quote(str(sched.at))}'"]
+    if sched.type == "daily_times" and isinstance(sched.at, list):
+        return [
+            f"New-ScheduledTaskTrigger -Daily -At '{_ps_quote(str(t))}'"
+            for t in sched.at
+        ]
+    if sched.type == "weekly":
+        day = _PS_WEEKDAYS.get(str(sched.day or "").upper())
+        if day is None:
+            return []
+        return [
+            f"New-ScheduledTaskTrigger -Weekly -DaysOfWeek {day} "
+            f"-At '{_ps_quote(str(sched.at))}'"
+        ]
+    if sched.type == "once" and isinstance(sched.at, str):
+        return [
+            "New-ScheduledTaskTrigger -Once -At "
+            f"(Get-Date '{_ps_quote(sched.at)}')"
+        ]
+    return []
+
+
+def registration_script(job: Job) -> Optional[str]:
+    """The elevated PowerShell that registers ``job``'s session-less entries.
+
+    ``None`` when there is nothing to register — no active schedule, or a
+    schedule shape with no trigger mapping. Returns a paste-ready block for
+    an **elevated** shell; this process cannot run it itself (that is the
+    whole reason ``session_less`` is externally managed — see
+    :func:`sync_schtasks`).
+
+    The principal is ``-LogonType S4U``: "run whether the user is logged on
+    or not" *without* storing a password. #757's probe measured a real S4U
+    token on this host against the things these jobs actually need — same
+    SID, ``SessionId=0``, both backup destinations writable, the loopback
+    hub and outbound HTTPS reachable, ``gh``'s Credential-Manager token
+    still resolving, and headless ``claude -p`` working — 12/12, so S4U is
+    capable here and the password-storing ``/RP`` route is not needed.
+    ``$env:USERDOMAIN\\$env:USERNAME`` is resolved by the script at run time
+    rather than baked in, so the emitted text carries no machine identity.
+
+    Settings mirror what :func:`_apply_power_policy` applies to every
+    normally-synced task (issue #746), because ``Register-ScheduledTask``
+    replaces the whole settings object rather than merging into it — a
+    hand-registered entry that omitted them would silently inherit Windows'
+    restrictive on-battery defaults on a UPS-backed host.
+    """
+    triggers = _ps_trigger_exprs(job.schedule)
+    names = task_names_for(job)
+    if not triggers or len(triggers) != len(names):
+        return None
+    # session_less forbids `visible` (validate_principal_shape), so the
+    # interpreter is always the windowless one — spelled out rather than
+    # passed through so a future `visible` regression can't quietly emit a
+    # console-window task that has no desktop to render on.
+    interpreter = _launcher_python(visible=False)
+    run_level = " -RunLevel Highest" if job.elevated else ""
+    # Deliberately ASCII-only: this text is meant to be pasted into a
+    # PowerShell console or saved as a .ps1, and Windows PowerShell 5.1
+    # mis-parses non-ASCII in an ANSI-saved script file.
+    lines = [
+        f"# app-launcher issue #757 - register job '{job.id}' to run without a",
+        "# logged-on session (S4U). Run from an ELEVATED PowerShell; this",
+        "# webapp process cannot register an S4U principal itself.",
+        "$ErrorActionPreference = 'Stop'",
+        "$user = \"$env:USERDOMAIN\\$env:USERNAME\"",
+        (
+            "$action = New-ScheduledTaskAction "
+            f"-Execute '{_ps_quote(interpreter)}' "
+            f"-Argument '\"{_ps_quote(_launcher_py())}\" run-job "
+            f"{_ps_quote(job.id)}'"
+        ),
+        (
+            "$principal = New-ScheduledTaskPrincipal -UserId $user "
+            f"-LogonType S4U{run_level}"
+        ),
+        (
+            "$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
+            "-DontStopIfGoingOnBatteries -StartWhenAvailable"
+        ),
+    ]
+    for name, trigger in zip(names, triggers):
+        task_name = name[len(TASK_FOLDER_PREFIX):]
+        lines.append(
+            "Register-ScheduledTask "
+            f"-TaskPath '{_ps_quote(TASK_FOLDER_PREFIX)}' "
+            f"-TaskName '{_ps_quote(task_name)}' "
+            f"-Action $action -Trigger ({trigger}) "
+            "-Principal $principal -Settings $settings -Force | Out-Null"
+        )
+    return "\n".join(lines)
+
+
 # ----------------------------------------------------------- sync API
 
 
@@ -427,9 +558,25 @@ def sync_schtasks(
     That power policy is the *only* schtasks default this function corrects.
     The principal is still whatever ``schtasks /Create`` defaults to —
     ``LogonType=InteractiveToken``, i.e. "run only when the user is logged
-    on" — so every task here silently does nothing while the machine sits at
-    the lock screen with no session (issue #757). If a scheduled job is
-    missing runs, look there before looking at power.
+    on" — so every task created here silently does nothing while the machine
+    sits logged out (issue #757). If a scheduled job is missing runs, look
+    there before looking at power.
+
+    ``job.session_less`` jobs are the opt-out from that default, and are
+    **never touched at all** — no create, no delete (issue #757). An S4U
+    principal cannot be registered from this non-elevated process by any
+    route (measured on #757: ``/RU``+``/RP``, a direct S4U registration, and
+    the create-then-``Set-ScheduledTask`` patch that works for *Settings* all
+    return ``Access is denied``), so the entry is hand-registered from an
+    elevated shell — see :func:`registration_script`. Deleting is skipped
+    too, and that is the deliberate difference from the ``elevated``
+    carve-out below: a delete here would succeed, destroy an entry this
+    process can never recreate, and silently kill the job. The cost of not
+    deleting is a stale interactive entry surviving a schedule edit, which
+    :mod:`src.jobs_coverage` reports loudly (``principal_interactive`` for a
+    task still registered ``Interactive only``, plus the pre-existing
+    missed-fire half for the slot that moved) instead of destroying state to
+    stay tidy.
 
     ``job.elevated`` jobs are skipped entirely (issue #352): their real
     ``/RL HIGHEST`` entry can only be created by an already-elevated
@@ -440,6 +587,15 @@ def sync_schtasks(
     here; it must be registered/updated by hand from an elevated shell.
     """
     runner = runner or _run_schtasks
+    if job.session_less:
+        # Hands off entirely (see docstring) — this is checked before the
+        # elevated branch so a job that is both keeps the safer rule.
+        logger.info(
+            "ℹ️  job %s is session_less — Task Scheduler entry left untouched "
+            "(register it from an elevated shell; see registration_script)",
+            job.id,
+        )
+        return []
     if job.elevated:
         # Still delete any stale entry from a prior non-elevated schedule
         # (issue #409) — otherwise it keeps firing un-elevated on its old
@@ -500,6 +656,17 @@ _STATE_KEYS = ("Scheduled Task State", "Status")
 _DISABLED_WORDS = {"DISABLED"}
 _ENABLED_WORDS = {"ENABLED", "READY", "RUNNING", "QUEUED"}
 
+# schtasks renders the principal's logon type as "Logon Mode": "Interactive
+# only" for the InteractiveToken default (session-bound — issue #757's whole
+# defect), and a value containing "Background" for the S4U / stored-password
+# principals that also run with no session. Matched by substring, and
+# anything else leaves the fact *unknown* rather than guessing — a localised
+# Windows renders these strings translated, and "we could not read the
+# principal" must never be folded into either answer.
+_LOGON_MODE_KEY = "Logon Mode"
+_LOGON_MODE_BACKGROUND = "BACKGROUND"
+_LOGON_MODE_INTERACTIVE_ONLY = "INTERACTIVE ONLY"
+
 
 def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
     """Parse ``schtasks /Query /FO LIST /V`` into ``{task_name: record}``.
@@ -514,6 +681,11 @@ def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
 
     * ``next_run`` — the raw schtasks string, or ``None`` when it renders
       ``N/A`` / ``Disabled`` / is absent.
+    * ``background_capable`` — ``True`` when the task's principal can run
+      with no logged-on session ("Logon Mode" mentions Background, i.e. S4U
+      or a stored password), ``False`` for "Interactive only", and ``None``
+      when the field is absent or unrecognised. This is the fact issue #757
+      turns on, and it is the same tri-state discipline as ``enabled``.
     * ``enabled`` — ``True``/``False`` when schtasks states it, and
       ``None`` when *neither* state key is present in the record. A
       registered-but-unreadable task is deliberately not collapsed into
@@ -545,7 +717,17 @@ def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
             if word in _ENABLED_WORDS:
                 enabled = True
                 break
-        out[name] = {"next_run": resolved_next, "enabled": enabled}
+        mode = b.get(_LOGON_MODE_KEY, "").strip().upper()
+        background_capable: Optional[bool] = None
+        if _LOGON_MODE_BACKGROUND in mode:
+            background_capable = True
+        elif _LOGON_MODE_INTERACTIVE_ONLY in mode:
+            background_capable = False
+        out[name] = {
+            "next_run": resolved_next,
+            "enabled": enabled,
+            "background_capable": background_capable,
+        }
 
     for raw in stdout.splitlines():
         line = raw.rstrip()
@@ -644,6 +826,27 @@ def registered_task_states(
     if snapshot is None:
         return None
     return {name: record["enabled"] for name, record in snapshot.items()}
+
+
+def registered_task_principals(
+    runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+) -> Optional[Dict[str, Optional[bool]]]:
+    """``{task_name: background_capable}`` for every ``\\AppLauncher\\`` task.
+
+    ``True`` = the registered principal runs with no logged-on session (S4U
+    or stored password), ``False`` = ``Interactive only``, per-task ``None``
+    = registered but the principal could not be read. The whole map is
+    ``None`` when the query failed — same contract as
+    :func:`registered_task_states`, and served off the same 30 s cached bulk
+    query, so the #757 check costs no extra shell-out.
+    """
+    snapshot = _cached_bulk_records(runner=runner)
+    if snapshot is None:
+        return None
+    return {
+        name: record.get("background_capable")
+        for name, record in snapshot.items()
+    }
 
 
 def invalidate_next_run_cache() -> None:
