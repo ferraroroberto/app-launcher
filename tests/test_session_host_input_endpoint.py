@@ -15,6 +15,9 @@ the compose bar's ``framePaste``/``sendSubmit``/``bulkSettle``.
 route maps its distinct failure conditions to distinct responses — a payload
 the terminal never echoed is a 502 (alive session, undelivered message), and
 a 200 carries the verdict so an unconfirmed submit can't read as success.
+
+#763: a submit handed to the deferred watcher answers 202 — accepted, not
+completed — rather than a 200 that would read as a finished delivery.
 """
 
 from __future__ import annotations
@@ -24,11 +27,12 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 from app.session_host import server
+from src import session_client, session_host
 from src.session_host import (
+    INPUT_DEFERRED,
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
     INPUT_OK,
-    INPUT_SETTLE_CAP,
     INPUT_UNVERIFIED,
     InputOutcome,
 )
@@ -124,15 +128,15 @@ def test_never_echoed_input_returns_502_not_a_false_ok(monkeypatch):
 
 
 def test_unconfirmed_submit_is_reported_on_the_200(monkeypatch):
-    """A payload that reached the terminal but whose submit fired blind at
-    the settle cap still returns 200 — but must never look like a confirmed
-    delivery, or the caller is back to #760's original false signal."""
+    """An ingested payload whose submit is not confirmed still returns 200 —
+    but must never look like a confirmed delivery, or the caller is back to
+    #760's original false signal."""
     session = _session(
         InputOutcome(
-            reason=INPUT_SETTLE_CAP,
+            reason=INPUT_UNVERIFIED,
             ingested=True,
             submitted=True,
-            submit_confirmed=False,
+            submit_confirmed=None,
             waited_ms=3000,
         )
     )
@@ -143,8 +147,41 @@ def test_unconfirmed_submit_is_reported_on_the_200(monkeypatch):
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["submit_confirmed"] is False
-    assert body["reason"] == INPUT_SETTLE_CAP
+    assert body["submit_confirmed"] is None
+    assert body["reason"] == INPUT_UNVERIFIED
+
+
+def test_deferred_submit_returns_202_not_a_completed_200(monkeypatch):
+    """#763: the payload is in the composer but the agent was still working,
+    so the CR is with the background watcher rather than fired blind. 202 is
+    the honest status for that — accepted, not completed — and the body says
+    ``deferred`` so a caller knows to follow ``last_input`` for the verdict."""
+    session = _session(
+        InputOutcome(
+            reason=INPUT_DEFERRED, ingested=True, deferred=True, waited_ms=3000
+        )
+    )
+    monkeypatch.setattr(server.manager, "get", lambda sid: session)
+    client = TestClient(server.app)
+
+    resp = client.post("/sessions/sid/input", json={"data": "steer"})
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["reason"] == INPUT_DEFERRED
+    assert body["deferred"] is True
+    # Delivered (the payload really is in the composer), but the submit is
+    # explicitly not established yet — never folded into the passing state.
+    assert body["delivered"] is True
+    assert body["submit_confirmed"] is None
+
+
+def test_deferred_reason_constant_does_not_drift_across_the_process_boundary():
+    """``src.session_client`` restates this one reason rather than importing
+    it, because the webapp process never imports the PTY module. Pin the two
+    definitions equal so the 202 mirror can't silently stop matching."""
+    assert session_client.INPUT_DEFERRED == session_host.INPUT_DEFERRED
 
 
 def test_input_unknown_session_returns_404(monkeypatch):

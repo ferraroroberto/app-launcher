@@ -23,12 +23,17 @@ from src.session_host import (
     _BULK_FLOOR_MS,
     _BULK_QUIET_MS,
     _BULK_SUBMIT_THRESHOLD_CHARS,
+    _DEFER_CAP_MS,
+    _DEFER_QUIET_MS,
     _INGEST_CAP_MS,
+    INPUT_DEFER_TIMEOUT,
+    INPUT_DEFER_UNCLEAR,
+    INPUT_DEFER_VANISHED,
+    INPUT_DEFERRED,
     INPUT_DROPPED,
     INPUT_NOOP,
     INPUT_NOT_INGESTED,
     INPUT_OK,
-    INPUT_SETTLE_CAP,
     INPUT_UNVERIFIED,
     _scan_bracketed_paste_mode,
     PtySession,
@@ -287,13 +292,20 @@ def test_bulk_payload_never_echoed_is_not_delivered_and_gets_no_cr(clock):
     assert total_waited_ms < _INGEST_CAP_MS + 200
 
 
-def test_busy_agent_that_never_goes_quiet_reports_submit_unconfirmed(clock):
-    """The 2026-08-14 stall shape: the agent is working, so its spinner
-    repaints continuously and the stream never goes quiet. The CR still
-    fires at the settle cap (unchanged behaviour), but the outcome says the
-    submit could not be confirmed instead of reporting plain success."""
+def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, monkeypatch):
+    """The 2026-08-14 stall shape, and #763's fix.
+
+    The agent is working, so its spinner repaints continuously and the stream
+    never goes quiet. Before #763 the CR fired at the settle cap anyway, into
+    a mid-repaint composer that absorbs it as a literal newline. Now no CR is
+    written at all: the submit is handed to a watcher, and the call says so.
+    """
     session = _make_session()
     payload = "CHIEF - status check, please report. " * 20
+    armed: list = []
+    monkeypatch.setattr(
+        PtySession, "_arm_deferred_submit", lambda self, *a, **kw: armed.append((a, kw))
+    )
 
     def _on_sleep(c: _FakeClock) -> None:
         # Echo lands early (the composer shows the paste), then output keeps
@@ -306,14 +318,176 @@ def test_busy_agent_that_never_goes_quiet_reports_submit_unconfirmed(clock):
 
     outcome = session.submit_input(payload, True)
 
-    assert outcome.reason == INPUT_SETTLE_CAP
+    assert outcome.reason == INPUT_DEFERRED
     assert outcome.ingested is True
-    assert outcome.submitted is True
-    assert outcome.submit_confirmed is False
+    assert outcome.deferred is True
+    assert outcome.submitted is False
+    # Not established, not False: the watcher has not run yet.
+    assert outcome.submit_confirmed is None
     # delivered stays true — the payload really did reach the terminal; it is
-    # the *submit* that is unconfirmed, and the two are reported separately.
+    # the *submit* that is still outstanding, and the two are reported apart.
     assert outcome.delivered is True
-    assert [c.args[0] for c in session._pty.write.call_args_list][-1] == "\r"
+    # The decisive assertion: no CR was written into the busy terminal.
+    assert "\r" not in [c.args[0] for c in session._pty.write.call_args_list]
+    assert len(armed) == 1
+
+
+# ------------------------------------------------ deferred submit (#763)
+
+
+def test_deferred_watcher_presses_enter_once_the_agent_settles(clock):
+    """#763's whole point: the steer lands without a human at the keyboard.
+
+    The agent stops working, the payload is still sitting in the composer, so
+    the watcher writes exactly one bare CR — the same action a human performs
+    on a stranded ``[Pasted text #N]`` chip.
+    """
+    payload = "CHIEF - please finish the scope and commit. " * 12
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    # The composer keeps repainting the payload while the agent works, then
+    # goes quiet with the chip still showing.
+    _echo(session, payload)
+    session._last_output_at = clock.now
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_OK
+    assert outcome.submitted is True
+    assert outcome.submit_confirmed is True
+    assert outcome.deferred is True
+    session._pty.write.assert_called_once_with("\r")
+    # It waited for a genuine quiet window, not just the paste-settle one.
+    assert outcome.waited_ms >= _DEFER_QUIET_MS
+
+
+def test_deferred_watcher_never_resends_the_text(clock):
+    """A blind resend of something like "/issue-finish" could double-execute
+    (#760's carried-over constraint) — only a bare CR is ever in scope."""
+    payload = "CHIEF - /issue-finish now that the gate is green. " * 12
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    session._last_output_at = clock.now
+
+    session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    written = [c.args[0] for c in session._pty.write.call_args_list]
+    assert written == ["\r"]
+
+
+def test_deferred_watcher_writes_nothing_when_the_payload_is_gone(clock):
+    """Quiet came, but the composer no longer shows the payload — it either
+    already went or the terminal moved on. Firing a CR at a state we cannot
+    identify is exactly what #763 forbids."""
+    payload = "CHIEF - a steer that got submitted by hand meanwhile. " * 12
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    # Only unrelated output since the mark — no chip, no echo.
+    mark = session._output_total
+    _echo(session, "\x1b[2J\x1b[1;1Hthinking about something else entirely\r\n")
+    session._last_output_at = clock.now
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_DEFER_VANISHED
+    assert outcome.submitted is False
+    assert outcome.submit_confirmed is False
+    session._pty.write.assert_not_called()
+
+
+def test_deferred_watcher_refuses_to_answer_a_dialog(clock):
+    """The dangerous case named in #763: a permission / AskUserQuestion modal
+    is up, where a bare CR picks a menu option instead of submitting."""
+    payload = "CHIEF - go ahead and land the branch. " * 12
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    _echo(session, "\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n   2. No\r\n")
+    session._last_output_at = clock.now
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_DEFER_UNCLEAR
+    assert outcome.submit_confirmed is False
+    session._pty.write.assert_not_called()
+
+
+def test_deferred_watcher_is_bounded_and_gives_up_without_firing(clock):
+    """An agent that just keeps working: the window closes, nothing is
+    written, and the steer stays stranded but honestly reported — the
+    pre-#763 state, never worse."""
+    payload = "CHIEF - status? " * 40
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    clock.on_sleep(lambda c: setattr(session, "_last_output_at", c.now))
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_DEFER_TIMEOUT
+    assert outcome.submit_confirmed is False
+    session._pty.write.assert_not_called()
+    assert outcome.waited_ms >= _DEFER_CAP_MS
+
+
+def test_a_newer_write_supersedes_a_pending_watcher(clock):
+    """Somebody else wrote to the PTY, so the watcher's "my payload is the
+    thing sitting unsent" premise no longer holds. It exits without firing
+    and without touching ``last_input``, which now describes the newer call."""
+    payload = "CHIEF - the first steer. " * 20
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    session._last_output_at = clock.now
+    stale_seq = session._defer_seq
+    session._defer_seq += 1  # what a newer submit_input() does
+
+    outcome = session._await_deferred_submit(stale_seq, mark, needles)
+
+    assert outcome is None
+    session._pty.write.assert_not_called()
+
+
+def test_stop_cancels_a_pending_watcher(clock):
+    """A CR landing in the middle of an interrupt or a "/quit" sequence would
+    be answering a terminal state the watcher never verified."""
+    session = _make_session()
+    seq_before = session._defer_seq
+
+    session.stop(mode="interrupt")
+
+    assert session._defer_seq != seq_before
+
+
+def test_deferred_verdict_is_recorded_on_the_session(clock):
+    """The watcher's outcome has to land on ``last_input`` in the same shape
+    as an immediate write, or a caller polling for the final verdict sees the
+    stale ``deferred`` one forever."""
+    payload = "CHIEF - report when done. " * 20
+    session = _make_session()
+    needles = session_host_module._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    session._last_output_at = clock.now
+
+    session._run_deferred_submit(session._defer_seq, mark, needles, len(payload))
+
+    last_input = session.to_api()["last_input"]
+    assert last_input["reason"] == INPUT_OK
+    assert last_input["deferred"] is True
+    assert last_input["submit_confirmed"] is True
+    assert last_input["bytes"] == len(payload)
+    assert last_input["submit"] is True
 
 
 def test_paste_chip_counts_as_ingest_evidence(clock):

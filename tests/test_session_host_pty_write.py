@@ -232,8 +232,14 @@ async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch
     ``write()`` call."""
     import src.session_host as sh
 
-    monkeypatch.setattr(sh, "_BULK_CAP_MS", 400)  # keep the settle wait short
-    monkeypatch.setattr(sh, "_INGEST_CAP_MS", 800)  # and its ingest wait (#760)
+    # Keep the settle wait short, and make it actually *settle*: since #763 a
+    # bulk payload that never goes quiet no longer gets a CR at the cap at all
+    # (it is handed to the deferred watcher), so this test has to drive the
+    # settled path to have a CR to assert the lock spans.
+    monkeypatch.setattr(sh, "_BULK_FLOOR_MS", 50)
+    monkeypatch.setattr(sh, "_BULK_QUIET_MS", 50)
+    monkeypatch.setattr(sh, "_BULK_CAP_MS", 2000)
+    monkeypatch.setattr(sh, "_INGEST_CAP_MS", 3000)
 
     loop = asyncio.get_running_loop()
     session, calls = _slow_write_session(loop, per_write_s=0.001)
@@ -249,6 +255,7 @@ async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch
     with session._ring_lock:
         session._output_total += len(payload)
         session._ring += payload
+    session._last_output_at = time.time()  # the paint the quiet wait measures
     time.sleep(0.03)  # squarely inside the settle wait
     session.write("B")
     submitter.join()

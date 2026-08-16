@@ -26,6 +26,8 @@ import asyncio
 import time
 from types import SimpleNamespace
 
+from fastapi import Response
+
 from app.webapp.routers import sessions as sessions_router
 
 _SLOW_WRITE_S = 0.3
@@ -75,8 +77,10 @@ async def test_slow_audit_write_does_not_stall_the_input_endpoint(monkeypatch):
             last = now
 
     async def post_input() -> None:
+        # ``response`` is FastAPI's per-request Response, which the handler
+        # uses to raise the status to 202 for a deferred submit (#763).
         result = await sessions_router.session_input(
-            "sid", _FakeRequest({"data": "hello", "submit": True})
+            "sid", _FakeRequest({"data": "hello", "submit": True}), Response()
         )
         assert result["ok"] is True
 

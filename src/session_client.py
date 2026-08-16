@@ -36,6 +36,15 @@ _INPUT_TIMEOUT = 15.0
 # more headroom than the 8 s default (issue #253).
 _STOP_TIMEOUT = 10.0
 
+# The one delivery ``reason`` (issue #763) the webapp itself has to branch on,
+# to mirror the session-host's 202 for a submit that is still with its
+# background watcher. Restated here rather than imported because the webapp
+# process deliberately never imports ``src.session_host`` — that module owns
+# live ConPTYs and belongs to the *other* process; this client is the webapp's
+# whole view of the protocol. ``tests/test_session_host_input_endpoint.py``
+# pins the two definitions equal so they cannot drift apart silently.
+INPUT_DEFERRED = "deferred"
+
 
 def base_url(port: int) -> str:
     return f"http://127.0.0.1:{port}"
@@ -145,9 +154,13 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
     requests.
 
     The returned body carries the host's delivery verdict (``reason``,
-    ``ingested``, ``submitted``, ``submit_confirmed`` — issue #760); a
-    payload the terminal never echoed raises ``SessionHostError`` with a 502
-    rather than returning a success body.
+    ``ingested``, ``submitted``, ``submit_confirmed``, ``deferred`` — issues
+    #760/#763); a payload the terminal never echoed raises
+    ``SessionHostError`` with a 502 rather than returning a success body.
+    ``reason: "deferred"`` (the host answers 202) means the payload is in the
+    composer and its submit is with a background watcher — the final verdict
+    lands on the session's ``last_input``, not on this response. The status
+    code itself is not surfaced here; the ``reason`` field is the contract.
     """
     return _request(
         "POST", port, f"/sessions/{session_id}/input",

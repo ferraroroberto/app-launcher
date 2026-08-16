@@ -50,6 +50,7 @@ from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
 from src.session_host import (
     _EOF,
+    INPUT_DEFERRED,
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
     SessionManager,
@@ -234,9 +235,17 @@ def create_app() -> FastAPI:
                     f"sent; the terminal may be in a modal/dialog state"
                 ),
             )
+        if outcome.reason == INPUT_DEFERRED:
+            # The payload is in the composer but the agent was still working,
+            # so the submitting CR is with a background watcher (#763) rather
+            # than fired blind mid-repaint. 202 is the honest status for that:
+            # accepted, not yet completed. The final verdict lands on the
+            # session's ``last_input`` (GET /sessions/{sid}), so a caller can
+            # follow it up without holding the request open.
+            return JSONResponse(status_code=202, content={"ok": True, **outcome.to_api()})
         # 200 carries the whole verdict: an ingested payload whose submit could
-        # not be confirmed (settle_cap) is a success-shaped response that must
-        # still say submit_confirmed=false rather than imply the message landed.
+        # not be confirmed is a success-shaped response that must still say
+        # submit_confirmed=false rather than imply the message landed.
         return {"ok": True, **outcome.to_api()}
 
     @app.post("/sessions/{sid}/resize")
