@@ -57,6 +57,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    safe_int,
     spawn_session_or_400,
 )
 
@@ -213,8 +214,8 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         # Phone's real terminal size (issue #126): a pty session spawns at
         # these dimensions so a ratatui TUI's first frame isn't cut. Absent
         # (older client, or remote mode) → the legacy 40×120 default.
-        rows = int(body.get("rows") or 40)
-        cols = int(body.get("cols") or 120)
+        rows = safe_int(body, "rows", 40)
+        cols = safe_int(body, "cols", 120)
         if agent not in agents.AGENTS:
             raise HTTPException(
                 status_code=400, detail=f"unknown agent: {agent}"

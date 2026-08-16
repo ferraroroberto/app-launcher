@@ -85,6 +85,14 @@ export function resetComposeBar() {
   // #450: an emptied buffer no longer carries an attached image path.
   if (state.terminal) state.terminal.composeHasImage = false;
   clearOcrStaging();
+  // #755: unlike setComposeOpen(false), this also runs on the leave-
+  // terminal path (stashActiveTerminal / disposeTerminal in terminal.js),
+  // which never calls setComposeOpen — so it must independently force-stop
+  // any in-flight recording. dispose() (not stop()) so the mic and the
+  // app-wide dictation mutex release even mid-permission-prompt or
+  // mid-finalize, and any in-flight transcript is dropped rather than
+  // written into a compose bar that's about to be hidden and cleared.
+  composeDictation.dispose();
 }
 
 function setComposeOpen(open) {

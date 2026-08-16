@@ -71,6 +71,7 @@ from app.webapp.routers import board_chief
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     maybe_json,
+    safe_int,
     spawn_session_or_400,
 )
 from app.webapp.routers.board_spawn import (
@@ -257,8 +258,8 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="number must be an integer")
     if number <= 0:
         raise HTTPException(status_code=400, detail="number must be positive")
-    rows = int(body.get("rows") or 40)
-    cols = int(body.get("cols") or 120)
+    rows = safe_int(body, "rows", 40)
+    cols = safe_int(body, "cols", 120)
     title = str(body.get("title") or "").strip()
     model = str(body.get("model") or "").strip().lower()
     if model:
@@ -350,8 +351,8 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     # client). No positional prompt — see the module docstring.
     model = str(body.get("model") or "sonnet").strip().lower()
     agent, flags = _agent_and_flags(cfg, model)
-    rows = int(body.get("rows") or 40)
-    cols = int(body.get("cols") or 120)
+    rows = safe_int(body, "rows", 40)
+    cols = safe_int(body, "cols", 120)
 
     entry = _resolve_repo_entry(cfg, repo)
 

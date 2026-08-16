@@ -65,6 +65,7 @@ from app.webapp.routers._helpers import (
     client_ip,
     maybe_json,
     mirror_url,
+    safe_int,
     should_mirror_to_pc,
     spawn_session_or_400,
 )
@@ -260,8 +261,8 @@ async def _spawn_skill_session(
     # poured 120-col text that re-wrapped into garble when the overlay's
     # first fit() shrank the PTY to phone width. Same contract as the
     # Coding-tab launch route (issue #126); ignored for kind="remote".
-    rows = int(body.get("rows") or 40)
-    cols = int(body.get("cols") or 120)
+    rows = safe_int(body, "rows", 40)
+    cols = safe_int(body, "cols", 120)
     session = await spawn_session_or_400(
         spawn_claude_session,
         life_os_dir,

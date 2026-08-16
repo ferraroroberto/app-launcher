@@ -61,6 +61,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
     maybe_json,
+    safe_int,
     spawn_session_or_400,
 )
 from app.webapp.routers.board_spawn import (
@@ -647,8 +648,8 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
     resume_raw = body.get("resume", request.query_params.get("resume"))
     resume = str(resume_raw).strip().lower() in ("1", "true", "yes")
-    rows = int(body.get("rows") or 40)
-    cols = int(body.get("cols") or 120)
+    rows = safe_int(body, "rows", 40)
+    cols = safe_int(body, "cols", 120)
 
     async with _CHIEF_ENSURE_LOCK:
         live, state = await _live_sessions_with_chief_label(cfg)

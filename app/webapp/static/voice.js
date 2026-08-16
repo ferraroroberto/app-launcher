@@ -107,6 +107,19 @@ export function createDictation(opts) {
 
   let _recorder = null;
   let _recordChunks = [];
+  // The live getUserMedia stream, held from the moment it's granted until
+  // the recorder's own 'stop' handler releases its tracks. Lets dispose()
+  // (#755) release the mic even in the narrow window after permission is
+  // granted but before the recorder has actually started.
+  let _stream = null;
+  // Set by dispose() (#755): startRecording()'s two async gaps (the
+  // getUserMedia permission prompt, the streamed-session POST) check this
+  // after resuming and bail out releasing the mic instead of proceeding;
+  // the 'stop' handler checks it to skip finish/transcribe entirely for a
+  // caller that no longer wants this take. Reset false at the top of every
+  // startRecording() call, so a disposed-while-idle instance can record
+  // again normally.
+  let _aborted = false;
   // Streaming state (#168). _voiceSession is the upstream session id;
   // _streaming flips true only once a session is created. The chunk queue
   // drains sequentially so chunks reach the session-host in order.
@@ -190,6 +203,7 @@ export function createDictation(opts) {
     // settles, and both proceed (issue #409). Released on every early-return
     // below; the 'stop' listener clears it on the normal path.
     _activeInstance = api;
+    _aborted = false;
     onStart();
     let stream;
     try {
@@ -199,6 +213,14 @@ export function createDictation(opts) {
       apiFailToast('Microphone unavailable', exc);
       return;
     }
+    if (_aborted) {
+      // dispose() ran while the permission prompt was up — release
+      // immediately, nothing else was ever claimed.
+      stream.getTracks().forEach(function (tr) { tr.stop(); });
+      _activeInstance = null;
+      return;
+    }
+    _stream = stream;
     const mime = pickAudioMime();
     try {
       _recorder = mime
@@ -206,6 +228,7 @@ export function createDictation(opts) {
         : new MediaRecorder(stream);
     } catch (exc) {
       _activeInstance = null;
+      _stream = null;
       stream.getTracks().forEach(function (tr) { tr.stop(); });
       apiFailToast('Recorder failed', exc);
       return;
@@ -229,6 +252,20 @@ export function createDictation(opts) {
         }
       }
     } catch (_) { /* fall back to buffered */ }
+
+    if (_aborted) {
+      // dispose() ran while the session POST was in flight — the recorder
+      // was constructed but never started, so no 'stop' event will ever
+      // fire to release it; release here instead.
+      stream.getTracks().forEach(function (tr) { tr.stop(); });
+      _activeInstance = null;
+      _stream = null;
+      _recorder = null;
+      closeVoiceEvents();
+      _voiceSession = null;
+      _streaming = false;
+      return;
+    }
 
     if (_streaming) {
       // Anchor the dictation span at the caret (after a separator space when
@@ -269,6 +306,18 @@ export function createDictation(opts) {
       stream.getTracks().forEach(function (tr) { tr.stop(); });
       setRecordingUI(false);
       _activeInstance = null;
+      _stream = null;
+      if (_aborted) {
+        // dispose() force-stopped an active recording (#755) — the mic is
+        // already released above; skip finish/transcribe entirely, this
+        // take is abandoned, not just paused.
+        _recordChunks = [];
+        _recorder = null;
+        closeVoiceEvents();
+        _voiceSession = null;
+        _streaming = false;
+        return;
+      }
       if (_streaming) {
         finishStreaming();
       } else {
@@ -312,7 +361,13 @@ export function createDictation(opts) {
         throw new Error((b && b.detail) || ('HTTP ' + res.status));
       }
       const body = await res.json().catch(function () { return null; });
-      if (body && body.silent) {
+      // A dispose() (#755) that lands mid-finalize (the caller has already
+      // moved on — a torn-down compose bar, a collapsed drawer) must not
+      // write a late transcript into whatever textarea getTextarea() now
+      // resolves to.
+      if (_aborted) {
+        // no-op
+      } else if (body && body.silent) {
         // Nothing heard — drop the empty span we anchored.
         renderDictation('');
         toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
@@ -320,9 +375,9 @@ export function createDictation(opts) {
         renderDictation(body.transcript);
         toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
       }
-      getTextarea().focus();
+      if (!_aborted) getTextarea().focus();
     } catch (exc) {
-      apiFailToast('Transcription failed', exc);
+      if (!_aborted) apiFailToast('Transcription failed', exc);
     } finally {
       closeVoiceEvents();
       _voiceSession = null;
@@ -349,6 +404,9 @@ export function createDictation(opts) {
         const b = await res.json().catch(function () { return null; });
         throw new Error((b && b.detail) || ('HTTP ' + res.status));
       }
+      // A dispose() (#755) that lands mid-request must not write a late
+      // transcript into whatever textarea getTextarea() now resolves to.
+      if (_aborted) return;
       const body = await res.json().catch(function () { return null; });
       const text = body && body.transcript;
       if (body && body.silent) {
@@ -369,12 +427,46 @@ export function createDictation(opts) {
       ta.focus();
       toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
     } catch (exc) {
-      apiFailToast('Transcription failed', exc);
+      if (!_aborted) apiFailToast('Transcription failed', exc);
     } finally {
       _finishing = false;
       stopTimer();
       button.disabled = false;
     }
+  }
+
+  // Force-stop + release the mic and abandon this take, for a caller that
+  // is tearing the mount point down rather than just closing the bar
+  // (issue #755) — e.g. leaving the terminal, or a Board drawer collapsing
+  // out from under a per-render dictation instance. Unlike `stop`, which
+  // still runs finish/transcribe to settle the result into the textarea,
+  // `dispose` guarantees the mic and the app-wide `_activeInstance` mutex
+  // are released even mid-permission-prompt or mid-finalize, and drops the
+  // in-flight result instead of writing it into a textarea nobody owns
+  // anymore. Safe to call when idle (no-op beyond flipping `_aborted`,
+  // which the next `startRecording()` clears) and safe to call more than
+  // once.
+  function dispose() {
+    _aborted = true;
+    if (_recorder && _recorder.state !== 'inactive') {
+      // The 'stop' handler releases the stream, clears _activeInstance and
+      // (seeing _aborted) skips finish/transcribe.
+      try { _recorder.stop(); } catch (_) { /* stop fires anyway */ }
+      return;
+    }
+    // Not actively recording: release whatever was already claimed —
+    // an in-flight getUserMedia() that resolved but never reached
+    // .start() (recorder construction or the session POST is still in
+    // flight — those async gaps re-check _aborted themselves), or an
+    // already-stopped take still awaiting its finalize network round trip
+    // (_recorder/_stream are already null there; only the flag matters).
+    if (_stream) {
+      _stream.getTracks().forEach(function (tr) { tr.stop(); });
+      _stream = null;
+    }
+    if (_activeInstance === api) _activeInstance = null;
+    closeVoiceEvents();
+    setRecordingUI(false);
   }
 
   const api = {
@@ -383,6 +475,7 @@ export function createDictation(opts) {
       else startRecording();
     },
     stop: stopRecording,
+    dispose: dispose,
     isRecording: function () {
       return !!(_recorder && _recorder.state === 'recording');
     },

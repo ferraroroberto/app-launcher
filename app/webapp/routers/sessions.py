@@ -90,8 +90,15 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     # so a busted HWND can't keep the session alive. The cooperative WS
     # shutdown the session-host fires is a further fallback for when no
     # matching window is on the desktop.
+    #
+    # Runs the Win32 EnumWindows/GetWindowText/PostMessage walk off the event
+    # loop (issue #755) — every other blocking Win32/session-host call in this
+    # file (mirror_claude_session's own open_or_focus_mirror_window, the
+    # session_client.stop below, .submit_input, .write) already is, and per
+    # this file's own policy, stalling the loop here stalls every other live
+    # session's WebSocket pump.
     try:
-        posted = launcher.close_mirror_window(sid)
+        posted = await asyncio.to_thread(launcher.close_mirror_window, sid)
         logger.debug(
             f"close_mirror_window({sid[:8]}) returned {posted}; "
             f"forwarding stop({mode!r}) to session-host"

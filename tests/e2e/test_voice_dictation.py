@@ -64,6 +64,49 @@ _MEDIA_MOCK = """
 _PARTIAL = "live partial text"
 _FINAL = "final-{regress} transcript"
 
+# Regression mock for issue #755 (mic leak on leave-terminal mid-recording):
+# tracks how many times a stream's track.stop() actually ran, so the test can
+# assert the mic was force-released rather than only inferring it indirectly.
+_LEAK_MEDIA_MOCK = """
+(() => {
+  window.__micTracksStopped = 0;
+  navigator.mediaDevices = navigator.mediaDevices || {};
+  navigator.mediaDevices.getUserMedia = async () => ({
+    getTracks: () => [{ stop: () => { window.__micTracksStopped++; } }],
+  });
+  class FakeRecorder {
+    constructor(stream, opts) {
+      this.stream = stream;
+      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
+      this.state = 'inactive';
+      this._listeners = {};
+    }
+    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+    start(_timeslice) { this.state = 'recording'; }
+    stop() {
+      this.state = 'inactive';
+      const st = this._listeners['stop'];
+      if (st) st();
+    }
+  }
+  FakeRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = FakeRecorder;
+})()
+"""
+
+
+def _skip_unless_phone(browser_name: str) -> None:
+    # The leak-regression test below needs an in-page terminal it can leave
+    # and reopen via row-tap WITHOUT a full page reload (so the module-level
+    # dictation instance and `_activeInstance` mutex survive the round trip
+    # for the second half of the assertion) — that's phone-only since #282;
+    # a desktop row-tap opens a dedicated PC mirror window instead.
+    if browser_name != "webkit":
+        pytest.skip(
+            "in-page terminal via row-tap (no reload across close/reopen) "
+            "is phone-only since #282"
+        )
+
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
@@ -274,3 +317,69 @@ def test_send_refuses_while_dictation_still_finishing(
     assert wait_for_session_log(authed_page, sid, _FINAL), (
         "the settled transcript never reached the live PTY session"
     )
+
+
+def test_leaving_terminal_mid_recording_releases_mic(
+    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
+) -> None:
+    """open terminal -> open compose -> tap mic -> Back must force-stop the
+    recording and release the app-wide dictation mutex (issue #755).
+
+    Before the fix, ``resetComposeBar()`` (run by ``stashActiveTerminal()``,
+    which the Back button and a tab switch both call) never called
+    ``composeDictation.stop()``/``dispose()`` — only closing the compose bar
+    via its own toggle did. So the mic stayed live and ``_activeInstance``
+    stayed held indefinitely, refusing every other mic in the app until the
+    user navigated back into the terminal and explicitly tapped stop.
+    """
+    _skip_unless_phone(browser_name)
+    sid = launched_pty_session
+    authed_page.add_init_script(_LEAK_MEDIA_MOCK)
+    # Streamed-session create is deliberately never resolved — the leak
+    # reproduces from MediaRecorder/getUserMedia state alone, before any
+    # transcribe call would ever complete; no live voice-transcriber needed.
+    authed_page.route(
+        "**/api/transcribe/sessions",
+        lambda route: route.fulfill(status=503, body="nope"),
+    )
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    expect(authed_page.locator("#buildReadout")).to_contain_text(
+        "Build:", timeout=10_000
+    )
+
+    row = authed_page.locator(
+        f'#sessionsList li.session-item[data-session-id="{sid}"]'
+    )
+    expect(row).to_be_visible(timeout=8_000)
+    row.locator(".session-open").click()
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+
+    _open_compose_with_record(authed_page)
+    record = authed_page.locator("#terminalRecord")
+    record.click()
+    expect(record).to_have_class(re.compile(r"\brecording\b"))
+
+    # Leave via Back — never via toggling the record button or closing the
+    # compose bar through its own control. That's the exact path
+    # resetComposeBar() used to miss.
+    authed_page.locator("#terminalBack").click()
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden(timeout=10_000)
+
+    # The mic track was force-released, not left live.
+    authed_page.wait_for_function(
+        "() => window.__micTracksStopped >= 1", timeout=5_000
+    )
+
+    # Dictate again on the same (module-level, shared-across-terminals)
+    # compose bar — no reload, so this is the same `composeDictation`
+    # instance and the same `_activeInstance` mutex as above. Directly
+    # re-showing the bar/button (rather than reopening a terminal and
+    # replaying the toggle click) keeps this assertion scoped to the mic
+    # mutex, independent of the terminal-reopen UI flow. If the mutex
+    # weren't released, this second recording would be silently refused
+    # and the button would never gain the recording class.
+    authed_page.evaluate("document.getElementById('terminalOverlay').hidden = false")
+    authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
+    authed_page.evaluate("document.getElementById('terminalRecord').hidden = false")
+    record.click()
+    expect(record).to_have_class(re.compile(r"\brecording\b"), timeout=5_000)
