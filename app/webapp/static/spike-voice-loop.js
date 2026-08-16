@@ -63,7 +63,7 @@ const NARRATION_LINES = [
   'Three sessions working. photo-ocr needs you on the chunk-merge question. The app-launcher pull request is green and waiting.',
   'reporting finished its run and posted to Slack. voice-transcriber is idle. life-os has two skills queued.',
   'The fleet map regenerated. grocery-shopping hit a captcha and paused. Everything else is healthy.',
-  'claude-local-calls is serving on port eight thousand. The hub TTS voice is reachable. No errors in the last hour.',
+  'local-llm-hub is serving on port eight thousand. The hub TTS voice is reachable. No errors in the last hour.',
 ];
 
 const loop = new VoiceLoop();
