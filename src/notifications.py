@@ -52,9 +52,10 @@ logger = logging.getLogger(__name__)
 
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 
-# Local LLM hub — see global CLAUDE.md "claude-local-calls". The model id
-# lives once on :mod:`src.llm_client` (:data:`llm_client.DEFAULT_MODEL`) —
-# both hub callers route through the same client (issue #520).
+# Local LLM hub — see global CLAUDE.md "`local-llm-hub` local LLM hub".
+# The model id lives once on :mod:`src.llm_client`
+# (:data:`llm_client.DEFAULT_MODEL`) — both hub callers route through the
+# same client (issue #520).
 LOCAL_LLM_BASE_URL = "http://127.0.0.1:8000"
 LOCAL_LLM_TIMEOUT_SECONDS = 8.0
 SUMMARY_TAIL_CHARS = 500
