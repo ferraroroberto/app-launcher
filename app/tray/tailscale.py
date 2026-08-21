@@ -70,7 +70,7 @@ def _run(binary: str, args: list) -> subprocess.CompletedProcess:
 def resolve_hostname(debug: Callable[[str], None] = _NO_DEBUG) -> Optional[str]:
     """Return this machine's tailnet address, or None if unavailable.
 
-    Prefers the full DNS name (e.g. ``tower.tailnet.ts.net``) — the form
+    Prefers the full DNS name (e.g. ``<host>.ts.net``) — the form
     both the copied URL and the WebAuthn relying-party ID want — and falls
     back to the raw ``100.x`` IP. Every failure path is reported through
     ``debug`` (the tray wires this to its ``webapp/tailscale_debug.log``
