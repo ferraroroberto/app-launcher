@@ -31,6 +31,9 @@ config/webapp_config.json
 config/apps.json
 config/jobs.json
 config/webauthn_devices.json
+# msvcrt.locking sidecars written beside the JSON they guard (src/_json_io.py);
+# the webapp/jobs/ ones are already covered by that directory's entry below
+config/*.lock
 
 # --- Webapp runtime data --------------------------------------------------
 webapp/last_tunnel_url.txt
