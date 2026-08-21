@@ -11,6 +11,7 @@ crying wolf across a normal week.
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -558,6 +559,194 @@ class TestCheckAndAlert:
             notifier=push,
         )
         push.notify.assert_called_once()
+
+
+class TestAlertTitles:
+    """Each problem class is announced in its own words (issue #778).
+
+    All four classes used to share one hardcoded title — "scheduled run never
+    fired" — which is only true of ``missed_fire``. A ``session_less`` backup
+    that had fired on time for six straight days was announced daily as never
+    having fired, teaching the reader to dismiss the channel; the next *real*
+    missed fire would then land unread. These pin the vocabulary, the
+    severity, and the re-ping cadence per class.
+    """
+
+    def _cfg(self, **kw):
+        defaults = dict(
+            pushover_api_token="",
+            pushover_user_key="",
+            notify_on_failure=False,
+            notify_failure_streak=0,
+            notify_failure_summary=False,
+            telegram_bot_token="tok",
+            telegram_chat_id="chat",
+        )
+        defaults.update(kw)
+        return SimpleNamespace(**defaults)
+
+    def _alert(self, monkeypatch, job, *, states, principals=None):
+        """Drive one alert cycle and return the ``notify`` call args."""
+        monkeypatch.setattr(cov, "registered_task_states", lambda *a, **k: states)
+        monkeypatch.setattr(
+            cov, "registered_task_principals", lambda *a, **k: principals or {}
+        )
+        telegram = MagicMock()
+        cov.check_and_alert(
+            self._cfg(), jobs=[job], now=NOW, telegram_notifier=telegram
+        )
+        telegram.notify.assert_called_once()
+        return telegram.notify.call_args
+
+    def _age_last_alert(self, job_id, seconds):
+        """Backdate a job's de-dup stamp by *seconds*, as if time had passed."""
+        path = cov.coverage_alerts_path()
+        state = json.loads(path.read_text(encoding="utf-8"))
+        state[job_id]["last_alert_epoch"] = time.time() - seconds
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+    def _seed_healthy_history(self, runs_root):
+        """Three on-time daily runs covering every slot in the 3-day window."""
+        for stamp in ("20260730", "20260731", "20260801"):
+            _seed_run(
+                runs_root,
+                "demo",
+                stamp,
+                started_at=f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}T09:00:03",
+                status="success",
+            )
+
+    def test_missing_entry_title_names_the_missing_entry(
+        self, runs_root, monkeypatch
+    ):
+        job = _daily_job(alert_on_failure=True)
+        title = self._alert(monkeypatch, job, states={}).args[0]
+        assert "Task Scheduler entry missing" in title
+        assert "never fired" not in title
+
+    def test_disabled_entry_title_names_the_disabled_entry(
+        self, runs_root, monkeypatch
+    ):
+        job = _daily_job(alert_on_failure=True)
+        self._seed_healthy_history(runs_root)
+        title = self._alert(
+            monkeypatch,
+            job,
+            states=_states("\\AppLauncher\\demo", enabled=False),
+        ).args[0]
+        assert "Task Scheduler entry disabled" in title
+        assert "never fired" not in title
+
+    def test_interactive_principal_never_claims_a_missed_run(
+        self, runs_root, monkeypatch
+    ):
+        """The #778 repro: a job firing on time, announced as never firing.
+
+        Entry present, enabled, every slot in the window covered by a real
+        successful run — the *only* problem is that the entry is still
+        ``Interactive only``, a warning about a future logged-out box. The
+        title must not borrow the observed-failure vocabulary.
+        """
+        job = _daily_job(alert_on_failure=True, session_less=True)
+        self._seed_healthy_history(runs_root)
+        call = self._alert(
+            monkeypatch,
+            job,
+            states=_states("\\AppLauncher\\demo"),
+            principals={"\\AppLauncher\\demo": False},
+        )
+        title, body = call.args[:2]
+        assert "never fired" not in title
+        assert "logged out" in title
+        # The body was always right; the regression was the title alone.
+        assert "Interactive only" in body
+        # A conditional risk does not bypass quiet hours.
+        assert call.kwargs["severity"] == "warning"
+
+    def test_missed_fire_still_reads_as_a_missed_run(self, runs_root, monkeypatch):
+        """The one class the old title *was* true for keeps its wording."""
+        job = _daily_job(alert_on_failure=True)
+        for stamp in ("20260730", "20260731"):
+            _seed_run(
+                runs_root,
+                "demo",
+                stamp,
+                started_at=f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:]}T09:00:03",
+                status="success",
+            )
+        call = self._alert(
+            monkeypatch, job, states=_states("\\AppLauncher\\demo")
+        )
+        assert "never fired" in call.args[0]
+        assert call.kwargs["severity"] == "error"
+
+    def test_no_two_classes_share_a_title(self):
+        """The whole point: no class may borrow another's vocabulary."""
+        titles = [a.title for _, a in cov.PROBLEM_ANNOUNCEMENTS]
+        assert len(set(titles)) == len(titles)
+        assert {p for p, _ in cov.PROBLEM_ANNOUNCEMENTS} == {
+            cov.PROBLEM_TASK_MISSING,
+            cov.PROBLEM_TASK_DISABLED,
+            cov.PROBLEM_PRINCIPAL_INTERACTIVE,
+            cov.PROBLEM_MISSED_FIRE,
+        }
+
+    def test_hard_failure_outranks_a_conditional_risk(self):
+        """Title and severity from the worst class; cadence from the shortest."""
+        both = cov.announcement_for(
+            [cov.PROBLEM_PRINCIPAL_INTERACTIVE, cov.PROBLEM_MISSED_FIRE]
+        )
+        assert "never fired" in both.title
+        assert both.severity == "error"
+        assert both.repeat_seconds == cov.COVERAGE_ALERT_REPEAT_SECONDS
+
+    def test_conditional_risk_repeats_weekly_not_daily(self):
+        alone = cov.announcement_for([cov.PROBLEM_PRINCIPAL_INTERACTIVE])
+        assert alone.severity == "warning"
+        assert alone.repeat_seconds == cov.COVERAGE_ALERT_REPEAT_SECONDS_LOW
+        assert alone.repeat_seconds > cov.COVERAGE_ALERT_REPEAT_SECONDS
+
+    def test_unknown_class_gets_a_vague_title_not_a_wrong_one(self):
+        """A problem always gets announced; a vague title beats a false one."""
+        fallback = cov.announcement_for(["something_new"])
+        assert fallback is cov.FALLBACK_ANNOUNCEMENT
+        assert "never fired" not in fallback.title
+        assert cov.announcement_for([]) is cov.FALLBACK_ANNOUNCEMENT
+
+    def test_conditional_risk_keeps_reporting_after_the_low_interval(
+        self, runs_root, monkeypatch
+    ):
+        """Quieter, never silent — the condition is true and still matters."""
+        job = _daily_job(alert_on_failure=True, session_less=True)
+        self._seed_healthy_history(runs_root)
+        monkeypatch.setattr(
+            cov, "registered_task_states", lambda *a, **k: _states("\\AppLauncher\\demo")
+        )
+        monkeypatch.setattr(
+            cov,
+            "registered_task_principals",
+            lambda *a, **k: {"\\AppLauncher\\demo": False},
+        )
+        telegram = MagicMock()
+        cov.check_and_alert(
+            self._cfg(), jobs=[job], now=NOW, telegram_notifier=telegram
+        )
+        assert telegram.notify.call_count == 1
+        # Age the de-dup stamp rather than the clock — patching `time.time`
+        # here would land on the stdlib module itself, not a private alias.
+        self._age_last_alert("demo", 2 * 24 * 3600)
+        cov.check_and_alert(
+            self._cfg(), jobs=[job], now=NOW, telegram_notifier=telegram
+        )
+        # Two days on: still standing, still suppressed by the weekly cadence
+        # (the old 24 h interval would have re-pinged here).
+        assert telegram.notify.call_count == 1
+        # Past a week it speaks up again — quieter, never silent.
+        self._age_last_alert("demo", 8 * 24 * 3600)
+        cov.check_and_alert(
+            self._cfg(), jobs=[job], now=NOW, telegram_notifier=telegram
+        )
+        assert telegram.notify.call_count == 2
 
 
 class TestFacadeReExport:

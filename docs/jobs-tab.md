@@ -777,7 +777,20 @@ The never-flag rules are the load-bearing half — a coverage check that cries w
 
 **Surfaces.** `GET /api/jobs` decorates each row with a `coverage` object — `{state, detail, problems, missing_tasks, disabled_tasks, missed_count, missed_fires}`, where `state` is `ok` / `problem` / `unknown` / `exempt`. Only `problem` renders: a red **⚠ not firing** pill on the row's chip line, titled with the detail.
 
-**Alerting** reuses the exact channels the failure path uses — global Pushover gated by `notify_on_failure`, per-job Telegram gated by `Job.alert_on_failure` — because a coverage problem is a job problem, not a new notification surface. A background tick in the webapp's lifespan re-scans on an interval (the whole point being that it does *not* depend on the Jobs tab being open); it is skipped entirely on a disposable instance (the e2e / verify-before-ship autoboot webapp, identified by `LAUNCHER_SESSION_HOST_PORT`) so a throwaway instance never pushes a real alert. Pings are de-duplicated through `webapp/jobs/coverage-alerts.json`: a job re-alerts only when its problem *signature* changes or 24 h have passed, and a job whose coverage recovers is dropped from the state so its next break alerts immediately.
+**Alerting** reuses the exact channels the failure path uses — global Pushover gated by `notify_on_failure`, per-job Telegram gated by `Job.alert_on_failure` — because a coverage problem is a job problem, not a new notification surface. A background tick in the webapp's lifespan re-scans on an interval (the whole point being that it does *not* depend on the Jobs tab being open); it is skipped entirely on a disposable instance (the e2e / verify-before-ship autoboot webapp, identified by `LAUNCHER_SESSION_HOST_PORT`) so a throwaway instance never pushes a real alert. Pings are de-duplicated through `webapp/jobs/coverage-alerts.json`: a job re-alerts only when its problem *signature* changes or its class's repeat interval has passed, and a job whose coverage recovers is dropped from the state so its next break alerts immediately.
+
+**Each problem class is announced in its own words (issue #778).** All four used to share one hardcoded title — "scheduled run never fired" — which reads as an observed failure and is only true of `missed_fire`; the other three are structural risks about whether the entry *could* fire. A `session_less` backup that had run on time for six straight days was announced daily as never having fired, which is exactly how a reader learns to dismiss the channel — and then the next *real* missed fire lands unread. The table lives in `src/jobs_coverage.py::PROBLEM_ANNOUNCEMENTS`, ordered most root-causal first:
+
+| Class | Title | Severity | Re-ping |
+| --- | --- | --- | --- |
+| `task_missing` | 🕳️ *name* — Task Scheduler entry missing | `error` | 24 h |
+| `task_disabled` | 🚫 *name* — Task Scheduler entry disabled | `error` | 24 h |
+| `missed_fire` | 🕳️ *name* — scheduled run never fired | `error` | 24 h |
+| `principal_interactive` | 🔒 *name* — will not fire while logged out | `warning` | 7 d |
+
+`principal_interactive` is the one conditional risk: the job *does* fire whenever the box is logged in, so it is a warning about a future logged-out box rather than an outage. It drops to `warning` (Pushover priority 0 — no quiet-hours bypass) and re-pings weekly rather than daily, because the remediation needs a human at an elevated shell. It is **never** silenced — quieter, not muted.
+
+When several classes fire at once the title and severity come from the highest-precedence one present and the body (which already lists every class) carries the rest; the repeat interval is the **shortest** of those present, so a job holding both a conditional risk and a hard failure keeps the hard failure's daily cadence. A `problem` verdict carrying a class with no table entry falls back to a deliberately vague "schedule coverage problem" — a vague title beats borrowing another class's wording.
 
 | Key | Default | Effect |
 | --- | --- | --- |

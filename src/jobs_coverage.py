@@ -62,6 +62,18 @@ Alerting reuses the exact channels the failure path uses
 gated by ``WebappConfig.notify_on_failure``, per-job Telegram gated by
 ``Job.alert_on_failure``. De-duplicated through a small on-disk state file so
 a standing problem pings once, not once per check cycle.
+
+**Each problem class is announced in its own words** (issue #778, table in
+:data:`PROBLEM_ANNOUNCEMENTS`). All four used to share one hardcoded title —
+"scheduled run never fired" — which reads as an observed failure and is only
+true of ``missed_fire``; the other three are structural risks about whether
+the entry *could* fire. A ``session_less`` backup that had run on time for six
+straight days was announced daily as never having fired, which is precisely
+how a reader learns to dismiss the channel. Severity and re-ping cadence
+follow the class too: a hard failure stays ``error`` at
+:data:`COVERAGE_ALERT_REPEAT_SECONDS`, while a conditional risk that needs a
+human at an elevated shell drops to ``warning`` at
+:data:`COVERAGE_ALERT_REPEAT_SECONDS_LOW` — quieter, never silent.
 """
 
 from __future__ import annotations
@@ -72,7 +84,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from src import jobs_history
 from src._json_io import atomic_write_json
@@ -112,6 +124,11 @@ _coverage_lock = Lock()
 # Re-ping a still-broken job at most this often, so a job left broken over a
 # weekend doesn't fire an alert every check cycle.
 COVERAGE_ALERT_REPEAT_SECONDS = 24 * 3600.0
+# Re-ping interval for a *conditional* structural risk — one where the job is
+# still firing today and the remediation needs a human at an elevated shell
+# (issue #778). The condition keeps being reported; it just doesn't earn a
+# daily high-priority ping, which is how a channel gets muted.
+COVERAGE_ALERT_REPEAT_SECONDS_LOW = 7 * 24 * 3600.0
 
 #: Where the alert de-duplication state lives. Sits beside the per-job run
 #: directories rather than in config — it is derived, disposable state, and
@@ -132,6 +149,78 @@ PROBLEM_MISSED_FIRE = "missed_fire"
 #: Either it was never hand-registered from an elevated shell, or something
 #: re-registered it with Windows' default principal.
 PROBLEM_PRINCIPAL_INTERACTIVE = "principal_interactive"
+
+
+class Announcement(NamedTuple):
+    """How one problem class is announced on the phone (issue #778).
+
+    ``title`` is a format string taking ``{name}`` (the job's display name).
+    ``severity`` maps to a Pushover priority in
+    :class:`src.notifications.PushoverNotifier`; ``repeat_seconds`` is how
+    long a standing problem of this class waits before re-pinging.
+    """
+
+    title: str
+    severity: str
+    repeat_seconds: float
+
+
+#: Per-class alert vocabulary, ordered **most root-causal first**.
+#:
+#: Every class used to borrow one hardcoded title — "scheduled run never
+#: fired" — which is a plain lie for three of the four (issue #778): only
+#: :data:`PROBLEM_MISSED_FIRE` is a fact about a run that didn't happen. The
+#: other three are structural risks about whether the entry *could* fire, and
+#: ``principal_interactive`` in particular describes a *future* condition (the
+#: box sitting logged out) on a job that is firing on time today. Announcing
+#: a healthy backup as "never fired" trains the reader to dismiss the channel,
+#: and then a real missed fire lands in a channel nobody reads.
+#:
+#: A title must therefore state what was actually *observed*, and no class may
+#: borrow another's vocabulary.
+PROBLEM_ANNOUNCEMENTS: Tuple[Tuple[str, Announcement], ...] = (
+    (
+        PROBLEM_TASK_MISSING,
+        Announcement(
+            "🕳️ {name} — Task Scheduler entry missing",
+            "error",
+            COVERAGE_ALERT_REPEAT_SECONDS,
+        ),
+    ),
+    (
+        PROBLEM_TASK_DISABLED,
+        Announcement(
+            "🚫 {name} — Task Scheduler entry disabled",
+            "error",
+            COVERAGE_ALERT_REPEAT_SECONDS,
+        ),
+    ),
+    (
+        PROBLEM_MISSED_FIRE,
+        Announcement(
+            "🕳️ {name} — scheduled run never fired",
+            "error",
+            COVERAGE_ALERT_REPEAT_SECONDS,
+        ),
+    ),
+    (
+        PROBLEM_PRINCIPAL_INTERACTIVE,
+        Announcement(
+            "🔒 {name} — will not fire while logged out",
+            "warning",
+            COVERAGE_ALERT_REPEAT_SECONDS_LOW,
+        ),
+    ),
+)
+
+#: Used when a ``problem`` verdict carries a class this table doesn't know —
+#: a new constant added without its announcement. Deliberately vague rather
+#: than wrong: it says a coverage problem exists and lets the body speak.
+FALLBACK_ANNOUNCEMENT = Announcement(
+    "🕳️ {name} — schedule coverage problem",
+    "error",
+    COVERAGE_ALERT_REPEAT_SECONDS,
+)
 
 _MISSING = object()
 
@@ -519,6 +608,42 @@ def _signature(result: Dict[str, Any]) -> str:
     )
 
 
+def announcement_for(problems: Any) -> Announcement:
+    """How to announce a ``problem`` verdict carrying *problems* (issue #778).
+
+    The **title and severity** come from the highest-precedence class present
+    in :data:`PROBLEM_ANNOUNCEMENTS` — a missing Task Scheduler entry explains
+    a missed fire, so it outranks it, and the alert body already spells out
+    every detected class, so nothing is lost by the title naming one.
+
+    The **repeat interval** is the shortest of every class present, not the
+    title's. A job holding both a conditional risk and a hard failure must
+    keep the hard failure's daily cadence; today the low-cadence class sorts
+    last so this is also what precedence would give, but that is incidental
+    and a future reordering must not quietly stretch an outage's re-ping.
+
+    An empty or unrecognised list yields :data:`FALLBACK_ANNOUNCEMENT` — a
+    ``problem`` state always deserves *some* announcement, and a vague one
+    beats borrowing another class's wording.
+    """
+    present = set(problems or ())
+    chosen: Optional[Announcement] = None
+    repeat: Optional[float] = None
+    for problem, announcement in PROBLEM_ANNOUNCEMENTS:
+        if problem not in present:
+            continue
+        if chosen is None:
+            chosen = announcement
+        repeat = (
+            announcement.repeat_seconds
+            if repeat is None
+            else min(repeat, announcement.repeat_seconds)
+        )
+    if chosen is None:
+        return FALLBACK_ANNOUNCEMENT
+    return chosen._replace(repeat_seconds=repeat)
+
+
 def check_and_alert(
     cfg: Any,
     *,
@@ -569,13 +694,14 @@ def check_and_alert(
                 if state.pop(job.id, None) is not None:
                     dirty = True
                 continue
+            announcement = announcement_for(result.get("problems"))
             signature = _signature(result)
             prior = state.get(job.id) or {}
             last_epoch = prior.get("last_alert_epoch")
             recent = (
                 prior.get("signature") == signature
                 and isinstance(last_epoch, (int, float))
-                and (wall - last_epoch) < COVERAGE_ALERT_REPEAT_SECONDS
+                and (wall - last_epoch) < announcement.repeat_seconds
             )
             state[job.id] = {
                 "signature": signature,
@@ -588,7 +714,7 @@ def check_and_alert(
             if recent:
                 continue
 
-            title = f"🕳️ {job.name} — scheduled run never fired"
+            title = announcement.title.format(name=job.name)
             body = (
                 f"{result.get('detail', '')}\n"
                 f"— job={job.id} schedule={job.schedule.chip()}"
@@ -599,11 +725,11 @@ def check_and_alert(
             if getattr(cfg, "notify_on_failure", False):
                 push = notifier or build_notifier_from_config(cfg)
                 if not isinstance(push, NoopNotifier):
-                    push.notify(title, body, severity="error")
+                    push.notify(title, body, severity=announcement.severity)
             if job.alert_on_failure:
                 tg = telegram_notifier or build_telegram_notifier_from_config(cfg)
                 if not isinstance(tg, NoopNotifier):
-                    tg.notify(title, body, severity="error")
+                    tg.notify(title, body, severity=announcement.severity)
             alerted.append(job.id)
 
         if dirty:
