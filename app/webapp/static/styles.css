@@ -1289,11 +1289,23 @@ summary + .opt-group { border-top: 0; }
   backdrop-filter: blur(20px) saturate(1.25);
   border: 1px solid var(--tabbar-border);
   color: var(--ink);
-  padding: 10px 16px;
+  /* `width: max-content` is load-bearing, not a tidy-up: with `left: 50%` and
+     no `right`, a shrink-to-fit box's available width is only the 50vw from
+     the anchor to the viewport edge, so the text wrapped at half the screen
+     and `max-width` never bound. Sizing to the content first makes the
+     max-width a real ceiling — one line whenever the message fits, and only
+     then a wrap. Centred, with real leading and `balance` so a message that
+     *does* wrap splits evenly across two comfortable lines instead of reading
+     as a crammed line plus an orphan word (#782 review round). */
+  width: max-content;
+  padding: 12px 18px;
   border-radius: var(--radius-md);
   font-size: var(--font-label);
   font-weight: 700;
-  max-width: 90vw;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+  max-width: min(calc(100vw - 24px), 560px);
   box-shadow: var(--shadow);
   /* Above the full-screen terminal overlay (z-index 300) — otherwise every
      toast raised while the terminal is open (read-aloud feedback #190, the
