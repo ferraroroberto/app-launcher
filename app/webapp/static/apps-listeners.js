@@ -92,7 +92,10 @@ function buildListenerRow(l, isChild, hasChildren) {
 
   const kill = document.createElement('button');
   kill.type = 'button';
-  kill.innerHTML = icon('octagon-x') + ' Kill';
+  // Vendored destructive tier (#782) — `power` reads as "shut this down",
+  // where `octagon-x` is this app's *failure* mark (a killed job run).
+  kill.className = 'button-tint danger listener-kill';
+  kill.innerHTML = icon('power') + ' Kill';
   kill.addEventListener('click', async function (ev) {
     // Kill on a parent row must never toggle the collapse (#480).
     ev.stopPropagation();

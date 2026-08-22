@@ -190,6 +190,10 @@ export function toast(msg, kind, opts) {
     els.toast.textContent = msg;
   }
   els.toast.className = 'toast ' + (kind || '');
+  // Errors interrupt (aria-live="assertive"); everything else stays polite so
+  // routine confirmations don't cut off other screen-reader speech — the
+  // design.md feedback contract, same as home-automation's toast (#782).
+  els.toast.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
   els.toast.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(function () {
