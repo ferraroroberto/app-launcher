@@ -48,10 +48,19 @@ pytestmark = pytest.mark.skipif(
     reason="Windows, pywinpty, and the Claude Code CLI are required",
 )
 
-# The composer's rotating placeholder hint ("> Try \"edit <filepath> to...\"").
-# NB: Claude renders a NO-BREAK SPACE (U+00A0) after the ">", so the marker
-# must not span that gap.  Present on every fresh composer paint.
-_COMPOSER_MARKER = 'Try "'
+# Composer-ready markers. The placeholder hint ("> Try \"edit <filepath> to...\"")
+# used to be the sole marker, but it is only shown for the first ~1s before the
+# status line grows a second row and displaces it (#777) — load makes that
+# window shrink further, producing an intermittent false "never became ready".
+# Use a tuple of alternatives instead of one literal, so a future CLI cosmetic
+# change degrades to "one of these still matched" rather than a red:
+#   1. the startup version banner ("Claude Code v...") — printed once at the
+#      top of the header and, empirically, repainted on every full frame from
+#      the first non-empty paint onward, never suppressed or rotated away.
+#   2. the "auto mode on" status-line hint under the composer.
+#   3. the composer prompt glyph ("❯") itself.
+# Verified against Claude Code CLI v2.1.240 (2026-08-22).
+_COMPOSER_MARKERS = ("Claude Code v", "auto mode on", "❯")
 # Unknown-slash-command payload: submitting it is harmless.  One long line,
 # no newlines — the shape of a real dictation transcript (#499).
 _PAYLOAD = "/probe-499-nonexistent " + (
@@ -142,7 +151,7 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         session.write("\x1b[?1;2c")
         session.write("\x1b[I")
 
-        assert await _wait_for_any(session, (_COMPOSER_MARKER,), 30.0), (
+        assert await _wait_for_any(session, _COMPOSER_MARKERS, 30.0), (
             "Claude Code composer never became ready within 30 s"
         )
         # Let the composer finish settling after the banner paints (same
