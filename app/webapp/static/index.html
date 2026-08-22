@@ -105,6 +105,10 @@
     <path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z" />
     <path d="M9 8V2" />
   </symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none">
+    <path d="M12 2v10" />
+    <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
+  </symbol>
   <symbol id="i-package" viewBox="0 0 24 24" fill="none">
     <path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z" />
     <path d="M12 22V12" />
@@ -1418,7 +1422,7 @@
        descendant of the standalone-PWA .app scroller (nav-tabs.css) can get
        trapped/clipped behind the equally body-level floating nav bar on real
        iOS WebKit instead of escaping to the physical viewport. -->
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <div id="loginOverlay" class="login-overlay" hidden>
     <form id="loginForm" class="login-card" autocomplete="off">

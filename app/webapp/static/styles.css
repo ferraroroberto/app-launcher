@@ -1270,27 +1270,44 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-label);
 }
 
+/* Neutral frosted toast — the same glass treatment as the floating bottom nav
+   (not a solid block), ported from home-automation's reference recipe (#782).
+   Sits above the nav so it's never hidden behind it. Only real errors tint. */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0) + 20px);
+  /* --bottom-tabs-* are deliberately undefined in this app's token block
+     (#355), so the nav geometry has to come from nav-tabs.css's own canonical
+     var(..., fallback) defaults — same spelling nav-tabs.css uses itself. */
+  bottom: calc(
+    var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) * 2 +
+    env(safe-area-inset-bottom, 0px) + 8px
+  );
   transform: translateX(-50%);
-  background: var(--card-2);
-  border: 1px solid var(--line);
-  color: var(--fg);
+  background: var(--tabbar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid var(--tabbar-border);
+  color: var(--ink);
   padding: 10px 16px;
   border-radius: var(--radius-md);
   font-size: var(--font-label);
-  max-width: calc(100vw - 32px);
+  font-weight: 700;
+  max-width: 90vw;
   box-shadow: var(--shadow);
   /* Above the full-screen terminal overlay (z-index 300) — otherwise every
      toast raised while the terminal is open (read-aloud feedback #190, the
      🎤 dictation / 📷 OCR / paste results) renders behind it and is invisible
-     on the phone. A transient toast should sit above everything. */
+     on the phone. A transient toast should sit above everything. (This is the
+     one deliberate divergence from home-automation's 130, which has no such
+     overlay.) */
   z-index: 400;
 }
-.toast.error { border-color: var(--danger); }
-.toast.good  { border-color: var(--success); }
+.toast.error {
+  background: color-mix(in srgb, var(--deficit) 75%, transparent);
+  border-color: var(--deficit);
+  color: var(--accent-fg);
+}
 
 /* ---------- settings ---------- */
 /* Settings is its own tab (issue #383) hosting three stacked disclosure
@@ -1392,18 +1409,18 @@ summary + .opt-group { border-top: 0; }
   transition: transform 0.15s ease;
 }
 .listener-row[aria-expanded="true"] .listener-chevron { transform: rotate(90deg); }
-.listener-row button {
+/* The per-port Kill button rides the vendored destructive tier
+   (.button-tint.danger, _vendored/button/button.css) rather than a bespoke
+   red-outline recipe in an off-scale caption font (#782). Only the compact
+   row geometry is local: this app's own .button-tint override stretches to
+   width:100% for its full-width modal/panel instances, which a row-level
+   action must not do. --row-sm keeps the 44px tap floor. */
+.listener-kill {
   flex-shrink: 0;
-  background: transparent;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: var(--font-caption);
+  width: auto;
+  padding: 0 14px;
   min-height: var(--row-sm);
 }
-.listener-row button:active { background: rgb(from var(--danger) r g b / 0.15); }
 .launcher-note {
   margin: 10px 2px 0;
   font-size: var(--font-caption);
