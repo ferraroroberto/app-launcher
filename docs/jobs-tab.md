@@ -171,7 +171,7 @@ schtasks /Create /F /TN "\AppLauncher\hwinfo-restart" /TR '"E:\automation\app-la
 
 ### Logged-out (session-less) jobs (issue #757)
 
-`schtasks /Create` takes no principal flags here, so Windows applies its default: `LogonType=InteractiveToken`, the "Run only when the user is logged on" checkbox. When no interactive session for the user exists at the trigger moment, Task Scheduler skips the trigger **silently** — no run, no error, no `LastTaskResult`, no catch-up. All 23 live `\AppLauncher\` tasks are in that state, which is what cost `fleet-private-backup-daily` its 2026-08-13 03:00 run after a Windows Update servicing chain left the box logged out for four hours.
+`schtasks /Create` takes no principal flags here, so Windows applies its default: `LogonType=InteractiveToken`, the "Run only when the user is logged on" checkbox. When no interactive session for the user exists at the trigger moment, Task Scheduler skips the trigger **silently** — no run, no error, no `LastTaskResult`, and (measured, not assumed — see the `StartWhenAvailable` verdict below) no catch-up once a session returns. Every `\AppLauncher\` task started out in that state (22 of the 23 live ones still are), which is what cost `fleet-private-backup-daily` its 2026-08-13 03:00 run after a Windows Update servicing chain left the box logged out for four hours.
 
 A job opts out with `"session_less": true`:
 
@@ -197,7 +197,28 @@ The registration command is generated for you: `GET /api/jobs` returns it as `re
 
 The Jobs tab marks the row with a `🌙 logged-out` pill. Pause/resume are withheld and return `409` (the entry is externally managed, so parking the schedule here would leave Task Scheduler firing on the old one), but **Run-now stays available** — that spawns the executor in this session directly and never touches the scheduled entry. Like `visible` and `elevated`, there's no dedicated UI checkbox: set it in `config/jobs.json` or via the API.
 
-**Open: does `StartWhenAvailable` rescue a no-session skip?** `#746` set that flag fleet-wide on 2026-08-13, *after* the incident, so the incident is not evidence either way, and this host has had one continuous session since 2026-08-13 03:31:59 — no natural experiment exists in its event log. `scripts/probe-startwhenavailable-catchup.ps1` arranges one: `-Arm` registers a throwaway task at the root task path (never under `\AppLauncher\`) with the default interactive principal and `StartWhenAvailable`, you sign out (locking is not enough) across its trigger, and `-Check` reads the log against the Winlogon logon record and prints the verdict. `-Cleanup` removes it. Needs no elevation — interactive is the principal a non-elevated caller can already register, which is the defect itself.
+**Answered (issue #780): `StartWhenAvailable` does *not* rescue a no-session skip.** `#746` set that flag fleet-wide on 2026-08-13, *after* the incident, so the incident was no evidence either way, and this host had one continuous session from 2026-08-13 03:31:59 — no natural experiment in its event log. `scripts/probe-startwhenavailable-catchup.ps1` arranged one on **2026-08-23**: `-Arm` registers a throwaway task at the root task path (never under `\AppLauncher\`) with the default interactive principal and `StartWhenAvailable`, you sign out across its trigger (locking is not enough), and `-Check` reads the run log against the Winlogon logon record. `-Cleanup` removes it. Needs no elevation — interactive is the principal a non-elevated caller can already register, which is the defect itself.
+
+The verdict, verbatim:
+
+```
+Probe task    : \_zz-757-catchup-probe
+LogonType     : Interactive
+Trigger due   : 2026-08-23 19:52:57
+First logon   : 2026-08-23 20:20:34
+Runs recorded : 0
+
+VERDICT: NO CATCH-UP. The trigger came due with no session, the task
+         never ran, and it still had not run 15+ minutes after sign-in.
+         StartWhenAvailable does NOT rescue a no-session skip -> the S4U
+         principal is the only fix for #757.
+```
+
+**A sign-out, not a reboot** — the distinction is the whole experiment. Windows documents `StartWhenAvailable` catching up a *"machine was down"* window, so a restart-based run would have been contaminated evidence even had it come back green. This host's last boot was 2026-08-16 19:41:41 and the System log holds no shutdown/restart record in between: the machine stayed up while Winlogon recorded logoff `7002` at 19:44:45 and logon `7001` at 20:20:34. The trigger came due at 19:52:57 inside that window and Task Scheduler logged operational event **332** — *"did not launch task ... because user "tower\rober" was not logged on when the launching conditions were met"* — then emitted no start event for the probe at all across the 18 minutes between sign-in and its unregistration at 20:38:43.
+
+A second, independent witness makes the same window unambiguous. `family-radar-traffic-check` is a real `\AppLauncher\` task on the same interactive principal with the same `StartWhenAvailable`, repeating every 5 minutes: it collected event 332 at 19:46:01, 19:51:01, 19:56:01, 20:01:01, 20:06:01, 20:11:01 and 20:16:01 — **seven slots lost** — and after sign-in ran exactly once at 20:21:01, the next natural slot, not seven queued catch-ups.
+
+**So the exposure of the 22 interactive `\AppLauncher\` tasks is loss, not delay.** Every trigger that comes due while the box sits logged out is dropped outright and silently, and `StartWhenAvailable` buys nothing against it — the flag stays worth having for genuine machine-down windows, but it is not a mitigation for #757. The only fix remains the S4U principal (`session_less: true`), decided per job against the `visible` trade, never as a blanket change.
 
 ### Cooldown (issue #68)
 
