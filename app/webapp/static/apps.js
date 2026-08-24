@@ -11,7 +11,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
@@ -68,6 +68,33 @@ const LAUNCH_MODES = [
 function launchActions(a) {
   const row = document.createElement('div');
   row.className = 'app-launch-actions';
+  // Tunnel rows carry their URL as a 🔗 here rather than as link text on a
+  // row of its own — a cloudflared URL with a `?token=…` on it wrapped to
+  // three lines on the phone, and it is never read, only tapped. The
+  // href still holds the whole URL, so tap/copy-link/open-in-new-tab all
+  // behave; the row's health dot already says whether it is up.
+  if (a.kind === 'tunnel') {
+    if (a.tunnel_url) {
+      const link = document.createElement('a');
+      link.className = 'board-issue-btn icon-only app-launch-btn app-tunnel-link';
+      link.href = a.tunnel_url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.innerHTML = icon('link');
+      link.title = a.tunnel_url;
+      link.setAttribute('aria-label', 'Open ' + a.name + ' tunnel');
+      row.appendChild(link);
+    } else {
+      const dead = document.createElement('button');
+      dead.type = 'button';
+      dead.className = 'board-issue-btn icon-only app-launch-btn';
+      dead.innerHTML = icon('link');
+      dead.disabled = true;
+      dead.title = 'Tunnel not running';
+      dead.setAttribute('aria-label', a.name + ' tunnel not running');
+      row.appendChild(dead);
+    }
+  }
   // Tray rows put their autostart switch on this same line rather than in a
   // row of its own — a full-width strip below the card cost a whole line to
   // one 44px control. Unlabelled on purpose: the panel is called Trays and
@@ -153,25 +180,6 @@ function renderList(host, items) {
     }
 
     main.appendChild(launch);
-
-    if (a.kind === 'tunnel') {
-      const tr = document.createElement('div');
-      tr.className = 'tunnel-row';
-      if (a.tunnel_url) {
-        const link = document.createElement('a');
-        link.href = a.tunnel_url;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.innerHTML = icon('satellite-dish') + ' ' + escapeHtml(a.tunnel_url);
-        tr.appendChild(link);
-      } else {
-        const span = document.createElement('span');
-        span.innerHTML = icon('satellite-dish') + ' Tunnel not running';
-        tr.appendChild(span);
-      }
-      main.appendChild(tr);
-    }
-
     li.appendChild(main);
     li.appendChild(launchActions(a));
 

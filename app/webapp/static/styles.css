@@ -585,19 +585,15 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   margin-right: 6px;
 }
-.app-item .tunnel-row {
-  display: flex;
+/* Tunnel URL as a 🔗 in the action cluster (#790) — an <a> wearing the
+   button tier, so it keeps real link behaviour (tap, copy-link, open in
+   new tab) without the URL costing three wrapped lines on the phone. */
+.app-item .app-tunnel-link {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 18px 10px;
-  border-top: 1px solid var(--line);
-  font-size: var(--font-caption);
-  color: var(--muted);
-}
-.app-item .tunnel-row a {
+  justify-content: center;
   color: var(--accent);
   text-decoration: none;
-  word-break: break-all;
 }
 /* Kind pill and name on separate lines (#790) — sharing one line let a long
    name wrap around the pill into a ragged block indented under a badge. */

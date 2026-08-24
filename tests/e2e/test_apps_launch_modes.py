@@ -37,6 +37,24 @@ def _apps_payload() -> dict:
                 "autostart": False,
             },
             {
+                "id": "vt-tunnel",
+                "name": "Voice Transcriber",
+                "kind": "tunnel",
+                "bat_path": "C:\\stub\\voice-transcriber\\webapp_tunnel.bat",
+                "tunnel_url": "https://whisper.example.com/?token=abc123",
+                "health": "up",
+                "added_at": "2026-01-01T00:00:00",
+                "autostart": False,
+            },
+            {
+                "id": "dead-tunnel",
+                "name": "Photo OCR Tunnel",
+                "kind": "tunnel",
+                "bat_path": "C:\\stub\\photo-ocr\\webapp_tunnel.bat",
+                "added_at": "2026-01-01T00:00:00",
+                "autostart": False,
+            },
+            {
                 "id": "home-automation-tray",
                 "name": "Home Automation",
                 "kind": "tray",
@@ -118,6 +136,30 @@ def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
     row = authed_page.locator("#appsList li.app-item").first
     expect(row).to_be_visible(timeout=5_000)
     expect(row.locator(".meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
+
+
+def test_tunnel_url_is_a_link_icon_not_wrapped_text(
+    authed_page: Page, base_url: str
+) -> None:
+    """#790: a cloudflared URL with a `?token=…` wrapped to three lines on
+    the phone and was only ever tapped, so it became a 🔗 in the action
+    cluster. The href must still carry the whole URL — the point is to hide
+    the text, not to lose copy-link / open-in-new-tab."""
+    _navigate(authed_page, base_url)
+    row = authed_page.locator('#appsList li.app-item[data-id="vt-tunnel"]')
+    expect(row).to_be_visible(timeout=5_000)
+
+    link = row.locator("a.app-tunnel-link")
+    expect(link).to_have_attribute("href", "https://whisper.example.com/?token=abc123")
+    expect(link).to_have_attribute("target", "_blank")
+    # The URL is reachable but never rendered as body text.
+    assert "whisper.example.com" not in (row.inner_text() or "")
+
+    # A tunnel that isn't up shows the same glyph, disabled — the row's
+    # health dot is what reports up/down.
+    dead = authed_page.locator('#appsList li.app-item[data-id="dead-tunnel"]')
+    expect(dead.locator("a.app-tunnel-link")).to_have_count(0)
+    expect(dead.locator(".app-launch-btn:disabled")).to_have_count(1)
 
 
 def test_row_body_does_not_launch(authed_page: Page, base_url: str) -> None:
