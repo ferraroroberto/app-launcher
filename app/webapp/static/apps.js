@@ -68,6 +68,22 @@ const LAUNCH_MODES = [
 function launchActions(a) {
   const row = document.createElement('div');
   row.className = 'app-launch-actions';
+  // Tray rows put their autostart switch on this same line rather than in a
+  // row of its own — a full-width strip below the card cost a whole line to
+  // one 44px control. Unlabelled on purpose: the panel is called Trays and
+  // the switch is the only toggle on the row, so the visible word earned
+  // nothing. Screen readers still get the full "Autostart <name> at boot".
+  if (a.kind === 'tray') {
+    row.appendChild(switchEl(!!a.autostart, {
+      label: 'Autostart ' + a.name + ' at boot',
+      onToggle: function (next, btn) {
+        btn.disabled = true;
+        toggleTrayAutostart(a, next).finally(function () {
+          btn.disabled = false;
+        });
+      },
+    }));
+  }
   LAUNCH_MODES.forEach(function (m) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -102,7 +118,11 @@ function renderList(host, items) {
     const launch = document.createElement('div');
     launch.className = 'launch-btn inert';
 
+    // Kind pill and name each get their own line. Sharing one line made a
+    // long name wrap *around* the pill, so the title arrived as a ragged
+    // two-line block indented under a badge.
     const top = document.createElement('div');
+    top.className = 'app-row-kind';
     const dot = document.createElement('span');
     dot.className = 'health-dot';
     // Health is only known for tunnel apps (probed server-side).
@@ -114,18 +134,23 @@ function renderList(host, items) {
     pill.className = 'kind-pill';
     pill.textContent = a.kind;
     top.appendChild(pill);
-
-    const name = document.createElement('span');
-    name.textContent = a.name;
-    top.appendChild(name);
     launch.appendChild(top);
 
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    meta.textContent = a.bat_path || a.project_dir || '';
-    // Tray rows show the path inline with the autostart toggle below
-    // instead, so the path moves out of the info block to sit alongside it.
-    if (a.kind !== 'tray') launch.appendChild(meta);
+    const name = document.createElement('span');
+    name.className = 'app-row-name';
+    name.textContent = a.name;
+    launch.appendChild(name);
+
+    // The full bat path is long enough to wrap to two or three lines on a
+    // phone and is never what you're scanning for — it only matters when
+    // you're about to rename or remove the row, so it rides Edit mode with
+    // the ✏️/🗑️ rail rather than costing every row the height.
+    if (state.editMode) {
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = a.bat_path || a.project_dir || '';
+      launch.appendChild(meta);
+    }
 
     main.appendChild(launch);
 
@@ -145,33 +170,6 @@ function renderList(host, items) {
         tr.appendChild(span);
       }
       main.appendChild(tr);
-    }
-
-    // Autostart switch (issue #456 part 2/2, tightened in #593) — persists
-    // via the same PATCH /api/apps/{id} the rename dialog uses, just with
-    // `autostart` instead of `name`. Shares a row with the path text (kept
-    // out of the info block above). The switch carries its own "Autostart"
-    // label since #790 shortened the panel title to just "Trays" — the
-    // title no longer says what the toggle does.
-    if (a.kind === 'tray') {
-      const row = document.createElement('div');
-      row.className = 'tray-autostart-row';
-      row.appendChild(meta);
-      const autostartLabel = document.createElement('span');
-      autostartLabel.className = 'tray-autostart-label';
-      autostartLabel.textContent = 'Autostart';
-      row.appendChild(autostartLabel);
-      const toggleBtn = switchEl(!!a.autostart, {
-        label: 'Autostart ' + a.name + ' at boot',
-        onToggle: function (next, btn) {
-          btn.disabled = true;
-          toggleTrayAutostart(a, next).finally(function () {
-            btn.disabled = false;
-          });
-        },
-      });
-      row.appendChild(toggleBtn);
-      main.appendChild(row);
     }
 
     li.appendChild(main);

@@ -48,13 +48,20 @@ def _apps_payload() -> dict:
     }
 
 
-def _navigate(page: Page, base_url: str) -> list[dict]:
+def _navigate(page: Page, base_url: str, edit: bool = False) -> list[dict]:
     """Open the Apps tab with both panels expanded; return captured launches.
 
     Each entry is the decoded POST body of an ``/api/apps/{id}/launch``
     call — ``{}`` for a bodyless post, which is what an older cached PWA
     bundle sends and what the visible ⚡ launch sends too.
+
+    ``edit`` seeds the Edit-mode flag before boot; ``state.editMode`` is
+    read from localStorage at module init, so it has to be set before the
+    page's scripts run rather than toggled afterwards.
     """
+    page.add_init_script(
+        "localStorage.setItem('launcher.editMode', '%s')" % ("1" if edit else "0")
+    )
     launches: list[dict] = []
 
     def _launch_handler(route):
@@ -92,6 +99,25 @@ def _navigate(page: Page, base_url: str) -> list[dict]:
         if page.locator(card).get_attribute("open") is None:
             page.locator(f"{card} summary").click()
     return launches
+
+
+def test_path_is_hidden_until_edit_mode(authed_page: Page, base_url: str) -> None:
+    """The bat path wraps to two or three lines on a phone and is only
+    wanted when renaming/removing, so #790 moved it behind Edit mode."""
+    _navigate(authed_page, base_url)
+    row = authed_page.locator("#appsList li.app-item").first
+    expect(row).to_be_visible(timeout=5_000)
+    expect(row.locator(".meta")).to_have_count(0)
+    # The kind pill and the name are on their own lines, not sharing one.
+    expect(row.locator(".app-row-kind .kind-pill")).to_have_text("streamlit")
+    expect(row.locator(".app-row-name")).to_have_text("Photo OCR")
+
+
+def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
+    _navigate(authed_page, base_url, edit=True)
+    row = authed_page.locator("#appsList li.app-item").first
+    expect(row).to_be_visible(timeout=5_000)
+    expect(row.locator(".meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
 
 
 def test_row_body_does_not_launch(authed_page: Page, base_url: str) -> None:
@@ -138,6 +164,9 @@ def test_tray_rows_get_the_same_pair(authed_page: Page, base_url: str) -> None:
     row.locator('.app-launch-btn[data-stealth="1"]').click()
     assert launches == [{"stealth": True}], f"tray stealth launch sent {launches}"
 
-    # The panel title lost the word "autostart" in #790, so the toggle
-    # must name itself instead.
-    expect(row.locator(".tray-autostart-row")).to_contain_text("Autostart")
+    # The autostart switch shares the launch line rather than owning a
+    # full-width strip of its own, and carries no visible label — its
+    # accessible name is the only thing that must still say what it does.
+    toggle = row.locator(".app-launch-actions button.toggle")
+    expect(toggle).to_have_count(1)
+    expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")
