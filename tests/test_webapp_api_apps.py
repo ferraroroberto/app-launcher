@@ -734,7 +734,9 @@ class TestLaunchAppTracksSpawn:
                 ),
             ],
         )
-        monkeypatch.setattr(apps_router, "spawn_bat", lambda _path: 54321)
+        monkeypatch.setattr(
+            apps_router, "spawn_bat", lambda _path, stealth=False: 54321
+        )
         recorded: list[tuple] = []
         monkeypatch.setattr(
             apps_router.app_runtime,
@@ -767,7 +769,9 @@ class TestLaunchAppTracksSpawn:
                 ),
             ],
         )
-        monkeypatch.setattr(apps_router, "spawn_bat", lambda _path: 54321)
+        monkeypatch.setattr(
+            apps_router, "spawn_bat", lambda _path, stealth=False: 54321
+        )
         recorded: list[tuple] = []
         monkeypatch.setattr(
             apps_router.app_runtime,
@@ -778,6 +782,67 @@ class TestLaunchAppTracksSpawn:
         resp = client.post("/api/apps/home-automation-tray/launch")
         assert resp.status_code == 200
         assert recorded == []
+
+
+class TestLaunchBatStealthMode:
+    """The Apps/Trays ⚡ vs 🚫👁 pair (issue #790).
+
+    The route's job is to turn an optional body flag into ``spawn_bat``'s
+    ``stealth=`` argument. The default matters as much as the opt-in: a
+    phone still serving an older cached PWA bundle posts no body at all,
+    and must keep launching *visibly* rather than silently going invisible.
+    """
+
+    def _seed_and_capture(self, overrides, monkeypatch):
+        from app.webapp.routers import apps as apps_router
+
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [
+                AppEntry(
+                    id="alpha",
+                    name="Alpha",
+                    kind="streamlit",
+                    bat_path="C:\\stub\\alpha.bat",
+                    added_at=datetime.now().isoformat(),
+                ),
+            ],
+        )
+        calls: list[bool] = []
+
+        def _fake_spawn(_path, stealth=False):
+            calls.append(stealth)
+            return 54321
+
+        monkeypatch.setattr(apps_router, "spawn_bat", _fake_spawn)
+        monkeypatch.setattr(
+            apps_router.app_runtime, "record_spawn", lambda *a: None
+        )
+        return calls
+
+    def test_bodyless_post_launches_visibly(self, webapp_client, monkeypatch):
+        """An older cached client sends no body — it must not go stealth."""
+        client, _, overrides = webapp_client
+        calls = self._seed_and_capture(overrides, monkeypatch)
+        resp = client.post("/api/apps/alpha/launch")
+        assert resp.status_code == 200
+        assert calls == [False]
+        assert resp.json()["stealth"] is False
+
+    def test_explicit_false_launches_visibly(self, webapp_client, monkeypatch):
+        client, _, overrides = webapp_client
+        calls = self._seed_and_capture(overrides, monkeypatch)
+        resp = client.post("/api/apps/alpha/launch", json={"stealth": False})
+        assert resp.status_code == 200
+        assert calls == [False]
+
+    def test_stealth_true_is_forwarded(self, webapp_client, monkeypatch):
+        client, _, overrides = webapp_client
+        calls = self._seed_and_capture(overrides, monkeypatch)
+        resp = client.post("/api/apps/alpha/launch", json={"stealth": True})
+        assert resp.status_code == 200
+        assert calls == [True]
+        assert resp.json()["stealth"] is True
 
 
 class TestDeleteApp:

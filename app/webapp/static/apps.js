@@ -54,6 +54,37 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
+// The per-row launch cluster (issue #790) — the only way to start a
+// bat-based app now that the row body is inert. Two explicit modes rather
+// than a remembered setting: ⚡ opens the CMD window (watch a Streamlit
+// boot, read a traceback), 🚫👁 runs the same bat with no window at all
+// (the phone-first case, PC unattended). Geometry is the Board backlog's
+// ▶/⚡ pair verbatim — `.board-issue-btn.icon-only`, already thumb-sized.
+const LAUNCH_MODES = [
+  { stealth: false, glyph: 'zap', hint: 'in a visible window', how: '' },
+  { stealth: true, glyph: 'eye-off', hint: 'with no window', how: ' in stealth' },
+];
+
+function launchActions(a) {
+  const row = document.createElement('div');
+  row.className = 'app-launch-actions';
+  LAUNCH_MODES.forEach(function (m) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'board-issue-btn icon-only app-launch-btn';
+    btn.innerHTML = icon(m.glyph);
+    btn.title = 'Launch ' + a.name + ' ' + m.hint;
+    btn.setAttribute('aria-label', 'Launch ' + a.name + m.how);
+    // The mode is on the element, not just in the closure, so a test (or a
+    // future caller) can address a button by what it does rather than by
+    // its position in the row.
+    btn.dataset.stealth = m.stealth ? '1' : '0';
+    btn.addEventListener('click', function () { launchApp(a, undefined, m.stealth); });
+    row.appendChild(btn);
+  });
+  return row;
+}
+
 function renderList(host, items) {
   host.innerHTML = '';
   items.forEach(function (a) {
@@ -64,9 +95,12 @@ function renderList(host, items) {
     const main = document.createElement('div');
     main.className = 'app-main';
 
-    const launch = document.createElement('button');
-    launch.type = 'button';
-    launch.className = 'launch-btn';
+    // Inert info block (issue #790) — the row body no longer launches;
+    // the ⚡ / 🚫👁 pair beside it is the only launch affordance. Same
+    // `.launch-btn … inert` shape renderRunningApps already uses, so the
+    // typography stays identical to every other list row.
+    const launch = document.createElement('div');
+    launch.className = 'launch-btn inert';
 
     const top = document.createElement('div');
     const dot = document.createElement('span');
@@ -90,11 +124,9 @@ function renderList(host, items) {
     meta.className = 'meta';
     meta.textContent = a.bat_path || a.project_dir || '';
     // Tray rows show the path inline with the autostart toggle below
-    // instead — .launch-btn is a <button>, so the toggle can't nest
-    // inside it, and the path moves out to sit alongside it.
+    // instead, so the path moves out of the info block to sit alongside it.
     if (a.kind !== 'tray') launch.appendChild(meta);
 
-    launch.addEventListener('click', function () { launchApp(a); });
     main.appendChild(launch);
 
     if (a.kind === 'tunnel') {
@@ -117,14 +149,18 @@ function renderList(host, items) {
 
     // Autostart switch (issue #456 part 2/2, tightened in #593) — persists
     // via the same PATCH /api/apps/{id} the rename dialog uses, just with
-    // `autostart` instead of `name`. The switch is a sibling of the launch
-    // button, so its compact 44px target remains independent of launching.
-    // Shares a row with the path text (moved out of .launch-btn above) —
-    // the panel title already says "autostart", so no per-row label.
+    // `autostart` instead of `name`. Shares a row with the path text (kept
+    // out of the info block above). The switch carries its own "Autostart"
+    // label since #790 shortened the panel title to just "Trays" — the
+    // title no longer says what the toggle does.
     if (a.kind === 'tray') {
       const row = document.createElement('div');
       row.className = 'tray-autostart-row';
       row.appendChild(meta);
+      const autostartLabel = document.createElement('span');
+      autostartLabel.className = 'tray-autostart-label';
+      autostartLabel.textContent = 'Autostart';
+      row.appendChild(autostartLabel);
       const toggleBtn = switchEl(!!a.autostart, {
         label: 'Autostart ' + a.name + ' at boot',
         onToggle: function (next, btn) {
@@ -139,6 +175,7 @@ function renderList(host, items) {
     }
 
     li.appendChild(main);
+    li.appendChild(launchActions(a));
 
     // Rename + remove are gated behind Jobs tab → Edit mode, so the
     // lists stay icon-free in normal use (no per-row icon inflation).
@@ -182,7 +219,11 @@ function renderList(host, items) {
 // to the phone over a PTY. `agentId` (claude | codex | antigravity |
 // copilot) is set by the Coding tile's per-agent button; undefined for
 // Apps-tab bat launches.
-export async function launchApp(a, agentId) {
+//
+// `stealth` (issue #790) is the Apps/Trays 🚫👁 button: the bat runs with
+// no console window on screen. Bat kinds only — a coding session has no
+// console window of its own to hide.
+export async function launchApp(a, agentId, stealth) {
   const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
     els.claudeResume.getAttribute('aria-checked') === 'true');
   // Detached → 'remote', independent of Resume. The two combine: a
@@ -195,6 +236,7 @@ export async function launchApp(a, agentId) {
     if (mode) payload.mode = mode;
     if (resume) payload.resume = true;
     if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
+    else if (stealth) payload.stealth = true;
     // Streamed (pty) coding launches need a starting PTY size. Detached
     // (remote) launches have no PTY, so skip it.
     if (a.kind === 'claude-code' && !mode) {
@@ -218,11 +260,14 @@ export async function launchApp(a, agentId) {
       const known = state.agents.find(function (ag) { return ag.id === body.agent; });
       agentTag = ' (' + (known ? known.label : body.agent) + ')';
     }
+    // A stealth launch leaves nothing on screen to confirm it worked, so
+    // the toast is the only feedback — say the mode out loud (issue #790).
     toast(
       (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
-        (mode === 'remote' ? ' (detached)' : ''),
+        (mode === 'remote' ? ' (detached)' : '') +
+        (stealth ? ' (stealth)' : ''),
       'good',
-      { icon: resume ? 'rotate-ccw' : 'rocket' }
+      { icon: resume ? 'rotate-ccw' : (stealth ? 'eye-off' : 'rocket') }
     );
     if (a.kind === 'claude-code' && body.session) {
       // Full-control sessions drop straight into the terminal; detached

@@ -561,6 +561,13 @@ summary + .opt-group { border-top: 0; }
   gap: 4px;
 }
 .launch-btn:active { background: var(--card-2); }
+/* Apps + Trays rows are inert since #790 — launching moved to the per-row
+   ⚡/🚫👁 pair, so the body must not read or feel tappable. Keeps the
+   .launch-btn typography every other list row uses. */
+.launch-btn.inert {
+  cursor: default;
+}
+.launch-btn.inert:active { background: transparent; }
 .launch-btn .meta {
   font-size: var(--font-caption);
   color: var(--muted);
@@ -606,6 +613,24 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-caption);
   color: var(--muted);
   word-break: break-all;
+}
+/* #790 shortened the panel title to "Trays", so the toggle names itself. */
+.app-item .tray-autostart-row .tray-autostart-label {
+  flex: none;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
+
+/* Per-row launch cluster (#790) — ⚡ visible, 🚫👁 stealth. Vertically
+   centred against the row's full height, and deliberately reusing the
+   Board backlog's .board-issue-btn.icon-only geometry rather than the
+   .row-actions rail: that pair is already the right thumb size. */
+.app-item .app-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 12px 0 4px;
 }
 .app-item .row-actions {
   display: flex;

@@ -236,6 +236,12 @@
     <path d="M8 12h.01" />
     <rect width="20" height="16" x="2" y="4" rx="2" />
   </symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24" fill="none">
+    <path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" />
+    <path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" />
+    <path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" />
+    <path d="m2 2 20 20" />
+  </symbol>
   <symbol id="i-file-text" viewBox="0 0 24 24" fill="none">
     <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
     <path d="M14 2v5a1 1 0 0 0 1 1h5" />
@@ -674,7 +680,7 @@
         <div class="collapse-body">
         <ul id="runningAppsList" class="card-list" aria-label="Running apps"></ul>
         <p id="runningAppsEmpty" class="muted small">Nothing running. (A webapp restart forgets running apps — check Port listeners for orphans.)</p>
-        <p class="launcher-note">Only apps launched from here appear — tap a registered app below to start one.</p>
+        <p class="launcher-note">Only apps launched from here appear — start one with the <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-zap"></use></svg> or <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-eye-off"></use></svg> button on a registered app below.</p>
         </div>
       </details>
 
@@ -699,7 +705,7 @@
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
-            <h3 class="collapse-title">Registered apps</h3>
+            <h3 class="collapse-title">Apps</h3>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
@@ -717,12 +723,12 @@
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
-            <h3 class="collapse-title">Autostart registered trays</h3>
+            <h3 class="collapse-title">Trays</h3>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <ul id="registeredTraysList" class="card-list" aria-label="Autostart registered trays"></ul>
+        <ul id="registeredTraysList" class="card-list" aria-label="Trays"></ul>
         <div id="registeredTraysEmpty" class="empty" hidden>
           No sister trays discovered yet — tap <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> in Settings to scan for <code>tray.bat</code> files.
         </div>

@@ -306,13 +306,19 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "session": session,
         }
 
-    # everything else: a fresh visible CMD window running the bat.
+    # everything else: a fresh CMD window running the bat. `stealth` (issue
+    # #790) picks the Apps tab's 🚫👁 button instead of its ⚡ one — same bat,
+    # same process shape, no console window on screen. Absent or false keeps
+    # the visible window, so a phone still serving an older cached PWA bundle
+    # (which posts no body at all) launches exactly as it always did.
     if not entry.bat_path:
         raise HTTPException(
             status_code=400, detail=f"app entry {entry.id} has no bat_path"
         )
+    body = await maybe_json(request)
+    stealth = bool(body.get("stealth"))
     try:
-        pid = spawn_bat(Path(entry.bat_path))
+        pid = spawn_bat(Path(entry.bat_path), stealth=stealth)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     # A tray.bat hands its real long-lived process off to
@@ -326,7 +332,12 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # correctly once it's actually up (issue #456 follow-up).
     if entry.kind != KIND_TRAY:
         app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
-    return {"launched": entry.id, "name": entry.name, "kind": entry.kind}
+    return {
+        "launched": entry.id,
+        "name": entry.name,
+        "kind": entry.kind,
+        "stealth": stealth,
+    }
 
 
 @router.get("/api/apps/running")
