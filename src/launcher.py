@@ -2,9 +2,10 @@
 
 Used by the FastAPI ``/api/apps/{id}/launch`` route:
 
-- ``spawn_bat`` opens a new visible CMD window that runs the bat and
-  stays open afterwards (so the user can interact when they're back at
-  the PC).
+- ``spawn_bat`` runs the bat in a new console. By default that console is
+  a visible CMD window that stays open afterwards (so the user can
+  interact when they're back at the PC); ``stealth=True`` runs the same
+  command line with no window on screen (issue #790).
 - ``spawn_claude_session`` is the multi-agent session-launch helper for
   the Coding tab. It asks the loopback session-host to run whichever
   coding agent is requested (see :mod:`src.agents` for the full set).
@@ -61,13 +62,20 @@ _HWND_POLL_INTERVAL_SECONDS = 0.1
 _mirror_hwnds: Dict[str, int] = {}
 
 
-def spawn_bat(bat_path: Path) -> int:
-    """Open a new visible CMD window that runs the bat and stays open.
+def spawn_bat(bat_path: Path, stealth: bool = False) -> int:
+    """Run the bat in a new console — visible by default, hidden on ``stealth``.
 
-    Returns the PID of the spawned ``cmd /c start`` launcher process. The
-    actual app server runs as a descendant of it — the caller pairs this
-    PID with :func:`src.diagnostics.listening_port_for_pid_tree` to learn
-    which port the app eventually bound.
+    ``stealth=False`` (the default, and what the Apps tab's ⚡ button asks
+    for) opens a real CMD window that stays open, so the user can read the
+    app's output when they're back at the PC. ``stealth=True`` (the 🚫👁
+    button, issue #790) runs the identical command line with no window on
+    screen — the phone-first case, where a console popping up on an
+    unattended PC is pure noise.
+
+    Returns the PID of the spawned ``cmd`` process. The actual app server
+    runs as a descendant of it — the caller pairs this PID with
+    :func:`src.diagnostics.listening_port_for_pid_tree` to learn which
+    port the app eventually bound.
     """
     if not bat_path.is_file():
         raise OSError(f"BAT file not found: {bat_path}")
@@ -78,7 +86,16 @@ def spawn_bat(bat_path: Path) -> int:
     cmd = ["cmd", "/k", str(bat_path)]
     creationflags = 0
     if sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore[attr-defined]
+        # CREATE_NO_WINDOW still gives the child its own console — it just
+        # never paints a window — so `cmd /k` stays alive holding the
+        # descendant tree exactly as it does visibly, and the
+        # port-discovery walk is unaffected. The two flags are mutually
+        # exclusive: pick one, never OR them.
+        creationflags = (
+            NO_WINDOW
+            if stealth
+            else subprocess.CREATE_NEW_CONSOLE  # type: ignore[attr-defined]
+        )
     proc = subprocess.Popen(
         cmd,
         cwd=str(bat_path.parent),
@@ -86,7 +103,8 @@ def spawn_bat(bat_path: Path) -> int:
         creationflags=creationflags,
         close_fds=True,
     )
-    logger.info(f"🚀 spawned bat: {bat_path} (pid {proc.pid})")
+    how = "stealth" if stealth else "visible"
+    logger.info(f"🚀 spawned bat ({how}): {bat_path} (pid {proc.pid})")
     return proc.pid
 
 

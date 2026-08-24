@@ -561,6 +561,13 @@ summary + .opt-group { border-top: 0; }
   gap: 4px;
 }
 .launch-btn:active { background: var(--card-2); }
+/* Apps + Trays rows are inert since #790 — launching moved to the per-row
+   ⚡/🚫👁 pair, so the body must not read or feel tappable. Keeps the
+   .launch-btn typography every other list row uses. */
+.launch-btn.inert {
+  cursor: default;
+}
+.launch-btn.inert:active { background: transparent; }
 .launch-btn .meta {
   font-size: var(--font-caption);
   color: var(--muted);
@@ -578,34 +585,38 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   margin-right: 6px;
 }
-.app-item .tunnel-row {
-  display: flex;
+/* Tunnel URL as a 🔗 in the action cluster (#790) — an <a> wearing the
+   button tier, so it keeps real link behaviour (tap, copy-link, open in
+   new tab) without the URL costing three wrapped lines on the phone. */
+.app-item .app-tunnel-link {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 18px 10px;
-  border-top: 1px solid var(--line);
-  font-size: var(--font-caption);
-  color: var(--muted);
-}
-.app-item .tunnel-row a {
+  justify-content: center;
   color: var(--accent);
   text-decoration: none;
-  word-break: break-all;
 }
-.app-item .tray-autostart-row {
+/* Kind pill and name on separate lines (#790) — sharing one line let a long
+   name wrap around the pill into a ragged block indented under a badge. */
+.app-item .app-row-kind {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 18px 10px;
-  border-top: 1px solid var(--line);
+  line-height: 1;
 }
-.app-item .tray-autostart-row .meta {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--font-caption);
-  color: var(--muted);
-  word-break: break-all;
+.app-item .app-row-name {
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+/* Per-row launch cluster (#790) — ⚡ visible, 🚫👁 stealth. Vertically
+   centred against the row's full height, and deliberately reusing the
+   Board backlog's .board-issue-btn.icon-only geometry rather than the
+   .row-actions rail: that pair is already the right thumb size. */
+.app-item .app-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 12px 0 4px;
 }
 .app-item .row-actions {
   display: flex;

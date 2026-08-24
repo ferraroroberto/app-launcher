@@ -11,7 +11,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
@@ -54,6 +54,80 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
+// The per-row launch cluster (issue #790) — the only way to start a
+// bat-based app now that the row body is inert. Two explicit modes rather
+// than a remembered setting: ⚡ opens the CMD window (watch a Streamlit
+// boot, read a traceback), 🚫👁 runs the same bat with no window at all
+// (the phone-first case, PC unattended). Geometry is the Board backlog's
+// ▶/⚡ pair verbatim — `.board-issue-btn.icon-only`, already thumb-sized.
+const LAUNCH_MODES = [
+  { stealth: false, glyph: 'zap', hint: 'in a visible window', how: '' },
+  { stealth: true, glyph: 'eye-off', hint: 'with no window', how: ' in stealth' },
+];
+
+function launchActions(a) {
+  const row = document.createElement('div');
+  row.className = 'app-launch-actions';
+  // Tunnel rows carry their URL as a 🔗 here rather than as link text on a
+  // row of its own — a cloudflared URL with a `?token=…` on it wrapped to
+  // three lines on the phone, and it is never read, only tapped. The
+  // href still holds the whole URL, so tap/copy-link/open-in-new-tab all
+  // behave; the row's health dot already says whether it is up.
+  if (a.kind === 'tunnel') {
+    if (a.tunnel_url) {
+      const link = document.createElement('a');
+      link.className = 'board-issue-btn icon-only app-launch-btn app-tunnel-link';
+      link.href = a.tunnel_url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.innerHTML = icon('link');
+      link.title = a.tunnel_url;
+      link.setAttribute('aria-label', 'Open ' + a.name + ' tunnel');
+      row.appendChild(link);
+    } else {
+      const dead = document.createElement('button');
+      dead.type = 'button';
+      dead.className = 'board-issue-btn icon-only app-launch-btn';
+      dead.innerHTML = icon('link');
+      dead.disabled = true;
+      dead.title = 'Tunnel not running';
+      dead.setAttribute('aria-label', a.name + ' tunnel not running');
+      row.appendChild(dead);
+    }
+  }
+  // Tray rows put their autostart switch on this same line rather than in a
+  // row of its own — a full-width strip below the card cost a whole line to
+  // one 44px control. Unlabelled on purpose: the panel is called Trays and
+  // the switch is the only toggle on the row, so the visible word earned
+  // nothing. Screen readers still get the full "Autostart <name> at boot".
+  if (a.kind === 'tray') {
+    row.appendChild(switchEl(!!a.autostart, {
+      label: 'Autostart ' + a.name + ' at boot',
+      onToggle: function (next, btn) {
+        btn.disabled = true;
+        toggleTrayAutostart(a, next).finally(function () {
+          btn.disabled = false;
+        });
+      },
+    }));
+  }
+  LAUNCH_MODES.forEach(function (m) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'board-issue-btn icon-only app-launch-btn';
+    btn.innerHTML = icon(m.glyph);
+    btn.title = 'Launch ' + a.name + ' ' + m.hint;
+    btn.setAttribute('aria-label', 'Launch ' + a.name + m.how);
+    // The mode is on the element, not just in the closure, so a test (or a
+    // future caller) can address a button by what it does rather than by
+    // its position in the row.
+    btn.dataset.stealth = m.stealth ? '1' : '0';
+    btn.addEventListener('click', function () { launchApp(a, undefined, m.stealth); });
+    row.appendChild(btn);
+  });
+  return row;
+}
+
 function renderList(host, items) {
   host.innerHTML = '';
   items.forEach(function (a) {
@@ -64,11 +138,18 @@ function renderList(host, items) {
     const main = document.createElement('div');
     main.className = 'app-main';
 
-    const launch = document.createElement('button');
-    launch.type = 'button';
-    launch.className = 'launch-btn';
+    // Inert info block (issue #790) — the row body no longer launches;
+    // the ⚡ / 🚫👁 pair beside it is the only launch affordance. Same
+    // `.launch-btn … inert` shape renderRunningApps already uses, so the
+    // typography stays identical to every other list row.
+    const launch = document.createElement('div');
+    launch.className = 'launch-btn inert';
 
+    // Kind pill and name each get their own line. Sharing one line made a
+    // long name wrap *around* the pill, so the title arrived as a ragged
+    // two-line block indented under a badge.
     const top = document.createElement('div');
+    top.className = 'app-row-kind';
     const dot = document.createElement('span');
     dot.className = 'health-dot';
     // Health is only known for tunnel apps (probed server-side).
@@ -80,65 +161,27 @@ function renderList(host, items) {
     pill.className = 'kind-pill';
     pill.textContent = a.kind;
     top.appendChild(pill);
-
-    const name = document.createElement('span');
-    name.textContent = a.name;
-    top.appendChild(name);
     launch.appendChild(top);
 
-    const meta = document.createElement('span');
-    meta.className = 'meta';
-    meta.textContent = a.bat_path || a.project_dir || '';
-    // Tray rows show the path inline with the autostart toggle below
-    // instead — .launch-btn is a <button>, so the toggle can't nest
-    // inside it, and the path moves out to sit alongside it.
-    if (a.kind !== 'tray') launch.appendChild(meta);
+    const name = document.createElement('span');
+    name.className = 'app-row-name';
+    name.textContent = a.name;
+    launch.appendChild(name);
 
-    launch.addEventListener('click', function () { launchApp(a); });
+    // The full bat path is long enough to wrap to two or three lines on a
+    // phone and is never what you're scanning for — it only matters when
+    // you're about to rename or remove the row, so it rides Edit mode with
+    // the ✏️/🗑️ rail rather than costing every row the height.
+    if (state.editMode) {
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = a.bat_path || a.project_dir || '';
+      launch.appendChild(meta);
+    }
+
     main.appendChild(launch);
-
-    if (a.kind === 'tunnel') {
-      const tr = document.createElement('div');
-      tr.className = 'tunnel-row';
-      if (a.tunnel_url) {
-        const link = document.createElement('a');
-        link.href = a.tunnel_url;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.innerHTML = icon('satellite-dish') + ' ' + escapeHtml(a.tunnel_url);
-        tr.appendChild(link);
-      } else {
-        const span = document.createElement('span');
-        span.innerHTML = icon('satellite-dish') + ' Tunnel not running';
-        tr.appendChild(span);
-      }
-      main.appendChild(tr);
-    }
-
-    // Autostart switch (issue #456 part 2/2, tightened in #593) — persists
-    // via the same PATCH /api/apps/{id} the rename dialog uses, just with
-    // `autostart` instead of `name`. The switch is a sibling of the launch
-    // button, so its compact 44px target remains independent of launching.
-    // Shares a row with the path text (moved out of .launch-btn above) —
-    // the panel title already says "autostart", so no per-row label.
-    if (a.kind === 'tray') {
-      const row = document.createElement('div');
-      row.className = 'tray-autostart-row';
-      row.appendChild(meta);
-      const toggleBtn = switchEl(!!a.autostart, {
-        label: 'Autostart ' + a.name + ' at boot',
-        onToggle: function (next, btn) {
-          btn.disabled = true;
-          toggleTrayAutostart(a, next).finally(function () {
-            btn.disabled = false;
-          });
-        },
-      });
-      row.appendChild(toggleBtn);
-      main.appendChild(row);
-    }
-
     li.appendChild(main);
+    li.appendChild(launchActions(a));
 
     // Rename + remove are gated behind Jobs tab → Edit mode, so the
     // lists stay icon-free in normal use (no per-row icon inflation).
@@ -182,7 +225,11 @@ function renderList(host, items) {
 // to the phone over a PTY. `agentId` (claude | codex | antigravity |
 // copilot) is set by the Coding tile's per-agent button; undefined for
 // Apps-tab bat launches.
-export async function launchApp(a, agentId) {
+//
+// `stealth` (issue #790) is the Apps/Trays 🚫👁 button: the bat runs with
+// no console window on screen. Bat kinds only — a coding session has no
+// console window of its own to hide.
+export async function launchApp(a, agentId, stealth) {
   const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
     els.claudeResume.getAttribute('aria-checked') === 'true');
   // Detached → 'remote', independent of Resume. The two combine: a
@@ -195,6 +242,7 @@ export async function launchApp(a, agentId) {
     if (mode) payload.mode = mode;
     if (resume) payload.resume = true;
     if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
+    else if (stealth) payload.stealth = true;
     // Streamed (pty) coding launches need a starting PTY size. Detached
     // (remote) launches have no PTY, so skip it.
     if (a.kind === 'claude-code' && !mode) {
@@ -218,11 +266,14 @@ export async function launchApp(a, agentId) {
       const known = state.agents.find(function (ag) { return ag.id === body.agent; });
       agentTag = ' (' + (known ? known.label : body.agent) + ')';
     }
+    // A stealth launch leaves nothing on screen to confirm it worked, so
+    // the toast is the only feedback — say the mode out loud (issue #790).
     toast(
       (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
-        (mode === 'remote' ? ' (detached)' : ''),
+        (mode === 'remote' ? ' (detached)' : '') +
+        (stealth ? ' (stealth)' : ''),
       'good',
-      { icon: resume ? 'rotate-ccw' : 'rocket' }
+      { icon: resume ? 'rotate-ccw' : (stealth ? 'eye-off' : 'rocket') }
     );
     if (a.kind === 'claude-code' && body.session) {
       // Full-control sessions drop straight into the terminal; detached

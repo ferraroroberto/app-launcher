@@ -34,8 +34,9 @@ _SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: survives edits above it; adding an entry is a deliberate, reviewable act.
 _VISIBLE_CONSOLE_EXEMPT = {
     "src/launcher.py::spawn_bat": (
-        "CREATE_NEW_CONSOLE on purpose — the Apps tab opens a visible CMD "
-        "window the user watches and closes."
+        "Chooses its own flag per launch (#790): NO_WINDOW for the Apps "
+        "tab's stealth button, CREATE_NEW_CONSOLE on purpose for its ⚡ "
+        "one — a visible CMD window the user watches and closes."
     ),
 }
 

@@ -117,8 +117,11 @@ def test_autostart_toggle_reflects_state_and_patches(
     authed_page.route("**/api/apps/home-automation-tray", _patch_handler)
     _navigate(authed_page, base_url)
 
+    # #790 moved the switch onto the launch-button line and dropped its
+    # visible label — the panel is called Trays and it is the row's only
+    # toggle, so the word earned nothing.
     toggle = authed_page.locator(
-        "#registeredTraysList li.app-item .tray-autostart-row button"
+        "#registeredTraysList li.app-item .app-launch-actions button.toggle"
     )
     expect(toggle).to_have_class("toggle")
     expect(toggle.locator(".knob")).to_have_count(1)
