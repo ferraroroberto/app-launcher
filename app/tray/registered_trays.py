@@ -4,10 +4,22 @@ Split off ``app/tray/tray.py`` (a single-file god-module flagged by
 ``/codebase-audit``). These are pure functions with no ``TrayApp`` state —
 ``port_listening`` is also reused by ``tray.py`` for its own session-host
 adoption check, since it's a general-purpose loopback-port probe.
+
+Diagnosability (issue #788): ``launch_all()`` runs at real boot time under
+``pythonw.exe`` (no console), spawned by ``tray_lifecycle.ps1``'s
+``Start-Process`` — which never redirects stdout/stderr anywhere. So the
+``logger.info``/``logger.warning`` calls below are silently discarded in
+production; a sister tray failing to launch, or taking an unusually long
+time to become reachable, left no trace. Mirrors the breadcrumb log
+``src/boot_autostart.py`` already writes for app-launcher's own Startup
+wrapper (issue #582): every attempt appends a timestamped line to a
+gitignored ``webapp/registered_trays.log``, so a login-time failure is
+diagnosable from that log alone instead of requiring a live re-run.
 """
 
 from __future__ import annotations
 
+import datetime
 import logging
 import socket
 import subprocess
@@ -22,11 +34,38 @@ from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 _TRAY_READY_TIMEOUT_S = 30.0
 _TRAY_READY_POLL_S = 0.5
 # Fallback wait when a tray's repo has no readable .fleet.toml port — still
 # gives it a head start before the next tray launches, without a real signal.
 _TRAY_FALLBACK_DELAY_S = 5.0
+
+
+def _log_path() -> Path:
+    """The gitignored boot breadcrumb log this repo writes at each autostart.
+
+    Reads ``PROJECT_ROOT`` off the module (not a bound default argument) so
+    tests can redirect it via ``monkeypatch.setattr(rt_mod, "PROJECT_ROOT", ...)``.
+    """
+    return PROJECT_ROOT / "webapp" / "registered_trays.log"
+
+
+def _log_breadcrumb(msg: str) -> None:
+    """Best-effort append of a timestamped line to the breadcrumb log.
+
+    Never raises — a log-write failure must not take down the boot
+    sequence it exists to make diagnosable.
+    """
+    try:
+        path = _log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now().isoformat(timespec="seconds")
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(f"[{stamp}] {msg}\n")
+    except OSError:
+        pass
 
 
 def port_listening(port: int) -> bool:
@@ -127,30 +166,41 @@ def launch_all() -> None:
         registry = load_registry()
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️  Registered Trays: could not load registry: {exc}")
+        _log_breadcrumb(f"could not load registry: {exc}")
         return
     trays = [a for a in registry.apps if a.kind == KIND_TRAY and a.autostart]
     if not trays:
         return
     logger.info(f"🧭 Registered Trays: launching {len(trays)} autostart entr{'y' if len(trays) == 1 else 'ies'}")
+    _log_breadcrumb(f"launching {len(trays)} autostart entr{'y' if len(trays) == 1 else 'ies'}")
     for entry in trays:
         if not entry.bat_path:
             logger.warning(f"⚠️  Registered Trays: {entry.name} has no bat_path — skipped")
+            _log_breadcrumb(f"{entry.name}: no bat_path — skipped")
             continue
         bat_path = Path(entry.bat_path)
         if not bat_path.is_file():
             logger.warning(f"⚠️  Registered Trays: {entry.name} bat not found at {bat_path} — skipped")
+            _log_breadcrumb(f"{entry.name}: bat not found at {bat_path} — skipped")
             continue
         try:
             logger.info(f"🚀 Registered Trays: launching {entry.name}")
+            _log_breadcrumb(f"{entry.name}: launching {bat_path}")
             _spawn_tray_bat_detached(bat_path)
             ready = _wait_for_tray_ready(bat_path.parent)
             if ready:
                 logger.info(f"✅ Registered Trays: {entry.name} ready")
+                _log_breadcrumb(f"{entry.name}: ready")
             else:
                 logger.warning(
                     f"⚠️  Registered Trays: {entry.name} readiness unconfirmed "
                     "(timed out or no .fleet.toml port) — continuing"
                 )
+                _log_breadcrumb(
+                    f"{entry.name}: readiness unconfirmed (timed out or no "
+                    ".fleet.toml port) — continuing"
+                )
         except Exception as exc:  # noqa: BLE001
             logger.warning(f"⚠️  Registered Trays: {entry.name} failed to launch: {exc}")
+            _log_breadcrumb(f"{entry.name}: failed to launch: {exc}")
             continue

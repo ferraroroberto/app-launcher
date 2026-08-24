@@ -11,9 +11,19 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 import app.tray.registered_trays as rt_mod
 from app.tray.registered_trays import _fleet_toml_port
 from src.registry import AppEntry, Registry
+
+
+@pytest.fixture(autouse=True)
+def _isolate_boot_breadcrumb_log(monkeypatch, tmp_path: Path):
+    """launch_all() now writes a breadcrumb log under PROJECT_ROOT (#788) —
+    redirect it to tmp_path for every test in this module so a test that
+    doesn't otherwise care about the log can't write into the real repo."""
+    monkeypatch.setattr(rt_mod, "PROJECT_ROOT", tmp_path)
 
 
 def _write_fleet_toml(repo_dir: Path, port_line: str) -> None:
@@ -179,6 +189,82 @@ class TestLaunchRegisteredTrays:
 
         monkeypatch.setattr(rt_mod, "load_registry", _boom)
         rt_mod.launch_all()  # must not raise
+
+
+class TestBootBreadcrumbLog:
+    """Issue #788 — launch_all() runs under pythonw at real boot time (no
+    console, no output redirection), so a persistent log is the only trace
+    of what happened. Redirects PROJECT_ROOT so nothing is written under the
+    real repo during tests."""
+
+    def test_logs_launch_and_ready_on_success(self, monkeypatch, tmp_path: Path):
+        bat_a = tmp_path / "repo-a" / "tray.bat"
+        bat_a.parent.mkdir(parents=True, exist_ok=True)
+        bat_a.write_text("@echo off\r\n", encoding="utf-8")
+        registry = Registry(
+            scan_root=str(tmp_path),
+            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
+        )
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
+
+        rt_mod.launch_all()
+
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "launching 1 autostart entry" in log_text
+        assert "A: launching" in log_text
+        assert str(bat_a) in log_text
+        assert "A: ready" in log_text
+
+    def test_logs_readiness_unconfirmed_on_timeout(self, monkeypatch, tmp_path: Path):
+        bat_a = tmp_path / "repo-a" / "tray.bat"
+        bat_a.parent.mkdir(parents=True, exist_ok=True)
+        bat_a.write_text("@echo off\r\n", encoding="utf-8")
+        registry = Registry(
+            scan_root=str(tmp_path),
+            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
+        )
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
+
+        rt_mod.launch_all()
+
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "A: readiness unconfirmed" in log_text
+
+    def test_logs_spawn_failure(self, monkeypatch, tmp_path: Path):
+        bat_a = tmp_path / "repo-a" / "tray.bat"
+        bat_a.parent.mkdir(parents=True, exist_ok=True)
+        bat_a.write_text("@echo off\r\n", encoding="utf-8")
+        registry = Registry(
+            scan_root=str(tmp_path),
+            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
+        )
+        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+
+        def _boom(bat_path):
+            raise OSError("boom")
+
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", _boom)
+
+        rt_mod.launch_all()
+
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "A: failed to launch: boom" in log_text
+
+    def test_registry_load_failure_still_logs(self, monkeypatch, tmp_path: Path):
+
+        def _boom():
+            raise OSError("disk on fire")
+
+        monkeypatch.setattr(rt_mod, "load_registry", _boom)
+
+        rt_mod.launch_all()
+
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "could not load registry: disk on fire" in log_text
 
 
 class TestWaitForTrayReady:
