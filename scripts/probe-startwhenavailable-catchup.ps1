@@ -77,6 +77,24 @@ function Get-ProbeTask {
     }
 }
 
+function ConvertTo-InvariantDateTime {
+    # State timestamps are written with -Format/.ToString('o'), which is
+    # culture-invariant on write. But ConvertFrom-Json auto-converts an ISO
+    # date-shaped JSON string into a [datetime] object, and PowerShell then
+    # coerces that object back to an invariant-format string ("MM/dd/yyyy
+    # HH:mm:ss") when it is handed to [datetime]::Parse() as a bare string
+    # argument - which parses that string under the AMBIENT culture. On a
+    # dd/MM host, a fire time with day-of-month > 12 makes that coerced
+    # string invalid and Parse throws (#786). Route every read of a
+    # persisted timestamp through here instead of parsing $state.* directly.
+    param([Parameter(Mandatory)]$Value)
+    if ($Value -is [datetime]) { return $Value }
+    return [datetime]::Parse(
+        [string]$Value,
+        [System.Globalization.CultureInfo]::InvariantCulture,
+        [System.Globalization.DateTimeStyles]::RoundtripKind)
+}
+
 function Invoke-Arm {
     if (Get-ProbeTask) {
         Write-Host "Probe task already registered - re-arming (replacing it)."
@@ -130,13 +148,13 @@ function Invoke-Check {
         return
     }
     $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
-    $fireAt = [datetime]::Parse($state.fire_at)
+    $fireAt = ConvertTo-InvariantDateTime $state.fire_at
 
     $runs = @()
     if (Test-Path $LogPath) {
         $runs = Get-Content -LiteralPath $LogPath |
             Where-Object { $_.Trim() } |
-            ForEach-Object { [datetime]::Parse($_.Trim()) }
+            ForEach-Object { ConvertTo-InvariantDateTime $_.Trim() }
     }
 
     # The sign-in that ended the logged-out window. Winlogon 7001 = logon.
@@ -146,7 +164,7 @@ function Invoke-Check {
             LogName      = 'System'
             ProviderName = 'Microsoft-Windows-Winlogon'
             Id           = 7001
-            StartTime    = [datetime]::Parse($state.armed_at)
+            StartTime    = ConvertTo-InvariantDateTime $state.armed_at
         } -ErrorAction Stop | Sort-Object TimeCreated | Select-Object -First 1).TimeCreated
     } catch {
         $logon = $null
