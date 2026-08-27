@@ -452,6 +452,7 @@ app-launcher/
 │   ├── launcher.py             # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py         # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
 │   ├── session_host_scan.py    # pure PTY-protocol byte scanning (OSC title, colour-OSC, bracketed-paste, prompt-title)
+│   ├── session_host_input.py   # server-initiated input-delivery protocol (settle-then-submit, ingest/echo verify, deferred-submit watcher)
 │   ├── session_host_paths.py   # session-host CLAUDE.md-declared path parsing (stale_relevant scoping)
 │   ├── vt_snapshot.py          # headless pyte VT mirror per fullscreen session (reconnect snapshot)
 │   ├── _loopback_http.py       # shared loopback HTTP client base (session/voice/photo/tts)
