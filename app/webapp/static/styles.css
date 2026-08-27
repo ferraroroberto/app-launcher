@@ -1820,6 +1820,44 @@ summary + .opt-group { border-top: 0; }
   display: block;
 }
 
+/* ---------- webauthn / passkey settings ---------- */
+.webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
+.webauthn-devices {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.webauthn-devices li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card-2);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: var(--font-caption);
+}
+.webauthn-devices li span { flex: 1; word-break: break-word; }
+/* Not an .app-item, so it doesn't inherit the tab's
+   .app-item .row-actions .icon-btn treatment — restate it here, same
+   pattern as .lifeos-recap-card .icon-btn. */
+.webauthn-devices .icon-btn {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: var(--icon-title);
+  min-width: 44px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.webauthn-devices .icon-btn:active { background: var(--card-2); color: var(--fg); }
+.webauthn-devices .icon-btn.danger:active { color: var(--danger); }
+
 /* ---------- interactive terminal overlay ---------- */
 /* Stop iOS rubber-band / pull-to-refresh chrome from leaking through
    into the underlying page when the terminal overlay is open. Applied
