@@ -75,19 +75,27 @@ def is_pc_itself(client_host: str, headers: Mapping[str, str]) -> bool:
     return client_host in LOOPBACK_HOSTS and not via_cloudflare(headers)
 
 
-def credential_accepted(cfg: Any, presented: str) -> bool:
-    """Does ``presented`` satisfy either configured credential class?
+def credential_accepted(cfg: Any, presented: str, method: str, path: str) -> bool:
+    """Does ``presented`` satisfy either credential class *for this request*?
 
     Shared by the HTTP middleware and the WebSocket gate so the two cannot
     reach different verdicts on the same config. Callers must first decide
     that a credential is *required* (see :func:`credential_required`) —
-    this answers only whether the one presented is good.
+    this answers only whether the one presented is good here.
+
+    ``method`` / ``path`` are not optional: a minted token may be job-scoped,
+    and scope is per-request. Accepting a match without re-checking scope
+    would let a Stream Deck token — deliberately narrowed to one job's run
+    endpoint — reach anything else that shares this check.
     """
     token = (getattr(cfg, "auth_token", "") or "").strip()
     if presented and token and hmac.compare_digest(presented, token):
         return True
     minted = getattr(cfg, "api_tokens", None) or []
-    return api_tokens.find_match(presented, minted) is not None
+    match = api_tokens.find_match(presented, minted)
+    if match is None:
+        return False
+    return api_tokens.scope_rejection(match, method, path) is None
 
 
 def credential_required(cfg: Any) -> bool:

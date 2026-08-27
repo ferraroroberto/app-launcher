@@ -364,7 +364,11 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         # leave this socket open (see middleware.credential_required).
         if credential_required(cfg):
             presented = websocket.query_params.get("token", "").strip()
-            if not credential_accepted(cfg, presented):
+            # Scope is re-checked against this path, so a job-scoped Stream
+            # Deck token is refused here exactly as it is on HTTP.
+            if not credential_accepted(
+                cfg, presented, "GET", websocket.url.path
+            ):
                 await websocket.close(
                     code=4401, reason="missing or invalid bearer token"
                 )

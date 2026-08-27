@@ -110,6 +110,26 @@ def test_ws_accepts_a_valid_minted_token(minted_only_config, monkeypatch):
     assert reached.get("yes"), "a valid minted token must pass the gate"
 
 
+def test_ws_refuses_a_job_scoped_token(webapp_client, monkeypatch):
+    """A job-scoped token may only fire its own job's run endpoint. Honouring
+    minted tokens here must not hand one the terminal as a side effect."""
+    client, app, _ = webapp_client
+    from app.webapp.routers import sessions as sessions_router
+
+    record, raw = api_tokens.mint_token("deck-button", {"jobs": ["nightly"]})
+    app.state.webapp_config.auth_token = ""
+    app.state.webapp_config.api_tokens = [record]
+    _force_remote_tailnet(monkeypatch)
+    monkeypatch.setattr(sessions_router, "ws_connect", _AllowingConnect)
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(
+            f"/api/claude-code/sessions/some-sid/ws?token={raw}"
+        ) as ws:
+            ws.receive_text()
+    assert excinfo.value.code == 4401
+
+
 def test_ws_still_refuses_a_wrong_legacy_token(webapp_client, monkeypatch):
     """Regression guard: the legacy ``auth_token`` path keeps refusing."""
     client, app, _ = webapp_client
