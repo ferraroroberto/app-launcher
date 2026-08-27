@@ -55,6 +55,52 @@ def via_cloudflare(headers: Mapping[str, str]) -> bool:
     return any(h in headers for h in _CLOUDFLARE_HEADERS)
 
 
+def is_pc_itself(client_host: str, headers: Mapping[str, str]) -> bool:
+    """Is this really the PC talking to itself?
+
+    The loopback bypass exists for the PC's own probes and mirror windows,
+    and it skips *everything* — bearer token, Tailscale check, passkey. What
+    keeps public-tunnel traffic out of it is that cloudflared runs on this
+    host and dials the webapp over loopback, so the request only looks
+    non-loopback once uvicorn's proxy-header handling rewrites the client
+    address from the edge's ``X-Forwarded-For``. That rewrite is an uvicorn
+    default we neither pass explicitly nor pin, and it does not apply at all
+    when the webapp is bound dual-stack and cloudflared resolves ``::1``.
+
+    The edge stamps its own headers on every request it forwards and a
+    caller cannot remove them, so they are the one signal that survives
+    however the client address resolves. A request carrying them is never
+    the PC, whatever it claims to be.
+    """
+    return client_host in LOOPBACK_HOSTS and not via_cloudflare(headers)
+
+
+def credential_accepted(cfg: Any, presented: str) -> bool:
+    """Does ``presented`` satisfy either configured credential class?
+
+    Shared by the HTTP middleware and the WebSocket gate so the two cannot
+    reach different verdicts on the same config. Callers must first decide
+    that a credential is *required* (see :func:`credential_required`) —
+    this answers only whether the one presented is good.
+    """
+    token = (getattr(cfg, "auth_token", "") or "").strip()
+    if presented and token and hmac.compare_digest(presented, token):
+        return True
+    minted = getattr(cfg, "api_tokens", None) or []
+    return api_tokens.find_match(presented, minted) is not None
+
+
+def credential_required(cfg: Any) -> bool:
+    """True when *either* credential class is configured.
+
+    A config holding only minted ``api_tokens`` must not be an open gate —
+    the legacy ``auth_token`` being empty is not "auth is off".
+    """
+    token = (getattr(cfg, "auth_token", "") or "").strip()
+    minted = getattr(cfg, "api_tokens", None) or []
+    return bool(token or minted)
+
+
 def client_in_tailnet(client_host: str, allowlist: List[str]) -> bool:
     """True when the client IP is loopback, in the tailnet, or allowlisted."""
     try:
@@ -230,7 +276,7 @@ def terminal_reachability(request: Request) -> Dict[str, Any]:
     only ever say "Disconnected". Used by ``/api/status``.
     """
     client_host = request.client.host if request.client else ""
-    if client_host in LOOPBACK_HOSTS:
+    if is_pc_itself(client_host, request.headers):
         return {"reachable": True, "reason": "loopback"}
     if via_cloudflare(request.headers):
         return {
@@ -272,7 +318,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         client_host = request.client.host if request.client else ""
-        is_loopback = client_host in LOOPBACK_HOSTS
+        is_loopback = is_pc_itself(client_host, request.headers)
         path = request.url.path
 
         # Terminal endpoints are Tailscale-only (+ passkey for the
@@ -291,7 +337,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         minted = getattr(cfg, "api_tokens", None) or []
         # Auth is enforced when EITHER credential class is configured —
         # a config with only minted tokens must not be an open gate.
-        if (not token and not minted) or is_loopback:
+        if not credential_required(cfg) or is_loopback:
             return await call_next(request)
 
         if path in AUTH_EXEMPT_EXACT or any(
