@@ -1015,6 +1015,17 @@
           <button id="rescanBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
         </div>
         <hr>
+        <div class="webauthn-section">
+          <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Terminal access (passkey)</h3>
+          <p id="webauthnStatus" class="muted small">Checking…</p>
+          <ul id="webauthnDevices" class="webauthn-devices"></ul>
+          <button id="enrollDeviceBtn" type="button" class="button-tint" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
+          <p class="muted small">
+            Open the enrollment window from the tray menu
+            (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
+          </p>
+        </div>
+        <hr>
         <p id="statusReadout" class="muted small"></p>
         <!-- THROWAWAY spike #246 link — token-bearing href set in main.js so a
              full page-load passes the bearer gate over the tunnel. Settings-only
