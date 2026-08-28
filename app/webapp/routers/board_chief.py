@@ -259,15 +259,27 @@ def _reconcile_chief_labels(
     ``board_spawn._safe_list_sessions`` (``port``-only) — callers that need a
     chief-reconciled live list fetch both and call this, or go through
     :func:`_live_sessions_with_chief_label`.
+
+    Also persists the durable chief pointer (:func:`_note_chief_conversation`)
+    here rather than only inside :func:`_live_sessions_with_chief_label` —
+    issue #796: ``GET /api/board`` calls this function directly, bypassing
+    that wrapper, so a chief typed by hand into a plain Coding-tab session
+    (self-healed to ``label="chief"`` by :func:`_reconcile_chief_label` on
+    every poll) never got its conversation id written to
+    ``webapp/chief-pointer.json``. Both callers now record it; the
+    module-level memo in :func:`_note_chief_conversation` keeps this a no-op
+    write on every poll after the first for an unchanged chief.
     """
     named = board.attach_shared_names(live, state_rows)
     shared_names = {
         str(item.get("session_id")): item.get("shared_name") for item in named
     }
-    return [
+    reconciled = [
         _reconcile_chief_label(sess, shared_names.get(str(sess.get("session_id"))))
         for sess in live
     ]
+    _note_chief_conversation(reconciled, state_rows)
+    return reconciled
 
 
 async def _live_sessions_with_chief_label(
@@ -284,7 +296,6 @@ async def _live_sessions_with_chief_label(
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     reconciled = _reconcile_chief_labels(live, state["rows"])
-    _note_chief_conversation(reconciled, state["rows"])
     return reconciled, state
 
 
