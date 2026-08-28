@@ -78,10 +78,18 @@ def is_pc_itself(client_host: str, headers: Mapping[str, str]) -> bool:
 def credential_accepted(cfg: Any, presented: str, method: str, path: str) -> bool:
     """Does ``presented`` satisfy either credential class *for this request*?
 
-    Shared by the HTTP middleware and the WebSocket gate so the two cannot
-    reach different verdicts on the same config. Callers must first decide
-    that a credential is *required* (see :func:`credential_required`) —
-    this answers only whether the one presented is good here.
+    The yes/no form of the gate, for callers that only need the verdict —
+    today the WebSocket handshake in ``app.webapp.routers.sessions``, which
+    can do nothing with a reason but close the socket.
+    :meth:`BearerTokenMiddleware.dispatch` deliberately keeps its own
+    longer-form version of these same steps: it has to tell a scope
+    rejection (403, with the reason in the body) apart from a bad
+    credential (401), and it stamps the matched token onto the request.
+    Keep the two in step — this is the accept rule they must agree on.
+
+    Callers must first decide that a credential is *required* (see
+    :func:`credential_required`) — this answers only whether the one
+    presented is good here.
 
     ``method`` / ``path`` are not optional: a minted token may be job-scoped,
     and scope is per-request. Accepting a match without re-checking scope
@@ -345,6 +353,9 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         minted = getattr(cfg, "api_tokens", None) or []
         # Auth is enforced when EITHER credential class is configured —
         # a config with only minted tokens must not be an open gate.
+        # The accept rule below is the reporting form of
+        # `credential_accepted`, which the WS gate uses; changing one means
+        # changing both.
         if not credential_required(cfg) or is_loopback:
             return await call_next(request)
 
