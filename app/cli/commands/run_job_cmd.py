@@ -60,6 +60,7 @@ from src.jobs import (
     new_run_id,
     prune_runs,
     runs_dir,
+    seed_run_meta,
     write_run_json,
 )
 from src.jobs_argv import compose_argv
@@ -183,19 +184,18 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     stamped = datetime.now().isoformat(timespec="seconds")
     write_run_json(
         skip_dir,
-        run_id=skip_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger=args.trigger,
-        script_path=job.script_path,
-        args=job.args,
-        started_at=stamped,
-        finished_at=stamped,
-        status="skipped",
-        note="cooldown",
-        cooldown_seconds=cooldown_seconds,
-        cooldown_remaining_seconds=remaining,
-        cooldown_anchor_run_id=anchor_id or None,
+        **seed_run_meta(
+            job,
+            args.trigger,
+            stamped,
+            run_id=skip_dir.name,
+            finished_at=stamped,
+            status="skipped",
+            note="cooldown",
+            cooldown_seconds=cooldown_seconds,
+            cooldown_remaining_seconds=remaining,
+            cooldown_anchor_run_id=anchor_id or None,
+        ),
     )
     prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
     invalidate_stats_cache(job.id)
@@ -254,18 +254,17 @@ def _finalize_mutex_queue(
     run_dir = new_run_dir(job.id, new_run_id())
     write_run_json(
         run_dir,
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger=args.trigger,
-        trigger_source="schtasks",
-        script_path=job.script_path,
-        args=job.args,
-        started_at=datetime.now().isoformat(timespec="seconds"),
-        status="queued",
-        mutex_group=job.mutex_group,
-        mutex_blocked_by=holder.id,
-        **({"params": values} if values else {}),
+        **seed_run_meta(
+            job,
+            args.trigger,
+            datetime.now().isoformat(timespec="seconds"),
+            run_id=run_dir.name,
+            trigger_source="schtasks",
+            status="queued",
+            mutex_group=job.mutex_group,
+            mutex_blocked_by=holder.id,
+            **({"params": values} if values else {}),
+        ),
     )
     enqueue_mutex(
         job.mutex_group,
@@ -300,17 +299,16 @@ def _record_failed_run(
     stamped = datetime.now().isoformat(timespec="seconds")
     write_run_json(
         run_dir,
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger=args.trigger,
-        script_path=job.script_path,
-        args=job.args,
-        started_at=stamped,
-        finished_at=stamped,
-        status="failed",
-        exit_code=-1,
-        note=note,
+        **seed_run_meta(
+            job,
+            args.trigger,
+            stamped,
+            run_id=run_dir.name,
+            finished_at=stamped,
+            status="failed",
+            exit_code=-1,
+            note=note,
+        ),
     )
     prune_runs(job.id, keep=MAX_RUNS_PER_JOB)
     invalidate_stats_cache(job.id)
@@ -712,15 +710,8 @@ class RunJobCommand(BaseCommand):
 
         started_at = datetime.now().isoformat(timespec="seconds")
         dry_run = bool(getattr(args, "dry_run", False))
-        run_meta: Dict[str, Any] = dict(
-            run_id=run_dir.name,
-            job_id=job.id,
-            name=job.name,
-            trigger=args.trigger,
-            script_path=job.script_path,
-            args=job.args,
-            started_at=started_at,
-            status="running",
+        run_meta: Dict[str, Any] = seed_run_meta(
+            job, args.trigger, started_at, run_id=run_dir.name, status="running"
         )
         # Persist the typed-parameter payload (issue #67) so the history
         # row can replay it and the meta line can show the values back.

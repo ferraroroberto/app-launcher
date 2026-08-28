@@ -177,6 +177,39 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
     return None
 
 
+def seed_run_meta(
+    job: Job,
+    trigger: str,
+    started_at: str,
+    *,
+    run_id: str,
+    **extra: Any,
+) -> Dict[str, Any]:
+    """Build the common seed fields for a fresh ``run.json`` record.
+
+    Every real fire path (manual / webhook / scheduled / chain / dry-run)
+    writes the same seven fields — ``run_id`` / ``job_id`` / ``name`` /
+    ``trigger`` / ``script_path`` / ``args`` / ``started_at`` — before
+    layering on its own status/provenance fields. Hand-copied in 8 places
+    across 3 modules before issue #794; this is the one place that shape
+    lives now. ``run_id`` is required (the caller already created the run
+    dir and knows its name); ``**extra`` merges on top, so a caller can
+    pass e.g. ``status="running"`` or ``chained_from=upstream_id`` directly
+    into the returned dict.
+    """
+    meta: Dict[str, Any] = dict(
+        run_id=run_id,
+        job_id=job.id,
+        name=job.name,
+        trigger=trigger,
+        script_path=job.script_path,
+        args=job.args,
+        started_at=started_at,
+    )
+    meta.update(extra)
+    return meta
+
+
 def dispatch_chain_run(
     jobs: List[Job], downstream: Job, upstream_id: str
 ) -> Dict[str, Any]:
@@ -197,15 +230,8 @@ def dispatch_chain_run(
     run_dir = new_run_dir(downstream.id, new_run_id())
     started_at = datetime.now().isoformat(timespec="seconds")
     trigger = chain_trigger(upstream_id)
-    meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=downstream.id,
-        name=downstream.name,
-        trigger=trigger,
-        script_path=downstream.script_path,
-        args=downstream.args,
-        started_at=started_at,
-        chained_from=upstream_id,
+    meta = seed_run_meta(
+        downstream, trigger, started_at, run_id=run_dir.name, chained_from=upstream_id
     )
     if holder is not None:
         meta["status"] = "queued"
@@ -232,12 +258,21 @@ def dispatch_chain_run(
     try:
         spawn_run_job_detached(downstream.id, run_dir.name, trigger, None)
     except OSError as exc:
-        write_run_json(
-            run_dir,
+        # Reflect the failure in the *returned* meta too, not just on disk
+        # (issue #794) — a caller reading the return value used to see a
+        # stale status="pending" even though run.json already said "failed".
+        meta.update(
             finished_at=datetime.now().isoformat(timespec="seconds"),
             exit_code=-1,
             status="failed",
             chain_spawn_error=str(exc),
+        )
+        write_run_json(
+            run_dir,
+            finished_at=meta["finished_at"],
+            exit_code=meta["exit_code"],
+            status=meta["status"],
+            chain_spawn_error=meta["chain_spawn_error"],
         )
         logger.warning(
             f"⚠️  chain spawn failed {downstream.id}/{run_dir.name}: {exc}"
