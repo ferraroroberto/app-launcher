@@ -405,7 +405,15 @@ def drain_mutex_queue(
     fn = spawn or spawn_run_job_detached
     try:
         fn(job_id, run_id, trigger, params)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError as well as OSError, for the same reason `admit_and_spawn`
+        # catches both: a refused argv (src.jobs_argv.reject_cmd_unsafe) is
+        # "this fire produced no child", not a bug to unwind through. It
+        # reaches this path only when the fire was *queued* behind a mutex
+        # holder, because the queued branch enqueues without ever attempting
+        # a spawn — so the refusal lands here at drain time instead. Letting
+        # it escape would surface it wherever the drain is called from: the
+        # kill route and the reaper, neither of which is the fire's caller.
         logger.error(
             f"❌ mutex queue {group!r}: spawn failed for {job_id}/{run_id}: {exc}"
         )

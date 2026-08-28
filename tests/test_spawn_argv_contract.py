@@ -132,3 +132,28 @@ class TestRefusalReachesTheRunRecord:
         )
         assert record["status"] == "failed", "no orphaned pending record"
         assert record["spawn_error"] == meta["spawn_error"]
+
+    def test_refused_param_on_the_queued_path_does_not_escape_the_drain(
+        self, isolated_jobs
+    ):
+        """The mutex-queued branch enqueues without attempting a spawn, so a
+        refused value reaches `spawn_run_job_detached` only at drain time —
+        called by the kill route and the reaper, neither of which fired it."""
+        from src import jobs_queue as jobs_queue_mod
+        from src.jobs_config import Job
+
+        holder = Job(id="holder", name="Holder", script_path="C:/h.py",
+                     mutex_group="g")
+        queued = Job(id="queued", name="Queued", script_path="C:/q.py",
+                     mutex_group="g")
+        from tests.test_jobs_admit_and_spawn import _seed_run
+
+        _seed_run(isolated_jobs, "holder", "run-holder", status="running")
+
+        meta = jobs_queue_mod.admit_and_spawn(
+            [holder, queued], queued, "webhook", params={"branch": "a&b"}
+        )
+        assert meta is not None and meta["status"] == "queued"
+
+        # No exception, and the drain reports "nothing spawned".
+        assert jobs_queue_mod.drain_mutex_queue("g") is None
