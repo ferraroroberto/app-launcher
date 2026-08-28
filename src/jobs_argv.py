@@ -34,6 +34,40 @@ from src.jobs_config import Job, Param
 _INT_RE = re.compile(r"^-?\d+$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+# Characters ``cmd.exe`` re-interprets when it tokenizes a command line a
+# second time. Any argv that passes through cmd (a ``.bat`` dispatch, or the
+# ``cmd /c start`` re-parent in ``src.jobs_schtasks``) loses Python's
+# ``subprocess.list2cmdline`` quoting guarantees at that hop: cmd does not
+# honour the ``\"`` escape, so each one flips its quote state and the rest of
+# the value lands outside quoting, where these characters are operators
+# rather than text.
+#
+# Values reaching those hops are not all locally authored — a webhook-target
+# job maps provider payload fields straight into string params
+# (``src.jobs_webhook.resolve_mapping``), and the HMAC proves only who sent
+# the payload, not what is inside it. Refusing loudly here is also strictly
+# better than today's silent outcome for an ordinary value that happens to
+# contain one (a URL query string, "R&D"): the command line splits mid-value
+# and the executor fails to parse its own arguments.
+#
+# Single source for both hops (issue #409 established it for ``.bat``).
+CMD_UNSAFE_CHARS = frozenset('"&|^<>')
+
+
+def reject_cmd_unsafe(values: List[str], what: str) -> None:
+    """Raise ``ValueError`` if any of ``values`` can't survive cmd.exe.
+
+    ``what`` names the caller's surface so the message says which command
+    line was refused rather than just that something was.
+    """
+    for value in values:
+        bad = CMD_UNSAFE_CHARS.intersection(value)
+        if bad:
+            raise ValueError(
+                f"{what} contains character(s) that cannot be passed through "
+                f"cmd.exe safely: {''.join(sorted(bad))!r} in {value!r}"
+            )
+
 
 def _coerce(param: Param, raw_value: Any) -> Any:
     """Type-check ``raw_value`` against ``param.kind`` and return it.

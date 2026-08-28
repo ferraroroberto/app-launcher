@@ -15,7 +15,6 @@ for its own webhook/run-store split.
 from __future__ import annotations
 
 import asyncio
-import hmac
 import json
 import logging
 import os
@@ -42,6 +41,8 @@ from src.webauthn_gate import WebAuthnGate
 from app.webapp.middleware import (
     LOOPBACK_HOSTS,
     client_in_tailnet,
+    credential_accepted,
+    credential_required,
     via_cloudflare,
 )
 from app.webapp.routers import voice_ocr_tts
@@ -339,7 +340,11 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     # "Disconnected" (closing before accept just fails the handshake).
     await websocket.accept()
 
-    if client_host not in LOOPBACK_HOSTS:
+    # The edge's own headers override a loopback-looking client address:
+    # cloudflared dials this webapp over loopback, so "not loopback" is only
+    # true once uvicorn rewrites the address from X-Forwarded-For. See
+    # middleware.is_pc_itself for why that rewrite is not something to lean on.
+    if client_host not in LOOPBACK_HOSTS or via_cloudflare(websocket.headers):
         if via_cloudflare(websocket.headers):
             await websocket.close(
                 code=4403,
@@ -353,10 +358,17 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
                 code=4403, reason="terminal is Tailscale-only"
             )
             return
-        token = (cfg.auth_token or "").strip()
-        if token:
+        # Both credential classes, via the same helper the HTTP middleware
+        # uses — a minted full-scope token is documented to behave like the
+        # legacy one, and a config carrying only minted tokens must not
+        # leave this socket open (see middleware.credential_required).
+        if credential_required(cfg):
             presented = websocket.query_params.get("token", "").strip()
-            if not (presented and hmac.compare_digest(presented, token)):
+            # Scope is re-checked against this path, so a job-scoped Stream
+            # Deck token is refused here exactly as it is on HTTP.
+            if not credential_accepted(
+                cfg, presented, "GET", websocket.url.path
+            ):
                 await websocket.close(
                     code=4401, reason="missing or invalid bearer token"
                 )

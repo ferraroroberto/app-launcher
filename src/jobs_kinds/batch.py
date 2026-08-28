@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from src.jobs_argv import reject_cmd_unsafe
 from src.jobs_config import Job
 from src.jobs_kinds.base import Problem, require_script
 
@@ -28,7 +29,11 @@ _BAT_VENV_RE = re.compile(
 # job can map an unsanitized payload field straight into a string param
 # value (src.jobs_webhook.resolve_mapping), so this has to be enforced
 # here, not just at the UI layer.
-_CMD_INJECTION_CHARS = frozenset('"&|^<>')
+#
+# The character set and the check live in ``src.jobs_argv`` because this is
+# not the only hop that hands argv to cmd — ``src.jobs_schtasks`` re-parents
+# the executor through ``cmd /c start`` one layer up, and two copies of a
+# contract like this drift apart silently.
 
 
 class BatchKind:
@@ -65,12 +70,6 @@ class BatchKind:
         self, job: Job, tail: List[str], param_env: Dict[str, str], run_dir: Path
     ) -> Tuple[List[str], Path, Dict[str, str]]:
         script = require_script(job, "BAT file")
-        for value in tail:
-            bad = _CMD_INJECTION_CHARS.intersection(value)
-            if bad:
-                raise ValueError(
-                    "batch job argument contains disallowed character(s) "
-                    f"{''.join(sorted(bad))!r}: {value!r}"
-                )
+        reject_cmd_unsafe(tail, "batch job argument")
         argv = ["cmd.exe", "/c", str(script)] + tail
         return argv, script.parent, dict(param_env)

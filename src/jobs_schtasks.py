@@ -39,6 +39,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from src.jobs_argv import reject_cmd_unsafe
 from src.jobs_config import Job, Schedule
 from src.subprocess_flags import NO_WINDOW
 
@@ -265,6 +266,23 @@ def spawn_run_job_detached(
     executor spawns the child with ``JOB_DRY_RUN=1`` and stamps the run
     record. Mutex queue / chain callers never set it.
     """
+    # This argv is tokenized twice — once by us, once by the `cmd /c start`
+    # hop below — and cmd does not honour Python's argv quoting, so a value
+    # can land outside quoting where these characters are operators. Same
+    # contract `src.jobs_kinds.batch` enforces for `.bat` argv (issue #409),
+    # applied here at the earlier hop and *before* the command line is
+    # assembled, so a refused value never reaches a shell at all.
+    #
+    # Checked per param key/value rather than on the encoded blob: the JSON's
+    # own structural quotes are ours, balanced, and fine — what must not get
+    # through is a quote or operator inside a *value*, which is the part a
+    # webhook payload can reach (`src.jobs_webhook.resolve_mapping`).
+    caller_supplied = [job_id, run_id, trigger]
+    for key, value in (params or {}).items():
+        caller_supplied.append(str(key))
+        caller_supplied.append(value if isinstance(value, str) else str(value))
+    reject_cmd_unsafe(caller_supplied, "run-job argument")
+
     argv = [
         _launcher_python(),
         _launcher_py(),

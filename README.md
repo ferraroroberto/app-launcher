@@ -384,8 +384,8 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 .\.venv\Scripts\python.exe scripts\gen_token.py --clear    # disable
 ```
 
-- Loopback callers still bypass.
-- Remote (tailnet, Cloudflare) callers must present `Authorization: Bearer <token>` *or* `?token=…`.
+- Loopback callers still bypass — *unless* the request carries Cloudflare's own edge headers (#793). cloudflared runs on this PC and dials the webapp over loopback, so a tunnelled request only looks remote once uvicorn rewrites the client address from `X-Forwarded-For`; the edge headers are the signal that survives however that address resolves.
+- Remote (tailnet, Cloudflare) callers must present `Authorization: Bearer <token>` *or* `?token=…`. This includes the terminal WebSocket, which re-applies the same gate by hand (Starlette middleware never sees a WS handshake) — a full-scope minted token works there exactly as it does on HTTP, and a job-scoped one is refused there exactly as it is on HTTP.
 - The tray menu's **Copy …** items bake the token into the copied URL automatically. Paste once on the phone, the page stashes it in `localStorage`, strips it from the visible URL, you're in.
 - **Settings → API tokens** (issue #72) mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
 
