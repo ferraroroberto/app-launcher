@@ -593,6 +593,7 @@ function clearPreflightProblems() {
   if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = true;
   if (els.jobSaveBtn) {
     els.jobSaveBtn.textContent = dialogTargetId ? 'Save and verify' : 'Add and verify';
+    els.jobSaveBtn.hidden = false;
   }
 }
 
@@ -716,7 +717,10 @@ async function postJobPayload(payload) {
     // dialog open, show the warnings, and offer "Save anyway".
     if (res && res.saved === false) {
       renderPreflightProblems(res.warnings || []);
+      // Modal contract (#545): exactly one full-width primary action —
+      // swap the submit button out for "Save anyway" rather than stacking both.
       if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = false;
+      if (els.jobSaveBtn) els.jobSaveBtn.hidden = true;
       return;
     }
     if (els.jobDialog.close) els.jobDialog.close();

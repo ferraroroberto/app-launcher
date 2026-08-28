@@ -13,7 +13,7 @@ import argparse
 import logging
 import sys
 
-from src import attach_app_log_handler, load_app_config
+from src import load_app_config
 
 from .commands import COMMANDS, get_command
 
@@ -27,7 +27,6 @@ def _configure_logging(level_name: str) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    attach_app_log_handler()
     logging.getLogger().setLevel(level)
 
 

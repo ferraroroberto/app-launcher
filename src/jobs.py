@@ -58,6 +58,7 @@ from src.jobs_history import (
 )
 from src.jobs_queue import (
     JOBS_QUEUE_PATH,
+    admit_and_spawn,
     dispatch_chain_run,
     drain_mutex_queue,
     enqueue_mutex,
@@ -65,6 +66,7 @@ from src.jobs_queue import (
     peek_mutex_queue,
     pop_mutex_entry,
     remove_queue_entry,
+    seed_run_meta,
 )
 from src.jobs_coverage import (
     coverage_for_job,
@@ -141,6 +143,8 @@ __all__ = [
     "peek_mutex_queue",
     "remove_queue_entry",
     "mutex_collision",
+    "seed_run_meta",
+    "admit_and_spawn",
     "dispatch_chain_run",
     "drain_mutex_queue",
     "run_stats",

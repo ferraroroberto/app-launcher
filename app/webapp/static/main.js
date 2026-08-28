@@ -20,7 +20,7 @@ import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
 import { openTerminal, wireTerminal } from './terminal.js';
-import { fetchWebauthnStatus, writeTerminalToken } from './webauthn.js';
+import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
@@ -284,6 +284,7 @@ wireLifeOs();
 wireBoard();
 wireSystemMap();
 wireTerminal();
+wireWebauthn();
 wireSettings();
 wireTokens();
 wireTheme();

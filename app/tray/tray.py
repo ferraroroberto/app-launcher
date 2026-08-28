@@ -65,9 +65,22 @@ WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
 # The loopback PTY session-host. It is a *linked-but-independent* child
 # (project-scaffolding#35): it hosts the user's Coding PTYs and MUST survive a
 # `tray.bat --restart`. So it is spawned detached (re-parented out of the tray
-# subtree) and adopted on start by this port, and :8446 is excluded from
-# tray.bat's reclaim sweep.
-SESSION_HOST_PORT = 8446
+# subtree) and adopted on start by its own port, and that port is excluded
+# from tray.bat's reclaim sweep. 8446 is only the *default* — the real,
+# user-editable value is ``load_webapp_config().session_host_port``
+# (README.md "session_host_port"); it used to be hardcoded here as a third
+# definition alongside ``src/webapp_config.py``'s ``DEFAULT_SESSION_HOST_PORT``
+# and ``app/session_host/server.py``'s ``DEFAULT_PORT``, so setting the knob
+# left the tray adopting/reclaiming the wrong port and silently spawning a
+# duplicate session-host on every start (issue #796). Always call
+# :func:`_session_host_port` fresh rather than caching a module constant.
+
+
+def _session_host_port() -> int:
+    """The configured session-host port — read fresh, never cached, so a
+    change to the ``session_host_port`` setting takes effect on the tray's
+    very next start/stop of the process (issue #796)."""
+    return load_webapp_config().session_host_port
 
 
 def _read_tunnel_hostname(config_path: Path) -> Optional[str]:
@@ -199,13 +212,14 @@ class TrayApp:
         DETACHED via `cmd /c start` — re-parented out of this tray's process
         subtree so `taskkill /T` cannot reach it. (DETACHED_PROCESS /
         CREATE_NEW_PROCESS_GROUP do NOT escape /T — it walks the parent-child PID
-        tree; only re-parenting does. Verified empirically.) :8446 is also
+        tree; only re-parenting does. Verified empirically.) Its port is also
         excluded from tray.bat's reclaim sweep. We keep no Popen handle — the
         session-host is managed by port identity (adopt on start, reclaim on
         Quit), not by parentage.
         """
-        if registered_trays.port_listening(SESSION_HOST_PORT):
-            logger.info(f"🔗 Adopting running session-host on :{SESSION_HOST_PORT}")
+        port = _session_host_port()
+        if registered_trays.port_listening(port):
+            logger.info(f"🔗 Adopting running session-host on :{port}")
             return
         # `start` launches the child and cmd exits, orphaning it out of this
         # tray's subtree; /b keeps it windowless (the pythonw child is windowless
@@ -226,7 +240,7 @@ class TrayApp:
             logger.warning(f"⚠️  session-host failed to launch: {exc}")
             _notify("Session host", f"Failed to start: {exc}")
             return
-        logger.info(f"🧩 session-host spawned detached on :{SESSION_HOST_PORT}")
+        logger.info(f"🧩 session-host spawned detached on :{port}")
 
     def _stop_session_host(self) -> None:
         """Stop the session-host on an explicit Quit. It is detached (no Popen
@@ -241,29 +255,30 @@ class TrayApp:
         Same resolved path as tray.bat's TRAY_PS (#433: this used to point at
         a nonexistent repo-local path and silently no-op).
         """
-        if not registered_trays.port_listening(SESSION_HOST_PORT):
+        port = _session_host_port()
+        if not registered_trays.port_listening(port):
             return
         tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
         if not tray_ps.exists():
-            msg = f"missing shared tray helper {tray_ps} — session-host on :{SESSION_HOST_PORT} left running"
+            msg = f"missing shared tray helper {tray_ps} — session-host on :{port} left running"
             logger.warning(f"⚠️  {msg}")
             _notify("Session host stop failed", msg)
             return
         try:
-            logger.info(f"🛑 Stopping session-host on :{SESSION_HOST_PORT}")
+            logger.info(f"🛑 Stopping session-host on :{port}")
             result = subprocess.run(
                 [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
                  "-NoProfile", "-NonInteractive", "-File",
                  str(tray_ps),
                  "reclaim",
                  "-VenvDir", str(PROJECT_ROOT / ".venv"),
-                 "-Ports", str(SESSION_HOST_PORT)],
+                 "-Ports", str(port)],
                 creationflags=NO_WINDOW,
                 timeout=10,
                 check=False,
             )
             if result.returncode != 0:
-                msg = f"tray_lifecycle.ps1 reclaim exited {result.returncode} — session-host on :{SESSION_HOST_PORT} may still be running"
+                msg = f"tray_lifecycle.ps1 reclaim exited {result.returncode} — session-host on :{port} may still be running"
                 logger.warning(f"⚠️  {msg}")
                 _notify("Session host stop failed", msg)
         except Exception as exc:  # noqa: BLE001

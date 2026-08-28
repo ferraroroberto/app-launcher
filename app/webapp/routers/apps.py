@@ -399,7 +399,11 @@ async def stop_app_instance(app_id: str, pid: int) -> Dict[str, Any]:
 # Health for tunnel apps — probed server-side, behind a short TTL cache
 # so the 4 s /api/apps poll doesn't hammer the sibling tunnels.
 _HEALTH_TTL_SECONDS = 5.0
-_health_cache: Dict[str, Tuple[float, str]] = {}
+# Re-probe interval grows with consecutive failures (5s -> 30s -> 120s) so a
+# down tunnel isn't re-dialled at the healthy-path cadence for as long as any
+# browser tab keeps polling; resets to the base TTL on the first success.
+_HEALTH_RETRY_TTLS: Tuple[float, ...] = (_HEALTH_TTL_SECONDS, 30.0, 120.0)
+_health_cache: Dict[str, Tuple[float, str, int]] = {}
 _health_session = requests.Session()
 _health_session.verify = False
 try:  # silence the self-signed-cert warning on sibling probes
@@ -420,19 +424,29 @@ def _probe_health_sync(tunnel_url: str) -> str:
         return "down"
 
 
+def _health_ttl_for(consecutive_failures: int) -> float:
+    """TTL for the next re-probe, escalating with consecutive failures."""
+    index = min(consecutive_failures, len(_HEALTH_RETRY_TTLS) - 1)
+    return _HEALTH_RETRY_TTLS[index]
+
+
 async def _health_for(urls: List[str]) -> Dict[str, str]:
-    """Health per url, served from a short TTL cache; cache misses are
-    probed concurrently in worker threads so the event loop never blocks."""
+    """Health per url, served from a failure-aware TTL cache; cache misses
+    are probed concurrently in worker threads so the event loop never
+    blocks. A failing url backs off (5s -> 30s -> 120s) instead of being
+    re-probed at the healthy-path cadence; the first success resets it."""
     now = time.time()
-    stale = [
-        u
-        for u in urls
-        if now - _health_cache.get(u, (0.0, ""))[0] > _HEALTH_TTL_SECONDS
-    ]
+    stale = []
+    for u in urls:
+        ts, _status, failures = _health_cache.get(u, (0.0, "", 0))
+        if now - ts > _health_ttl_for(failures):
+            stale.append(u)
     if stale:
         results = await asyncio.gather(
             *(asyncio.to_thread(_probe_health_sync, u) for u in stale)
         )
         for url, status in zip(stale, results):
-            _health_cache[url] = (now, status)
-    return {u: _health_cache.get(u, (0.0, "down"))[1] for u in urls}
+            _, _prev_status, prev_failures = _health_cache.get(url, (0.0, "", 0))
+            failures = 0 if status == "up" else prev_failures + 1
+            _health_cache[url] = (now, status, failures)
+    return {u: _health_cache.get(u, (0.0, "down", 0))[1] for u in urls}

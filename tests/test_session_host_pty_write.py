@@ -230,16 +230,20 @@ async def test_concurrent_write_cannot_land_between_paste_and_its_cr(monkeypatch
     in that gap turns the CR into a literal newline inside another user's
     message, so the lock has to span the whole sequence, not just each
     ``write()`` call."""
-    import src.session_host as sh
+    # The settle/ingest constants and submit_input() itself live in
+    # src/session_host_input.py (issue #798's extraction) — patch them there,
+    # since that's the module whose globals submit_input()'s code actually
+    # reads at call time; session_host.py's copies are just a re-export.
+    import src.session_host_input as sh_input
 
     # Keep the settle wait short, and make it actually *settle*: since #763 a
     # bulk payload that never goes quiet no longer gets a CR at the cap at all
     # (it is handed to the deferred watcher), so this test has to drive the
     # settled path to have a CR to assert the lock spans.
-    monkeypatch.setattr(sh, "_BULK_FLOOR_MS", 50)
-    monkeypatch.setattr(sh, "_BULK_QUIET_MS", 50)
-    monkeypatch.setattr(sh, "_BULK_CAP_MS", 2000)
-    monkeypatch.setattr(sh, "_INGEST_CAP_MS", 3000)
+    monkeypatch.setattr(sh_input, "_BULK_FLOOR_MS", 50)
+    monkeypatch.setattr(sh_input, "_BULK_QUIET_MS", 50)
+    monkeypatch.setattr(sh_input, "_BULK_CAP_MS", 2000)
+    monkeypatch.setattr(sh_input, "_INGEST_CAP_MS", 3000)
 
     loop = asyncio.get_running_loop()
     session, calls = _slow_write_session(loop, per_write_s=0.001)

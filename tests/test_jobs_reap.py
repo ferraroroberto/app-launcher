@@ -355,6 +355,121 @@ class TestFinalizeDeadRuns:
         ]
 
 
+# --------------------------------------- pid-less "pending" aging (issue #796)
+
+
+class TestReapPidlessPending:
+    def test_recent_pidless_pending_left_alone(self, isolated_jobs, monkeypatch):
+        """Inside the grace window — the tiny gap between the pre-created
+        pending record and the executor's own pid write — must not be
+        mistaken for a dead executor."""
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="pending",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+        assert jobs_reap_mod.finalize_dead_runs(job) == []
+        record = jobs_mod.read_run(isolated_jobs / "solo" / "20260101T000000")
+        assert record["status"] == "pending"
+
+    def test_stale_pidless_pending_is_reaped_as_never_started(
+        self, isolated_jobs, monkeypatch
+    ):
+        """The literal issue #796 scenario: the executor died before ever
+        persisting a pid (unknown job id / bad --params early-exit), so the
+        pre-created "pending" record never got one. Past the grace period
+        it must be finalised, not left to wedge its mutex group forever."""
+        started = (
+            datetime.now()
+            - timedelta(seconds=jobs_reap_mod._PENDING_NO_PID_GRACE_SECONDS + 5)
+        ).isoformat(timespec="seconds")
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="pending", started_at=started,
+        )
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+        reaped = jobs_reap_mod.finalize_dead_runs(job)
+
+        assert len(reaped) == 1
+        record = reaped[0]
+        assert record["status"] == "failed"
+        assert record["reaped"] is True
+        assert record["never_started"] is True
+        assert record["end_time_unknown"] is True
+        on_disk = jobs_mod.read_run(isolated_jobs / "solo" / "20260101T000000")
+        assert on_disk["status"] == "failed"
+
+    def test_stale_pidless_running_is_left_alone(self, isolated_jobs, monkeypatch):
+        """Only "pending" is eligible — a pid-less "running" record is an
+        unexpected shape (the same write that flips to "running" always
+        sets the pid), so this must not guess-reap it."""
+        started = (
+            datetime.now()
+            - timedelta(seconds=jobs_reap_mod._PENDING_NO_PID_GRACE_SECONDS + 5)
+        ).isoformat(timespec="seconds")
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="running", started_at=started,
+        )
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+        assert jobs_reap_mod.finalize_dead_runs(job) == []
+
+    def test_stale_pidless_pending_unwedges_mutex_group(
+        self, isolated_jobs, monkeypatch
+    ):
+        started = (
+            datetime.now()
+            - timedelta(seconds=jobs_reap_mod._PENDING_NO_PID_GRACE_SECONDS + 5)
+        ).isoformat(timespec="seconds")
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="pending", mutex_group="chrome", started_at=started,
+        )
+        _seed_run(
+            isolated_jobs, "sibling", "20260101T000010",
+            status="queued",
+            started_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        jobs_mod.enqueue_mutex("chrome", {
+            "job_id": "sibling", "run_id": "20260101T000010", "trigger": "manual",
+        })
+        spawn = MagicMock(return_value=99999)
+        monkeypatch.setattr(jobs_queue_mod, "spawn_run_job_detached", spawn)
+        job = Job(
+            id="solo", name="Solo", script_path="C:/nowhere/x.py",
+            mutex_group="chrome",
+        )
+
+        reaped = jobs_reap_mod.reap_stranded_runs(job)
+
+        assert len(reaped) == 1
+        assert spawn.called
+        assert jobs_mod.peek_mutex_queue("chrome") == []
+
+    def test_fires_failure_alert(self, isolated_jobs, monkeypatch):
+        started = (
+            datetime.now()
+            - timedelta(seconds=jobs_reap_mod._PENDING_NO_PID_GRACE_SECONDS + 5)
+        ).isoformat(timespec="seconds")
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="pending", started_at=started,
+        )
+        spy = MagicMock()
+        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+        jobs_reap_mod.finalize_dead_runs(job)
+
+        spy.assert_called_once()
+        args, kwargs = spy.call_args
+        assert args[1] is job
+        assert kwargs["status"] == "failed"
+        assert kwargs["reaped"] is True
+
+
 # -------------------------------------------------------------- reap_stranded_runs
 
 

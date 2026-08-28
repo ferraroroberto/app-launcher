@@ -394,4 +394,7 @@ export const els = {
   terminalOcrThumbs: document.getElementById('terminalOcrThumbs'),
   terminalOcrExtract: document.getElementById('terminalOcrExtract'),
 
+  webauthnStatus: document.getElementById('webauthnStatus'),
+  webauthnDevices: document.getElementById('webauthnDevices'),
+  enrollDeviceBtn: document.getElementById('enrollDeviceBtn'),
 };

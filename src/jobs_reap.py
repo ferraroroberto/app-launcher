@@ -103,15 +103,86 @@ def _evidence_finished_at(
     return finished.isoformat(timespec="seconds"), duration
 
 
+# A "pending" record's pid should land within seconds of the executor
+# spawning — `write_run_json(run_dir, pid=proc.pid, ...)` in
+# `app/cli/commands/run_job_cmd.py` runs right after `Popen` returns. But
+# two early-exit paths there (unknown job id, bad `--params`) return
+# *before* that write, and `spawn_run_job_detached`'s
+# `subprocess.Popen(["cmd", "/c", "start", ...])` returns cmd.exe's own
+# transient pid and exits 0 whether or not the executor ever launched, so
+# nothing else notices either. A "pending" record still pid-less after
+# this many seconds is provably never going to get one — age it out
+# rather than leaving it to wedge its mutex group forever (issue #796).
+_PENDING_NO_PID_GRACE_SECONDS = 120.0
+
+
+def _reap_pidless_pending(
+    job: Job, record: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Finalise a ``pending`` record that aged past
+    :data:`_PENDING_NO_PID_GRACE_SECONDS` without ever getting a pid.
+
+    Only ``pending`` is in scope — a ``running`` record always has a pid
+    by construction (the same write that flips status to ``running`` sets
+    it), so a pid-less ``running`` record is an unexpected shape this
+    deliberately leaves alone rather than reaping on a guess.
+    """
+    if record.get("status") != "pending":
+        return None
+    started_at = record.get("started_at")
+    if not isinstance(started_at, str):
+        return None
+    try:
+        age = (datetime.now() - datetime.fromisoformat(started_at)).total_seconds()
+    except ValueError:
+        return None
+    if age < _PENDING_NO_PID_GRACE_SECONDS:
+        return None
+
+    run_id = record.get("run_id")
+    if not run_id:
+        return None
+    run_dir = runs_dir(job.id) / str(run_id)
+
+    write_run_json(
+        run_dir,
+        status="failed",
+        reaped=True,
+        never_started=True,
+        end_time_unknown=True,
+    )
+    invalidate_stats_cache(job.id)
+    logger.info(
+        f"🧟 reaped stranded run {job.id}/{run_id} "
+        f"(pending {age:.0f}s with no pid ever recorded — never started)"
+    )
+
+    try:
+        cfg = load_webapp_config()
+    except Exception as exc:  # noqa: BLE001 — reap must keep going regardless
+        logger.warning(f"⚠️  reap notify: could not load webapp config: {exc}")
+    else:
+        notify_failure(
+            cfg, job, run_dir,
+            status="failed",
+            exit_code=None,
+            reaped=True,
+        )
+
+    return read_run(run_dir)
+
+
 def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Finalise a single non-terminal ``record`` if its pid is provably dead.
 
     No-ops (returns ``None``) whenever liveness can't be established with
     confidence:
 
-    - no ``pid`` is recorded yet (the tiny window between the record being
-      written and the pid being persisted — leave it, the next read will see
-      the pid once it lands),
+    - no ``pid`` is recorded yet and the record hasn't aged past
+      :data:`_PENDING_NO_PID_GRACE_SECONDS` (the tiny window between the
+      record being written and the pid being persisted — leave it, the
+      next read will see the pid once it lands); past that grace,
+      delegates to :func:`_reap_pidless_pending`,
     - the pid is alive, or looks alive and we have no ``pid_create_time`` to
       rule out reuse (a genuinely long-running job must never be reconciled
       out from under itself — Windows recycles pids, so a bare
@@ -128,7 +199,7 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
     pid = record.get("pid")
     if not isinstance(pid, int) or pid <= 0:
-        return None
+        return _reap_pidless_pending(job, record)
     if is_pid_alive(pid, record.get("pid_create_time")):
         return None
 

@@ -222,6 +222,37 @@ class TestReconcileChiefLabels:
         healed = chief_router._reconcile_chief_labels(live, {})
         assert healed[0]["label"] == ""
 
+    async def test_writes_the_durable_pointer_itself_issue_796(self, tmp_path):
+        """Regression for #796: ``GET /api/board`` (``routers/board.py``)
+        calls ``_reconcile_chief_labels`` directly, never
+        ``_live_sessions_with_chief_label`` — so the pointer write must
+        happen here too, or a chief self-healed only via this path (hand-
+        typed into a plain Coding-tab session) never gets its conversation
+        id persisted to ``webapp/chief-pointer.json``."""
+        transcript = _transcript(tmp_path, "board-poll", typed=True)
+        rows = {
+            "board-poll-conv": _chief_state_row(
+                "chief-old", _recent_iso(minutes=1),
+                name="fleet-config-79", transcript_path=transcript,
+            ),
+        }
+        import asyncio
+
+        chief_router._reconcile_chief_labels(
+            [_chief_row(
+                label="", name="fleet-config", live_title="✳ chief",
+                project_dir="E:/automation/fleet-config",
+            )],
+            rows,
+        )
+        pending = [
+            task for task in asyncio.all_tasks()
+            if task is not asyncio.current_task()
+        ]
+        if pending:
+            await asyncio.gather(*pending)
+        assert chief_pointer.read_chief_pointer()["session_id"] == "board-poll-conv"
+
 
 class TestChiefGate:
 

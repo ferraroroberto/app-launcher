@@ -16,12 +16,30 @@ import re
 from typing import List, Optional, Tuple
 
 
+# Cap on the carried unterminated-OSC-title tail (issue #796): a sequence
+# that never gets a BEL/ST terminator within this many chars isn't a real
+# title still in flight — flush it rather than carrying it forever, so a
+# stray/malformed ``ESC]`` can never wedge the read loop into unbounded
+# buffer growth. Same carry discipline as ``_strip_color_osc``'s
+# ``_OSC_CARRY_MAX``, sized a bit larger since a title sequence's own
+# payload can run up to the 80-char extraction cap plus code/separator
+# overhead.
+_OSC_TITLE_CARRY_MAX = 256
+
+
 def _parse_osc_title(buffer: str) -> Tuple[str, str]:
     """Extract OSC window-title sequences from a buffer.
 
     Returns (remaining_buffer, extracted_title_or_empty).
     Handles OSC 0 and OSC 2 sequences in both BEL and ST terminator forms.
     Strips ANSI/control chars and caps length.
+
+    ``remaining`` is only ever an unterminated trailing OSC-title fragment
+    carried forward to the next read — never previously-scanned plain
+    text. (Issue #796: the previous implementation returned the *entire*
+    scanned buffer here, so ``PtySession._osc_buffer`` grew without bound
+    for the life of the session and every read re-scanned it from index 0,
+    quadratic in total bytes read.)
     """
     extracted = ""
     remaining = buffer
@@ -30,6 +48,9 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
         # Look for OSC start: ESC ]
         start_idx = remaining.find("\x1b]")
         if start_idx == -1:
+            # No OSC anywhere left — nothing to carry, whatever plain text
+            # remains has already been consumed by the caller via `chunk`.
+            remaining = ""
             break
 
         # Look for terminators: BEL (0x07) or ST (ESC \)
@@ -47,7 +68,11 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
             term_len = 2
 
         if end_idx == -1:
-            # Incomplete sequence; keep in buffer for next chunk
+            # Incomplete sequence — carry only its own tail forward for
+            # the next chunk, bounded so a terminator that never arrives
+            # can't grow the carry forever.
+            tail = remaining[start_idx:]
+            remaining = tail if len(tail) <= _OSC_TITLE_CARRY_MAX else ""
             break
 
         try:

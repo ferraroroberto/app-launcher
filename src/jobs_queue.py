@@ -17,6 +17,7 @@ import json
 import logging
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
@@ -177,15 +178,160 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
     return None
 
 
+def seed_run_meta(
+    job: Job,
+    trigger: str,
+    started_at: str,
+    *,
+    run_id: str,
+    **extra: Any,
+) -> Dict[str, Any]:
+    """Build the common seed fields for a fresh ``run.json`` record.
+
+    Every real fire path (manual / webhook / scheduled / chain / dry-run)
+    writes the same seven fields — ``run_id`` / ``job_id`` / ``name`` /
+    ``trigger`` / ``script_path`` / ``args`` / ``started_at`` — before
+    layering on its own status/provenance fields. Hand-copied in 8 places
+    across 3 modules before issue #794; this is the one place that shape
+    lives now. ``run_id`` is required (the caller already created the run
+    dir and knows its name); ``**extra`` merges on top, so a caller can
+    pass e.g. ``status="running"`` or ``chained_from=upstream_id`` directly
+    into the returned dict.
+    """
+    meta: Dict[str, Any] = dict(
+        run_id=run_id,
+        job_id=job.id,
+        name=job.name,
+        trigger=trigger,
+        script_path=job.script_path,
+        args=job.args,
+        started_at=started_at,
+    )
+    meta.update(extra)
+    return meta
+
+
+def admit_and_spawn(
+    jobs: List[Job],
+    job: Job,
+    trigger: str,
+    *,
+    params: Optional[Dict[str, Any]] = None,
+    extra_meta: Optional[Dict[str, Any]] = None,
+    on_run_dir: Optional[Callable[[Path], None]] = None,
+    spawn_when_free: bool = True,
+    spawn_error_key: str = "spawn_error",
+) -> Optional[Dict[str, Any]]:
+    """Mutex admission for one fire: queue it behind a live sibling, or
+    create the run and spawn it detached.
+
+    The one implementation of the admission block that used to exist three
+    times in parallel — the webapp route, the chain dispatcher, and the
+    executor's own scheduled-fire gate (issue #794). They had already
+    drifted: ``dispatch_chain_run`` wrote ``status="failed"`` to disk but
+    returned a meta dict still claiming ``"pending"``. A single status
+    source means that class of drift cannot recur.
+
+    Both branches pre-create the run dir, so the caller always gets a real
+    ``run_id`` back:
+
+    * **collision** — ``status="queued"`` plus ``mutex_group`` /
+      ``mutex_blocked_by``, pushed onto the group's FIFO. The executor
+      finalising the holder pops and spawns it (:func:`drain_mutex_queue`).
+    * **free** — ``status="pending"``, then :func:`spawn_run_job_detached`.
+      An ``OSError`` there is recorded on the run as ``status="failed"`` /
+      ``exit_code=-1`` plus the reason under ``spawn_error_key``, so the UI
+      surfaces the failure instead of a stuck ``pending``.
+
+    ``spawn_when_free=False`` is the executor's case: it is *already* the
+    process that will run this job inline, so it only wants the queue half.
+    With no collision it returns ``None`` having touched nothing — no run
+    dir, no record — and the caller proceeds to run normally.
+
+    Deliberately *not* absorbed here, because they genuinely differ per
+    call site: cooldown admission (route-only — a chain or scheduled fire
+    is an explicit consequence, not user mashing), the executor's "has this
+    already been through a gate?" scoping, and the route's HTTP error
+    translation.
+
+    Returns the ``run.json`` metadata as written (``status`` one of
+    ``queued`` / ``pending`` / ``failed``), or ``None`` in the
+    ``spawn_when_free=False``-with-no-collision case.
+    """
+    holder = mutex_collision(jobs, job)
+    if holder is None and not spawn_when_free:
+        return None
+
+    run_dir = new_run_dir(job.id, new_run_id())
+    if on_run_dir is not None:
+        on_run_dir(run_dir)
+    meta = seed_run_meta(
+        job,
+        trigger,
+        datetime.now().isoformat(timespec="seconds"),
+        run_id=run_dir.name,
+        **(extra_meta or {}),
+    )
+    if params:
+        meta["params"] = params
+
+    if holder is not None:
+        meta.update(
+            status="queued",
+            mutex_group=job.mutex_group,
+            mutex_blocked_by=holder.id,
+        )
+        write_run_json(run_dir, **meta)
+        enqueue_mutex(
+            job.mutex_group,
+            {
+                "job_id": job.id,
+                "run_id": run_dir.name,
+                "trigger": trigger,
+                "params": params or None,
+            },
+        )
+        logger.info(
+            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
+            f"(mutex_group={job.mutex_group!r}, trigger={trigger!r})"
+        )
+        return meta
+
+    meta["status"] = "pending"
+    write_run_json(run_dir, **meta)
+    try:
+        spawn_run_job_detached(job.id, run_dir.name, trigger, params or None)
+    except OSError as exc:
+        # Reflect the failure in the *returned* meta too, not just on disk
+        # (issue #794) — a caller reading the return value used to see a
+        # stale status="pending" even though run.json already said "failed".
+        failure: Dict[str, Any] = {
+            "finished_at": datetime.now().isoformat(timespec="seconds"),
+            "exit_code": -1,
+            "status": "failed",
+            spawn_error_key: str(exc),
+        }
+        meta.update(failure)
+        write_run_json(run_dir, **failure)
+        logger.warning(
+            f"⚠️  spawn failed {job.id}/{run_dir.name} "
+            f"(trigger={trigger!r}): {exc}"
+        )
+        return meta
+
+    logger.info(f"🚀 fired {job.id}/{run_dir.name} (trigger={trigger!r})")
+    return meta
+
+
 def dispatch_chain_run(
     jobs: List[Job], downstream: Job, upstream_id: str
 ) -> Dict[str, Any]:
     """Fire ``downstream`` as a chain consequence of ``upstream_id``.
 
-    Pre-creates the run dir, runs the same mutex admission as the
-    route's POST /api/jobs/<id>/run, and either spawns detached or
-    enqueues. Returns the metadata that ended up in ``run.json`` so the
-    caller can log or surface it.
+    Thin wrapper over :func:`admit_and_spawn` — the same mutex admission
+    the route's ``POST /api/jobs/<id>/run`` uses — recording the upstream
+    run on the record via ``chained_from``. Returns the metadata that
+    ended up in ``run.json`` so the caller can log or surface it.
 
     Cooldown is intentionally NOT checked — chain fires are an explicit
     downstream consequence, not a user click. (The executor only
@@ -193,60 +339,22 @@ def dispatch_chain_run(
     the other side: a chain trigger ``chain:<id>`` reaches the executor
     and runs straight through.)
     """
-    holder = mutex_collision(jobs, downstream)
-    run_dir = new_run_dir(downstream.id, new_run_id())
-    started_at = datetime.now().isoformat(timespec="seconds")
-    trigger = chain_trigger(upstream_id)
-    meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=downstream.id,
-        name=downstream.name,
-        trigger=trigger,
-        script_path=downstream.script_path,
-        args=downstream.args,
-        started_at=started_at,
-        chained_from=upstream_id,
+    meta = admit_and_spawn(
+        jobs,
+        downstream,
+        chain_trigger(upstream_id),
+        extra_meta={"chained_from": upstream_id},
+        spawn_error_key="chain_spawn_error",
     )
-    if holder is not None:
-        meta["status"] = "queued"
-        meta["mutex_group"] = downstream.mutex_group
-        meta["mutex_blocked_by"] = holder.id
-        write_run_json(run_dir, **meta)
-        enqueue_mutex(
-            downstream.mutex_group,
-            {
-                "job_id": downstream.id,
-                "run_id": run_dir.name,
-                "trigger": trigger,
-                "params": None,
-            },
+    if meta is None:
+        # Unreachable: ``None`` is the ``spawn_when_free=False`` case alone,
+        # and a chain fire always spawns when the group is free. Raise
+        # rather than fabricate a record — a chain hop with no run behind it
+        # is a bug, not an empty result.
+        raise RuntimeError(
+            f"admit_and_spawn produced no run record for chain fire "
+            f"{downstream.id} (upstream={upstream_id})"
         )
-        logger.info(
-            f"🪢🪡 chain queued {downstream.id}/{run_dir.name} behind "
-            f"{holder.id} (mutex_group={downstream.mutex_group!r}, "
-            f"upstream={upstream_id})"
-        )
-        return meta
-    meta["status"] = "pending"
-    write_run_json(run_dir, **meta)
-    try:
-        spawn_run_job_detached(downstream.id, run_dir.name, trigger, None)
-    except OSError as exc:
-        write_run_json(
-            run_dir,
-            finished_at=datetime.now().isoformat(timespec="seconds"),
-            exit_code=-1,
-            status="failed",
-            chain_spawn_error=str(exc),
-        )
-        logger.warning(
-            f"⚠️  chain spawn failed {downstream.id}/{run_dir.name}: {exc}"
-        )
-        return meta
-    logger.info(
-        f"🪡 chain fired {downstream.id}/{run_dir.name} "
-        f"(upstream={upstream_id})"
-    )
     return meta
 
 

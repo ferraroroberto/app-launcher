@@ -34,12 +34,10 @@ class ScanCommand(BaseCommand):
 
     def execute(self, args: argparse.Namespace) -> int:
         webapp_cfg = load_webapp_config()
-        projects_dir = Path(webapp_cfg.projects_dir)
         scan_root = Path(webapp_cfg.apps_scan_root)
         registry = load_registry()
 
         new = discover_new(
-            projects_dir=projects_dir,
             scan_root=scan_root,
             existing=registry,
         )

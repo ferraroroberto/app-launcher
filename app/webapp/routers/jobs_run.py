@@ -6,11 +6,13 @@ the run path that are reused across triggers:
 
 * :func:`_dry_run_check` / :func:`_dry_run_execute` — the two dry-run
   modes (issue #69), used only by the manual ``POST /run`` route.
-* :func:`_admit_and_spawn` — cooldown + mutex admission, run-dir
-  creation, spawn. The shared tail of every *real* fire, used by both
-  the manual ``POST /run`` route (in ``jobs.py``) and the webhook
-  ``POST /hook`` route (in ``jobs_webhook_routes.py``) so cooldown/
-  mutex/spawn logic lives in exactly one place.
+* :func:`_admit_and_spawn` — the cooldown gate plus the HTTP framing of
+  :func:`src.jobs_queue.admit_and_spawn` (the mutex admission itself,
+  shared with the chain dispatcher and the executor since issue #794).
+  The shared tail of every *real* fire, used by both the manual
+  ``POST /run`` route (in ``jobs.py``) and the webhook ``POST /hook``
+  route (in ``jobs_webhook_routes.py``) so cooldown and the
+  queued-vs-spawned response shape live in exactly one place.
 
 Kept separate from ``jobs_webhook_routes.py`` so neither of the two
 route modules needs to import the other (a shared dependency, not a
@@ -46,16 +48,8 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     stamped = datetime.now().isoformat(timespec="seconds")
-    meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger="manual",
-        script_path=job.script_path,
-        args=job.args,
-        started_at=stamped,
-        finished_at=stamped,
-        dry_run=True,
+    meta: Dict[str, Any] = jobs_mod.seed_run_meta(
+        job, "manual", stamped, run_id=run_dir.name, finished_at=stamped, dry_run=True
     )
     if raw_params:
         meta["params"] = raw_params
@@ -100,16 +94,8 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
         jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
     )
     started_at = datetime.now().isoformat(timespec="seconds")
-    base_meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger="manual",
-        script_path=job.script_path,
-        args=job.args,
-        started_at=started_at,
-        status="pending",
-        dry_run=True,
+    base_meta: Dict[str, Any] = jobs_mod.seed_run_meta(
+        job, "manual", started_at, run_id=run_dir.name, status="pending", dry_run=True
     )
     if raw_params:
         base_meta["params"] = raw_params
@@ -143,13 +129,18 @@ async def _admit_and_spawn(
     extra_run_meta: Optional[Dict[str, Any]] = None,
     on_run_dir: Optional[Callable[[Any], None]] = None,
 ) -> Dict[str, Any]:
-    """Cooldown + mutex admission, run_dir creation, spawn.
+    """Cooldown gate, then the shared mutex admission, in HTTP terms.
 
     The shared tail of every *real* (non-dry-run) fire — reused by the
     manual ``POST /run`` route (``trigger="manual"``) and the webhook
     ``POST /hook`` route (``trigger="webhook"``, ``extra_run_meta`` carrying
-    ``trigger_source``) so cooldown/mutex/spawn logic lives in exactly one
-    place. ``on_run_dir`` fires right after the run directory is created
+    ``trigger_source``). Two things live here and nowhere else: the
+    cooldown gate (a route-only concern — a chain or scheduled fire is an
+    explicit consequence, not user mashing) and the translation of the
+    admission outcome into a response body or an ``HTTPException``. The
+    admission itself is :func:`src.jobs_queue.admit_and_spawn`, shared with
+    the chain dispatcher and the executor's scheduled-fire gate (issue
+    #794). ``on_run_dir`` fires right after the run directory is created
     (before the queued-vs-spawn branch) so a caller can persist extra files
     (e.g. ``_webhook.json``) alongside ``run.json`` regardless of which
     branch this fire takes.
@@ -171,83 +162,37 @@ async def _admit_and_spawn(
             headers={"Retry-After": str(remaining)},
         )
 
-    # Mutex-group admission. If another job in the same group is running
-    # or pending, this fire is QUEUED (not rejected — that's cooldown's
-    # job). We still pre-create the run dir so the caller gets a real
-    # run_id back; the executor that finalises the in-flight head will
-    # pop this entry from the queue and spawn it detached. See
-    # src.jobs.drain_mutex_queue for the spawn-time guard.
-    holder = await asyncio.to_thread(
-        jobs_mod.mutex_collision, cfg.jobs, job
+    # Mutex-group admission + spawn. Shared with the chain dispatcher and
+    # the executor's own scheduled-fire gate (issue #794) — see
+    # src.jobs_queue.admit_and_spawn for the queued-vs-spawn contract. Runs
+    # as one to_thread hop: every step in it is blocking file/subprocess
+    # work, so there is nothing for the event loop to interleave.
+    meta = await asyncio.to_thread(
+        jobs_mod.admit_and_spawn,
+        cfg.jobs,
+        job,
+        trigger,
+        params=raw_params,
+        extra_meta=extra_run_meta,
+        on_run_dir=on_run_dir,
     )
+    if meta is None:
+        # Unreachable: spawn_when_free defaults to True, so every route fire
+        # produces a record. Fail loud rather than return a bodyless 200.
+        raise HTTPException(status_code=500, detail="admission produced no run")
 
-    run_dir = await asyncio.to_thread(
-        jobs_mod.new_run_dir, job.id, jobs_mod.new_run_id()
-    )
-    if on_run_dir is not None:
-        on_run_dir(run_dir)
-    started_at = datetime.now().isoformat(timespec="seconds")
-    base_meta: Dict[str, Any] = dict(
-        run_id=run_dir.name,
-        job_id=job.id,
-        name=job.name,
-        trigger=trigger,
-        script_path=job.script_path,
-        args=job.args,
-        started_at=started_at,
-    )
-    if raw_params:
-        base_meta["params"] = raw_params
-    if extra_run_meta:
-        base_meta.update(extra_run_meta)
-
-    if holder is not None:
-        # Queue it. status=queued does not feed stats / streaks; the
-        # finalising executor of the holder job will flip it to running.
-        base_meta["status"] = "queued"
-        base_meta["mutex_group"] = job.mutex_group
-        base_meta["mutex_blocked_by"] = holder.id
-        jobs_mod.write_run_json(run_dir, **base_meta)
-        await asyncio.to_thread(
-            jobs_mod.enqueue_mutex,
-            job.mutex_group,
-            {
-                "job_id": job.id,
-                "run_id": run_dir.name,
-                "trigger": trigger,
-                "params": raw_params or None,
-            },
-        )
-        logger.info(
-            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
-            f"(mutex_group={job.mutex_group!r})"
-        )
+    if meta["status"] == "queued":
         return {
-            "run_id": run_dir.name,
+            "run_id": meta["run_id"],
             "job_id": job.id,
             "status": "queued",
-            "mutex_group": job.mutex_group,
-            "mutex_blocked_by": holder.id,
+            "mutex_group": meta["mutex_group"],
+            "mutex_blocked_by": meta["mutex_blocked_by"],
         }
-
-    base_meta["status"] = "pending"
-    jobs_mod.write_run_json(run_dir, **base_meta)
-    try:
-        await asyncio.to_thread(
-            jobs_mod.spawn_run_job_detached,
-            job.id,
-            run_dir.name,
-            trigger,
-            raw_params or None,
+    if meta["status"] == "failed":
+        # Spawn failed. admit_and_spawn already recorded the failure on the
+        # run so the UI surfaces it instead of a stuck "pending".
+        raise HTTPException(
+            status_code=500, detail=f"spawn failed: {meta['spawn_error']}"
         )
-    except OSError as exc:
-        # Spawn failed → record the failure on the run we just created
-        # so the UI surfaces it instead of a stuck "pending".
-        jobs_mod.write_run_json(
-            run_dir,
-            finished_at=datetime.now().isoformat(timespec="seconds"),
-            exit_code=-1,
-            status="failed",
-        )
-        raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
-    return {"run_id": run_dir.name, "job_id": job.id}
+    return {"run_id": meta["run_id"], "job_id": job.id}
