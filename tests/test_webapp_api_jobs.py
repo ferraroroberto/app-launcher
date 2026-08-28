@@ -115,8 +115,17 @@ def mocked_jobs_side_effects(monkeypatch):
             }
         ),
     }
+    # The shared run tail moved into src.jobs_queue (issue #794's
+    # admit_and_spawn), which binds spawn_run_job_detached in its own
+    # namespace at import time — so stubbing only the src.jobs facade would
+    # let the route spawn a real detached executor. Mirror every stub onto
+    # jobs_queue for the names it actually holds.
+    from src import jobs_queue as jobs_queue_mod
+
     for name, m in mocks.items():
         monkeypatch.setattr(jobs_router.jobs_mod, name, m)
+        if hasattr(jobs_queue_mod, name):
+            monkeypatch.setattr(jobs_queue_mod, name, m)
     return mocks
 
 
