@@ -648,3 +648,72 @@ class TestMutexCollisionReconciles:
         )
         blocker = jobs_mod.mutex_collision([holder, fresh], fresh)
         assert blocker is holder
+
+
+# --------------------------------------------------------- reap_stranded_runs_all
+
+
+class TestReapStrandedRunsAll:
+    """The periodic sweep (issue #809) — see the background tick in
+    ``app/webapp/server.py``. Reap is otherwise lazy-on-read only, so a
+    stranded record from a checkout nobody polls can sit un-finalised
+    indefinitely; this sweeps every configured job in one pass."""
+
+    def test_sweeps_every_job_and_reports_only_the_ones_with_findings(
+        self, isolated_jobs, monkeypatch
+    ):
+        _seed_run(
+            isolated_jobs, "solo", "20260101T000000",
+            status="running", pid=4242,
+            started_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        _seed_run(
+            isolated_jobs, "clean", "20260101T000000",
+            status="failed", pid=4243, exit_code=0,
+            started_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        jobs = [
+            Job(id="solo", name="Solo", script_path="C:/nowhere/x.py"),
+            Job(id="clean", name="Clean", script_path="C:/nowhere/y.py"),
+        ]
+
+        result = jobs_reap_mod.reap_stranded_runs_all(jobs)
+
+        assert list(result) == ["solo"]
+        assert result["solo"][0]["status"] == "failed"
+
+    def test_nothing_to_reap_yields_empty_dict(self, isolated_jobs, monkeypatch):
+        jobs = [Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")]
+        assert jobs_reap_mod.reap_stranded_runs_all(jobs) == {}
+
+    def test_one_bad_job_does_not_abort_the_sweep(self, isolated_jobs, monkeypatch):
+        _seed_run(
+            isolated_jobs, "second", "20260101T000000",
+            status="running", pid=4242,
+            started_at=datetime.now().isoformat(timespec="seconds"),
+        )
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        real_reap = jobs_reap_mod.reap_stranded_runs
+
+        def _patched(job):
+            if job.id == "first":
+                raise RuntimeError("boom")
+            return real_reap(job)
+
+        monkeypatch.setattr(jobs_reap_mod, "reap_stranded_runs", _patched)
+        jobs = [
+            Job(id="first", name="First", script_path="C:/nowhere/a.py"),
+            Job(id="second", name="Second", script_path="C:/nowhere/b.py"),
+        ]
+
+        result = jobs_reap_mod.reap_stranded_runs_all(jobs)
+
+        assert list(result) == ["second"]
+
+    def test_no_jobs_arg_loads_from_config(self, isolated_jobs, monkeypatch):
+        jobs = [Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")]
+        monkeypatch.setattr(
+            jobs_reap_mod, "load_jobs", lambda: SimpleNamespace(jobs=jobs)
+        )
+        assert jobs_reap_mod.reap_stranded_runs_all() == {}
