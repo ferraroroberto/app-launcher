@@ -109,7 +109,11 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
             raw_params or None,
             True,
         )
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError as well as OSError: the argv is refused before the
+        # spawn when a value can't survive the `cmd /c start` hop
+        # (src.jobs_argv.reject_cmd_unsafe). The run dir already exists, so
+        # an escaping exception would leave it stuck at "pending".
         jobs_mod.write_run_json(
             run_dir,
             finished_at=datetime.now().isoformat(timespec="seconds"),

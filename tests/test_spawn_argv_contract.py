@@ -84,3 +84,51 @@ def test_no_params_path_is_unaffected(captured_spawn):
     """Schedule / Stream-Deck callers omit params entirely."""
     jobs_schtasks.spawn_run_job_detached("demo-job", "run-1", trigger="schedule")
     assert "--params" not in captured_spawn["cmd"]
+
+
+class TestRefusalReachesTheRunRecord:
+    """A refused value must not escape as an unhandled exception.
+
+    Since #794 the refusal fires *inside*
+    ``src.jobs_queue.admit_and_spawn``, which has already created the run
+    directory and written ``status="pending"`` by the time the spawn is
+    attempted. An escaping ``ValueError`` would therefore leave exactly the
+    orphaned ``pending`` record that helper exists to prevent (and, on the
+    webhook/manual routes, an unhandled 500 rather than the route's own
+    "spawn failed" translation). It is recorded like a failed spawn.
+    """
+
+    @pytest.fixture
+    def isolated_jobs(self, tmp_path, monkeypatch):
+        from src import jobs_history as jobs_history_mod
+        from src import jobs_queue as jobs_queue_mod
+
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        monkeypatch.setattr(
+            jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
+        )
+        return tmp_path
+
+    def test_refused_param_is_recorded_as_failed_not_raised(self, isolated_jobs):
+        import json
+
+        from src import jobs_queue as jobs_queue_mod
+        from src.jobs_config import Job
+
+        job = Job(id="solo", name="Solo", script_path="C:/x.py")
+
+        meta = jobs_queue_mod.admit_and_spawn(
+            [job], job, "webhook", params={"branch": "a&b"}
+        )
+
+        assert meta is not None
+        assert meta["status"] == "failed"
+        assert meta["exit_code"] == -1
+        assert "&" in meta["spawn_error"]
+        record = json.loads(
+            (isolated_jobs / "solo" / meta["run_id"] / "run.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert record["status"] == "failed", "no orphaned pending record"
+        assert record["spawn_error"] == meta["spawn_error"]

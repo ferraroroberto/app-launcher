@@ -239,9 +239,14 @@ def admit_and_spawn(
       ``mutex_blocked_by``, pushed onto the group's FIFO. The executor
       finalising the holder pops and spawns it (:func:`drain_mutex_queue`).
     * **free** — ``status="pending"``, then :func:`spawn_run_job_detached`.
-      An ``OSError`` there is recorded on the run as ``status="failed"`` /
-      ``exit_code=-1`` plus the reason under ``spawn_error_key``, so the UI
-      surfaces the failure instead of a stuck ``pending``.
+      An ``OSError`` (the spawn itself failed) or a ``ValueError`` (the argv
+      was refused before the spawn — see
+      :func:`src.jobs_argv.reject_cmd_unsafe`) is recorded on the run as
+      ``status="failed"`` / ``exit_code=-1`` plus the reason under
+      ``spawn_error_key``, so the UI surfaces the failure instead of a stuck
+      ``pending``. Both are "this fire produced no child": the run dir is
+      already on disk by then, so letting either escape would leave exactly
+      the orphaned ``pending`` record this helper exists to prevent.
 
     ``spawn_when_free=False`` is the executor's case: it is *already* the
     process that will run this job inline, so it only wants the queue half.
@@ -301,7 +306,7 @@ def admit_and_spawn(
     write_run_json(run_dir, **meta)
     try:
         spawn_run_job_detached(job.id, run_dir.name, trigger, params or None)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         # Reflect the failure in the *returned* meta too, not just on disk
         # (issue #794) — a caller reading the return value used to see a
         # stale status="pending" even though run.json already said "failed".
