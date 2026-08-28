@@ -194,3 +194,30 @@ class TestExecutorChain:
         )
         assert record["status"] == "queued"
         assert record["mutex_blocked_by"] == "other"
+
+
+class TestDispatchChainRunSpawnFailure:
+    """A chain-spawn ``OSError`` must be reflected in *both* the on-disk
+    record and the returned ``meta`` dict (issue #794's status-drift find:
+    ``dispatch_chain_run`` used to write ``status="failed"`` to disk but
+    return a ``meta`` still reporting ``status="pending"``)."""
+
+    def test_returned_meta_status_matches_disk_on_spawn_failure(
+        self, isolated_jobs, monkeypatch
+    ):
+        downstream = Job(id="down", name="Down", script_path="C:\\x.py")
+
+        def _boom(*_args, **_kwargs):
+            raise OSError("spawn failed")
+
+        monkeypatch.setattr(jobs_queue_mod, "spawn_run_job_detached", _boom)
+
+        meta = jobs_queue_mod.dispatch_chain_run([downstream], downstream, "up")
+
+        assert meta["status"] == "failed"
+        assert meta["exit_code"] == -1
+        assert "chain_spawn_error" in meta
+
+        run_dir = isolated_jobs / "down" / meta["run_id"]
+        record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        assert record["status"] == meta["status"] == "failed"

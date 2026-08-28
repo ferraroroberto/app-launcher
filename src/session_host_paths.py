@@ -19,15 +19,11 @@ parser.
 
 from __future__ import annotations
 
-import logging
 import re
-import subprocess
 from pathlib import Path
 from typing import List, Optional
 
-from src.subprocess_flags import NO_WINDOW
-
-logger = logging.getLogger(__name__)
+from src.git_utils import run_git
 
 _PATH_TOKEN_RE = re.compile(r"`([^`]+)`")
 _SCOPED_BULLET_PREFIXES = ("- what/why:", "- not restarted/deployed by:")
@@ -73,27 +69,14 @@ def paths_touched_between(
     """
     if not paths:
         return None
-    cmd = ["git", "-C", str(repo_root), "diff", "--name-only", f"{base_sha}..{head_sha}"]
-    kwargs = dict(
-        capture_output=True,
-        stdin=subprocess.DEVNULL,
-        text=True,
-        timeout=5,
-        check=False,
-        creationflags=NO_WINDOW,
+    out = run_git(
+        repo_root,
+        ["diff", "--name-only", f"{base_sha}..{head_sha}"],
+        warn_on_failure=True,
     )
-    try:
-        result = subprocess.run(cmd, **kwargs)
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("⚠️ session_host_paths: git diff raised %s: %s", type(exc).__name__, exc)
+    if out is None:
         return None
-    if result.returncode != 0:
-        logger.warning(
-            "⚠️ session_host_paths: git diff exit=%s stderr=%r",
-            result.returncode, (result.stderr or "").strip(),
-        )
-        return None
-    changed = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
     return _touched_by(changed, paths)
 
 

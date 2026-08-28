@@ -26,14 +26,13 @@ import fnmatch
 import logging
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from src.subprocess_flags import NO_WINDOW
+from src.git_utils import resolve_default_ref, run_git
 
 logger = logging.getLogger(__name__)
 
@@ -389,24 +388,12 @@ def _run_git(project_dir: Path, args: Sequence[str]) -> Optional[str]:
     """Run ``git -C <project_dir> <args>`` and return stripped stdout.
 
     Returns ``None`` on any non-zero exit, missing ``git`` binary, or
-    timeout — callers treat ``None`` as "couldn't determine".
+    timeout — callers treat ``None`` as "couldn't determine". Thin wrapper
+    around the shared :func:`src.git_utils.run_git` (issue #794) with this
+    module's own 10s timeout (``git status`` can run longer than a plain
+    rev-parse).
     """
-    try:
-        proc = subprocess.run(
-            ["git", "-C", str(project_dir), *args],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=10,
-            creationflags=NO_WINDOW,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.debug(f"git {' '.join(args)} failed in {project_dir}: {exc}")
-        return None
-    if proc.returncode != 0:
-        return None
-    return proc.stdout.strip()
+    return run_git(project_dir, args, timeout=10)
 
 
 def _default_branch(project_dir: Path) -> Optional[str]:
@@ -414,20 +401,19 @@ def _default_branch(project_dir: Path) -> Optional[str]:
 
     Prefers the symbolic ``origin/HEAD`` ref (set on clone); falls back to
     whichever of ``main`` / ``master`` exists as a local branch. ``None``
-    when none of these resolve.
+    when none of these resolve. Thin wrapper around the shared
+    :func:`src.git_utils.resolve_default_ref` (issue #794) that adapts the
+    local ``refs/heads/*`` fallback shape to this module's bare-name return.
     """
-    head = _run_git(
-        project_dir, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]
+    ref = resolve_default_ref(
+        project_dir,
+        fallback_refs=("refs/heads/main", "refs/heads/master"),
+        timeout=10,
     )
-    if head:
-        # "origin/main" → "main"
-        return head.split("/", 1)[1] if "/" in head else head
-    for candidate in ("main", "master"):
-        if _run_git(
-            project_dir, ["rev-parse", "--verify", "--quiet", f"refs/heads/{candidate}"]
-        ):
-            return candidate
-    return None
+    if ref is None:
+        return None
+    # "origin/main" -> "main"; "refs/heads/main" -> "main"
+    return ref.rsplit("/", 1)[-1]
 
 
 def git_status(project_dir: Path) -> GitStatus:
