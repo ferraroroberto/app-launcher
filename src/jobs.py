@@ -58,6 +58,7 @@ from src.jobs_history import (
 )
 from src.jobs_queue import (
     JOBS_QUEUE_PATH,
+    admit_and_spawn,
     dispatch_chain_run,
     drain_mutex_queue,
     enqueue_mutex,
@@ -143,6 +144,7 @@ __all__ = [
     "remove_queue_entry",
     "mutex_collision",
     "seed_run_meta",
+    "admit_and_spawn",
     "dispatch_chain_run",
     "drain_mutex_queue",
     "run_stats",

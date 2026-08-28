@@ -49,13 +49,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from src import jobs_kinds
 from src.jobs import (
     MAX_RUNS_PER_JOB,
+    admit_and_spawn,
     cooldown_check,
     delete_schtasks,
     dispatch_chain_run,
     drain_mutex_queue,
-    enqueue_mutex,
     invalidate_stats_cache,
-    mutex_collision,
     new_run_dir,
     new_run_id,
     prune_runs,
@@ -219,12 +218,14 @@ def _finalize_mutex_queue(
     """Queue a **scheduled** fire that collides with a live sibling in the
     same ``mutex_group`` instead of running it concurrently (issue #696).
 
-    ``mutex_group`` used to be enforced only on the webapp admission path
-    (``app/webapp/routers/jobs_run.py::_admit_and_spawn``), so a
-    schtasks-fired run walked straight past it — which is exactly where
-    cross-job serialisation matters most (the weekly fleet chain). This is
-    the executor-side half of that gate; the drain half already lived here
-    (:func:`_drain_mutex_queue_for`).
+    ``mutex_group`` used to be enforced only on the webapp admission path,
+    so a schtasks-fired run walked straight past it — which is exactly
+    where cross-job serialisation matters most (the weekly fleet chain).
+    This is the executor-side half of that gate; the drain half already
+    lived here (:func:`_drain_mutex_queue_for`). The queueing itself is
+    :func:`~src.jobs_queue.admit_and_spawn` in its ``spawn_when_free=False``
+    mode, shared with the route and the chain dispatcher (issue #794) —
+    only the scoping below is executor-specific.
 
     Returns ``0`` when the fire was queued and finalised, ``None`` when
     there's nothing to queue and the caller should run normally.
@@ -248,37 +249,20 @@ def _finalize_mutex_queue(
         return None
     if getattr(args, "run_id", None):
         return None
-    holder = mutex_collision(jobs, job)
-    if holder is None:
+    # Queue half only: this process is already the executor that would run
+    # the job inline, so spawn_when_free=False means "no collision → touch
+    # nothing, tell the caller to proceed". Shares the queued-record shape
+    # with the route and the chain dispatcher (issue #794).
+    meta = admit_and_spawn(
+        jobs,
+        job,
+        args.trigger,
+        params=values,
+        extra_meta={"trigger_source": "schtasks"},
+        spawn_when_free=False,
+    )
+    if meta is None:
         return None
-    run_dir = new_run_dir(job.id, new_run_id())
-    write_run_json(
-        run_dir,
-        **seed_run_meta(
-            job,
-            args.trigger,
-            datetime.now().isoformat(timespec="seconds"),
-            run_id=run_dir.name,
-            trigger_source="schtasks",
-            status="queued",
-            mutex_group=job.mutex_group,
-            mutex_blocked_by=holder.id,
-            **({"params": values} if values else {}),
-        ),
-    )
-    enqueue_mutex(
-        job.mutex_group,
-        {
-            "job_id": job.id,
-            "run_id": run_dir.name,
-            "trigger": args.trigger,
-            "params": values or None,
-        },
-    )
-    logger.info(
-        f"🪢 run-job {job.id}/{run_dir.name} queued behind {holder.id} "
-        f"(mutex_group={job.mutex_group!r}, trigger=scheduled)"
-    )
     return 0
 
 
