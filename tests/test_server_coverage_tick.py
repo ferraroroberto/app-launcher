@@ -236,3 +236,66 @@ class TestLifespanGate:
 
 async def _noop_async(*a, **k):
     return None
+
+
+@pytest.mark.asyncio
+class TestCoverageCycle:
+    """One tick cycle (#809): reap stranded runs, then scan coverage —
+    both under the same tick, so reap gets the same canonical-instance gate
+    and interval coverage already had, instead of depending on the Jobs tab
+    or Board being polled."""
+
+    async def test_reap_runs_before_coverage_check(self, monkeypatch):
+        calls = []
+
+        def _reap():
+            calls.append("reap")
+            return {}
+
+        def _check(cfg):
+            calls.append("check")
+            return []
+
+        monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
+        monkeypatch.setattr("src.jobs_reap.reap_stranded_runs_all", _reap)
+        monkeypatch.setattr("src.jobs_coverage.check_and_alert", _check)
+
+        await server._coverage_cycle(SimpleNamespace())
+
+        assert calls == ["reap", "check"]
+
+    async def test_logs_when_something_was_reaped(self, monkeypatch, caplog):
+        monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
+        monkeypatch.setattr(
+            "src.jobs_reap.reap_stranded_runs_all",
+            lambda: {"insights-weekly": [{"status": "failed"}]},
+        )
+        monkeypatch.setattr(
+            "src.jobs_coverage.check_and_alert", lambda cfg: []
+        )
+
+        with caplog.at_level("WARNING", logger=server._log.name):
+            await server._coverage_cycle(SimpleNamespace())
+
+        assert any(
+            "insights-weekly" in record.getMessage()
+            for record in caplog.records
+        ), caplog.text
+
+    async def test_nothing_reaped_stays_quiet(self, monkeypatch, caplog):
+        monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
+        monkeypatch.setattr(
+            "src.jobs_reap.reap_stranded_runs_all", lambda: {}
+        )
+        monkeypatch.setattr(
+            "src.jobs_coverage.check_and_alert", lambda cfg: []
+        )
+
+        with caplog.at_level("WARNING", logger=server._log.name):
+            await server._coverage_cycle(SimpleNamespace())
+
+        assert caplog.records == []
+
+
+async def _passthrough_to_thread(fn, *a, **k):
+    return fn(*a, **k)

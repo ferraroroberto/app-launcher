@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.diagnostics import is_pid_alive
-from src.jobs_config import Job
+from src.jobs_config import Job, load_jobs
 from src.jobs_history import list_runs, read_run, runs_dir, write_run_json
 from src.jobs_stats import invalidate_stats_cache
 from src.notifications import notify_failure
@@ -280,3 +280,38 @@ def reap_stranded_runs(job: Job) -> List[Dict[str, Any]]:
 
         drain_mutex_queue(job.mutex_group)
     return reaped
+
+
+def reap_stranded_runs_all(
+    jobs: Optional[List[Job]] = None,
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Sweep every job for stranded records (issue #809).
+
+    ``reap_stranded_runs`` is otherwise lazy-on-read — it only runs when
+    ``GET /api/jobs`` or the Board's ``jobs_attention`` happen to be polled.
+    A checkout nobody looks at can leave a stranded record un-finalised (and
+    its failure alert un-sent) indefinitely: a spawn failure from a stale
+    ``script_path`` (the fleet-config skill-relocation commit, 2026-06-18)
+    sat unreaped for over two months until something finally polled it,
+    firing a failure alert that read as live but was two months stale.
+    Mirrors issue #697's fix for the same "nothing looked when nobody was
+    looking" shape, applied here to reaping instead of missed-fire coverage
+    — see the background tick in ``app/webapp/server.py``.
+
+    Continues past any single job's error rather than letting one bad
+    job's history abort the sweep; never raises.
+
+    Returns ``{job_id: [reaped_record, ...]}`` for jobs that had something
+    to reap (empty dict when nothing needed reaping).
+    """
+    jobs = load_jobs().jobs if jobs is None else jobs
+    result: Dict[str, List[Dict[str, Any]]] = {}
+    for job in jobs:
+        try:
+            found = reap_stranded_runs(job)
+        except Exception as exc:  # noqa: BLE001 — sweep must keep going
+            logger.warning(f"⚠️  reap sweep failed for job {job.id}: {exc}")
+            continue
+        if found:
+            result[job.id] = found
+    return result

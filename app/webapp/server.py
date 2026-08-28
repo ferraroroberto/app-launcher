@@ -215,11 +215,12 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
         _log.info("🧹 reconciled %d orphaned mirror window(s) on startup", closed)
 
 
-# --- Jobs missed-fire coverage tick (issue #697) -------------------------
+# --- Jobs stranded-run reap + missed-fire coverage tick (#809, #697) -----
 # First scan is delayed so it never competes with boot; then one scan per
 # interval. The whole point of this tick is that it does NOT depend on the
-# Jobs tab being open — the two real incidents (`config-map` / `sota-watch`
-# registered no task at all) went unnoticed for weeks precisely because
+# Jobs tab being open — the two real missed-fire incidents (`config-map` /
+# `sota-watch` registered no task at all) went unnoticed for weeks, and a
+# stranded run (#809) went unreaped for over two months, precisely because
 # nothing looked when nobody was looking.
 _COVERAGE_FIRST_DELAY_SECONDS = 120.0
 
@@ -237,37 +238,60 @@ def _coverage_interval_minutes(cfg: object) -> float:
         return 0.0
 
 
+async def _coverage_cycle(cfg: object) -> None:
+    """One sweep: stranded-run reap (issue #809) then missed-fire coverage
+    (#697).
+
+    Reap runs first — :func:`src.jobs_reap.reap_stranded_runs_all` is
+    otherwise lazy-on-read (only ``GET /api/jobs`` or the Board trigger it),
+    so a stranded record from a checkout nobody polls can sit un-finalised,
+    and its failure alert un-sent, indefinitely (a June spawn failure went
+    unreaped, and unnotified, for over two months until this tick started
+    catching it). Reaping first also means coverage's behavioural half sees
+    a freshly-terminal record rather than a stale "running" one.
+
+    Both halves never raise — a wedged Task Scheduler, a bad job's history,
+    or an unreachable Telegram must not take the webapp's lifespan down.
+    """
+    from src import jobs_coverage
+    from src.jobs_reap import reap_stranded_runs_all
+
+    reaped = await asyncio.to_thread(reap_stranded_runs_all)
+    if reaped:
+        _log.warning(
+            "🧟 swept %d stranded run(s) across %d job(s): %s",
+            sum(len(v) for v in reaped.values()),
+            len(reaped),
+            ", ".join(reaped),
+        )
+    alerted = await asyncio.to_thread(jobs_coverage.check_and_alert, cfg)
+    if alerted:
+        _log.warning(
+            "🕳️ coverage alerts pushed for %d job(s): %s",
+            len(alerted),
+            ", ".join(alerted),
+        )
+
+
 async def _coverage_tick(app: FastAPI) -> None:
-    """Periodically scan every job's schedule coverage and alert on breaks.
+    """Periodically reap stranded runs and scan schedule coverage (#809, #697).
 
     Started only on the **canonical** instance
     (:func:`src.instance_role.canonical_instance`): a non-canonical checkout
-    carries the real config and real credentials but derives coverage from
-    its own empty ``webapp/jobs/``, so it must never push a real alert to
-    the user's phone. That covers the e2e / verify-before-ship autoboot
-    webapp — the ``LAUNCHER_SESSION_HOST_PORT`` case #697 anticipated, and
-    the same marker the mirror-window sweep above uses — *and* the git
-    worktree that actually pushed three false alerts (#736).
-
-    Every scan is wrapped by :func:`src.jobs_coverage.check_and_alert`, which
-    never raises — a wedged Task Scheduler or an unreachable Telegram must
-    not take the webapp's lifespan down.
+    carries the real config and real credentials but derives coverage (and
+    reaps) from its own empty ``webapp/jobs/``, so it must never push a real
+    alert to the user's phone. That covers the e2e / verify-before-ship
+    autoboot webapp — the ``LAUNCHER_SESSION_HOST_PORT`` case #697
+    anticipated, and the same marker the mirror-window sweep above uses —
+    *and* the git worktree that actually pushed three false alerts (#736).
     """
-    from src import jobs_coverage
-
     cfg = getattr(app.state, "webapp_config", None)
     if cfg is None:
         return
     interval = max(60.0, _coverage_interval_minutes(cfg) * 60.0)
     await asyncio.sleep(_COVERAGE_FIRST_DELAY_SECONDS)
     while True:
-        alerted = await asyncio.to_thread(jobs_coverage.check_and_alert, cfg)
-        if alerted:
-            _log.warning(
-                "🕳️ coverage alerts pushed for %d job(s): %s",
-                len(alerted),
-                ", ".join(alerted),
-            )
+        await _coverage_cycle(cfg)
         await asyncio.sleep(interval)
 
 
