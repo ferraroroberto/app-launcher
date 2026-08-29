@@ -757,22 +757,37 @@ def _pending_tool_use_names(transcript_path: Any) -> Optional["set[str]"]:
 
 
 def _refine_waiting_status(status: str, transcript_path: Any) -> str:
-    """Split the generic ``needs-you`` into a caller-actionable value (#608)
-    without a caller ever needing to fetch the exchange to tell them apart:
+    """Split the generic ``needs-you`` into a caller-actionable value (#608,
+    sharpened by #813) without a caller ever needing to fetch the exchange to
+    tell them apart:
 
     * ``awaiting-decision`` -- blocked on :data:`_PENDING_DECISION_TOOL_NAMES`
       (``AskUserQuestion``/``ExitPlanMode``) — a human must pick an option.
     * ``idle-finished`` -- the turn ended clean, nothing pending at all — the
       session doesn't actually need anyone, it's just holding a workspace.
+    * ``tool-pending`` -- an ordinary, non-decision ``tool_use`` (``Bash``,
+      ``Read``, ``Edit``, …) is still unresolved at the tail's end (#813).
+      This is genuinely ambiguous — equally consistent with "still mid-turn,
+      executing" and "permission-gated, waiting on a human to approve/deny" —
+      so per the global rule that an unresolvable classifier must report its
+      own state rather than fold into a positive one, it is neither
+      ``awaiting-input`` (over-claims a human is needed) nor ``idle-finished``
+      (under-claims the turn is done). Routed to Claude's turn, not Your
+      turn: a false "needs you" on every long-running foreground command is
+      the worse failure mode of the two. #815 fixed the busy-title fast path
+      in :func:`_transcript_overlay` (a dead spinner-glyph regex), so a
+      genuinely mid-turn session with a live, fresh PTY now already resolves
+      to ``working`` before this function is ever reached — this branch is
+      the narrower residual case: no live PTY, a wedged/quiet one, or a
+      non-Claude agent this override doesn't cover.
     * ``awaiting-input`` -- everything else: a genuinely typed prompt is
-      expected, some other/unrecognized tool_use is pending, or the tail
-      gave no usable signal at all (no transcript, a missing file, an
-      unparseable tail — see :func:`_pending_tool_use_names`). This is the
-      old undifferentiated ``needs-you`` meaning, kept as the safe fallback
-      for whatever this function can't positively classify — ``idle-finished``
-      is a claim this function must have actually checked for, never a
-      default for "couldn't check" (the same asymmetry the ``stalled``
-      threshold applies to an unparseable launch timestamp).
+      expected, or the tail gave no usable signal at all (no transcript, a
+      missing file, an unparseable tail — see :func:`_pending_tool_use_names`).
+      This is the old undifferentiated ``needs-you`` meaning, kept as the
+      safe fallback for whatever this function can't positively classify —
+      ``idle-finished`` is a claim this function must have actually checked
+      for, never a default for "couldn't check" (the same asymmetry the
+      ``stalled`` threshold applies to an unparseable launch timestamp).
 
     ``stalled`` is decided earlier, in :func:`_transcript_overlay` — it needs
     the pending *background* dispatch's age, which that function already
@@ -789,7 +804,7 @@ def _refine_waiting_status(status: str, transcript_path: Any) -> str:
     if pending_names & _PENDING_DECISION_TOOL_NAMES:
         return "awaiting-decision"
     if pending_names:
-        return "awaiting-input"
+        return "tool-pending"
     return "idle-finished"
 
 
