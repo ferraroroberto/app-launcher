@@ -9,7 +9,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
 import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
@@ -25,10 +25,13 @@ import { fetchApps, launchApp, renderApps } from './apps.js';
 // `coding_hidden_agents` — a *hidden* list, so a newly registered agent shows
 // up by default and needs no config migration.
 //
-// `github` is a pseudo-agent id: the repo-issues button is hideable the same
-// way, without inventing a second config key for one button.
+// `github` and `vscode` are pseudo-agent ids: neither button spawns a coding
+// agent, but both are hideable the same way, without inventing a second
+// config key per button.
 const GITHUB_BUTTON_ID = 'github';
 const GITHUB_BUTTON_LABEL = 'GitHub issues';
+const VSCODE_BUTTON_ID = 'vscode';
+const VSCODE_BUTTON_LABEL = 'Visual Studio Code';
 
 function hiddenButtons() {
   const cfg = state.config || {};
@@ -68,6 +71,9 @@ export function renderAgentVisibility() {
   const rows = (state.agents || []).map(function (agent) {
     return { id: agent.id, label: agent.label };
   });
+  // Same order as the row strip itself, so the toggle list reads as a map
+  // of the buttons it controls.
+  rows.push({ id: VSCODE_BUTTON_ID, label: VSCODE_BUTTON_LABEL });
   rows.push({ id: GITHUB_BUTTON_ID, label: GITHUB_BUTTON_LABEL });
 
   rows.forEach(function (row) {
@@ -112,10 +118,11 @@ export function renderAgentVisibility() {
 
 // ------------------------------------------------------ Coding tab tiles
 // A Coding tile shows only the bare on-disk folder name plus one icon
-// button per coding agent (the /api/agents registry drives the set).
-// An agent's button is disabled with a hover hint when its CLI isn't
-// installed. Coding rows are disk-scanned, so they carry no rename/
-// remove controls — Settings → Edit mode does not apply here.
+// button per coding agent (the /api/agents registry drives the set), then
+// the two non-agent buttons — VS Code (#802) and GitHub issues — and the
+// favorite star last. An agent's button is disabled with a hover hint when
+// its CLI isn't installed. Coding rows are disk-scanned, so they carry no
+// rename/remove controls — Settings → Edit mode does not apply here.
 export function renderCodingList(host, items) {
   host.innerHTML = '';
   // Favorites pinned to the top (issue #250). `items` arrives alphabetical
@@ -180,6 +187,34 @@ export function renderCodingList(host, items) {
       actions.appendChild(btn);
     });
 
+    // Visual Studio Code — opens the project's sibling `.code-workspace`
+    // file in the local editor (issue #802), creating that file server-side
+    // first if it doesn't exist yet. Not a coding-agent launch: no PTY, no
+    // session, nothing in the Running-sessions panel afterwards. Disabled
+    // with a hover hint when the `code` CLI isn't on PATH, exactly like an
+    // uninstalled agent. Hideable under the same pseudo-id scheme as GitHub.
+    if (!hidden.has(VSCODE_BUTTON_ID)) {
+      const codeBtn = document.createElement('button');
+      codeBtn.type = 'button';
+      codeBtn.className = 'icon-btn agent-btn';
+      codeBtn.dataset.agent = VSCODE_BUTTON_ID;
+      const codeIcon = document.createElement('img');
+      codeIcon.className = 'agent-icon';
+      codeIcon.src = iconUrl('vscode');
+      codeIcon.alt = VSCODE_BUTTON_LABEL;
+      codeBtn.appendChild(codeIcon);
+      if (state.vscodeAvailable) {
+        codeBtn.title = 'Open in ' + VSCODE_BUTTON_LABEL;
+        codeBtn.setAttribute('aria-label', 'Open in ' + VSCODE_BUTTON_LABEL);
+        codeBtn.addEventListener('click', function () { openInVscode(a); });
+      } else {
+        codeBtn.disabled = true;
+        codeBtn.title = VSCODE_BUTTON_LABEL + ' is not installed';
+        codeBtn.setAttribute('aria-label', VSCODE_BUTTON_LABEL + ' is not installed');
+      }
+      actions.appendChild(codeBtn);
+    }
+
     // GitHub repo icon — opens the repo's open-issues list (sorted by last
     // updated, excluding audit-meta ledger/metadata issues — #341) in a new
     // browser tab. Spawns no process and creates no session. Disabled with a
@@ -225,6 +260,28 @@ export function renderCodingList(host, items) {
     li.appendChild(actions);
     host.appendChild(li);
   });
+}
+
+// Open a coding project in the local VS Code (issue #802). Fire-and-report:
+// the server creates the `.code-workspace` file if needed and spawns `code`,
+// which detaches into its own GUI — so there's no session to poll, no list to
+// re-fetch, and the only feedback worth showing is whether the spawn landed.
+async function openInVscode(a) {
+  try {
+    const body = await jsonApi('/api/claude-code/vscode/' + encodeURIComponent(a.id), {
+      method: 'POST',
+    });
+    // The workspace file being *created* is worth naming — it's a new file on
+    // disk the user didn't ask for by name; a plain open isn't.
+    toast(
+      body && body.created
+        ? 'Created ' + a.name + '.code-workspace — opening VS Code'
+        : 'Opening ' + a.name + ' in VS Code',
+      'ok'
+    );
+  } catch (exc) {
+    apiFailToast('Could not open VS Code', exc);
+  }
 }
 
 // Star / unstar a coding project (issue #250). Persists server-side, then

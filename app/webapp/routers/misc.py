@@ -23,6 +23,7 @@ from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
 from src.static_versioning import asset_hash_for, rewrite_index_html
+from src.vscode_workspace import is_vscode_installed
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
@@ -220,8 +221,13 @@ async def agents() -> Dict[str, Any]:
 
     The Coding tab uses ``available`` to disable an agent's per-tile
     launch button (with a hover hint) when its CLI isn't installed.
+
+    ``vscode_available`` rides along for the row's VS Code button (#802).
+    It is detected the same way but is *not* an agent — it opens a GUI
+    editor, not a PTY session, so it has no entry in ``src.agents``. One
+    already-polled endpoint beats a second fetch for a single boolean.
     """
-    return {"agents": detect_agents()}
+    return {"agents": detect_agents(), "vscode_available": is_vscode_installed()}
 
 
 @router.get("/healthz")
