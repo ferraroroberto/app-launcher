@@ -50,7 +50,7 @@ flowchart TB
       R_TOKENS["tokens.py — /api/tokens\nscoped-token mint/list/revoke (#72)"]
       R_APPS["apps.py — /api/apps (Apps tab)"]
       R_SESS["sessions.py — /api/claude-code/sessions, WS\n+ voice_ocr_tts.py (transcribe/ocr/tts)"]
-      R_CC["claude_code.py — flags, git-status, generate"]
+      R_CC["claude_code.py — favorites, flags, git-status, VS Code open"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n+ jobs_webhook_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
       R_BOARD["board.py — /api/board (Board tab) + dispatch\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
@@ -82,6 +82,7 @@ flowchart TB
     SESSCLIENT["session_client.py\nHTTP client → session-host over loopback"]
     REGISTRY["registry.py\nconfig/apps.json load/save/scan"]
     SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]
+    VSCODEWS["vscode_workspace.py\n.code-workspace resolve + create,\ncode CLI spawn (#802)"]
     JOBSFACADE["jobs.py (facade)"]
     JOBSCFG["jobs_config.py"]
     JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
@@ -120,6 +121,7 @@ flowchart TB
   SESSCLIENT -->|HTTP + WS, loopback| HOSTSERVER
   R_APPS --> REGISTRY
   R_APPS --> SCANNER
+  R_CC --> VSCODEWS
   R_JOBS --> JOBSFACADE
   RUNJOBCMD --> JOBSFACADE
   RUNJOBCMD --> NOTIFY

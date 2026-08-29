@@ -58,6 +58,12 @@ export const state = {
     { id: 'pi', label: 'Pi', available: false, fullscreen: true },
     { id: 'grok', label: 'Grok Build', available: false, fullscreen: true },
   ],
+  // Is the `code` CLI on the server's PATH (issue #802)? Drives the enabled
+  // state of the Coding row's VS Code button. Overwritten by the same
+  // /api/agents boot fetch as `agents`; conservative `false` until it lands,
+  // matching how a not-yet-detected agent renders — a button that greys in
+  // for a moment beats one that offers a launch the server would 503.
+  vscodeAvailable: false,
   runningApps: [],
   // Git flags for the Coding tiles + Board backlog (issue #115, always-on
   // since #496). null only until the boot fetch lands; then a map of

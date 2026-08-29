@@ -324,6 +324,13 @@ export async function fetchAgents() {
     if (Array.isArray(body.agents) && body.agents.length) {
       state.agents = body.agents;
     }
+    // Rides on the same payload (#802) — the VS Code button isn't an agent,
+    // but it's detected the same way. Guarded on the type so an older server
+    // that omits the field leaves the conservative fallback in place rather
+    // than coercing `undefined` to a hard `false`.
+    if (typeof body.vscode_available === 'boolean') {
+      state.vscodeAvailable = body.vscode_available;
+    }
   } catch (exc) {
     logPollFailure('agents fetch failed', exc);
   }
