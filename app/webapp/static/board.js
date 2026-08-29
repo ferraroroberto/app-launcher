@@ -2,9 +2,10 @@
  * kanban.
  *
  * Five computed columns from GET /api/board, each single-purpose — Backlog
- * (open issues), Claude's turn (sessions working/unknown/idle/idle-finished),
- * Your turn (stalled/awaiting-decision/awaiting-input sessions only — #608's
- * split of the old undifferentiated needs-you), Other (open PRs +
+ * (open issues), Claude's turn (sessions working/unknown/idle/idle-finished/
+ * tool-pending), Your turn (stalled/awaiting-decision/awaiting-input
+ * sessions only — #608's split of the old undifferentiated needs-you,
+ * sharpened by #813's tool-pending carve-out), Other (open PRs +
  * failed/stuck jobs), Done (closed issues today). Phone-first: the columns
  * container is a scroll-snap carousel (one column per swipe) and the strip
  * above it doubles as column switcher + counts.
@@ -74,11 +75,15 @@ function sessionLabel(card) {
 }
 
 
-// #608: the hook-written needs-you is split server-side into four
+// #608: the hook-written needs-you is split server-side into five
 // caller-actionable values (src/board_transcript.py::_refine_waiting_status)
 // — the raw "needs-you" string itself never reaches a card's status field.
+// tool-pending (#813) is a pending ordinary tool_use — genuinely ambiguous
+// between "still executing" and "permission-gated", so it renders as an
+// ambient working-ish state rather than an alert.
 const STATUS_META = {
   working: { icon: 'zap', text: 'working', cls: 'is-working' },
+  'tool-pending': { icon: 'activity', text: 'running', cls: 'is-tool-pending' },
   stalled: { icon: 'hourglass', text: 'stalled', cls: 'is-stalled' },
   'awaiting-decision': { icon: 'sparkle', text: 'awaiting decision', cls: 'is-awaiting-decision' },
   'awaiting-input': { icon: 'sparkle', text: 'needs you', cls: 'is-awaiting-input' },

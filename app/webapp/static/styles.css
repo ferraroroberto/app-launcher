@@ -2947,14 +2947,18 @@ body.terminal-open {
   -webkit-box-orient: vertical;
 }
 /* Status accents on the card's left edge — state colors signal state. #608
-   split needs-you into four values: awaiting-decision/awaiting-input stay
-   the same attention accent as the old needs-you; stalled is a genuine
-   anomaly and gets the danger accent; idle-finished is dimmed like idle —
-   nothing pending, just Claude holding a workspace. */
+   split needs-you into four values (#813 added a fifth, tool-pending):
+   awaiting-decision/awaiting-input stay the same attention accent as the old
+   needs-you; stalled is a genuine anomaly and gets the danger accent;
+   idle-finished is dimmed like idle — nothing pending, just Claude holding a
+   workspace; tool-pending reads like working — it's genuinely ambiguous, but
+   the accent (not dimmed) errs toward "still active", the less misleading
+   read for a card sitting on an unresolved tool call. */
 .board-item.is-awaiting-decision .board-card,
 .board-item.is-awaiting-input .board-card { border-left: 3px solid var(--attention); }
 .board-item.is-stalled .board-card { border-left: 3px solid var(--danger); }
-.board-item.is-working .board-card { border-left: 3px solid var(--accent); }
+.board-item.is-working .board-card,
+.board-item.is-tool-pending .board-card { border-left: 3px solid var(--accent); }
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
 .board-item.is-idle .board-card,

@@ -131,9 +131,10 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
 
 # #608: the family of statuses that still mean "a human needs to look at
-# this" after board_transcript's needs-you split. ``idle-finished`` is
-# deliberately excluded — a clean-stopped session that nothing is pending on
-# isn't an alert, it's Claude quietly holding a workspace, same as ``idle``.
+# this" after board_transcript's needs-you split. ``idle-finished`` and
+# ``tool-pending`` (#813) are deliberately excluded — a clean-stopped session
+# with nothing pending, and one still mid-turn on an ordinary tool call,
+# aren't alerts; both are Claude quietly holding a workspace, same as ``idle``.
 _NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input"})
 
 
@@ -155,12 +156,15 @@ def build_board(
     """Route the three sources into the five computed columns.
 
     Each column now holds one kind of card (#399): Backlog = open issues.
-    Claude's turn = sessions working / unknown / idle / idle-finished (idle
-    and idle-finished are dimmed client-side, not hidden — a session with
-    nothing pending is still Claude holding a workspace, not an alert). Your
-    turn = :data:`_NEEDS_YOU_STATUSES` only (#608: ``stalled`` /
-    ``awaiting-decision`` / ``awaiting-input`` — the needs-you split's three
-    genuinely human-actionable outcomes) — a terminal that needs a human.
+    Claude's turn = sessions working / unknown / idle / idle-finished /
+    tool-pending (idle and idle-finished are dimmed client-side, not hidden —
+    a session with nothing pending is still Claude holding a workspace, not
+    an alert; tool-pending (#813) is a session still mid-turn on an ordinary,
+    non-decision tool call — equally likely to be executing as
+    permission-gated, so it isn't asserted as an alert either). Your turn =
+    :data:`_NEEDS_YOU_STATUSES` only (#608: ``stalled`` / ``awaiting-decision``
+    / ``awaiting-input`` — the needs-you split's three genuinely
+    human-actionable outcomes) — a terminal that needs a human.
     Other = everything else that needs attention but isn't a terminal: open
     PRs, then failed/stuck jobs. Done = today's closed issues only — a merged
     PR that closed one is already reflected by the issue itself.

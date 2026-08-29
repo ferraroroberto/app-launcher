@@ -1448,10 +1448,10 @@ def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path:
     a genuine needs-you-family status still wins — mirrors the legacy
     scheme's own already-notified test, for the new id space. #608: the
     notification isn't a ``tool_result`` block, so the generic split's own
-    scanner still sees the Bash call as unresolved — the safe generic
-    fallback, not a false idle-finished claim (a materially different,
-    already-notified-and-genuinely-resolved concern, which is what keeps the
-    dispatch itself out of ``working``/``stalled`` here)."""
+    scanner still sees the Bash call as unresolved — #813: that reads as
+    ``tool-pending``, not a false idle-finished claim (a materially
+    different, already-notified-and-genuinely-resolved concern, which is
+    what keeps the dispatch itself out of ``working``/``stalled`` here)."""
     stamp_time = NOW - timedelta(minutes=10)
     content = (
         _bash_tool_use_line(stamp_time - timedelta(minutes=1), "toolu_abc") + "\n"
@@ -1462,7 +1462,7 @@ def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path:
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "awaiting-input"
+    assert cards[0]["status"] == "tool-pending"
 
 
 def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path):
@@ -1470,8 +1470,9 @@ def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path)
     only ``run_in_background: true`` marks a dispatch as pending. #608: the
     fixture never adds a resolving tool_result (out of scope for what this
     test targets), so the generic split's own scanner still sees it
-    unresolved and falls back to the safe generic value rather than
-    misreading an incomplete fixture as a confirmed clean stop."""
+    unresolved — #813: that reads as ``tool-pending`` rather than
+    misreading an incomplete fixture as either a confirmed clean stop or a
+    confirmed need for a human."""
     stamp_time = NOW - timedelta(minutes=10)
     content = _bash_tool_use_line(
         stamp_time, "toolu_abc", run_in_background=False
@@ -1479,7 +1480,7 @@ def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path)
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "awaiting-input"
+    assert cards[0]["status"] == "tool-pending"
 
 
 # --------------------------------------- needs-you four-way split (#608)
@@ -1551,17 +1552,37 @@ def test_refine_resolved_ask_user_question_is_idle_finished(tmp_path: Path):
     assert cards[0]["status"] == "idle-finished"
 
 
-def test_refine_pending_unrecognized_tool_use_is_awaiting_input(tmp_path: Path):
+def test_refine_pending_unrecognized_tool_use_is_tool_pending(tmp_path: Path):
     """A pending tool_use that isn't a decision tool and isn't a background
-    dispatch (e.g. a permission-gated Read waiting on approval) falls back
-    to the generic, safe awaiting-input value — real, just not specifically
-    classifiable."""
+    dispatch (e.g. a permission-gated Read waiting on approval, or a plain
+    Read still executing) is genuinely ambiguous between the two — #813
+    reports it as its own ``tool-pending`` state rather than folding it into
+    ``awaiting-input`` ("needs you"), which over-claimed a human was needed
+    on every ordinary in-flight tool call."""
     stamp_time = NOW - timedelta(minutes=10)
     content = _tool_use_line(stamp_time, "toolu_r1", "Read") + "\n"
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "awaiting-input"
+    assert cards[0]["status"] == "tool-pending"
+
+
+def test_refine_pending_bash_tool_use_is_tool_pending_not_needs_you(tmp_path: Path):
+    """Regression (#813): the real observed timeline — a foreground Bash
+    tool_use pending with no tool_result, and the needs-you stamp newer than
+    the tool_use line's own timestamp (mirroring a long-running command
+    during which the transcript writes nothing new until it returns). Before
+    the fix this rendered ``awaiting-input`` ("needs you") mid-turn; it must
+    now render ``tool-pending`` and route to Claude's turn, not Your turn."""
+    tool_use_time = NOW - timedelta(minutes=12)
+    content = _tool_use_line(tool_use_time, "toolu_b1", "Bash") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, tool_use_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "tool-pending"
+    columns = board.build_board(cards, {}, [])
+    assert columns["your_turn"] == []
+    assert [c["session_id"] for c in columns["claude_turn"]] == ["aaa"]
 
 
 def test_refine_only_applies_to_needs_you_not_idle(tmp_path: Path):
@@ -1652,6 +1673,16 @@ def test_build_board_idle_finished_routes_to_claude_turn():
     """idle-finished isn't an alert — it belongs in Claude's turn alongside
     working/idle/unknown, not Your turn."""
     cards = [{"session_id": "s1", "status": "idle-finished", "label": ""}]
+    columns = board.build_board(cards, {}, [])
+    assert columns["your_turn"] == []
+    assert [c["session_id"] for c in columns["claude_turn"]] == ["s1"]
+
+
+def test_build_board_tool_pending_routes_to_claude_turn():
+    """tool-pending (#813) isn't an alert either — genuinely ambiguous
+    between "still executing" and "permission-gated", so it stays out of
+    Your turn the same way idle-finished does."""
+    cards = [{"session_id": "s1", "status": "tool-pending", "label": ""}]
     columns = board.build_board(cards, {}, [])
     assert columns["your_turn"] == []
     assert [c["session_id"] for c in columns["claude_turn"]] == ["s1"]
