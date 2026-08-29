@@ -15,6 +15,7 @@ Covers the three sources and their degradation contract:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from datetime import datetime, timedelta, timezone
@@ -784,6 +785,87 @@ def test_live_title_is_busy_glyph_range():
     assert _live_title_is_busy("app-launcher | gpt-5.5") is False  # Codex folder-echo title
     # The glyph must lead the title, not appear mid-string.
     assert _live_title_is_busy("Some Title ⠂") is False
+
+
+def test_live_title_is_busy_matches_the_circle_quadrant_spinner():
+    """#815: the CLI moved its spinner from Braille Patterns to the
+    circle-quadrant rotation, which this check did not recognize — so every
+    live working session read as not-busy and the whole #631 override went
+    inert. Both observed frames, plus the two remaining frames of that
+    4-frame rotation carried as a deliberate superset."""
+    from src.board_transcript import _live_title_is_busy
+
+    assert _live_title_is_busy("\u25d0 Issue add") is True  # observed live
+    assert _live_title_is_busy("\u25d1 Issue add") is True  # observed live
+    assert _live_title_is_busy("\u25d2 x") is True
+    assert _live_title_is_busy("\u25d3 x") is True
+    # The idle marker sits between the two busy families and must stay out.
+    assert _live_title_is_busy("\u2733 chief") is False
+
+
+def test_unrecognized_title_glyph_logs_one_breadcrumb_per_glyph(caplog):
+    """#815's real lesson was that the fall-through is silent: the spinner
+    changed, the override died, and nothing said so. An unrecognized glyph
+    lead now leaves exactly one info line naming the codepoint — once per
+    distinct glyph, since the Board re-polls every 5s — while ASCII titles
+    and the known idle marker stay quiet, and the verdict is unchanged."""
+    from src.board_transcript import (
+        _LOGGED_UNKNOWN_TITLE_GLYPHS,
+        _live_title_is_busy,
+    )
+
+    _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
+    with caplog.at_level(logging.INFO, logger="src.board_transcript"):
+        for _ in range(3):
+            assert _live_title_is_busy("\u2699 future spinner") is False
+        assert _live_title_is_busy("\u2733 chief") is False
+        assert _live_title_is_busy("app-launcher | gpt-5.5") is False
+        assert _live_title_is_busy("") is False
+    breadcrumbs = [r for r in caplog.records if "unrecognized glyph" in r.getMessage()]
+    assert len(breadcrumbs) == 1
+    assert "U+2699" in breadcrumbs[0].getMessage()
+    _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
+
+
+def test_overlay_circle_spinner_title_overrides_stale_needs_you(tmp_path: Path):
+    """#815 end-to-end: the exact production shape from #813 — a needs-you
+    row whose session is genuinely mid-turn, carrying today's circle-quadrant
+    spinner — must resolve to working off the PTY signal alone, without the
+    transcript deciding it. Same fixture as #631's Braille test."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 30,
+            live_title="\u25d0 Issue add",
+            last_output_at=(NOW - timedelta(seconds=1)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "working"
+
+
+def test_overlay_wedged_circle_spinner_title_does_not_force_working(tmp_path: Path):
+    """#636's freshness gate must apply to the new glyph family too — a
+    circle spinner frozen on a PTY that has gone quiet is stale chrome, not
+    proof of a live turn, and still falls through to the transcript."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 30,
+            live_title="\u25d0 Issue add",
+            last_output_at=(NOW - timedelta(minutes=5)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == "idle-finished"
 
 
 def test_overlay_busy_live_title_overrides_stale_needs_you_inside_epsilon(tmp_path: Path):

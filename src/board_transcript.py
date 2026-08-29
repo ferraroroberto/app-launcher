@@ -54,19 +54,37 @@ _RESUME_EPSILON = timedelta(seconds=10)
 _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 
 # Live-title busy override (#631/#627): Claude Code prefixes its own OSC
-# window title with a brand glyph that doubles as a busy/idle marker — a
-# Braille Pattern spinner glyph (U+2800-U+28FF) while a turn is genuinely in
-# progress, "*" (U+2733) once it returns to an idle prompt. Verified live
-# against real sessions on this box: the glyph stays a spinner throughout
-# text generation *and* tool dispatch, only flipping to the idle marker once
-# control returns to the user — so it is immune to #631's race (the tail
-# scan landing in the ~1.8s gap between a streamed text block and its own
-# following tool_use block), which is entirely a transcript-file phenomenon
-# this field never touches. This is undocumented CLI UI chrome, not a
-# versioned contract, so a title counts as busy ONLY on this recognized
-# glyph range; anything else (a future CLI's different spinner, no title
-# yet, a non-Claude agent, a "remote" kind session with no PTY) falls
-# through to the existing transcript-based checks below, unchanged.
+# window title with a brand glyph that doubles as a busy/idle marker — an
+# animated spinner glyph while a turn is genuinely in progress, "*" (U+2733)
+# once it returns to an idle prompt. Verified live against real sessions on
+# this box: the glyph stays a spinner throughout text generation *and* tool
+# dispatch, only flipping to the idle marker once control returns to the
+# user — so it is immune to #631's race (the tail scan landing in the ~1.8s
+# gap between a streamed text block and its own following tool_use block),
+# which is entirely a transcript-file phenomenon this field never touches.
+#
+# Two spinner families are recognized (#815). The CLI originally painted
+# Braille Patterns (U+2800-U+28FF), which is what #631 live-verified and all
+# this check matched for a year. It has since moved to the circle-quadrant
+# rotation "◐◓◑◒" (U+25D0-U+25D3), and because an unrecognized glyph is
+# designed to fall through silently, the whole override went inert with no
+# error and no failing test — every live working session read as not-busy
+# (#815; the Board misread a running tool call as needing the human, #813).
+# Re-measured against the running Board — 40 polls of /api/board at 150ms,
+# counting each card's leading live_title character — the only glyphs seen
+# were U+2733 "✳" (idle, x160) and U+25D0 "◐" / U+25D1 "◑" (busy, x101/x19),
+# with zero Braille. "◓"/"◒" are the remaining frames of that standard
+# 4-frame rotation, included as a deliberate superset rather than an
+# observed fact; the Braille range is kept for older CLIs and costs nothing.
+#
+# This is undocumented CLI UI chrome, not a versioned contract, so a title
+# still counts as busy ONLY on a recognized glyph; anything else (a future
+# CLI's different spinner, no title yet, a non-Claude agent, a "remote" kind
+# session with no PTY) falls through to the existing transcript-based checks
+# below, unchanged. What #815 adds is that the fall-through is no longer
+# *silent*: :func:`_note_unrecognized_title_glyph` leaves one info-level
+# breadcrumb per distinct unrecognized glyph, so the next such drift is one
+# grep away instead of another live probe.
 #
 # This is a positive, PTY-sourced signal that a turn was in progress as of
 # the *last title paint* — not a heartbeat. A genuinely wedged PTY (no more
@@ -75,7 +93,20 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 # working" from "wedged mid-spinner". Closing that remaining gap needs a
 # freshness check against the session's own last PTY output — #627's named
 # remainder, closed by :data:`_WEDGED_PTY_AFTER` below (#636).
-_BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿]")
+_BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿◐-◓]")
+
+# The idle counterpart of the spinner above: control is back at the prompt.
+# Not part of the busy test — it is named only so the drift breadcrumb can
+# stay quiet about the one non-busy glyph that is already understood.
+_IDLE_LIVE_TITLE_GLYPH = "✳"  # U+2733
+
+# Drift breadcrumb bookkeeping (#815). The Board polls every 5s and a title
+# glyph is stable for a session's whole life, so logging every rejection
+# would bury the one line that matters. One info line per distinct glyph,
+# capped and cleared wholesale on overflow — the same shape as
+# board_sessions.py's _LOGGED_SUPPRESSED_ROWS.
+_LOGGED_UNKNOWN_TITLE_GLYPHS: "set[str]" = set()
+_UNKNOWN_TITLE_GLYPH_LOG_CAP = 64
 
 # Wedged-PTY staleness (#636): how old ``last_output_at`` (the PTY's raw-read
 # timestamp, session_host.py's ``PtySession._last_output_at``) can be before
@@ -97,14 +128,49 @@ _BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿]")
 _WEDGED_PTY_AFTER = timedelta(seconds=10)
 
 
+def _note_unrecognized_title_glyph(title: str) -> None:
+    """Leave one info-level breadcrumb per distinct unrecognized leading
+    glyph on a ``live_title`` (#815).
+
+    Scoped to *non-ASCII* leads that aren't the known idle marker: an ASCII
+    lead is an ordinary title (a Codex folder echo, a plain prompt title)
+    and proves nothing, while a glyph lead is the CLI's own brand chrome —
+    exactly the thing that changed underneath this check once already and
+    silently disabled it. Purely observational — it never influences the
+    verdict — and nothing here can raise into the caller: the lead is a
+    single character (so ``ord`` is total), and the message is logged
+    lazily, leaving any formatting failure to ``logging``'s own handler.
+    """
+    lead = title[:1]
+    if not lead or lead.isascii() or lead == _IDLE_LIVE_TITLE_GLYPH:
+        return
+    if lead in _LOGGED_UNKNOWN_TITLE_GLYPHS:
+        return
+    if len(_LOGGED_UNKNOWN_TITLE_GLYPHS) >= _UNKNOWN_TITLE_GLYPH_LOG_CAP:
+        _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
+    _LOGGED_UNKNOWN_TITLE_GLYPHS.add(lead)
+    logger.info(
+        "ℹ️ board: live_title leads with unrecognized glyph U+%04X (%s) — "
+        "not treated as busy. If the CLI changed its spinner again, widen "
+        "_BUSY_LIVE_TITLE_RE (#815).",
+        ord(lead),
+        lead,
+    )
+
+
 def _live_title_is_busy(live_title: Optional[str]) -> bool:
     """Whether ``live_title`` opens with Claude Code's animated spinner glyph.
 
     See the module-level comment above :data:`_BUSY_LIVE_TITLE_RE` for what
-    this does and does not prove.
+    this does and does not prove, and why an unrecognized glyph falls
+    through to the transcript-based checks with a one-off breadcrumb
+    (#815) rather than silently.
     """
     title = (live_title or "").strip()
-    return bool(_BUSY_LIVE_TITLE_RE.match(title))
+    if _BUSY_LIVE_TITLE_RE.match(title):
+        return True
+    _note_unrecognized_title_glyph(title)
+    return False
 
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
