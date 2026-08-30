@@ -53,9 +53,33 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Single source for both hops (issue #409 established it for ``.bat``).
 CMD_UNSAFE_CHARS = frozenset('"&|^<>')
 
+# ``%`` is deliberately *not* in ``CMD_UNSAFE_CHARS`` (issue #810). cmd.exe
+# only substitutes a **paired** ``%name%`` reference (or ``%1``-``%9`` /
+# ``%*``) during its own re-tokenization of the command line — a lone ``%``
+# is inert. Blocking on the bare character would also refuse the common
+# ordinary case of a URL-encoded value in a webhook-mapped field
+# (``...?q=100%20off``), which is a behaviour change for existing jobs the
+# character-set check was never meant to make. Instead, refuse only the
+# shape cmd.exe actually expands: a ``%`` pair wrapping a conventional
+# environment-variable name. That still catches the real risk — a mapped
+# value like ``%PATH%`` or ``%USERPROFILE%`` reaching the child with the
+# PC's environment substituted in — without touching percent-encoding.
+_PERCENT_VAR_RE = re.compile(r"%[A-Za-z_][A-Za-z0-9_]*%")
+
+
+class ArgvRejected(ValueError):
+    """A value can't survive a cmd.exe re-tokenization hop.
+
+    Subclasses ``ValueError`` so every existing ``except (OSError,
+    ValueError)`` still catches it; callers that need to tell a *refused*
+    argv apart from a *genuine* spawn failure (issue #810 — the difference
+    between an HTTP 400 and a 500) can ``isinstance``-check for this type
+    specifically.
+    """
+
 
 def reject_cmd_unsafe(values: List[str], what: str) -> None:
-    """Raise ``ValueError`` if any of ``values`` can't survive cmd.exe.
+    """Raise :class:`ArgvRejected` if any of ``values`` can't survive cmd.exe.
 
     ``what`` names the caller's surface so the message says which command
     line was refused rather than just that something was.
@@ -63,9 +87,15 @@ def reject_cmd_unsafe(values: List[str], what: str) -> None:
     for value in values:
         bad = CMD_UNSAFE_CHARS.intersection(value)
         if bad:
-            raise ValueError(
+            raise ArgvRejected(
                 f"{what} contains character(s) that cannot be passed through "
                 f"cmd.exe safely: {''.join(sorted(bad))!r} in {value!r}"
+            )
+        match = _PERCENT_VAR_RE.search(value)
+        if match:
+            raise ArgvRejected(
+                f"{what} contains a %VAR%-shaped reference cmd.exe would "
+                f"expand: {match.group()!r} in {value!r}"
             )
 
 

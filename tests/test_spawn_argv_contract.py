@@ -47,6 +47,8 @@ def captured_spawn(monkeypatch):
         "a<b",
         "a>b",
         'a"b',
+        "%PATH%",
+        "before-%USERPROFILE%-after",
     ],
 )
 def test_param_value_with_cmd_metacharacter_is_refused(
@@ -78,6 +80,19 @@ def test_ordinary_param_values_still_spawn(captured_spawn):
     cmd = captured_spawn["cmd"]
     assert cmd[:5] == ["cmd", "/c", "start", "", "/b"]
     assert "--params" in cmd
+
+
+def test_percent_encoded_param_value_still_spawns(captured_spawn):
+    """Regression guard (issue #810): a lone `%` (URL-encoding) must not be
+    swept up by the `%name%` env-var-expansion refusal."""
+    pid = jobs_schtasks.spawn_run_job_detached(
+        "demo-job",
+        "run-1",
+        trigger="manual",
+        params={"q": "100%20off"},
+    )
+    assert pid == 4321
+    assert "--params" in captured_spawn["cmd"]
 
 
 def test_no_params_path_is_unaffected(captured_spawn):
@@ -125,6 +140,10 @@ class TestRefusalReachesTheRunRecord:
         assert meta["status"] == "failed"
         assert meta["exit_code"] == -1
         assert "&" in meta["spawn_error"]
+        assert meta["refused"] is True, (
+            "a refused argv must be distinguishable from a genuine spawn "
+            "failure (issue #810) so the route can answer 400, not 500"
+        )
         record = json.loads(
             (isolated_jobs / "solo" / meta["run_id"] / "run.json").read_text(
                 encoding="utf-8"
@@ -132,6 +151,27 @@ class TestRefusalReachesTheRunRecord:
         )
         assert record["status"] == "failed", "no orphaned pending record"
         assert record["spawn_error"] == meta["spawn_error"]
+        assert record["refused"] is True
+
+    def test_genuine_spawn_failure_is_not_marked_refused(
+        self, isolated_jobs, monkeypatch
+    ):
+        """An `OSError` from the spawn itself (not an `ArgvRejected`) must
+        keep `refused=False` so the route still answers 500 (issue #810)."""
+        from src import jobs_queue as jobs_queue_mod
+        from src.jobs_config import Job
+
+        def _boom(*args, **kwargs):
+            raise OSError("the executable vanished")
+
+        monkeypatch.setattr(jobs_queue_mod, "spawn_run_job_detached", _boom)
+
+        job = Job(id="solo", name="Solo", script_path="C:/x.py")
+        meta = jobs_queue_mod.admit_and_spawn([job], job, "webhook")
+
+        assert meta is not None
+        assert meta["status"] == "failed"
+        assert meta["refused"] is False
 
     def test_refused_param_on_the_queued_path_does_not_escape_the_drain(
         self, isolated_jobs

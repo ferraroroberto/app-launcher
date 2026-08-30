@@ -22,6 +22,7 @@ from threading import Lock
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from src._json_io import atomic_write_json, file_lock
+from src.jobs_argv import ArgvRejected
 from src.jobs_config import Job
 from src.jobs_history import (
     JOBS_RUNS_DIR,
@@ -246,7 +247,11 @@ def admit_and_spawn(
       ``spawn_error_key``, so the UI surfaces the failure instead of a stuck
       ``pending``. Both are "this fire produced no child": the run dir is
       already on disk by then, so letting either escape would leave exactly
-      the orphaned ``pending`` record this helper exists to prevent.
+      the orphaned ``pending`` record this helper exists to prevent. The
+      meta also carries ``refused`` (issue #810): ``True`` for the
+      :class:`~src.jobs_argv.ArgvRejected` case, ``False`` for a genuine
+      ``OSError``, so an HTTP caller can answer 400 vs 500 instead of
+      collapsing both into "the server broke".
 
     ``spawn_when_free=False`` is the executor's case: it is *already* the
     process that will run this job inline, so it only wants the queue half.
@@ -315,6 +320,7 @@ def admit_and_spawn(
             "exit_code": -1,
             "status": "failed",
             spawn_error_key: str(exc),
+            "refused": isinstance(exc, ArgvRejected),
         }
         meta.update(failure)
         write_run_json(run_dir, **failure)

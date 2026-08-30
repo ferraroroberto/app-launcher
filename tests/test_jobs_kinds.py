@@ -119,7 +119,8 @@ class TestBatchKind:
         assert len(problems) == 1 and problems[0].level == "warning"
 
     @pytest.mark.parametrize(
-        "bad_value", ['"&calc"', "a|b", "a&b", "a^b", "<a", "a>b"]
+        "bad_value",
+        ['"&calc"', "a|b", "a&b", "a^b", "<a", "a>b", "%PATH%", "x%USERPROFILE%y"],
     )
     def test_build_argv_rejects_cmd_injection_chars(self, tmp_path, bad_value):
         bat = tmp_path / "demo.bat"
@@ -127,6 +128,17 @@ class TestBatchKind:
         job = _job(script_path=str(bat))
         with pytest.raises(ValueError):
             BatchKind().build_argv(job, [bad_value], {}, tmp_path)
+
+    def test_build_argv_allows_percent_encoded_value(self, tmp_path):
+        """A lone `%` (e.g. URL-encoding) must not be refused (issue #810)
+        — only a `%name%`-shaped pair cmd.exe would actually expand."""
+        bat = tmp_path / "demo.bat"
+        bat.write_text("@echo off")
+        job = _job(script_path=str(bat))
+        argv, _cwd, _env = BatchKind().build_argv(
+            job, ["q=100%20off"], {}, tmp_path
+        )
+        assert argv == ["cmd.exe", "/c", str(bat), "q=100%20off"]
 
 
 # ------------------------------------------------------------- powershell
