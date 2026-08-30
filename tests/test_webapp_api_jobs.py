@@ -375,6 +375,33 @@ class TestRunJob:
         assert spawn.called
         assert spawn.call_args.args[1] == run_id
 
+    def test_refused_argv_returns_400_not_500(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """Issue #810: a refused argv is a rejected request, not a server
+        fault — distinct from a genuine spawn failure (OSError, below)."""
+        from src.jobs_argv import ArgvRejected
+
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        mocked_jobs_side_effects["spawn_run_job_detached"].side_effect = (
+            ArgvRejected("run-job argument contains %PATH%")
+        )
+        resp = client.post("/api/jobs/" + created["id"] + "/run")
+        assert resp.status_code == 400, resp.text
+        assert "%PATH%" in resp.json()["detail"]
+
+    def test_genuine_spawn_failure_still_returns_500(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        mocked_jobs_side_effects["spawn_run_job_detached"].side_effect = OSError(
+            "the executable vanished"
+        )
+        resp = client.post("/api/jobs/" + created["id"] + "/run")
+        assert resp.status_code == 500, resp.text
+
 
 # ================================================================== params
 

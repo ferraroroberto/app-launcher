@@ -29,6 +29,7 @@ from typing import Any, Callable, Dict, Optional
 from fastapi import HTTPException
 
 from src import jobs as jobs_mod
+from src.jobs_argv import ArgvRejected
 from src.jobs_config import Job, JobsConfig
 
 logger = logging.getLogger(__name__)
@@ -114,12 +115,18 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
         # spawn when a value can't survive the `cmd /c start` hop
         # (src.jobs_argv.reject_cmd_unsafe). The run dir already exists, so
         # an escaping exception would leave it stuck at "pending".
+        refused = isinstance(exc, ArgvRejected)
         jobs_mod.write_run_json(
             run_dir,
             finished_at=datetime.now().isoformat(timespec="seconds"),
             exit_code=-1,
             status="failed",
+            refused=refused,
         )
+        # A refused argv is a rejected request (issue #810), not a server
+        # fault — only a genuine spawn failure (OSError) is a 500.
+        if refused:
+            raise HTTPException(status_code=400, detail=f"refused: {exc}")
         raise HTTPException(status_code=500, detail=f"spawn failed: {exc}")
     return {"run_id": run_dir.name, "job_id": job.id, "dry_run": True}
 
@@ -195,7 +202,13 @@ async def _admit_and_spawn(
         }
     if meta["status"] == "failed":
         # Spawn failed. admit_and_spawn already recorded the failure on the
-        # run so the UI surfaces it instead of a stuck "pending".
+        # run so the UI surfaces it instead of a stuck "pending". A refused
+        # argv (issue #810) is a rejected request, not a server fault —
+        # only a genuine spawn failure (OSError) answers 500.
+        if meta.get("refused"):
+            raise HTTPException(
+                status_code=400, detail=f"refused: {meta['spawn_error']}"
+            )
         raise HTTPException(
             status_code=500, detail=f"spawn failed: {meta['spawn_error']}"
         )

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.jobs_argv import compose_argv
+from src.jobs_argv import ArgvRejected, compose_argv, reject_cmd_unsafe
 from src.jobs_config import Job, Param
 
 
@@ -149,3 +149,37 @@ class TestTypeChecking:
         job = _mk(Param(name="d", kind="date", flag="--d"))
         with pytest.raises(ValueError, match="unknown param 'x'"):
             compose_argv(job, {"d": "2026-06-01", "x": 1})
+
+
+class TestRejectCmdUnsafe:
+    """``reject_cmd_unsafe`` — the shared cmd.exe re-tokenization guard
+    (issue #409, extended #810 for `%name%` env-var expansion)."""
+
+    def test_metacharacter_raises_argv_rejected(self):
+        with pytest.raises(ArgvRejected):
+            reject_cmd_unsafe(["a&b"], "test value")
+
+    def test_argv_rejected_is_a_value_error(self):
+        # Existing `except (OSError, ValueError)` call sites must keep
+        # catching this without change.
+        assert issubclass(ArgvRejected, ValueError)
+
+    def test_percent_var_shape_is_refused(self):
+        with pytest.raises(ArgvRejected, match="%PATH%"):
+            reject_cmd_unsafe(["%PATH%"], "test value")
+
+    def test_percent_var_shape_embedded_in_value_is_refused(self):
+        with pytest.raises(ArgvRejected, match="%USERPROFILE%"):
+            reject_cmd_unsafe(["prefix-%USERPROFILE%-suffix"], "test value")
+
+    def test_lone_percent_is_allowed(self):
+        # A bare `%` — no closing pair — is inert to cmd.exe.
+        reject_cmd_unsafe(["50% off"], "test value")
+
+    def test_percent_encoded_url_value_is_allowed(self):
+        # Two independent %HH percent-encodings must not be misread as one
+        # %name% pair (issue #810's stated regression risk).
+        reject_cmd_unsafe(["q=100%20off%3D5"], "test value")
+
+    def test_ordinary_value_passes(self):
+        reject_cmd_unsafe(["feat/some-thing"], "test value")
