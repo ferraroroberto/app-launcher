@@ -237,6 +237,7 @@ def notify_failure(
     status: str,
     exit_code: Optional[int],
     reaped: bool = False,
+    watchdog_note: Optional[str] = None,
     notifier: Optional[JobNotifier] = None,
     telegram_notifier: Optional[JobNotifier] = None,
 ) -> None:
@@ -264,6 +265,15 @@ def notify_failure(
     reported one — and renders as ``exit=unknown`` rather than a
     fabricated number; ``reaped=True`` appends a short note so the
     recipient knows this failure was discovered late, not live.
+
+    ``watchdog_note`` (issue #819) is the executor's own
+    :attr:`~app.cli.commands.run_job_supervision.RunWatchdog.note` — e.g.
+    ``"watchdog: max runtime 33min exceeded"`` — passed through by the
+    caller that already stamped it into the run record, rather than
+    re-read from the just-written ``run.json`` here. A bare exit code
+    from a watchdog kill is otherwise indistinguishable from the job's own
+    failure and actively misleading (the process was healthy, just slow).
+    Composes with ``reaped`` if a future caller ever has both.
     """
     try:
         if status != "failed":
@@ -271,6 +281,8 @@ def notify_failure(
 
         exit_text = "unknown" if exit_code is None else str(exit_code)
         origin_note = " (reaped — end time not confirmed)" if reaped else ""
+        if watchdog_note:
+            origin_note += f" ({watchdog_note})"
 
         if cfg.notify_on_failure:
             notifier = notifier or build_notifier_from_config(cfg)
