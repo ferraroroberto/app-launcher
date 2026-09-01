@@ -13,6 +13,7 @@ saying so; this is the mechanism that makes that determinable.
 from __future__ import annotations
 
 import datetime as _dt
+import time as _time
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -31,15 +32,49 @@ def resolve_git_sha(project_root: Path = PROJECT_ROOT) -> str:
     return sha or "unknown"
 
 
-def build_identity(project_root: Path = PROJECT_ROOT) -> Dict[str, str]:
+CAPTURE_ATTEMPTS = 3
+CAPTURE_BACKOFF_SECONDS = 0.3
+
+
+def build_identity(
+    project_root: Path = PROJECT_ROOT,
+    *,
+    attempts: int = CAPTURE_ATTEMPTS,
+    backoff_seconds: float = CAPTURE_BACKOFF_SECONDS,
+) -> Dict[str, str]:
     """``{"git_sha", "captured_at"}`` for ``project_root``, computed now.
 
     Call once at process/module import to capture "what this process
     loaded"; call again later (fresh, uncached) to get the live, current
     value for comparison — that's exactly the staleness check #615 needs.
+
+    **Retries a failed resolution before giving up (#825).** The value is
+    captured exactly once per process, so a single transient ``git`` failure
+    at import used to freeze ``"unknown"`` for that process's entire life —
+    and the session-host is deliberately excluded from ``tray.bat --restart``
+    to protect live PTYs, so it ran for 8 days with its identity, and
+    therefore the whole staleness check, permanently unavailable.
+
+    The retry stays *inside the capture* on purpose. Re-resolving later would
+    make ``git_sha`` track live git state rather than what this process
+    loaded, and a later resolve could return a newer ``HEAD`` and report a
+    confident "fresh" for a process running old code — strictly worse than
+    ``"unknown"``. Retrying within the first second of start keeps the
+    "captured at my own start" semantic intact.
+
+    A genuinely broken resolution (no git, not a repo) still yields
+    ``"unknown"``: it must stay its own state, never fold into a guess. Only
+    the failing path pays the backoff — a successful first attempt returns
+    immediately, which is every normal start.
     """
+    sha = resolve_git_sha(project_root)
+    for attempt in range(1, max(1, attempts)):
+        if sha != "unknown":
+            break
+        _time.sleep(backoff_seconds * attempt)
+        sha = resolve_git_sha(project_root)
     return {
-        "git_sha": resolve_git_sha(project_root),
+        "git_sha": sha,
         "captured_at": _dt.datetime.now().replace(microsecond=0).isoformat(),
     }
 
