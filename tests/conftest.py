@@ -91,7 +91,91 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
         _progress_write(f"DONE  {report.nodeid} ({total:.1f}s)")
 
 
+# --- tests/ source-mutation guard (#822) -------------------------------------
+#
+# A test that silently rewrites a tracked source file and still reports green is
+# worse than a failing test. `_pty_readback_child.py` did exactly that: a spawn
+# argument was mangled, the child truncated its own source, 3 tests quietly
+# stopped existing, and the run was green. Nothing noticed until an unrelated
+# `git diff` showed `43 ---------`.
+#
+# So: fingerprint every `.py` under tests/ at session start and re-check at
+# finish. This is a whole-directory invariant rather than a fix for that one
+# helper, because the class of bug — a test process writing to a path it
+# resolved wrongly — is not specific to it.
+_TESTS_DIR = Path(__file__).resolve().parent
+_SKIP_DIRS = {"__pycache__", ".pytest_cache", "node_modules"}
+_source_fingerprints: dict[Path, int] = {}
+
+
+def _iter_test_sources() -> Iterator[Path]:
+    for path in _TESTS_DIR.rglob("*.py"):
+        if any(part in _SKIP_DIRS for part in path.relative_to(_TESTS_DIR).parts):
+            continue
+        yield path
+
+
+def _fingerprint_test_sources() -> dict[Path, int]:
+    """Map each test source to a cheap content fingerprint (CRC32 of its bytes).
+
+    CRC32 rather than a cryptographic hash: this is corruption detection, not
+    tamper detection, and it keeps the whole sweep well under a tenth of a
+    second for ~200 files.
+    """
+    import zlib
+
+    prints: dict[Path, int] = {}
+    for path in _iter_test_sources():
+        try:
+            prints[path] = zlib.crc32(path.read_bytes())
+        except OSError:
+            continue
+    return prints
+
+
+def pytest_sessionstart(session) -> None:
+    _source_fingerprints.update(_fingerprint_test_sources())
+
+
+def _check_test_sources_unmodified(session) -> None:
+    """Fail the run if it mutated or deleted a test source it did not create."""
+    if not _source_fingerprints:
+        return
+    after = _fingerprint_test_sources()
+    changed = sorted(
+        str(p.relative_to(_TESTS_DIR))
+        for p, before in _source_fingerprints.items()
+        if after.get(p) != before
+    )
+    strays = sorted(
+        str(p.relative_to(_TESTS_DIR))
+        for p in _TESTS_DIR.rglob("*.ready")
+        if not any(part in _SKIP_DIRS for part in p.relative_to(_TESTS_DIR).parts)
+    )
+    if not changed and not strays:
+        return
+    lines = ["the tests/ tree changed while this run was in flight:"]
+    for name in changed:
+        lines.append(f"  modified/deleted: {name}")
+    for name in strays:
+        lines.append(f"  stray artifact:   {name}")
+    # Two causes produce this, and the guard cannot tell them apart: a test that
+    # wrote to a path it resolved wrongly (the #822 bug), or someone editing a
+    # test file while the suite ran. Say both rather than accuse the suite —
+    # a guard that misattributes its own trigger trains people to ignore it.
+    lines.append("")
+    lines.append("Either a test wrote to a path it resolved wrongly, or a file was")
+    lines.append("edited mid-run. If you were not editing, treat it as the former:")
+    lines.append("  git status tests/   then   git checkout -- tests/")
+    message = "\n".join(lines)
+    # Print as well as fail: a non-zero exit status alone is easy to misread as
+    # an ordinary test failure, and the actionable part is *which* file moved.
+    print(f"\n❌ {message}", file=sys.stderr)
+    session.exitstatus = 1
+
+
 def pytest_sessionfinish(session, exitstatus) -> None:
+    _check_test_sources_unmodified(session)
     if not os.environ.get(_PROGRESS_ENV, "").strip():
         return
     _progress_write(f"pytest session finished (exit status {exitstatus})")

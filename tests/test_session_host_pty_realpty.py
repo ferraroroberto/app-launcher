@@ -23,6 +23,7 @@ Windows + pywinpty only; skips cleanly elsewhere.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -44,12 +45,16 @@ async def _readback(size: int, tmp_path: Path) -> tuple[str, str]:
     payload through ``PtySession.write``, and return (sent, received)."""
     result = tmp_path / "readback.bin"
     ready = Path(str(result) + ".ready")
-    # No quotes around the paths: pywinpty's string-command spawn does its
-    # own tokenising that doesn't honour double-quotes the way CreateProcess
-    # would (a quoted path arrives mangled). The venv python, this test dir,
-    # and the pytest tmp_path are all space-free, so bare tokens are safe.
-    cmd = f"{sys.executable} {_CHILD} {result}"
-    pty = PtyProcess.spawn(cmd, cwd=str(_CHILD.parent), dimensions=(40, 120))
+    # The destination goes in the environment, not in argv (#822). pywinpty's
+    # string-command spawn tokenises with `shlex.split(cmd, posix=False)`, so a
+    # positional path is only as safe as the assumption that it contains no
+    # space — and when that assumption broke, the child wrote to a truncated
+    # prefix of the path instead of failing. An env var is not tokenised.
+    # Only the executable and the child script remain positional; both are
+    # repo-controlled paths.
+    cmd = f"{sys.executable} {_CHILD}"
+    env = {**os.environ, "PTY_READBACK_RESULT": str(result)}
+    pty = PtyProcess.spawn(cmd, cwd=str(_CHILD.parent), dimensions=(40, 120), env=env)
     loop = asyncio.get_running_loop()
     session = PtySession(
         session_id="readback",
