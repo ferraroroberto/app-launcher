@@ -61,6 +61,10 @@ TS_DEBUG_LOG = PROJECT_ROOT / "webapp" / "tailscale_debug.log"
 # Same reason: the health watchdog (issue #386) leaves its wedge/recovery
 # breadcrumbs here — the only durable trail of *when* :8445 stopped answering.
 WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
+# Where the detached session-host's own stdout/stderr lands (#825). It is
+# spawned re-parented out of this tray's subtree and has no console, so this
+# file is the only place its logging can go.
+SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
 
 # The loopback PTY session-host. It is a *linked-but-independent* child
 # (project-scaffolding#35): it hosts the user's Coding PTYs and MUST survive a
@@ -228,10 +232,25 @@ class TrayApp:
             "cmd", "/c", "start", "", "/b",
             sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host",
         ]
+        # Log to a file, not DEVNULL (#825). The CLI configures logging with a
+        # bare `logging.basicConfig()` — default handler, stderr — so pointing
+        # stderr at DEVNULL silently discarded every session-host log line,
+        # including the WARNING `run_git` emits explaining exactly why a build
+        # identity failed to resolve. That is how this process ran for 8 days
+        # reporting `git_sha: "unknown"` with the reason unrecoverable.
+        # Appended, so a restart keeps the prior boot's context.
+        try:
+            SESSION_HOST_LOG.parent.mkdir(parents=True, exist_ok=True)
+            log_handle = open(SESSION_HOST_LOG, "a", encoding="utf-8", errors="replace")
+        except OSError as exc:
+            # Never let a log target block the session-host from starting — the
+            # PTY host matters more than its diagnostics.
+            logger.warning(f"⚠️  session-host log unavailable ({exc}); falling back to DEVNULL")
+            log_handle = None
         kw: dict = dict(
             cwd=str(PROJECT_ROOT),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=log_handle if log_handle is not None else subprocess.DEVNULL,
+            stderr=subprocess.STDOUT if log_handle is not None else subprocess.DEVNULL,
             creationflags=NO_WINDOW,
         )
         try:
@@ -240,7 +259,12 @@ class TrayApp:
             logger.warning(f"⚠️  session-host failed to launch: {exc}")
             _notify("Session host", f"Failed to start: {exc}")
             return
-        logger.info(f"🧩 session-host spawned detached on :{port}")
+        finally:
+            # The child inherited its own duplicate of the handle; close the
+            # tray's copy so this long-lived process isn't pinning the file.
+            if log_handle is not None:
+                log_handle.close()
+        logger.info(f"🧩 session-host spawned detached on :{port} (log: {SESSION_HOST_LOG})")
 
     def _stop_session_host(self) -> None:
         """Stop the session-host on an explicit Quit. It is detached (no Popen
