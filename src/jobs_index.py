@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_history
+from src.runtime_data import runtime_data_dir
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +23,27 @@ SCHEMA_VERSION = 1
 INDEX_FILENAME = "_index.sqlite"
 _INDEX_LOCK = threading.RLock()
 
+# Where the index file lives. It used to sit inside the run-history root it
+# mirrors (``webapp/jobs/``), which put its writes on whichever drive this repo
+# was cloned onto — a spinning HDD here (project-scaffolding#243). It now
+# resolves to the fleet runtime-data root instead.
+#
+# A module global rather than a call to ``runtime_data_dir()`` inside
+# :func:`index_path`, because the tests need one place to redirect: isolation
+# used to come for free from patching ``jobs_history.JOBS_RUNS_DIR``, and
+# decoupling the two would otherwise have pointed every one of those tests at
+# the real production index. ``tests/conftest.py`` patches this autouse.
+INDEX_DIR = runtime_data_dir("app-launcher")
+
 
 def index_path() -> Path:
-    """Return the derived index path for the active run-history root."""
-    return jobs_history.JOBS_RUNS_DIR / INDEX_FILENAME
+    """Return the index path for the active run-history root.
+
+    The index is a *derived* mirror — deleting it is safe and the next read or
+    write rebuilds it from ``JOBS_RUNS_DIR`` — so it is free to live on a
+    different volume from the run records it indexes.
+    """
+    return INDEX_DIR / INDEX_FILENAME
 
 
 def _connect() -> sqlite3.Connection:

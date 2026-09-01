@@ -16,6 +16,7 @@ import importlib
 import json
 import os
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Iterator
@@ -26,6 +27,23 @@ import pytest
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+
+# Redirect this repo's whole fleet runtime-data directory before any `src.*`
+# module is imported, so `src.jobs_index.INDEX_DIR` — resolved at import time —
+# never points at the real store during a test run.
+#
+# The per-test `_isolated_jobs_index` fixture below is the precise isolation;
+# this is the backstop it needs. `jobs_index.ensure_index()` is dispatched via
+# `asyncio.to_thread`, and a thread can land its write *after* monkeypatch has
+# restored `INDEX_DIR`, so a purely function-scoped patch leaks the real
+# production index intermittently — observed on roughly one full run in two.
+# Setting the env var makes the module-level default itself safe, so a late
+# thread has nowhere unsafe to write. `setdefault`, so a deliberate outer
+# override still wins.
+os.environ.setdefault(
+    "APP_LAUNCHER_DATA_DIR",
+    str(Path(tempfile.gettempdir()) / "app-launcher-test-runtime-data"),
+)
 
 
 # ------------------------------------------------- gate progress log (#534)
@@ -120,6 +138,26 @@ def _no_real_mirror_window(request, monkeypatch):
             monkeypatch.setattr(
                 module, "open_local_terminal_window", lambda *a, **k: None
             )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_jobs_index(tmp_path, monkeypatch):
+    """Give each test its own Jobs index.
+
+    The index used to live inside the run-history root, so patching
+    ``jobs_history.JOBS_RUNS_DIR`` gave every test a private index for free —
+    which ~20 tests and the opt-in ``webapp_client`` fixture relied on. Since
+    project-scaffolding#243 the index no longer follows ``JOBS_RUNS_DIR``, so
+    without this they would all share one index for the whole session and see
+    each other's runs.
+
+    Staying off the *real* index is the module-level ``APP_LAUNCHER_DATA_DIR``
+    above, not this fixture — verified by disabling this fixture and confirming
+    a jobs test still writes only into the temp root.
+    """
+    from src import jobs_index as jobs_index_mod
+
+    monkeypatch.setattr(jobs_index_mod, "INDEX_DIR", tmp_path / "jobs_index")
 
 
 @pytest.fixture(autouse=True)
