@@ -456,7 +456,9 @@ def _finalize_run(
     so it is never confused with a plain ``failed`` (the job's own bad
     exit code) or with ``killed: true`` (an operator tapped Kill). A run
     the watchdog never touched gains none of those keys, so the common
-    case's record shape is unchanged.
+    case's record shape is unchanged. The same ``note`` is forwarded to
+    :func:`~src.notifications.notify_failure` (issue #819) so the alert
+    names the watchdog instead of a bare, otherwise-unproducible exit code.
     """
     finished_at = datetime.now().isoformat(timespec="seconds")
     duration_seconds = round(time.monotonic() - spawn_started, 3)
@@ -485,7 +487,11 @@ def _finalize_run(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️  notify: could not load webapp config: {exc}")
     else:
-        notify_failure(cfg, job, run_dir, status=status, exit_code=exit_code)
+        watchdog_note = watchdog.note if watchdog is not None and watchdog.fired else None
+        notify_failure(
+            cfg, job, run_dir,
+            status=status, exit_code=exit_code, watchdog_note=watchdog_note,
+        )
 
 
 def _dispatch_chain(job: Job, status: str) -> None:
