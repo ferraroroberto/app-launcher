@@ -316,9 +316,9 @@ def merge_sessions(
     Waiting statuses are checked against transcript activity — see
     :func:`src.board_transcript._transcript_overlay` (#305) — and a hook
     ``needs-you`` is then split into ``stalled`` / ``awaiting-decision`` /
-    ``idle-finished`` / ``awaiting-input`` (#608's
-    :func:`src.board_transcript._refine_waiting_status`) so a caller never
-    has to fetch the exchange to tell those four apart. The raw
+    ``tool-pending`` / ``idle-finished`` / ``awaiting-input`` (#608, sharpened
+    by #813's :func:`src.board_transcript._refine_waiting_status`) so a caller
+    never has to fetch the exchange to tell those five apart. The raw
     ``needs-you`` string itself never reaches a card's ``status`` field. The
     live session's ``last_output_at`` rides along with ``live_title`` to the
     matched-pairs call site only (#636) — a busy title with a genuinely
