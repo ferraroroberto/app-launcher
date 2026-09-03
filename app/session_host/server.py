@@ -48,13 +48,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
-from src.session_host import (
-    _EOF,
-    INPUT_DEFERRED,
-    INPUT_DROPPED,
-    INPUT_NOT_INGESTED,
-    SessionManager,
-)
+from src.session_host import _EOF, SessionManager
+from src.session_host_input import INPUT_DEFERRED, INPUT_DROPPED, INPUT_NOT_INGESTED
 
 logger = logging.getLogger(__name__)
 

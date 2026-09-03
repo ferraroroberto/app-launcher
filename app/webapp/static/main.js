@@ -114,20 +114,9 @@ function wireTheme() {
 }
 
 // --------------------------------------------------------- status readout
-// Appends a sprite-icon span + a trailing text node — data (tunnel_url,
+// Renders a sprite-icon span + a trailing text node — data (tunnel_url,
 // etc.) always rides a text node, never innerHTML, even though it's
 // locally-sourced (issue #355 straggler fix).
-function appendStatusChunk(parts, iconName, text) {
-  if (parts.length) parts.push(document.createTextNode(' \u00b7 '));
-  if (iconName) {
-    const ic = document.createElement('span');
-    ic.className = 'inline-icon';
-    ic.innerHTML = icon(iconName);
-    parts.push(ic);
-  }
-  parts.push(document.createTextNode((iconName ? ' ' : '') + text));
-}
-
 async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
@@ -137,12 +126,14 @@ async function fetchStatus() {
     // the UI, and not information the user needs day to day. The
     // reachability warning stays; it's actionable (fix by switching to
     // the Tailscale URL), not just informational.
-    const parts = [];
-    if (body.terminal && body.terminal.reachable === false) {
-      appendStatusChunk(parts, 'triangle-alert', 'terminal needs the Tailscale URL');
-    }
     els.statusReadout.innerHTML = '';
-    parts.forEach(function (p) { els.statusReadout.appendChild(p); });
+    if (body.terminal && body.terminal.reachable === false) {
+      const ic = document.createElement('span');
+      ic.className = 'inline-icon';
+      ic.innerHTML = icon('triangle-alert');
+      els.statusReadout.appendChild(ic);
+      els.statusReadout.appendChild(document.createTextNode(' terminal needs the Tailscale URL'));
+    }
   } catch (_) {
     els.statusReadout.textContent = '';
   }
