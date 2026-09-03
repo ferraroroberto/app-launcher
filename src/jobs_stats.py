@@ -240,7 +240,11 @@ def derived_runtime_ceiling_seconds(
 
 
 def is_stuck(
-    job_id: str, *, p95_factor: float = 3.0, floor_seconds: float = 300.0
+    job_id: str,
+    *,
+    latest: Optional[Dict[str, Any]] = None,
+    p95_factor: float = 3.0,
+    floor_seconds: float = 300.0,
 ) -> bool:
     """``True`` when the latest run is ``running`` past a sane threshold.
 
@@ -248,8 +252,14 @@ def is_stuck(
     shows ⚠️ and exposes a manual kill button. The *auto*-kill lives in
     the executor's watchdog (issue #695), which derives its ceiling from
     the same helper but demands a minimum sample first.
+
+    ``latest`` lets a caller that already holds the newest run record
+    (e.g. one poll's worth of job decoration) pass it in and skip a
+    redundant :func:`~src.jobs_history.latest_run` walk; omitted, it's
+    fetched here exactly as before.
     """
-    latest = latest_run(job_id)
+    if latest is None:
+        latest = latest_run(job_id)
     if not latest or latest.get("status") != "running":
         return False
     started = _parse_iso(latest.get("started_at"))
