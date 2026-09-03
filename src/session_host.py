@@ -26,11 +26,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
-try:
-    import psutil  # type: ignore
-except ImportError:  # pragma: no cover — psutil is in requirements.txt
-    psutil = None  # type: ignore
-
 from src.agents import (
     DEFAULT_AGENT,
     command_for,
@@ -39,6 +34,7 @@ from src.agents import (
     quit_command_for,
 )
 from src.audit import transcript_path
+from src.diagnostics import is_pid_alive
 from src.env_path import effective_path
 from src.session_host_input import InputProtocol
 from src.session_host_scan import (  # noqa: F401 — re-exported for callers/tests
@@ -177,21 +173,6 @@ def _parse_started_pid(stdout: Optional[str]) -> Optional[int]:
         if text.isdigit():
             return int(text)
     return None
-
-
-def _pid_alive(pid: int) -> bool:
-    """True if ``pid`` names a live process.
-
-    Detached consoles are orphaned out of the host's process tree (issue
-    #130) so we no longer hold a ``Popen`` handle for them — liveness is a
-    bare PID probe, answered by ``psutil`` (already a hard dependency —
-    ``src.diagnostics.is_pid_alive`` answers the identical question).
-    """
-    if not pid:
-        return False
-    if psutil is None:  # pragma: no cover — psutil is in requirements.txt
-        return True  # can't introspect — assume alive, don't kill blindly
-    return psutil.pid_exists(pid)
 
 
 def _trim_ring_head(ring: str) -> str:
@@ -698,7 +679,7 @@ class RemoteSession:
 
     @property
     def alive(self) -> bool:
-        return _pid_alive(self._pid)
+        return is_pid_alive(self._pid, self.started_at)
 
     def stop(
         self, mode: str = STOP_KILL, grace_seconds: float = _STOP_GRACE_SECONDS
@@ -714,7 +695,7 @@ class RemoteSession:
         ``mode`` / ``grace_seconds`` are accepted for interface parity with
         :class:`PtySession` but ignored — there is no PTY to type a quit into.
         """
-        if not _pid_alive(self._pid):
+        if not is_pid_alive(self._pid, self.started_at):
             return
 
         try:

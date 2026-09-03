@@ -125,7 +125,7 @@ def test_remote_stop_taskkills_by_pid(monkeypatch):
     from src import session_host
     calls: dict = {}
 
-    monkeypatch.setattr(session_host, "_pid_alive", lambda pid: True)
+    monkeypatch.setattr(session_host, "is_pid_alive", lambda pid, hint=None: True)
 
     def fake_run(argv, **kwargs):
         calls["argv"] = argv

@@ -15,12 +15,13 @@ import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
-// ensureChief lives in board-dispatch.js (split off board.js in #691),
-// exported for this cross-tab use (#547); board.js already imports
+// runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
+// (split off board.js in #691; the shared helper landed in #828), exported
+// for this cross-tab use (#547); board.js already imports
 // stopSession/sessionTitle/openSessionRename from this module, so this
 // mirrors the existing sessions.js<->terminal.js circular-import pattern
 // rather than introducing a new risk.
-import { ensureChief } from './board-dispatch.js';
+import { runChiefAction } from './board-dispatch.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in
@@ -376,19 +377,11 @@ export function wireSessions() {
   // deliberate tray/session-host restart) can be brought back without
   // switching tabs.
   if (els.codingChiefStart) {
-    els.codingChiefStart.addEventListener('click', async function () {
-      const btn = els.codingChiefStart;
-      btn.disabled = true;
-      try {
-        const body = await ensureChief(false);
-        toast(body.spawned ? 'Chief started' : 'Chief already running', 'good',
-          body.spawned ? { icon: 'crown' } : undefined);
-        await fetchSessions();
-      } catch (exc) {
-        apiFailToast('Chief start failed', exc);
-      } finally {
-        btn.disabled = false;
-      }
+    els.codingChiefStart.addEventListener('click', function () {
+      runChiefAction({
+        button: els.codingChiefStart, label: 'Start', fresh: false, resume: false,
+        onDone: fetchSessions,
+      });
     });
   }
   // Manual Resume-chief (#633) — same ensure endpoint with resume=true, so
@@ -396,21 +389,11 @@ export function wireSessions() {
   // (rather than started fresh) from the Coding tab too, not only Board chat
   // mode. Falls back server-side to a fresh spawn when nothing is resumable.
   if (els.codingChiefResume) {
-    els.codingChiefResume.addEventListener('click', async function () {
-      const btn = els.codingChiefResume;
-      btn.disabled = true;
-      try {
-        const body = await ensureChief(false, true);
-        toast(
-          body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
-          'good', { icon: 'crown' },
-        );
-        await fetchSessions();
-      } catch (exc) {
-        apiFailToast('Chief resume failed', exc);
-      } finally {
-        btn.disabled = false;
-      }
+    els.codingChiefResume.addEventListener('click', function () {
+      runChiefAction({
+        button: els.codingChiefResume, label: 'Resume', fresh: false, resume: true,
+        onDone: fetchSessions,
+      });
     });
   }
   wireSessionRenameDialog();
