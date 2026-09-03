@@ -12,11 +12,11 @@ Two run modes:
   of hanging in browser.goto for 30 s.
 * **Autoboot (pre-ship gate).** Enabled with `--e2e-autoboot` or the
   `LAUNCHER_E2E_AUTOBOOT=1` env var. `_autoboot_server` spawns a disposable
-  webapp on a free port (HTTPS, reusing webapp/certificates/) plus a
-  session-host on :8446 — adopting an already-listening one (a running tray)
-  or spawning its own. In this mode a failure to boot is a hard *failure*,
-  never a skip: the whole point of the gate is that a missing server can't
-  silently pass. See issue #33.
+  webapp on a free port (HTTPS, reusing webapp/certificates/) plus its own
+  disposable session-host on a free port — it never adopts a host already
+  listening on the live :8446 (issue #260). In this mode a failure to boot is
+  a hard *failure*, never a skip: the whole point of the gate is that a
+  missing server can't silently pass. See issue #33.
 
 `pytest_sessionfinish` runs the vendor-verbatim leaked-browser-helper sweep
 (`tests/e2e/_browser_sweep.py`, project-scaffolding #203/#204) once the whole

@@ -125,16 +125,10 @@ export const state = {
 export const els = {
   themeToggle: document.getElementById('themeToggle'),
   homeHeadStatus: document.getElementById('homeHeadStatus'),
-  tabClaude: document.getElementById('tabClaude'),
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),
   tabLifeOS: document.getElementById('tabLifeOS'),
   tabBoard: document.getElementById('tabBoard'),
-  paneClaude: document.getElementById('paneClaude'),
-  paneApps: document.getElementById('paneApps'),
-  paneJobs: document.getElementById('paneJobs'),
-  paneLifeOS: document.getElementById('paneLifeOS'),
-  paneBoard: document.getElementById('paneBoard'),
 
   boardColumns: document.getElementById('boardColumns'),
   boardStatus: document.getElementById('boardStatus'),
@@ -260,7 +254,6 @@ export const els = {
   jobRunDialogDryRun: document.getElementById('jobRunDialogDryRun'),
   jobRunCancel: document.getElementById('jobRunCancel'),
 
-  codingOptions: document.getElementById('codingOptions'),
   agentVisibility: document.getElementById('agentVisibility'),
   claudeModel: document.getElementById('claudeModel'),
   claudeEffort: document.getElementById('claudeEffort'),
@@ -315,7 +308,6 @@ export const els = {
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
 
   rescanBtn: document.getElementById('rescanBtn'),
-  settingsPanel: document.getElementById('settingsPanel'),
   tabSettings: document.getElementById('tabSettings'),
   tokensList: document.getElementById('tokensList'),
   tokensEmpty: document.getElementById('tokensEmpty'),
@@ -371,7 +363,6 @@ export const els = {
   loginError: document.getElementById('loginError'),
 
   terminalOverlay: document.getElementById('terminalOverlay'),
-  terminalBar: document.querySelector('.terminal-bar'),
   terminalBack: document.getElementById('terminalBack'),
   terminalKill: document.getElementById('terminalKill'),
   terminalTitle: document.getElementById('terminalTitle'),
@@ -392,7 +383,6 @@ export const els = {
   terminalSpeakPopover: document.getElementById('terminalSpeakPopover'),
   summaryModal: document.getElementById('summaryModal'),
   summaryModalText: document.getElementById('summaryModalText'),
-  summaryModalClose: document.getElementById('summaryModalClose'),
   terminalScreenshot: document.getElementById('terminalScreenshot'),
   terminalScreenshotInput: document.getElementById('terminalScreenshotInput'),
   terminalComposeAttach: document.getElementById('terminalComposeAttach'),

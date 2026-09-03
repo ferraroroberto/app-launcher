@@ -371,24 +371,6 @@ def behavioural_coverage(
     return missed, None
 
 
-def missed_fires(
-    job: Job,
-    *,
-    now: Optional[datetime] = None,
-    window_days: int = COVERAGE_WINDOW_DAYS,
-    grace_seconds: float = MISSED_FIRE_GRACE_SECONDS,
-) -> List[datetime]:
-    """Expected fires of ``job`` in the recent window with no run record.
-
-    The list half of :func:`behavioural_coverage`. Slots are only reported
-    where the run history could actually back them up; a job with no usable
-    history yields ``[]`` here and its ``unknown`` reason there.
-    """
-    return behavioural_coverage(
-        job, now=now, window_days=window_days, grace_seconds=grace_seconds
-    )[0]
-
-
 def coverage_for(
     job: Job,
     task_states: Optional[Dict[str, Optional[bool]]],
@@ -536,20 +518,20 @@ def scan_coverage(
     return out
 
 
-def coverage_map(*, fresh: bool = False) -> Dict[str, Dict[str, Any]]:
+def coverage_map() -> Dict[str, Dict[str, Any]]:
     """:func:`scan_coverage` behind a process-local TTL cache.
 
     ``/api/jobs`` decorates every row from one cached scan per poll rather
-    than re-deriving per job.
+    than re-deriving per job. Invalidated on demand by
+    :func:`invalidate_coverage_cache`, not by forcing a fresh scan here.
     """
     global _coverage_cache
     monotonic = time.monotonic()
-    if not fresh:
-        with _coverage_lock:
-            if _coverage_cache is not None:
-                ts, snapshot = _coverage_cache
-                if monotonic - ts < _COVERAGE_TTL_SECONDS:
-                    return snapshot
+    with _coverage_lock:
+        if _coverage_cache is not None:
+            ts, snapshot = _coverage_cache
+            if monotonic - ts < _COVERAGE_TTL_SECONDS:
+                return snapshot
     snapshot = scan_coverage()
     with _coverage_lock:
         _coverage_cache = (monotonic, snapshot)

@@ -781,12 +781,18 @@ def _parse_bulk_records(stdout: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def _parse_bulk_query(stdout: str) -> Dict[str, Optional[str]]:
-    """``{task_name: next_run}`` view of :func:`_parse_bulk_records`."""
-    return {
-        name: record["next_run"]
-        for name, record in _parse_bulk_records(stdout).items()
-    }
+def _project(
+    snapshot: Dict[str, Dict[str, Any]], key: str
+) -> Dict[str, Any]:
+    """``{task_name: record[key]}`` view of a bulk records/snapshot map.
+
+    Single projection helper for the three ``{task_name: <field>}`` views
+    derived from the same bulk snapshot (:func:`_cached_bulk_next_runs`,
+    :func:`registered_task_states`, :func:`registered_task_principals`) —
+    keeps the field lookup in one place instead of re-inlining the same
+    dict comprehension three times.
+    """
+    return {name: record.get(key) for name, record in snapshot.items()}
 
 
 def _bulk_records(
@@ -839,7 +845,7 @@ def _cached_bulk_next_runs(
     snapshot = _cached_bulk_records(runner=runner)
     if snapshot is None:
         return {}
-    return {name: record["next_run"] for name, record in snapshot.items()}
+    return _project(snapshot, "next_run")
 
 
 def registered_task_states(
@@ -856,7 +862,7 @@ def registered_task_states(
     snapshot = _cached_bulk_records(runner=runner)
     if snapshot is None:
         return None
-    return {name: record["enabled"] for name, record in snapshot.items()}
+    return _project(snapshot, "enabled")
 
 
 def registered_task_principals(
@@ -874,10 +880,7 @@ def registered_task_principals(
     snapshot = _cached_bulk_records(runner=runner)
     if snapshot is None:
         return None
-    return {
-        name: record.get("background_capable")
-        for name, record in snapshot.items()
-    }
+    return _project(snapshot, "background_capable")
 
 
 def invalidate_next_run_cache() -> None:
