@@ -9,9 +9,10 @@
 #   pwsh -File scripts/verify-before-ship.ps1
 #   powershell -File scripts\verify-before-ship.ps1   # Windows PowerShell 5.1 works too
 #
-# A tray on :8445 may be running or not — autoboot picks a free port for its
-# own webapp and adopts the tray's session-host on :8446 if one is up. Exits
-# non-zero on the first failure with the offending output left visible.
+# A tray on :8445 may be running or not — autoboot always picks a free port
+# for its own webapp and spawns its own disposable session-host on a free
+# port, never adopting the tray's live :8446 (issue #260). Exits non-zero on
+# the first failure with the offending output left visible.
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot

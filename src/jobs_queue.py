@@ -130,19 +130,6 @@ def peek_mutex_queue(group: str) -> List[Dict[str, Any]]:
         return list(_read_queue_file().get(group) or [])
 
 
-def remove_queue_entry(group: str, run_id: str) -> bool:
-    """Remove a queued entry by ``run_id``. Returns ``True`` when removed."""
-    with _queue_lock, _queue_file_lock():
-        state = _read_queue_file()
-        entries = state.get(group) or []
-        keep = [e for e in entries if e.get("run_id") != run_id]
-        if len(keep) == len(entries):
-            return False
-        state[group] = keep
-        _write_queue_file(state)
-        return True
-
-
 def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
     """Return the *other* job in ``job.mutex_group`` that currently holds
     the group (latest run is ``running`` or ``pending``), or ``None``.

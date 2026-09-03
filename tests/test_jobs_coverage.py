@@ -175,7 +175,7 @@ class TestMissedFires:
             runs_root, "demo", "20260730",
             started_at="2026-07-30T09:00:05", status="success",
         )
-        missed = cov.missed_fires(job, now=NOW)
+        missed = cov.behavioural_coverage(job, now=NOW)[0]
         # 3-day window ending 15 min before NOW → 2026-07-30/31 + 08-01 09:00,
         # of which 07-30 fired.
         assert [m.isoformat(timespec="minutes") for m in missed] == [
@@ -190,7 +190,7 @@ class TestMissedFires:
                 runs_root, "demo", f"r{month}{day}",
                 started_at=f"2026-0{month}-{day:02d}T09:12:00", status="success",
             )
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_skipped_run_counts_as_fired(self, runs_root):
         """A cooldown-skipped run *did* fire; it just declined to do work."""
@@ -200,7 +200,7 @@ class TestMissedFires:
                 runs_root, "demo", f"r{month}{day}",
                 started_at=f"2026-0{month}-{day:02d}T09:00:02", status="skipped",
             )
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_slot_inside_the_grace_window_is_not_yet_missed(self, runs_root):
         job = _daily_job(schedule=Schedule(type="daily", at="11:55"))
@@ -212,16 +212,16 @@ class TestMissedFires:
                 started_at=f"2026-07-{day}T11:55:03", status="success",
             )
         # 11:55 is 5 min before NOW — inside the 15 min grace.
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_frequent_schedules_are_not_enumerated(self, runs_root):
         job = _daily_job(schedule=Schedule(type="minutes", every=5))
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_window_clamped_by_added_at(self, runs_root):
         """A job added this morning has no missed slots from last week."""
         job = _daily_job(added_at="2026-08-01T11:00:00")
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_window_clamped_by_pruned_history(self, runs_root):
         """A full 20-run history proves nothing about older slots.
@@ -235,7 +235,7 @@ class TestMissedFires:
                 runs_root, "demo", f"keep{i:02d}",
                 started_at=f"2026-08-01T09:{i:02d}:00", status="success",
             )
-        assert cov.missed_fires(job, now=NOW) == []
+        assert cov.behavioural_coverage(job, now=NOW)[0] == []
 
     def test_paused_job_is_exempt(self, runs_root):
         job = _daily_job(
@@ -297,7 +297,7 @@ class TestUnestablishedHistory:
 
     def test_missed_fires_stays_empty_without_evidence(self, runs_root):
         """The list API must not carry slots it can't back with evidence."""
-        assert cov.missed_fires(_daily_job(), now=NOW) == []
+        assert cov.behavioural_coverage(_daily_job(), now=NOW)[0] == []
 
     def test_absent_store_and_absent_job_dir_read_differently(self, runs_root):
         """Distinct conditions, distinct details.
@@ -410,10 +410,11 @@ class TestSchtasksStateParsing:
         assert jobs_schtasks_mod.registered_task_states() is None
         jobs_schtasks_mod.invalidate_next_run_cache()
 
-    def test_next_run_view_still_matches_legacy_shape(self):
-        out = jobs_schtasks_mod._parse_bulk_query(
+    def test_next_run_projection_matches_expected_shape(self):
+        records = jobs_schtasks_mod._parse_bulk_records(
             "TaskName: \\AppLauncher\\a\nNext Run Time: 2026-08-02 09:00:00\n\n"
         )
+        out = jobs_schtasks_mod._project(records, "next_run")
         assert out == {"\\AppLauncher\\a": "2026-08-02 09:00:00"}
 
 

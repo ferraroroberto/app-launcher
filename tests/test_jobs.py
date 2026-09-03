@@ -282,17 +282,6 @@ class TestMutexQueueFile:
         )
         assert jobs_mod.pop_mutex_entry("nothing") is None
 
-    def test_remove_by_run_id(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
-        monkeypatch.setattr(
-            jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json"
-        )
-        jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r1"})
-        jobs_mod.enqueue_mutex("g", {"job_id": "a", "run_id": "r2"})
-        assert jobs_mod.remove_queue_entry("g", "r2") is True
-        assert [e["run_id"] for e in jobs_mod.peek_mutex_queue("g")] == ["r1"]
-        assert jobs_mod.remove_queue_entry("g", "missing") is False
-
     def test_malformed_file_treated_as_empty(self, tmp_path, monkeypatch):
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         qpath = tmp_path / "_queue.json"
@@ -1056,14 +1045,16 @@ class TestDeleteSchtasks:
 
 
 class TestBulkParser:
-    """``src.jobs_schtasks._parse_bulk_query`` — the bulk Next Run Time parse."""
+    """``src.jobs_schtasks._parse_bulk_records`` — the bulk Next Run Time parse."""
 
     def test_filters_by_prefix(self):
         stdout = (
             "TaskName: \\AppLauncher\\demo\nNext Run Time: 2026-06-01 06:00:00\n\n"
             "TaskName: \\Foreign\\task\nNext Run Time: 2026-06-01 12:00:00\n\n"
         )
-        out = jobs_schtasks_mod._parse_bulk_query(stdout)
+        out = jobs_schtasks_mod._project(
+            jobs_schtasks_mod._parse_bulk_records(stdout), "next_run"
+        )
         assert "\\AppLauncher\\demo" in out
         assert out["\\AppLauncher\\demo"] == "2026-06-01 06:00:00"
         # Foreign task is filtered out.
@@ -1074,7 +1065,9 @@ class TestBulkParser:
             "TaskName: \\AppLauncher\\demo-1\nNext Run Time: N/A\n\n"
             "TaskName: \\AppLauncher\\demo-2\nNext Run Time: Disabled\n\n"
         )
-        out = jobs_schtasks_mod._parse_bulk_query(stdout)
+        out = jobs_schtasks_mod._project(
+            jobs_schtasks_mod._parse_bulk_records(stdout), "next_run"
+        )
         assert out["\\AppLauncher\\demo-1"] is None
         assert out["\\AppLauncher\\demo-2"] is None
 
