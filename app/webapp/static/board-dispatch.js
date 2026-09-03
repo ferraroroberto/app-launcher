@@ -90,6 +90,39 @@ export async function ensureChief(fresh, resume) {
   });
 }
 
+// One shape for every chief lifecycle button — Board's Start/Resume/Restart
+// and the Coding tab's Start/Resume (#828, duplication audit) — disable →
+// ensureChief → toast → onDone → re-enable, always in a `finally`. `label`
+// drives both the work-timer text (when `useTimer`) and the error toast
+// ("Chief <label.toLowerCase()> failed"); `resume` drives the success
+// wording ("Chief resumed" / "No resumable conversation — started fresh" vs
+// "Chief started" / "Chief already running") and whether the crown icon is
+// unconditional (resume/restart) or gated on an actual spawn (start).
+// `confirmMessage`, when given, gates the whole action on `confirm()` before
+// anything else runs (Restart's are-you-sure).
+export async function runChiefAction({
+  button, label, fresh, resume, onDone, useTimer = false, confirmMessage,
+}) {
+  if (confirmMessage && !confirm(confirmMessage)) return;
+  button.disabled = true;
+  const stopTimer = useTimer ? startWorkTimer(button, label) : null;
+  try {
+    const body = await ensureChief(fresh, resume);
+    const text = resume
+      ? (body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh')
+      : (body.spawned ? 'Chief started' : 'Chief already running');
+    // Resume/Restart's icon is unconditional (a chat is reachable either
+    // way); Start's is gated on an actual spawn — matches the pre-#828 toasts.
+    toast(text, 'good', resume || body.spawned ? { icon: 'crown' } : undefined);
+    if (onDone) await onDone(body);
+  } catch (exc) {
+    apiFailToast('Chief ' + label.toLowerCase() + ' failed', exc);
+  } finally {
+    if (stopTimer) stopTimer();
+    button.disabled = false;
+  }
+}
+
 // -------------------------------------------------------- dispatch (#302)
 
 let dispatchMode = 'add';
@@ -342,72 +375,38 @@ async function saveChiefSettings() {
 
 function wireChief() {
   if (!els.boardChiefStatus) return;
-  els.boardChiefStart.addEventListener('click', async function () {
-    const startBtn = els.boardChiefStart;
-    startBtn.disabled = true;
-    const stopTimer = startWorkTimer(startBtn, 'Start');
-    try {
-      const body = await ensureChief(false);
-      toast(body.spawned ? 'Chief started' : 'Chief already running', 'good',
-        body.spawned ? { icon: 'crown' } : undefined);
-      await fetchBoard().catch(function () {});
-      renderChiefStatus();
-    } catch (exc) {
-      apiFailToast('Chief start failed', exc);
-    } finally {
-      stopTimer();
-      startBtn.disabled = false;
-    }
+  const afterEnsure = async function () {
+    await fetchBoard().catch(function () {});
+    renderChiefStatus();
+  };
+  els.boardChiefStart.addEventListener('click', function () {
+    runChiefAction({
+      button: els.boardChiefStart, label: 'Start', fresh: false, resume: false,
+      useTimer: true, onDone: afterEnsure,
+    });
   });
-  els.boardChiefResume.addEventListener('click', async function () {
-    const resumeBtn = els.boardChiefResume;
-    resumeBtn.disabled = true;
-    const stopTimer = startWorkTimer(resumeBtn, 'Resume');
-    try {
-      // resume=true (#633): reattach the most recent chief conversation
-      // (direct claude --resume <id>, label declared at spawn) instead of
-      // starting fresh — falls back to a fresh spawn server-side when no
-      // resumable conversation is found, never a hard failure.
-      const body = await ensureChief(false, true);
-      toast(
-        body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
-        'good', { icon: 'crown' },
-      );
-      await fetchBoard().catch(function () {});
-      renderChiefStatus();
-    } catch (exc) {
-      apiFailToast('Chief resume failed', exc);
-    } finally {
-      stopTimer();
-      resumeBtn.disabled = false;
-    }
+  els.boardChiefResume.addEventListener('click', function () {
+    // resume=true (#633): reattach the most recent chief conversation
+    // (direct claude --resume <id>, label declared at spawn) instead of
+    // starting fresh — falls back to a fresh spawn server-side when no
+    // resumable conversation is found, never a hard failure.
+    runChiefAction({
+      button: els.boardChiefResume, label: 'Resume', fresh: false, resume: true,
+      useTimer: true, onDone: afterEnsure,
+    });
   });
-  els.boardChiefRestart.addEventListener('click', async function () {
-    if (!confirm(CHIEF_RESTART_CONFIRM)) return;
-    const restartBtn = els.boardChiefRestart;
-    restartBtn.disabled = true;
-    const stopTimer = startWorkTimer(restartBtn, 'Restart');
-    try {
-      // fresh=true (#617): ensure_chief's own graceful stop-then-respawn —
-      // never the session-host (:8446) restart, which would kill every PTY.
-      // resume=true (#649): reattach the same conversation by default —
-      // "Restart" read as "bring my chief back" while it silently discarded
-      // the conversation, and Resume is never reachable while a chief is
-      // alive to fall back on. Same resumed/resume_fallback_reason contract
-      // as the Resume button, so the toast always says which happened.
-      const body = await ensureChief(true, true);
-      toast(
-        body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh',
-        'good', { icon: 'crown' },
-      );
-      await fetchBoard().catch(function () {});
-      renderChiefStatus();
-    } catch (exc) {
-      apiFailToast('Chief restart failed', exc);
-    } finally {
-      stopTimer();
-      restartBtn.disabled = false;
-    }
+  els.boardChiefRestart.addEventListener('click', function () {
+    // fresh=true (#617): ensure_chief's own graceful stop-then-respawn —
+    // never the session-host (:8446) restart, which would kill every PTY.
+    // resume=true (#649): reattach the same conversation by default —
+    // "Restart" read as "bring my chief back" while it silently discarded
+    // the conversation, and Resume is never reachable while a chief is
+    // alive to fall back on. Same resumed/resume_fallback_reason contract
+    // as the Resume button, so the toast always says which happened.
+    runChiefAction({
+      button: els.boardChiefRestart, label: 'Restart', fresh: true, resume: true,
+      useTimer: true, onDone: afterEnsure, confirmMessage: CHIEF_RESTART_CONFIRM,
+    });
   });
   els.boardChiefSettings.addEventListener('click', openChiefSettings);
   els.chiefSettingsForm.addEventListener('submit', function (e) {
