@@ -102,7 +102,9 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
             continue
         if not latest:
             continue
-        if latest.get("status") == "running" and jobs_mod.is_stuck(job.id):
+        if latest.get("status") == "running" and jobs_mod.is_stuck(
+            job.id, latest=latest
+        ):
             started = _parse_iso(latest.get("started_at"))
             cards.append({
                 "kind": "job",

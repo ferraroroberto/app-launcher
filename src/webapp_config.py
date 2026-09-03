@@ -31,7 +31,7 @@ import os
 from dataclasses import MISSING, asdict, dataclass, field, replace
 from dataclasses import fields as dataclass_fields
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
 from src._json_io import atomic_write_json
@@ -718,6 +718,28 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
+#: Enum-valued settings validated by plain membership (issue #831) — a new
+#: enum field is one row here instead of a hand-written ``not in`` check, the
+#: same declarative-table shape ``_CUSTOM_LOADERS`` above and
+#: ``middleware._TERMINAL_GUARD_RULES`` already use. ``allow_empty=True``
+#: covers the one field (``copilot_model``) whose empty string is a valid
+#: "unset" sentinel rather than an invalid choice.
+_ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
+    ("claude_model", VALID_CLAUDE_MODELS, False),
+    ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES, False),
+    ("claude_effort", VALID_CLAUDE_EFFORTS, False),
+    ("codex_effort", VALID_CODEX_EFFORTS, False),
+    ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES, False),
+    ("grok_effort", VALID_GROK_EFFORTS, False),
+    ("grok_permission_mode", VALID_GROK_PERMISSION_MODES, False),
+    ("copilot_model", VALID_COPILOT_MODELS, True),
+    ("pi_model", VALID_PI_MODELS, False),
+    ("pi_effort", VALID_PI_EFFORTS, False),
+    ("pi_trust_mode", VALID_PI_TRUST_MODES, False),
+    ("chief_model", VALID_CHIEF_MODELS, False),
+)
+
+
 def _validate(cfg: WebappConfig) -> None:
     if not (1 <= cfg.port <= 65535):
         raise ValueError(f"port out of range: {cfg.port}")
@@ -732,55 +754,15 @@ def _validate(cfg: WebappConfig) -> None:
             f"terminal_history_lines must be between {MIN_TERMINAL_HISTORY_LINES} "
             f"and {MAX_TERMINAL_HISTORY_LINES}; got {cfg.terminal_history_lines}"
         )
-    if cfg.claude_model not in VALID_CLAUDE_MODELS:
-        raise ValueError(
-            f"claude_model must be one of {VALID_CLAUDE_MODELS}; got {cfg.claude_model!r}"
-        )
-    if cfg.claude_permission_mode not in VALID_CLAUDE_PERMISSION_MODES:
-        raise ValueError(
-            f"claude_permission_mode must be one of {VALID_CLAUDE_PERMISSION_MODES}; "
-            f"got {cfg.claude_permission_mode!r}"
-        )
-    if cfg.claude_effort not in VALID_CLAUDE_EFFORTS:
-        raise ValueError(
-            f"claude_effort must be one of {VALID_CLAUDE_EFFORTS}; got {cfg.claude_effort!r}"
-        )
-    if cfg.codex_effort not in VALID_CODEX_EFFORTS:
-        raise ValueError(
-            f"codex_effort must be one of {VALID_CODEX_EFFORTS}; got {cfg.codex_effort!r}"
-        )
-    if cfg.codex_permission_mode not in VALID_CODEX_PERMISSION_MODES:
-        raise ValueError(
-            f"codex_permission_mode must be one of {VALID_CODEX_PERMISSION_MODES}; "
-            f"got {cfg.codex_permission_mode!r}"
-        )
-    if cfg.grok_effort not in VALID_GROK_EFFORTS:
-        raise ValueError(
-            f"grok_effort must be one of {VALID_GROK_EFFORTS}; got {cfg.grok_effort!r}"
-        )
-    if cfg.grok_permission_mode not in VALID_GROK_PERMISSION_MODES:
-        raise ValueError(
-            f"grok_permission_mode must be one of {VALID_GROK_PERMISSION_MODES}; "
-            f"got {cfg.grok_permission_mode!r}"
-        )
-    if cfg.copilot_model and cfg.copilot_model not in VALID_COPILOT_MODELS:
-        raise ValueError(
-            f"copilot_model must be empty or one of {VALID_COPILOT_MODELS}; "
-            f"got {cfg.copilot_model!r}"
-        )
-    if cfg.pi_model not in VALID_PI_MODELS:
-        raise ValueError(
-            f"pi_model must be one of {VALID_PI_MODELS}; got {cfg.pi_model!r}"
-        )
-    if cfg.pi_effort not in VALID_PI_EFFORTS:
-        raise ValueError(
-            f"pi_effort must be one of {VALID_PI_EFFORTS}; got {cfg.pi_effort!r}"
-        )
-    if cfg.pi_trust_mode not in VALID_PI_TRUST_MODES:
-        raise ValueError(
-            f"pi_trust_mode must be one of {VALID_PI_TRUST_MODES}; "
-            f"got {cfg.pi_trust_mode!r}"
-        )
+    for field_name, allowed, allow_empty in _ENUM_VALIDATIONS:
+        value = getattr(cfg, field_name)
+        if allow_empty and not value:
+            continue
+        if value not in allowed:
+            qualifier = "empty or one of" if allow_empty else "one of"
+            raise ValueError(
+                f"{field_name} must be {qualifier} {allowed}; got {value!r}"
+            )
     if cfg.notify_failure_streak < 0:
         raise ValueError(
             f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"
@@ -789,10 +771,6 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             "jobs_coverage_interval_minutes must be >= 0; got "
             f"{cfg.jobs_coverage_interval_minutes}"
-        )
-    if cfg.chief_model not in VALID_CHIEF_MODELS:
-        raise ValueError(
-            f"chief_model must be one of {VALID_CHIEF_MODELS}; got {cfg.chief_model!r}"
         )
     if not (MIN_CHIEF_WORKER_CAP <= cfg.chief_worker_cap <= MAX_CHIEF_WORKER_CAP):
         raise ValueError(

@@ -164,9 +164,9 @@ def _decorate_job(
         }
     else:
         payload["last_run"] = None
-    payload["running"] = jobs_mod.is_running(job.id)
+    payload["running"] = bool(latest and latest.get("status") == "running")
     payload["stats"] = jobs_mod.run_stats(job.id)
-    payload["stuck"] = jobs_mod.is_stuck(job.id)
+    payload["stuck"] = jobs_mod.is_stuck(job.id, latest=latest)
     # Missed-fire coverage (issue #697). Reads a process-local cached scan —
     # the schtasks half rides the same 30 s bulk-query cache `next_run` uses,
     # so this adds no shell-out to the poll path.
