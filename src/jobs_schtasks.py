@@ -500,17 +500,30 @@ def registration_script(job: Job) -> Optional[str]:
 
 def list_known_tasks(
     runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
-) -> List[str]:
-    """All task names currently under ``\\AppLauncher\\``. Best-effort.
+) -> Optional[List[str]]:
+    """All task names currently under ``\\AppLauncher\\``.
 
-    A failed query (Task Scheduler service down, no permission) returns
-    an empty list — the sync layer then falls back to blind deletes so
-    a single read failure can't strand stale tasks forever.
+    ``None`` when the query itself failed (Task Scheduler service down, no
+    permission) — distinct from ``[]`` ("the query worked and there really
+    are no AppLauncher tasks"). :func:`delete_schtasks` needs that
+    distinction to choose its blind-delete fallback on a real failure
+    rather than on an empty-but-successful query (same shape as
+    :func:`_bulk_records`).
     """
     runner = runner or _run_schtasks
     proc = runner(["schtasks", "/Query", "/FO", "CSV", "/NH"])
     if proc.returncode != 0 or not proc.stdout:
-        return []
+        # Silence here is what let #743 hide for weeks: every consumer
+        # degrades politely to "unknown"/blank, so a dead query looks like a
+        # quiet system. Say so once, with the two facts needed to diagnose it.
+        logger.warning(
+            "⚠️  schtasks query failed (rc=%s, stdout=%d chars) — falling "
+            "back to blind delete: %s",
+            proc.returncode,
+            len(proc.stdout or ""),
+            (proc.stderr or "").strip()[:200] or "<no stderr>",
+        )
+        return None
     names: List[str] = []
     for line in proc.stdout.splitlines():
         line = line.strip()
@@ -538,7 +551,7 @@ def delete_schtasks(
     targets: List[str] = []
     base = TASK_FOLDER_PREFIX + job_id
     known = list_known_tasks(runner=runner)
-    if known:
+    if known is not None:
         targets = [
             n
             for n in known

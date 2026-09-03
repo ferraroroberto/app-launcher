@@ -969,6 +969,36 @@ class TestSyncSchtasks:
         assert create_calls == []
 
 
+class TestListKnownTasks:
+    def test_query_failure_returns_none_and_logs(self, caplog):
+        # rc != 0 (Task Scheduler service down / no permission) must be
+        # reported, not silently folded into "no known tasks" (issue #830).
+        runner = MagicMock(
+            return_value=_mk_completed(stdout="", rc=1)
+        )
+        runner.return_value = subprocess.CompletedProcess(
+            args=[], returncode=1, stdout="", stderr="RPC server unavailable."
+        )
+        with caplog.at_level("WARNING", logger=jobs_schtasks_mod.logger.name):
+            result = jobs_schtasks_mod.list_known_tasks(runner=runner)
+        assert result is None
+        assert any(
+            "schtasks query failed" in record.message
+            for record in caplog.records
+        )
+
+    def test_successful_empty_query_returns_empty_list_not_none(self):
+        # rc == 0 with real (non-empty) CSV output but no AppLauncher rows
+        # is a genuine "no tasks" answer, distinct from a failed query.
+        runner = MagicMock(
+            return_value=_mk_completed(
+                stdout='"\\Foreign\\other","ready","..."\n', rc=0
+            )
+        )
+        result = jobs_schtasks_mod.list_known_tasks(runner=runner)
+        assert result == []
+
+
 class TestDeleteSchtasks:
     def test_uses_query_results_when_available(self):
         # Query lists three tasks under \AppLauncher\ — two for our job, one foreign.
@@ -991,6 +1021,38 @@ class TestDeleteSchtasks:
         assert sorted(result) == ["\\AppLauncher\\ls-1", "\\AppLauncher\\ls-2"]
         # The foreign task is left alone.
         assert "\\AppLauncher\\other" not in result
+
+    def test_successful_empty_query_does_not_trigger_blind_fallback(self):
+        # A genuinely empty-but-successful query (no AppLauncher tasks at
+        # all) must not be treated the same as a failed query: there is
+        # nothing to delete, so no blind /Delete attempts should fire.
+        deletes: List[str] = []
+
+        def runner(argv):
+            if argv[:2] == ["schtasks", "/Query"]:
+                return _mk_completed(
+                    stdout='"\\Foreign\\other","ready","..."\n', rc=0
+                )
+            if argv[:2] == ["schtasks", "/Delete"]:
+                deletes.append(argv[4])  # /TN value
+                return _mk_completed(rc=0)
+            return _mk_completed(rc=0)
+
+        result = jobs_mod.delete_schtasks("ls", runner=runner)
+        assert result == []
+        assert deletes == []
+
+    def test_query_failure_falls_back_to_blind_delete(self):
+        def runner(argv):
+            if argv[:2] == ["schtasks", "/Query"]:
+                return subprocess.CompletedProcess(
+                    args=[], returncode=1, stdout="", stderr="RPC server unavailable."
+                )
+            return _mk_completed(rc=0)
+
+        result = jobs_mod.delete_schtasks("ls", runner=runner)
+        # Blind fallback: bare task + every daily_times slot variant.
+        assert "\\AppLauncher\\ls" in result
 
 
 class TestBulkParser:
