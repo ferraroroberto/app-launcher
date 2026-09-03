@@ -172,11 +172,21 @@ export function wireLoginForm(onLoginSuccess) {
 }
 
 // --------------------------------------------------------------- toast
+// Covers both positions a caller can land escaped text in: element content
+// (`&`/`<`/`>`) and an attribute value (`"`/`'`). Most callers here build a
+// text node's innerHTML, where the quote pair is a no-op — a `&quot;` renders
+// as a plain `"`. But `life-os.js`'s markdown renderer escapes once up front
+// and then interpolates a captured link target into an `href="…"`, so an
+// unescaped quote in that value would terminate the attribute early and let
+// the rest of the token be parsed as further attributes on the same element.
+// Ampersand stays first so the entities emitted below are not re-escaped.
 export function escapeHtml(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 let toastTimer = null;
