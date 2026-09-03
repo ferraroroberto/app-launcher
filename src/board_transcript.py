@@ -365,7 +365,7 @@ def _transcript_overlay(
     (:data:`_UNKNOWN_LAUNCH_STAMP` means "genuinely outstanding, age
     unknown", not "very old"; guessing stalled from that sentinel would be
     wrong far too often, per the explicit caution against a low-confidence
-    stalled call). ``idle`` never gets a ``stalled`` verdict — the four-way
+    stalled call). ``idle`` never gets a ``stalled`` verdict — the five-way
     split is scoped to ``needs-you``, and :func:`_refine_waiting_status` does
     the rest of that split once this function is done overriding.
 

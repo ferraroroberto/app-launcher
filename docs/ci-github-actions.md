@@ -15,14 +15,14 @@ A **CI workflow** (GitHub's term; other systems call it a pipeline or a job) is 
 This project already had a **local pre-ship gate**: `scripts/verify-before-ship.ps1`. It runs, in one pass/fail:
 
 1. Byte-compile every Python file (`app`, `src`, `tests`).
-2. The non-browser test suite (`pytest`, ~80 tests).
+2. The non-browser test suite (`pytest`, ~1,800 tests).
 3. The Playwright end-to-end suite — a real browser (Chromium *and* a WebKit engine projected onto an iPhone viewport) driving the webapp, against a disposable server the script boots itself.
 
 That gate is the **contract**: `CLAUDE.md` says it must pass before any change to the webapp/launcher/session-host is declared done.
 
 Issue #38 added a CI workflow that runs *that exact same gate* on GitHub, automatically, on:
 
-- every **push to a non-`main` branch**, and
+- every **push to `main`**, and
 - every **pull request into `main`**.
 
 Nothing about the gate itself changed. CI just runs it for you, somewhere else, without you having to remember.
@@ -31,7 +31,7 @@ Nothing about the gate itself changed. CI just runs it for you, somewhere else, 
 
 | Step | Why it exists |
 |---|---|
-| `runs-on: windows-latest` | `pywinpty` is Windows-only and the e2e suite spawns real PTYs — a Linux runner physically cannot run this project. |
+| `runs-on: windows-2025` | `pywinpty` is Windows-only and the e2e suite spawns real PTYs — a Linux runner physically cannot run this project. |
 | Checkout + set up Python 3.12 | A fresh machine starts with *nothing* — not even the code. |
 | Create `.venv`, install `requirements.txt` | `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`. We build the venv so the script runs unmodified — the script stays the contract. |
 | `playwright install chromium webkit` | The browser engines the e2e suite drives. They are large binaries, not Python packages, so they need a separate install. |
@@ -46,7 +46,7 @@ Nothing about the gate itself changed. CI just runs it for you, somewhere else, 
 
 **It documents the truth.** A green check on a pull request is a shared, visible fact: "this branch passed the gate on a clean machine." A reviewer no longer has to take "I tested it" on faith.
 
-**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule (carried since issue #22): *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. So this workflow only "counts" after **3 consecutive green runs on a no-op PR**, and if it flakes more than 1-in-10 in its first week, the workflow file gets reverted. The local gate would still be there; nothing is lost.
+**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule (carried since issue #22): *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. This workflow has been established for months now; `CLAUDE.md`'s "CI expectations" block owns the current advisory-not-required status plus the named flaky legs.
 
 ## 4. Local vs. GitHub — the difference that actually bites
 
