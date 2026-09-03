@@ -173,7 +173,7 @@ async function enrollDevice() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(serializeReg(cred)),
     });
-    toast('✅ Device enrolled.', 'good');
+    toast('Device enrolled.', 'good', { icon: 'circle-check' });
     fetchWebauthnStatus();
   } catch (exc) {
     apiFailToast('Enrollment failed', exc);
