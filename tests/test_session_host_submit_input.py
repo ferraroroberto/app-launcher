@@ -18,7 +18,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.session_host import (
+from src.session_host import _scan_bracketed_paste_mode, PtySession
+from src.session_host_input import (
     _BULK_CAP_MS,
     _BULK_FLOOR_MS,
     _BULK_QUIET_MS,
@@ -35,10 +36,9 @@ from src.session_host import (
     INPUT_NOT_INGESTED,
     INPUT_OK,
     INPUT_UNVERIFIED,
-    _scan_bracketed_paste_mode,
-    PtySession,
 )
 from src import session_host as session_host_module
+from src import session_host_input
 
 
 def _make_session() -> PtySession:
@@ -344,7 +344,7 @@ def test_deferred_watcher_presses_enter_once_the_agent_settles(clock):
     """
     payload = "CHIEF - please finish the scope and commit. " * 12
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     # The composer keeps repainting the payload while the agent works, then
     # goes quiet with the chip still showing.
@@ -368,7 +368,7 @@ def test_deferred_watcher_never_resends_the_text(clock):
     (#760's carried-over constraint) — only a bare CR is ever in scope."""
     payload = "CHIEF - /issue-finish now that the gate is green. " * 12
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     _echo(session, payload)
     session._last_output_at = clock.now
@@ -385,7 +385,7 @@ def test_deferred_watcher_writes_nothing_when_the_payload_is_gone(clock):
     identify is exactly what #763 forbids."""
     payload = "CHIEF - a steer that got submitted by hand meanwhile. " * 12
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     # Only unrelated output since the mark — no chip, no echo.
     mark = session._output_total
     _echo(session, "\x1b[2J\x1b[1;1Hthinking about something else entirely\r\n")
@@ -405,7 +405,7 @@ def test_deferred_watcher_refuses_to_answer_a_dialog(clock):
     is up, where a bare CR picks a menu option instead of submitting."""
     payload = "CHIEF - go ahead and land the branch. " * 12
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     _echo(session, payload)
     _echo(session, "\r\n Do you want to proceed?\r\n ❯ 1. Yes\r\n   2. No\r\n")
@@ -425,7 +425,7 @@ def test_deferred_watcher_is_bounded_and_gives_up_without_firing(clock):
     pre-#763 state, never worse."""
     payload = "CHIEF - status? " * 40
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     _echo(session, payload)
     clock.on_sleep(lambda c: setattr(session, "_last_output_at", c.now))
@@ -445,7 +445,7 @@ def test_a_newer_write_supersedes_a_pending_watcher(clock):
     and without touching ``last_input``, which now describes the newer call."""
     payload = "CHIEF - the first steer. " * 20
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     _echo(session, payload)
     session._last_output_at = clock.now
@@ -475,7 +475,7 @@ def test_deferred_verdict_is_recorded_on_the_session(clock):
     stale ``deferred`` one forever."""
     payload = "CHIEF - report when done. " * 20
     session = _make_session()
-    needles = session_host_module._echo_needles(payload)
+    needles = session_host_input._echo_needles(payload)
     mark = session._output_total
     _echo(session, payload)
     session._last_output_at = clock.now

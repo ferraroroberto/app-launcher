@@ -40,37 +40,7 @@ from src.agents import (
 )
 from src.audit import transcript_path
 from src.env_path import effective_path
-from src.session_host_input import (  # noqa: F401 — re-exported for callers/tests
-    _BULK_CAP_MS,
-    _BULK_FLOOR_MS,
-    _BULK_POLL_S,
-    _BULK_QUIET_MS,
-    _BULK_SUBMIT_THRESHOLD_CHARS,
-    _DEFER_CAP_MS,
-    _DEFER_DIALOG_MARKERS,
-    _DEFER_FRAME_LOOKBACK_MS,
-    _DEFER_FRAME_SAMPLES,
-    _DEFER_POLL_S,
-    _DEFER_QUIET_MS,
-    _ECHO_FRAGMENT_CHARS,
-    _ECHO_SAMPLES,
-    _ECHO_SCAN_CHARS,
-    _INGEST_CAP_MS,
-    _PASTE_CHIP_MARKER,
-    _echo_needles,
-    _normalize_echo,
-    INPUT_DEFER_TIMEOUT,
-    INPUT_DEFER_UNCLEAR,
-    INPUT_DEFER_VANISHED,
-    INPUT_DEFERRED,
-    INPUT_DROPPED,
-    INPUT_NOOP,
-    INPUT_NOT_INGESTED,
-    INPUT_OK,
-    INPUT_UNVERIFIED,
-    InputOutcome,
-    InputProtocol,
-)
+from src.session_host_input import InputProtocol
 from src.session_host_scan import (  # noqa: F401 — re-exported for callers/tests
     _PROMPT_TITLE_MAX_CHARS,
     _PROMPT_TITLE_MAX_WORDS,
@@ -123,8 +93,10 @@ _WRITE_CHUNK_PAUSE = 0.003
 # The server-initiated input-delivery protocol — bracketed-paste framing,
 # bulk settle-then-submit, ingest/echo verification, and the deferred-submit
 # watcher (issues #611/#760/#763) — lives in :mod:`src.session_host_input`
-# (issue #798); its constants and :class:`InputOutcome` are re-exported
-# above for callers/tests.
+# (issue #798). Only :class:`InputProtocol` is imported here (as
+# ``PtySession``'s base); callers/tests needing its constants or
+# :class:`InputOutcome` import them from :mod:`src.session_host_input`
+# directly.
 
 # First-prompt session title (issue #266): how much un-submitted input we
 # buffer while waiting for the first submit — a line the user never sends
