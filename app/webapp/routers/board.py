@@ -236,9 +236,8 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     mirror rules included); the `/issue-*` skills themselves handle branch +
     worktree claiming inside the session.
 
-    ``model`` (#505) is the dispatch bar's selector applied to one-tap
-    starts: the #500 values override the shared Coding model (gpt5.6 →
-    Codex, which takes the same positional prompt). Absent (stale-cache
+    ``model`` (#505/#845) is the dispatch bar's provider-qualified selector
+    applied to one-tap starts. Absent (stale-cache
     client) → the legacy persisted Coding model, exactly as before.
 
     The optional ``title`` (the Board card's issue title) auto-names the
@@ -329,7 +328,7 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     """Free-text goal → a fresh ``/issue-*`` session (Tailscale + passkey, #302).
 
     Body: ``{"repo": str, "goal": str, "mode": "add"|"build"|"yolo",
-    "model": "sonnet"|"opus"|"fable"|"gpt5.6", "rows": int, "cols": int}``.
+    "model": "claude:<alias>"|"codex:<id>", "rows": int, "cols": int}``.
     Spawn-then-type per the module docstring: the goal rides the PTY input
     path, never the command line. The half-spawned session is killed on any
     failure past the spawn, so a timeout can't strand an orphan the user

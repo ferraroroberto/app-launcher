@@ -32,12 +32,14 @@ from typing import Optional
 from src.agents import resume_command_for
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
+    CODEX_MODEL_SPECS,
     DEFAULT_PI_EFFORT,
     DEFAULT_PI_MODEL,
     PI_MODEL_SPECS,
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
     VALID_CODEX_EFFORTS,
+    VALID_CODEX_MODELS,
     VALID_COPILOT_MODELS,
     VALID_GROK_EFFORTS,
     VALID_PI_EFFORTS,
@@ -90,26 +92,33 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
-def build_codex_flags(cfg: WebappConfig) -> str:
+def build_codex_flags(
+    cfg: WebappConfig, model_override: Optional[str] = None
+) -> str:
     """Compose the `codex` CLI flags from the persisted Codex knobs.
 
-    Two pieces: a permission mode (auto = no prompts but sandboxed; skip =
-    the all-bypass switch) and a reasoning tier passed through Codex's
-    config override. The model is left unset so Codex uses the account
-    default (gpt-5-codex on the ChatGPT-plan login). The reasoning value
-    is sent bare (``model_reasoning_effort=high``): it isn't valid TOML, so
+    Three pieces: explicit model, permission mode, and a model-compatible
+    reasoning tier. The reasoning value is sent bare: it isn't valid TOML, so
     Codex's `-c` parser falls back to the raw string — which also dodges
     Windows ``cmd`` quote-stripping that a quoted value would suffer.
     """
     parts: list[str] = []
+    model = model_override if model_override is not None else cfg.codex_model
+    if model in VALID_CODEX_MODELS:
+        parts.extend(["--model", model])
     if cfg.codex_permission_mode == "skip":
         parts.append("--dangerously-bypass-approvals-and-sandbox")
     else:
         parts.extend(
             ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
         )
-    if cfg.codex_effort in VALID_CODEX_EFFORTS:
-        parts.extend(["-c", f"model_reasoning_effort={cfg.codex_effort}"])
+    effort = (
+        cfg.codex_effort
+        if model == cfg.codex_model
+        else cfg.codex_model_efforts.get(model, "")
+    )
+    if effort in VALID_CODEX_EFFORTS and effort in CODEX_MODEL_SPECS[model]["efforts"]:
+        parts.extend(["-c", f"model_reasoning_effort={effort}"])
     return " ".join(parts)
 
 
@@ -152,7 +161,8 @@ def build_pi_flags(cfg: WebappConfig) -> str:
     ``Shift+Tab``. See docs/pi-coding-agent.md.
     """
     model = cfg.pi_model if cfg.pi_model in VALID_PI_MODELS else DEFAULT_PI_MODEL
-    provider, model_arg, _label = PI_MODEL_SPECS[model]
+    spec = PI_MODEL_SPECS[model]
+    provider, model_arg = spec["provider"], spec["model_arg"]
     parts = ["--provider", provider, "--model", model_arg]
     effort = cfg.pi_effort if cfg.pi_effort in VALID_PI_EFFORTS else DEFAULT_PI_EFFORT
     parts.extend(["--thinking", effort])
@@ -206,9 +216,8 @@ def build_resume_flags(
     config override — so a Codex resume carries just
     ``resume -c model_reasoning_effort=<effort>``.
 
-    ``model_override`` forces a specific Claude ``--model`` (used by the
-    Life OS tab's opus toggle); it is ignored for non-Claude agents, which
-    have no launch-time model flag.
+    ``model_override`` forces a specific Claude or Codex ``--model``. Life OS
+    uses only the Claude path; Coding and Board can override either provider.
 
     ``session_id``, when given, pins the resume token to that specific
     conversation (``<token> <session_id> <flags>``) so the agent reattaches
@@ -223,8 +232,16 @@ def build_resume_flags(
         token = f"{token} {session_id}"
     if agent_id == "codex":
         parts = [token]
-        if cfg.codex_effort in VALID_CODEX_EFFORTS:
-            parts.extend(["-c", f"model_reasoning_effort={cfg.codex_effort}"])
+        model = model_override if model_override is not None else cfg.codex_model
+        if model in VALID_CODEX_MODELS:
+            parts.extend(["--model", model])
+        effort = (
+            cfg.codex_effort
+            if model == cfg.codex_model
+            else cfg.codex_model_efforts.get(model, "")
+        )
+        if model in VALID_CODEX_MODELS and effort in CODEX_MODEL_SPECS[model]["efforts"]:
+            parts.extend(["-c", f"model_reasoning_effort={effort}"])
         return " ".join(parts).strip()
     if agent_id == "claude":
         base = build_claude_flags(cfg, model_override=model_override)

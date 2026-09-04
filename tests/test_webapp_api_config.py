@@ -107,7 +107,10 @@ class TestGetConfig:
         body = client.get("/api/config").json()
         cx = body["codex"]
         assert set(cx) == {
+            "model",
             "effort",
+            "model_efforts",
+            "models_available",
             "permission_mode",
             "efforts_available",
             "permission_modes_available",
@@ -116,11 +119,15 @@ class TestGetConfig:
         assert isinstance(cx["efforts_available"], list) and cx["efforts_available"]
         # Default config → high reasoning + auto permission (sandboxed,
         # no prompts): the safe autopilot, not the all-bypass switch.
-        assert cx["effort"] == "high"
+        assert cx["effort"] == "xhigh"
+        assert cx["model"] == "gpt-5.6-luna"
         assert cx["permission_mode"] == "auto"
         assert "--ask-for-approval never" in cx["computed_flags"]
         assert "--sandbox workspace-write" in cx["computed_flags"]
-        assert "model_reasoning_effort=high" in cx["computed_flags"]
+        assert "model_reasoning_effort=xhigh" in cx["computed_flags"]
+        assert "--model gpt-5.6-luna" in cx["computed_flags"]
+        astra = next(m for m in cx["models_available"] if m["label"] == "Astra")
+        assert astra["available"] is True
 
     def test_copilot_block_shape(self, webapp_client):
         client, _, _ = webapp_client
@@ -148,20 +155,20 @@ class TestGetConfig:
             "trust_modes_available",
             "computed_flags",
         }
-        # models_available carries {value,label} so the segmented buttons can
-        # read "Opus/Sonnet/GPT" rather than the raw model ids.
+        # The catalog includes every current subscription-safe family and an
+        # honestly disabled Astra rollout entry.
         assert isinstance(pi["models_available"], list) and pi["models_available"]
         values = [m["value"] for m in pi["models_available"]]
         labels = [m["label"] for m in pi["models_available"]]
         assert pi["model"] in values
-        assert labels == ["Opus", "Sonnet", "GPT"]
+        assert labels == ["Opus", "Sonnet", "Fable", "Luna", "Terra", "Sol", "Astra"]
         assert pi["effort"] in pi["efforts_available"]
         assert pi["trust_mode"] in pi["trust_modes_available"]
         # Default config → Opus on the claude-agent-sdk subscription path,
         # high thinking, project trust on. Explicit provider/model always —
         # never bare, never the native billing provider.
         assert pi["computed_flags"] == (
-            "--provider claude-agent-sdk --model claude-agent-sdk/claude-opus-4-8 "
+            "--provider claude-agent-sdk --model claude-agent-sdk/claude-opus-5 "
             "--thinking high --approve"
         )
 
@@ -398,6 +405,37 @@ class TestPatchConfig:
         bad = client.post("/api/config", json={"codex_effort": "ultra"})
         assert bad.status_code == 400
 
+    def test_codex_model_remembers_compatible_effort(self, webapp_client):
+        client, app, _ = webapp_client
+        assert client.post(
+            "/api/config",
+            json={"codex_model": "gpt-5.6-terra", "codex_effort": "ultra"},
+        ).status_code == 200
+        assert client.post(
+            "/api/config", json={"codex_model": "gpt-5.6-luna"}
+        ).status_code == 200
+        assert app.state.webapp_config.codex_effort == "xhigh"
+        assert client.post(
+            "/api/config", json={"codex_model": "gpt-5.6-terra"}
+        ).status_code == 200
+        assert app.state.webapp_config.codex_effort == "ultra"
+        assert "--model gpt-5.6-terra" in (
+            client.get("/api/config").json()["codex"]["computed_flags"]
+        )
+
+    def test_astra_model_and_effort_can_be_persisted(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config",
+            json={"codex_model": "gpt-6-astra", "codex_effort": "max"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert app.state.webapp_config.codex_model == "gpt-6-astra"
+        assert app.state.webapp_config.codex_effort == "max"
+        flags = client.get("/api/config").json()["codex"]["computed_flags"]
+        assert "--model gpt-6-astra" in flags
+        assert "model_reasoning_effort=max" in flags
+
     def test_copilot_toggle_round_trips(self, webapp_client):
         """The Copilot launch toggle patches through and surfaces as the
         composed `copilot` flag on the next GET."""
@@ -431,14 +469,14 @@ class TestPatchConfig:
         explicit-provider launch flags; an invalid one is rejected with 400."""
         client, app, _ = webapp_client
         # Sonnet stays on the claude-agent-sdk subscription path.
-        resp = client.post("/api/config", json={"pi_model": "claude-sonnet-4-6"})
+        resp = client.post("/api/config", json={"pi_model": "claude-sonnet-5"})
         assert resp.status_code == 200
-        assert app.state.webapp_config.pi_model == "claude-sonnet-4-6"
+        assert app.state.webapp_config.pi_model == "claude-sonnet-5"
         pi = client.get("/api/config").json()["pi"]
-        assert pi["model"] == "claude-sonnet-4-6"
+        assert pi["model"] == "claude-sonnet-5"
         assert (
             "--provider claude-agent-sdk "
-            "--model claude-agent-sdk/claude-sonnet-4-6" in pi["computed_flags"]
+            "--model claude-agent-sdk/claude-sonnet-5" in pi["computed_flags"]
         )
         # An unknown model is rejected, not silently launched onto a bad provider.
         bad = client.post("/api/config", json={"pi_model": "claude-not-real"})
@@ -448,11 +486,11 @@ class TestPatchConfig:
         """Selecting GPT routes pi to the openai-codex subscription provider —
         the one cross-provider option — not claude-agent-sdk."""
         client, app, _ = webapp_client
-        resp = client.post("/api/config", json={"pi_model": "gpt-5.5"})
+        resp = client.post("/api/config", json={"pi_model": "gpt-5.6-sol"})
         assert resp.status_code == 200
-        assert app.state.webapp_config.pi_model == "gpt-5.5"
+        assert app.state.webapp_config.pi_model == "gpt-5.6-sol"
         flags = client.get("/api/config").json()["pi"]["computed_flags"]
-        assert "--provider openai-codex --model openai-codex/gpt-5.5" in flags
+        assert "--provider openai-codex --model openai-codex/gpt-5.6-sol" in flags
         assert "claude-agent-sdk" not in flags
 
     def test_pi_effort_round_trips(self, webapp_client):

@@ -497,7 +497,7 @@ def test_backlog_start_button_posts_issue_start(
     _switch_to_backlog(authed_page)
     # The dispatch bar's model selector governs one-tap starts too (#505) —
     # pick a non-default value so the POST provably carries the selection.
-    authed_page.locator("#boardDispatchModel").select_option("fable")
+    authed_page.locator("#boardDispatchModel").select_option("claude:fable")
     start_btn = authed_page.locator(
         '.board-list[data-col="backlog"] .board-issue-btn'
     ).first
@@ -513,7 +513,7 @@ def test_backlog_start_button_posts_issue_start(
     assert body.get("repo") == "app-launcher"
     assert body.get("number") == 301
     assert body.get("mode") == "start"
-    assert body.get("model") == "fable"
+    assert body.get("model") == "claude:fable"
 
 
 def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
@@ -752,8 +752,8 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     authed_page.locator("#boardDispatchMode").select_option("yolo")
     # Model selector (#500): defaults to Sonnet; pick a non-default value so
     # the POST provably carries the selection, not a hardcoded default.
-    expect(authed_page.locator("#boardDispatchModel")).to_have_value("sonnet")
-    authed_page.locator("#boardDispatchModel").select_option("gpt5.6")
+    expect(authed_page.locator("#boardDispatchModel")).to_have_value("claude:sonnet")
+    authed_page.locator("#boardDispatchModel").select_option("codex:gpt-5.6-sol")
     authed_page.locator("#boardDispatchSend").click()
     authed_page.wait_for_timeout(500)
 
@@ -762,7 +762,7 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     assert body.get("repo") == "app-launcher"
     assert body.get("goal") == "ship the goal bar"
     assert body.get("mode") == "yolo"
-    assert body.get("model") == "gpt5.6"
+    assert body.get("model") == "codex:gpt-5.6-sol"
     # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
     # streaming agent's first output is authored at the width the overlay
     # will fit() to; a desktop client sends the mirror flag instead.

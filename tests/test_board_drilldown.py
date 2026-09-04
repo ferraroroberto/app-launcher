@@ -572,10 +572,10 @@ class TestIssueStart:
         assert "--model opus" in _spawn["flags"]
         assert _spawn["agent"] == "claude"
 
-    def test_gpt56_starts_codex_with_positional_prompt(
+    def test_explicit_codex_model_starts_with_positional_prompt(
         self, webapp_client, _bypass_gate, _spawn, monkeypatch
     ):
-        """#505: gpt5.6 spawns Codex — shared Codex flags, and the same
+        """#845: an exact Codex model carries shared flags and the same
         server-built ``/issue-*`` positional prompt appended (Codex takes
         ``codex [OPTIONS] [PROMPT]`` like claude)."""
         from app.webapp.routers import board_spawn
@@ -587,12 +587,12 @@ class TestIssueStart:
         resp = client.post(
             "/api/board/issues/start",
             json={"repo": "myrepo", "number": 7, "mode": "yolo",
-                  "model": "gpt5.6"},
+                  "model": "codex:gpt-5.6-sol"},
         )
         assert resp.status_code == 200
         assert _spawn["agent"] == "codex" and _spawn["kind"] == "pty"
         assert "model_reasoning_effort=" in _spawn["flags"]
-        assert "--model" not in _spawn["flags"]
+        assert "--model gpt-5.6-sol" in _spawn["flags"]
         assert _spawn["flags"].endswith(' "/issue-yolo 7"')
 
     def test_gpt56_without_codex_installed_400s(
@@ -607,7 +607,7 @@ class TestIssueStart:
         resp = client.post(
             "/api/board/issues/start",
             json={"repo": "myrepo", "number": 7, "mode": "start",
-                  "model": "gpt5.6"},
+                  "model": "codex:gpt-5.6-sol"},
         )
         assert resp.status_code == 400
         assert "not installed" in resp.json()["detail"]
@@ -684,7 +684,7 @@ class TestIssueStart:
             "/api/board/issues/start",
             json={
                 "repo": "myrepo", "number": 42, "mode": "start",
-                "model": "gpt5.6", "title": "Codex title",
+                "model": "codex:gpt-5.6-luna", "title": "Codex title",
             },
         )
         assert resp.status_code == 200

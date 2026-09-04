@@ -329,7 +329,8 @@ class TestClaudeCodeDiscovery:
         assert resp.status_code == 200
         assert captured["agent"] == "codex"
         assert "--ask-for-approval never --sandbox workspace-write" in captured["flags"]
-        assert "model_reasoning_effort=high" in captured["flags"]
+        assert "--model gpt-5.6-luna" in captured["flags"]
+        assert "model_reasoning_effort=xhigh" in captured["flags"]
         assert resp.json()["agent"] == "codex"
         # Skip permissions swaps the sandboxed-auto pair for the bypass.
         client.post("/api/config", json={"codex_permission_mode": "skip"})
@@ -407,7 +408,7 @@ class TestClaudeCodeDiscovery:
         self, webapp_client, monkeypatch
     ):
         """`codex resume` rejects --ask-for-approval/--sandbox, so a Codex
-        resume carries only the subcommand + the reasoning config override."""
+        resume carries the subcommand, exact model, and reasoning override."""
         client, _, overrides = webapp_client
         from app.webapp.routers import apps as apps_router
 
@@ -432,9 +433,42 @@ class TestClaudeCodeDiscovery:
         )
         assert resp.status_code == 200
         assert captured["kind"] == "pty"
-        assert captured["flags"] == "resume -c model_reasoning_effort=high"
+        assert captured["flags"] == (
+            "resume --model gpt-5.6-luna -c model_reasoning_effort=xhigh"
+        )
         assert "--ask-for-approval" not in captured["flags"]
         assert "--sandbox" not in captured["flags"]
+
+    def test_launch_codex_honours_explicit_matching_model(
+        self, webapp_client, monkeypatch
+    ):
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120, history_lines=None,
+        ):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "codex", "model": "codex:gpt-5.6-terra"},
+        )
+        assert resp.status_code == 200
+        assert "--model gpt-5.6-terra" in captured["flags"]
+
+        bad = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "claude", "model": "codex:gpt-5.6-terra"},
+        )
+        assert bad.status_code == 400
 
     def test_launch_resume_antigravity_continues_most_recent(
         self, webapp_client, monkeypatch

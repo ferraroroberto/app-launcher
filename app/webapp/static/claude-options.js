@@ -16,17 +16,96 @@ import { apiFailToast, jsonApi } from './api.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
-// The Coding tab surfaces the Claude launch model twice — the compact
-// board-style dropdown in the Projects summary (#codingModelCombo) and the
-// segmented control in the options card (#claudeModel) — and keeps them in
-// sync. Both offer exactly these three (Board-combo parity, #540): Haiku stays
-// a valid `claude_model` config value server-side but is not surfaced here.
-// Order matches the dropdown's option order.
-const CODING_MODELS = ['sonnet', 'opus', 'fable'];
-
 // The Projects-summary model dropdown controller ({setValue, getValue}),
 // created in wireClaudeOptions once the DOM exists.
 let codingModelCombo = null;
+
+function effortLabel(value) {
+  if (value === 'xhigh') return 'Extra high';
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function fillSelect(select, models, current, includeDefault) {
+  select.innerHTML = '';
+  if (includeDefault) {
+    const fallback = document.createElement('option');
+    fallback.value = '';
+    fallback.textContent = 'Default';
+    select.appendChild(fallback);
+  }
+  (models || []).forEach(function (model) {
+    const opt = document.createElement('option');
+    opt.value = model.value || model;
+    opt.textContent = model.label || model;
+    opt.disabled = model.available === false;
+    if (opt.disabled) {
+      opt.textContent += ' — unavailable';
+      opt.title = model.unavailable_reason || 'Unavailable';
+    }
+    select.appendChild(opt);
+  });
+  select.value = current || '';
+}
+
+function fillCombo(root, models, valuePrefix, append) {
+  if (!root) return;
+  const menu = root.querySelector('.model-combo-menu');
+  if (!menu) return;
+  if (!append) menu.innerHTML = '';
+  (models || []).forEach(function (model) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', 'false');
+    option.dataset.value = (valuePrefix || '') + model.value;
+    const providerLabel = valuePrefix
+      ? valuePrefix.replace(':', '').replace(/^./, function (c) { return c.toUpperCase(); }) + ' · '
+      : '';
+    option.textContent = providerLabel + model.label;
+    option.disabled = model.available === false;
+    if (option.disabled) option.title = model.unavailable_reason || 'Unavailable';
+    menu.appendChild(option);
+  });
+  const selected = menu.querySelector('[data-value="' + root.dataset.value + '"]');
+  if (selected) {
+    selected.setAttribute('aria-selected', 'true');
+    const trigger = root.querySelector('.model-combo-trigger');
+    if (trigger) trigger.textContent = selected.textContent;
+  }
+}
+
+function renderSharedModelSelectors() {
+  const config = state.config || {};
+  const catalog = config.model_catalog || {};
+  const coding = document.getElementById('codingModelCombo');
+  fillCombo(coding, catalog.claude, 'claude:');
+  fillCombo(coding, catalog.codex, 'codex:', true);
+  if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
+
+  const lifeOs = document.getElementById('lifeOsModelCombo');
+  fillCombo(lifeOs, catalog.claude, 'claude:');
+  fillCombo(lifeOs, catalog.codex, 'codex:', true);
+
+  // Stored Life OS conversation ids belong to Claude, so targeted resume
+  // remains provider-safe even though fresh skill launches now offer Codex.
+  fillCombo(
+    document.getElementById('lifeOsConvosModelCombo'),
+    catalog.claude,
+    'claude:'
+  );
+
+  const board = document.getElementById('boardDispatchModel');
+  if (board) {
+    const previous = board.value || 'claude:sonnet';
+    fillSelect(
+      board,
+      (catalog.claude || []).map(function (m) { return { ...m, value: 'claude:' + m.value, label: 'Claude · ' + m.label }; })
+        .concat((catalog.codex || []).map(function (m) { return { ...m, value: 'codex:' + m.value, label: 'Codex · ' + m.label }; })),
+      previous,
+      false
+    );
+  }
+}
 
 export async function fetchConfig() {
   const body = await jsonApi('/api/config');
@@ -52,6 +131,7 @@ export async function fetchConfig() {
 }
 
 export function renderClaudeOptions() {
+  renderSharedModelSelectors();
   renderClaudeSubsection();
   renderCodexSubsection();
   renderAntigravitySubsection();
@@ -87,30 +167,30 @@ function renderClaudeSubsection() {
   const c = state.config && state.config.claude;
   if (!c) return;
   // Both the segmented control and the Projects-summary combo render the
-  // same CODING_MODELS subset so the two stay a true mirror of each other
-  // (#540) — filter server truth to those actually offered, in combo order.
-  const models = CODING_MODELS.filter(function (m) {
-    return (c.models_available || []).includes(m);
+  // Filter the legacy-compatible Claude enum to the curated phone catalog.
+  const surfaced = ((state.config.model_catalog || {}).claude || []).map(function (m) { return m.value; });
+  const models = (c.models_available || []).filter(function (model) {
+    return surfaced.includes(model);
   });
   renderSegmentedControl(
     els.claudeModel,
     models,
     c.model,
     function (m) { return m.charAt(0).toUpperCase() + m.slice(1); },
-    function (m) { patchConfig({ claude_model: m }); }
+    function (m) { patchConfig({ claude_model: m, coding_model_choice: 'claude:' + m }); }
   );
   // Keep the compact dropdown in lockstep. patchConfig() round-trips through
   // GET /api/config and re-renders this whole subsection, so a change from
   // either control lands here and updates both — no explicit cross-wiring.
   // setValue never fires onChange, so this can't loop.
-  if (codingModelCombo && CODING_MODELS.includes(c.model)) {
-    codingModelCombo.setValue(c.model);
+  if (codingModelCombo && state.config.coding_model_choice) {
+    codingModelCombo.setValue(state.config.coding_model_choice);
   }
   renderSegmentedControl(
     els.claudeEffort,
     c.efforts_available,
     c.effort,
-    function (e) { return e === 'off' ? 'Off' : e.charAt(0).toUpperCase() + e.slice(1); },
+    function (e) { return e === 'off' ? 'Default' : effortLabel(e); },
     function (e) { patchConfig({ claude_effort: e }); }
   );
   renderSegmentedControl(
@@ -128,14 +208,12 @@ function renderClaudeSubsection() {
 function renderCodexSubsection() {
   const c = state.config && state.config.codex;
   if (!c) return;
-  // Reasoning tier — a segmented control mirroring Claude's Effort.
-  // Codex has no model tiers, so this is the quality knob (mapped to
-  // `model_reasoning_effort` server-side).
+  fillSelect(els.codexModel, c.models_available, c.model, false);
   renderSegmentedControl(
     els.codexEffort,
     c.efforts_available,
     c.effort,
-    function (e) { return e.charAt(0).toUpperCase() + e.slice(1); },
+    effortLabel,
     function (e) { patchConfig({ codex_effort: e }); }
   );
   // Permission mode — auto (no prompts, still sandboxed) vs skip (the
@@ -191,20 +269,13 @@ function renderPiSubsection() {
   // providers (Opus/Sonnet on claude-agent-sdk, GPT on openai-codex), mirroring
   // the other agents' button rows. `models_available` carries {value,label} so
   // the buttons read "Opus/Sonnet/GPT" rather than the raw model ids.
-  renderSegmentedControl(
-    els.piModel,
-    p.models_available,
-    p.model,
-    function (m) { return m.label; },
-    function (v) { patchConfig({ pi_model: v }); },
-    function (m) { return m.value; }
-  );
+  fillSelect(els.piModel, p.models_available, p.model, false);
   // Effort — segmented control mapped to `--thinking`, mirroring Claude.
   renderSegmentedControl(
     els.piEffort,
     p.efforts_available,
     p.effort,
-    function (e) { return e.charAt(0).toUpperCase() + e.slice(1); },
+    effortLabel,
     function (e) { patchConfig({ pi_effort: e }); }
   );
   // Project trust — `--approve` (Trust) vs `--no-approve` (Ask). NOT a
@@ -285,6 +356,15 @@ export function wireClaudeOptions() {
   els.copilotModel.addEventListener('change', function () {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
+  els.codexModel.addEventListener('change', function () {
+    patchConfig({
+      codex_model: els.codexModel.value,
+      coding_model_choice: 'codex:' + els.codexModel.value,
+    });
+  });
+  els.piModel.addEventListener('change', function () {
+    patchConfig({ pi_model: els.piModel.value });
+  });
   // Pi's model/effort/trust are segmented buttons that wire their own click
   // handlers in renderPiSubsection(), so there's no static listener here.
   // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
@@ -305,6 +385,6 @@ export function wireClaudeOptions() {
   // (#claudeModel follows too). wireModelCombo handles the summary-tap guard.
   codingModelCombo = wireModelCombo(
     document.getElementById('codingModelCombo'),
-    function (v) { patchConfig({ claude_model: v }); }
+    function (v) { patchConfig({ coding_model_choice: v }); }
   );
 }

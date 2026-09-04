@@ -2778,6 +2778,11 @@ body.terminal-open {
   background: var(--card);
   color: var(--accent);
 }
+.model-combo-menu button:disabled {
+  background: var(--card-2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
 /* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
    height so the dispatch row lines up. (The drawer reply mic is NOT in
    this shrink set any more — #496 round 2: inside the drawer every button

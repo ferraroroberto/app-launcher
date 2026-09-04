@@ -211,6 +211,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         # picker renders in the detached console window; with Detached off it
         # streams to the phone over a PTY. Resume no longer forces a PTY.
         resume = bool(body.get("resume"))
+        requested_model = str(body.get("model") or "").strip()
         # Phone's real terminal size (issue #126): a pty session spawns at
         # these dimensions so a ratatui TUI's first frame isn't cut. Absent
         # (older client, or remote mode) → the legacy 40×120 default.
@@ -242,13 +243,29 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "pi": build_pi_flags,
             "grok": build_grok_flags,
         }
+        if requested_model:
+            provider, separator, model_value = requested_model.partition(":")
+            if not separator or provider != agent:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"model {requested_model!r} does not belong to {agent}",
+                )
+        else:
+            model_value = ""
         if resume:
             # Swap the normal flags for the agent's resume invocation; the
             # requested `mode` decides where its picker renders — a detached
             # console (mode="remote") or a streamed PTY (issue #157).
-            flags = build_resume_flags(cfg, agent)
+            flags = build_resume_flags(
+                cfg, agent, model_override=model_value or None
+            )
         else:
-            flags = flag_builders[agent](cfg)
+            if agent == "claude":
+                flags = build_claude_flags(cfg, model_override=model_value or None)
+            elif agent == "codex":
+                flags = build_codex_flags(cfg, model_override=model_value or None)
+            else:
+                flags = flag_builders[agent](cfg)
 
         if mode == "remote":
             session = await spawn_session_or_400(

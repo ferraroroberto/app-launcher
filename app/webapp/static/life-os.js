@@ -22,8 +22,13 @@ import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
 // no server round-trip — it's per-launch, like the Board dispatch combo.
 let lifeOsModelCombo = null;
+let lifeOsConvosModelCombo = null;
 function lifeOsModel() {
-  return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'sonnet';
+  if (!els.lifeOsConvos || els.lifeOsConvos.hidden) {
+    return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'claude:sonnet';
+  }
+  return (lifeOsConvosModelCombo && lifeOsConvosModelCombo.getValue()) ||
+    'claude:sonnet';
 }
 
 // ----------------------------------------------------------- skills list
@@ -139,8 +144,10 @@ function renderRecap() {
 // common case), " (Opus)" / " (Fable)" otherwise — mirroring the old opus
 // tag's terseness (#540).
 function modelTag(model) {
-  if (!model || model === 'sonnet') return '';
-  return ' (' + model.charAt(0).toUpperCase() + model.slice(1) + ')';
+  if (!model || model === 'sonnet' || model === 'claude:sonnet') return '';
+  const value = model.split(':').pop();
+  const label = value.replace(/^gpt-(?:5\.6|6)-/, '');
+  return ' (' + label.charAt(0).toUpperCase() + label.slice(1) + ')';
 }
 
 async function launchRecap() {
@@ -894,10 +901,19 @@ export function wireLifeOs() {
       toggleAriaChecked(btn);
     });
   });
-  // The model dropdown (#540) shares that summary; wireModelCombo owns its
-  // open/close + the summary-tap guard. Read at launch time via lifeOsModel().
+  // The provider-qualified model dropdown (#540/#845) shares that summary;
+  // wireModelCombo owns its open/close + the summary-tap guard.
   lifeOsModelCombo = wireModelCombo(
-    document.getElementById('lifeOsModelCombo'), null
+    document.getElementById('lifeOsModelCombo'), function (choice) {
+      if (lifeOsConvosModelCombo && choice.startsWith('claude:')) {
+        lifeOsConvosModelCombo.setValue(choice);
+      }
+    }
+  );
+  lifeOsConvosModelCombo = wireModelCombo(
+    document.getElementById('lifeOsConvosModelCombo'), function (choice) {
+      if (lifeOsModelCombo) lifeOsModelCombo.setValue(choice);
+    }
   );
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
   // directory scan + a single ledger stat).
