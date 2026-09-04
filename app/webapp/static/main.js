@@ -88,7 +88,8 @@ function wireSettings() {
       const lines = parseInt(els.terminalHistoryLines.value, 10);
       if (Number.isFinite(lines)) patch.terminal_history_lines = lines;
     }
-    await patchConfig(patch);
+    const saved = await patchConfig(patch);
+    if (!saved) return; // patchConfig already fired the failure toast
     await fetchApps();
     await fetchSkills();
     await fetchSystemMapStatus();

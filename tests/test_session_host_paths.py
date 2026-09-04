@@ -7,6 +7,7 @@ determinism and never exercise these functions' real logic.
 
 from __future__ import annotations
 
+import ast
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,34 @@ class TestDeclaredSessionHostPaths:
         paths = session_host_paths.declared_session_host_paths(_CLAUDE_MD)
         assert "src/session_host.py" in paths
         assert "app/session_host/" in paths
+
+    def test_declaration_covers_every_module_session_host_owns(self):
+        """Regression for #832: `src/session_host.py` imports gained
+        `session_host_input.py`, `session_host_scan.py` and `vt_snapshot.py`
+        (split out by #753/#798) that the CLAUDE.md declaration never picked
+        up, so `_touched_by` silently returned False for changes that needed
+        a `:8446` restart. Every sibling ``session_host_*`` module plus
+        ``vt_snapshot`` (the terminal-buffer protocol code session_host.py
+        owns) must appear in the declared path list — parsed from the real
+        imports so a future module split fails this test instead of
+        regressing the same way silently.
+        """
+        session_host_py = _CLAUDE_MD.parent / "src" / "session_host.py"
+        tree = ast.parse(session_host_py.read_text(encoding="utf-8"))
+        local_modules = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src."):
+                local_modules.add(node.module.split(".", 1)[1])
+        owned = {m for m in local_modules if m.startswith("session_host") or m == "vt_snapshot"}
+        assert owned, "sanity: session_host.py should import its own protocol modules"
+
+        declared = session_host_paths.declared_session_host_paths(_CLAUDE_MD)
+        for mod in owned:
+            expected = f"src/{mod}.py"
+            assert expected in declared, (
+                f"{expected} is imported by session_host.py but not declared in "
+                "CLAUDE.md's ## session-host block"
+            )
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert session_host_paths.declared_session_host_paths(tmp_path / "missing.md") == []

@@ -68,6 +68,16 @@ MAX_WATCHDOG_SECONDS = 7 * 86_400
 MAX_MUTEX_GROUP_LEN = 32
 _MUTEX_GROUP_RE = _re_compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
+# Job id shape — lowercase alnum segments joined by single hyphens, exactly
+# what make_job_id()/slugify() produce (#832). Nothing downstream validated
+# a caller-supplied id: it became a raw path join for the job's run
+# directory (src/jobs_history.py's ``runs_dir``, which prune_runs'
+# ``shutil.rmtree`` can walk outside ``webapp/jobs/`` given a `../` id) and
+# unchecked text in the ``\AppLauncher\<id>`` Task Scheduler name + its
+# ``/TR`` string.
+MAX_JOB_ID_LEN = 64
+_JOB_ID_RE = _re_compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
 
 # ---------------------------------------------------------------- Schedule
 
@@ -808,6 +818,12 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
     )
     if not job.id:
         raise ValueError("job id is required")
+    if not _JOB_ID_RE.match(job.id) or len(job.id) > MAX_JOB_ID_LEN:
+        raise ValueError(
+            f"job id {job.id!r} must be lowercase alnum segments joined by "
+            f"single hyphens (the make_job_id()/slugify() shape), up to "
+            f"{MAX_JOB_ID_LEN} chars"
+        )
     if not job.name:
         raise ValueError("job name is required")
     return job
