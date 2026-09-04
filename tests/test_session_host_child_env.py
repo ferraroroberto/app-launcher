@@ -67,6 +67,15 @@ def test_session_stamp_is_applied(monkeypatch):
     assert env["APP_LAUNCHER_AGENT"] == "claude"
 
 
+def test_pty_terminal_type_overrides_ambient_dumb_terminal(monkeypatch):
+    """A parent coding shell's TERM=dumb must not disable a hosted TUI."""
+    monkeypatch.setenv("TERM", "dumb")
+
+    env = agent_child_env("abc123", "codex")
+
+    assert env["TERM"] == "xterm-256color"
+
+
 def test_user_scope_settings_survive(monkeypatch):
     """settings.json vars are meant for every agent run — don't scrub them."""
     monkeypatch.setenv("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE", "70")

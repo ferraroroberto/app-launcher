@@ -786,6 +786,18 @@ def agent_child_env(session_id: str, agent: str) -> Dict[str, str]:
         if key.upper() not in _INHERITED_AGENT_MARKERS
     }
     env["PATH"] = effective_path()
+    inherited_term = env.get("TERM", "")
+    # A PTY we own is xterm-compatible regardless of the shell that happened
+    # to start the tray. Codex 0.153.3 refuses its interactive TUI when an
+    # automation parent leaks TERM=dumb, even though ConPTY itself is fully
+    # capable. Pin the child-facing terminal contract at this boundary.
+    env["TERM"] = "xterm-256color"
+    if inherited_term and inherited_term != env["TERM"]:
+        logger.info(
+            "ℹ️ PTY child TERM normalized from %s to xterm-256color for %s",
+            inherited_term,
+            agent,
+        )
     env["APP_LAUNCHER_SESSION_ID"] = session_id
     env["APP_LAUNCHER_AGENT"] = agent
     return env
