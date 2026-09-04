@@ -140,9 +140,6 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         rows=40,
         cols=100,
     )
-    # Claude is a non-fullscreen agent so SessionManager wires no VT mirror;
-    # attach one so snapshot_frame() renders the live screen for the probe.
-    session._vt = VtSnapshot(40, 100)
     try:
         # Answer the terminal identity query and let the TUI finish its first
         # paint before exercising input — same handshake an attached xterm
@@ -150,6 +147,16 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         await asyncio.sleep(1.0)
         session.write("\x1b[?1;2c")
         session.write("\x1b[I")
+
+        # Claude is a non-fullscreen agent, so production intentionally keeps
+        # no VT mirror. This diagnostic probe attaches one after spawn. Newer
+        # Claude versions can emit their whole first frame before create()
+        # returns; seed the mirror from the already-received ring so a healthy
+        # composer cannot look blank merely because attachment lost the race.
+        vt = VtSnapshot(40, 100)
+        with session._ring_lock:
+            vt.feed(session._ring)
+            session._vt = vt
 
         assert await _wait_for_any(session, _COMPOSER_MARKERS, 30.0), (
             "Claude Code composer never became ready within 30 s"
