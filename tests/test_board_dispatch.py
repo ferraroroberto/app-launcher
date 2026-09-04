@@ -166,17 +166,16 @@ class TestSpawnThenType:
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _ready_session, monkeypatch,
     ):
-        """#500: gpt5.6 = the Coding tab's Codex launch — agent codex,
-        effort-only flags (Codex has no --model), same /issue-* typing."""
+        """#845: a provider-qualified Codex selection carries the exact model."""
         monkeypatch.setattr(
             board_spawn.agents, "is_installed", lambda a: a == "codex"
         )
         client, _, overrides = webapp_client
-        resp = _dispatch(client, overrides, model="gpt5.6")
+        resp = _dispatch(client, overrides, model="codex:gpt-5.6-terra")
         assert resp.status_code == 200
         assert _spawn["agent"] == "codex" and _spawn["kind"] == "pty"
         assert "model_reasoning_effort=" in _spawn["flags"]
-        assert "--model" not in _spawn["flags"]
+        assert "--model gpt-5.6-terra" in _spawn["flags"]
         # The goal still rides the PTY path, one call, submit=True.
         calls = overrides["session"].send_input.call_args_list
         assert len(calls) == 1
@@ -190,7 +189,7 @@ class TestSpawnThenType:
             board_spawn.agents, "is_installed", lambda a: False
         )
         client, _, overrides = webapp_client
-        resp = _dispatch(client, overrides, model="gpt5.6")
+        resp = _dispatch(client, overrides, model="codex:gpt-5.6-sol")
         assert resp.status_code == 400
         assert "not installed" in resp.json()["detail"]
         assert not _spawn  # nothing ever spawned

@@ -14,12 +14,11 @@ specialised to the skills in the sibling ``life-os`` repo:
     GET  /api/life-os/file?path=…              → file content (Tailscale + passkey)
 
 Launch reuses the Coding tab's session-host / ConPTY machinery wholesale
-(:func:`src.launcher.spawn_claude_session`); only three things differ:
-the cwd is always ``life_os_dir`` (so the project skills resolve), the
-model comes from the tab's model combo (#540), and a bare ``/<skill>``
-slash-command is passed as the positional prompt. **No** free text is
-ever interpolated into the launch — the user types their input into the
-live terminal once the skill reports ready.
+(:func:`src.launcher.spawn_claude_session`). The cwd is always ``life_os_dir``
+so project skills resolve. Claude receives the native bare ``/<skill>``
+slash-command; Codex receives a server-authored prompt pointing at that same
+validated skill's ``SKILL.md``. No caller-supplied free text is interpolated
+into either launch.
 
 The content endpoints surface private, gitignored knowledge
 (``context/`` ``memory/`` ``examples/`` ``conversations/`` + the shared
@@ -54,7 +53,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
-from src.launch_flags import build_claude_flags, build_resume_flags
+from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
+from src.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    available_values,
+)
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.subprocess_flags import NO_WINDOW
@@ -120,15 +124,17 @@ _SESSION_ID_RE = re.compile(
 # (validated by construction — matches ``scanner._SKILL_SLUG_RE``); if the
 # skill is ever renamed the tile 404s visibly rather than launching the wrong
 # thing.
-# The launch model comes from the tab's board-style combo (#540): the three
-# Claude tiers Life OS offers, matching the Coding tab's combo. GPT-5.6/Codex
-# is deliberately absent — life-os skills are Claude ``/skill`` commands Codex
-# cannot invoke.
-_LAUNCH_MODELS = ("sonnet", "opus", "fable")
+# The launch choice comes from the same provider-qualified catalog used by
+# Coding and Board (#845). Legacy unqualified Claude values remain accepted so
+# a cached pre-#845 browser can still launch safely after the webapp restarts.
+_LAUNCH_MODELS = {
+    "claude": available_values(CLAUDE_MODEL_SPECS),
+    "codex": available_values(CODEX_MODEL_SPECS),
+}
 
 
-def _resolve_launch_model(body: Dict[str, Any]) -> str:
-    """Resolve the per-launch Claude model from the request body.
+def _resolve_launch_choice(body: Dict[str, Any]) -> tuple[str, str]:
+    """Resolve the per-launch provider and model from the request body.
 
     The tab now sends an explicit ``model`` (#540, board parity). Older
     callers sent an ``opus`` bool (on → opus, off → sonnet); accept it as a
@@ -136,14 +142,23 @@ def _resolve_launch_model(body: Dict[str, Any]) -> str:
     """
     raw = body.get("model")
     if raw is not None:
-        model = str(raw).strip().lower()
-        if model not in _LAUNCH_MODELS:
+        choice = str(raw).strip().lower()
+        if ":" in choice:
+            agent, model = choice.split(":", 1)
+        else:
+            agent, model = "claude", choice
+        if agent not in _LAUNCH_MODELS or model not in _LAUNCH_MODELS[agent]:
             raise HTTPException(
                 status_code=400,
-                detail=f"model must be one of {_LAUNCH_MODELS}; got {model!r}",
+                detail=f"unsupported Life OS model choice: {choice!r}",
             )
-        return model
-    return "opus" if bool(body.get("opus", False)) else "sonnet"
+        return agent, model
+    return "claude", "opus" if bool(body.get("opus", False)) else "sonnet"
+
+
+def _codex_skill_prompt(skill_path: str, skill_name: str) -> str:
+    """Return a quoted initial prompt that makes a Claude-layout skill explicit."""
+    return f'"Use the {skill_name} skill from {skill_path}/SKILL.md."'
 
 
 _RECAP_COMMAND = "weekly-recap"
@@ -242,19 +257,19 @@ async def _spawn_skill_session(
     flags: str,
     name: str,
     kind: str,
+    agent: str,
     model: str,
     resume: bool,
     audit_skill: str,
     body: Dict[str, Any],
     resume_sid: str = "",
 ) -> Dict[str, Any]:
-    """Spawn a claude session in life-os, audit it, mirror to PC, shape the reply.
+    """Spawn a Claude or Codex session in life-os and shape the reply.
 
     The shared tail of the skill-launch and recap-launch routes: each has
-    already resolved the claude ``flags`` (model + the bare ``/<command>``)
-    and the session ``kind``; this runs the spawn + audit + optional PC mirror
-    (issue #159) identically and returns the common response fields. The caller
-    prepends its own ``launched`` id.
+    already resolved provider-specific flags and the session kind; this runs
+    the spawn + audit + optional PC mirror identically and returns the common
+    response fields. The caller prepends its own ``launched`` id.
     """
     # The phone passes its real terminal size (issue #374): a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120
@@ -270,7 +285,7 @@ async def _spawn_skill_session(
         flags,
         cfg.session_host_port,
         kind,
-        "claude",
+        agent,
         rows,
         cols,
         history_lines=cfg.terminal_history_lines,
@@ -282,7 +297,7 @@ async def _spawn_skill_session(
         audit.audit_event,
         event,
         session=sid,
-        agent="claude",
+        agent=agent,
         skill=audit_skill,
         name=name,
         project=str(life_os_dir),
@@ -294,7 +309,7 @@ async def _spawn_skill_session(
     )
     await audit_off_loop(
         audit.session_log,
-        sid, "start", agent="claude", skill=audit_skill, name=name,
+        sid, "start", agent=agent, skill=audit_skill, name=name,
         project=str(life_os_dir),
     )
 
@@ -313,7 +328,7 @@ async def _spawn_skill_session(
 
     return {
         "name": name,
-        "agent": "claude",
+        "agent": agent,
         "mode": kind,
         "model": model,
         "resume": resume,
@@ -396,14 +411,15 @@ async def recap_status(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/life-os/recap/launch")
 async def launch_recap(request: Request) -> Dict[str, Any]:
-    """Launch a claude session that invokes ``/weekly-recap`` (review) in life-os.
+    """Launch a Claude or Codex session for weekly-recap review in life-os.
 
     The Weekly-recap tile's 🚀 — the interactive **review** half of the recap
     (issue #167 / life-os #15). Body: ``{"mode": "pty"|"remote", "model": str}``
-    (``model`` ∈ sonnet/opus/fable; a legacy ``opus`` bool is still accepted).
+    (``model`` is a provider-qualified catalog value; a legacy unqualified
+    Claude value or ``opus`` bool is still accepted).
     The drafting half runs headless on a schedule (the recap-draft Job), so this
-    tile is review-only: no ``/weekly-recap draft`` and no resume. cwd is fixed
-    to ``life_os_dir``; the positional prompt is a bare ``/weekly-recap``.
+    tile is review-only: no draft mode and no resume. cwd is fixed to
+    ``life_os_dir``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     life_os_dir = Path(cfg.life_os_dir)
@@ -415,13 +431,18 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
 
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
-    model = _resolve_launch_model(body)
+    agent, model = _resolve_launch_choice(body)
 
-    flags = f"{build_claude_flags(cfg, model_override=model)} /{_RECAP_COMMAND}"
+    if agent == "claude":
+        flags = f"{build_claude_flags(cfg, model_override=model)} /{_RECAP_COMMAND}"
+    else:
+        prompt = _codex_skill_prompt(".claude/skills/_recap", _RECAP_COMMAND)
+        flags = f"{build_codex_flags(cfg, model_override=model)} {prompt}"
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
-        flags=flags, name=_RECAP_COMMAND, kind=kind, model=model, resume=False,
+        flags=flags, name=_RECAP_COMMAND, kind=kind, agent=agent, model=model,
+        resume=False,
         audit_skill="_recap", body=body,
     )
     return {"launched": _RECAP_COMMAND, **result}
@@ -429,18 +450,16 @@ async def launch_recap(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/life-os/skills/{skill_id}/launch")
 async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
-    """Launch a claude session that auto-invokes ``/<skill>`` in life-os.
+    """Launch a Claude or Codex session that invokes a skill in life-os.
 
-    Body: ``{"mode": "pty"|"remote", "model": str, "resume": bool}`` (``model``
-    ∈ sonnet/opus/fable, #540; a legacy ``opus`` bool is still accepted). The
-    cwd is fixed to ``life_os_dir``; the model comes from the tab's combo;
-    the positional prompt is a bare ``/<skill>``
-    (no free text). Mirrors the Coding tab's claude-code launch (PTY
-    streamed to the phone vs. detached console window, + PC mirror window
-    + audit).
+    Body: ``{"mode": "pty"|"remote", "model": str, "resume": bool}``, where
+    ``model`` is a provider-qualified catalog value (#540/#845; legacy Claude
+    values remain accepted). cwd is fixed to ``life_os_dir``. Claude gets the
+    native slash command; Codex gets a server-authored prompt pointing at the
+    validated skill file. Both use the Coding tab's PTY/detached machinery.
 
-    Resume (issue #151) reopens Claude's own native session picker instead
-    of invoking the skill: it **drops the ``/<skill>`` prompt** so the user
+    Resume (issue #151) reopens the selected provider's native session picker
+    instead of invoking the skill: it **drops the skill prompt** so the user
     lands on the picker to pick up a prior conversation rather than starting
     the skill afresh. Resume is orthogonal to Detached (issue #157, matching
     the Coding tab): the requested ``mode`` still decides where the picker
@@ -467,13 +486,18 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
 
     body = await maybe_json(request)
     mode = str(body.get("mode") or "pty").strip().lower()
-    model = _resolve_launch_model(body)
+    agent, model = _resolve_launch_choice(body)
     resume_sid = str(body.get("resume_sid") or "").strip()
     if resume_sid and not _SESSION_ID_RE.match(resume_sid):
         raise HTTPException(
             status_code=400, detail="resume_sid is not a valid session id"
         )
     resume = bool(resume_sid) or bool(body.get("resume", False))
+    if resume_sid and agent != "claude":
+        raise HTTPException(
+            status_code=400,
+            detail="stored Life OS conversation ids can only resume with Claude",
+        )
 
     # Model override is per-launch (the tab's model combo, #540); the rest of
     # the flags (effort / permission / verbose / debug) come from the shared
@@ -491,12 +515,19 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         flags = build_resume_flags(
             cfg, "claude", model_override=model, session_id=resume_sid
         )
-    elif resume:
+    elif resume and agent == "claude":
         flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
-    else:
+    elif resume:
+        flags = build_resume_flags(cfg, agent, model_override=model)
+    elif agent == "claude":
         flags = (
             f"{build_claude_flags(cfg, model_override=model)} /{skill.command}"
         )
+    else:
+        prompt = _codex_skill_prompt(
+            f".claude/skills/{skill.id}", skill.command
+        )
+        flags = f"{build_codex_flags(cfg, model_override=model)} {prompt}"
     name = skill.name
 
     # Detached and Resume are orthogonal (issue #157, matching the Coding
@@ -505,7 +536,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     kind = "remote" if mode == "remote" else "pty"
     result = await _spawn_skill_session(
         cfg, request, life_os_dir,
-        flags=flags, name=name, kind=kind, model=model, resume=resume,
+        flags=flags, name=name, kind=kind, agent=agent, model=model, resume=resume,
         audit_skill=skill.id, body=body, resume_sid=resume_sid,
     )
     return {"launched": skill.id, **result}

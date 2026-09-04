@@ -292,6 +292,30 @@ class TestLaunchSkill:
         assert f"--model {model}" in captured["flags"]
         assert resp.json()["model"] == model
 
+    def test_launch_codex_astra_reads_project_skill(self, life_os_client, monkeypatch):
+        """The Skills selector can launch the same skill through Codex/Astra."""
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            captured.update(flags=flags, agent=agent)
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={"mode": "pty", "model": "codex:gpt-6-astra"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["agent"] == "codex"
+        assert "--model gpt-6-astra" in captured["flags"]
+        assert "Use the journal-daily skill" in captured["flags"]
+        assert ".claude/skills/journal-daily/SKILL.md" in captured["flags"]
+        assert resp.json()["model"] == "gpt-6-astra"
+
     def test_launch_model_field_wins_over_legacy_opus(
         self, life_os_client, monkeypatch
     ):
@@ -702,6 +726,29 @@ class TestLaunchRecap:
         assert resp.status_code == 200, resp.text
         assert captured["kind"] == "remote"
         assert "--model opus" in captured["flags"]
+
+    def test_launch_codex_astra_loads_recap_skill(
+        self, life_os_client, monkeypatch
+    ):
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        captured = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            captured.update(flags=flags, agent=agent)
+            return {"session_id": "r1", "kind": kind}
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/life-os/recap/launch",
+            json={"mode": "pty", "model": "codex:gpt-6-astra"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["agent"] == "codex"
+        assert "--model gpt-6-astra" in captured["flags"]
+        assert ".claude/skills/_recap/SKILL.md" in captured["flags"]
 
 
 # ------------------------------------------------- conversations (issue #727)
@@ -1122,6 +1169,44 @@ class TestTargetedResume:
         assert captured["flags"].endswith(" /resume")
         assert "--resume" not in captured["flags"]
         assert resp.json()["resume_sid"] == ""
+
+    def test_bare_codex_resume_opens_codex_picker(
+        self, life_os_client, monkeypatch
+    ):
+        client, _, _ = life_os_client
+        captured = self._spawn_capture(monkeypatch)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={
+                "mode": "pty",
+                "resume": True,
+                "model": "codex:gpt-6-astra",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["agent"] == "codex"
+        assert captured["flags"].startswith("resume --model gpt-6-astra")
+        assert "SKILL.md" not in captured["flags"]
+
+    def test_claude_conversation_id_rejects_codex_model(
+        self, life_os_client, monkeypatch
+    ):
+        client, _, _ = life_os_client
+        from app.webapp.routers import life_os as life_os_router
+
+        def boom(*a, **k):  # pragma: no cover - must not run
+            raise AssertionError("cross-provider resume must not spawn")
+
+        monkeypatch.setattr(life_os_router, "spawn_claude_session", boom)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch",
+            json={
+                "model": "codex:gpt-6-astra",
+                "resume_sid": RESUMABLE_SID,
+            },
+        )
+        assert resp.status_code == 400, resp.text
+        assert "only resume with Claude" in resp.json()["detail"]
 
 
 class TestConversationGate:

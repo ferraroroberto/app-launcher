@@ -264,6 +264,7 @@ export const els = {
   claudeResume: document.getElementById('claudeResume'),
   claudeFlagsPreview: document.getElementById('claudeFlagsPreview'),
   codexEffort: document.getElementById('codexEffort'),
+  codexModel: document.getElementById('codexModel'),
   codexPermission: document.getElementById('codexPermission'),
   codexFlagsPreview: document.getElementById('codexFlagsPreview'),
   grokEffort: document.getElementById('grokEffort'),

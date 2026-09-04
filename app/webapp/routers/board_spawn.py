@@ -34,8 +34,9 @@ from fastapi import HTTPException
 
 from src import agents, session_client
 from src.launch_flags import build_claude_flags, build_codex_flags
+from src.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.registry import AppEntry, live_claude_code_entries
-from src.webapp_config import WebappConfig
+from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
 logger = logging.getLogger(__name__)
 
@@ -92,34 +93,35 @@ PTY_QUIESCENT_STABLE_S = 2.0
 PTY_QUIESCENT_CAP_S = 30.0
 PTY_QUIESCENT_POLL_S = 0.5
 
-# Dispatch model selector (#500): three Claude tiers (each a valid
-# ``build_claude_flags`` override) plus "gpt5.6", which spawns a Codex CLI
-# session with the shared Coding-tab flags instead — Codex has no per-model
-# flag, so "gpt5.6" just means "the account's default model at the
-# configured effort", same as the Coding tab's Codex button.
-_DISPATCH_CLAUDE_MODELS = ("sonnet", "opus", "fable")
-_DISPATCH_CODEX_MODEL = "gpt5.6"
+# Provider-qualified choices come from the shared model catalog (#845).
+_DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 
 
 def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
     """Validated ``(agent, flags)`` for a Board per-launch ``model`` (#500/#505).
 
     The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
-    ``gpt5.6`` selects Codex with the Coding tab's shared flags instead
-    (``apps.py``'s exact launch shape). The ``is_installed`` check is the
+    Codex values select an exact model with the Coding tab's remembered
+    compatible effort. The ``is_installed`` check is the
     same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
     Coding tab's already-disabled button.
     """
-    if model not in _DISPATCH_CLAUDE_MODELS and model != _DISPATCH_CODEX_MODEL:
+    provider, separator, model_value = model.partition(":")
+    if model == "gpt5.6":
+        provider, model_value, separator = "codex", "gpt-5.6-sol", ":"
+    if not separator:
+        # Preserve old Claude callers while the explicit provider values roll out.
+        provider, model_value = "claude", model
+    if provider == "claude" and model_value in _DISPATCH_CLAUDE_MODELS:
+        return "claude", build_claude_flags(cfg, model_value)
+    if provider != "codex" or model_value not in VALID_CODEX_MODELS:
         raise HTTPException(status_code=400, detail=f"unknown model: {model}")
-    if model == _DISPATCH_CODEX_MODEL:
-        if not agents.is_installed("codex"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{agents.AGENTS['codex'].label} is not installed",
-            )
-        return "codex", build_codex_flags(cfg)
-    return "claude", build_claude_flags(cfg, model)
+    if not agents.is_installed("codex"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{agents.AGENTS['codex'].label} is not installed",
+        )
+    return "codex", build_codex_flags(cfg, model_value)
 
 
 async def _await_dispatch_ready(port: int, sid: str) -> None:

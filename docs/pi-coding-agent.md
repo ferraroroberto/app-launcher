@@ -27,9 +27,8 @@ Install + provider lineup:
 
 ```
 pi install npm:claude-agent-sdk-pi     # adds the extension; pi list shows it
-pi --list-models claude-agent-sdk      # provider registers the full current lineup:
-                                        #   claude-opus-4-8, claude-sonnet-4-6,
-                                        #   claude-haiku-4-5, claude-fable-5, ...
+pi --list-models claude-agent-sdk      # inspect the current subscription lineup
+pi --list-models openai-codex          # inspect the current ChatGPT-plan lineup
 ```
 
 The extension's model lineup is **current** (Opus 4.8 / Sonnet 4.6 / Haiku 4.5 / Fable 5), despite its README mentioning only 4.5-era ids.
@@ -63,9 +62,9 @@ Pi is added the same way as the other terminal agents — registry row + flag bu
 
 1. **Registry row** — `src/agents.py` `AGENTS["pi"]`: `command="pi"`, `quit_command="/quit"`, `fullscreen=True`, `resume_token="-r"` (native picker), `native_name_flag="--name"`. `fullscreen` was flipped from an assumed `False` to a phone-validated `True` by #291 (see "Fullscreen / repaint" below) — pi is a differential in-place repainter during an active response, not a plain inline emitter, so it takes the skip-replay + forced-repaint path like Codex/Antigravity/Copilot/Grok.
 2. **Explicit provider/model + thinking + trust** — `build_pi_flags` (`src/launch_flags.py`) emits `--provider <p> --model <p>/<id> --thinking <effort> <--approve|--no-approve>`, all explicit because pi's settings.json defaults don't reliably reroute a launch. The provider switches on the chosen model (see point 3) so a launch can never fall back to the billing `anthropic` provider. Wired into the launch dispatch + resume path in `app/webapp/routers/apps.py`.
-3. **Segmented model / effort / trust controls (#288)** — exposed in `/api/config` and the Coding **options** card's "Pi" block (`index.html`, `state.js`, `claude-options.js`) as segmented `<button>` rows mirroring the Claude/Codex blocks:
-   - **Model** — `pi_model` over `PI_MODEL_SPECS` (default `claude-opus-4-8`): a deliberately small three-option set spanning two subscription providers — **Opus** (`claude-agent-sdk/claude-opus-4-8`) and **Sonnet** (`claude-agent-sdk/claude-sonnet-4-6`) on the Claude-subscription SDK path, and **GPT** (`openai-codex/gpt-5.5`) on the ChatGPT-plan path (verified no-API-credit). GPT is the one cross-provider option, so `build_pi_flags` switches `--provider`/`--model` on it. `models_available` is `{value,label}` so the buttons read "Opus/Sonnet/GPT".
-   - **Effort** — `pi_effort` (`VALID_PI_EFFORTS` low/medium/high, default high) → `--thinking`, mirroring Claude's Effort.
+3. **Model / effort / trust controls (#288/#845)** — exposed in `/api/config` and the Coding options card:
+   - **Model** — `pi_model` over the canonical `src/model_catalog.py` registry (default `claude-opus-5`): Opus/Sonnet/Fable 5 use `claude-agent-sdk`; Luna/Terra/Sol use `openai-codex`. Astra remains visibly unavailable until Pi advertises its exact id. Every launch passes the provider and model explicitly.
+   - **Effort** — `pi_effort` supports Pi's current `off|minimal|low|medium|high|xhigh|max` ladder (default high) and maps to `--thinking`.
    - **Project trust** — `pi_trust_mode` (`VALID_PI_TRUST_MODES` trust/ask, default trust) → `--approve`/`--no-approve`. This is project *trust* (whether pi loads project-local `.pi/` settings/extensions/skills), **not** a tool-permission gate: pi has no tool sandbox or per-action prompt (see pi's `security.md`). Default "trust" so an interactive phone launch never stalls on a startup trust prompt.
 
    Detached/Resume use the existing global toggles.

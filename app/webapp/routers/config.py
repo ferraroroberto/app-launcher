@@ -20,18 +20,21 @@ from src.launch_flags import (
     build_grok_flags,
     build_pi_flags,
 )
+from src.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    PI_MODEL_SPECS,
+    catalog_payload,
+)
 from src.webapp_config import (
     MAX_TERMINAL_HISTORY_LINES,
     MIN_TERMINAL_HISTORY_LINES,
-    VALID_CODEX_EFFORTS,
     VALID_CODEX_PERMISSION_MODES,
     VALID_COPILOT_MODELS,
     VALID_GROK_EFFORTS,
     VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
-    VALID_PI_MODELS,
     VALID_PI_TRUST_MODES,
-    PI_MODEL_SPECS,
     WebappConfig,
     update_webapp_config,
 )
@@ -58,6 +61,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Coding-row buttons the user hid (issue #666) — agent ids plus the
         # pseudo-id `github`. The SPA filters the row strip on this.
         "coding_hidden_agents": cfg.coding_hidden_agents,
+        "coding_model_choice": cfg.coding_model_choice,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
@@ -66,9 +70,12 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "terminal_history_lines_max": MAX_TERMINAL_HISTORY_LINES,
         "claude": claude_flags_payload(cfg),
         "codex": {
+            "model": cfg.codex_model,
             "effort": cfg.codex_effort,
+            "model_efforts": cfg.codex_model_efforts,
+            "models_available": catalog_payload(CODEX_MODEL_SPECS),
+            "efforts_available": list(CODEX_MODEL_SPECS[cfg.codex_model]["efforts"]),
             "permission_mode": cfg.codex_permission_mode,
-            "efforts_available": list(VALID_CODEX_EFFORTS),
             "permission_modes_available": list(VALID_CODEX_PERMISSION_MODES),
             "computed_flags": build_codex_flags(cfg),
         },
@@ -88,8 +95,13 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "effort": cfg.pi_effort,
             "trust_mode": cfg.pi_trust_mode,
             "models_available": [
-                {"value": value, "label": spec[2]}
-                for value, spec in PI_MODEL_SPECS.items()
+                {
+                    "value": item["value"],
+                    "label": item["label"],
+                    "available": item["available"],
+                    **({"unavailable_reason": item["unavailable_reason"]} if item.get("unavailable_reason") else {}),
+                }
+                for item in catalog_payload(PI_MODEL_SPECS)
             ],
             "efforts_available": list(VALID_PI_EFFORTS),
             "trust_modes_available": list(VALID_PI_TRUST_MODES),
@@ -102,6 +114,10 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "permission_modes_available": list(VALID_GROK_PERMISSION_MODES),
             "computed_flags": build_grok_flags(cfg),
         },
+        "model_catalog": {
+            "claude": catalog_payload(CLAUDE_MODEL_SPECS),
+            "codex": catalog_payload(CODEX_MODEL_SPECS),
+        },
         "auth_password_set": bool(cfg.auth_password),
         # Boot-autostart toggle (issue #456): live-queried, not stored in
         # webapp_config.json — the Startup-folder wrapper bat's presence
@@ -112,11 +128,13 @@ async def get_config(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
+    cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     allowed = {
         "projects_dir",
         "projects_ignore",
         "coding_hidden_agents",
+        "coding_model_choice",
         "apps_scan_root",
         "life_os_dir",
         "claude_config_dir",
@@ -128,6 +146,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "claude_permission_mode",
         "antigravity_skip_permissions",
         "antigravity_sandbox",
+        "codex_model",
         "codex_effort",
         "codex_permission_mode",
         "copilot_skip_permissions",
@@ -153,6 +172,23 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
+    # Keep the compact Coding choice and the provider-specific defaults in
+    # lockstep. Effort changes are remembered against the selected Codex model.
+    choice = str(patch.get("coding_model_choice") or "")
+    if choice.startswith("claude:"):
+        patch["claude_model"] = choice.split(":", 1)[1]
+    elif choice.startswith("codex:"):
+        patch["codex_model"] = choice.split(":", 1)[1]
+    if "codex_model" in patch or "codex_effort" in patch:
+        model = str(patch.get("codex_model") or cfg.codex_model)
+        efforts = dict(cfg.codex_model_efforts)
+        if "codex_effort" in patch:
+            efforts[model] = str(patch["codex_effort"])
+        else:
+            patch["codex_effort"] = efforts.get(
+                model, CODEX_MODEL_SPECS.get(model, {}).get("default_effort", "")
+            )
+        patch["codex_model_efforts"] = efforts
     try:
         new_cfg = update_webapp_config(**patch)
     except ValueError as exc:

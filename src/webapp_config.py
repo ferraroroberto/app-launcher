@@ -34,6 +34,14 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    COPILOT_MODELS,
+    PI_MODEL_SPECS,
+    available_values,
+)
+
 from src._json_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -86,14 +94,16 @@ MAX_TERMINAL_HISTORY_LINES = 50_000
 # rather than protect it. A restart is still available, but only as an
 # explicit operator action (the Board's chief Restart button, #617) — never
 # a schedule that fires unattended.
-VALID_CHIEF_MODELS = ("sonnet", "opus", "fable")
+VALID_CHIEF_MODELS = available_values(CLAUDE_MODEL_SPECS)
 DEFAULT_CHIEF_MODEL = "fable"
 DEFAULT_CHIEF_WORKER_CAP = 3
 MIN_CHIEF_WORKER_CAP = 1
 MAX_CHIEF_WORKER_CAP = 10
 
+# Haiku remains accepted for existing configs and direct launches, but the
+# curated phone selectors intentionally expose Sonnet/Opus/Fable only.
 VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku", "fable")
-VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high")
+VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high", "xhigh", "max")
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "high"
 
@@ -104,14 +114,22 @@ DEFAULT_CLAUDE_EFFORT = "high"
 VALID_CLAUDE_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
 
-# Codex CLI launch knobs (issue #120). Codex has no Claude-style model
-# tiers — its quality knob is reasoning effort, set via the config
-# override `-c model_reasoning_effort=<low|medium|high>`. The model
-# itself stays the account default (gpt-5-codex via the ChatGPT-plan
-# login), so there is no model picker. "off" is not offered: Codex's
-# reasoning is always on.
-VALID_CODEX_EFFORTS = ("low", "medium", "high")
-DEFAULT_CODEX_EFFORT = "high"
+# Codex model/effort pairs (#845). The CLI's per-model effort support is
+# encoded in the shared catalog; Luna intentionally defaults to Extra High.
+VALID_CODEX_MODELS = available_values(CODEX_MODEL_SPECS)
+VALID_CODEX_EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
+DEFAULT_CODEX_MODEL = "gpt-5.6-luna"
+DEFAULT_CODEX_MODEL_EFFORTS = {
+    value: spec["default_effort"]
+    for value, spec in CODEX_MODEL_SPECS.items()
+    if spec.get("available")
+}
+DEFAULT_CODEX_EFFORT = DEFAULT_CODEX_MODEL_EFFORTS[DEFAULT_CODEX_MODEL]
+VALID_CODING_MODEL_CHOICES = tuple(
+    [f"claude:{model}" for model in available_values(CLAUDE_MODEL_SPECS)]
+    + [f"codex:{model}" for model in VALID_CODEX_MODELS]
+)
+DEFAULT_CODING_MODEL_CHOICE = f"claude:{DEFAULT_CLAUDE_MODEL}"
 
 # Permission mode for the `codex` launch, mirroring Claude's auto/skip.
 # "auto" → `--ask-for-approval never --sandbox workspace-write` (no
@@ -126,29 +144,7 @@ DEFAULT_CODEX_PERMISSION_MODE = "auto"
 # `copilot_model` means "don't pass --model" — the CLI then uses its own
 # configured default. This list will drift as GitHub adds models; refresh
 # it from `copilot help config` when that happens.
-VALID_COPILOT_MODELS = (
-    "claude-sonnet-5",
-    "claude-sonnet-4.6",
-    "claude-sonnet-4.5",
-    "claude-haiku-4.5",
-    "claude-fable-5",
-    "claude-opus-4.8",
-    "claude-opus-4.8-fast",
-    "claude-opus-4.7",
-    "claude-opus-4.6",
-    "claude-opus-4.5",
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "gpt-5.4",
-    "gpt-5.3-codex",
-    "gpt-5.4-mini",
-    "gpt-5-mini",
-    "gemini-3.1-pro-preview",
-    "gemini-3.5-flash",
-    "kimi-k2.7-code",
-)
+VALID_COPILOT_MODELS = COPILOT_MODELS
 
 # Pi coding-agent launch models (issues #273, #288). The Coding tab shows a
 # deliberately small, segmented model control — three options spanning two
@@ -161,7 +157,7 @@ VALID_COPILOT_MODELS = (
 #     this machine — only the SDK + openai-codex paths remain).
 #   - GPT → pi's `openai-codex` provider, the ChatGPT-plan **subscription**
 #     (its OAuth token lives in pi's auth.json). Verified no-API-credit:
-#     `pi -p --provider openai-codex --model openai-codex/gpt-5.5` completes
+#     `pi -p --provider openai-codex --model openai-codex/gpt-5.6-sol` completes
 #     cleanly with no key set.
 #
 # Each option maps to (provider, full `provider/id` model arg, display label);
@@ -169,20 +165,11 @@ VALID_COPILOT_MODELS = (
 # `pi_model` is never empty — an unknown value falls back to DEFAULT_PI_MODEL
 # so the launch can never slip onto a billing path. Refresh the model ids from
 # `pi --list-models claude-agent-sdk` / `pi --list-models openai-codex`.
-PI_MODEL_SPECS: dict = {
-    "claude-opus-4-8": ("claude-agent-sdk", "claude-agent-sdk/claude-opus-4-8", "Opus"),
-    "claude-sonnet-4-6": ("claude-agent-sdk", "claude-agent-sdk/claude-sonnet-4-6", "Sonnet"),
-    "gpt-5.5": ("openai-codex", "openai-codex/gpt-5.5", "GPT"),
-}
-VALID_PI_MODELS = tuple(PI_MODEL_SPECS)
-DEFAULT_PI_MODEL = "claude-opus-4-8"
+VALID_PI_MODELS = available_values(PI_MODEL_SPECS)
+DEFAULT_PI_MODEL = "claude-opus-5"
 
-# Pi reasoning effort, mapped to pi's `--thinking <level>` flag (issue #288).
-# A small segmented control mirroring Claude's Effort; defaults high (the user
-# changes it in-session with Shift+Tab if needed). Pi's full ladder is
-# off/minimal/low/medium/high/xhigh; the UI offers the same small set as the
-# other agents.
-VALID_PI_EFFORTS = ("low", "medium", "high")
+# Pi reasoning effort, mapped to pi's full `--thinking <level>` ladder.
+VALID_PI_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 DEFAULT_PI_EFFORT = "high"
 
 # Pi project-trust mode, mapped to pi's `--approve`/`--no-approve` flag
@@ -284,6 +271,9 @@ class WebappConfig:
     # by default and needs no config migration. Stored like
     # `coding_favorites` — a plain string list in this same config.
     coding_hidden_agents: list = field(default_factory=list)
+    # Provider-qualified value shown in the Coding header's compact picker.
+    # The provider's own model field remains the launch source of truth.
+    coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
     # Root of the life-os checkout the Life OS tab surfaces (issue #102).
@@ -333,10 +323,13 @@ class WebappConfig:
     # with `/model` in-session — so these two switches are the whole story.
     antigravity_skip_permissions: bool = False
     antigravity_sandbox: bool = False
-    # Codex CLI launch settings (issue #120). `codex_effort` is the
-    # reasoning tier (low/medium/high); `codex_permission_mode` mirrors
-    # Claude's auto/skip. The model stays the account default — no picker.
+    # Codex CLI launch settings (#120/#845). Effort is remembered per model;
+    # ``codex_effort`` mirrors the currently selected model for compatibility.
+    codex_model: str = DEFAULT_CODEX_MODEL
     codex_effort: str = DEFAULT_CODEX_EFFORT
+    codex_model_efforts: dict = field(
+        default_factory=lambda: dict(DEFAULT_CODEX_MODEL_EFFORTS)
+    )
     codex_permission_mode: str = DEFAULT_CODEX_PERMISSION_MODE
     # GitHub Copilot CLI launch settings (issue #48). `copilot_model` is
     # the `--model` value (empty = let the CLI use its own default);
@@ -348,9 +341,8 @@ class WebappConfig:
     # Claude's and Codex's auto/skip. No model picker — see VALID_GROK_*.
     grok_effort: str = DEFAULT_GROK_EFFORT
     grok_permission_mode: str = DEFAULT_GROK_PERMISSION_MODE
-    # Pi coding agent launch settings (issues #273, #288). `pi_model` is one
-    # of three segmented options (Opus/Sonnet on the claude-agent-sdk
-    # subscription path, GPT on the openai-codex ChatGPT-plan path) — never
+    # Pi coding agent launch settings (issues #273/#288/#845). `pi_model` uses
+    # the curated subscription-safe catalog — never
     # empty; `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown
     # value so the launch can't slip onto a billing path. `pi_effort` maps to
     # `--thinking` (default high); `pi_trust_mode` maps to `--approve` /
@@ -525,6 +517,37 @@ def _load_api_tokens(raw: dict, default: Any) -> list:
     ]
 
 
+def _load_pi_model(raw: dict, default: Any) -> str:
+    """Migrate the three pre-#845 pinned ids to their current successors."""
+    value = str(raw.get("pi_model") or DEFAULT_PI_MODEL)
+    return {
+        "claude-opus-4-8": "claude-opus-5",
+        "claude-sonnet-4-6": "claude-sonnet-5",
+        "gpt-5.5": "gpt-5.6-sol",
+    }.get(value, value)
+
+
+def _load_codex_model_efforts(raw: dict, default: Any) -> Dict[str, str]:
+    """Load only supported model/effort pairs and seed newly added models."""
+    result = dict(DEFAULT_CODEX_MODEL_EFFORTS)
+    authored = raw.get("codex_model_efforts") or {}
+    if isinstance(authored, dict):
+        for model, effort in authored.items():
+            if (
+                model in VALID_CODEX_MODELS
+                and effort in CODEX_MODEL_SPECS[model]["efforts"]
+            ):
+                result[str(model)] = str(effort)
+    return result
+
+
+def _load_codex_effort(raw: dict, default: Any) -> str:
+    """Do not reinterpret the old global High default as Luna's preference."""
+    if "codex_model" not in raw and "codex_model_efforts" not in raw:
+        return DEFAULT_CODEX_EFFORT
+    return str(raw.get("codex_effort") or DEFAULT_CODEX_EFFORT)
+
+
 #: Fields whose on-disk shape can't be derived from the annotation alone.
 #: Everything else is handled by the generic loop in
 #: :func:`load_webapp_config`, so a new setting is declared once — on
@@ -532,6 +555,9 @@ def _load_api_tokens(raw: dict, default: Any) -> list:
 _CUSTOM_LOADERS: Dict[str, Callable[[dict, Any], Any]] = {
     "secrets": _load_secrets,
     "api_tokens": _load_api_tokens,
+    "pi_model": _load_pi_model,
+    "codex_effort": _load_codex_effort,
+    "codex_model_efforts": _load_codex_model_efforts,
 }
 
 
@@ -725,9 +751,11 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 #: covers the one field (``copilot_model``) whose empty string is a valid
 #: "unset" sentinel rather than an invalid choice.
 _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
+    ("coding_model_choice", VALID_CODING_MODEL_CHOICES, False),
     ("claude_model", VALID_CLAUDE_MODELS, False),
     ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES, False),
     ("claude_effort", VALID_CLAUDE_EFFORTS, False),
+    ("codex_model", VALID_CODEX_MODELS, False),
     ("codex_effort", VALID_CODEX_EFFORTS, False),
     ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES, False),
     ("grok_effort", VALID_GROK_EFFORTS, False),
@@ -763,6 +791,20 @@ def _validate(cfg: WebappConfig) -> None:
             raise ValueError(
                 f"{field_name} must be {qualifier} {allowed}; got {value!r}"
             )
+    if not isinstance(cfg.codex_model_efforts, dict):
+        raise ValueError("codex_model_efforts must be an object")
+    for model, effort in cfg.codex_model_efforts.items():
+        if model not in VALID_CODEX_MODELS:
+            raise ValueError(f"unknown Codex model in codex_model_efforts: {model!r}")
+        supported = CODEX_MODEL_SPECS[model]["efforts"]
+        if effort not in supported:
+            raise ValueError(
+                f"Codex effort {effort!r} is not supported by {model}; expected one of {supported}"
+            )
+    if cfg.codex_effort not in CODEX_MODEL_SPECS[cfg.codex_model]["efforts"]:
+        raise ValueError(
+            f"Codex effort {cfg.codex_effort!r} is not supported by {cfg.codex_model}"
+        )
     if cfg.notify_failure_streak < 0:
         raise ValueError(
             f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"

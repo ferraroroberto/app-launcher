@@ -241,7 +241,18 @@ export async function launchApp(a, agentId, stealth) {
     const payload = {};
     if (mode) payload.mode = mode;
     if (resume) payload.resume = true;
-    if (a.kind === 'claude-code') payload.agent = agentId || 'claude';
+    if (a.kind === 'claude-code') {
+      payload.agent = agentId || 'claude';
+      const choice = document.getElementById('codingModelCombo');
+      const selectedModel = choice && choice.dataset.value;
+      if (selectedModel && selectedModel.startsWith(payload.agent + ':')) {
+        payload.model = selectedModel;
+      } else if (payload.agent === 'claude' && state.config && state.config.claude) {
+        payload.model = 'claude:' + state.config.claude.model;
+      } else if (payload.agent === 'codex' && state.config && state.config.codex) {
+        payload.model = 'codex:' + state.config.codex.model;
+      }
+    }
     else if (stealth) payload.stealth = true;
     // Streamed (pty) coding launches need a starting PTY size. Detached
     // (remote) launches have no PTY, so skip it.

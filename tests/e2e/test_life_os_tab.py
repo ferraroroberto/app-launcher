@@ -145,7 +145,7 @@ def test_life_os_recap_launch_posts(
     payload = _json.loads(captured["body"])
     assert payload["mode"] == "remote", payload
     # No model picked → the combo's Sonnet default rides along (#540).
-    assert payload["model"] == "sonnet", payload
+    assert payload["model"] == "claude:sonnet", payload
 
 
 def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
@@ -159,9 +159,14 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(tiles.first).to_be_visible(timeout=5_000)
     assert tiles.count() == 2
     expect(tiles.first).to_contain_text("journal-daily")
-    # The model dropdown + Detached toggle live in the Skills card's summary
-    # (#496; the dropdown replaced the opus toggle in #540).
+    # The shared Claude/Codex model dropdown + Detached toggle live in the
+    # Skills card's summary (#496; provider parity in #845).
     expect(authed_page.locator("#lifeOsModelCombo")).to_be_attached()
+    expect(
+        authed_page.locator(
+            "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
+        )
+    ).to_be_enabled()
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
 
 
@@ -200,11 +205,13 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     # Opening + picking in the model dropdown likewise must not collapse the
     # panel (#540 — its trigger/options are click targets inside the summary).
     authed_page.locator("#lifeOsModelBtn").click()
-    authed_page.locator("#lifeOsModelMenu button[data-value='opus']").click()
+    authed_page.locator(
+        "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
+    ).click()
     expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
-        "data-value", "opus"
+        "data-value", "codex:gpt-6-astra"
     )
-    expect(authed_page.locator("#lifeOsModelBtn")).to_have_text("Opus")
+    expect(authed_page.locator("#lifeOsModelBtn")).to_have_text("Codex · Astra")
     assert skills_card.evaluate("el => el.open") is True, (
         "model-dropdown pick must not collapse the Skills panel"
     )
@@ -213,8 +220,7 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
 def test_life_os_launch_posts_mode_and_model(
     authed_page: Page, base_url: str
 ) -> None:
-    """#540: the launch POST carries the model combo's value (not the old
-    ``opus`` bool) alongside mode + resume."""
+    """#540/#845: launch carries the provider-qualified model choice."""
     _mock_skills(authed_page)
 
     captured: dict = {}
@@ -244,7 +250,9 @@ def test_life_os_launch_posts_mode_and_model(
     # Pick a non-default model + Detached on (so it launches detached → no
     # terminal overlay / WS to deal with in the assertion).
     authed_page.locator("#lifeOsModelBtn").click()
-    authed_page.locator("#lifeOsModelMenu button[data-value='fable']").click()
+    authed_page.locator(
+        "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
+    ).click()
     authed_page.locator("#lifeOsDetached").click()
 
     tile = authed_page.locator(
@@ -257,7 +265,9 @@ def test_life_os_launch_posts_mode_and_model(
     assert "body" in captured, "launch POST was never intercepted"
     payload = _json.loads(captured["body"])
     # resume defaults to False on a normal (non-resume) launch (issue #151).
-    assert payload == {"mode": "remote", "model": "fable", "resume": False}, payload
+    assert payload == {
+        "mode": "remote", "model": "codex:gpt-6-astra", "resume": False
+    }, payload
 
 
 def test_life_os_pty_launch_carries_terminal_size(
@@ -740,14 +750,19 @@ def test_life_os_conversation_resume_posts_the_session_id(
     )
     # Detached on, so the resume lands in a console instead of opening the
     # terminal overlay (nothing to tear down in the assertion).
-    authed_page.locator("#lifeOsModelBtn").click()
-    authed_page.locator("#lifeOsModelMenu button[data-value='opus']").click()
     authed_page.locator("#lifeOsDetached").click()
 
     authed_page.locator(
         "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
     ).click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    convo_model = authed_page.locator("#lifeOsConvosModelCombo")
+    expect(convo_model).to_be_visible()
+    convo_model.locator(".model-combo-trigger").click()
+    convo_model.locator("button[data-value='claude:opus']").click()
+    expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
+        "data-value", "claude:opus"
+    )
     rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
     rows.first.locator(".lifeos-convo-head").click()
     rows.first.locator(".lifeos-convo-resume").click()
@@ -756,7 +771,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
     assert "body" in captured, "resume POST was never intercepted"
     payload = _json.loads(captured["body"])
     assert payload == {
-        "mode": "remote", "model": "opus", "resume_sid": _RESUMABLE_SID,
+        "mode": "remote", "model": "claude:opus", "resume_sid": _RESUMABLE_SID,
     }, payload
 
 

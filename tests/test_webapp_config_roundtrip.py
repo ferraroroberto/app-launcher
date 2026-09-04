@@ -166,6 +166,32 @@ def test_malformed_api_token_records_are_dropped(tmp_path):
     assert cfg.api_tokens == [{"id": "ok"}]
 
 
+def test_pre_model_codex_config_adopts_luna_extra_high(tmp_path):
+    target = _write(tmp_path, {"codex_effort": "high"})
+
+    cfg = load_webapp_config(target, apply_env_override=False)
+
+    assert cfg.codex_model == "gpt-5.6-luna"
+    assert cfg.codex_effort == "xhigh"
+    assert cfg.codex_model_efforts["gpt-5.6-luna"] == "xhigh"
+
+
+@pytest.mark.parametrize(
+    ("old_model", "new_model"),
+    [
+        ("claude-opus-4-8", "claude-opus-5"),
+        ("claude-sonnet-4-6", "claude-sonnet-5"),
+        ("gpt-5.5", "gpt-5.6-sol"),
+    ],
+)
+def test_stale_pi_model_ids_migrate(tmp_path, old_model, new_model):
+    target = _write(tmp_path, {"pi_model": old_model})
+
+    cfg = load_webapp_config(target, apply_env_override=False)
+
+    assert cfg.pi_model == new_model
+
+
 @pytest.mark.parametrize("payload", ["[]", '"a string"', "42"])
 def test_non_object_config_falls_back_to_defaults(tmp_path, payload):
     """The file parsing as valid JSON says nothing about it being an object;

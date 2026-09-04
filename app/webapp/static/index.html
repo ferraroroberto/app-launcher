@@ -503,20 +503,14 @@
           </span>
           <span class="summary-actions">
             <div class="coding-toggles">
-              <!-- Launch model (#540): a board-style combo (mirrors the Board
-                   dispatch bar's model selector) that stays in sync with the
-                   Claude Model segmented control in the options card below —
-                   both write/read the same claude_model config, so picking in
-                   one updates the other (no double-setting). Claude-only:
-                   Codex/others are their own per-tile launch buttons. -->
-              <span class="model-combo" id="codingModelCombo" data-value="sonnet">
+              <!-- Provider-qualified launch model (#540/#845), populated
+                   from the server catalog after config loads. -->
+              <span class="model-combo" id="codingModelCombo" data-value="claude:opus">
                 <button type="button" id="codingModelBtn" class="model-combo-trigger"
                         aria-haspopup="listbox" aria-expanded="false" aria-controls="codingModelMenu"
-                        title="Model for Claude Code launches — stays in sync with the Model control in options below">Sonnet</button>
-                <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Claude launch model" hidden>
-                  <button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button>
-                  <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
-                  <button type="button" role="option" data-value="fable" aria-selected="false">Fable</button>
+                        title="Model for the next matching Coding-agent launch">Claude · Opus</button>
+                <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Coding launch model" hidden>
+                  <button type="button" role="option" data-value="claude:opus" aria-selected="true">Claude · Opus</button>
                 </span>
               </span>
               <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
@@ -600,6 +594,10 @@
         <div class="opt-group">
           <h3 class="opt-group-title">Codex</h3>
           <div class="opt-row">
+            <label class="opt-name" for="codexModel">Model</label>
+            <select id="codexModel" class="select-native"></select>
+          </div>
+          <div class="opt-row">
             <span class="opt-name">Reasoning</span>
             <div id="codexEffort" class="segmented" role="radiogroup" aria-label="Codex reasoning"></div>
           </div>
@@ -607,7 +605,7 @@
             <span class="opt-name">Permission</span>
             <div id="codexPermission" class="segmented" role="radiogroup" aria-label="Codex permission mode"></div>
           </div>
-          <p class="opt-hint">Runs on your ChatGPT-plan login (<code>codex login</code>) — model stays the account default (<code>gpt-5-codex</code>); the tiers map to reasoning effort.</p>
+          <p class="opt-hint">Runs on your ChatGPT-plan login (<code>codex login</code>). Model and compatible reasoning effort are passed explicitly; each model remembers its last effort. Luna defaults to Extra High.</p>
           <div id="codexFlagsPreview" class="flags-preview">codex</div>
         </div>
 
@@ -638,7 +636,7 @@
           <h3 class="opt-group-title">Pi</h3>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <div id="piModel" class="segmented" role="radiogroup" aria-label="Pi model"></div>
+            <select id="piModel" class="select-native" aria-label="Pi model"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
@@ -648,7 +646,7 @@
             <span class="opt-name">Project trust</span>
             <div id="piTrust" class="segmented" role="radiogroup" aria-label="Pi project trust"></div>
           </div>
-          <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>GPT</strong> runs on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Needs the one-time <code>pi install npm:claude-agent-sdk-pi</code>. Effort maps to <code>--thinking</code>; switch models/effort in-session with <code>/model</code> / <code>Shift+Tab</code>. <strong>Trust</strong> loads project-local <code>.pi/</code> resources (not a tool-permission gate — pi has no sandbox).</p>
+          <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong>/<strong>Fable</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>Luna</strong>/<strong>Terra</strong>/<strong>Sol</strong> run on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Unavailable rollout models stay disabled. Effort maps to <code>--thinking</code>.</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
         </div>
 
@@ -816,19 +814,13 @@
           </span>
           <span class="summary-actions">
             <div class="lifeos-toggles">
-              <!-- Launch model (#540): the same board-style combo as the
-                   Coding tab, replacing the old opus on/off toggle. Life OS is
-                   a focused Coding tab, so its launch row mirrors it exactly.
-                   Claude-only (life-os skills are Claude /skill commands). -->
-              <span class="model-combo" id="lifeOsModelCombo" data-value="sonnet">
+              <!-- Launch model (#540/#845): the same provider-qualified
+                   Claude/Codex combo as Coding and Board. -->
+              <span class="model-combo" id="lifeOsModelCombo" data-value="claude:sonnet">
                 <button type="button" id="lifeOsModelBtn" class="model-combo-trigger"
                         aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsModelMenu"
                         title="Model for the launched life-os skill">Sonnet</button>
-                <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden>
-                  <button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button>
-                  <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
-                  <button type="button" role="option" data-value="fable" aria-selected="false">Fable</button>
-                </span>
+                <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
               </span>
               <!-- Cross-skill conversation search (#727): opens the same
                    Conversations view a tile's 🕘 opens, but unscoped — every
@@ -846,7 +838,7 @@
               </button>
               <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
                      aria-label="Resume session"
-                     title="Resume: reopen Claude's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
+                     title="Resume: reopen the selected agent's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
               </button>
             </div>
@@ -896,11 +888,8 @@
           </span>
           <span class="board-model-combo">
             <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
-                    title="model for dispatches and one-tap start/YOLO: Sonnet / Opus / Fable spawn Claude Code; GPT-5.6 spawns Codex CLI (high effort)">
-              <option value="sonnet" selected>Sonnet</option>
-              <option value="opus">Opus</option>
-              <option value="fable">Fable</option>
-              <option value="gpt5.6">GPT-5.6</option>
+                    title="Exact Claude or Codex model for dispatches and one-tap start/YOLO">
+              <option value="claude:sonnet" selected>Claude · Sonnet</option>
             </select>
           </span>
           <button id="boardDispatchRecord" type="button" class="compose-record"
@@ -1126,6 +1115,13 @@
         <button id="lifeOsConvosBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
         <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
         <div class="terminal-bar-actions">
+          <span class="model-combo" id="lifeOsConvosModelCombo" data-value="claude:sonnet">
+            <button type="button" class="model-combo-trigger" aria-haspopup="listbox"
+                    aria-expanded="false" aria-controls="lifeOsConvosModelMenu"
+                    title="Claude model used to resume this conversation">Sonnet</button>
+            <span id="lifeOsConvosModelMenu" class="model-combo-menu" role="listbox"
+                  aria-label="Conversation resume model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
+          </span>
           <!-- Scope toggle: a view opened from a skill tile starts scoped to
                that skill; this widens it to every skill without leaving the
                view. Hidden when the view was already opened unscoped. -->
