@@ -187,6 +187,12 @@ export function connectTerminalWs(terminal) {
       terminal.ws.onmessage = null;
       terminal.ws.onerror = null;
       terminal.ws.onclose = null;
+      // Detaching the handlers above isn't enough on its own — an old
+      // socket still OPEN (e.g. the #610 paint-watchdog "tap to reconnect"
+      // path firing while the WS was in fact healthy) stays a live
+      // session-host subscriber for the rest of the page's life otherwise,
+      // fanned every output frame with nothing left to read them (#832).
+      terminal.ws.close();
     } catch (_) { /* dying socket; replacement continues */ }
   }
   const ws = new WebSocket(termWsUrl(terminal.sid, terminal.tt));

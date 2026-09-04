@@ -142,6 +142,25 @@ class TestJobFromDict:
         with pytest.raises(ValueError, match="name"):
             job_from_dict({"id": "x", "script_path": "C:\\x.py"})
 
+    def test_path_traversal_id_rejected(self):
+        """Regression for #832: a caller-supplied id with `../` used to flow
+        straight through to the run-directory path join and the Task
+        Scheduler `/TR` string with no shape check at all."""
+        with pytest.raises(ValueError, match="job id"):
+            job_from_dict(
+                {"id": "../../evil", "name": "X", "script_path": "C:\\x.py"}
+            )
+
+    def test_non_slug_shaped_id_rejected(self):
+        with pytest.raises(ValueError, match="job id"):
+            job_from_dict({"id": "Not A Slug!", "name": "X", "script_path": "C:\\x.py"})
+
+    def test_slug_shaped_id_with_hyphens_accepted(self):
+        job = job_from_dict(
+            {"id": "gh-push-deploy-2", "name": "X", "script_path": "C:\\x.py"}
+        )
+        assert job.id == "gh-push-deploy-2"
+
 
 class TestCooldownValidation:
     """``cooldown_seconds`` round-trip + bounds (issue #68 PR #1)."""

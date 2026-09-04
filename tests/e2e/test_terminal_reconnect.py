@@ -310,6 +310,76 @@ _SILENT_WS = """
 """
 
 
+def test_reconnect_closes_the_previous_socket(
+    authed_page: Page,
+    base_url: str,
+) -> None:
+    """Regression for #832: `connectTerminalWs` used to detach the previous
+    socket's four handlers but never call `.close()` on it, so re-running
+    connect while the old socket was still OPEN abandoned it as a live
+    session-host subscriber for the rest of the page's life (reachable via
+    the #610 "tap to reconnect" affordance firing while the WS was in fact
+    healthy).
+
+    Exercises the live module directly against a fully fake, deterministic
+    WebSocket (same shape as `_SILENT_WS` below) instead of a real
+    session-host socket — a real WS's OPEN→CLOSED timing isn't controllable
+    enough to pin the exact "still OPEN when reconnect runs" scenario
+    without a race. No PTY session needed: `terminal-connection.js` is part
+    of the static import graph `main.js` already pulled in on boot."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+
+    live = _LIVE_MODULE
+    result = authed_page.evaluate(
+        """
+        async () => {
+          const live = """ + live + """;
+          const { connectTerminalWs } = await import(live('terminal-connection.js'));
+
+          class FakeWs extends EventTarget {
+            constructor(url) {
+              super();
+              this.url = url;
+              this.readyState = 1; // OPEN immediately — deterministic
+              this.onopen = null; this.onmessage = null;
+              this.onerror = null; this.onclose = null;
+              this.closeCalled = false;
+            }
+            send() {}
+            close() {
+              this.closeCalled = true;
+              this.readyState = 3; // CLOSED
+            }
+          }
+          FakeWs.CONNECTING = 0; FakeWs.OPEN = 1; FakeWs.CLOSING = 2; FakeWs.CLOSED = 3;
+          const realWebSocket = window.WebSocket;
+          window.WebSocket = FakeWs;
+          try {
+            const terminal = { sid: 'fake-sid', tt: 'fake-tt', ws: null };
+            connectTerminalWs(terminal); // first connect
+            const oldWs = terminal.ws;
+            const oldWasOpen = oldWs.readyState === 1; // capture BEFORE reconnecting
+            connectTerminalWs(terminal); // reconnect while oldWs is still OPEN
+            return {
+              oldWasOpen: oldWasOpen,
+              closeCalledOnOld: oldWs.closeCalled,
+              oldReadyStateAfter: oldWs.readyState,
+            };
+          } finally {
+            window.WebSocket = realWebSocket;
+          }
+        }
+        """
+    )
+    assert result["oldWasOpen"], "precondition: old socket must still be OPEN when reconnect runs"
+    assert result["closeCalledOnOld"], (
+        "connectTerminalWs must call .close() on the previous still-OPEN "
+        "socket, not just detach its handlers, or it stays a live "
+        "session-host subscriber forever (#832)"
+    )
+    assert result["oldReadyStateAfter"] != 1
+
+
 def test_terminal_watchdog_fires_when_nothing_ever_paints(
     authed_page: Page,
     base_url: str,

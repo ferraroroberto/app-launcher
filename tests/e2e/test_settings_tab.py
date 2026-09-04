@@ -119,6 +119,44 @@ def test_terminal_history_lines_field_loads_and_saves(
     expect(authed_page.locator("#terminalHistoryLines")).to_have_value("5000")
 
 
+def test_save_settings_does_not_report_success_after_a_failed_patch(
+    authed_page: Page, base_url: str
+) -> None:
+    """Regression for #832: the Save handler used to discard `patchConfig`'s
+    verdict and always toast success, so a rejected save (POST /api/config
+    400) showed the red "Save failed" toast and then immediately overwrote
+    it with the green "Settings saved." — reporting a failed save as
+    succeeded. `patchConfig` already documents that callers must branch on
+    its resolved boolean; this proves the Settings Save handler now does."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator("#tabSettings").click()
+    _open_card(authed_page, "settingsPanel")
+
+    authed_page.route(
+        "**/api/config",
+        lambda route: (
+            route.fulfill(
+                status=400,
+                content_type="application/json",
+                body='{"detail": "terminal_history_lines out of range"}',
+            )
+            if route.request.method == "POST"
+            else route.continue_()
+        ),
+    )
+
+    authed_page.locator("#saveSettings").click()
+    toast = authed_page.locator("#toast")
+    expect(toast).to_contain_text("Save failed")
+
+    # Give the pre-fix code's unconditional success toast a window to fire
+    # and overwrite the failure toast — it wouldn't, on a fix, since the
+    # handler returns early on a falsy patchConfig() result.
+    authed_page.wait_for_timeout(300)
+    expect(toast).to_contain_text("Save failed")
+    expect(toast).not_to_contain_text("Settings saved")
+
+
 def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     authed_page: Page, base_url: str
 ) -> None:
