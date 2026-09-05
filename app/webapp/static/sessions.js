@@ -13,7 +13,7 @@ import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, clearUsageBadgeRow, fmtDuration, iconUrl, isChiefSession, renderUsageBadgeRow } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js in #691; the shared helper landed in #828), exported
@@ -297,17 +297,36 @@ export async function fetchSessions() {
   }
 }
 
-// Claude 5h/7d usage badges (issue #326) in the Running-sessions header —
-// same data + rendering as the Board tab's badges (dom-utils.js), but on
-// its own endpoint so this tab never depends on the Board tab ever having
-// been opened (GET /api/board's own rate-limits read only happens as a
-// side effect of fetchBoard(), which self-gates to "Board tab visible").
-export async function fetchRateLimits() {
+let pendingQuotaSelection = null;
+
+function selectedQuotaChoice(override) {
+  return override || pendingQuotaSelection ||
+    (state.config && state.config.coding_model_choice) || 'claude:sonnet';
+}
+
+function quotaLabel(selection) {
+  const harness = String(selection || '').split(':', 1)[0];
+  return harness === 'codex' ? 'Codex' : harness === 'pi' ? 'Pi' : harness === 'grok' ? 'Grok' : 'Claude';
+}
+
+let quotaRequestSequence = 0;
+
+// Provider quota badges (issues #326/#847) use a standalone endpoint so the
+// Coding tab never depends on the Board tab having been opened.
+export async function fetchRateLimits(selectionOverride) {
+  const selection = selectedQuotaChoice(selectionOverride);
+  const requestSequence = ++quotaRequestSequence;
   try {
-    const body = await jsonApi('/api/rate-limits');
+    const body = await jsonApi('/api/rate-limits?quota_selection=' + encodeURIComponent(selection));
+    if (requestSequence !== quotaRequestSequence) return;
     renderUsageBadgeRow(els.codingUsage, els.codingUsageSession, els.codingUsageWeekly, body);
   } catch (exc) {
+    if (requestSequence !== quotaRequestSequence) return;
     logPollFailure('rate-limits fetch failed', exc);
+    renderUsageBadgeRow(els.codingUsage, els.codingUsageSession, els.codingUsageWeekly, {
+      harness: selection.split(':', 1)[0], label: quotaLabel(selection),
+      state: 'error', observations: [],
+    });
   }
 }
 
@@ -361,6 +380,12 @@ function wireSessionRenameDialog() {
 }
 
 export function wireSessions() {
+  window.addEventListener('quota-selection-changed', function (ev) {
+    const detail = (ev && ev.detail) || {};
+    pendingQuotaSelection = detail.pending ? detail.selection : null;
+    clearUsageBadgeRow(els.codingUsage);
+    fetchRateLimits(detail.selection).catch(function () {});
+  });
   // The ⎇ status button (and the off-main popover) live in the Running-
   // sessions card's <summary>, so a click there would also toggle the
   // <details>. Stop the click at the actions container so it only drives

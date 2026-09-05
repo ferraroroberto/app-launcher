@@ -150,10 +150,10 @@ export const CHIEF_RESTART_CONFIRM =
   'the same conversation (falling back to a fresh one only if nothing is ' +
   'resumable).';
 
-// Claude 5h/7d usage badges (issue #326) — shared between the Board tab and
-// the Coding tab's Running-sessions header, both of which poll their own
-// endpoint (GET /api/board, GET /api/rate-limits) but render the identical
-// {available, stale, five_hour, seven_day} shape the same way.
+// Provider-native quota badges (issues #326/#847), shared between Board and
+// Coding. The backend selects one exact harness/provider source; this renderer
+// treats every native bucket/window as data so Pi/Grok adapters need no new UI
+// branch when verified evidence becomes available.
 
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".
@@ -164,47 +164,126 @@ function usageTier(pct) {
   return 'good';
 }
 
-// Time-until a rate-limit window's "resets_at" (Unix epoch seconds).
-// Recomputed on every render call, so it stays live between polls with no
-// timer of its own.
-function fmtResetCountdown(epochSeconds) {
-  if (epochSeconds == null || isNaN(epochSeconds)) return '';
-  const secs = epochSeconds - Math.floor(Date.now() / 1000);
-  if (secs <= 0) return 'now';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + 'm';
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + 'h ' + (mins % 60) + 'm';
-  const days = Math.floor(hours / 24);
-  return days + 'd ' + (hours % 24) + 'h';
+function fmtResetLocal(value) {
+  if (value == null) return '';
+  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat([], {
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(date);
 }
 
-function renderUsageBadge(el, windowData, suffix, stale) {
+function durationLabel(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value % 10080 === 0) return (value / 10080) + 'w';
+  if (value % 1440 === 0) return (value / 1440) + 'd';
+  if (value % 60 === 0) return (value / 60) + 'h';
+  return value + 'm';
+}
+
+function nameLabel(value) {
+  return String(value || '').replace(/[-_]+/g, ' ').replace(/^./, function (c) {
+    return c.toUpperCase();
+  });
+}
+
+function renderUsageBadge(el, item, sourceState, label) {
   if (!el) return;
-  if (!windowData || windowData.used_percentage == null) {
-    el.hidden = true;
-    return;
-  }
-  const pct = Math.round(windowData.used_percentage);
-  el.className = 'usage-badge ' + usageTier(pct) + (stale ? ' stale' : '');
-  const resetTxt = windowData.resets_at != null
-    ? ' · resets ' + fmtResetCountdown(windowData.resets_at)
-    : '';
-  el.textContent = pct + '%' + suffix + resetTxt;
+  const windowData = item.window;
+  const pct = typeof windowData.used_percentage === 'number'
+    ? windowData.used_percentage : NaN;
+  const measured = Number.isFinite(pct);
+  const stale = sourceState === 'stale' || item.observationState === 'stale' || windowData.state === 'stale';
+  const tier = measured ? usageTier(pct) : 'muted';
+  el.className = 'usage-badge ' + tier + (stale ? ' stale' : '');
+  const bits = [label, nameLabel(item.bucket), nameLabel(windowData.id)];
+  const duration = durationLabel(windowData.duration_minutes);
+  if (duration) bits.push(duration);
+  bits.push(measured ? Math.round(pct) + '% used' : 'usage unknown');
+  const resetTxt = fmtResetLocal(windowData.resets_at);
+  if (resetTxt) bits.push('resets ' + resetTxt);
+  if (item.sharedAccount) bits.push('shared account');
+  if (stale) bits.push('stale');
+  el.textContent = bits.filter(Boolean).join(' · ');
   el.hidden = false;
 }
 
-// Update a usage-badges row from a {available, stale, five_hour, seven_day}
-// payload — either GET /api/board's `rate_limits` sub-object or GET
-// /api/rate-limits's response body directly. Hides the whole container when
-// unavailable (no cache yet, or it went missing/corrupt) — never an error.
+export function clearUsageBadgeRow(container) {
+  if (!container) return;
+  container.querySelectorAll('.usage-badge').forEach(function (badge) {
+    badge.hidden = true;
+    badge.textContent = '';
+    if (badge.dataset.dynamic === 'true') badge.remove();
+  });
+  container.hidden = true;
+}
+
+function stateCopy(rateLimits) {
+  const label = rateLimits.label || nameLabel(rateLimits.harness) || 'Quota';
+  if (rateLimits.state === 'unknown') return label + ' quota unknown';
+  if (rateLimits.state === 'unsupported') return label + ' quota unsupported';
+  if (rateLimits.state === 'error') return label + ' quota unavailable';
+  if (rateLimits.state === 'stale') return label + ' quota stale';
+  return '';
+}
+
+function legacyObservations(rateLimits) {
+  const windows = [];
+  [['five_hour', 300], ['seven_day', 10080]].forEach(function (entry) {
+    const item = rateLimits[entry[0]];
+    if (!item) return;
+    windows.push({
+      id: entry[0], duration_minutes: entry[1],
+      used_percentage: item.used_percentage, resets_at: item.resets_at,
+      state: rateLimits.stale ? 'stale' : 'available',
+    });
+  });
+  return windows.length ? [{ bucket: 'claude-code', state: rateLimits.stale ? 'stale' : 'available', windows }] : [];
+}
+
+// Update one row from the versioned provider view. The two legacy spans are
+// reusable slots; additional native buckets get data-owned siblings.
 export function renderUsageBadgeRow(container, sessionEl, weeklyEl, rateLimits) {
   if (!container) return;
-  if (!rateLimits || !rateLimits.available) {
-    container.hidden = true;
+  clearUsageBadgeRow(container);
+  if (!rateLimits) return;
+  const sourceState = rateLimits.state || (rateLimits.available
+    ? (rateLimits.stale ? 'stale' : 'available') : 'unknown');
+  const observations = Array.isArray(rateLimits.observations)
+    ? rateLimits.observations : legacyObservations(rateLimits);
+  const items = [];
+  observations.forEach(function (observation) {
+    (observation.windows || []).forEach(function (windowData) {
+      items.push({
+        bucket: observation.bucket,
+        observationState: observation.state,
+        sharedAccount: observation.shared_account === true,
+        window: windowData,
+      });
+    });
+  });
+
+  const slots = [sessionEl, weeklyEl].filter(Boolean);
+  while (slots.length < Math.max(1, items.length)) {
+    const badge = document.createElement('span');
+    badge.className = 'usage-badge';
+    badge.dataset.dynamic = 'true';
+    container.appendChild(badge);
+    slots.push(badge);
+  }
+  container.dataset.harness = rateLimits.harness || '';
+  container.dataset.provider = rateLimits.provider || '';
+  container.dataset.state = sourceState;
+  container.hidden = false;
+
+  if (!items.length || !['available', 'stale'].includes(sourceState)) {
+    slots[0].className = 'usage-badge quota-state ' + sourceState;
+    slots[0].textContent = stateCopy({ ...rateLimits, state: sourceState });
+    slots[0].hidden = false;
     return;
   }
-  container.hidden = false;
-  renderUsageBadge(sessionEl, rateLimits.five_hour, 's', rateLimits.stale);
-  renderUsageBadge(weeklyEl, rateLimits.seven_day, 'w', rateLimits.stale);
+  items.forEach(function (item, index) {
+    renderUsageBadge(slots[index], item, sourceState, rateLimits.label || nameLabel(rateLimits.harness));
+  });
 }

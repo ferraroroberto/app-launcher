@@ -19,6 +19,46 @@ import { setSwitch } from './_vendored/switch/switch.js';
 // The Projects-summary model dropdown controller ({setValue, getValue}),
 // created in wireClaudeOptions once the DOM exists.
 let codingModelCombo = null;
+let codingQuotaSelectionSequence = 0;
+let codingQuotaSaveQueue = Promise.resolve();
+
+function announceCodingQuotaSelection(selection, pending) {
+  // Clear synchronously before either the config save or provider fetch can
+  // finish, so a Claude badge never lingers under a newly-selected Codex row.
+  window.dispatchEvent(new CustomEvent('quota-selection-changed', {
+    detail: { selection: selection, pending: pending },
+  }));
+}
+
+async function selectCodingQuota(patch, selection) {
+  const sequence = ++codingQuotaSelectionSequence;
+  announceCodingQuotaSelection(selection, true);
+
+  // Preserve click order at the server while letting the newest selection own
+  // the UI immediately. An older completion must never repaint a newer click.
+  const saved = await (
+    codingQuotaSaveQueue = codingQuotaSaveQueue.then(function () {
+      return saveCodingQuotaPatch(patch, sequence);
+    })
+  );
+  if (sequence !== codingQuotaSelectionSequence) return saved;
+
+  // A rejected save leaves the optimistic control ahead of server truth.
+  // Read it back explicitly and settle both the selector and quota owner.
+  if (!saved) {
+    try {
+      await fetchConfig(function () {
+        return sequence === codingQuotaSelectionSequence;
+      });
+    } catch (_exc) {
+      if (sequence === codingQuotaSelectionSequence) renderClaudeOptions();
+    }
+  }
+  if (sequence !== codingQuotaSelectionSequence) return saved;
+  const persisted = (state.config && state.config.coding_model_choice) || selection;
+  announceCodingQuotaSelection(persisted, false);
+  return saved;
+}
 
 function effortLabel(value) {
   if (value === 'xhigh') return 'Extra high';
@@ -107,8 +147,11 @@ function renderSharedModelSelectors() {
   }
 }
 
-export async function fetchConfig() {
+export async function fetchConfig(shouldApply) {
   const body = await jsonApi('/api/config');
+  // A caller may own only one optimistic selection generation. Check after
+  // the await, immediately before mutating shared state and repainting.
+  if (shouldApply && !shouldApply()) return false;
   state.config = body;
   els.projectsDir.value = body.projects_dir || '';
   els.projectsIgnore.value = (body.projects_ignore || []).join('\n');
@@ -128,6 +171,7 @@ export async function fetchConfig() {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
   renderClaudeOptions();
+  return true;
 }
 
 export function renderClaudeOptions() {
@@ -177,7 +221,12 @@ function renderClaudeSubsection() {
     models,
     c.model,
     function (m) { return m.charAt(0).toUpperCase() + m.slice(1); },
-    function (m) { patchConfig({ claude_model: m, coding_model_choice: 'claude:' + m }); }
+    function (m) {
+      selectCodingQuota(
+        { claude_model: m, coding_model_choice: 'claude:' + m },
+        'claude:' + m
+      );
+    }
   );
   // Keep the compact dropdown in lockstep. patchConfig() round-trips through
   // GET /api/config and re-renders this whole subsection, so a change from
@@ -318,16 +367,35 @@ function renderGrokSubsection() {
   els.grokFlagsPreview.textContent = 'grok ' + (g.computed_flags || '');
 }
 
+async function postConfigPatch(patch) {
+  await jsonApi('/api/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+}
+
+async function saveCodingQuotaPatch(patch, sequence) {
+  try {
+    await postConfigPatch(patch);
+    if (sequence === codingQuotaSelectionSequence) {
+      await fetchConfig(function () {
+        return sequence === codingQuotaSelectionSequence;
+      });
+    }
+    return true;
+  } catch (exc) {
+    apiFailToast('Save failed', exc);
+    return false;
+  }
+}
+
 // Resolves true on a saved-and-refreshed patch, false on a failed one (the
 // toast already fired) — callers that only self-correct on failure (e.g.
 // apps-coding.js's agent-visibility switches, issue #732) branch on this.
 export async function patchConfig(patch) {
   try {
-    await jsonApi('/api/config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
+    await postConfigPatch(patch);
     await fetchConfig();
     return true;
   } catch (exc) {
@@ -357,10 +425,10 @@ export function wireClaudeOptions() {
     patchConfig({ copilot_model: els.copilotModel.value });
   });
   els.codexModel.addEventListener('change', function () {
-    patchConfig({
-      codex_model: els.codexModel.value,
-      coding_model_choice: 'codex:' + els.codexModel.value,
-    });
+    const selection = 'codex:' + els.codexModel.value;
+    selectCodingQuota({
+      codex_model: els.codexModel.value, coding_model_choice: selection,
+    }, selection);
   });
   els.piModel.addEventListener('change', function () {
     patchConfig({ pi_model: els.piModel.value });
@@ -385,6 +453,6 @@ export function wireClaudeOptions() {
   // (#claudeModel follows too). wireModelCombo handles the summary-tap guard.
   codingModelCombo = wireModelCombo(
     document.getElementById('codingModelCombo'),
-    function (v) { patchConfig({ coding_model_choice: v }); }
+    function (v) { selectCodingQuota({ coding_model_choice: v }, v); }
   );
 }

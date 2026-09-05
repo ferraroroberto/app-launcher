@@ -41,7 +41,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, clearUsageBadgeRow, fmtDuration, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import {
   boardRepoFilter,
   isChiefCard,
@@ -61,6 +61,7 @@ const COLUMNS = [
 const GH_STALE_MS = 2 * 60 * 1000;
 
 let refreshInFlight = false;
+let quotaBoardRequestSequence = 0;
 
 // --------------------------------------------------------------- helpers
 
@@ -688,7 +689,10 @@ export async function fetchBoard() {
   // and pauses while a drawer is open so the re-render can't wipe a reply
   // being typed (pattern: the terminal pausing the session poll).
   if (state.tab !== 'board' || state.boardExpanded) return;
-  const body = await jsonApi('/api/board');
+  const selection = (els.boardDispatchModel && els.boardDispatchModel.value) || 'claude:sonnet';
+  const requestSequence = ++quotaBoardRequestSequence;
+  const body = await jsonApi('/api/board?quota_selection=' + encodeURIComponent(selection));
+  if (requestSequence !== quotaBoardRequestSequence) return;
   state.board = body;
   renderBoard();
 }
@@ -817,6 +821,12 @@ function syncStripActive() {
 
 export function wireBoard() {
   if (!els.tabBoard) return;
+  if (els.boardDispatchModel) {
+    els.boardDispatchModel.addEventListener('change', function () {
+      clearUsageBadgeRow(els.boardUsage);
+      fetchBoard().catch(function () {});
+    });
+  }
   els.tabBoard.addEventListener('click', function () {
     syncDispatchBar();
     fetchBoard().then(function () {
