@@ -61,7 +61,7 @@ def _mock_rename(page: Page, sid: str, state: dict, captured: dict) -> None:
 
 def _mock_board(page: Page) -> None:
     page.route(
-        re.compile(r".*/api/board$"),
+        re.compile(r".*/api/board(?:\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({

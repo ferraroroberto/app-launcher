@@ -86,7 +86,7 @@ def _mock_sessions(page: Page) -> None:
 
 def _mock_board(page: Page) -> None:
     page.route(
-        re.compile(r".*/api/board$"),
+        re.compile(r".*/api/board(?:\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps(_FAKE_BOARD),

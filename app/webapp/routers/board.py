@@ -61,7 +61,7 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import agents, audit, board, github_client, session_client
+from src import agents, audit, board, github_client, quota_usage, session_client
 from src.board_exchange import resolve_exchange, unavailable
 from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
@@ -85,6 +85,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(board_chief.router)
 
+_quota_refresh_gate = quota_usage.RefreshGate()
+_quota_refresh_task: asyncio.Task[str] | None = None
+
 
 def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
     return {"fetched_at": snap.get("fetched_at"), "error": snap.get("error")}
@@ -92,12 +95,68 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
 
 def _rate_limits_section(rate_limits: Dict[str, Any]) -> Dict[str, Any]:
     return {
+        "schema_version": rate_limits["schema_version"],
+        "harness": rate_limits["harness"],
+        "provider": rate_limits["provider"],
+        "label": rate_limits["label"],
+        "state": rate_limits["state"],
+        "reason": rate_limits["reason"],
+        "checked_at": rate_limits["checked_at"],
+        "observations": rate_limits["observations"],
         "available": rate_limits["available"],
         "stale": rate_limits["stale"],
         "updated_at": rate_limits["updated_at"],
         "five_hour": rate_limits["five_hour"],
         "seven_day": rate_limits["seven_day"],
     }
+
+
+def _quota_selection(request: Request, cfg: WebappConfig) -> str:
+    return str(request.query_params.get("quota_selection") or cfg.coding_model_choice)
+
+
+def _read_quota(cfg: WebappConfig, selection: str) -> Dict[str, Any]:
+    legacy_path = Path(cfg.rate_limits_file)
+    return quota_usage.read_quota_view(
+        Path(cfg.claude_config_dir),
+        legacy_path.parent,
+        selection,
+        pi_model=cfg.pi_model,
+        legacy_reader=lambda: board.read_rate_limits(legacy_path),
+    )
+
+
+def _refresh_finished(task: asyncio.Task[str]) -> None:
+    global _quota_refresh_task
+    _quota_refresh_gate.finish()
+    _quota_refresh_task = None
+    try:
+        outcome = task.result()
+    except Exception:  # pragma: no cover - asyncio owns unexpected task failures
+        logger.exception("Codex quota refresh task failed")
+        return
+    logger.info("ℹ️ Codex quota refresh: %s", outcome)
+
+
+def _maybe_refresh_codex(cfg: WebappConfig, rate_limits: Dict[str, Any]) -> None:
+    """Schedule one canonical refresh without blocking a five-second poll."""
+    global _quota_refresh_task
+    if rate_limits.get("harness") != "codex" or rate_limits.get("state") == "available":
+        return
+    if not _quota_refresh_gate.begin():
+        return
+    try:
+        _quota_refresh_task = asyncio.create_task(
+            asyncio.to_thread(
+                quota_usage.refresh_codex,
+                Path(cfg.claude_config_dir),
+                Path(cfg.rate_limits_file).parent,
+            )
+        )
+    except Exception:
+        _quota_refresh_gate.finish()
+        raise
+    _quota_refresh_task.add_done_callback(_refresh_finished)
 
 
 def _mark_active_backlog(
@@ -116,6 +175,7 @@ def _mark_active_backlog(
 async def get_board(request: Request) -> Dict[str, Any]:
     """The five columns + source health, cheap enough for the 5s poll."""
     cfg: WebappConfig = request.app.state.webapp_config
+    quota_selection = _quota_selection(request, cfg)
 
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
     live, state, active_issues, job_cards, rate_limits = await asyncio.gather(
@@ -123,7 +183,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
         asyncio.to_thread(board.read_active_issues, active_issues_file),
         asyncio.to_thread(board.jobs_attention),
-        asyncio.to_thread(board.read_rate_limits, Path(cfg.rate_limits_file)),
+        asyncio.to_thread(_read_quota, cfg, quota_selection),
     )
     github = github_client.snapshot()
 
@@ -134,6 +194,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
     )
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"])
+    _maybe_refresh_codex(cfg, rate_limits)
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -157,7 +218,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/rate-limits")
 async def get_rate_limits(request: Request) -> Dict[str, Any]:
-    """Claude 5h/7d usage % (issue #326), standalone from the Board tab.
+    """Selected harness/provider quota view, standalone from the Board tab.
 
     The Coding tab's Running-sessions header shows the same usage badges as
     the Board tab, but must not depend on the Board ever having been opened
@@ -168,8 +229,9 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
     """
     cfg: WebappConfig = request.app.state.webapp_config
     rate_limits = await asyncio.to_thread(
-        board.read_rate_limits, Path(cfg.rate_limits_file)
+        _read_quota, cfg, _quota_selection(request, cfg)
     )
+    _maybe_refresh_codex(cfg, rate_limits)
     return _rate_limits_section(rate_limits)
 
 

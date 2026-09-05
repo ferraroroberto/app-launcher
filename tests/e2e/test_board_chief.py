@@ -80,7 +80,7 @@ def _board_payload(*, with_chief: bool) -> dict:
 def _mock_board(page: Page, payload: dict) -> None:
     body = _json.dumps(payload)
     page.route(
-        re.compile(r".*/api/board$"),
+        re.compile(r".*/api/board(?:\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body,
         ),

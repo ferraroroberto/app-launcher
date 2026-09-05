@@ -94,7 +94,7 @@ def _board_payload(gh_age_seconds: int = 0) -> dict:
 def _mock_board(page: Page, payload: dict | None = None) -> None:
     body = _json.dumps(payload or _board_payload())
     page.route(
-        re.compile(r".*/api/board$"),
+        re.compile(r".*/api/board(?:\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=body,
         ),

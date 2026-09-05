@@ -23,7 +23,8 @@ from pathlib import Path
 
 import pytest
 
-from src import board, github_client
+from app.webapp.routers import board as board_router
+from src import board, github_client, quota_usage
 
 
 def _iso(moment: datetime) -> str:
@@ -1987,10 +1988,14 @@ def test_api_board_rate_limits_present(webapp_client):
 def test_api_rate_limits_standalone_endpoint_absent(webapp_client):
     client, _app, _overrides = webapp_client
     body = client.get("/api/rate-limits").json()
-    assert body == {
-        "available": False, "stale": False, "updated_at": None,
-        "five_hour": None, "seven_day": None,
-    }
+    assert body["harness"] == "claude"
+    assert body["provider"] == "anthropic"
+    assert body["state"] == "unknown"
+    assert body["reason"] == "source_absent"
+    assert body["observations"] == []
+    assert body["available"] is False
+    assert body["five_hour"] is None
+    assert body["seven_day"] is None
 
 
 def test_api_rate_limits_standalone_endpoint_present(webapp_client):
@@ -2005,6 +2010,65 @@ def test_api_rate_limits_standalone_endpoint_present(webapp_client):
     assert body["available"] is True
     assert body["five_hour"] == {"used_percentage": 10, "resets_at": 1751640000}
     assert body["seven_day"] is None
+
+
+def test_api_rate_limits_selects_requested_harness_provider(webapp_client, monkeypatch):
+    client, app, _overrides = webapp_client
+    seen = {}
+
+    def fake_read(fleet_dir, state_dir, selection, **kwargs):
+        seen.update(
+            fleet_dir=fleet_dir, state_dir=state_dir,
+            selection=selection, pi_model=kwargs.get("pi_model"),
+        )
+        return {
+            "schema_version": 1, "harness": "codex", "provider": "openai",
+            "label": "Codex", "state": "available", "reason": "native_observation",
+            "checked_at": "2026-09-09T17:00:01Z", "observations": [],
+            "available": True, "stale": False, "updated_at": "2026-09-09T17:00:00Z",
+            "five_hour": None, "seven_day": None,
+        }
+
+    monkeypatch.setattr(quota_usage, "read_quota_view", fake_read)
+    body = client.get(
+        "/api/rate-limits?quota_selection=codex%3Agpt-5.6-luna"
+    ).json()
+    assert body["harness"] == "codex"
+    assert body["provider"] == "openai"
+    assert seen == {
+        "fleet_dir": Path(app.state.webapp_config.claude_config_dir),
+        "state_dir": Path(app.state.webapp_config.rate_limits_file).parent,
+        "selection": "codex:gpt-5.6-luna",
+        "pi_model": app.state.webapp_config.pi_model,
+    }
+
+
+def test_coding_and_board_codex_polls_coalesce_one_native_refresh(
+    webapp_client, monkeypatch
+):
+    """Both quota endpoints share one in-flight native-process gate."""
+    _client, app, _overrides = webapp_client
+    monkeypatch.setattr(board_router, "_quota_refresh_gate", quota_usage.RefreshGate())
+    monkeypatch.setattr(board_router, "_quota_refresh_task", None)
+    scheduled = []
+
+    class FakeTask:
+        def add_done_callback(self, callback):
+            self.callback = callback
+
+    def fake_create_task(coroutine):
+        coroutine.close()
+        task = FakeTask()
+        scheduled.append(task)
+        return task
+
+    monkeypatch.setattr(board_router.asyncio, "create_task", fake_create_task)
+    unavailable = {
+        "harness": "codex", "provider": "openai", "state": "unknown",
+    }
+    board_router._maybe_refresh_codex(app.state.webapp_config, unavailable)
+    board_router._maybe_refresh_codex(app.state.webapp_config, unavailable)
+    assert len(scheduled) == 1
 
 
 def test_api_board_merges_live_sessions_and_state(webapp_client):

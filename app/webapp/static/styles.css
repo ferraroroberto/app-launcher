@@ -2860,16 +2860,22 @@ body.terminal-open {
 .board-refresh:active { background: var(--card); }
 .board-status { color: var(--muted); font-size: var(--font-caption); margin: 0 0 8px; }
 
-/* Claude 5h/7d usage badges (issue #326) — dot + label, colored by usage
-   tier at the same 60/80 thresholds as fleet-config's terminal statusline.
-   Mirrors the .lifeos-recap-badge dot+label shape. Shared between the Board
-   tab's strip and the Coding tab's Running-sessions header (dom-utils.js::
-   renderUsageBadgeRow) — kept separate from .board-status so a stale
-   reading dims instead of disappearing. */
-.usage-badges { display: flex; gap: 12px; margin: 0 0 8px; }
+/* Provider-native quota badges (issues #326/#847). Native buckets wrap as
+   flat status rows, so Codex's independent limits stay visible without
+   widening either the phone or desktop viewport. */
+.usage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px 12px;
+  margin: 0 0 8px;
+}
 .usage-badge {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--font-caption); color: var(--muted); white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-caption); color: var(--muted);
+  overflow-wrap: anywhere;
 }
 .usage-badge::before {
   content: ''; width: 8px; height: 8px; border-radius: 50%;
@@ -2882,6 +2888,10 @@ body.terminal-open {
 .usage-badge.danger { color: var(--danger); }
 .usage-badge.danger::before { background: var(--danger); }
 .usage-badge.stale { opacity: 0.6; }
+.usage-badge.quota-state.error { color: var(--danger); }
+.usage-badge.quota-state.error::before { background: var(--danger); }
+.usage-badge.quota-state.unsupported::before,
+.usage-badge.quota-state.unknown::before { background: var(--muted); }
 
 /* Phone-first carousel: one column per viewport, swipe between them.
    scroll-snap gives the swipe for free — no gesture JS. */
