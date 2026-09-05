@@ -14,13 +14,11 @@ Codex 0.144.x adds a "Hooks need review" startup modal whenever ``~/.codex``
 carries new or changed lifecycle hooks (issue #462), and a separate
 "Update available!" startup modal appears whenever a newer Codex CLI release
 exists (issue #485).  Either interstitial paints over the composer and
-captures Enter, so the probe must clear both before the composer it is meant
-to test even exists.  The submit contract itself is unchanged — once the
-composer is reached, one bracketed paste plus one carriage return still
-submits.  We therefore dismiss each modal when present (non-mutating choices:
-"Skip" for the update prompt, "esc to close" for the hooks panel — neither
-persists a preference or trusts anything) rather than adjusting the submit
-sequence.
+captures Enter, so the probe disables update discovery and hooks for this
+process before reaching the composer it is meant to verify.  The submit
+contract itself is unchanged — once the composer is reached, one bracketed
+paste plus one carriage return still submits.  These test-only launch options
+neither persist a preference nor change hook trust.
 
 Timing (issue #493): the CR is sent only after the pasted text has visibly
 rendered in the composer, and the exit wait is a polled 15 s budget — a fixed
@@ -107,7 +105,11 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
         # own full-control launches.
         str(Path(__file__).resolve().parents[1]),
         "codex-submit-probe",
-        "-c disable_paste_burst=true",
+        # Keep release availability and installed user hooks out of this
+        # semantic-submit proof.  All overrides apply only to the spawned test
+        # process; user and production Codex configuration remains unchanged.
+        "-c disable_paste_burst=true "
+        "-c check_for_update_on_startup=false --disable hooks",
         agent="codex",
         rows=40,
         cols=100,
