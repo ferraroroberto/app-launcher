@@ -505,6 +505,21 @@ class TestContentBrowser:
         skill_names = {f["name"] for f in files if f["category"] == "skill"}
         assert "SKILL.md" in skill_names
 
+    def test_files_conversations_sorted_newest_first(self, life_os_client):
+        # The fixture's conversation logs are date-prefixed and deliberately
+        # not in date order on disk (#863) — the endpoint must reorder them
+        # itself, newest-first, unlike every other A-Z category.
+        client, _, _ = life_os_client
+        resp = client.get("/api/life-os/skills/journal-daily/files")
+        assert resp.status_code == 200, resp.text
+        files = resp.json()["files"]
+        convo_dates = [
+            f["name"][:10] for f in files
+            if f["category"] == "conversations" and f["name"][:1].isdigit()
+        ]
+        assert convo_dates == sorted(convo_dates, reverse=True)
+        assert convo_dates == ["2026-08-01", "2026-07-02", "2026-06-01"]
+
     def test_file_content_returned(self, life_os_client):
         client, _, _ = life_os_client
         resp = client.get("/api/life-os/file?path=identity/who-i-am.md")
