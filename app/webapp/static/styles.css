@@ -1979,6 +1979,17 @@ body.terminal-open {
    minimum (issue #477) — restated here for clarity even though the base
    .term-btn now carries 44×44 itself (#496). */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
+/* The Conversations bar (#864) mixes text term-btns ("‹ Skills", "All
+   skills") with a .model-combo-trigger in the same row — neither is an
+   icon-only touch target here, so match the shorter combo footprint
+   instead of the icon-target minimum reasserted just above. */
+#lifeOsConvos .terminal-bar .term-btn {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  min-width: 0;
+  padding: 0 12px;
+  font-size: var(--font-caption);
+}
 /* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
    the #259 close-tap complaint, but the extra 24px pushed the eight-button
    row past the phone viewport (#514). Reverted to the uniform 44px HIG
