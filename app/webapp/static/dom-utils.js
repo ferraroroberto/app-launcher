@@ -395,7 +395,7 @@ function nameLabel(value) {
 // Two fixed rows — Claude Code above Codex — always both, whatever the
 // model picker is pointed at (issue #860). Each is one nowrap line:
 //
-//   Claude Code · 5h 39% ↻14:20 · 1w 19% ↻Sep 11
+//   Claude Code · 5h 39% ↻ 14:20 · 1w 19% ↻ Sep 11
 //
 // The whole line carries the tier colour (no status dot), driven by the
 // *worse* of its two windows so a line reddens as soon as either does.
@@ -404,13 +404,25 @@ function nameLabel(value) {
 // function never sees a bucket id.
 
 const QUOTA_LINE_STATE_COPY = {
-  unknown: 'quota unknown',
-  unsupported: 'quota unsupported',
-  error: 'quota unavailable',
+  unknown: 'unknown',
+  unsupported: 'unsupported',
+  error: 'unavailable',
 };
 
-function quotaLineTier(line) {
-  const pcts = [line.five_hour, line.weekly]
+// Last measured pair per harness, for the life of the page.
+//
+// Claude's shard is only rewritten when a session paints its statusline and
+// carries a 10-minute expiry, so an idle stretch routinely takes the source
+// to `unknown` with a perfectly good last reading behind it. Blanking the
+// row there is worse than useless — the numbers vanish exactly when you sit
+// down to decide what to launch. So an unmeasured row falls back to what it
+// last showed, dimmed and with the state word appended: never silently, and
+// never folded into the confident state (global CLAUDE.md — a check that
+// failed to establish a fact reports that as its own state).
+const lastMeasuredQuota = new Map();
+
+function quotaLineTier(windows) {
+  const pcts = windows
     .map(function (w) { return w && w.used_percentage; })
     .filter(function (v) { return typeof v === 'number' && !isNaN(v); });
   if (!pcts.length) return 'muted';
@@ -421,8 +433,15 @@ function quotaWindowText(windowData, label, fmtReset) {
   if (!windowData || typeof windowData.used_percentage !== 'number') return '';
   let text = label + ' ' + Math.round(windowData.used_percentage) + '%';
   const reset = fmtReset(windowData.resets_at);
-  if (reset) text += ' ↻' + reset;
+  if (reset) text += ' ↻ ' + reset;
   return text;
+}
+
+function quotaWindowTexts(pair) {
+  return [
+    quotaWindowText(pair[0], '5h', fmtResetClock),
+    quotaWindowText(pair[1], '1w', fmtResetDay),
+  ].filter(Boolean);
 }
 
 export function renderQuotaLines(container, lines) {
@@ -436,22 +455,31 @@ export function renderQuotaLines(container, lines) {
       slot.textContent = '';
       return;
     }
-    const stale = line.state === 'stale' || line.stale === true;
-    const windows = [
-      quotaWindowText(line.five_hour, '5h', fmtResetClock),
-      quotaWindowText(line.weekly, '1w', fmtResetDay),
-    ].filter(Boolean);
-    const measured = windows.length > 0;
-    slot.dataset.harness = line.harness || '';
-    slot.className = 'quota-line ' + (measured ? quotaLineTier(line) : 'muted') +
-      (stale ? ' stale' : '');
-    const bits = [line.label || nameLabel(line.harness)];
-    if (measured) {
-      bits.push.apply(bits, windows);
-      if (stale) bits.push('stale');
+    const harness = line.harness || '';
+    let pair = [line.five_hour, line.weekly];
+    let texts = quotaWindowTexts(pair);
+    let stale = line.state === 'stale' || line.stale === true;
+    let note = '';
+
+    if (texts.length) {
+      lastMeasuredQuota.set(harness, pair);
+      if (stale) note = 'stale';
     } else {
-      bits.push(QUOTA_LINE_STATE_COPY[line.state] || 'quota unknown');
+      // Nothing measured this poll — show the last good reading, marked.
+      pair = lastMeasuredQuota.get(harness) || [null, null];
+      texts = quotaWindowTexts(pair);
+      note = QUOTA_LINE_STATE_COPY[line.state] || 'unknown';
+      stale = true;
     }
+
+    slot.dataset.harness = harness;
+    slot.dataset.state = line.state || '';
+    slot.className = 'quota-line ' + (texts.length ? quotaLineTier(pair) : 'muted') +
+      (stale ? ' stale' : '');
+    // "Claude Code · quota unknown" when there is nothing to show at all;
+    // the bare word when it only qualifies numbers already on the line.
+    const suffix = note ? [texts.length ? note : 'quota ' + note] : [];
+    const bits = [line.label || nameLabel(harness)].concat(texts, suffix);
     slot.textContent = bits.join(' · ');
     slot.title = slot.textContent;
     slot.hidden = false;

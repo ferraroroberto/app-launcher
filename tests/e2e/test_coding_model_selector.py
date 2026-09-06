@@ -416,7 +416,7 @@ def test_quota_rows_show_both_agents_on_one_line_each(
              .format(new Date('2026-09-14T00:00:00Z'))"""
     )
     expect(coding.nth(0)).to_have_text(
-        "Claude Code · 5h 39% ↻" + expected_5h + " · 1w 19% ↻" + expected_1w
+        "Claude Code · 5h 39% ↻ " + expected_5h + " · 1w 19% ↻ " + expected_1w
     )
     expect(coding.nth(1)).to_contain_text("Codex · 5h 0% ")
     expect(coding.nth(1)).to_contain_text("1w 36% ")
@@ -490,8 +490,60 @@ def test_quota_rows_degrade_per_agent_without_collapsing(
     # 91% in the 5h window outranks the calmer weekly one.
     assert rendered[0]["cls"] == "quota-line danger"
     assert rendered[0]["text"].startswith("Claude Code · 5h 91% ")
+    # Codex has never been measured on this page, so there is nothing to fall
+    # back to and the row says so outright.
     assert rendered[1]["cls"] == "quota-line muted"
     assert rendered[1]["text"] == "Codex · quota unavailable"
+
+
+def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
+    authed_page: Page, base_url: str
+) -> None:
+    """#860: an expired shard must not blank the numbers you came to read.
+
+    Claude's statusline shard is only rewritten when a session paints, and
+    expires after ten minutes, so an idle stretch routinely returns a bare
+    ``unknown``. The row keeps its last reading, dimmed and labelled — it
+    must never present it as a current, confident value.
+    """
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
+
+    good = _quota_lines()
+    gone = [
+        {**good[0], "state": "unknown", "reason": "source_absent",
+         "five_hour": None, "weekly": None},
+        good[1],
+    ]
+    rendered = authed_page.evaluate(
+        """async payloads => {
+          const module = await import('/static/dom-utils.js');
+          const root = document.getElementById('codingUsage');
+          const read = () => Array.from(root.querySelectorAll('.quota-line'))
+            .map(el => ({cls: el.className, text: el.textContent,
+                         state: el.dataset.state}));
+          module.renderQuotaLines(root, payloads.good);
+          const before = read();
+          module.renderQuotaLines(root, payloads.gone);
+          return {before, after: read()};
+        }""",
+        {"good": good, "gone": gone},
+    )
+    before, after = rendered["before"], rendered["after"]
+    assert before[0]["cls"] == "quota-line good"
+    assert "5h 39%" in before[0]["text"] and "stale" not in before[0]["cls"]
+
+    # Same numbers, now dimmed and explicitly not-confirmed.
+    assert "5h 39%" in after[0]["text"] and "1w 19%" in after[0]["text"]
+    assert after[0]["text"].endswith(" · unknown")
+    assert "stale" in after[0]["cls"]
+    assert after[0]["state"] == "unknown"
+    # The measured agent beside it is untouched.
+    assert after[1]["cls"] == "quota-line good"
+    assert after[1]["text"].endswith("1w 36% ↻ " + authed_page.evaluate(
+        """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
+             .format(new Date('2026-09-16T12:00:00Z'))"""
+    ))
 
 
 def test_model_selection_owns_polls_until_config_save_settles(
