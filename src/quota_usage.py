@@ -248,6 +248,86 @@ def read_quota_view(
     return _source_view(snapshot, route, source)
 
 
+# --------------------------------------------------------- compact lines
+#
+# The selection-scoped view above answers "what does the harness I picked
+# have left". The launcher also needs the opposite: both heavy agents at
+# once, so the number you need before choosing one is never the hidden one
+# (issue #860). These two projections are deliberately separate — the
+# selection view still drives _maybe_refresh_codex and the legacy keys.
+
+QUOTA_LINE_HARNESSES = (("claude", "Claude Code"), ("codex", "Codex"))
+
+# Duration classes shown on a compact line. Native window *ids* differ per
+# harness (Claude: five_hour/seven_day, Codex: primary/secondary), so match
+# on the duration the provider itself reports, never on the id.
+_LINE_WINDOWS = (("five_hour", 300), ("weekly", 10080))
+
+
+def _worst_window(observations: list, minutes: int) -> Optional[Dict[str, Any]]:
+    """Highest used percentage across every window of one duration class.
+
+    Codex reports several buckets at the same duration (``codex``,
+    ``codex_bengalfox``, ``base_model_inference``); the one that constrains
+    you is the fullest, and collapsing to it keeps internal bucket ids out
+    of the UI. Ties and unmeasured windows degrade to ``None`` rather than
+    inventing a zero.
+    """
+    best: Optional[Dict[str, Any]] = None
+    for observation in observations:
+        for window in observation.get("windows", []):
+            if window.get("duration_minutes") != minutes:
+                continue
+            pct = window.get("used_percentage")
+            if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+                continue
+            if best is None or pct > best["used_percentage"]:
+                best = {"used_percentage": pct, "resets_at": window.get("resets_at")}
+    return best
+
+
+def _quota_line(view: Dict[str, Any], label: str) -> Dict[str, Any]:
+    observations = [
+        item for item in view.get("observations", []) if isinstance(item, dict)
+    ]
+    line = {
+        "harness": view.get("harness"),
+        "provider": view.get("provider"),
+        "label": label,
+        "state": view.get("state"),
+        "reason": view.get("reason"),
+        "stale": bool(view.get("stale")),
+        "updated_at": view.get("updated_at"),
+    }
+    for name, minutes in _LINE_WINDOWS:
+        line[name] = _worst_window(observations, minutes)
+    return line
+
+
+def read_quota_lines(
+    fleet_config_dir: Path,
+    state_dir: Path,
+    *,
+    legacy_reader: Optional[Callable[[], Dict[str, Any]]] = None,
+) -> list:
+    """One compact row per heavy agent, in fixed order, always both.
+
+    A harness whose source is absent or unreadable still yields its row with
+    a non-available ``state`` — the caller renders it degraded rather than
+    dropping it, so the two lines never collapse into one.
+    """
+    lines = []
+    for harness, label in QUOTA_LINE_HARNESSES:
+        view = read_quota_view(
+            fleet_config_dir,
+            state_dir,
+            harness,
+            legacy_reader=legacy_reader if harness == "claude" else None,
+        )
+        lines.append(_quota_line(view, label))
+    return lines
+
+
 class RefreshGate:
     """Serialize and rate-limit on-demand native refresh scheduling."""
 

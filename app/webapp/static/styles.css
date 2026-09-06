@@ -2885,9 +2885,37 @@ body.terminal-open {
 .board-refresh:active { background: var(--card); }
 .board-status { color: var(--muted); font-size: var(--font-caption); margin: 0 0 8px; }
 
-/* Provider-native quota badges (issues #326/#847). Native buckets wrap as
-   flat status rows, so Codex's independent limits stay visible without
-   widening either the phone or desktop viewport. */
+/* Quota rows (issues #326/#847/#860) — one line per heavy agent, Claude
+   Code above Codex, stacked so both are readable at a glance.
+
+   Each row is deliberately a single hard-nowrap line: the whole point is
+   two glanceable numbers per agent, and a wrapped row on the phone reads
+   as four ragged lines of noise. Overflow ellipses rather than wrapping,
+   with the full text on `title` for the rare narrow viewport. There is no
+   status dot — the line itself carries the tier colour. */
+.quota-lines {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+  margin: 0 0 8px;
+}
+.quota-line {
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.quota-line.good { color: var(--success); }
+.quota-line.warn { color: var(--attention); }
+.quota-line.danger { color: var(--danger); }
+.quota-line.stale { opacity: 0.6; }
+
+/* Context-filter "saved" badge (issue #713) — the last consumer of the
+   dotted badge row the quota rows above used to share. */
 .usage-badges {
   display: flex;
   flex-wrap: wrap;
@@ -2908,15 +2936,6 @@ body.terminal-open {
 }
 .usage-badge.good { color: var(--success); }
 .usage-badge.good::before { background: var(--success); }
-.usage-badge.warn { color: var(--attention); }
-.usage-badge.warn::before { background: var(--attention); }
-.usage-badge.danger { color: var(--danger); }
-.usage-badge.danger::before { background: var(--danger); }
-.usage-badge.stale { opacity: 0.6; }
-.usage-badge.quota-state.error { color: var(--danger); }
-.usage-badge.quota-state.error::before { background: var(--danger); }
-.usage-badge.quota-state.unsupported::before,
-.usage-badge.quota-state.unknown::before { background: var(--muted); }
 
 /* Phone-first carousel: one column per viewport, swipe between them.
    scroll-snap gives the swipe for free — no gesture JS. */

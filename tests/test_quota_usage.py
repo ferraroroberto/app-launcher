@@ -231,3 +231,97 @@ def test_refresh_codex_invokes_canonical_one_shot(monkeypatch, tmp_path):
     ]
     assert seen["kwargs"]["timeout"] == 35
     assert seen["kwargs"]["creationflags"] == quota_usage.NO_WINDOW
+
+
+# ------------------------------------------------- compact lines (#860)
+
+
+def _lines(monkeypatch, snapshot: dict, legacy=None) -> list[dict]:
+    monkeypatch.setattr(quota_usage, "_read_snapshot", lambda *_args: snapshot)
+    return quota_usage.read_quota_lines(
+        Path("fleet"), Path("state"),
+        legacy_reader=(lambda: legacy) if legacy is not None else None,
+    )
+
+
+def test_lines_always_list_both_agents_in_fixed_order(monkeypatch):
+    """Neither agent may drop out — the row set is not selection-scoped."""
+    lines = _lines(monkeypatch, {"sources": [], "pools": []})
+    assert [line["harness"] for line in lines] == ["claude", "codex"]
+    assert [line["label"] for line in lines] == ["Claude Code", "Codex"]
+    for line in lines:
+        assert line["state"] == "unknown"
+        assert line["five_hour"] is None and line["weekly"] is None
+
+
+def test_lines_collapse_codex_buckets_to_the_fullest_window_per_duration(monkeypatch):
+    """Real 2026-09-06 shape: three buckets, four windows, two numbers out."""
+    observations = [
+        _observation("codex_bengalfox", [
+            _window("primary", 300, 0),
+            _window("secondary", 10080, 0),
+        ]),
+        _observation("base_model_inference", [_window("primary", 10080, 0)]),
+        _observation("codex", [_window("primary", 10080, 36)]),
+    ]
+    codex = _lines(
+        monkeypatch,
+        {"sources": [_source("codex", "openai", observations)], "pools": []},
+    )[1]
+
+    assert codex["state"] == "available"
+    assert codex["five_hour"]["used_percentage"] == 0
+    assert codex["weekly"]["used_percentage"] == 36
+
+
+def test_lines_map_claude_native_window_ids_by_duration(monkeypatch):
+    observations = [_observation("claude-code", [
+        _window("five_hour", 300, 39),
+        _window("seven_day", 10080, 19),
+    ])]
+    claude = _lines(
+        monkeypatch,
+        {"sources": [_source("claude", "anthropic", observations)], "pools": []},
+    )[0]
+
+    assert claude["five_hour"] == {
+        "used_percentage": 39, "resets_at": "2026-09-09T18:00:00.000000Z",
+    }
+    assert claude["weekly"]["used_percentage"] == 19
+
+
+def test_lines_never_promote_an_unmeasured_window_to_zero(monkeypatch):
+    observations = [_observation(
+        "claude-code", [_window("five_hour", 300, None, state="unknown")],
+    )]
+    claude = _lines(
+        monkeypatch,
+        {"sources": [_source("claude", "anthropic", observations)], "pools": []},
+    )[0]
+    assert claude["five_hour"] is None
+
+
+def test_lines_ignore_a_duration_the_row_does_not_show(monkeypatch):
+    observations = [_observation("reserve", [_window("secondary", 1440, 64)])]
+    codex = _lines(
+        monkeypatch,
+        {"sources": [_source("codex", "openai", observations)], "pools": []},
+    )[1]
+    assert codex["five_hour"] is None and codex["weekly"] is None
+
+
+def test_lines_degrade_one_agent_without_dropping_the_other(monkeypatch):
+    observations = [_observation("codex", [_window("primary", 300, 12)])]
+    lines = _lines(
+        monkeypatch,
+        {
+            "sources": [
+                _source("claude", "anthropic", [], state="error", reason="source_unreadable"),
+                _source("codex", "openai", observations),
+            ],
+            "pools": [],
+        },
+    )
+    assert [line["harness"] for line in lines] == ["claude", "codex"]
+    assert lines[0]["state"] == "error"
+    assert lines[1]["five_hour"]["used_percentage"] == 12

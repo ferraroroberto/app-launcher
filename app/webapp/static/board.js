@@ -41,7 +41,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { createDictation, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, clearUsageBadgeRow, fmtDuration, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, renderQuotaLines } from './dom-utils.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -62,7 +62,6 @@ const COLUMNS = [
 const GH_STALE_MS = 2 * 60 * 1000;
 
 let refreshInFlight = false;
-let quotaBoardRequestSequence = 0;
 
 // --------------------------------------------------------------- helpers
 
@@ -620,15 +619,13 @@ function renderStatusLine(body) {
   els.boardStatus.hidden = parts.length === 0;
 }
 
-// Claude 5h/7d usage badges (issue #326) — a separate element from
-// boardStatus on purpose: that one is transient-problem text that vanishes
-// once the problem clears, while these are live content that should persist
-// (dimmed, not hidden) even when the cache is stale. Sourced from
-// fleet-config's statusline cache (fleet-config#259); hidden entirely until
-// that writer exists or the cache goes missing/corrupt (rate_limits.available
-// false) — the same degrade-to-nothing contract sessions_state already uses.
-// Rendering itself is shared with the Coding tab's own usage badges — see
-// dom-utils.js::renderUsageBadgeRow.
+// Quota rows (issues #326/#860) — a separate element from boardStatus on
+// purpose: that one is transient-problem text that vanishes once the problem
+// clears, while these are live content that should persist (dimmed, not
+// hidden) even when the cache is stale. Both agents always show, since this
+// is the tab the heavier sessions get launched from and the number you need
+// is the one for the agent you have *not* selected. Rendering is shared with
+// the Coding tab — see dom-utils.js::renderQuotaLines.
 
 export function renderBoard() {
   // Drawers rebuild every render — the chief exchange poll (#245) must
@@ -676,7 +673,7 @@ export function renderBoard() {
   });
 
   renderStatusLine(body);
-  renderUsageBadgeRow(els.boardUsage, els.boardUsageSession, els.boardUsageWeekly, body.rate_limits);
+  renderQuotaLines(els.boardUsage, body.quota_lines);
   // Keep the dispatch bar's repo list + mic visibility in step with state
   // that may land after the first render (/api/apps, /api/status).
   syncDispatchBar();
@@ -690,11 +687,7 @@ export async function fetchBoard() {
   // and pauses while a drawer is open so the re-render can't wipe a reply
   // being typed (pattern: the terminal pausing the session poll).
   if (state.tab !== 'board' || state.boardExpanded) return;
-  const selection = getBoardDispatchModel();
-  const requestSequence = ++quotaBoardRequestSequence;
-  const body = await jsonApi('/api/board?quota_selection=' + encodeURIComponent(selection));
-  if (requestSequence !== quotaBoardRequestSequence) return;
-  state.board = body;
+  state.board = await jsonApi('/api/board');
   renderBoard();
 }
 
@@ -822,12 +815,6 @@ function syncStripActive() {
 
 export function wireBoard() {
   if (!els.tabBoard) return;
-  if (els.boardDispatchModel) {
-    els.boardDispatchModel.addEventListener('change', function () {
-      clearUsageBadgeRow(els.boardUsage);
-      fetchBoard().catch(function () {});
-    });
-  }
   els.tabBoard.addEventListener('click', function () {
     syncDispatchBar();
     fetchBoard().then(function () {

@@ -352,10 +352,10 @@ export const CHIEF_RESTART_CONFIRM =
   'the same conversation (falling back to a fresh one only if nothing is ' +
   'resumable).';
 
-// Provider-native quota badges (issues #326/#847), shared between Board and
-// Coding. The backend selects one exact harness/provider source; this renderer
-// treats every native bucket/window as data so Pi/Grok adapters need no new UI
-// branch when verified evidence becomes available.
+// Provider-native quota rows (issues #326/#847/#860), shared between Board
+// and Coding. The backend hands over one already-collapsed row per heavy
+// agent — no native bucket ids reach the UI — and this renderer only turns
+// each into a single nowrap line.
 
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".
@@ -366,22 +366,22 @@ function usageTier(pct) {
   return 'good';
 }
 
-function fmtResetLocal(value) {
+// Compact reset stamps for the two-line rows (#860). A full "Sep 11, 14:20"
+// on both windows is what pushes a line past a 390px viewport, so the
+// 5-hour window — which always resets today or tomorrow — shows the clock
+// only, and the weekly one shows the day only.
+function fmtResetClock(value) {
   if (value == null) return '';
   const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
   if (isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat([], {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-  }).format(date);
+  return new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
-function durationLabel(minutes) {
-  const value = Number(minutes);
-  if (!Number.isFinite(value) || value <= 0) return '';
-  if (value % 10080 === 0) return (value / 10080) + 'w';
-  if (value % 1440 === 0) return (value / 1440) + 'd';
-  if (value % 60 === 0) return (value / 60) + 'h';
-  return value + 'm';
+function fmtResetDay(value) {
+  if (value == null) return '';
+  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' }).format(date);
 }
 
 function nameLabel(value) {
@@ -390,102 +390,70 @@ function nameLabel(value) {
   });
 }
 
-function renderUsageBadge(el, item, sourceState, label) {
-  if (!el) return;
-  const windowData = item.window;
-  const pct = typeof windowData.used_percentage === 'number'
-    ? windowData.used_percentage : NaN;
-  const measured = Number.isFinite(pct);
-  const stale = sourceState === 'stale' || item.observationState === 'stale' || windowData.state === 'stale';
-  const tier = measured ? usageTier(pct) : 'muted';
-  el.className = 'usage-badge ' + tier + (stale ? ' stale' : '');
-  const bits = [label, nameLabel(item.bucket), nameLabel(windowData.id)];
-  const duration = durationLabel(windowData.duration_minutes);
-  if (duration) bits.push(duration);
-  bits.push(measured ? Math.round(pct) + '% used' : 'usage unknown');
-  const resetTxt = fmtResetLocal(windowData.resets_at);
-  if (resetTxt) bits.push('resets ' + resetTxt);
-  if (item.sharedAccount) bits.push('shared account');
-  if (stale) bits.push('stale');
-  el.textContent = bits.filter(Boolean).join(' · ');
-  el.hidden = false;
+// ------------------------------------------------- compact quota lines
+//
+// Two fixed rows — Claude Code above Codex — always both, whatever the
+// model picker is pointed at (issue #860). Each is one nowrap line:
+//
+//   Claude Code · 5h 39% ↻14:20 · 1w 19% ↻Sep 11
+//
+// The whole line carries the tier colour (no status dot), driven by the
+// *worse* of its two windows so a line reddens as soon as either does.
+// Both surfaces (Coding + Board) render through here; the backend has
+// already collapsed the native buckets to one pair of windows, so this
+// function never sees a bucket id.
+
+const QUOTA_LINE_STATE_COPY = {
+  unknown: 'quota unknown',
+  unsupported: 'quota unsupported',
+  error: 'quota unavailable',
+};
+
+function quotaLineTier(line) {
+  const pcts = [line.five_hour, line.weekly]
+    .map(function (w) { return w && w.used_percentage; })
+    .filter(function (v) { return typeof v === 'number' && !isNaN(v); });
+  if (!pcts.length) return 'muted';
+  return usageTier(Math.max.apply(null, pcts));
 }
 
-export function clearUsageBadgeRow(container) {
+function quotaWindowText(windowData, label, fmtReset) {
+  if (!windowData || typeof windowData.used_percentage !== 'number') return '';
+  let text = label + ' ' + Math.round(windowData.used_percentage) + '%';
+  const reset = fmtReset(windowData.resets_at);
+  if (reset) text += ' ↻' + reset;
+  return text;
+}
+
+export function renderQuotaLines(container, lines) {
   if (!container) return;
-  container.querySelectorAll('.usage-badge').forEach(function (badge) {
-    badge.hidden = true;
-    badge.textContent = '';
-    if (badge.dataset.dynamic === 'true') badge.remove();
-  });
-  container.hidden = true;
-}
-
-function stateCopy(rateLimits) {
-  const label = rateLimits.label || nameLabel(rateLimits.harness) || 'Quota';
-  if (rateLimits.state === 'unknown') return label + ' quota unknown';
-  if (rateLimits.state === 'unsupported') return label + ' quota unsupported';
-  if (rateLimits.state === 'error') return label + ' quota unavailable';
-  if (rateLimits.state === 'stale') return label + ' quota stale';
-  return '';
-}
-
-function legacyObservations(rateLimits) {
-  const windows = [];
-  [['five_hour', 300], ['seven_day', 10080]].forEach(function (entry) {
-    const item = rateLimits[entry[0]];
-    if (!item) return;
-    windows.push({
-      id: entry[0], duration_minutes: entry[1],
-      used_percentage: item.used_percentage, resets_at: item.resets_at,
-      state: rateLimits.stale ? 'stale' : 'available',
-    });
-  });
-  return windows.length ? [{ bucket: 'claude-code', state: rateLimits.stale ? 'stale' : 'available', windows }] : [];
-}
-
-// Update one row from the versioned provider view. The two legacy spans are
-// reusable slots; additional native buckets get data-owned siblings.
-export function renderUsageBadgeRow(container, sessionEl, weeklyEl, rateLimits) {
-  if (!container) return;
-  clearUsageBadgeRow(container);
-  if (!rateLimits) return;
-  const sourceState = rateLimits.state || (rateLimits.available
-    ? (rateLimits.stale ? 'stale' : 'available') : 'unknown');
-  const observations = Array.isArray(rateLimits.observations)
-    ? rateLimits.observations : legacyObservations(rateLimits);
-  const items = [];
-  observations.forEach(function (observation) {
-    (observation.windows || []).forEach(function (windowData) {
-      items.push({
-        bucket: observation.bucket,
-        observationState: observation.state,
-        sharedAccount: observation.shared_account === true,
-        window: windowData,
-      });
-    });
-  });
-
-  const slots = [sessionEl, weeklyEl].filter(Boolean);
-  while (slots.length < Math.max(1, items.length)) {
-    const badge = document.createElement('span');
-    badge.className = 'usage-badge';
-    badge.dataset.dynamic = 'true';
-    container.appendChild(badge);
-    slots.push(badge);
-  }
-  container.dataset.harness = rateLimits.harness || '';
-  container.dataset.provider = rateLimits.provider || '';
-  container.dataset.state = sourceState;
-  container.hidden = false;
-
-  if (!items.length || !['available', 'stale'].includes(sourceState)) {
-    slots[0].className = 'usage-badge quota-state ' + sourceState;
-    slots[0].textContent = stateCopy({ ...rateLimits, state: sourceState });
-    slots[0].hidden = false;
-    return;
-  }
-  items.forEach(function (item, index) {
-    renderUsageBadge(slots[index], item, sourceState, rateLimits.label || nameLabel(rateLimits.harness));
+  const rows = Array.isArray(lines) ? lines : [];
+  const slots = Array.from(container.querySelectorAll('.quota-line'));
+  slots.forEach(function (slot, index) {
+    const line = rows[index];
+    if (!line) {
+      slot.hidden = true;
+      slot.textContent = '';
+      return;
+    }
+    const stale = line.state === 'stale' || line.stale === true;
+    const windows = [
+      quotaWindowText(line.five_hour, '5h', fmtResetClock),
+      quotaWindowText(line.weekly, '1w', fmtResetDay),
+    ].filter(Boolean);
+    const measured = windows.length > 0;
+    slot.dataset.harness = line.harness || '';
+    slot.className = 'quota-line ' + (measured ? quotaLineTier(line) : 'muted') +
+      (stale ? ' stale' : '');
+    const bits = [line.label || nameLabel(line.harness)];
+    if (measured) {
+      bits.push.apply(bits, windows);
+      if (stale) bits.push('stale');
+    } else {
+      bits.push(QUOTA_LINE_STATE_COPY[line.state] || 'quota unknown');
+    }
+    slot.textContent = bits.join(' · ');
+    slot.title = slot.textContent;
+    slot.hidden = false;
   });
 }

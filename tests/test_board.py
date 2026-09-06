@@ -1940,7 +1940,8 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     assert body["github"] == {"fetched_at": None, "error": None}
     assert body["sessions_state"]["available"] is False
     assert body["active_issues"]["available"] is False
-    assert body["rate_limits"]["available"] is False
+    assert [l["harness"] for l in body["quota_lines"]] == ["claude", "codex"]
+    assert all(l["state"] != "available" for l in body["quota_lines"])
     assert body["columns"]["backlog"] == []
     assert body["generated_at"]
 
@@ -1969,7 +1970,7 @@ def test_api_board_marks_active_backlog_issue(
     assert body["columns"]["backlog"][0]["in_progress"] is True
 
 
-def test_api_board_rate_limits_present(webapp_client):
+def test_api_board_quota_lines_present(webapp_client):
     client, app, _overrides = webapp_client
     rate_limits_file = Path(app.state.webapp_config.rate_limits_file)
     rate_limits_file.write_text(json.dumps({
@@ -1978,24 +1979,21 @@ def test_api_board_rate_limits_present(webapp_client):
         "captured_at": _iso(datetime.now(timezone.utc) - timedelta(minutes=1)),
     }), encoding="utf-8")
 
-    body = client.get("/api/board").json()
-    assert body["rate_limits"]["available"] is True
-    assert body["rate_limits"]["stale"] is False
-    assert body["rate_limits"]["five_hour"] == {"used_percentage": 42, "resets_at": 1751640000}
-    assert body["rate_limits"]["seven_day"] == {"used_percentage": 88, "resets_at": 1751900000}
+    claude = client.get("/api/board").json()["quota_lines"][0]
+    assert claude["label"] == "Claude Code"
+    assert claude["state"] == "available"
+    assert claude["five_hour"]["used_percentage"] == 42
+    assert claude["weekly"]["used_percentage"] == 88
 
 
 def test_api_rate_limits_standalone_endpoint_absent(webapp_client):
     client, _app, _overrides = webapp_client
-    body = client.get("/api/rate-limits").json()
-    assert body["harness"] == "claude"
-    assert body["provider"] == "anthropic"
-    assert body["state"] == "unknown"
-    assert body["reason"] == "source_absent"
-    assert body["observations"] == []
-    assert body["available"] is False
-    assert body["five_hour"] is None
-    assert body["seven_day"] is None
+    lines = client.get("/api/rate-limits").json()["quota_lines"]
+    assert [line["harness"] for line in lines] == ["claude", "codex"]
+    assert [line["label"] for line in lines] == ["Claude Code", "Codex"]
+    for line in lines:
+        assert line["state"] == "unknown"
+        assert line["five_hour"] is None and line["weekly"] is None
 
 
 def test_api_rate_limits_standalone_endpoint_present(webapp_client):
@@ -2006,41 +2004,20 @@ def test_api_rate_limits_standalone_endpoint_present(webapp_client):
         "captured_at": _iso(datetime.now(timezone.utc)),
     }), encoding="utf-8")
 
-    body = client.get("/api/rate-limits").json()
-    assert body["available"] is True
-    assert body["five_hour"] == {"used_percentage": 10, "resets_at": 1751640000}
-    assert body["seven_day"] is None
+    claude = client.get("/api/rate-limits").json()["quota_lines"][0]
+    assert claude["state"] == "available"
+    assert claude["five_hour"] == {"used_percentage": 10, "resets_at": 1751640000}
+    assert claude["weekly"] is None
 
 
-def test_api_rate_limits_selects_requested_harness_provider(webapp_client, monkeypatch):
-    client, app, _overrides = webapp_client
-    seen = {}
-
-    def fake_read(fleet_dir, state_dir, selection, **kwargs):
-        seen.update(
-            fleet_dir=fleet_dir, state_dir=state_dir,
-            selection=selection, pi_model=kwargs.get("pi_model"),
-        )
-        return {
-            "schema_version": 1, "harness": "codex", "provider": "openai",
-            "label": "Codex", "state": "available", "reason": "native_observation",
-            "checked_at": "2026-09-09T17:00:01Z", "observations": [],
-            "available": True, "stale": False, "updated_at": "2026-09-09T17:00:00Z",
-            "five_hour": None, "seven_day": None,
-        }
-
-    monkeypatch.setattr(quota_usage, "read_quota_view", fake_read)
-    body = client.get(
-        "/api/rate-limits?quota_selection=codex%3Agpt-5.6-luna"
-    ).json()
-    assert body["harness"] == "codex"
-    assert body["provider"] == "openai"
-    assert seen == {
-        "fleet_dir": Path(app.state.webapp_config.claude_config_dir),
-        "state_dir": Path(app.state.webapp_config.rate_limits_file).parent,
-        "selection": "codex:gpt-5.6-luna",
-        "pi_model": app.state.webapp_config.pi_model,
-    }
+def test_api_rate_limits_never_follows_the_selected_model(webapp_client):
+    """#860: both agents always, whatever the caller has selected."""
+    client, _app, _overrides = webapp_client
+    for selection in ("claude:sonnet", "codex:gpt-5.6-luna", "pi:opus"):
+        lines = client.get(
+            "/api/rate-limits?quota_selection=" + selection
+        ).json()["quota_lines"]
+        assert [line["harness"] for line in lines] == ["claude", "codex"]
 
 
 def test_coding_and_board_codex_polls_coalesce_one_native_refresh(
