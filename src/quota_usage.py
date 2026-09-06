@@ -228,7 +228,14 @@ def read_quota_view(
     except (ImportError, OSError, AttributeError, TypeError, ValueError):
         logger.info("Quota contract read unavailable")
         return _empty_view(route, "error", "consumer_contract_unavailable")
+    return _view_from_snapshot(snapshot, route, legacy_reader)
 
+
+def _view_from_snapshot(
+    snapshot: Dict[str, Any],
+    route: QuotaRoute,
+    legacy_reader: Optional[Callable[[], Dict[str, Any]]],
+) -> Dict[str, Any]:
     candidates = [
         source for source in snapshot.get("sources", [])
         if isinstance(source, dict)
@@ -251,10 +258,11 @@ def read_quota_view(
 # --------------------------------------------------------- compact lines
 #
 # The selection-scoped view above answers "what does the harness I picked
-# have left". The launcher also needs the opposite: both heavy agents at
+# have left". What the launcher shows is the opposite: both heavy agents at
 # once, so the number you need before choosing one is never the hidden one
-# (issue #860). These two projections are deliberately separate — the
-# selection view still drives _maybe_refresh_codex and the legacy keys.
+# (issue #860). Built on the same per-harness view, but off a single
+# snapshot read — this runs on the tabs' 5s poll, so reading the shard
+# directory once per harness would double that cost for nothing.
 
 QUOTA_LINE_HARNESSES = (("claude", "Claude Code"), ("codex", "Codex"))
 
@@ -314,18 +322,31 @@ def read_quota_lines(
 
     A harness whose source is absent or unreadable still yields its row with
     a non-available ``state`` — the caller renders it degraded rather than
-    dropping it, so the two lines never collapse into one.
+    dropping it, so the two lines never collapse into one. A contract read
+    that fails degrades *both* rows the same way, never silently one.
     """
-    lines = []
-    for harness, label in QUOTA_LINE_HARNESSES:
-        view = read_quota_view(
-            fleet_config_dir,
-            state_dir,
-            harness,
-            legacy_reader=legacy_reader if harness == "claude" else None,
+    routes = [
+        (resolve_quota_route(harness), label)
+        for harness, label in QUOTA_LINE_HARNESSES
+    ]
+    try:
+        snapshot = _read_snapshot(fleet_config_dir, state_dir)
+    except (ImportError, OSError, AttributeError, TypeError, ValueError):
+        logger.info("Quota contract read unavailable")
+        return [
+            _quota_line(_empty_view(route, "error", "consumer_contract_unavailable"), label)
+            for route, label in routes
+        ]
+    return [
+        _quota_line(
+            _view_from_snapshot(
+                snapshot, route,
+                legacy_reader if route.harness == "claude" else None,
+            ),
+            label,
         )
-        lines.append(_quota_line(view, label))
-    return lines
+        for route, label in routes
+    ]
 
 
 class RefreshGate:

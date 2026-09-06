@@ -325,3 +325,15 @@ def test_lines_degrade_one_agent_without_dropping_the_other(monkeypatch):
     assert [line["harness"] for line in lines] == ["claude", "codex"]
     assert lines[0]["state"] == "error"
     assert lines[1]["five_hour"]["used_percentage"] == 12
+
+
+def test_lines_degrade_both_rows_when_the_contract_read_fails(monkeypatch):
+    def boom(*_args):
+        raise OSError("shard directory unreadable")
+
+    monkeypatch.setattr(quota_usage, "_read_snapshot", boom)
+    lines = quota_usage.read_quota_lines(Path("fleet"), Path("state"))
+    assert [line["harness"] for line in lines] == ["claude", "codex"]
+    for line in lines:
+        assert line["state"] == "error"
+        assert line["reason"] == "consumer_contract_unavailable"
