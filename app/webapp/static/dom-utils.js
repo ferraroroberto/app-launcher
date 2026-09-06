@@ -233,7 +233,7 @@ export function wireModelCombo(root, onChange) {
       ev.preventDefault();
       ev.stopPropagation();
       const edge = ev.key === 'ArrowUp' || ev.key === 'End' ? 'last' : 'first';
-      open(edge);
+      if (menu.hidden) open(edge); else focusOption(edge);
     } else if ((ev.key === 'Enter' || ev.key === ' ') && menu.hidden) {
       ev.preventDefault();
       ev.stopPropagation();

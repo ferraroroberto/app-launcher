@@ -165,6 +165,24 @@ def test_coding_model_combo_syncs_with_settings_control(
         authed_page.locator("#claudeModel button[data-value='haiku']")
     ).to_have_count(0)
 
+    # Pointer-opened menus keep focus on their trigger. A following navigation
+    # key must enter the listbox and skip unavailable options just like a
+    # keyboard-opened menu.
+    for key, expected in (
+        ("ArrowDown", "claude:sonnet"),
+        ("ArrowUp", "codex:gpt-5.6-luna"),
+        ("Home", "claude:sonnet"),
+        ("End", "codex:gpt-5.6-luna"),
+    ):
+        trigger.click()
+        expect(trigger).to_have_attribute("aria-expanded", "true")
+        trigger.press(key)
+        assert (
+            authed_page.evaluate("document.activeElement.dataset.value") == expected
+        )
+        authed_page.keyboard.press("Escape")
+        expect(trigger).to_have_attribute("aria-expanded", "false")
+
     # Header → settings: pick Fable; the settings picker follows and persists.
     trigger.click()
     authed_page.locator("#codingModelMenu button[data-value='claude:fable']").click()
