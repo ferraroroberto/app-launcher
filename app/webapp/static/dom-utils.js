@@ -51,59 +51,261 @@ export function bindOutsideClickToClose(box, toggle, closer) {
 //
 // `root` is the .model-combo wrapper (its data-value holds the current
 // value). `onChange(value)` fires only on a user pick, never on programmatic
-// setValue — so a config round-trip that calls setValue can't loop. Returns
-// { setValue(v), getValue() }, or null when the markup is absent.
+// setValue — so a config round-trip that calls setValue can't loop. The menu
+// is portaled to <body> while open so toolbar/card overflow cannot clip it;
+// controls inside a native <dialog> stay in that top layer. Returns the one
+// controller used by every model surface, or null when markup is absent.
 export function wireModelCombo(root, onChange) {
   if (!root) return null;
   const trigger = root.querySelector('.model-combo-trigger');
   const menu = root.querySelector('.model-combo-menu');
   if (!trigger || !menu) return null;
   let dispose = null;
+  let positionFrame = null;
+  const menuParent = menu.parentNode;
+  const menuNextSibling = menu.nextSibling;
 
-  function close() {
+  function options() {
+    return Array.from(menu.querySelectorAll('[role="option"]'));
+  }
+
+  function enabledOptions() {
+    return options().filter(function (option) { return !option.disabled; });
+  }
+
+  function findOption(value) {
+    return options().find(function (option) { return option.dataset.value === value; });
+  }
+
+  function clearPosition() {
+    if (positionFrame != null) {
+      cancelAnimationFrame(positionFrame);
+      positionFrame = null;
+    }
+    menu.classList.remove('model-combo-menu--portal');
+    ['top', 'left', 'right', 'minWidth', 'maxWidth', 'maxHeight'].forEach(function (name) {
+      menu.style[name] = '';
+    });
+  }
+
+  function restoreMenu() {
+    if (menu.parentNode === menuParent) return;
+    if (menuNextSibling && menuNextSibling.parentNode === menuParent) {
+      menuParent.insertBefore(menu, menuNextSibling);
+    } else {
+      menuParent.appendChild(menu);
+    }
+  }
+
+  function positionMenu() {
+    positionFrame = null;
+    if (menu.hidden || !menu.classList.contains('model-combo-menu--portal')) return;
+    const gap = 4;
+    const edge = 8;
+    const rect = trigger.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
+    const availableBelow = Math.max(0, viewportHeight - rect.bottom - gap - edge);
+    const availableAbove = Math.max(0, rect.top - gap - edge);
+    const wantedHeight = Math.min(menu.scrollHeight, 280);
+    const openAbove = availableBelow < wantedHeight && availableAbove > availableBelow;
+    const available = openAbove ? availableAbove : availableBelow;
+
+    menu.style.minWidth = Math.ceil(rect.width) + 'px';
+    menu.style.maxWidth = Math.max(0, viewportWidth - edge * 2) + 'px';
+    menu.style.maxHeight = Math.max(36, available) + 'px';
+
+    const measured = menu.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(edge, rect.left),
+      Math.max(edge, viewportWidth - edge - measured.width)
+    );
+    const top = openAbove
+      ? Math.max(edge, rect.top - gap - measured.height)
+      : Math.min(viewportHeight - edge - measured.height, rect.bottom + gap);
+    menu.style.left = Math.round(left) + 'px';
+    menu.style.top = Math.round(Math.max(edge, top)) + 'px';
+  }
+
+  function schedulePosition() {
+    if (positionFrame != null) return;
+    positionFrame = requestAnimationFrame(positionMenu);
+  }
+
+  function bindPositioning() {
+    window.addEventListener('resize', schedulePosition);
+    document.addEventListener('scroll', schedulePosition, true);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', schedulePosition);
+      window.visualViewport.addEventListener('scroll', schedulePosition);
+    }
+  }
+
+  function unbindPositioning() {
+    window.removeEventListener('resize', schedulePosition);
+    document.removeEventListener('scroll', schedulePosition, true);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('resize', schedulePosition);
+      window.visualViewport.removeEventListener('scroll', schedulePosition);
+    }
+  }
+
+  function close(focusTrigger) {
     if (menu.hidden) return;
     menu.hidden = true;
     trigger.setAttribute('aria-expanded', 'false');
     if (dispose) { dispose(); dispose = null; }
+    unbindPositioning();
+    clearPosition();
+    restoreMenu();
+    if (focusTrigger) trigger.focus();
   }
-  function open() {
-    if (!menu.hidden) return;
+
+  function focusOption(which) {
+    const available = enabledOptions();
+    if (!available.length) return;
+    const selected = available.find(function (option) {
+      return option.getAttribute('aria-selected') === 'true';
+    });
+    const target = which === 'last' ? available[available.length - 1]
+      : which === 'first' ? available[0] : selected || available[0];
+    target.focus();
+  }
+
+  function open(focusTarget) {
+    if (!menu.hidden || trigger.disabled) return;
+    if (!root.closest('dialog[open]')) {
+      document.body.appendChild(menu);
+      menu.classList.add('model-combo-menu--portal');
+    }
     menu.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
-    dispose = bindOutsideClickToClose(menu, trigger, close);
+    dispose = bindOutsideClickToClose(menu, trigger, function () { close(true); });
+    if (menu.classList.contains('model-combo-menu--portal')) {
+      bindPositioning();
+      positionMenu();
+    }
+    if (focusTarget) focusOption(focusTarget);
   }
+
   function apply(value, fire) {
-    const opt = menu.querySelector('[data-value="' + value + '"]');
+    const opt = findOption(value);
     if (!opt) return;
     root.dataset.value = value;
     trigger.textContent = opt.textContent;
-    menu.querySelectorAll('[role="option"]').forEach(function (o) {
+    options().forEach(function (o) {
       o.setAttribute('aria-selected', o === opt ? 'true' : 'false');
     });
     if (fire && onChange) onChange(value);
   }
 
+  function moveFocus(direction) {
+    const available = enabledOptions();
+    if (!available.length) return;
+    const index = available.indexOf(document.activeElement);
+    const next = index < 0
+      ? (direction > 0 ? 0 : available.length - 1)
+      : (index + direction + available.length) % available.length;
+    available[next].focus();
+  }
+
   // A tap anywhere in a <summary> also toggles its <details>, so every
   // interactive handler here stops propagation (same guard the sibling
   // Detached/Resume toggles use).
-  trigger.addEventListener('click', function (ev) {
+  function onTriggerClick(ev) {
+    ev.preventDefault();
     ev.stopPropagation();
-    if (menu.hidden) open(); else close();
-  });
-  menu.addEventListener('click', function (ev) {
+    if (menu.hidden) open(false); else close(false);
+  }
+  function onMenuClick(ev) {
     ev.stopPropagation();
     const opt = ev.target.closest('[data-value]');
-    if (!opt) return;
+    if (!opt || opt.disabled) return;
     apply(opt.dataset.value, true);
-    close();
-  });
-  trigger.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape') close();
-  });
+    close(true);
+  }
+  function onTriggerKeydown(ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      close(true);
+    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(ev.key)) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const edge = ev.key === 'ArrowUp' || ev.key === 'End' ? 'last' : 'first';
+      if (menu.hidden) open(edge); else focusOption(edge);
+    } else if ((ev.key === 'Enter' || ev.key === ' ') && menu.hidden) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      open('selected');
+    }
+  }
+  function onMenuKeydown(ev) {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      close(true);
+    } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      moveFocus(ev.key === 'ArrowDown' ? 1 : -1);
+    } else if (ev.key === 'Home' || ev.key === 'End') {
+      ev.preventDefault();
+      focusOption(ev.key === 'Home' ? 'first' : 'last');
+    } else if (ev.key === 'Enter' || ev.key === ' ') {
+      const opt = document.activeElement;
+      if (!opt || opt.getAttribute('role') !== 'option' || opt.disabled) return;
+      ev.preventDefault();
+      apply(opt.dataset.value, true);
+      close(true);
+    }
+  }
+
+  trigger.addEventListener('click', onTriggerClick);
+  trigger.addEventListener('keydown', onTriggerKeydown);
+  menu.addEventListener('click', onMenuClick);
+  menu.addEventListener('keydown', onMenuKeydown);
 
   return {
     setValue: function (v) { apply(v, false); },
     getValue: function () { return root.dataset.value || ''; },
+    setDisabled: function (disabled) {
+      trigger.disabled = !!disabled;
+      trigger.setAttribute('aria-disabled', String(!!disabled));
+      if (disabled) close(false);
+    },
+    setOptions: function (items) {
+      const current = root.dataset.value || '';
+      close(false);
+      menu.replaceChildren();
+      (items || []).forEach(function (item) {
+        const data = typeof item === 'string'
+          ? { value: item, label: item, available: true }
+          : item;
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.setAttribute('role', 'option');
+        option.setAttribute('aria-selected', 'false');
+        option.tabIndex = -1;
+        option.dataset.value = data.value || '';
+        option.textContent = data.label == null ? data.value : data.label;
+        option.disabled = data.available === false || data.disabled === true;
+        option.setAttribute('aria-disabled', String(option.disabled));
+        if (option.disabled) {
+          option.title = data.unavailable_reason || data.title || 'Unavailable';
+        } else if (data.title) {
+          option.title = data.title;
+        }
+        menu.appendChild(option);
+      });
+      if (findOption(current)) apply(current, false);
+    },
+    destroy: function () {
+      close(false);
+      trigger.removeEventListener('click', onTriggerClick);
+      trigger.removeEventListener('keydown', onTriggerKeydown);
+      menu.removeEventListener('click', onMenuClick);
+      menu.removeEventListener('keydown', onMenuKeydown);
+    },
   };
 }
 

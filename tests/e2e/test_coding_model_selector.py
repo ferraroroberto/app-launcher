@@ -4,7 +4,7 @@ The Projects card's <summary> gained a board-style model dropdown
 (``#codingModelCombo`` — a <button> trigger + a <span role="listbox"> of
 option buttons, NOT a native <select>, which WebKit's HTML parser cannot
 survive inside a <summary>) that stays in sync with the options-card
-segmented control (``#claudeModel``). The provider-qualified combo also offers
+model picker (``#claudeModel``). The provider-qualified combo also offers
 the explicit Codex Luna/Terra/Sol/Astra choices.
 
 Hermetic: /api/config is route-mocked with a tiny stateful handler that
@@ -60,40 +60,92 @@ def _config(model: str, choice: str) -> dict:
             "debug": False,
             "computed_flags": "",
         },
+        "codex": {
+            "model": "gpt-5.6-luna",
+            "models_available": [
+                {"value": "gpt-5.6-luna", "label": "Luna", "available": True},
+                {"value": "gpt-5.6-sol", "label": "Sol", "available": True},
+                {"value": "gpt-6-astra", "label": "Astra", "available": False,
+                 "unavailable_reason": "Not rolled out"},
+            ],
+            "effort": "xhigh",
+            "efforts_available": ["xhigh"],
+            "permission_mode": "auto",
+            "permission_modes_available": ["auto", "skip"],
+            "computed_flags": "--model gpt-5.6-luna",
+        },
+        "copilot": {
+            "model": "",
+            "models_available": [f"copilot-model-{index:02d}" for index in range(14)],
+            "skip_permissions": False,
+            "computed_flags": "",
+        },
+        "pi": {
+            "model": "anthropic/sonnet",
+            "models_available": [
+                {"value": "anthropic/sonnet", "label": "Sonnet", "available": True},
+                {"value": "openai/sol", "label": "Sol", "available": True},
+                {"value": "openai/astra", "label": "Astra", "available": False,
+                 "unavailable_reason": "Not rolled out"},
+            ],
+            "effort": "medium",
+            "efforts_available": ["low", "medium", "high"],
+            "trust_mode": "ask",
+            "trust_modes_available": ["ask", "trust"],
+            "computed_flags": "--model anthropic/sonnet",
+        },
     }
 
 
 def _mock_config(page: Page) -> dict:
     """Route /api/config with a stateful GET/POST pair mimicking patchConfig.
     Returns the mutable state dict so a test can read the last-persisted model."""
-    state = {"model": "sonnet", "choice": "claude:sonnet"}
+    state = {
+        "model": "sonnet", "choice": "claude:sonnet",
+        "codex_model": "gpt-5.6-luna", "copilot_model": "",
+        "pi_model": "anthropic/sonnet", "patches": [],
+    }
 
     def _route(route):
         req = route.request
         if req.method == "POST":
             body = _json.loads(req.post_data or "{}")
+            state["patches"].append(body)
             if "claude_model" in body:
                 state["model"] = body["claude_model"]
             if "coding_model_choice" in body:
                 state["choice"] = body["coding_model_choice"]
                 if state["choice"].startswith("claude:"):
                     state["model"] = state["choice"].split(":", 1)[1]
+            for key in ("codex_model", "copilot_model", "pi_model"):
+                if key in body:
+                    state[key] = body[key]
             route.fulfill(status=200, content_type="application/json", body="{}")
         else:
+            body = _config(state["model"], state["choice"])
+            body["codex"]["model"] = state["codex_model"]
+            if state["codex_model"] == "gpt-5.6-sol":
+                body["codex"].update(
+                    effort="high", efforts_available=["low", "high"],
+                    computed_flags="--model gpt-5.6-sol",
+                )
+            body["copilot"]["model"] = state["copilot_model"]
+            body["pi"]["model"] = state["pi_model"]
+            body["pi"]["computed_flags"] = "--model " + state["pi_model"]
             route.fulfill(
                 status=200, content_type="application/json",
-                body=_json.dumps(_config(state["model"], state["choice"])),
+                body=_json.dumps(body),
             )
 
     page.route(re.compile(r".*/api/config$"), _route)
     return state
 
 
-def test_coding_model_combo_syncs_with_segmented_control(
+def test_coding_model_combo_syncs_with_settings_control(
     authed_page: Page, base_url: str
 ) -> None:
     """Picking a model in the Projects-summary combo updates the options-card
-    segmented control (and vice versa), and both persist the same
+    picker (and vice versa), and both persist the same
     ``claude_model`` — the #540 no-double-setting contract."""
     state = _mock_config(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -113,33 +165,125 @@ def test_coding_model_combo_syncs_with_segmented_control(
         authed_page.locator("#claudeModel button[data-value='haiku']")
     ).to_have_count(0)
 
-    # Combo → segmented: open the dropdown, pick Fable; the segmented control's
-    # Fable button becomes active and the config persisted Fable.
+    # Pointer-opened menus keep focus on their trigger. A following navigation
+    # key must enter the listbox and skip unavailable options just like a
+    # keyboard-opened menu.
+    for key, expected in (
+        ("ArrowDown", "claude:sonnet"),
+        ("ArrowUp", "codex:gpt-5.6-luna"),
+        ("Home", "claude:sonnet"),
+        ("End", "codex:gpt-5.6-luna"),
+    ):
+        trigger.click()
+        expect(trigger).to_have_attribute("aria-expanded", "true")
+        trigger.press(key)
+        assert (
+            authed_page.evaluate("document.activeElement.dataset.value") == expected
+        )
+        authed_page.keyboard.press("Escape")
+        expect(trigger).to_have_attribute("aria-expanded", "false")
+
+    # Header → settings: pick Fable; the settings picker follows and persists.
     trigger.click()
     authed_page.locator("#codingModelMenu button[data-value='claude:fable']").click()
-    expect(
-        authed_page.locator("#claudeModel button[data-value='fable']")
-    ).to_have_class(re.compile(r"\bactive\b"), timeout=5_000)
+    expect(authed_page.locator("#claudeModel")).to_have_attribute(
+        "data-value", "fable", timeout=5_000
+    )
     expect(trigger).to_have_text("Claude · Fable")
     assert state["model"] == "fable"
 
-    # Segmented → combo: expand the options card and click Opus; the dropdown
+    # Settings → header: expand the options card and click Opus; the dropdown
     # trigger follows and Opus is persisted.
     authed_page.locator("#codingOptions").evaluate("el => { el.open = true; }")
-    authed_page.locator("#claudeModel button[data-value='opus']").click()
+    authed_page.locator("#claudeModel .model-combo-trigger").click()
+    authed_page.locator("#claudeModelMenu [data-value='opus']").click()
     expect(combo).to_have_attribute("data-value", "claude:opus", timeout=5_000)
     expect(trigger).to_have_text("Claude · Opus")
     assert state["model"] == "opus"
+
+    # Every settings picker is populated through the same controller. Pointer
+    # choices persist through the real POST→GET round-trip and dependent Codex
+    # effort options repaint from that readback.
+    authed_page.locator("#codexModel .model-combo-trigger").click()
+    expect(authed_page.locator("#codexModelMenu [data-value='gpt-6-astra']")).to_be_disabled()
+    authed_page.locator("#codexModelMenu [data-value='gpt-5.6-sol']").click()
+    expect(authed_page.locator("#codexModel")).to_have_attribute(
+        "data-value", "gpt-5.6-sol"
+    )
+    expect(authed_page.locator("#codexEffort [data-value='high']")).to_have_class(
+        re.compile(r"\bactive\b"), timeout=5_000
+    )
+
+    authed_page.locator("#copilotModel .model-combo-trigger").click()
+    copilot_menu = authed_page.locator("#copilotModelMenu")
+    expect(copilot_menu.locator("[role='option']")).to_have_count(15)
+    menu_sizes = copilot_menu.evaluate("el => [el.clientHeight, el.scrollHeight]")
+    assert menu_sizes[1] > menu_sizes[0], "long Copilot menu is not viewport constrained"
+    copilot_menu.locator("[data-value='copilot-model-13']").click()
+
+    authed_page.locator("#piModel .model-combo-trigger").click()
+    expect(authed_page.locator("#piModelMenu [data-value='openai/astra']")).to_be_disabled()
+    authed_page.locator("#piModelMenu [data-value='openai/sol']").click()
+    expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
+    expect(authed_page.locator("#piFlagsPreview")).to_have_text("pi --model openai/sol")
+
+    # Keyboard traversal skips disabled Astra, selects exactly once, and
+    # Escape restores focus and the collapsed ARIA state.
+    codex_trigger = authed_page.locator("#codexModel .model-combo-trigger")
+    patch_count = len(state["patches"])
+    codex_trigger.focus()
+    codex_trigger.press("Home")
+    authed_page.keyboard.press("End")
+    assert authed_page.evaluate("document.activeElement.dataset.value") == "gpt-5.6-sol"
+    authed_page.keyboard.press("Enter")
+    authed_page.wait_for_timeout(100)
+    assert len(state["patches"]) == patch_count + 1
+    codex_trigger.press("Enter")
+    authed_page.keyboard.press("Escape")
+    expect(codex_trigger).to_have_attribute("aria-expanded", "false")
+    assert codex_trigger.evaluate("el => document.activeElement === el")
+
+    patch_count = len(state["patches"])
+    codex_trigger.press("ArrowDown")
+    assert authed_page.evaluate("document.activeElement.dataset.value") == "gpt-5.6-luna"
+    authed_page.keyboard.press("ArrowDown")
+    assert authed_page.evaluate("document.activeElement.dataset.value") == "gpt-5.6-sol"
+    authed_page.keyboard.press("ArrowDown")
+    assert authed_page.evaluate("document.activeElement.dataset.value") == "gpt-5.6-luna"
+    authed_page.keyboard.press("Space")
+    authed_page.wait_for_timeout(100)
+    assert len(state["patches"]) == patch_count + 1
+    expect(authed_page.locator("#codexModelMenu [data-value='gpt-5.6-luna']")).to_have_attribute(
+        "aria-selected", "true"
+    )
+
+    codex_trigger.click()
+    expect(codex_trigger).to_have_attribute("aria-expanded", "true")
+    authed_page.locator("#codexFlagsPreview").dispatch_event("pointerdown")
+    expect(codex_trigger).to_have_attribute("aria-expanded", "false")
+    assert codex_trigger.evaluate("el => document.activeElement === el")
+
+    # A reload reads every stored value back without a programmatic onChange.
+    persisted_patch_count = len(state["patches"])
+    authed_page.reload(wait_until="domcontentloaded")
+    expect(authed_page.locator("#codexModel")).to_have_attribute(
+        "data-value", "gpt-5.6-luna"
+    )
+    expect(authed_page.locator("#copilotModel")).to_have_attribute(
+        "data-value", "copilot-model-13"
+    )
+    expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
+    assert len(state["patches"]) == persisted_patch_count
 
     expect(
         authed_page.locator("#codingModelMenu button[data-value='codex:gpt-6-astra']")
     ).to_be_disabled()
 
 
-def test_server_catalog_populates_coding_and_board_selectors(
+def test_server_catalog_populates_shared_model_selectors(
     authed_page: Page, base_url: str
 ) -> None:
-    """#845: the real backend catalog replaces each one-option bootstrap."""
+    """#845/#851: every model surface uses the shared catalog-backed picker."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     coding = authed_page.locator("#codingModelMenu button[data-value]")
@@ -151,11 +295,40 @@ def test_server_catalog_populates_coding_and_board_selectors(
         authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-astra']")
     ).to_be_enabled()
 
-    board = authed_page.locator("#boardDispatchModel option")
-    expect(board).to_have_count(7)
+    shared = (
+        "#codingModelCombo, #claudeModel, #codexModel, #copilotModel, #piModel, "
+        "#lifeOsModelCombo, #lifeOsConvosModelCombo, #boardDispatchModel, "
+        "#chiefModelSelect"
+    )
+    expect(authed_page.locator(shared)).to_have_count(9)
+    for selector in shared.split(", "):
+        root = authed_page.locator(selector)
+        expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))
+        expect(root.locator(".model-combo-trigger")).to_have_count(1)
+        expect(root.locator(".model-combo-menu[role='listbox']")).to_have_count(1)
+
+    board = authed_page.locator("#boardDispatchModel")
+    expect(board.locator("[role='option']")).to_have_count(7)
     expect(
-        authed_page.locator("#boardDispatchModel option[value='codex:gpt-6-astra']")
+        board.locator("[data-value='codex:gpt-6-astra']")
     ).to_be_enabled()
+
+    authed_page.locator("#codingOptions").evaluate("el => { el.open = true; }")
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "value => document.documentElement.dataset.theme = value", theme
+        )
+        signatures = authed_page.locator(
+            "#claudeModel .model-combo-trigger, #codexModel .model-combo-trigger, "
+            "#copilotModel .model-combo-trigger, #piModel .model-combo-trigger"
+        ).evaluate_all(
+            """nodes => nodes.map(node => {
+              const style = getComputedStyle(node);
+              return [style.backgroundColor, style.color, style.borderColor,
+                      style.borderRadius, style.height, style.fontSize].join('|');
+            })"""
+        )
+        assert len(set(signatures)) == 1, f"{theme} settings picker style drift: {signatures}"
 
 
 def _quota_payload(harness: str, state: str = "available") -> dict:
@@ -294,34 +467,38 @@ def test_selected_provider_quota_states_switch_without_overflow(
         ("unsupported", "Codex quota unsupported"),
         ("error", "Codex quota unavailable"),
     ):
-        authed_page.evaluate(
+        rendered = authed_page.evaluate(
             """async payload => {
               const module = await import('/static/dom-utils.js');
+              const root = document.getElementById('codingUsage');
               module.renderUsageBadgeRow(
-                document.getElementById('codingUsage'),
+                root,
                 document.getElementById('codingUsageSession'),
                 document.getElementById('codingUsageWeekly'), payload
               );
+              return {state: root.dataset.state, text: root.textContent};
             }""",
             _quota_payload("codex", source_state),
         )
-        expect(coding).to_have_attribute("data-state", source_state)
-        expect(coding).to_have_text(expected)
+        assert rendered["state"] == source_state
+        assert rendered["text"].strip() == expected
 
-    authed_page.evaluate(
+    rendered = authed_page.evaluate(
         """async payload => {
           const module = await import('/static/dom-utils.js');
+          const root = document.getElementById('codingUsage');
           module.renderUsageBadgeRow(
-            document.getElementById('codingUsage'),
+            root,
             document.getElementById('codingUsageSession'),
             document.getElementById('codingUsageWeekly'), payload
           );
+          return {state: root.dataset.state, text: root.textContent};
         }""",
         _quota_payload("codex", "stale"),
     )
-    expect(coding).to_have_attribute("data-state", "stale")
-    expect(coding).to_contain_text("0% used")
-    expect(coding).to_contain_text("stale")
+    assert rendered["state"] == "stale"
+    assert "0% used" in rendered["text"]
+    assert "stale" in rendered["text"]
 
     # Both authored themes retain a wrapping row with no page overflow.
     for theme in ("light", "dark"):
@@ -335,11 +512,17 @@ def test_selected_provider_quota_states_switch_without_overflow(
     # Board follows its own dispatch-model control, independently of Coding.
     authed_page.locator("#tabBoard").click()
     board_select = authed_page.locator("#boardDispatchModel")
-    board_select.select_option("codex:gpt-5.6-luna")
+    board_select.locator(".model-combo-trigger").click()
+    authed_page.locator(
+        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-luna']"
+    ).click()
     board_usage = authed_page.locator("#boardUsage")
     expect(board_usage).to_have_attribute("data-harness", "codex", timeout=5_000)
     expect(board_usage).to_contain_text("0% used")
-    board_select.select_option("claude:sonnet")
+    board_select.locator(".model-combo-trigger").click()
+    authed_page.locator(
+        "#boardDispatchModelMenu [data-value='claude:sonnet']"
+    ).click()
     expect(board_usage).to_have_attribute("data-harness", "claude", timeout=5_000)
     expect(board_usage).not_to_contain_text("Codex")
     assert "codex:gpt-5.6-luna" in board_requests

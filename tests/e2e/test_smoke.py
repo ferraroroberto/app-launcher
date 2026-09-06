@@ -48,10 +48,13 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     # panels now share the .collapse-title class (issue #212), so a
     # bare class selector matches three titles.
     authed_page.locator("#codingOptions .collapse-title").click()
-    authed_page.wait_for_selector("#claudeModel > button", timeout=5_000)
+    authed_page.wait_for_function(
+        "() => document.querySelectorAll('#claudeModelMenu > [role=option]').length > 0",
+        timeout=5_000,
+    )
     authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
     authed_page.wait_for_selector("#claudePermission > button", timeout=5_000)
-    model_count = authed_page.locator("#claudeModel > button").count()
+    model_count = authed_page.locator("#claudeModelMenu > [role='option']").count()
     effort_count = authed_page.locator("#claudeEffort > button").count()
     perm_count = authed_page.locator("#claudePermission > button").count()
     assert model_count >= 1, f"#claudeModel rendered no buttons (got {model_count})"

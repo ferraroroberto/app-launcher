@@ -189,7 +189,9 @@ def test_chat_mode_routes_message_to_chief_not_dispatch(
 
     # Chat mode: the model select greys out (chief model is owned by chief
     # settings) and the status row appears.
-    expect(authed_page.locator("#boardDispatchModel")).to_be_disabled()
+    expect(
+        authed_page.locator("#boardDispatchModel .model-combo-trigger")
+    ).to_be_disabled()
     expect(authed_page.locator("#boardChiefStatus")).to_be_visible()
 
     authed_page.locator("#boardDispatchGoal").fill("what's open in app-launcher?")
@@ -502,12 +504,16 @@ def test_chief_settings_dialog_roundtrip(
 
     dialog = authed_page.locator("#chiefSettingsDialog")
     expect(dialog).to_be_visible()
-    expect(authed_page.locator("#chiefModelSelect")).to_have_value("fable")
+    expect(authed_page.locator("#chiefModelSelect")).to_have_attribute(
+        "data-value", "fable"
+    )
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("3")
 
+    authed_page.locator("#chiefModelSelect .model-combo-trigger").click()
+    authed_page.locator("#chiefModelMenu [data-value='opus']").click()
     authed_page.locator("#chiefWorkerCap").fill("5")
     authed_page.locator('#chiefSettingsForm button[type="submit"]').click()
     authed_page.wait_for_timeout(500)
 
-    assert put.get("body") == {"model": "fable", "worker_cap": 5}
+    assert put.get("body") == {"model": "opus", "worker_cap": 5}
     expect(dialog).not_to_be_visible()

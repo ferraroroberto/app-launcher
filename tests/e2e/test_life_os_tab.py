@@ -761,7 +761,42 @@ def test_life_os_conversation_resume_posts_the_session_id(
     convo_model = authed_page.locator("#lifeOsConvosModelCombo")
     expect(convo_model).to_be_visible()
     convo_model.locator(".model-combo-trigger").click()
-    convo_model.locator("button[data-value='claude:opus']").click()
+    menu = authed_page.locator("#lifeOsConvosModelMenu")
+    expect(menu).to_have_class(re.compile(r"\bmodel-combo-menu--portal\b"))
+    assert menu.evaluate("el => el.parentElement === document.body")
+    menu_box = menu.bounding_box()
+    assert menu_box is not None
+    viewport = authed_page.viewport_size or {"width": 0, "height": 0}
+    assert menu_box["x"] >= 0 and menu_box["y"] >= 0
+    assert menu_box["x"] + menu_box["width"] <= viewport["width"]
+    assert menu_box["y"] + menu_box["height"] <= viewport["height"]
+    z_indexes = authed_page.evaluate(
+        """() => [
+          Number(getComputedStyle(document.getElementById('lifeOsConvosModelMenu')).zIndex),
+          Number(getComputedStyle(document.getElementById('lifeOsConvos')).zIndex)
+        ]"""
+    )
+    assert z_indexes[0] > z_indexes[1], z_indexes
+    option = authed_page.locator(
+        "#lifeOsConvosModelMenu button[data-value='claude:opus']"
+    )
+    hit_target = option.evaluate(
+        """el => {
+          const box = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            box.left + box.width / 2, box.top + box.height / 2
+          );
+          return !!hit && (hit === el || el.contains(hit));
+        }"""
+    )
+    assert hit_target, "conversation model option is clipped by the toolbar"
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "value => document.documentElement.dataset.theme = value", theme
+        )
+        expect(option).to_be_visible()
+        assert menu.evaluate("el => getComputedStyle(el).backgroundColor") != "rgba(0, 0, 0, 0)"
+    option.click()
     expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
         "data-value", "claude:opus"
     )
@@ -891,12 +926,12 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
     combo = page.locator("#lifeOsConvosModelCombo")
     combo.locator(".model-combo-trigger").click()
-    combo.locator(f"button[data-value='{source_choice}']").click()
+    page.locator(f"#lifeOsConvosModelMenu button[data-value='{source_choice}']").click()
     expect(detail.locator(".lifeos-convo-resume")).to_be_enabled()
     expect(detail).to_contain_text("Source: " + source)
     expect(detail.locator(".lifeos-convo-handoff")).to_have_count(0)
     combo.locator(".model-combo-trigger").click()
-    combo.locator(f"button[data-value='{target}']").click()
+    page.locator(f"#lifeOsConvosModelMenu button[data-value='{target}']").click()
     expect(detail).to_be_visible()
     expect(detail.locator(".lifeos-convo-resume")).to_be_disabled()
     expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()

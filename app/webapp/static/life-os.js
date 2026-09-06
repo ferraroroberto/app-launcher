@@ -23,6 +23,11 @@ import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 // no server round-trip — it's per-launch, like the Board dispatch combo.
 let lifeOsModelCombo = null;
 let lifeOsConvosModelCombo = null;
+export function setLifeOsModelOptions(items) {
+  if (lifeOsModelCombo) lifeOsModelCombo.setOptions(items);
+  if (lifeOsConvosModelCombo) lifeOsConvosModelCombo.setOptions(items);
+}
+
 function lifeOsModel() {
   if (!els.lifeOsConvos || els.lifeOsConvos.hidden) {
     return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'claude:sonnet';

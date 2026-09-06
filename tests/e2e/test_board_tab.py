@@ -497,7 +497,10 @@ def test_backlog_start_button_posts_issue_start(
     _switch_to_backlog(authed_page)
     # The dispatch bar's model selector governs one-tap starts too (#505) —
     # pick a non-default value so the POST provably carries the selection.
-    authed_page.locator("#boardDispatchModel").select_option("claude:fable")
+    authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
+    authed_page.locator(
+        "#boardDispatchModelMenu [data-value='claude:fable']"
+    ).click()
     start_btn = authed_page.locator(
         '.board-list[data-col="backlog"] .board-issue-btn'
     ).first
@@ -752,8 +755,13 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     authed_page.locator("#boardDispatchMode").select_option("yolo")
     # Model selector (#500): defaults to Sonnet; pick a non-default value so
     # the POST provably carries the selection, not a hardcoded default.
-    expect(authed_page.locator("#boardDispatchModel")).to_have_value("claude:sonnet")
-    authed_page.locator("#boardDispatchModel").select_option("codex:gpt-5.6-sol")
+    expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
+        "data-value", "claude:sonnet"
+    )
+    authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
+    authed_page.locator(
+        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-sol']"
+    ).click()
     authed_page.locator("#boardDispatchSend").click()
     authed_page.wait_for_timeout(500)
 
@@ -1081,39 +1089,26 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
 
 
-def test_dispatch_model_select_matches_sibling_button_shape_on_phone(
+def test_dispatch_model_picker_matches_shared_button_shape(
     authed_page: Page, base_url: str
 ) -> None:
-    """#496 (on-device photo feedback): on the phone the model <select> must
-    present exactly the sibling buttons' geometry — same height as the ✕
-    clear button and the shared 12px control radius — instead of iOS's own
-    native pill chrome. Phone projection only; desktop keeps the native
-    select."""
-    viewport = authed_page.viewport_size or {"width": 0}
-    if viewport["width"] >= 700:
-        pytest.skip("flattened select is coarse-pointer-only; desktop keeps native chrome")
-
+    """#496/#851: Board uses the shared picker at both projections."""
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    select = authed_page.locator("#boardDispatchModel")
+    picker = authed_page.locator("#boardDispatchModel .model-combo-trigger")
     clear = authed_page.locator("#boardDispatchClear")
-    expect(select).to_be_visible()
-    box_select = select.bounding_box()
+    expect(picker).to_be_visible()
+    box_select = picker.bounding_box()
     box_clear = clear.bounding_box()
     assert box_select and box_clear, "dispatch row not laid out"
     assert abs(box_select["height"] - box_clear["height"]) <= 1, (
         f"model select height {box_select['height']} != sibling button "
         f"height {box_clear['height']}"
     )
-    radius = select.evaluate("el => getComputedStyle(el).borderRadius")
-    assert radius == "12px", f"model select radius {radius!r} != 12px"
-    appearance = select.evaluate(
-        "el => getComputedStyle(el).webkitAppearance || getComputedStyle(el).appearance"
-    )
-    assert appearance == "none", (
-        f"native select chrome still painting on the phone: {appearance!r}"
-    )
+    radius = picker.evaluate("el => getComputedStyle(el).borderRadius")
+    assert radius == "12px", f"model picker radius {radius!r} != 12px"
+    assert picker.evaluate("el => el.tagName") == "BUTTON"
 
 
 def test_board_columns_layout_matches_projection(

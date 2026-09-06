@@ -2,7 +2,7 @@
  * Claude Code subsection (model + effort + verbose/debug + flags preview),
  * an Antigravity subsection (skip-permissions + sandbox toggles), a
  * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
- * Pi subsection (segmented model / effort / project-trust controls — Opus and
+ * Pi subsection (model picker + segmented effort / project-trust controls — Opus and
  * Sonnet run on the claude-agent-sdk subscription path, GPT on the openai-codex
  * ChatGPT-plan path, so the provider/model are always passed explicitly).
  *
@@ -14,11 +14,16 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi } from './api.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+import { setBoardDispatchModelOptions } from './board-dispatch.js';
+import { setLifeOsModelOptions } from './life-os.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
-// The Projects-summary model dropdown controller ({setValue, getValue}),
-// created in wireClaudeOptions once the DOM exists.
+// Shared model-picker controllers, created once the DOM exists.
 let codingModelCombo = null;
+let claudeModelCombo = null;
+let codexModelCombo = null;
+let copilotModelCombo = null;
+let piModelCombo = null;
 let codingQuotaSelectionSequence = 0;
 let codingQuotaSaveQueue = Promise.resolve();
 
@@ -65,82 +70,28 @@ function effortLabel(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function fillSelect(select, models, current, includeDefault) {
-  select.innerHTML = '';
-  if (includeDefault) {
-    const fallback = document.createElement('option');
-    fallback.value = '';
-    fallback.textContent = 'Default';
-    select.appendChild(fallback);
-  }
-  (models || []).forEach(function (model) {
-    const opt = document.createElement('option');
-    opt.value = model.value || model;
-    opt.textContent = model.label || model;
-    opt.disabled = model.available === false;
-    if (opt.disabled) {
-      opt.textContent += ' — unavailable';
-      opt.title = model.unavailable_reason || 'Unavailable';
-    }
-    select.appendChild(opt);
+function modelOptions(models, valuePrefix, labelPrefix) {
+  return (models || []).map(function (model) {
+    const data = typeof model === 'string'
+      ? { value: model, label: model, available: true }
+      : model;
+    return {
+      ...data,
+      value: (valuePrefix || '') + data.value,
+      label: (labelPrefix || '') + (data.label || data.value),
+    };
   });
-  select.value = current || '';
-}
-
-function fillCombo(root, models, valuePrefix, append) {
-  if (!root) return;
-  const menu = root.querySelector('.model-combo-menu');
-  if (!menu) return;
-  if (!append) menu.innerHTML = '';
-  (models || []).forEach(function (model) {
-    const option = document.createElement('button');
-    option.type = 'button';
-    option.setAttribute('role', 'option');
-    option.setAttribute('aria-selected', 'false');
-    option.dataset.value = (valuePrefix || '') + model.value;
-    const providerLabel = valuePrefix
-      ? valuePrefix.replace(':', '').replace(/^./, function (c) { return c.toUpperCase(); }) + ' · '
-      : '';
-    option.textContent = providerLabel + model.label;
-    option.disabled = model.available === false;
-    if (option.disabled) option.title = model.unavailable_reason || 'Unavailable';
-    menu.appendChild(option);
-  });
-  const selected = menu.querySelector('[data-value="' + root.dataset.value + '"]');
-  if (selected) {
-    selected.setAttribute('aria-selected', 'true');
-    const trigger = root.querySelector('.model-combo-trigger');
-    if (trigger) trigger.textContent = selected.textContent;
-  }
 }
 
 function renderSharedModelSelectors() {
   const config = state.config || {};
   const catalog = config.model_catalog || {};
-  const coding = document.getElementById('codingModelCombo');
-  fillCombo(coding, catalog.claude, 'claude:');
-  fillCombo(coding, catalog.codex, 'codex:', true);
+  const options = modelOptions(catalog.claude, 'claude:', 'Claude · ')
+    .concat(modelOptions(catalog.codex, 'codex:', 'Codex · '));
+  if (codingModelCombo) codingModelCombo.setOptions(options);
   if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
-
-  const lifeOs = document.getElementById('lifeOsModelCombo');
-  fillCombo(lifeOs, catalog.claude, 'claude:');
-  fillCombo(lifeOs, catalog.codex, 'codex:', true);
-
-  const history = document.getElementById('lifeOsConvosModelCombo');
-  fillCombo(history, catalog.claude, 'claude:');
-  fillCombo(history, catalog.codex, 'codex:', true);
-
-  const board = document.getElementById('boardDispatchModel');
-  if (board) {
-    const previous = board.value || 'claude:sonnet';
-    fillSelect(
-      board,
-      (catalog.claude || []).map(function (m) { return { ...m, value: 'claude:' + m.value, label: 'Claude · ' + m.label }; })
-        .concat((catalog.codex || []).map(function (m) { return { ...m, value: 'codex:' + m.value, label: 'Codex · ' + m.label }; })),
-      previous,
-      false
-    );
-  }
+  setLifeOsModelOptions(options);
+  setBoardDispatchModelOptions(options);
 }
 
 export async function fetchConfig(shouldApply) {
@@ -182,11 +133,8 @@ export function renderClaudeOptions() {
 
 // One host, one array of items, the currently-active value, a label
 // renderer, and a select callback — every model/effort/permission/trust
-// segmented control below (Claude, Codex, Pi) is this same shape (issue
-// #520). `valueFn` defaults to identity (plain string items); Pi's model
-// row is the one case with {value,label} objects, so it passes a `valueFn`
-// to pull `value` out for the dataset/click-handler/active-comparison while
-// `labelFn` still renders `label`.
+// segmented control below (effort, permission, and trust) is this same shape
+// (issue #520). `valueFn` defaults to identity for plain-string items.
 function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, valueFn) {
   host.innerHTML = '';
   (items || []).forEach(function (item) {
@@ -206,24 +154,17 @@ function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, va
 function renderClaudeSubsection() {
   const c = state.config && state.config.claude;
   if (!c) return;
-  // Both the segmented control and the Projects-summary combo render the
   // Filter the legacy-compatible Claude enum to the curated phone catalog.
   const surfaced = ((state.config.model_catalog || {}).claude || []).map(function (m) { return m.value; });
   const models = (c.models_available || []).filter(function (model) {
     return surfaced.includes(model);
   });
-  renderSegmentedControl(
-    els.claudeModel,
-    models,
-    c.model,
-    function (m) { return m.charAt(0).toUpperCase() + m.slice(1); },
-    function (m) {
-      selectCodingQuota(
-        { claude_model: m, coding_model_choice: 'claude:' + m },
-        'claude:' + m
-      );
-    }
-  );
+  if (claudeModelCombo) {
+    claudeModelCombo.setOptions(modelOptions(models.map(function (model) {
+      return { value: model, label: model.charAt(0).toUpperCase() + model.slice(1) };
+    })));
+    claudeModelCombo.setValue(c.model);
+  }
   // Keep the compact dropdown in lockstep. patchConfig() round-trips through
   // GET /api/config and re-renders this whole subsection, so a change from
   // either control lands here and updates both — no explicit cross-wiring.
@@ -253,7 +194,10 @@ function renderClaudeSubsection() {
 function renderCodexSubsection() {
   const c = state.config && state.config.codex;
   if (!c) return;
-  fillSelect(els.codexModel, c.models_available, c.model, false);
+  if (codexModelCombo) {
+    codexModelCombo.setOptions(modelOptions(c.models_available));
+    codexModelCombo.setValue(c.model);
+  }
   renderSegmentedControl(
     els.codexEffort,
     c.efforts_available,
@@ -287,21 +231,14 @@ function renderAntigravitySubsection() {
 function renderCopilotSubsection() {
   const c = state.config && state.config.copilot;
   if (!c) return;
-  // Model picker — a <select>: the Copilot CLI offers ~15 models, too
-  // many for a segmented control. The empty-value "Default" option
-  // launches without --model (the CLI uses its own configured model).
-  els.copilotModel.innerHTML = '';
-  const optDefault = document.createElement('option');
-  optDefault.value = '';
-  optDefault.textContent = 'Default';
-  els.copilotModel.appendChild(optDefault);
-  (c.models_available || []).forEach(function (m) {
-    const opt = document.createElement('option');
-    opt.value = m;
-    opt.textContent = m;
-    els.copilotModel.appendChild(opt);
-  });
-  els.copilotModel.value = c.model || '';
+  // Copilot offers a long catalog; the portaled shared menu stays viewport
+  // constrained. Empty-value Default still omits --model at launch.
+  if (copilotModelCombo) {
+    copilotModelCombo.setOptions(
+      [{ value: '', label: 'Default' }].concat(modelOptions(c.models_available))
+    );
+    copilotModelCombo.setValue(c.model || '');
+  }
   setSwitch(els.copilotSkipPerms, !!c.skip_permissions);
   els.copilotFlagsPreview.textContent =
     'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
@@ -310,11 +247,12 @@ function renderCopilotSubsection() {
 function renderPiSubsection() {
   const p = state.config && state.config.pi;
   if (!p || !els.piModel) return;
-  // Model — a segmented control over three options spanning two subscription
-  // providers (Opus/Sonnet on claude-agent-sdk, GPT on openai-codex), mirroring
-  // the other agents' button rows. `models_available` carries {value,label} so
-  // the buttons read "Opus/Sonnet/GPT" rather than the raw model ids.
-  fillSelect(els.piModel, p.models_available, p.model, false);
+  // `models_available` carries {value,label} so the shared picker reads
+  // "Opus/Sonnet/GPT" rather than raw provider model ids.
+  if (piModelCombo) {
+    piModelCombo.setOptions(modelOptions(p.models_available));
+    piModelCombo.setValue(p.model);
+  }
   // Effort — segmented control mapped to `--thinking`, mirroring Claude.
   renderSegmentedControl(
     els.piEffort,
@@ -412,25 +350,35 @@ function wireBoolSwitch(el, patchKey) {
 }
 
 export function wireClaudeOptions() {
+  codingModelCombo = wireModelCombo(
+    document.getElementById('codingModelCombo'),
+    function (v) { selectCodingQuota({ coding_model_choice: v }, v); }
+  );
+  claudeModelCombo = wireModelCombo(els.claudeModel, function (model) {
+    selectCodingQuota(
+      { claude_model: model, coding_model_choice: 'claude:' + model },
+      'claude:' + model
+    );
+  });
+  codexModelCombo = wireModelCombo(els.codexModel, function (model) {
+    const selection = 'codex:' + model;
+    selectCodingQuota({
+      codex_model: model, coding_model_choice: selection,
+    }, selection);
+  });
+  copilotModelCombo = wireModelCombo(els.copilotModel, function (model) {
+    patchConfig({ copilot_model: model });
+  });
+  piModelCombo = wireModelCombo(els.piModel, function (model) {
+    patchConfig({ pi_model: model });
+  });
   wireBoolSwitch(els.claudeVerbose, 'claude_verbose');
   wireBoolSwitch(els.claudeDebug, 'claude_debug');
   wireBoolSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');
   wireBoolSwitch(els.antigravitySandbox, 'antigravity_sandbox');
   wireBoolSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
-  els.copilotModel.addEventListener('change', function () {
-    patchConfig({ copilot_model: els.copilotModel.value });
-  });
-  els.codexModel.addEventListener('change', function () {
-    const selection = 'codex:' + els.codexModel.value;
-    selectCodingQuota({
-      codex_model: els.codexModel.value, coding_model_choice: selection,
-    }, selection);
-  });
-  els.piModel.addEventListener('change', function () {
-    patchConfig({ pi_model: els.piModel.value });
-  });
-  // Pi's model/effort/trust are segmented buttons that wire their own click
-  // handlers in renderPiSubsection(), so there's no static listener here.
+  // Pi's effort and trust segmented buttons wire their own click handlers in
+  // renderPiSubsection(), so there are no static listeners for those controls.
   // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
   // (no server config — read at session-launch time in apps.js). They live
   // in the Projects card's <summary> (#496 — the launch surface) so they
@@ -443,12 +391,4 @@ export function wireClaudeOptions() {
       toggleAriaChecked(btn);
     });
   });
-  // The launch-model dropdown (#540) lives in the Projects <summary>. A user
-  // pick persists claude_model; the config round-trip re-renders both this
-  // dropdown and the options-card segmented control, keeping them in sync
-  // (#claudeModel follows too). wireModelCombo handles the summary-tap guard.
-  codingModelCombo = wireModelCombo(
-    document.getElementById('codingModelCombo'),
-    function (v) { selectCodingQuota({ coding_model_choice: v }, v); }
-  );
 }

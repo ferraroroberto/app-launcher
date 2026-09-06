@@ -32,7 +32,7 @@ import { applyLaunchSizePayload } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_RESTART_CONFIRM, isChiefSession } from './dom-utils.js';
+import { CHIEF_RESTART_CONFIRM, isChiefSession, wireModelCombo } from './dom-utils.js';
 import { fetchBoard, renderBoard } from './board.js';
 
 // ---------------------------------------------------- fleet chief (#245)
@@ -46,6 +46,17 @@ import { fetchBoard, renderBoard } from './board.js';
 // Exported so board.js's card rendering reads the same predicate as the
 // chief status row rather than re-aliasing it (#691).
 export const isChiefCard = isChiefSession;
+
+let dispatchModelCombo = null;
+let chiefModelCombo = null;
+
+export function setBoardDispatchModelOptions(items) {
+  if (dispatchModelCombo) dispatchModelCombo.setOptions(items);
+}
+
+export function getBoardDispatchModel() {
+  return (dispatchModelCombo && dispatchModelCombo.getValue()) || 'claude:sonnet';
+}
 
 function findChiefCard() {
   const columns = (state.board && state.board.columns) || {};
@@ -259,7 +270,7 @@ function syncChatModeUi() {
   if (els.boardDispatchModel) {
     // The chief's model is owned by chief settings, not the per-dispatch
     // selector — grey it out so the bar doesn't suggest otherwise.
-    els.boardDispatchModel.disabled = chat;
+    if (dispatchModelCombo) dispatchModelCombo.setDisabled(chat);
   }
   renderChiefStatus();
 }
@@ -347,7 +358,7 @@ async function openChiefSettings() {
       headers: authHeaders({ terminalToken: tt }),
     });
     const s = body.settings || {};
-    els.chiefModelSelect.value = s.model || 'fable';
+    if (chiefModelCombo) chiefModelCombo.setValue(s.model || 'fable');
     els.chiefWorkerCap.value = String(s.worker_cap || 3);
     els.chiefSettingsDialog.showModal();
   } catch (exc) {
@@ -362,7 +373,7 @@ async function saveChiefSettings() {
       method: 'PUT',
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify({
-        model: els.chiefModelSelect.value,
+        model: (chiefModelCombo && chiefModelCombo.getValue()) || 'fable',
         worker_cap: parseInt(els.chiefWorkerCap.value, 10),
       }),
     });
@@ -375,6 +386,15 @@ async function saveChiefSettings() {
 
 function wireChief() {
   if (!els.boardChiefStatus) return;
+  chiefModelCombo = wireModelCombo(els.chiefModelSelect);
+  if (chiefModelCombo) {
+    chiefModelCombo.setOptions([
+      { value: 'sonnet', label: 'Sonnet' },
+      { value: 'opus', label: 'Opus' },
+      { value: 'fable', label: 'Fable' },
+    ]);
+    chiefModelCombo.setValue('fable');
+  }
   const afterEnsure = async function () {
     await fetchBoard().catch(function () {});
     renderChiefStatus();
@@ -440,7 +460,7 @@ async function dispatchGoal() {
       repo: repo,
       goal: goal,
       mode: dispatchMode,
-      model: (els.boardDispatchModel && els.boardDispatchModel.value) || 'sonnet',
+      model: getBoardDispatchModel(),
     };
     // Same size contract as startIssue (issue #374).
     applyLaunchSizePayload(payload);
@@ -496,6 +516,9 @@ function wireRepoCombo() {
 export function wireDispatch() {
   if (!els.boardDispatchSend) return;
   wireRepoCombo();
+  dispatchModelCombo = wireModelCombo(els.boardDispatchModel, function () {
+    els.boardDispatchModel.dispatchEvent(new Event('change'));
+  });
   if (els.boardDispatchMode) {
     els.boardDispatchMode.addEventListener('change', function () {
       setDispatchMode(els.boardDispatchMode.value);
