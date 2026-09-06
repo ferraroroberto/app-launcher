@@ -425,6 +425,10 @@ def test_quota_rows_show_both_agents_on_one_line_each(
     # wrapping impossible, and the row must never widen the page.
     for index in (0, 1):
         expect(coding.nth(index)).to_have_css("white-space", "nowrap")
+    # Pseudo-elements are out of reach of to_have_css, so this one read stays
+    # raw. Safe under the #680 convention: renderQuotaLines() mutates these two
+    # fixed spans in place and never replaceChildren()s the row, so the poll
+    # cannot swap the node out from under the read.
     dots = authed_page.evaluate(
         """() => Array.from(document.querySelectorAll('#codingUsage .quota-line'))
              .map(el => getComputedStyle(el, '::before').content)"""
@@ -432,10 +436,8 @@ def test_quota_rows_show_both_agents_on_one_line_each(
     assert dots == ["none", "none"], f"status dot came back: {dots}"
 
     # Tier colour rides the line itself, taken from the worse of its windows.
-    assert authed_page.evaluate(
-        """() => Array.from(document.querySelectorAll('#codingUsage .quota-line'))
-             .map(el => el.className)"""
-    ) == ["quota-line good", "quota-line good"]
+    for index in (0, 1):
+        expect(coding.nth(index)).to_have_class("quota-line good")
 
     # Selecting the other harness changes neither the rows nor their order.
     authed_page.locator("#codingModelBtn").click()
