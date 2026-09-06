@@ -3055,13 +3055,12 @@ body.terminal-open {
    pairs both classes to opt back into a row. Since issue #365 the flat
    look IS the .app-item base (this pattern got generalized app-wide), so
    the old box-resetting overrides are gone — only the row direction and
-   the flat button geometry remain. The truncating spans still need
-   `min-width: 0` on the flex item along the row axis (.board-card-text),
-   not just its ancestors — a flex item's default min-width is `auto`
-   (content-based), which silently defeats overflow/ellipsis by letting
-   the item grow to fit its content instead of shrinking to the row's
-   available space (the textbook "ellipsis inside flex doesn't truncate"
-   bug, not a mobile-Safari quirk). */
+   the flat button geometry remain. The text stack still needs
+   `min-width: 0` along the row axis (.board-card-text), not just its
+   ancestors — a flex item's default min-width is `auto` (content-based),
+   which otherwise lets a long title widen the row instead of wrapping inside
+   the available space (the textbook flex sizing bug, not a mobile-Safari
+   quirk). */
 .board-item.board-item-issue {
   flex-direction: row;
   align-items: center;
@@ -3090,11 +3089,14 @@ body.terminal-open {
   min-width: 0;
   gap: 2px;
 }
+/* Backlog titles stay readable on narrow phones: wrap the full issue title
+   instead of hiding it behind a one-line ellipsis. The row grows with the
+   text column, while the sibling action rail stays vertically centered. */
 .board-card-title-compact {
   display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
   font-size: var(--font-label);
   font-weight: 600;
   line-height: 1.3;

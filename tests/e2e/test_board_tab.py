@@ -611,23 +611,15 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     )
 
 
-def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
+def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     authed_page: Page, base_url: str
 ) -> None:
-    """#337/#339 regression guard: a title too long to fit must be
-    ellipsis-truncated on its own line, not wrapped onto a second line
-    within that line (the tile itself is legitimately two lines tall now —
-    meta line + title line — by design). A prior build passed on
-    Chromium/desktop widths (plenty of room to spare) and on the short
-    fixture title, but wrapped the title text to two tall lines on a real
-    phone with a real long title — a flex ellipsis bug (`min-width: 0`
-    missing on the truncating element itself) that a short title or a wide
-    viewport can't surface. This pins a long title + a real phone-narrow
-    viewport so the regression can't silently return."""
+    """#862 regression guard: a long title wraps and grows the backlog row
+    instead of being clipped with an ellipsis on a phone-width viewport."""
     authed_page.set_viewport_size({"width": 430, "height": 739})
     long_title = (
         "This is a deliberately very long issue title meant to overflow the "
-        "available card width so the truncation behavior is actually exercised"
+        "available card width so the wrapping behavior is actually exercised"
     )
     payload = copy.deepcopy(_FAKE_BOARD)
     payload["columns"]["backlog"] = [{
@@ -645,11 +637,10 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
     title_el = tile.locator(".board-card-title-compact")
     expect(title_el).to_be_visible(timeout=15_000)
 
-    # The full title can't possibly render on one line at this viewport width
-    # — scrollWidth exceeding clientWidth proves the box is actually clipping
-    # (truncating) rather than having silently grown/wrapped to fit it all.
-    # Read the two widths (not the comparison) so a mid-rebuild read is
-    # recognisable as the 0/0 artifact it is rather than a silent False (#680).
+    # A wrapped title fits inside its box: scrollWidth must not exceed
+    # clientWidth. Read the two widths (not the comparison) so a mid-rebuild
+    # read is recognisable as the 0/0 artifact it is rather than a silent
+    # False (#680).
     widths = stable_read(
         lambda: title_el.evaluate(
             "el => el.scrollWidth && el.clientWidth"
@@ -657,16 +648,26 @@ def test_backlog_issue_tile_truncates_a_long_title_instead_of_wrapping(
         )
     )
     assert widths is not None, "title box never reported non-zero widths"
-    assert widths[0] > widths[1], (
-        "title box did not overflow — the long-title fixture isn't exercising "
-        f"truncation (scrollWidth={widths[0]}, clientWidth={widths[1]})"
+    assert widths[0] <= widths[1], (
+        "title box still overflows horizontally instead of wrapping "
+        f"(scrollWidth={widths[0]}, clientWidth={widths[1]})"
     )
 
-    # The title's own line stays single-line height — bounded well under
-    # what two wrapped lines of 14px/1.3 text would need.
-    box = stable_read(title_el.bounding_box)
-    assert box is not None
-    assert box["height"] < 26, f"title is {box['height']}px tall — looks like it wrapped to 2+ lines"
+    title_box = stable_read(title_el.bounding_box)
+    tile_box = stable_read(tile.bounding_box)
+    action_box = stable_read(tile.locator(".board-issue-btn").first.bounding_box)
+    assert title_box is not None and tile_box is not None and action_box is not None
+    assert title_box["height"] > 26, (
+        f"title is only {title_box['height']}px tall — it did not wrap"
+    )
+    assert tile_box["height"] > 60, (
+        f"tile is only {tile_box['height']}px tall — it did not grow with the title"
+    )
+    tile_center = tile_box["y"] + tile_box["height"] / 2
+    action_center = action_box["y"] + action_box["height"] / 2
+    assert abs(action_center - tile_center) <= 1, (
+        f"issue action is not vertically centered: {action_center} vs {tile_center}"
+    )
 
 
 def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
