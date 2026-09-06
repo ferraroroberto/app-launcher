@@ -24,44 +24,35 @@ let claudeModelCombo = null;
 let codexModelCombo = null;
 let copilotModelCombo = null;
 let piModelCombo = null;
-let codingQuotaSelectionSequence = 0;
-let codingQuotaSaveQueue = Promise.resolve();
+let codingModelSelectionSequence = 0;
+let codingModelSaveQueue = Promise.resolve();
 
-function announceCodingQuotaSelection(selection, pending) {
-  // Clear synchronously before either the config save or provider fetch can
-  // finish, so a Claude badge never lingers under a newly-selected Codex row.
-  window.dispatchEvent(new CustomEvent('quota-selection-changed', {
-    detail: { selection: selection, pending: pending },
-  }));
-}
-
-async function selectCodingQuota(patch, selection) {
-  const sequence = ++codingQuotaSelectionSequence;
-  announceCodingQuotaSelection(selection, true);
+// Ordered persistence for the coding-model picker (#857). Quota rows no
+// longer follow this selection (#860) — both agents are always shown — so
+// this is now purely about the selector settling on server truth.
+async function selectCodingModel(patch) {
+  const sequence = ++codingModelSelectionSequence;
 
   // Preserve click order at the server while letting the newest selection own
   // the UI immediately. An older completion must never repaint a newer click.
   const saved = await (
-    codingQuotaSaveQueue = codingQuotaSaveQueue.then(function () {
-      return saveCodingQuotaPatch(patch, sequence);
+    codingModelSaveQueue = codingModelSaveQueue.then(function () {
+      return saveCodingModelPatch(patch, sequence);
     })
   );
-  if (sequence !== codingQuotaSelectionSequence) return saved;
+  if (sequence !== codingModelSelectionSequence) return saved;
 
   // A rejected save leaves the optimistic control ahead of server truth.
-  // Read it back explicitly and settle both the selector and quota owner.
+  // Read it back explicitly and settle the selector.
   if (!saved) {
     try {
       await fetchConfig(function () {
-        return sequence === codingQuotaSelectionSequence;
+        return sequence === codingModelSelectionSequence;
       });
     } catch (_exc) {
-      if (sequence === codingQuotaSelectionSequence) renderClaudeOptions();
+      if (sequence === codingModelSelectionSequence) renderClaudeOptions();
     }
   }
-  if (sequence !== codingQuotaSelectionSequence) return saved;
-  const persisted = (state.config && state.config.coding_model_choice) || selection;
-  announceCodingQuotaSelection(persisted, false);
   return saved;
 }
 
@@ -309,12 +300,12 @@ async function postConfigPatch(patch) {
   });
 }
 
-async function saveCodingQuotaPatch(patch, sequence) {
+async function saveCodingModelPatch(patch, sequence) {
   try {
     await postConfigPatch(patch);
-    if (sequence === codingQuotaSelectionSequence) {
+    if (sequence === codingModelSelectionSequence) {
       await fetchConfig(function () {
-        return sequence === codingQuotaSelectionSequence;
+        return sequence === codingModelSelectionSequence;
       });
     }
     return true;
@@ -352,19 +343,13 @@ function wireBoolSwitch(el, patchKey) {
 export function wireClaudeOptions() {
   codingModelCombo = wireModelCombo(
     document.getElementById('codingModelCombo'),
-    function (v) { selectCodingQuota({ coding_model_choice: v }, v); }
+    function (v) { selectCodingModel({ coding_model_choice: v }); }
   );
   claudeModelCombo = wireModelCombo(els.claudeModel, function (model) {
-    selectCodingQuota(
-      { claude_model: model, coding_model_choice: 'claude:' + model },
-      'claude:' + model
-    );
+    selectCodingModel({ claude_model: model, coding_model_choice: 'claude:' + model });
   });
   codexModelCombo = wireModelCombo(els.codexModel, function (model) {
-    const selection = 'codex:' + model;
-    selectCodingQuota({
-      codex_model: model, coding_model_choice: selection,
-    }, selection);
+    selectCodingModel({ codex_model: model, coding_model_choice: 'codex:' + model });
   });
   copilotModelCombo = wireModelCombo(els.copilotModel, function (model) {
     patchConfig({ copilot_model: model });

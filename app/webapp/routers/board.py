@@ -93,35 +93,12 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
     return {"fetched_at": snap.get("fetched_at"), "error": snap.get("error")}
 
 
-def _rate_limits_section(rate_limits: Dict[str, Any]) -> Dict[str, Any]:
-    return {
-        "schema_version": rate_limits["schema_version"],
-        "harness": rate_limits["harness"],
-        "provider": rate_limits["provider"],
-        "label": rate_limits["label"],
-        "state": rate_limits["state"],
-        "reason": rate_limits["reason"],
-        "checked_at": rate_limits["checked_at"],
-        "observations": rate_limits["observations"],
-        "available": rate_limits["available"],
-        "stale": rate_limits["stale"],
-        "updated_at": rate_limits["updated_at"],
-        "five_hour": rate_limits["five_hour"],
-        "seven_day": rate_limits["seven_day"],
-    }
-
-
-def _quota_selection(request: Request, cfg: WebappConfig) -> str:
-    return str(request.query_params.get("quota_selection") or cfg.coding_model_choice)
-
-
-def _read_quota(cfg: WebappConfig, selection: str) -> Dict[str, Any]:
+def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
+    """Both heavy agents, always, independent of the current selection (#860)."""
     legacy_path = Path(cfg.rate_limits_file)
-    return quota_usage.read_quota_view(
+    return quota_usage.read_quota_lines(
         Path(cfg.claude_config_dir),
         legacy_path.parent,
-        selection,
-        pi_model=cfg.pi_model,
         legacy_reader=lambda: board.read_rate_limits(legacy_path),
     )
 
@@ -159,6 +136,21 @@ def _maybe_refresh_codex(cfg: WebappConfig, rate_limits: Dict[str, Any]) -> None
     _quota_refresh_task.add_done_callback(_refresh_finished)
 
 
+def _refresh_codex_for_lines(
+    cfg: WebappConfig, quota_lines: List[Dict[str, Any]]
+) -> None:
+    """Keep Codex fresh even while Claude is the selected harness (#860).
+
+    The compact rows always show Codex, so the native collector can no
+    longer be scheduled off the *selected* view alone — pointing the model
+    picker at Claude used to leave Codex's row permanently stale.
+    """
+    for line in quota_lines:
+        if line.get("harness") == "codex":
+            _maybe_refresh_codex(cfg, line)
+            return
+
+
 def _mark_active_backlog(
     columns: Dict[str, List[Dict[str, Any]]], active_rows: Dict[str, Any]
 ) -> None:
@@ -175,15 +167,14 @@ def _mark_active_backlog(
 async def get_board(request: Request) -> Dict[str, Any]:
     """The five columns + source health, cheap enough for the 5s poll."""
     cfg: WebappConfig = request.app.state.webapp_config
-    quota_selection = _quota_selection(request, cfg)
 
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
-    live, state, active_issues, job_cards, rate_limits = await asyncio.gather(
+    live, state, active_issues, job_cards, quota_lines = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
         asyncio.to_thread(board.read_active_issues, active_issues_file),
         asyncio.to_thread(board.jobs_attention),
-        asyncio.to_thread(_read_quota, cfg, quota_selection),
+        asyncio.to_thread(_read_quota_lines, cfg),
     )
     github = github_client.snapshot()
 
@@ -194,7 +185,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
     )
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"])
-    _maybe_refresh_codex(cfg, rate_limits)
+    _refresh_codex_for_lines(cfg, quota_lines)
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -212,27 +203,28 @@ async def get_board(request: Request) -> Dict[str, Any]:
             "updated_at": active_issues["updated_at"],
             "count": len(active_issues["rows"]),
         },
-        "rate_limits": _rate_limits_section(rate_limits),
+        "quota_lines": quota_lines,
     }
 
 
 @router.get("/api/rate-limits")
 async def get_rate_limits(request: Request) -> Dict[str, Any]:
-    """Selected harness/provider quota view, standalone from the Board tab.
+    """The same quota rows as the Board tab, standalone from it.
 
-    The Coding tab's Running-sessions header shows the same usage badges as
-    the Board tab, but must not depend on the Board ever having been opened
-    — ``GET /api/board``'s own rate-limits read only happens as a side
-    effect of that endpoint being polled, which fetchBoard() self-gates to
-    "Board tab visible". This is the same cheap one-file read, exposed on
-    its own route so any tab can poll it independently.
+    The Coding tab's Running-sessions header shows the same rows as the
+    Board tab, but must not depend on the Board ever having been opened —
+    ``GET /api/board``'s own quota read only happens as a side effect of
+    that endpoint being polled, which fetchBoard() self-gates to "Board tab
+    visible". This is the same cheap file read, exposed on its own route so
+    any tab can poll it independently.
+
+    Both heavy agents are always returned, in a fixed order (#860); the row
+    set no longer depends on the caller's selected model.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    rate_limits = await asyncio.to_thread(
-        _read_quota, cfg, _quota_selection(request, cfg)
-    )
-    _maybe_refresh_codex(cfg, rate_limits)
-    return _rate_limits_section(rate_limits)
+    quota_lines = await asyncio.to_thread(_read_quota_lines, cfg)
+    _refresh_codex_for_lines(cfg, quota_lines)
+    return {"quota_lines": quota_lines}
 
 
 @router.post("/api/board/github/refresh")

@@ -331,90 +331,57 @@ def test_server_catalog_populates_shared_model_selectors(
         assert len(set(signatures)) == 1, f"{theme} settings picker style drift: {signatures}"
 
 
-def _quota_payload(harness: str, state: str = "available") -> dict:
-    label = "Codex" if harness == "codex" else "Claude"
-    if state in {"unknown", "unsupported", "error"}:
-        observations = []
-    elif harness == "codex":
-        observations = [
-            {
-                "bucket": "default", "state": state, "shared_account": False,
-                "windows": [{
-                    "id": "primary", "duration_minutes": 10080,
-                    "used_percentage": 0, "resets_at": "2026-09-09T18:00:00Z",
-                    "state": state,
-                }],
-            },
-            {
-                "bucket": "reserve", "state": state, "shared_account": False,
-                "windows": [{
-                    "id": "secondary", "duration_minutes": 1440,
-                    "used_percentage": 64, "resets_at": None, "state": state,
-                }],
-            },
-            {
-                "bucket": "spark-custom", "state": "unknown", "shared_account": False,
-                "windows": [{
-                    "id": "primary", "duration_minutes": 300,
-                    "used_percentage": None, "resets_at": None, "state": "unknown",
-                }],
-            },
-        ]
-    else:
-        observations = [{
-            "bucket": "claude-code", "state": state, "shared_account": False,
-            "windows": [{
-                "id": "five_hour", "duration_minutes": 300,
-                "used_percentage": 42, "resets_at": "2026-09-09T18:00:00Z",
-                "state": state,
-            }],
-        }]
-    return {
-        "schema_version": 1, "harness": harness,
-        "provider": "openai" if harness == "codex" else "anthropic",
-        "label": label, "state": state, "reason": state,
-        "checked_at": "2026-09-09T17:00:01Z", "observations": observations,
-        "available": state == "available", "stale": state == "stale",
-        "updated_at": "2026-09-09T17:00:00Z",
-        "five_hour": None, "seven_day": None,
-    }
+def _quota_lines(claude_5h=39, claude_1w=19, codex_5h=0, codex_1w=36) -> list[dict]:
+    """The compact rows the backend collapses native buckets down to (#860)."""
+    def window(pct, iso):
+        return None if pct is None else {"used_percentage": pct, "resets_at": iso}
+    return [
+        {
+            "harness": "claude", "provider": "anthropic", "label": "Claude Code",
+            "state": "available", "reason": "native_observation", "stale": False,
+            "updated_at": "2026-09-09T17:00:00Z",
+            "five_hour": window(claude_5h, "2026-09-09T18:00:00Z"),
+            "weekly": window(claude_1w, "2026-09-14T00:00:00Z"),
+        },
+        {
+            "harness": "codex", "provider": "openai", "label": "Codex",
+            "state": "available", "reason": "native_observation", "stale": False,
+            "updated_at": "2026-09-09T17:00:00Z",
+            "five_hour": window(codex_5h, "2026-09-09T21:00:00Z"),
+            "weekly": window(codex_1w, "2026-09-16T12:00:00Z"),
+        },
+    ]
 
 
-def test_selected_provider_quota_states_switch_without_overflow(
+def test_quota_rows_show_both_agents_on_one_line_each(
     authed_page: Page, base_url: str
 ) -> None:
-    """#847: selected-source badges survive every state and a late response."""
-    codex = _quota_payload("codex")
-    claude = _quota_payload("claude")
+    """#860: Claude Code above Codex, always both, one nowrap line each.
+
+    The regression this pins is a *display* contract, so it asserts what the
+    phone actually shows — order, single-linedness, tier colour, absence of
+    the old status dot — not which harness the model picker happens to own.
+    """
+    lines = _quota_lines()
     board_requests: list[str] = []
 
     authed_page.add_init_script(
         """
-        (payloads => {
-          const claude = payloads.claude;
-          const codex = payloads.codex;
+        (payload => {
           const nativeFetch = window.fetch.bind(window);
           window.fetch = function (input, init) {
             const url = new URL(typeof input === 'string' ? input : input.url, location.href);
             if (url.pathname !== '/api/rate-limits') return nativeFetch(input, init);
-            const selection = url.searchParams.get('quota_selection') || 'claude:sonnet';
-            const isCodex = selection.startsWith('codex:');
-            const delay = window.__quotaRace && !isCodex ? 250 : 5;
-            const payload = isCodex ? codex : claude;
-            return new Promise(resolve => setTimeout(() => resolve(new Response(
-              JSON.stringify(payload), {status: 200, headers: {'Content-Type': 'application/json'}}
-            )), delay));
+            return Promise.resolve(new Response(JSON.stringify({quota_lines: payload}), {
+              status: 200, headers: {'Content-Type': 'application/json'}
+            }));
           };
         })(%s)
-        """ % _json.dumps({"claude": claude, "codex": codex}),
+        """ % _json.dumps(lines),
     )
 
     def board_route(route):
-        selection = parse_qs(urlparse(route.request.url).query).get(
-            "quota_selection", ["claude:sonnet"]
-        )[0]
-        board_requests.append(selection)
-        quota = codex if selection.startswith("codex:") else claude
+        board_requests.append(route.request.url)
         route.fulfill(
             status=200,
             content_type="application/json",
@@ -427,117 +394,172 @@ def test_selected_provider_quota_states_switch_without_overflow(
                 "github": {"fetched_at": "2026-09-09T17:00:00Z", "error": None},
                 "sessions_state": {"available": True, "stale": False},
                 "active_issues": {"available": True, "count": 0},
-                "rate_limits": quota,
+                "quota_lines": lines,
             }),
         )
 
-    authed_page.route(re.compile(r".*/api/board\?.*"), board_route)
+    authed_page.route(re.compile(r".*/api/board(\?.*)?$"), board_route)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
 
-    # Two overlapping requests reproduce the provider-switch race. The late
-    # Claude response must not overwrite the newer Codex selection.
-    authed_page.evaluate(
-        """async () => {
-          window.__quotaRace = true;
-          const module = await import('/static/sessions.js');
-          await Promise.all([
-            module.fetchRateLimits('claude:sonnet'),
-            module.fetchRateLimits('codex:gpt-5.6-luna'),
-          ]);
-          window.__quotaRace = false;
-        }"""
-    )
-    coding = authed_page.locator("#codingUsage")
-    expect(coding).to_have_attribute("data-harness", "codex")
-    expect(coding).to_contain_text("Codex · Default · Primary · 1w · 0% used")
-    expect(coding).to_contain_text("Reserve · Secondary · 1d · 64% used")
-    expect(coding).to_contain_text("Spark custom · Primary · 5h · usage unknown")
-    expect(coding).not_to_contain_text("Claude")
-    expected_local = authed_page.evaluate(
-        """() => new Intl.DateTimeFormat([], {
-          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
-        }).format(new Date('2026-09-09T18:00:00Z'))"""
-    )
-    expect(coding).to_contain_text("resets " + expected_local)
+    coding = authed_page.locator("#codingUsage .quota-line")
+    expect(coding).to_have_count(2)
+    expect(coding.nth(0)).to_have_attribute("data-harness", "claude", timeout=5_000)
+    expect(coding.nth(1)).to_have_attribute("data-harness", "codex")
 
-    # The same renderer keeps state words distinct from a measured zero.
-    for source_state, expected in (
-        ("unknown", "Codex quota unknown"),
-        ("unsupported", "Codex quota unsupported"),
-        ("error", "Codex quota unavailable"),
-    ):
-        rendered = authed_page.evaluate(
-            """async payload => {
-              const module = await import('/static/dom-utils.js');
-              const root = document.getElementById('codingUsage');
-              module.renderUsageBadgeRow(
-                root,
-                document.getElementById('codingUsageSession'),
-                document.getElementById('codingUsageWeekly'), payload
-              );
-              return {state: root.dataset.state, text: root.textContent};
-            }""",
-            _quota_payload("codex", source_state),
-        )
-        assert rendered["state"] == source_state
-        assert rendered["text"].strip() == expected
-
-    rendered = authed_page.evaluate(
-        """async payload => {
-          const module = await import('/static/dom-utils.js');
-          const root = document.getElementById('codingUsage');
-          module.renderUsageBadgeRow(
-            root,
-            document.getElementById('codingUsageSession'),
-            document.getElementById('codingUsageWeekly'), payload
-          );
-          return {state: root.dataset.state, text: root.textContent};
-        }""",
-        _quota_payload("codex", "stale"),
+    expected_5h = authed_page.evaluate(
+        """() => new Intl.DateTimeFormat([], {hour: 'numeric', minute: '2-digit'})
+             .format(new Date('2026-09-09T18:00:00Z'))"""
     )
-    assert rendered["state"] == "stale"
-    assert "0% used" in rendered["text"]
-    assert "stale" in rendered["text"]
+    expected_1w = authed_page.evaluate(
+        """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
+             .format(new Date('2026-09-14T00:00:00Z'))"""
+    )
+    expect(coding.nth(0)).to_have_text(
+        "Claude Code · 5h 39% ↻ " + expected_5h + " · 1w 19% ↻ " + expected_1w
+    )
+    expect(coding.nth(1)).to_contain_text("Codex · 5h 0% ")
+    expect(coding.nth(1)).to_contain_text("1w 36% ")
 
-    # Both authored themes retain a wrapping row with no page overflow.
+    # One line each is a CSS guarantee, not a lucky width: nowrap makes
+    # wrapping impossible, and the row must never widen the page.
+    for index in (0, 1):
+        expect(coding.nth(index)).to_have_css("white-space", "nowrap")
+    # Pseudo-elements are out of reach of to_have_css, so this one read stays
+    # raw. Safe under the #680 convention: renderQuotaLines() mutates these two
+    # fixed spans in place and never replaceChildren()s the row, so the poll
+    # cannot swap the node out from under the read.
+    dots = authed_page.evaluate(
+        """() => Array.from(document.querySelectorAll('#codingUsage .quota-line'))
+             .map(el => getComputedStyle(el, '::before').content)"""
+    )
+    assert dots == ["none", "none"], f"status dot came back: {dots}"
+
+    # Tier colour rides the line itself, taken from the worse of its windows.
+    for index in (0, 1):
+        expect(coding.nth(index)).to_have_class("quota-line good")
+
+    # Selecting the other harness changes neither the rows nor their order.
+    authed_page.locator("#codingModelBtn").click()
+    authed_page.locator(
+        "#codingModelMenu button[data-value='codex:gpt-5.6-luna']"
+    ).click()
+    expect(coding).to_have_count(2)
+    expect(coding.nth(0)).to_contain_text("Claude Code")
+    expect(coding.nth(1)).to_contain_text("Codex")
+
     for theme in ("light", "dark"):
-        authed_page.locator("html").evaluate("(el, value) => { el.dataset.theme = value; }", theme)
+        authed_page.locator("html").evaluate(
+            "(el, value) => { el.dataset.theme = value; }", theme
+        )
         widths = stable_read(lambda: authed_page.locator("body").evaluate(
             "el => el.clientWidth && el.scrollWidth ? [el.clientWidth, el.scrollWidth] : null"
         ))
         assert widths is not None
         assert widths[1] <= widths[0], f"{theme} quota row widens the viewport: {widths}"
 
-    # Board follows its own dispatch-model control, independently of Coding.
+    # The Board carries the identical pair, and never a selection-scoped query.
     authed_page.locator("#tabBoard").click()
-    board_select = authed_page.locator("#boardDispatchModel")
-    board_select.locator(".model-combo-trigger").click()
-    authed_page.locator(
-        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-luna']"
-    ).click()
-    board_usage = authed_page.locator("#boardUsage")
-    expect(board_usage).to_have_attribute("data-harness", "codex", timeout=5_000)
-    expect(board_usage).to_contain_text("0% used")
-    board_select.locator(".model-combo-trigger").click()
-    authed_page.locator(
-        "#boardDispatchModelMenu [data-value='claude:sonnet']"
-    ).click()
-    expect(board_usage).to_have_attribute("data-harness", "claude", timeout=5_000)
-    expect(board_usage).not_to_contain_text("Codex")
-    assert "codex:gpt-5.6-luna" in board_requests
-    assert "claude:sonnet" in board_requests
+    board = authed_page.locator("#boardUsage .quota-line")
+    expect(board.nth(0)).to_contain_text("Claude Code", timeout=5_000)
+    expect(board.nth(1)).to_contain_text("Codex")
+    assert board_requests and not any("quota_selection" in u for u in board_requests)
 
 
-def test_quota_selection_owns_polls_until_config_save_settles(
+def test_quota_rows_degrade_per_agent_without_collapsing(
     authed_page: Page, base_url: str
 ) -> None:
-    """#847: a periodic poll cannot race a pending provider config save."""
+    """#860: an unreadable source dims its own row; the other keeps its numbers."""
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
+
+    hot = _quota_lines(claude_5h=91, claude_1w=64)
+    hot[1] = {**hot[1], "state": "error", "five_hour": None, "weekly": None}
+    rendered = authed_page.evaluate(
+        """async payload => {
+          const module = await import('/static/dom-utils.js');
+          const root = document.getElementById('codingUsage');
+          module.renderQuotaLines(root, payload);
+          return Array.from(root.querySelectorAll('.quota-line')).map(el => ({
+            hidden: el.hidden, cls: el.className, text: el.textContent,
+          }));
+        }""",
+        hot,
+    )
+    assert [row["hidden"] for row in rendered] == [False, False]
+    # 91% in the 5h window outranks the calmer weekly one.
+    assert rendered[0]["cls"] == "quota-line danger"
+    assert rendered[0]["text"].startswith("Claude Code · 5h 91% ")
+    # Codex has never been measured on this page, so there is nothing to fall
+    # back to and the row says so outright — and is NOT also dimmed, since
+    # `stale` marks unconfirmed numbers and this row has none.
+    assert rendered[1]["cls"] == "quota-line muted"
+    assert rendered[1]["text"] == "Codex · quota unavailable"
+
+
+def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
+    authed_page: Page, base_url: str
+) -> None:
+    """#860: an expired shard must not blank the numbers you came to read.
+
+    Claude's statusline shard is only rewritten when a session paints, and
+    expires after ten minutes, so an idle stretch routinely returns a bare
+    ``unknown``. The row keeps its last reading, dimmed and labelled — it
+    must never present it as a current, confident value.
+    """
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
+
+    good = _quota_lines()
+    gone = [
+        {**good[0], "state": "unknown", "reason": "source_absent",
+         "five_hour": None, "weekly": None},
+        good[1],
+    ]
+    rendered = authed_page.evaluate(
+        """async payloads => {
+          const module = await import('/static/dom-utils.js');
+          const root = document.getElementById('codingUsage');
+          const read = () => Array.from(root.querySelectorAll('.quota-line'))
+            .map(el => ({cls: el.className, text: el.textContent,
+                         state: el.dataset.state}));
+          module.renderQuotaLines(root, payloads.good);
+          const before = read();
+          module.renderQuotaLines(root, payloads.gone);
+          return {before, after: read()};
+        }""",
+        {"good": good, "gone": gone},
+    )
+    before, after = rendered["before"], rendered["after"]
+    assert before[0]["cls"] == "quota-line good"
+    assert "5h 39%" in before[0]["text"] and "stale" not in before[0]["cls"]
+
+    # Same numbers, now dimmed and explicitly not-confirmed. The reset stamps
+    # are dropped: an unconfirmed 5h window's reset may already have passed,
+    # and the width they free is what keeps "unknown" itself from being the
+    # part ellipsed off a 390px line.
+    assert after[0]["text"] == "Claude Code · 5h 39% · 1w 19% · unknown"
+    assert "↻" not in after[0]["text"]
+    assert "stale" in after[0]["cls"]
+    assert after[0]["state"] == "unknown"
+    # The measured agent beside it is untouched.
+    assert after[1]["cls"] == "quota-line good"
+    assert after[1]["text"].endswith("1w 36% ↻ " + authed_page.evaluate(
+        """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
+             .format(new Date('2026-09-16T12:00:00Z'))"""
+    ))
+
+
+def test_model_selection_owns_polls_until_config_save_settles(
+    authed_page: Page, base_url: str
+) -> None:
+    """#847: a rapid reselection cannot be repainted by an older save.
+
+    Quota rows stopped following this selection in #860; what still has to
+    hold is that the picker itself settles on persisted server truth no
+    matter how the concurrent POST + readback interleave.
+    """
     config = _config("sonnet", "claude:sonnet")
-    payloads = {
-        "claude": _quota_payload("claude"),
-        "codex": _quota_payload("codex"),
-    }
     authed_page.add_init_script(
         """
         (fixture => {
@@ -546,20 +568,20 @@ def test_quota_selection_owns_polls_until_config_save_settles(
           const saves = [];
           const reads = [];
           let delayNextConfigRead = false;
-          window.__quotaPolls = [];
-          window.__quotaSaves = saves;
-          window.__quotaReads = reads;
+          window.__modelPolls = [];
+          window.__modelSaves = saves;
+          window.__modelReads = reads;
           window.__delayNextConfigRead = function () {
             delayNextConfigRead = true;
           };
-          window.__settleQuotaRead = function () {
+          window.__settleModelRead = function () {
             const read = reads.shift();
             if (!read) throw new Error('no pending config read');
             read.resolve(read.response);
           };
-          window.__settleQuotaSave = function (outcome) {
+          window.__settleModelSave = function (outcome) {
             const save = saves.shift();
-            if (!save) throw new Error('no pending quota save');
+            if (!save) throw new Error('no pending model save');
             if (outcome === 'ok') {
               if (save.patch.coding_model_choice) {
                 config = {...config, coding_model_choice: save.patch.coding_model_choice};
@@ -590,23 +612,19 @@ def test_quota_selection_owns_polls_until_config_save_settles(
               return Promise.resolve(response);
             }
             if (url.pathname === '/api/rate-limits') {
-              const selection = url.searchParams.get('quota_selection') || 'claude:sonnet';
-              window.__quotaPolls.push(selection);
-              const payload = selection.startsWith('codex:')
-                ? fixture.payloads.codex : fixture.payloads.claude;
-              return Promise.resolve(new Response(JSON.stringify(payload), {
+              window.__modelPolls.push(url.search);
+              return Promise.resolve(new Response('{"quota_lines": []}', {
                 status: 200, headers: {'Content-Type': 'application/json'}
               }));
             }
             return nativeFetch(input, init);
           };
         })(%s)
-        """ % _json.dumps({"config": config, "payloads": payloads}),
+        """ % _json.dumps({"config": config}),
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     combo = authed_page.locator("#codingModelCombo")
     trigger = authed_page.locator("#codingModelBtn")
-    coding = authed_page.locator("#codingUsage")
     expect(combo).to_have_attribute("data-value", "claude:sonnet")
 
     trigger.click()
@@ -614,83 +632,72 @@ def test_quota_selection_owns_polls_until_config_save_settles(
         "#codingModelMenu button[data-value='codex:gpt-5.6-luna']"
     ).click()
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")
-    authed_page.wait_for_function("window.__quotaSaves.length === 1")
+    authed_page.wait_for_function("window.__modelSaves.length === 1")
 
-    # The application's ordinary timer calls with no override while POST +
-    # readback are pending. It must follow the synchronous control, not stale
-    # state.config. Waiting for a new captured request exercises the exact
-    # stamped module instance imported by main.js.
-    poll_count = authed_page.evaluate("window.__quotaPolls.length")
+    # The application's ordinary timers keep running while POST + readback
+    # are pending; waiting for a new captured poll exercises the exact
+    # stamped module instance imported by main.js, not a fresh import.
+    poll_count = authed_page.evaluate("window.__modelPolls.length")
     authed_page.wait_for_function(
-        "count => window.__quotaPolls.length > count", arg=poll_count,
+        "count => window.__modelPolls.length > count", arg=poll_count,
         timeout=10_000,
     )
-    assert authed_page.evaluate("window.__quotaPolls.at(-1)").startswith("codex:")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")
 
-    # A successful save settles on the persisted Codex choice, and subsequent
-    # timer polls continue to use it after the pending owner is released.
-    authed_page.evaluate("window.__settleQuotaSave('ok')")
-    authed_page.wait_for_function("window.__quotaSaves.length === 0")
+    # A successful save settles on the persisted Codex choice, and the quota
+    # poll keeps asking for both agents rather than the selected one (#860).
+    authed_page.evaluate("window.__settleModelSave('ok')")
+    authed_page.wait_for_function("window.__modelSaves.length === 0")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    poll_count = authed_page.evaluate("window.__quotaPolls.length")
+    poll_count = authed_page.evaluate("window.__modelPolls.length")
     authed_page.wait_for_function(
-        "count => window.__quotaPolls.length > count", arg=poll_count,
+        "count => window.__modelPolls.length > count", arg=poll_count,
         timeout=10_000,
     )
-    assert authed_page.evaluate("window.__quotaPolls.at(-1)").startswith("codex:")
+    assert authed_page.evaluate("window.__modelPolls.at(-1)") == ""
 
     # A newer rapid selection can arrive after an older POST starts its config
     # readback. Even if that GET captured the older persisted value, releasing
-    # it cannot repaint or take quota ownership from the newer selection.
+    # it cannot repaint over the newer selection.
     trigger.click()
     authed_page.locator(
         "#codingModelMenu button[data-value='claude:fable']"
     ).click()
-    authed_page.wait_for_function("window.__quotaSaves.length === 1")
+    authed_page.wait_for_function("window.__modelSaves.length === 1")
     authed_page.evaluate("window.__delayNextConfigRead()")
-    authed_page.evaluate("window.__settleQuotaSave('ok')")
-    authed_page.wait_for_function("window.__quotaReads.length === 1")
+    authed_page.evaluate("window.__settleModelSave('ok')")
+    authed_page.wait_for_function("window.__modelReads.length === 1")
     trigger.click()
     authed_page.locator(
         "#codingModelMenu button[data-value='codex:gpt-5.6-luna']"
     ).click()
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")
-    authed_page.evaluate("window.__settleQuotaRead()")
-    authed_page.wait_for_function("window.__quotaSaves.length === 1")
+    authed_page.evaluate("window.__settleModelRead()")
+    authed_page.wait_for_function("window.__modelSaves.length === 1")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")
-    authed_page.evaluate("window.__settleQuotaSave('ok')")
-    authed_page.wait_for_function("window.__quotaSaves.length === 0")
+    authed_page.evaluate("window.__settleModelSave('ok')")
+    authed_page.wait_for_function("window.__modelSaves.length === 0")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")
 
     # A failed older save cannot repaint a newer selection while its persisted
-    # readback is delayed. If the newest save then fails too, both the control
-    # and badge reconcile explicitly to persisted server truth.
+    # readback is delayed. If the newest save then fails too, the control
+    # reconciles explicitly to persisted server truth.
     trigger.click()
     authed_page.locator(
         "#codingModelMenu button[data-value='claude:fable']"
     ).click()
     expect(combo).to_have_attribute("data-value", "claude:fable")
-    expect(coding).to_have_attribute("data-harness", "claude")
-    authed_page.wait_for_function("window.__quotaSaves.length === 1")
+    authed_page.wait_for_function("window.__modelSaves.length === 1")
     authed_page.evaluate("window.__delayNextConfigRead()")
-    authed_page.evaluate("window.__settleQuotaSave('fail')")
-    authed_page.wait_for_function("window.__quotaReads.length === 1")
+    authed_page.evaluate("window.__settleModelSave('fail')")
+    authed_page.wait_for_function("window.__modelReads.length === 1")
     trigger.click()
     authed_page.locator(
         "#codingModelMenu button[data-value='claude:sonnet']"
     ).click()
     expect(combo).to_have_attribute("data-value", "claude:sonnet")
-    expect(coding).to_have_attribute("data-harness", "claude")
-    authed_page.evaluate("window.__settleQuotaRead()")
-    authed_page.wait_for_function("window.__quotaSaves.length === 1")
+    authed_page.evaluate("window.__settleModelRead()")
+    authed_page.wait_for_function("window.__modelSaves.length === 1")
     expect(combo).to_have_attribute("data-value", "claude:sonnet")
-    expect(coding).to_have_attribute("data-harness", "claude")
-    authed_page.evaluate("window.__settleQuotaSave('fail')")
+    authed_page.evaluate("window.__settleModelSave('fail')")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    expect(coding).to_have_attribute("data-harness", "codex")

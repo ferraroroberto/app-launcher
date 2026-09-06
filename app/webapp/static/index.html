@@ -463,9 +463,13 @@
           </span>
         </summary>
         <div class="collapse-body">
-        <div id="codingUsage" class="usage-badges" role="status" aria-live="polite" hidden>
-          <span id="codingUsageSession" class="usage-badge" hidden></span>
-          <span id="codingUsageWeekly" class="usage-badge" hidden></span>
+        <!-- Quota rows (#860) — one line per heavy agent, Claude Code above
+             Codex, always both regardless of the selected model. The two
+             slots are fixed and positional; renderQuotaLines() only fills
+             them, so the layout never jumps when a source degrades. -->
+        <div id="codingUsage" class="quota-lines" role="status" aria-live="polite">
+          <span class="quota-line" hidden></span>
+          <span class="quota-line" hidden></span>
         </div>
         <!-- Context filter "saved" badge (issue #713) — glanceable tokens-
              saved readout beside the usage badges above; hidden entirely
@@ -951,9 +955,12 @@
                 aria-label="Refresh GitHub data">↻</button>
       </div>
       <div id="boardStatus" class="board-status" hidden></div>
-      <div id="boardUsage" class="usage-badges" role="status" aria-live="polite" hidden>
-        <span id="boardUsageSession" class="usage-badge" hidden></span>
-        <span id="boardUsageWeekly" class="usage-badge" hidden></span>
+      <!-- Same two quota rows as the Coding tab (#860) — this is where the
+           heavier sessions get launched, so both agents' headroom has to be
+           readable without switching the dispatch model. -->
+      <div id="boardUsage" class="quota-lines" role="status" aria-live="polite">
+        <span class="quota-line" hidden></span>
+        <span class="quota-line" hidden></span>
       </div>
       <div id="boardColumns" class="board-columns">
         <section class="board-col" data-col="backlog" aria-label="Backlog">

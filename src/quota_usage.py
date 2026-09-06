@@ -228,7 +228,14 @@ def read_quota_view(
     except (ImportError, OSError, AttributeError, TypeError, ValueError):
         logger.info("Quota contract read unavailable")
         return _empty_view(route, "error", "consumer_contract_unavailable")
+    return _view_from_snapshot(snapshot, route, legacy_reader)
 
+
+def _view_from_snapshot(
+    snapshot: Dict[str, Any],
+    route: QuotaRoute,
+    legacy_reader: Optional[Callable[[], Dict[str, Any]]],
+) -> Dict[str, Any]:
     candidates = [
         source for source in snapshot.get("sources", [])
         if isinstance(source, dict)
@@ -246,6 +253,100 @@ def read_quota_view(
     ):
         return _legacy_view(route, legacy_reader())
     return _source_view(snapshot, route, source)
+
+
+# --------------------------------------------------------- compact lines
+#
+# The selection-scoped view above answers "what does the harness I picked
+# have left". What the launcher shows is the opposite: both heavy agents at
+# once, so the number you need before choosing one is never the hidden one
+# (issue #860). Built on the same per-harness view, but off a single
+# snapshot read — this runs on the tabs' 5s poll, so reading the shard
+# directory once per harness would double that cost for nothing.
+
+QUOTA_LINE_HARNESSES = (("claude", "Claude Code"), ("codex", "Codex"))
+
+# Duration classes shown on a compact line. Native window *ids* differ per
+# harness (Claude: five_hour/seven_day, Codex: primary/secondary), so match
+# on the duration the provider itself reports, never on the id.
+_LINE_WINDOWS = (("five_hour", 300), ("weekly", 10080))
+
+
+def _worst_window(observations: list, minutes: int) -> Optional[Dict[str, Any]]:
+    """Highest used percentage across every window of one duration class.
+
+    Codex reports several buckets at the same duration (``codex``,
+    ``codex_bengalfox``, ``base_model_inference``); the one that constrains
+    you is the fullest, and collapsing to it keeps internal bucket ids out
+    of the UI. Ties and unmeasured windows degrade to ``None`` rather than
+    inventing a zero.
+    """
+    best: Optional[Dict[str, Any]] = None
+    for observation in observations:
+        for window in observation.get("windows", []):
+            if window.get("duration_minutes") != minutes:
+                continue
+            pct = window.get("used_percentage")
+            if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+                continue
+            if best is None or pct > best["used_percentage"]:
+                best = {"used_percentage": pct, "resets_at": window.get("resets_at")}
+    return best
+
+
+def _quota_line(view: Dict[str, Any], label: str) -> Dict[str, Any]:
+    observations = [
+        item for item in view.get("observations", []) if isinstance(item, dict)
+    ]
+    line = {
+        "harness": view.get("harness"),
+        "provider": view.get("provider"),
+        "label": label,
+        "state": view.get("state"),
+        "reason": view.get("reason"),
+        "stale": bool(view.get("stale")),
+        "updated_at": view.get("updated_at"),
+    }
+    for name, minutes in _LINE_WINDOWS:
+        line[name] = _worst_window(observations, minutes)
+    return line
+
+
+def read_quota_lines(
+    fleet_config_dir: Path,
+    state_dir: Path,
+    *,
+    legacy_reader: Optional[Callable[[], Dict[str, Any]]] = None,
+) -> list:
+    """One compact row per heavy agent, in fixed order, always both.
+
+    A harness whose source is absent or unreadable still yields its row with
+    a non-available ``state`` — the caller renders it degraded rather than
+    dropping it, so the two lines never collapse into one. A contract read
+    that fails degrades *both* rows the same way, never silently one.
+    """
+    routes = [
+        (resolve_quota_route(harness), label)
+        for harness, label in QUOTA_LINE_HARNESSES
+    ]
+    try:
+        snapshot = _read_snapshot(fleet_config_dir, state_dir)
+    except (ImportError, OSError, AttributeError, TypeError, ValueError):
+        logger.info("Quota contract read unavailable")
+        return [
+            _quota_line(_empty_view(route, "error", "consumer_contract_unavailable"), label)
+            for route, label in routes
+        ]
+    return [
+        _quota_line(
+            _view_from_snapshot(
+                snapshot, route,
+                legacy_reader if route.harness == "claude" else None,
+            ),
+            label,
+        )
+        for route, label in routes
+    ]
 
 
 class RefreshGate:
