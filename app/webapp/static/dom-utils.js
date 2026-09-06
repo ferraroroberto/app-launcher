@@ -472,10 +472,13 @@ export function renderQuotaLines(container, lines) {
       if (stale) note = 'stale';
     } else {
       // Nothing measured this poll — show the last good reading, marked.
+      // Dimming means "these numbers are no longer confirmed", so it only
+      // applies when there are numbers; a row with nothing to fall back to
+      // is already `muted`, and stacking the two just makes it hard to read.
       pair = lastMeasuredQuota.get(harness) || [null, null];
       texts = quotaWindowTexts(pair, false);
       note = QUOTA_LINE_STATE_COPY[line.state] || 'unknown';
-      stale = true;
+      stale = texts.length > 0;
     }
 
     slot.dataset.harness = harness;

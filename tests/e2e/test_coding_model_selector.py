@@ -491,7 +491,8 @@ def test_quota_rows_degrade_per_agent_without_collapsing(
     assert rendered[0]["cls"] == "quota-line danger"
     assert rendered[0]["text"].startswith("Claude Code · 5h 91% ")
     # Codex has never been measured on this page, so there is nothing to fall
-    # back to and the row says so outright.
+    # back to and the row says so outright — and is NOT also dimmed, since
+    # `stale` marks unconfirmed numbers and this row has none.
     assert rendered[1]["cls"] == "quota-line muted"
     assert rendered[1]["text"] == "Codex · quota unavailable"
 
