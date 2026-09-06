@@ -30,7 +30,7 @@ let codingModelSaveQueue = Promise.resolve();
 // Ordered persistence for the coding-model picker (#857). Quota rows no
 // longer follow this selection (#860) — both agents are always shown — so
 // this is now purely about the selector settling on server truth.
-async function selectCodingModel(patch, selection) {
+async function selectCodingModel(patch) {
   const sequence = ++codingModelSelectionSequence;
 
   // Preserve click order at the server while letting the newest selection own
@@ -343,19 +343,13 @@ function wireBoolSwitch(el, patchKey) {
 export function wireClaudeOptions() {
   codingModelCombo = wireModelCombo(
     document.getElementById('codingModelCombo'),
-    function (v) { selectCodingModel({ coding_model_choice: v }, v); }
+    function (v) { selectCodingModel({ coding_model_choice: v }); }
   );
   claudeModelCombo = wireModelCombo(els.claudeModel, function (model) {
-    selectCodingModel(
-      { claude_model: model, coding_model_choice: 'claude:' + model },
-      'claude:' + model
-    );
+    selectCodingModel({ claude_model: model, coding_model_choice: 'claude:' + model });
   });
   codexModelCombo = wireModelCombo(els.codexModel, function (model) {
-    const selection = 'codex:' + model;
-    selectCodingModel({
-      codex_model: model, coding_model_choice: selection,
-    }, selection);
+    selectCodingModel({ codex_model: model, coding_model_choice: 'codex:' + model });
   });
   copilotModelCombo = wireModelCombo(els.copilotModel, function (model) {
     patchConfig({ copilot_model: model });
