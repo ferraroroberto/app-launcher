@@ -437,10 +437,16 @@ function quotaWindowText(windowData, label, fmtReset) {
   return text;
 }
 
-function quotaWindowTexts(pair) {
+// ``withResets: false`` for a fallback reading — a percentage that is no
+// longer confirmed has a reset time that may already be in the past, so
+// printing it would be worse than omitting it, and the width it frees is
+// what keeps the "unknown" marker itself from being the part that gets
+// ellipsed off a 390px line.
+function quotaWindowTexts(pair, withResets) {
+  const noReset = function () { return ''; };
   return [
-    quotaWindowText(pair[0], '5h', fmtResetClock),
-    quotaWindowText(pair[1], '1w', fmtResetDay),
+    quotaWindowText(pair[0], '5h', withResets ? fmtResetClock : noReset),
+    quotaWindowText(pair[1], '1w', withResets ? fmtResetDay : noReset),
   ].filter(Boolean);
 }
 
@@ -457,7 +463,7 @@ export function renderQuotaLines(container, lines) {
     }
     const harness = line.harness || '';
     let pair = [line.five_hour, line.weekly];
-    let texts = quotaWindowTexts(pair);
+    let texts = quotaWindowTexts(pair, true);
     let stale = line.state === 'stale' || line.stale === true;
     let note = '';
 
@@ -467,7 +473,7 @@ export function renderQuotaLines(container, lines) {
     } else {
       // Nothing measured this poll — show the last good reading, marked.
       pair = lastMeasuredQuota.get(harness) || [null, null];
-      texts = quotaWindowTexts(pair);
+      texts = quotaWindowTexts(pair, false);
       note = QUOTA_LINE_STATE_COPY[line.state] || 'unknown';
       stale = true;
     }

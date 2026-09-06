@@ -533,9 +533,12 @@ def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
     assert before[0]["cls"] == "quota-line good"
     assert "5h 39%" in before[0]["text"] and "stale" not in before[0]["cls"]
 
-    # Same numbers, now dimmed and explicitly not-confirmed.
-    assert "5h 39%" in after[0]["text"] and "1w 19%" in after[0]["text"]
-    assert after[0]["text"].endswith(" · unknown")
+    # Same numbers, now dimmed and explicitly not-confirmed. The reset stamps
+    # are dropped: an unconfirmed 5h window's reset may already have passed,
+    # and the width they free is what keeps "unknown" itself from being the
+    # part ellipsed off a 390px line.
+    assert after[0]["text"] == "Claude Code · 5h 39% · 1w 19% · unknown"
+    assert "↻" not in after[0]["text"]
     assert "stale" in after[0]["cls"]
     assert after[0]["state"] == "unknown"
     # The measured agent beside it is untouched.
