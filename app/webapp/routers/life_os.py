@@ -1100,7 +1100,9 @@ def _walk_files(
     ``memory`` and a top-level ``SKILL.md`` under ``skill``). When the
     category is derived from that leading directory, ``name`` drops it —
     the section header already shows it, so repeating it in the row just
-    wastes horizontal space (#118). Sorted by category then path.
+    wastes horizontal space (#118). Sorted by category then path, except
+    ``conversations`` — date-prefixed filenames, shown newest-first like
+    the digested conversation index endpoint below (#863).
     """
     if not root.is_dir():
         return []
@@ -1134,4 +1136,11 @@ def _walk_files(
             {"path": str(rel_root), "name": name, "category": cat}
         )
     out.sort(key=lambda f: (f["category"], f["path"]))
+    # The sort above groups conversations into one contiguous run (category
+    # is the primary key) — reverse just that run so the newest log shows
+    # first, leaving every other category's A-Z order untouched.
+    convos = [f for f in out if f["category"] == "conversations"]
+    if convos:
+        start = out.index(convos[0])
+        out[start:start + len(convos)] = reversed(convos)
     return out
