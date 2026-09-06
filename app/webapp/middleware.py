@@ -212,7 +212,8 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
     ),
     (
         lambda p: (
-            p.startswith("/api/life-os/skills/") and p.endswith("/conversations")
+            p.startswith("/api/life-os/skills/") and
+            (p.endswith("/conversations") or p.endswith("/conversations/launch"))
         ),
         "passkey",
         "Life OS conversation index (#727): the digest — topic, decisions, open "
@@ -250,13 +251,15 @@ def _terminal_guard_level(path: str) -> Optional[str]:
     return None
 
 
-def terminal_http_gate(request: Request) -> Optional[JSONResponse]:
+def terminal_http_gate(
+    request: Request, *, level: Optional[str] = None,
+) -> Optional[JSONResponse]:
     """Enforce Tailscale-only (+ passkey) access on terminal HTTP endpoints.
 
     Returns an error response to short-circuit with, or ``None`` to allow.
     Loopback callers are handled by the middleware before this runs.
     """
-    level = _terminal_guard_level(request.url.path)
+    level = level or _terminal_guard_level(request.url.path)
     if level is None:
         return None
     if via_cloudflare(request.headers):

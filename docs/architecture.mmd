@@ -170,8 +170,8 @@ flowchart TB
   subgraph external["External dependencies"]
     SCHTASKS["Windows Task Scheduler\n(\\AppLauncher\\ folder)"]
     GH["gh CLI / GitHub"]
-    LIFEOSREPO["life-os repo (sibling)\nskills invoked via claude session\nconversations/index.json read directly (#727)"]
-    FLEETCFG["fleet-config repo (sibling)\nhooks/conversation_search.py (#727)\nskills/_lib/chief_managed.py (#443)\nboth run as subprocesses"]
+    LIFEOSREPO["life-os repo (sibling)\nskills invoked via Claude/Codex session\nconversations/index.json read directly (#727)"]
+    FLEETCFG["fleet-config repo (sibling)\nhooks/conversation_search.py + shared capture reader (#727/#848)\nskills/_lib/chief_managed.py (#443)\nboth run as subprocesses"]
     PHOTOOCR["photo-ocr repo (sibling)\nsession API, loopback"]
     VOICETRANS["voice-transcriber repo (sibling)\nsession API, loopback"]
     LLMHUB["local-llm-hub\n127.0.0.1:8000, chat + TTS"]
@@ -205,3 +205,6 @@ flowchart TB
   TESTS -.->|exercises| webapp
   TESTS -.->|exercises| sessionhost
   SCRIPTS -.->|setup for| tray
+
+  R_LIFEOS --> LIFEHISTORY["src/life_os_history.py\nshared capture metadata + bounded private handoff"]
+  LIFEHISTORY --> FLEETCFG

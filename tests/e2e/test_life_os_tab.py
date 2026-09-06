@@ -608,6 +608,7 @@ _FAKE_CONVERSATIONS = {
             "sid": _RESUMABLE_SID, "agent": "claude",
             "topic": "booking the ferry", "decisions": "took the 07:40",
             "open_loops": "confirm the return leg", "resumable": True,
+            "revision": "a" * 64, "handoff_available": True, "handoff_truncated": False,
         },
         {
             "skill": "journal-daily",
@@ -618,6 +619,7 @@ _FAKE_CONVERSATIONS = {
             "sid": "", "agent": "claude",
             "topic": "an early trial run", "decisions": "none",
             "open_loops": "none", "resumable": False,
+            "resume_reason": "Legacy capture has no source harness; readable only.",
         },
     ],
 }
@@ -739,7 +741,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
         )
 
     authed_page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"),
         _capture_launch,
     )
 
@@ -771,7 +773,9 @@ def test_life_os_conversation_resume_posts_the_session_id(
     assert "body" in captured, "resume POST was never intercepted"
     payload = _json.loads(captured["body"])
     assert payload == {
-        "mode": "remote", "model": "claude:opus", "resume_sid": _RESUMABLE_SID,
+        "mode": "remote", "model": "claude:opus", "action": "resume",
+        "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
+                    for key in ("path", "revision", "agent", "sid")},
     }, payload
 
 
@@ -857,3 +861,68 @@ def test_life_os_search_unavailable_is_not_an_error(
     # Passive/background status belongs beside the surface it describes; a
     # toast is for user-initiated command results only.
     expect(authed_page.locator("#toast")).to_be_hidden()
+
+
+@pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:opus")])
+def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_url: str, source: str, target: str, browser_name: str) -> None:
+    """Source-aware actions refresh without collapsing a row; handoff is explicit."""
+    page = authed_page
+    _mock_skills(page)
+    row = dict(_FAKE_CONVERSATIONS["conversations"][0], agent=source,
+               handoff_truncated=True, handoff_limit=24000)
+    unknown = dict(_FAKE_CONVERSATIONS["conversations"][1], agent="pi",
+                   resume_reason="Native resume is not verified for this source harness.")
+    unavailable = dict(unknown, topic="Unavailable model source", agent="codex",
+                       resume_reason="Codex CLI is unavailable on this computer.")
+    _mock_conversations(page, dict(_FAKE_CONVERSATIONS, conversations=[row, unknown, unavailable]))
+    launches = []
+    def launch(route):
+        launches.append(_json.loads(route.request.post_data))
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "session": {"session_id": "synthetic", "kind": "remote"}, "handoff_truncated": True}))
+    page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), launch)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabLifeOS").click()
+    page.locator("#lifeOsDetached").click()
+    page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn").click()
+    rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows.first.locator(".lifeos-convo-head").click()
+    detail = rows.first.locator(".lifeos-convo-detail")
+    source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
+    combo = page.locator("#lifeOsConvosModelCombo")
+    combo.locator(".model-combo-trigger").click()
+    combo.locator(f"button[data-value='{source_choice}']").click()
+    expect(detail.locator(".lifeos-convo-resume")).to_be_enabled()
+    expect(detail).to_contain_text("Source: " + source)
+    expect(detail.locator(".lifeos-convo-handoff")).to_have_count(0)
+    combo.locator(".model-combo-trigger").click()
+    combo.locator(f"button[data-value='{target}']").click()
+    expect(detail).to_be_visible()
+    expect(detail.locator(".lifeos-convo-resume")).to_be_disabled()
+    expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()
+    rows.nth(1).locator(".lifeos-convo-head").click()
+    expect(rows.nth(1)).to_contain_text("Native resume is not verified")
+    rows.nth(2).locator(".lifeos-convo-head").click()
+    expect(rows.nth(2)).to_contain_text("CLI is unavailable")
+    # Both projections and themes remain legible and inside the viewport.
+    for theme in ("light", "dark"):
+        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+        expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()
+        assert page.locator("#lifeOsConvos").evaluate("el => el.scrollWidth <= el.clientWidth")
+    messages = []
+    def cancel(dialog):
+        messages.append(dialog.message)
+        dialog.dismiss()
+    page.once("dialog", cancel)
+    detail.locator(".lifeos-convo-handoff").click()
+    assert not launches
+    assert "NEW conversation" in messages[0] and re.search(r"24[,.]000", messages[0])
+    page.once("dialog", lambda dialog: dialog.accept())
+    detail.locator(".lifeos-convo-handoff").click()
+    expect(page.locator("#lifeOsConvos")).to_be_hidden()
+    assert len(launches) == 1
+    payload = launches[0]
+    assert payload["action"] == "handoff" and payload["confirm_new"] is True
+    assert payload["model"] == target and payload["mode"] == "remote"
+    assert payload["capture"] == {key: row[key] for key in ("path", "revision", "agent", "sid")}
+    assert "resume_sid" not in payload

@@ -640,6 +640,7 @@ function convoRow(r, scoped) {
   detail.hidden = true;
   appendConvoField(detail, 'Decisions', r.decisions);
   appendConvoField(detail, 'Open loops', r.open_loops);
+  appendConvoField(detail, 'Source', r.agent || 'Unknown legacy harness');
   detail.appendChild(convoActions(r));
   li.appendChild(detail);
 
@@ -669,31 +670,33 @@ function convoActions(r) {
   const wrap = document.createElement('div');
   wrap.className = 'lifeos-convo-actions';
 
-  // The launch route is per-skill, so a hit with no skill has nowhere to
-  // resume into — treat it exactly like a missing session id rather than
-  // rendering a button that can only 404.
+  const target = lifeOsModel().split(':')[0];
+  const matches = target === r.agent;
+  const provider = r.agent === 'codex' ? 'Codex' : 'Claude';
   if (r.resumable && r.skill) {
     const resumeBtn = document.createElement('button');
     resumeBtn.type = 'button';
-    // Ghost + accent-btn, not button-tint: this app sizes every .button-tint
-    // at width:100%, which in a list row reads as the *view's* primary action
-    // and swamps the rest of the row. The accent-btn modifier gives the same
-    // accent emphasis at row scale.
-    resumeBtn.className = 'button-ghost accent-btn lifeos-convo-resume';
-    resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume this';
-    resumeBtn.addEventListener('click', function () { resumeConversation(r); });
+    resumeBtn.className = 'button-ghost lifeos-convo-resume' + (matches ? ' accent-btn' : '');
+    resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume in ' + provider;
+    resumeBtn.disabled = !matches;
+    resumeBtn.addEventListener('click', function () { resumeConversation(r, 'resume'); });
     wrap.appendChild(resumeBtn);
-  } else {
-    // No stored session id (or a non-claude agent): the conversation is
-    // readable but cannot be reopened. Said out loud, because a phone has no
-    // hover to explain a greyed-out button — and roughly a quarter of the
-    // archive predates the stored id.
+  }
+  const reason = !r.resumable ? (r.resume_reason || 'No stored session; readable only.') :
+    (!matches ? 'Select a ' + provider + ' model to resume this source.' : '');
+  if (reason) {
     const chip = document.createElement('span');
     chip.className = 'lifeos-convo-nosession';
-    chip.textContent = 'no session';
-    chip.title = 'This conversation was captured before its session id was ' +
-      'stored, so it can be read but not reopened.';
+    chip.textContent = reason;
     wrap.appendChild(chip);
+  }
+  if (r.handoff_available && r.skill && !matches && ['claude', 'codex'].includes(target)) {
+    const handoffBtn = document.createElement('button');
+    handoffBtn.type = 'button';
+    handoffBtn.className = 'button-ghost accent-btn lifeos-convo-handoff';
+    handoffBtn.textContent = 'Start new in ' + (target === 'codex' ? 'Codex' : 'Claude');
+    handoffBtn.addEventListener('click', function () { resumeConversation(r, 'handoff'); });
+    wrap.appendChild(handoffBtn);
   }
 
   if (r.path) {
@@ -741,34 +744,49 @@ function openCapture(r) {
   loadFile({ path: r.path, name: r.file, category: 'conversations' });
 }
 
-// ↺ — reattach to this exact conversation. Honours the same Detached toggle
-// and model combo as every other Life OS launch; the server validates the id
-// and composes `--resume <sid>`.
-async function resumeConversation(r) {
+// Refresh only actions when the model changes, preserving expanded history rows.
+function refreshConvoActions() {
+  if (!convoView) return;
+  const actions = els.lifeOsConvoList.querySelectorAll('.lifeos-convo-actions');
+  actions.forEach(function (node, index) {
+    if (convoView.rows[index]) node.replaceWith(convoActions(convoView.rows[index]));
+  });
+}
+
+async function resumeConversation(r, action) {
   const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
     ? 'remote' : 'pty';
   const model = lifeOsModel();
-  const payload = { mode: mode, model: model, resume_sid: r.sid };
+  const payload = {
+    mode: mode, model: model, action: action,
+    capture: { path: r.path, revision: r.revision, agent: r.agent, sid: r.sid },
+  };
+  if (action === 'handoff') {
+    const scope = r.handoff_truncated ?
+      'Only the first ' + (r.handoff_limit || 24000).toLocaleString() + ' characters will be included.' :
+      'Only this selected capture will be included.';
+    if (!confirm('Start a NEW conversation in ' + model.split(':')[0] + '?\n\n' +
+        scope + ' Source provenance is preserved. This does not resume or convert the original session. ' +
+        'Memory and knowledge edits still require your approval.')) return;
+    payload.confirm_new = true;
+  }
   if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
     const body = await jsonApi(
-      '/api/life-os/skills/' + encodeURIComponent(r.skill) + '/launch',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }
+      '/api/life-os/skills/' + encodeURIComponent(r.skill) + '/conversations/launch',
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
     );
     toast(
-      'Resumed ' + (r.topic || r.skill) + modelTag(model) +
+      (action === 'handoff' ? 'Started new conversation from ' : 'Resumed ') +
+        (r.topic || r.skill) + modelTag(model) +
+        (body.handoff_truncated ? ' (selected context truncated)' : '') +
         (mode === 'remote' ? ' (detached)' : ''),
-      'good',
-      { icon: 'rotate-ccw' }
+      'good', { icon: action === 'handoff' ? 'messages-square' : 'rotate-ccw' }
     );
     closeConvos();
     handleLaunchResponse(body.session);
   } catch (exc) {
-    apiFailToast('Resume failed', exc);
+    apiFailToast(action === 'handoff' ? 'New conversation failed' : 'Resume failed', exc);
   }
 }
 
@@ -905,14 +923,16 @@ export function wireLifeOs() {
   // wireModelCombo owns its open/close + the summary-tap guard.
   lifeOsModelCombo = wireModelCombo(
     document.getElementById('lifeOsModelCombo'), function (choice) {
-      if (lifeOsConvosModelCombo && choice.startsWith('claude:')) {
+      if (lifeOsConvosModelCombo) {
         lifeOsConvosModelCombo.setValue(choice);
+        refreshConvoActions();
       }
     }
   );
   lifeOsConvosModelCombo = wireModelCombo(
     document.getElementById('lifeOsConvosModelCombo'), function (choice) {
       if (lifeOsModelCombo) lifeOsModelCombo.setValue(choice);
+      refreshConvoActions();
     }
   );
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
