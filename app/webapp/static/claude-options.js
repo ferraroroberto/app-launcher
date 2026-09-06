@@ -126,13 +126,9 @@ function renderSharedModelSelectors() {
   fillCombo(lifeOs, catalog.claude, 'claude:');
   fillCombo(lifeOs, catalog.codex, 'codex:', true);
 
-  // Stored Life OS conversation ids belong to Claude, so targeted resume
-  // remains provider-safe even though fresh skill launches now offer Codex.
-  fillCombo(
-    document.getElementById('lifeOsConvosModelCombo'),
-    catalog.claude,
-    'claude:'
-  );
+  const history = document.getElementById('lifeOsConvosModelCombo');
+  fillCombo(history, catalog.claude, 'claude:');
+  fillCombo(history, catalog.codex, 'codex:', true);
 
   const board = document.getElementById('boardDispatchModel');
   if (board) {
