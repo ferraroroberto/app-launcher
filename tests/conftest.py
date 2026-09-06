@@ -363,6 +363,29 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     if hasattr(app_cfg_mod, "DEFAULT_CONFIG_PATH"):
         monkeypatch.setattr(app_cfg_mod, "DEFAULT_CONFIG_PATH", tmp_app_cfg)
 
+    # Quota API tests own the legacy cache file above; keep their canonical
+    # source state deterministic even when no sibling fleet-config is checked
+    # out (as in hosted CI).
+    from src import quota_usage as quota_usage_mod
+    monkeypatch.setattr(
+        quota_usage_mod,
+        "_read_snapshot",
+        lambda *_args: {
+            "sources": [
+                {
+                    "producer": "webapp-test-fixture",
+                    "harness": "claude",
+                    "provider": "anthropic",
+                    "state": "unknown",
+                    "reason": "source_absent",
+                    "checked_at": None,
+                    "observations": [],
+                }
+            ],
+            "pools": [],
+        },
+    )
+
     # Now import the server + routers. Important: import after monkeypatching
     # the config paths, but before patching session_client / audit (which are
     # module-level references inside each router that talks to them).
