@@ -692,6 +692,25 @@ def test_life_os_conversations_empty_state_when_no_index(
     expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(0)
 
 
+def test_life_os_convos_bar_buttons_match_model_selector(
+    authed_page: Page, base_url: str
+) -> None:
+    """#864: the "‹ Skills" back button and "All skills" toggle used to sit
+    taller (44px, font-label) than the model selector (36px, font-caption)
+    in the same header row — all three must now share one height/font."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+
+    back = authed_page.locator("#lifeOsConvosBack")
+    scope = authed_page.locator("#lifeOsConvosScope")
+    combo = authed_page.locator("#lifeOsConvosModelCombo .model-combo-trigger")
+    expect(scope).to_be_visible()  # opened scoped from a tile, so the toggle shows
+    for locator in (back, scope, combo):
+        expect(locator).to_have_css("height", "36px")
+        expect(locator).to_have_css("font-size", "12.48px")
+
+
 def test_life_os_unresumable_row_says_so(
     authed_page: Page, base_url: str
 ) -> None:
