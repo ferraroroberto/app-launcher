@@ -486,12 +486,11 @@ async function startIssue(card, mode, btn) {
 
 // Backlog issue tiles (#337 follow-up, restyled #339): a flat separator
 // row — no card background/border, just a bottom-border divider between
-// rows (GitHub-issue-list style) — with repo/# on one line and the title on
-// the line below, each independently truncated, and icon-only ▶/⚡ actions
-// vertically centered against the whole row. Doesn't use cardShell() (that's
-// the bordered-box layout the other card kinds keep); the <li> itself is the
-// flex row so the text stack and the action icons sit side by side without
-// nesting a <button> inside a <button>.
+// rows (GitHub-issue-list style) — with repo/# on one line and the full title
+// wrapped below it, and icon-only ▶/⚡ actions vertically centered against the
+// whole row. Doesn't use cardShell() (that's the bordered-box layout the other
+// card kinds keep); the <li> itself is the flex row so the text stack and the
+// action icons sit side by side without nesting a <button> inside a <button>.
 function renderIssueCard(card) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-issue';
