@@ -44,6 +44,7 @@ import { ensureTerminalToken } from './webauthn.js';
 import { CHIEF_KILL_CONFIRM, clearUsageBadgeRow, fmtDuration, iconUrl, renderUsageBadgeRow } from './dom-utils.js';
 import {
   boardRepoFilter,
+  getBoardDispatchModel,
   isChiefCard,
   matchesRepoFilter,
   syncDispatchBar,
@@ -456,7 +457,7 @@ async function startIssue(card, mode, btn) {
       title: card.title || '',
       // The dispatch bar's model selector governs one-tap starts too
       // (#505), overriding the shared Coding model per launch.
-      model: (els.boardDispatchModel && els.boardDispatchModel.value) || 'sonnet',
+      model: getBoardDispatchModel(),
     };
     // Desktop browsers get the PC mirror window, like every launch (#241).
     // Phone launches carry the real terminal size so the PTY's early
@@ -689,7 +690,7 @@ export async function fetchBoard() {
   // and pauses while a drawer is open so the re-render can't wipe a reply
   // being typed (pattern: the terminal pausing the session poll).
   if (state.tab !== 'board' || state.boardExpanded) return;
-  const selection = (els.boardDispatchModel && els.boardDispatchModel.value) || 'claude:sonnet';
+  const selection = getBoardDispatchModel();
   const requestSequence = ++quotaBoardRequestSequence;
   const body = await jsonApi('/api/board?quota_selection=' + encodeURIComponent(selection));
   if (requestSequence !== quotaBoardRequestSequence) return;

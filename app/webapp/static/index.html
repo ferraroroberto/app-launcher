@@ -574,7 +574,12 @@
           <h3 class="opt-group-title">Claude Code</h3>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <div id="claudeModel" class="segmented" role="radiogroup" aria-label="Claude model"></div>
+            <span id="claudeModel" class="model-combo model-combo--settings" data-value="sonnet">
+              <button type="button" class="model-combo-trigger" aria-label="Claude model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="claudeModelMenu">Sonnet</button>
+              <span id="claudeModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Claude model" hidden></span>
+            </span>
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
@@ -594,8 +599,13 @@
         <div class="opt-group">
           <h3 class="opt-group-title">Codex</h3>
           <div class="opt-row">
-            <label class="opt-name" for="codexModel">Model</label>
-            <select id="codexModel" class="select-native"></select>
+            <span class="opt-name">Model</span>
+            <span id="codexModel" class="model-combo model-combo--settings" data-value="gpt-5.6-luna">
+              <button type="button" class="model-combo-trigger" aria-label="Codex model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="codexModelMenu">Luna</button>
+              <span id="codexModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Codex model" hidden></span>
+            </span>
           </div>
           <div class="opt-row">
             <span class="opt-name">Reasoning</span>
@@ -623,7 +633,12 @@
           <h3 class="opt-group-title">GitHub Copilot</h3>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <select id="copilotModel" class="select-native" aria-label="Copilot model"></select>
+            <span id="copilotModel" class="model-combo model-combo--settings" data-value="">
+              <button type="button" class="model-combo-trigger" aria-label="Copilot model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="copilotModelMenu">Default</button>
+              <span id="copilotModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Copilot model" hidden></span>
+            </span>
           </div>
           <div class="toggles">
             <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
@@ -636,7 +651,12 @@
           <h3 class="opt-group-title">Pi</h3>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <select id="piModel" class="select-native" aria-label="Pi model"></select>
+            <span id="piModel" class="model-combo model-combo--settings" data-value="">
+              <button type="button" class="model-combo-trigger" aria-label="Pi model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="piModelMenu">Model</button>
+              <span id="piModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Pi model" hidden></span>
+            </span>
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
@@ -886,11 +906,15 @@
               <option value="chat">Chat</option>
             </select>
           </span>
-          <span class="board-model-combo">
-            <select id="boardDispatchModel" class="select-native" aria-label="Dispatch model"
-                    title="Exact Claude or Codex model for dispatches and one-tap start/YOLO">
-              <option value="claude:sonnet" selected>Claude · Sonnet</option>
-            </select>
+          <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
+            <button type="button" class="model-combo-trigger" aria-label="Dispatch model"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
+                    title="Exact Claude or Codex model for dispatches and one-tap start/YOLO">Claude · Sonnet</button>
+            <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
+                  aria-label="Dispatch model" hidden>
+              <button type="button" role="option" data-value="claude:sonnet"
+                      aria-selected="true">Claude · Sonnet</button>
+            </span>
           </span>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice → text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
@@ -1116,8 +1140,8 @@
         <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
         <div class="terminal-bar-actions">
           <span class="model-combo" id="lifeOsConvosModelCombo" data-value="claude:sonnet">
-            <button type="button" class="model-combo-trigger" aria-haspopup="listbox"
-                    aria-expanded="false" aria-controls="lifeOsConvosModelMenu"
+            <button type="button" class="model-combo-trigger" aria-label="Conversation resume model"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsConvosModelMenu"
                     title="Model for source resume or a new conversation handoff">Sonnet</button>
             <span id="lifeOsConvosModelMenu" class="model-combo-menu" role="listbox"
                   aria-label="Conversation resume model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
@@ -1397,12 +1421,17 @@
           </button>
         </div>
         <div class="chief-settings-row">
-          <label for="chiefModelSelect">Model</label>
-          <select id="chiefModelSelect" class="select-native">
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="fable" selected>Fable</option>
-          </select>
+          <span>Model</span>
+          <span id="chiefModelSelect" class="model-combo model-combo--settings" data-value="fable">
+            <button type="button" class="model-combo-trigger" aria-label="Chief model"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="chiefModelMenu">Fable</button>
+            <span id="chiefModelMenu" class="model-combo-menu" role="listbox"
+                  aria-label="Chief model" hidden>
+              <button type="button" role="option" data-value="sonnet" aria-selected="false">Sonnet</button>
+              <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
+              <button type="button" role="option" data-value="fable" aria-selected="true">Fable</button>
+            </span>
+          </span>
         </div>
         <div class="chief-settings-row">
           <label for="chiefWorkerCap">Worker cap</label>

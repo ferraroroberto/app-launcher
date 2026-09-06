@@ -453,6 +453,14 @@ summary + .opt-group { border-top: 0; }
   margin-bottom: 10px;
 }
 .opt-row .select-native { flex: 1; }
+.opt-row .model-combo { flex: 1; min-width: 0; }
+.model-combo--settings .model-combo-trigger {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .opt-name {
   font-size: var(--font-caption);
   color: var(--muted);
@@ -2707,6 +2715,7 @@ body.terminal-open {
   color: var(--muted);
 }
 .chief-settings-row .select-native,
+.chief-settings-row .model-combo,
 .chief-settings-row .input-native {
   width: auto;
   min-width: 110px;
@@ -2746,8 +2755,9 @@ body.terminal-open {
   font-size: var(--font-caption);
   pointer-events: none;
 }
-/* Opens downward from the summary; cards don't clip overflow, so a high
-   z-index keeps it above the collapsed card body below it. */
+/* Closed menus live beside their triggers. The controller portals an open
+   menu to the document viewport (except inside a native dialog's top layer),
+   so scrollable toolbars and card overflow cannot clip it. */
 .model-combo-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -2759,8 +2769,16 @@ body.terminal-open {
   background: var(--card-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   box-shadow: var(--shadow);
+}
+.model-combo-menu--portal {
+  position: fixed;
+  right: auto;
+  z-index: 380;
+  width: max-content;
 }
 .model-combo-menu[hidden] { display: none; }
 .model-combo-menu button {
@@ -2774,9 +2792,16 @@ body.terminal-open {
   white-space: nowrap;
 }
 .model-combo-menu button:hover,
+.model-combo-menu button:focus-visible,
 .model-combo-menu button[aria-selected="true"] {
   background: var(--card);
   color: var(--accent);
+}
+.model-combo-trigger:disabled {
+  background: var(--card-2);
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 .model-combo-menu button:disabled {
   background: var(--card-2);
