@@ -568,7 +568,6 @@ def test_model_selection_owns_polls_until_config_save_settles(
           const saves = [];
           const reads = [];
           let delayNextConfigRead = false;
-          window.__modelPolls = [];
           window.__modelSaves = saves;
           window.__modelReads = reads;
           window.__delayNextConfigRead = function () {
@@ -612,7 +611,6 @@ def test_model_selection_owns_polls_until_config_save_settles(
               return Promise.resolve(response);
             }
             if (url.pathname === '/api/rate-limits') {
-              window.__modelPolls.push(url.search);
               return Promise.resolve(new Response('{"quota_lines": []}', {
                 status: 200, headers: {'Content-Type': 'application/json'}
               }));
@@ -634,27 +632,15 @@ def test_model_selection_owns_polls_until_config_save_settles(
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
     authed_page.wait_for_function("window.__modelSaves.length === 1")
 
-    # The application's ordinary timers keep running while POST + readback
-    # are pending; waiting for a new captured poll exercises the exact
-    # stamped module instance imported by main.js, not a fresh import.
-    poll_count = authed_page.evaluate("window.__modelPolls.length")
-    authed_page.wait_for_function(
-        "count => window.__modelPolls.length > count", arg=poll_count,
-        timeout=10_000,
-    )
+    # Quota polling stopped depending on model selection in #860. Keep this
+    # test deterministic and focused on the queued config save/readback race;
+    # the dedicated quota-row test above covers selection-independent polls.
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
 
-    # A successful save settles on the persisted Codex choice, and the quota
-    # poll keeps asking for both agents rather than the selected one (#860).
+    # A successful save settles on the persisted Codex choice.
     authed_page.evaluate("window.__settleModelSave('ok')")
     authed_page.wait_for_function("window.__modelSaves.length === 0")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
-    poll_count = authed_page.evaluate("window.__modelPolls.length")
-    authed_page.wait_for_function(
-        "count => window.__modelPolls.length > count", arg=poll_count,
-        timeout=10_000,
-    )
-    assert authed_page.evaluate("window.__modelPolls.at(-1)") == ""
 
     # A newer rapid selection can arrive after an older POST starts its config
     # readback. Even if that GET captured the older persisted value, releasing
