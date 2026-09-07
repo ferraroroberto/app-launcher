@@ -2587,7 +2587,13 @@ body.terminal-open {
    that fix: if focusing the goal zooms the page on a real iPhone, revert
    this font-size to var(--font-body). */
 .board-dispatch-goal {
-  flex: 1 1 120px;
+  /* Basis 0, not a real width: a non-zero basis counts toward the row's base
+     width and so toward flex-wrap's break decision, which wrapped ➤ onto a
+     second line on a phone whose 🎤 is visible (dictation available — the
+     control the disposable e2e webapp hides). Growing from 0 into whatever
+     the fixed-width controls leave means the row can never wrap while they
+     fit, at any phone width. */
+  flex: 1 1 0;
   min-width: 0;
   height: var(--control-h);
   min-height: var(--control-h);
