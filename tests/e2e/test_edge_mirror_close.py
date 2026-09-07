@@ -72,12 +72,12 @@ def test_mirror_marker_applies_on_tailnet_origin(
     sid = launched_pty_session
 
     def to_tailnet(route):
-        resp = route.fetch()
-        body = resp.json()
-        term = dict(body.get("terminal") or {})
-        term.update({"reachable": True, "reason": "tailnet"})
-        body["terminal"] = term
-        route.fulfill(json=body)
+        # Only the terminal discriminator is under test.  A proxying
+        # route.fetch() adds a second request and can lose the boot-time status
+        # response under full-suite WebKit load, leaving state.status unset.
+        route.fulfill(
+            json={"terminal": {"reachable": True, "reason": "tailnet"}}
+        )
 
     authed_page.route("**/api/status", to_tailnet)
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
