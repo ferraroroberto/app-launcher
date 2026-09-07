@@ -723,7 +723,9 @@ def launched_pty_session(
                 "flags": _STUB_FLAG,
                 "agent": "claude",
             },
-            timeout=15,
+            # The listener is already health-checked; the response waits for
+            # ConPTY creation, measured at 19 s on this host under gate load.
+            timeout=(5, 30),
         )
         # Deterministic path — a failure here is a harness bug, never a
         # missing-dependency skip.

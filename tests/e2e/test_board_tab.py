@@ -559,9 +559,23 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(actions.nth(0)).to_have_attribute("aria-label", re.compile(r"^Start issue"))
     expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
-    tile_box = stable_read(tile.bounding_box)
-    action_box = stable_read(actions.first.bounding_box)
-    assert tile_box is not None and action_box is not None
+    # Capture both rectangles in one browser task: separate locator reads can
+    # straddle the Board's 5 s replaceChildren() poll (#868).
+    boxes = stable_read(
+        lambda: tile.evaluate(
+            "el => {"
+            " const action = el.querySelector('.board-issue-btn');"
+            " if (!action) return null;"
+            " const tileBox = el.getBoundingClientRect();"
+            " const actionBox = action.getBoundingClientRect();"
+            " return {tile: {y: tileBox.y, height: tileBox.height},"
+            " action: {y: actionBox.y, height: actionBox.height}};"
+            "}"
+        )
+    )
+    assert boxes is not None
+    tile_box = boxes["tile"]
+    action_box = boxes["action"]
     tile_center = tile_box["y"] + tile_box["height"] / 2
     action_center = action_box["y"] + action_box["height"] / 2
     assert abs(action_center - tile_center) <= 1, (
@@ -653,10 +667,27 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
         f"(scrollWidth={widths[0]}, clientWidth={widths[1]})"
     )
 
-    title_box = stable_read(title_el.bounding_box)
-    tile_box = stable_read(tile.bounding_box)
-    action_box = stable_read(tile.locator(".board-issue-btn").first.bounding_box)
-    assert title_box is not None and tile_box is not None and action_box is not None
+    # Keep the three related measurements on one DOM generation; individually
+    # valid reads can still straddle the Board's 5 s rebuild (#868).
+    boxes = stable_read(
+        lambda: tile.evaluate(
+            "el => {"
+            " const title = el.querySelector('.board-card-title-compact');"
+            " const action = el.querySelector('.board-issue-btn');"
+            " if (!title || !action) return null;"
+            " const titleBox = title.getBoundingClientRect();"
+            " const tileBox = el.getBoundingClientRect();"
+            " const actionBox = action.getBoundingClientRect();"
+            " return {title: {height: titleBox.height},"
+            " tile: {y: tileBox.y, height: tileBox.height},"
+            " action: {y: actionBox.y, height: actionBox.height}};"
+            "}"
+        )
+    )
+    assert boxes is not None
+    title_box = boxes["title"]
+    tile_box = boxes["tile"]
+    action_box = boxes["action"]
     assert title_box["height"] > 26, (
         f"title is only {title_box['height']}px tall — it did not wrap"
     )
