@@ -146,9 +146,13 @@ def _open_board(page: Page, base_url: str) -> None:
 
 
 def _enter_chat_mode(page: Page) -> None:
-    # Mode collapsed from a 4-segment radiogroup into a <select> in #547 —
-    # the segments no longer fit an iPhone-width row.
-    page.locator("#boardDispatchMode").select_option("chat")
+    # Mode collapsed from a 4-segment radiogroup into a <select> in #547 (the
+    # segments no longer fit an iPhone-width row), then into the same
+    # .model-combo as the model picker beside it in #869 — so it is driven
+    # like that combo, not with select_option.
+    page.locator("#boardDispatchMode .model-combo-trigger").click()
+    page.locator("#boardDispatchModeMenu [data-value='chat']").click()
+    expect(page.locator("#boardDispatchMode")).to_have_attribute("data-value", "chat")
 
 
 def test_chat_mode_routes_message_to_chief_not_dispatch(
