@@ -745,10 +745,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
 
-    captured: dict = {}
-
-    def _capture_launch(route):
-        captured["body"] = route.request.post_data or ""
+    def _fulfill_launch(route):
         route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({
@@ -761,7 +758,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
 
     authed_page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"),
-        _capture_launch,
+        _fulfill_launch,
     )
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -821,11 +818,14 @@ def test_life_os_conversation_resume_posts_the_session_id(
     )
     rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
     rows.first.locator(".lifeos-convo-head").click()
-    rows.first.locator(".lifeos-convo-resume").click()
+    with authed_page.expect_request(
+        re.compile(
+            r".*/api/life-os/skills/journal-daily/conversations/launch$"
+        )
+    ) as request_info:
+        rows.first.locator(".lifeos-convo-resume").click()
 
-    authed_page.wait_for_timeout(400)
-    assert "body" in captured, "resume POST was never intercepted"
-    payload = _json.loads(captured["body"])
+    payload = _json.loads(request_info.value.post_data or "")
     assert payload == {
         "mode": "remote", "model": "claude:opus", "action": "resume",
         "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
