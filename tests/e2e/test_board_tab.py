@@ -1199,6 +1199,14 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
+    # The disposable e2e webapp reports no dictation, so 🎤 stays hidden and
+    # the row is one control narrower than on a real phone — where that extra
+    # 36px is exactly what used to wrap ➤ onto a second line. Un-hide it so
+    # every geometry assertion below runs against the real-device control
+    # count, not the lucky one.
+    authed_page.locator("#boardDispatchRecord").evaluate("el => { el.hidden = false; }")
+    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible()
+
     # (1) goal folded into the control row.
     expect(
         authed_page.locator(".board-dispatch-row #boardDispatchGoal")
@@ -1229,6 +1237,11 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     assert clear_box and send_box, "dispatch buttons not laid out"
     gap = send_box["x"] - (clear_box["x"] + clear_box["width"])
     assert 0 <= gap < 24, f"➤ should dock right after ✕, gap was {gap}px"
+    # ...and on the SAME line as ✕, at every width. The row wraps only if some
+    # item claims a base width it doesn't need; the goal grows from 0 instead.
+    assert abs(send_box["y"] - clear_box["y"]) < 8, (
+        f"➤ wrapped off ✕'s line: send y={send_box['y']}, clear y={clear_box['y']}"
+    )
 
     # (3) + (4) ↻ home and the filter's place both depend on the projection.
     expect(authed_page.locator("#boardRefresh")).to_be_visible()
