@@ -255,9 +255,9 @@ const CHAT_PLACEHOLDER =
 
 function setDispatchMode(mode) {
   dispatchMode = mode;
-  // The select itself already shows the chosen value (#547 collapsed the
-  // old 4-segment radiogroup into a single <select>) — nothing else to
-  // paint here beyond the mode-dependent chat UI.
+  // The combo trigger already shows the chosen label (#869 swapped the
+  // native <select> for the shared .model-combo) — nothing else to paint
+  // here beyond the mode-dependent chat UI.
   syncChatModeUi();
 }
 
@@ -519,12 +519,11 @@ export function wireDispatch() {
   dispatchModelCombo = wireModelCombo(els.boardDispatchModel, function () {
     els.boardDispatchModel.dispatchEvent(new Event('change'));
   });
-  if (els.boardDispatchMode) {
-    els.boardDispatchMode.addEventListener('change', function () {
-      setDispatchMode(els.boardDispatchMode.value);
-    });
-  }
-  // The model <select> (#500) is a plain client-side control (issue #355
+  // Same shared combo as the model picker beside it (#869) — the value lives
+  // on the wrapper's data-value, so the pick arrives through onChange rather
+  // than a <select>'s change event.
+  wireModelCombo(els.boardDispatchMode, setDispatchMode);
+  // Both combos (#500 / #869) are plain client-side controls (issue #355
   // pattern) — no server config, just read at dispatch time above.
   els.boardDispatchSend.addEventListener('click', function () {
     if (dispatchMode === 'chat') dispatchChat();

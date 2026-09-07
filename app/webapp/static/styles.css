@@ -2566,9 +2566,38 @@ body.terminal-open {
   gap: 8px;
   margin: 0 0 10px;
 }
-/* The compose textarea look, but shorter — the bar is a launcher, not a
-   writing surface. */
-.board-dispatch-goal { min-height: 56px; }
+/* Phone stacking order (#869 round 2, on-device feedback): the controls lead
+   and "All projects" drops to the bottom of the bar, so the filter sits
+   directly above the git/bot/you/Other/Done strip it filters. Source order
+   stays controls-last because the desktop row below wants the filter first,
+   at the far left — CSS order, not two markup copies. */
+.board-dispatch-row { order: 1; }
+.board-chief-status { order: 2; }
+.board-repo-combo { order: 3; }
+/* #869: the goal is no longer its own full-width block above the controls —
+   it flex-fills the control row between the model combo and the mic, which
+   drops the phone bar from 4 stacked rows to 3. Row height, not textarea
+   height: the .compose-input recipe's 92px min-height (and the old 56px
+   override) both give way to the row's shared 36px control height.
+
+   NOTE (#869 constraint): --font-caption is 0.78rem/~12.5px, below the 16px
+   threshold at which iOS Safari auto-zooms the page on focus — the reason
+   .compose-input pins --font-body (see the comment there). The compact row
+   was the explicit ask and this is the one declaration that trades against
+   that fix: if focusing the goal zooms the page on a real iPhone, revert
+   this font-size to var(--font-body). */
+.board-dispatch-goal {
+  flex: 1 1 120px;
+  min-width: 0;
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 10px;
+  font-size: var(--font-caption);
+  line-height: calc(var(--control-h) - 2px);
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
 .board-dispatch-row {
   display: flex;
   align-items: center;
@@ -2633,46 +2662,12 @@ body.terminal-open {
 }
 .board-repo-list li[data-repo]:hover,
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
-/* Dispatch mode + model dropdowns (#500, mode collapsed from a 4-segment
-   radiogroup into a matching select in #547 — the segments no longer fit an
-   iPhone-width row once chat mode landed): native <select>s like the Copilot
-   model picker, shrunk to the row's shared control height + caption size so
-   they line up with the compose buttons. */
-.board-dispatch-row .select-native {
-  padding: 0 10px;
-  font-size: var(--font-caption);
-}
-/* Phone (#496, from on-device feedback): iOS paints a native <select> with
-   its own pill chrome — a different control family than the flat rounded
-   buttons beside it. Flatten it to the row's exact shared recipe (36px
-   control height, 12px radius, hairline border, --card-2 fill — the mic/✕
-   .compose-record recipe) and let the wrapping .board-model-combo span draw
-   the ▾ affordance, the same pattern as .board-repo-combo. Mobile only —
-   desktop keeps the native select. */
-.board-model-combo { display: inline-flex; position: relative; }
-@media (pointer: coarse) {
-  .board-dispatch-row .select-native {
-    appearance: none;
-    -webkit-appearance: none;
-    height: var(--control-h);
-    min-height: var(--control-h);
-    background: var(--card-2);
-    color: var(--fg);
-    border: 1px solid var(--line);
-    border-radius: var(--radius-md);
-    padding: 0 24px 0 10px;
-  }
-  .board-model-combo::after {
-    content: '▾';
-    position: absolute;
-    right: 9px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: var(--muted);
-    font-size: var(--font-caption);
-    pointer-events: none;
-  }
-}
+/* Dispatch mode + model dropdowns (#500 / #547 / #869): both are now the
+   shared .model-combo — a trigger button plus a portaled listbox. #869 took
+   the mode picker off the native <select>, which also retired the
+   @media (pointer: coarse) rules that flattened iOS's own select chrome to
+   imitate the custom control beside it. Nothing left in this row to
+   un-nativise; .model-combo carries the whole look. */
 
 /* Fleet chief (#245): the chat-mode status row under the dispatch bar —
    crown + one-line liveness + Start (only when down) + the settings gear.
@@ -2830,9 +2825,9 @@ body.terminal-open {
   padding: 0 10px;
   font-size: var(--font-label);
 }
-/* When the row wraps on a narrow phone, ➤ right-aligns on its wrap line
-   instead of stranding at the left edge. */
-.board-dispatch-row .compose-send { margin-left: auto; }
+/* No margin-left: auto any more (#869) — the goal input now absorbs the row's
+   free space, so ➤ docks immediately after ✕ instead of being flung to the
+   row's far edge with a gap in between. */
 
 /* Column switcher strip: four count buttons + the gh refresh. Doubles as
    the column header on the phone, where the carousel shows one column. */
@@ -2894,6 +2889,10 @@ body.terminal-open {
   cursor: pointer;
 }
 .board-refresh:active { background: var(--card); }
+/* Docked into the control row on desktop (#869), where it is one of the
+   36px-square siblings — not the wider .board-issue-btn padding the shared
+   board-button rule below hands it. */
+.board-dispatch-row .board-refresh { padding: 0; }
 .board-status { color: var(--muted); font-size: var(--font-caption); margin: 0 0 8px; }
 
 /* Quota rows (issues #326/#847/#860) — one line per heavy agent, Claude
@@ -3290,10 +3289,32 @@ body.terminal-open {
   .board-col-count { font-weight: 400; }
   /* #495: the phone tab-switcher strip duplicates the grid's own aligned
      .board-col-title headers, with no shared width/gap math between the two
-     rows. Hide just the switcher buttons — .board-strip also hosts the gh
-     refresh button, which still needs a home on desktop. */
-  .board-strip-btn { display: none; }
-  .board-strip { justify-content: flex-end; }
+     rows. #869 finished the job — dockRefresh() re-parents the one ↻ node
+     into the dispatch row at this breakpoint, so the strip has no desktop
+     occupant left and the whole row goes, instead of leaving ↻ floating
+     alone at the pane's right edge above the headers it refreshes. */
+  .board-strip { display: none; }
+  /* The whole bar is one line on a desktop-width pane (#869 round 2): the
+     project filter at the far left, then the mode/model combos, the goal,
+     the compose buttons and ↻. The three .board-dispatch children lay out
+     as a row here instead of a stack, so the phone's `order` overrides go
+     back to source order — filter first — and the chief-status row claims a
+     full-width wrap line of its own beneath. */
+  .board-dispatch {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .board-repo-combo { order: 0; flex: 0 0 auto; }
+  .board-repo-input {
+    width: auto;
+    min-width: 150px;
+    min-height: var(--control-h);
+    height: var(--control-h);
+  }
+  .board-dispatch-row { order: 0; flex: 1 1 320px; }
+  .board-chief-status { order: 0; flex: 1 0 100%; }
 }
 .lifeos-file-btn {
   flex: 1;

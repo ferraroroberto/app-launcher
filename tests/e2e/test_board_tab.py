@@ -784,7 +784,13 @@ def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
     expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
 
     authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
-    authed_page.locator("#boardDispatchMode").select_option("yolo")
+    # Mode is the shared .model-combo since #869 — trigger + listbox, not a
+    # native <select>.
+    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
+    authed_page.locator("#boardDispatchModeMenu [data-value='yolo']").click()
+    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
+        "data-value", "yolo"
+    )
     # Model selector (#500): defaults to Sonnet; pick a non-default value so
     # the POST provably carries the selection, not a hardcoded default.
     expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
@@ -1172,3 +1178,92 @@ def test_board_columns_layout_matches_projection(
             f"desktop column should sit in a 5-col grid: col={box_col['width']}, "
             f"container={box_container['width']}"
         )
+
+
+def test_dispatch_bar_is_compact_and_mode_is_a_combo(
+    authed_page: Page, base_url: str
+) -> None:
+    """#869 — the three dispatch-bar edges, in one shape check.
+
+    (1) The goal input lives *inside* the control row rather than as its own
+    full-width block above it, so the phone bar is 3 rows, not 4, and ➤ docks
+    right after ✕ instead of being flung across the row by a `margin-left:
+    auto`. (2) Mode is the shared `.model-combo`, the same control family as
+    the model picker beside it — no native `<select>` left in the row.
+    (3) ↻ is projection-dependent: docked into the dispatch row on the desktop
+    grid (where the switcher strip is hidden entirely), still in the switcher
+    strip on the phone, where that strip *is* the column header.
+    (4) The project filter leads the desktop line at the far left, and drops
+    below the controls on the phone so it sits just above that strip.
+    """
+    _mock_board(authed_page)
+    _open_board(authed_page, base_url)
+
+    # (1) goal folded into the control row.
+    expect(
+        authed_page.locator(".board-dispatch-row #boardDispatchGoal")
+    ).to_have_count(1)
+
+    # (2) mode is a combo, not a <select>; picking one applies it.
+    expect(authed_page.locator(".board-dispatch-row select")).to_have_count(0)
+    expect(
+        authed_page.locator("#boardDispatchMode.model-combo .model-combo-trigger")
+    ).to_be_visible()
+    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
+    authed_page.locator("#boardDispatchModeMenu [data-value='build']").click()
+    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
+        "data-value", "build"
+    )
+    expect(
+        authed_page.locator("#boardDispatchMode .model-combo-trigger")
+    ).to_have_text("Build")
+
+    # (1b) ➤ sits immediately after ✕ — the old `margin-left: auto` pushed it
+    # to the row's far edge with a wide gap between the two.
+    clear_box = stable_read(
+        lambda: authed_page.locator("#boardDispatchClear").bounding_box()
+    )
+    send_box = stable_read(
+        lambda: authed_page.locator("#boardDispatchSend").bounding_box()
+    )
+    assert clear_box and send_box, "dispatch buttons not laid out"
+    gap = send_box["x"] - (clear_box["x"] + clear_box["width"])
+    assert 0 <= gap < 24, f"➤ should dock right after ✕, gap was {gap}px"
+
+    # (3) + (4) ↻ home and the filter's place both depend on the projection.
+    expect(authed_page.locator("#boardRefresh")).to_be_visible()
+    filter_box = stable_read(
+        lambda: authed_page.locator("#boardDispatchRepoBtn").bounding_box()
+    )
+    mode_box = stable_read(
+        lambda: authed_page.locator("#boardDispatchMode").bounding_box()
+    )
+    refresh_box = stable_read(
+        lambda: authed_page.locator("#boardRefresh").bounding_box()
+    )
+    assert filter_box and mode_box and refresh_box, "dispatch bar not laid out"
+
+    viewport = authed_page.viewport_size or {"width": 0}
+    if viewport["width"] < 700:
+        expect(authed_page.locator(".board-strip #boardRefresh")).to_have_count(1)
+        # Filter drops BELOW the control row, so it sits just above the strip.
+        assert filter_box["y"] > mode_box["y"], (
+            "phone filter should stack under the controls: "
+            f"filter y={filter_box['y']}, mode y={mode_box['y']}"
+        )
+    else:
+        expect(
+            authed_page.locator(".board-dispatch-row #boardRefresh")
+        ).to_have_count(1)
+        expect(authed_page.locator(".board-strip")).to_be_hidden()
+        # One line: filter at the far left, ↻ last, everything on the same row.
+        assert filter_box["x"] < mode_box["x"], (
+            "desktop filter should lead the line: "
+            f"filter x={filter_box['x']}, mode x={mode_box['x']}"
+        )
+        assert refresh_box["x"] > mode_box["x"], "↻ should trail the controls"
+        for name, box in (("mode", mode_box), ("refresh", refresh_box)):
+            assert abs(box["y"] - filter_box["y"]) < 8, (
+                f"desktop {name} should share the filter's line: "
+                f"{name} y={box['y']}, filter y={filter_box['y']}"
+            )

@@ -881,12 +881,6 @@
 
     <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
       <div id="boardDispatch" class="board-dispatch">
-        <textarea
-          id="boardDispatchGoal"
-          class="compose-input board-dispatch-goal"
-          rows="2"
-          placeholder="Speak or type a goal — send dispatches an /issue-* session."
-          enterkeyhint="enter"></textarea>
         <div class="board-repo-combo">
           <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
                   aria-haspopup="listbox" aria-expanded="false"
@@ -895,20 +889,23 @@
           <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>
         <div class="board-dispatch-row">
-          <!-- Wrapper spans carry the ▾ affordance on the phone, where each
-               select is flattened to the row's shared button recipe (#496) —
-               same pattern as .board-repo-combo's ::after chevron. Mode was
-               a 4-segment radiogroup until #547 collapsed it into a select
-               matching the model dropdown beside it — the segments no
-               longer fit an iPhone-width row once chat mode (#245) landed. -->
-          <span class="board-model-combo">
-            <select id="boardDispatchMode" class="select-native" aria-label="Dispatch mode"
-                    title="add — file the issue only / build — file and build straight away / yolo — file, build, and ship / chat — talk to the standing fleet chief (#245)">
-              <option value="add" selected>Add</option>
-              <option value="build">Build</option>
-              <option value="yolo">Yolo</option>
-              <option value="chat">Chat</option>
-            </select>
+          <!-- Mode was a 4-segment radiogroup until #547 collapsed it into a
+               native <select> — the segments no longer fit an iPhone-width row
+               once chat mode (#245) landed. #869 took the last step: the same
+               .model-combo trigger + portaled listbox as the model picker
+               beside it, so the two adjacent dropdowns are one control family
+               instead of a native OS picker next to a custom one. -->
+          <span id="boardDispatchMode" class="model-combo" data-value="add">
+            <button type="button" class="model-combo-trigger" aria-label="Dispatch mode"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModeMenu"
+                    title="add — file the issue only / build — file and build straight away / yolo — file, build, and ship / chat — talk to the standing fleet chief (#245)">Add</button>
+            <span id="boardDispatchModeMenu" class="model-combo-menu" role="listbox"
+                  aria-label="Dispatch mode" hidden>
+              <button type="button" role="option" data-value="add" aria-selected="true">Add</button>
+              <button type="button" role="option" data-value="build" aria-selected="false">Build</button>
+              <button type="button" role="option" data-value="yolo" aria-selected="false">Yolo</button>
+              <button type="button" role="option" data-value="chat" aria-selected="false">Chat</button>
+            </span>
           </span>
           <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
             <button type="button" class="model-combo-trigger" aria-label="Dispatch model"
@@ -920,6 +917,13 @@
                       aria-selected="true">Claude · Sonnet</button>
             </span>
           </span>
+          <textarea
+            id="boardDispatchGoal"
+            class="compose-input board-dispatch-goal"
+            rows="1"
+            wrap="off"
+            placeholder="Speak or type a goal — send dispatches an /issue-* session."
+            enterkeyhint="enter"></textarea>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice → text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
           <button id="boardDispatchClear" type="button" class="compose-record"

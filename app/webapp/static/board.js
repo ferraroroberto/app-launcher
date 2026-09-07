@@ -769,6 +769,30 @@ async function refreshGithub() {
 
 // ------------------------------------------------------- column carousel
 
+// #869: on the phone the column-switcher strip IS the column header, so ↻
+// belongs there. On the >=700px grid those switcher buttons are hidden, which
+// left ↻ alone in a full-width row floating at the pane's right edge — so it
+// joins the dispatch row instead, last after ➤, and the empty strip goes.
+// CSS can't move a node between containers and a second instance would fork
+// the id board.js mutates, so the one node is re-parented on the breakpoint.
+const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
+
+function dockRefresh() {
+  const btn = els.boardRefresh;
+  if (!btn || !window.matchMedia) return;
+  const mq = window.matchMedia(DESKTOP_BOARD);
+  function place() {
+    const home = document.querySelector(
+      mq.matches ? '.board-dispatch-row' : '.board-strip'
+    );
+    if (home && btn.parentNode !== home) home.appendChild(btn);
+  }
+  place();
+  // Safari <14 has no addEventListener on MediaQueryList.
+  if (mq.addEventListener) mq.addEventListener('change', place);
+  else if (mq.addListener) mq.addListener(place);
+}
+
 function columnEl(key) {
   return els.boardColumns.querySelector('.board-col[data-col="' + key + '"]');
 }
@@ -826,6 +850,7 @@ export function wireBoard() {
     requestAnimationFrame(function () { showColumn(state.boardCol, false); });
   });
   wireDispatch();
+  dockRefresh();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {
       apiFailToast('GitHub refresh failed', exc);
