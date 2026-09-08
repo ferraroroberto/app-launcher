@@ -36,14 +36,21 @@ _CLIPBOARD_MOCK = """
 """
 
 
-def _mock_sessions_list(page: Page, state: dict, *, kind: str = "pty") -> None:
+def _mock_sessions_list(
+    page: Page,
+    state: dict,
+    *,
+    kind: str = "pty",
+    agent: str = "claude",
+    web_url: str = "https://claude.ai/code/session_011QSPhSiZdi9GB8skTjx16P",
+) -> None:
     def _handler(route):
         route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"sessions": [{
                 "session_id": _CODING_SID,
                 "kind": kind,
-                "agent": "claude",
+                "agent": agent,
                 "project_dir": "E:/automation/renameproj",
                 "name": "renameproj",
                 "alive": True,
@@ -51,6 +58,7 @@ def _mock_sessions_list(page: Page, state: dict, *, kind: str = "pty") -> None:
                 "live_title": "",
                 "prompt_title": "",
                 "manual_title": state["manual_title"],
+                "web_url": web_url,
             }]}),
         )
 
@@ -173,8 +181,24 @@ def test_full_control_rename_dialog_copies_session_link(
     link = authed_page.locator("#sessionLinkInput")
     expect(link).to_be_visible()
     expect(link).to_have_attribute("readonly", "")
-    expected = f"{base_url}/?session={_CODING_SID}"
+    expected = "https://claude.ai/code/session_011QSPhSiZdi9GB8skTjx16P"
     expect(link).to_have_value(expected)
+
+    input_box = link.bounding_box()
+    copy_box = authed_page.locator("#sessionLinkCopy").bounding_box()
+    close_box = authed_page.locator("#sessionRenameCancel").bounding_box()
+    assert input_box is not None and copy_box is not None and close_box is not None
+    assert input_box["height"] == copy_box["height"]
+    assert close_box["height"] == copy_box["height"]
+    assert close_box["width"] == copy_box["width"]
+    assert authed_page.evaluate(
+        "() => getComputedStyle(document.getElementById('sessionLinkInput')).color "
+        "!== getComputedStyle(document.getElementById('sessionRenameInput')).color"
+    )
+    assert authed_page.evaluate(
+        "() => getComputedStyle(document.querySelector("
+        "'#sessionRenameDialog .dialog-actions--stacked')).borderTopWidth"
+    ) == "0px"
 
     authed_page.locator("#sessionLinkCopy").click()
     authed_page.wait_for_function(
@@ -182,14 +206,35 @@ def test_full_control_rename_dialog_copies_session_link(
         timeout=3_000,
     )
     assert authed_page.evaluate("() => window.__copied[0]") == expected
+    expect(authed_page.locator("#sessionLinkCopy")).to_have_class(
+        re.compile(r"\bis-copied\b")
+    )
+    assert authed_page.evaluate(
+        "() => Number(getComputedStyle("
+        "document.getElementById('sessionLinkCopy')).opacity) < 1"
+    )
+    expect(authed_page.locator("#sessionLinkCopy")).not_to_have_class(
+        re.compile(r"\bis-copied\b"), timeout=2_000,
+    )
     expect(authed_page.locator("#toast")).to_contain_text("Session link copied")
 
-    authed_page.goto(expected, wait_until="domcontentloaded")
-    expect(authed_page.locator("#terminalOverlay")).to_be_visible(timeout=10_000)
-    is_mirror = authed_page.evaluate(
-        "async () => (await import('/static/state.js')).state.isMirrorWindow"
+
+
+def test_codex_rename_dialog_reports_web_link_unavailable(
+    authed_page: Page, base_url: str
+) -> None:
+    state = {"manual_title": ""}
+    _mock_sessions_list(
+        authed_page, state, agent="codex", web_url="",
     )
-    assert is_mirror is False, "a copied link must not claim PC-mirror ownership"
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator('button[aria-label="Rename session"]').click()
+
+    expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename / link")
+    expect(authed_page.locator("#sessionLinkInput")).to_have_value("Not available yet")
+    expect(authed_page.locator("#sessionLinkCopy")).to_be_disabled()
 
 
 def test_detached_rename_dialog_does_not_offer_terminal_link(
@@ -267,9 +312,10 @@ def test_rename_dialog_adopts_modal_contract(
     row.locator('button[aria-label="Rename session"]').click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
 
-    # Header × close: the compact modal.closeSize square (~34px) carrying the
-    # `dialog-close` class, sitting in the header *above* the input — not a
-    # footer button.
+    # Header × close: this dialog deliberately promotes the compact modal
+    # close to the same real 44px geometry as its adjacent Link control while
+    # retaining the `dialog-close` visual treatment. It still sits in the
+    # header above the input, never in the footer.
     close = authed_page.locator("#sessionRenameCancel")
     expect(close).to_have_class(re.compile(r"\bdialog-close\b"))
     close_box = close.bounding_box()
@@ -278,8 +324,9 @@ def test_rename_dialog_adopts_modal_contract(
         "#sessionRenameForm button[type='submit']"
     ).bounding_box()
     assert close_box and field and save
-    assert close_box["width"] <= 40 and close_box["height"] <= 40, (
-        f"× close is not a compact square: {close_box['width']}x{close_box['height']}"
+    assert close_box["width"] == 44 and close_box["height"] == 44, (
+        f"× close does not match the 44px Link control: "
+        f"{close_box['width']}x{close_box['height']}"
     )
     assert abs(close_box["width"] - close_box["height"]) <= 2
     assert close_box["y"] < field["y"], "× close must sit in the header, above the input"
