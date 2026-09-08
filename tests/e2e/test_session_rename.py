@@ -22,14 +22,27 @@ pytestmark = pytest.mark.smoke
 _CODING_SID = "s-rename-coding"
 _BOARD_SID = "s-rename-board"
 
+_CLIPBOARD_MOCK = """
+(() => {
+  window.__copied = [];
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async (text) => { window.__copied.push(text); },
+      readText: async () => '',
+    },
+  });
+})()
+"""
 
-def _mock_sessions_list(page: Page, state: dict) -> None:
+
+def _mock_sessions_list(page: Page, state: dict, *, kind: str = "pty") -> None:
     def _handler(route):
         route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"sessions": [{
                 "session_id": _CODING_SID,
-                "kind": "pty",
+                "kind": kind,
                 "agent": "claude",
                 "project_dir": "E:/automation/renameproj",
                 "name": "renameproj",
@@ -141,6 +154,57 @@ def test_coding_tab_rename_wins_over_launch_name(
     assert captured.get("method") == "POST"
     assert captured.get("body") == {"title": "My custom title"}
     expect(row.locator(".name")).to_have_text("My custom title", timeout=10_000)
+
+
+def test_full_control_rename_dialog_copies_session_link(
+    authed_page: Page, base_url: str
+) -> None:
+    state = {"manual_title": ""}
+    authed_page.add_init_script(_CLIPBOARD_MOCK)
+    _mock_sessions_list(authed_page, state)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator('button[aria-label="Rename session"]').click()
+
+    dialog = authed_page.locator("#sessionRenameDialog")
+    expect(dialog).to_be_visible()
+    expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename / link")
+    link = authed_page.locator("#sessionLinkInput")
+    expect(link).to_be_visible()
+    expect(link).to_have_attribute("readonly", "")
+    expected = f"{base_url}/?session={_CODING_SID}"
+    expect(link).to_have_value(expected)
+
+    authed_page.locator("#sessionLinkCopy").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length === 1",
+        timeout=3_000,
+    )
+    assert authed_page.evaluate("() => window.__copied[0]") == expected
+    expect(authed_page.locator("#toast")).to_contain_text("Session link copied")
+
+    authed_page.goto(expected, wait_until="domcontentloaded")
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible(timeout=10_000)
+    is_mirror = authed_page.evaluate(
+        "async () => (await import('/static/state.js')).state.isMirrorWindow"
+    )
+    assert is_mirror is False, "a copied link must not claim PC-mirror ownership"
+
+
+def test_detached_rename_dialog_does_not_offer_terminal_link(
+    authed_page: Page, base_url: str
+) -> None:
+    state = {"manual_title": ""}
+    _mock_sessions_list(authed_page, state, kind="remote")
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator('button[aria-label="Rename session"]').click()
+
+    expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
+    expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename session")
+    expect(authed_page.locator("#sessionLinkRow")).to_be_hidden()
 
 
 def test_board_drawer_rename_patches_card_in_place(

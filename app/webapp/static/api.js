@@ -11,7 +11,7 @@ import { icon } from './_vendored/icons/icons.js';
 // --------------------------------------------------------------- tokens
 // Read a `?<name>=<value>` deep-link param once, strip it from the visible
 // URL, and return its trimmed value (or null if absent/blank). Used for the
-// bearer ?token=, the PC-mirror ?terminal=<sid> deep link, and the Board
+// bearer ?token=, PC-mirror ?terminal=<sid>, shared ?session=<sid>, and Board
 // ?board=<sid> deep link (issue #301).
 export function consumeUrlParam(name) {
   const params = new URLSearchParams(window.location.search);

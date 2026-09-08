@@ -1457,12 +1457,18 @@
     <dialog id="sessionRenameDialog" class="rename-dialog">
       <form id="sessionRenameForm">
         <div class="dialog-head">
-          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename session</h2>
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> <span id="sessionRenameHeading">Rename session</span></h2>
           <button type="button" id="sessionRenameCancel" class="dialog-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
+        <div id="sessionLinkRow" class="session-link-row" hidden>
+          <input id="sessionLinkInput" type="url" class="input-native" aria-label="Session link" readonly>
+          <button type="button" id="sessionLinkCopy" class="icon-btn" title="Copy link" aria-label="Copy session link">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
+          </button>
+        </div>
         <div class="dialog-actions dialog-actions--stacked">
           <button type="submit" class="button-primary">Save</button>
         </div>

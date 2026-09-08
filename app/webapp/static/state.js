@@ -351,6 +351,10 @@ export const els = {
   sessionRenameForm: document.getElementById('sessionRenameForm'),
   sessionRenameInput: document.getElementById('sessionRenameInput'),
   sessionRenameCancel: document.getElementById('sessionRenameCancel'),
+  sessionRenameHeading: document.getElementById('sessionRenameHeading'),
+  sessionLinkRow: document.getElementById('sessionLinkRow'),
+  sessionLinkInput: document.getElementById('sessionLinkInput'),
+  sessionLinkCopy: document.getElementById('sessionLinkCopy'),
 
   toast: document.getElementById('toast'),
 

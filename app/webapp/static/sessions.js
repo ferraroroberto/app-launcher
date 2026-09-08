@@ -329,16 +329,36 @@ export async function fetchRateLimits() {
 let renameSessionTarget = null;
 let renameSessionOnDone = null;
 
+function sessionLink(s) {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('session', s.session_id);
+  return url.href;
+}
+
 export function openSessionRename(s, onDone) {
   renameSessionTarget = s;
   renameSessionOnDone = onDone || null;
   els.sessionRenameInput.value = sessionTitle(s);
+  const linkAvailable = s.kind !== 'remote';
+  els.sessionRenameHeading.textContent = linkAvailable ? 'Rename / link' : 'Rename session';
+  els.sessionLinkRow.hidden = !linkAvailable;
+  els.sessionLinkInput.value = linkAvailable ? sessionLink(s) : '';
   if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
 }
 
 function wireSessionRenameDialog() {
   els.sessionRenameCancel.addEventListener('click', function () {
     if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
+  });
+  els.sessionLinkCopy.addEventListener('click', async function () {
+    try {
+      await navigator.clipboard.writeText(els.sessionLinkInput.value);
+      toast('Session link copied', 'good', { icon: 'link' });
+    } catch (exc) {
+      apiFailToast('Copy link failed', exc);
+    }
   });
   els.sessionRenameForm.addEventListener('submit', async function (ev) {
     ev.preventDefault();

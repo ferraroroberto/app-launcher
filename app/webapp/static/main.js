@@ -173,13 +173,14 @@ async function boot() {
     els.spikeVoiceLink.href =
       '/spike/voice-loop' + (tok ? '?token=' + encodeURIComponent(tok) : '');
   }
-  const deepLinkSid = consumeUrlParam('terminal');
-  // Only the launcher-spawned PC mirror window opens via the ?terminal=<sid>
-  // deep-link; a human's own browser never does. Recording it here (before
-  // the param is stripped from the URL) is what lets terminal.js tell a real
-  // mirror apart from a desktop browser that merely connects over loopback
-  // (issue #241).
-  state.isMirrorWindow = !!deepLinkSid;
+  const mirrorSid = consumeUrlParam('terminal');
+  const sharedSessionSid = consumeUrlParam('session');
+  // Only the launcher-spawned PC mirror window uses ?terminal=<sid>.
+  // Human-copyable links use ?session=<sid>, so opening one on a phone does
+  // not claim mirror ownership or surrender the phone's PTY-size authority.
+  // Recording only the former here is what lets terminal.js tell a real
+  // mirror apart from an ordinary browser (issues #241/#877).
+  state.isMirrorWindow = !!mirrorSid;
 
   try {
     await fetchConfig();
@@ -210,7 +211,9 @@ async function boot() {
   // poll below keeps them current while a git-reading tab is visible.
   await safe(function () { return refreshGitStatus({ quiet: true }); });
 
-  // PC mirror window opened with ?terminal=<sid> — drop straight in.
+  // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
+  // into the same session; only the former set state.isMirrorWindow above.
+  const deepLinkSid = mirrorSid || sharedSessionSid;
   if (deepLinkSid) {
     const found = state.sessions.find(function (s) {
       return s.session_id === deepLinkSid;
