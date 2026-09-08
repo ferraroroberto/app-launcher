@@ -1602,6 +1602,19 @@ summary + .opt-group { border-top: 0; }
 .rename-dialog .input-native {
   width: 100%;
 }
+.session-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+}
+.session-link-row[hidden] { display: none; }
+.session-link-row .input-native {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.session-link-row .icon-btn { flex: 0 0 44px; }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {
