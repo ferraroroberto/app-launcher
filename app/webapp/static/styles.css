@@ -1613,8 +1613,30 @@ summary + .opt-group { border-top: 0; }
   flex: 1;
   min-width: 0;
   width: auto;
+  height: var(--row-sm);
+  color: var(--muted);
+  cursor: default;
 }
-.session-link-row .icon-btn { flex: 0 0 44px; }
+.session-link-row .session-link-copy,
+#sessionRenameCancel {
+  width: var(--row-sm);
+  height: var(--row-sm);
+  flex: 0 0 var(--row-sm);
+}
+/* Adjacent controls need real, non-overlapping 44px geometry; the modal
+   close button's invisible expansion is only safe while isolated. */
+.session-link-row .session-link-copy::before,
+#sessionRenameCancel::before { content: none; }
+#sessionRenameCancel .icon { width: 20px; height: 20px; }
+.session-link-row .session-link-copy:disabled {
+  background: var(--card-off);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: default;
+}
+.session-link-row .session-link-copy:active,
+.session-link-row .session-link-copy.is-copied { opacity: 0.5; }
+#sessionRenameDialog .dialog-actions--stacked { border-top: 0; }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {

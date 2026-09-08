@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any, Dict
 
@@ -58,6 +59,57 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(voice_ocr_tts.router)
 
+_CLAUDE_WEB_URL_RE = re.compile(
+    r"https://claude\.ai/code/session_"
+    r"\s*([A-Za-z0-9](?:\s*[A-Za-z0-9]){23})(?![A-Za-z0-9])"
+)
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_SESSION_LINK_SCAN_BYTES = 512 * 1024
+
+
+def _provider_web_url(agent: str, transcript: Path) -> str:
+    """Return the provider-native web URL captured from a PTY transcript.
+
+    Claude's remote-control card often wraps between ``session_`` and its
+    24-character identifier, with cursor-control sequences around the second
+    line. Read bounded head and tail windows, strip CSI, and join only the
+    whitespace inside that known URL shape. Codex local sessions deliberately
+    return no URL: its remote-control surface is not available on the web.
+    """
+    if agent != "claude":
+        return ""
+    try:
+        with transcript.open("rb") as stream:
+            head = stream.read(_SESSION_LINK_SCAN_BYTES)
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            tail = b""
+            if size > _SESSION_LINK_SCAN_BYTES:
+                stream.seek(max(0, size - _SESSION_LINK_SCAN_BYTES))
+                tail = stream.read(_SESSION_LINK_SCAN_BYTES)
+    except OSError as exc:
+        logger.debug(f"provider link transcript read failed: {exc}")
+        return ""
+
+    text = _ANSI_CSI_RE.sub("", (head + b"\n" + tail).decode("utf-8", errors="replace"))
+    match = _CLAUDE_WEB_URL_RE.search(text)
+    if not match:
+        return ""
+    session_token = re.sub(r"\s+", "", match.group(1))
+    return f"https://claude.ai/code/session_{session_token}"
+
+
+def _attach_provider_web_urls(sessions: list[Dict[str, Any]]) -> None:
+    """Enrich live full-control rows without requiring a session-host restart."""
+    for session in sessions:
+        session["web_url"] = ""
+        if session.get("kind") != "pty":
+            continue
+        session["web_url"] = _provider_web_url(
+            str(session.get("agent") or ""),
+            audit.transcript_path(str(session.get("session_id") or "")),
+        )
+
 
 @router.get("/api/claude-code/sessions")
 async def claude_sessions(request: Request) -> Dict[str, Any]:
@@ -78,6 +130,7 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
         logger.debug(f"session list failed: {exc}")
         sessions = []
     if sessions:
+        await asyncio.to_thread(_attach_provider_web_urls, sessions)
         state = await asyncio.to_thread(
             board.read_sessions_state, Path(cfg.sessions_state_file)
         )

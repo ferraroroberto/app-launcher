@@ -328,23 +328,24 @@ export async function fetchRateLimits() {
 // drawer-open self-gate — see board.js).
 let renameSessionTarget = null;
 let renameSessionOnDone = null;
-
-function sessionLink(s) {
-  const url = new URL(window.location.href);
-  url.search = '';
-  url.hash = '';
-  url.searchParams.set('session', s.session_id);
-  return url.href;
-}
+let sessionLinkFeedbackTimer = null;
 
 export function openSessionRename(s, onDone) {
   renameSessionTarget = s;
   renameSessionOnDone = onDone || null;
   els.sessionRenameInput.value = sessionTitle(s);
-  const linkAvailable = s.kind !== 'remote';
-  els.sessionRenameHeading.textContent = linkAvailable ? 'Rename / link' : 'Rename session';
-  els.sessionLinkRow.hidden = !linkAvailable;
-  els.sessionLinkInput.value = linkAvailable ? sessionLink(s) : '';
+  const supportsLinkRow = s.kind !== 'remote' && (s.agent === 'claude' || s.agent === 'codex');
+  const webUrl = s.agent === 'claude' ? String(s.web_url || '') : '';
+  els.sessionRenameHeading.textContent = supportsLinkRow ? 'Rename / link' : 'Rename session';
+  els.sessionLinkRow.hidden = !supportsLinkRow;
+  els.sessionLinkInput.value = webUrl || 'Not available yet';
+  els.sessionLinkCopy.disabled = !webUrl;
+  els.sessionLinkCopy.title = webUrl ? 'Copy link' : 'Web link not available yet';
+  els.sessionLinkCopy.setAttribute(
+    'aria-label', webUrl ? 'Copy session link' : 'Session web link not available yet'
+  );
+  window.clearTimeout(sessionLinkFeedbackTimer);
+  els.sessionLinkCopy.classList.remove('is-copied');
   if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
 }
 
@@ -355,6 +356,11 @@ function wireSessionRenameDialog() {
   els.sessionLinkCopy.addEventListener('click', async function () {
     try {
       await navigator.clipboard.writeText(els.sessionLinkInput.value);
+      els.sessionLinkCopy.classList.add('is-copied');
+      window.clearTimeout(sessionLinkFeedbackTimer);
+      sessionLinkFeedbackTimer = window.setTimeout(function () {
+        els.sessionLinkCopy.classList.remove('is-copied');
+      }, 650);
       toast('Session link copied', 'good', { icon: 'link' });
     } catch (exc) {
       apiFailToast('Copy link failed', exc);
