@@ -20,6 +20,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import stable_read
+
 pytestmark = pytest.mark.smoke
 
 _FAKE_SKILLS = {
@@ -727,6 +729,24 @@ def test_life_os_conversation_sort_toggle(
         "2026-08-01"
     )
     expect(rows.nth(1).locator(".lifeos-convo-when-alt")).to_have_count(0)
+
+    # A fourth control overflows the 430px bar. The row is a horizontal
+    # scroll container (#514), but two flex defaults made it deform instead:
+    # the title (the only `min-width: 0` item) collapsed to one letter, and
+    # the buttons shrank below their text and wrapped. Pin both — the new
+    # control has to be reachable, and the skill name still readable.
+    box = stable_read(lambda: sort.bounding_box())
+    width = stable_read(
+        lambda: authed_page.evaluate("window.innerWidth")
+    )
+    assert box["x"] >= 0 and box["x"] + box["width"] <= width + 1, (
+        f"sort toggle is clipped by the bar: {box} in a {width}px viewport"
+    )
+    title = stable_read(
+        lambda: authed_page.locator("#lifeOsConvosTitle").bounding_box()
+    )
+    assert title["width"] >= 70, f"skill name collapsed to {title['width']}px"
+    assert box["height"] <= 40, f"sort toggle wrapped to {box['height']}px"
 
     before = fetches["n"]
     sort.click()
