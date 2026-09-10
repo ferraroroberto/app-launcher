@@ -82,6 +82,13 @@ export const state = {
   // fire (imminent dailies above weeklies; manual/paused sink to the
   // bottom); 'name' = A–Z. Persisted across reloads like editMode.
   jobsSort: localStorage.getItem('launcher.jobsSort') === 'name' ? 'name' : 'next',
+  // Life OS conversations ordering (issue #886). 'interaction' = the
+  // default: newest last-touched first, since reopening this view is
+  // almost always about a conversation you were just in; 'created' =
+  // the date-stamped filename order the index itself is written in.
+  lifeOsConvoSort:
+    localStorage.getItem('launcher.lifeOsConvoSort') === 'created'
+      ? 'created' : 'interaction',
   jobsSearchQuery: '',
   jobsSearchMatches: [],
   jobRuns: {},      // job_id → array of recent runs (lazy)
@@ -182,6 +189,7 @@ export const els = {
   lifeOsConvosBack: document.getElementById('lifeOsConvosBack'),
   lifeOsConvosTitle: document.getElementById('lifeOsConvosTitle'),
   lifeOsConvosScope: document.getElementById('lifeOsConvosScope'),
+  lifeOsConvosSort: document.getElementById('lifeOsConvosSort'),
   lifeOsConvoQuery: document.getElementById('lifeOsConvoQuery'),
   lifeOsConvoList: document.getElementById('lifeOsConvoList'),
   lifeOsConvoState: document.getElementById('lifeOsConvoState'),

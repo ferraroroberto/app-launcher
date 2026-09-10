@@ -673,6 +673,81 @@ def test_life_os_conversations_open_from_tile(
     expect(detail).to_contain_text("confirm the return leg")
 
 
+def test_life_os_conversation_sort_toggle(
+    authed_page: Page, base_url: str
+) -> None:
+    """#886: the conversations list orders by last interaction by default,
+    flips to creation-date order on one tap, shows both dates per row, and
+    remembers the choice — all without a second fetch.
+
+    The fixture is deliberately built so the two orderings disagree: the
+    older-*created* "trial" capture is the more recently *touched* one, so a
+    list that ignored `last_interaction` would render in the opposite order.
+    """
+    fetches = {"n": 0}
+
+    def _count(route):
+        fetches["n"] += 1
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "skill": "journal-daily", "available": True,
+                "conversations": [
+                    dict(_FAKE_CONVERSATIONS["conversations"][0],
+                         last_interaction="2026-08-01"),   # never resumed
+                    dict(_FAKE_CONVERSATIONS["conversations"][1],
+                         last_interaction="2026-09-05"),   # resumed since
+                ],
+            }),
+        )
+
+    _mock_skills(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations$"), _count
+    )
+    _open_conversations(authed_page, base_url)
+
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(2)
+    sort = authed_page.locator("#lifeOsConvosSort")
+    expect(sort).to_contain_text("Recent")
+
+    # Default: most recently interacted with first — the resumed trial run,
+    # even though it was created two months before the ferry booking.
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
+        "an early trial run"
+    )
+    # Both dates, stacked: the active sort's on top, the other beneath it.
+    expect(rows.first.locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-09-05"
+    )
+    expect(rows.first.locator(".lifeos-convo-when-alt")).to_have_text("2026-06-01")
+    # A capture never resumed has one date, not the same day printed twice.
+    expect(rows.nth(1).locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-08-01"
+    )
+    expect(rows.nth(1).locator(".lifeos-convo-when-alt")).to_have_count(0)
+
+    before = fetches["n"]
+    sort.click()
+    expect(sort).to_contain_text("Created")
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
+        "booking the ferry"
+    )
+    expect(rows.nth(1).locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-06-01"                     # creation now on top for the trial
+    )
+    assert fetches["n"] == before, "re-sorting refetched the list"
+
+    # The choice sticks across a reload of the whole tab.
+    _open_conversations(authed_page, base_url)
+    expect(authed_page.locator("#lifeOsConvosSort")).to_contain_text("Created")
+    expect(
+        authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+        .first.locator(".lifeos-convo-topic")
+    ).to_have_text("booking the ferry")
+
+
 def test_life_os_conversations_empty_state_when_no_index(
     authed_page: Page, base_url: str
 ) -> None:

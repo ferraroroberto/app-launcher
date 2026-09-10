@@ -1162,6 +1162,12 @@
                view. Hidden when the view was already opened unscoped. -->
           <button id="lifeOsConvosScope" type="button" class="term-btn"
                   aria-pressed="false" title="Search every skill, not just this one" hidden>All skills</button>
+          <!-- Sort toggle (#886): one button flipping last-interaction (the
+               default) against creation date, same two-state shape as the
+               Jobs tab's sort button. Label + icon are written by
+               life-os.js::syncConvoSortBtn. -->
+          <button id="lifeOsConvosSort" type="button" class="term-btn lifeos-convo-sort"
+                  aria-label="Change conversation sort order"></button>
         </div>
       </div>
       <div class="lifeos-convos-body">

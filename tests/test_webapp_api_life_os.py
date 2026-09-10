@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -886,6 +887,53 @@ class TestConversationsList:
         resp = client.get("/api/life-os/skills/journal-daily/conversations")
         assert resp.status_code == 200, resp.text
         assert resp.json()["available"] is False
+
+    def test_last_interaction_tracks_the_capture_mtime(self, life_os_client):
+        """#886: ``last_interaction`` is the capture file's mtime, not its name.
+
+        life-os rewrites the same ``.md`` when a resumed session appends
+        turns, so mtime is the only "when was I last in this" signal that
+        exists — the date-stamped filename (and therefore ``date``) keeps
+        recording creation. Both must survive side by side; the UI sorts on
+        one and shows the other.
+        """
+        client, _, overrides = life_os_client
+        capture = (
+            overrides["life_os_dir"] / ".claude" / "skills" / "journal-daily"
+            / "conversations" / "2026-06-01-1917-trial.md"
+        )
+        touched = datetime(2026, 9, 3, 14, 30).timestamp()
+        os.utime(capture, (touched, touched))
+
+        rows = {
+            c["file"]: c for c in client.get(
+                "/api/life-os/skills/journal-daily/conversations"
+            ).json()["conversations"]
+        }
+        row = rows["2026-06-01-1917-trial.md"]
+        assert row["date"] == "2026-06-01"          # creation, untouched
+        assert row["last_interaction"] == "2026-09-03"
+
+    def test_last_interaction_falls_back_to_the_created_date(self, life_os_client):
+        """An index row whose capture is gone still sorts (#886).
+
+        A derived field that can fail to resolve must not come back empty —
+        an empty string sorts as "oldest ever" and would bury the row. The
+        creation date is the honest fallback.
+        """
+        client, _, overrides = life_os_client
+        (
+            overrides["life_os_dir"] / ".claude" / "skills" / "journal-daily"
+            / "conversations" / "2026-07-02-1030-notion-schema.md"
+        ).unlink()
+
+        rows = {
+            c["file"]: c for c in client.get(
+                "/api/life-os/skills/journal-daily/conversations"
+            ).json()["conversations"]
+        }
+        row = rows["2026-07-02-1030-notion-schema.md"]
+        assert row["last_interaction"] == row["date"] == "2026-07-02"
 
     def test_unknown_skill_404(self, life_os_client):
         client, _, _ = life_os_client

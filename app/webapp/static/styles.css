@@ -2025,6 +2025,9 @@ body.terminal-open {
   padding: 0 12px;
   font-size: var(--font-caption);
 }
+/* (#886) The sort toggle carries an icon + a short label in that same
+   scroll-if-needed row — it must never wrap to a second line. */
+#lifeOsConvos .terminal-bar .lifeos-convo-sort { white-space: nowrap; }
 /* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
    the #259 close-tap complaint, but the extra 24px pushed the eight-button
    row past the phone viewport (#514). Reverted to the uniform 44px HIG
@@ -2524,12 +2527,21 @@ body.terminal-open {
   font: inherit;
   cursor: pointer;
 }
+/* (#886) Two stacked dates in the one date column — the active sort's on
+   top, the other (when it differs) beneath it. Two caption lines at 1.2
+   line-height still sit inside .lifeos-convo-head's --row-md minimum, so
+   the row keeps its height and nothing beside it shifts. */
 .lifeos-convo-when {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
   font-size: var(--font-caption);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.lifeos-convo-when-primary { color: var(--fg); }
+.lifeos-convo-when-alt { opacity: 0.72; }
 .lifeos-convo-topic {
   flex: 1;
   min-width: 0;
