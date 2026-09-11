@@ -129,8 +129,10 @@ async def save_apps(request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="no ids provided")
 
     registry = load_registry()
-    candidates = discover_new(
-        scan_root=Path(cfg.apps_scan_root), existing=registry
+    # Same apps_scan_root walk as scan_apps above — off the event loop for
+    # the same reason (issue #881).
+    candidates = await asyncio.to_thread(
+        discover_new, scan_root=Path(cfg.apps_scan_root), existing=registry
     )
     keep = [c for c in candidates if c.id in selected_ids]
     added = persist_additions(registry, keep, Path(cfg.apps_scan_root))
