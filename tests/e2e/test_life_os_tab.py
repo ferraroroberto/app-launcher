@@ -20,6 +20,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import stable_read
+
 pytestmark = pytest.mark.smoke
 
 _FAKE_SKILLS = {
@@ -671,6 +673,99 @@ def test_life_os_conversations_open_from_tile(
     rows.first.locator(".lifeos-convo-head").click()
     expect(detail).to_be_visible()
     expect(detail).to_contain_text("confirm the return leg")
+
+
+def test_life_os_conversation_sort_toggle(
+    authed_page: Page, base_url: str
+) -> None:
+    """#886: the conversations list orders by last interaction by default,
+    flips to creation-date order on one tap, shows both dates per row, and
+    remembers the choice — all without a second fetch.
+
+    The fixture is deliberately built so the two orderings disagree: the
+    older-*created* "trial" capture is the more recently *touched* one, so a
+    list that ignored `last_interaction` would render in the opposite order.
+    """
+    fetches = {"n": 0}
+
+    def _count(route):
+        fetches["n"] += 1
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "skill": "journal-daily", "available": True,
+                "conversations": [
+                    dict(_FAKE_CONVERSATIONS["conversations"][0],
+                         last_interaction="2026-08-01"),   # never resumed
+                    dict(_FAKE_CONVERSATIONS["conversations"][1],
+                         last_interaction="2026-09-05"),   # resumed since
+                ],
+            }),
+        )
+
+    _mock_skills(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations$"), _count
+    )
+    _open_conversations(authed_page, base_url)
+
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(2)
+    sort = authed_page.locator("#lifeOsConvosSort")
+    expect(sort).to_contain_text("Recent")
+
+    # Default: most recently interacted with first — the resumed trial run,
+    # even though it was created two months before the ferry booking.
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
+        "an early trial run"
+    )
+    # Both dates, stacked: the active sort's on top, the other beneath it.
+    expect(rows.first.locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-09-05"
+    )
+    expect(rows.first.locator(".lifeos-convo-when-alt")).to_have_text("2026-06-01")
+    # A capture never resumed has one date, not the same day printed twice.
+    expect(rows.nth(1).locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-08-01"
+    )
+    expect(rows.nth(1).locator(".lifeos-convo-when-alt")).to_have_count(0)
+
+    # A fourth control overflows the 430px bar. The row is a horizontal
+    # scroll container (#514), but two flex defaults made it deform instead:
+    # the title (the only `min-width: 0` item) collapsed to one letter, and
+    # the buttons shrank below their text and wrapped. Pin both — the new
+    # control has to be reachable, and the skill name still readable.
+    box = stable_read(lambda: sort.bounding_box())
+    width = stable_read(
+        lambda: authed_page.evaluate("window.innerWidth")
+    )
+    assert box["x"] >= 0 and box["x"] + box["width"] <= width + 1, (
+        f"sort toggle is clipped by the bar: {box} in a {width}px viewport"
+    )
+    title = stable_read(
+        lambda: authed_page.locator("#lifeOsConvosTitle").bounding_box()
+    )
+    assert title["width"] >= 70, f"skill name collapsed to {title['width']}px"
+    assert box["height"] <= 40, f"sort toggle wrapped to {box['height']}px"
+
+    before = fetches["n"]
+    sort.click()
+    expect(sort).to_contain_text("Created")
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
+        "booking the ferry"
+    )
+    expect(rows.nth(1).locator(".lifeos-convo-when-primary")).to_have_text(
+        "2026-06-01"                     # creation now on top for the trial
+    )
+    assert fetches["n"] == before, "re-sorting refetched the list"
+
+    # The choice sticks across a reload of the whole tab.
+    _open_conversations(authed_page, base_url)
+    expect(authed_page.locator("#lifeOsConvosSort")).to_contain_text("Created")
+    expect(
+        authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+        .first.locator(".lifeos-convo-topic")
+    ).to_have_text("booking the ferry")
 
 
 def test_life_os_conversations_empty_state_when_no_index(

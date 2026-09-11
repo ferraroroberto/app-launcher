@@ -458,7 +458,7 @@ function closeBrowser() {
 // reattaches to one exact session instead of opening Claude's native picker.
 // Opened scoped from a tile's 🕘, or unscoped from the Skills header's 🔎.
 //
-// { skill: <id|null>, name: <label>, allSkills: bool, rows: [] }
+// { skill: <id|null>, name: <label>, allSkills: bool, scoped: bool, rows: [] }
 let convoView = null;
 let convoQueryTimer = null;
 
@@ -476,6 +476,9 @@ export function openConvos(skill) {
     skill: skill ? skill.id : null,
     name: skill ? skill.name : 'Conversations',
     allSkills: !skill,
+    // Whether the rows on screen came from a single-skill list — set by
+    // renderConvoRows, so a sort toggle can re-render without a refetch.
+    scoped: !!skill,
     rows: [],
   };
   els.lifeOsConvosTitle.textContent = convoView.name;
@@ -485,6 +488,7 @@ export function openConvos(skill) {
     els.lifeOsConvosScope.hidden = !skill;
     els.lifeOsConvosScope.setAttribute('aria-pressed', 'false');
   }
+  syncConvoSortBtn();
   els.lifeOsConvos.hidden = false;
   if (skill) loadConvos();
   else showConvoState('empty', 'Search every skill’s conversations.');
@@ -601,17 +605,67 @@ function onConvoQuery() {
   }, 250);
 }
 
+// ------------------------------------------------------------- sort (#886)
+//
+// Two orderings over rows already on the client — the browse list and the
+// search results both land here, so one client-side re-sort covers both and
+// a toggle costs no round trip. 'interaction' is the default and the point
+// of the feature: `last_interaction` is the capture file's mtime, which
+// life-os moves forward whenever a resumed session appends turns, so the
+// conversation you were last in floats to the top. 'created' is the
+// date-stamped filename order the index is written in.
+function sortedConvoRows(rows) {
+  const key = state.lifeOsConvoSort === 'created' ? 'date' : 'last_interaction';
+  return rows.slice().sort(function (a, b) {
+    // A server too old to send `last_interaction` (or a row whose capture
+    // could not be stat'd) degrades to the creation date rather than sorting
+    // as the empty string and sinking to the bottom.
+    const av = String(a[key] || a.date || '');
+    const bv = String(b[key] || b.date || '');
+    if (av !== bv) return av < bv ? 1 : -1;   // ISO dates: lexical == chronological
+    // Same day: the date-stamped filename carries the time too, so it is the
+    // stable tie-break — without it, equal rows could shuffle on re-render.
+    return String(b.file || '').localeCompare(String(a.file || ''));
+  });
+}
+
+function syncConvoSortBtn() {
+  const btn = els.lifeOsConvosSort;
+  if (!btn) return;
+  if (state.lifeOsConvoSort === 'created') {
+    btn.innerHTML = icon('calendar-days') + ' Created';
+    btn.title = 'Sorted by creation date — tap to sort by last interaction';
+  } else {
+    btn.innerHTML = icon('timer') + ' Recent';
+    btn.title = 'Sorted by last interaction — tap to sort by creation date';
+  }
+}
+
+function toggleConvoSort() {
+  state.lifeOsConvoSort =
+    state.lifeOsConvoSort === 'created' ? 'interaction' : 'created';
+  localStorage.setItem('launcher.lifeOsConvoSort', state.lifeOsConvoSort);
+  syncConvoSortBtn();
+  // Re-order what is already on screen; a refetch would return the same rows.
+  if (convoView && convoView.rows.length) {
+    renderConvoRows(convoView.rows, { scoped: convoView.scoped });
+  }
+}
+
 function renderConvoRows(rows, opts) {
   const host = els.lifeOsConvoList;
   hideConvoState();
   host.innerHTML = '';
-  convoView.rows = rows;
-  if (!rows.length) {
+  convoView.scoped = !!(opts && opts.scoped);
+  // Store the sorted order: refreshConvoActions() pairs DOM nodes with
+  // convoView.rows by index, so the two must not drift apart.
+  convoView.rows = sortedConvoRows(rows);
+  if (!convoView.rows.length) {
     showConvoState('empty', 'No conversations yet.');
     return;
   }
-  rows.forEach(function (r) {
-    host.appendChild(convoRow(r, opts && opts.scoped));
+  convoView.rows.forEach(function (r) {
+    host.appendChild(convoRow(r, convoView.scoped));
   });
 }
 
@@ -625,7 +679,7 @@ function convoRow(r, scoped) {
   head.setAttribute('aria-expanded', 'false');
   const when = document.createElement('span');
   when.className = 'lifeos-convo-when';
-  when.textContent = r.date || '';
+  appendConvoDates(when, r);
   head.appendChild(when);
   const topic = document.createElement('span');
   topic.className = 'lifeos-convo-topic';
@@ -655,6 +709,30 @@ function convoRow(r, scoped) {
     head.setAttribute('aria-expanded', open ? 'true' : 'false');
   });
   return li;
+}
+
+// Both dates in the one existing column (#886): the active sort's on top,
+// the other beneath it. The second line appears *only* when the two differ —
+// a capture that was never resumed has mtime == its filename date, and
+// echoing one day twice on every row is noise, not information.
+function appendConvoDates(host, r) {
+  const created = r.date || '';
+  const touched = r.last_interaction || created;
+  const byCreated = state.lifeOsConvoSort === 'created';
+  const primary = byCreated ? created : touched;
+  const secondary = byCreated ? touched : created;
+  const top = document.createElement('span');
+  top.className = 'lifeos-convo-when-primary';
+  top.textContent = primary;
+  top.title = byCreated ? 'Created' : 'Last interaction';
+  host.appendChild(top);
+  if (secondary && secondary !== primary) {
+    const alt = document.createElement('span');
+    alt.className = 'lifeos-convo-when-alt';
+    alt.textContent = secondary;
+    alt.title = byCreated ? 'Last interaction' : 'Created';
+    host.appendChild(alt);
+  }
 }
 
 // The digest writes a literal "none" when a section is empty — showing that
@@ -901,6 +979,10 @@ export function wireLifeOs() {
         convoView.allSkills ? 'All skills' : convoView.name;
       onConvoQuery();
     });
+  }
+  if (els.lifeOsConvosSort) {
+    syncConvoSortBtn();
+    els.lifeOsConvosSort.addEventListener('click', toggleConvoSort);
   }
   // The Skills header 🔎 opens the same view unscoped. It shares the summary
   // with the model combo and the toggles, so a tap must not also collapse

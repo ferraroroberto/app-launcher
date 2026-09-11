@@ -48,6 +48,7 @@ import logging
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -593,6 +594,27 @@ def _conversation_path(root: Path, skill: Skill, rel: str) -> Optional[Path]:
     return candidate
 
 
+def _last_interaction(path: Optional[Path], created: str) -> str:
+    """The capture file's mtime as ``YYYY-MM-DD`` — "last interaction" (#886).
+
+    life-os's pipeline rewrites the same capture ``.md`` when a resumed
+    session adds turns, so its mtime moves forward while the date-prefixed
+    filename (and therefore ``date``) keeps recording creation. A capture
+    never resumed simply has mtime == creation date.
+
+    Derived, never authoritative: an unresolvable or unstattable path falls
+    back to the creation date rather than inventing a timestamp, so a row
+    always carries a sortable value.
+    """
+    if path is None:
+        return created
+    try:
+        stamp = path.stat().st_mtime
+    except OSError:
+        return created
+    return datetime.fromtimestamp(stamp).strftime("%Y-%m-%d")
+
+
 def _conversation_rows(
     cfg: WebappConfig, rows: List[Dict[str, Any]], *, skill: Optional[Skill] = None,
 ) -> List[Dict[str, Any]]:
@@ -628,6 +650,7 @@ def _conversation_rows(
             "path": _capture_rel(root, path) if path and source["readable"] else "",
             **{key: str(row.get(key) or "") for key in
                ("date", "slug", "topic", "decisions", "open_loops")},
+            "last_interaction": _last_interaction(path, str(row.get("date") or "")),
             "turns": row.get("turns") or 0,
             "agent": agent, "sid": source.get("sid", ""),
             "revision": source.get("revision", ""),

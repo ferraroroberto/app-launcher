@@ -1150,6 +1150,16 @@
         <button id="lifeOsConvosBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
         <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
         <div class="terminal-bar-actions">
+          <!-- Sort toggle (#886): one button flipping last-interaction (the
+               default) against creation date, same two-state shape as the
+               Jobs tab's sort button. Label + icon are written by
+               life-os.js::syncConvoSortBtn. It leads this group rather than
+               trailing it because the four controls overflow a 430px bar
+               into .terminal-bar-actions' horizontal scroll (#514), and this
+               is the one you touch on every visit — the model combo only
+               matters once you are actually resuming a row. -->
+          <button id="lifeOsConvosSort" type="button" class="term-btn lifeos-convo-sort"
+                  aria-label="Change conversation sort order"></button>
           <span class="model-combo" id="lifeOsConvosModelCombo" data-value="claude:sonnet">
             <button type="button" class="model-combo-trigger" aria-label="Conversation resume model"
                     aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsConvosModelMenu"
