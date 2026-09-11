@@ -257,6 +257,96 @@ def test_board_fresh_github_not_refreshed_on_open(
     assert posts == [], f"fresh gh cache must not auto-refresh on open, got {posts}"
 
 
+def _unfetched_payload() -> dict:
+    """The board right after a webapp restart (#910): the gh cache has never
+    been filled, so Backlog/Done are empty lists that mean "unknown" — while
+    the session and job columns keep working."""
+    payload = _board_payload()
+    payload["github"] = {"available": False, "fetched_at": None, "error": None}
+    payload["columns"]["backlog"] = []
+    payload["columns"]["done"] = []
+    payload["columns"]["other"] = [
+        card for card in payload["columns"]["other"] if card["kind"] == "job"
+    ]
+    return payload
+
+
+def _route_board_from(page: Page, current: dict) -> None:
+    """Serve whatever ``current["body"]`` holds at request time, so a test
+    can change the server's answer mid-flight. Registered after _mock_board,
+    so it wins."""
+    page.route(
+        re.compile(r".*/api/board(?:\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(current["body"]),
+        ),
+    )
+
+
+def test_board_unfetched_github_renders_unknown_not_zero(
+    authed_page: Page, base_url: str
+) -> None:
+    """#910: a never-fetched gh cache must not read as "zero issues". Backlog
+    and Done show an unknown count and a not-loaded message; Other keeps its
+    real job count. Once a refresh genuinely comes back empty, the same
+    columns show a plain 0 — a real zero must not look like a failure."""
+    _mock_board(authed_page)
+    current = {"body": _unfetched_payload()}
+    _route_board_from(authed_page, current)
+    _open_board(authed_page, base_url)
+
+    for strip in ("#boardColBacklog", "#boardColDone"):
+        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("—")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("1")
+    expect(
+        authed_page.locator('.board-col-count[data-col="backlog"]')
+    ).to_have_text("(—)")
+    expect(
+        authed_page.locator('.board-empty[data-col="backlog"]')
+    ).to_have_text("Not loaded from GitHub yet — tap ↻.")
+
+    loaded_empty = _unfetched_payload()
+    loaded_empty["github"] = {
+        "available": True,
+        "fetched_at": _iso_utc(datetime.now(timezone.utc)),
+        "error": None,
+    }
+    # Opening the tab auto-refreshed the never-fetched cache; wait for that to
+    # settle, or this ↻ tap lands on the in-flight guard and is dropped.
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    current["body"] = loaded_empty
+    authed_page.locator("#boardRefresh").click()
+
+    for strip in ("#boardColBacklog", "#boardColDone"):
+        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
+    expect(
+        authed_page.locator('.board-empty[data-col="backlog"]')
+    ).to_have_text("No open issues.")
+    expect(
+        authed_page.locator('.board-empty[data-col="done"]')
+    ).to_have_text("Nothing closed today yet.")
+
+
+def test_board_poll_heals_github_emptied_by_restart(
+    authed_page: Page, base_url: str
+) -> None:
+    """#910: a Board left open while the webapp restarts sees the cache go
+    back to never-fetched on its next 5 s poll, and refreshes it by itself
+    instead of waiting for a ↻ tap or a tab switch."""
+    _mock_board(authed_page)
+    current = {"body": _board_payload()}  # fresh: opening the tab stays free
+    _route_board_from(authed_page, current)
+    _open_board(authed_page, base_url)
+    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
+
+    with authed_page.expect_request(
+        lambda req: req.method == "POST" and req.url.endswith("/api/board/github/refresh"),
+        timeout=15_000,
+    ):
+        current["body"] = _unfetched_payload()
+
+
 def test_board_strip_click_scrolls_carousel_not_page(
     authed_page: Page, base_url: str
 ) -> None:

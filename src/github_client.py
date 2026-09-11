@@ -14,6 +14,10 @@ instead of growing a second ``gh`` wrapper.
 
 Errors degrade, never break the board: a failed refresh keeps the previous
 snapshot's data and surfaces ``error`` so the UI can badge it.
+
+The cache is process memory, so every webapp restart starts it empty with
+``fetched_at: None`` — "never fetched", which is *not* "fetched, nothing
+open". Readers must consult ``fetched_at`` before counting the lists (#910).
 """
 
 from __future__ import annotations
@@ -194,10 +198,14 @@ def snapshot() -> Dict[str, Any]:
 def refresh(owner: str) -> Dict[str, Any]:
     """Run the ``gh`` searches now and replace the cache.
 
-    Subprocess-heavy (four ``gh`` calls) — callers invoke this on explicit
+    Subprocess-heavy (three ``gh`` calls) — callers invoke this on explicit
     user demand only, never on a poll. On failure the previous data is kept
     and only ``error`` is updated, so a flaky ``gh`` degrades to a badge
     instead of an empty board.
+
+    *Every* failure records ``error``, not just :class:`GhError` — a
+    malformed row the normalisers choke on used to escape as a 500 and leave
+    ``error: None`` behind, so the next reader saw no trace of it (#910).
     """
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     try:
@@ -206,9 +214,10 @@ def refresh(owner: str) -> Dict[str, Any]:
         done = search_done_today(owner)
     except GhError as exc:
         logger.warning("⚠️ gh refresh failed: %s", exc)
-        with _lock:
-            _cache["error"] = str(exc)
-            return dict(_cache)
+        return _record_error(str(exc))
+    except Exception as exc:
+        logger.exception("❌ gh refresh failed unexpectedly")
+        return _record_error(f"refresh failed unexpectedly: {type(exc).__name__}: {exc}")
     with _lock:
         _cache.update(
             fetched_at=fetched_at, issues=issues, prs=prs, done=done, error=None
@@ -217,6 +226,13 @@ def refresh(owner: str) -> Dict[str, Any]:
             "✅ gh refresh: %d issues, %d PRs, %d done today",
             len(issues), len(prs), len(done),
         )
+        return dict(_cache)
+
+
+def _record_error(error: str) -> Dict[str, Any]:
+    """Keep the previous data, surface ``error`` to every later reader."""
+    with _lock:
+        _cache["error"] = error
         return dict(_cache)
 
 
