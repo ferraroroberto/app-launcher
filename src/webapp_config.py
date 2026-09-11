@@ -100,9 +100,12 @@ DEFAULT_CHIEF_WORKER_CAP = 3
 MIN_CHIEF_WORKER_CAP = 1
 MAX_CHIEF_WORKER_CAP = 10
 
-# Haiku remains accepted for existing configs and direct launches, but the
-# curated phone selectors intentionally expose Sonnet/Opus/Fable only.
-VALID_CLAUDE_MODELS = ("opus", "sonnet", "haiku", "fable")
+# Derived from the catalog like the Codex/Pi/chief sets (#883), so a model
+# refresh makes a tier pickable, savable and launchable in one edit. Haiku
+# remains accepted for existing configs and direct launches, but it is not a
+# catalog tier, so the curated phone selectors never offer it.
+LEGACY_CLAUDE_MODELS = ("haiku",)
+VALID_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS) + LEGACY_CLAUDE_MODELS
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high", "xhigh", "max")
 DEFAULT_CLAUDE_MODEL = "opus"
 DEFAULT_CLAUDE_EFFORT = "high"
