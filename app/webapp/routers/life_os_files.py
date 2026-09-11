@@ -22,18 +22,22 @@ for an endpoint that reads arbitrary files under a root).
 
 from __future__ import annotations
 
+import json
+import logging
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
+from src._json_io import atomic_write_json
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Files surfaced by the content browser — text-ish only; everything else
@@ -46,6 +50,9 @@ _TEXT_SUFFIXES = frozenset(
 _MAX_FILE_BYTES = 256 * 1024
 # Directory names never walked for the browser (VCS / caches).
 _BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+# Mirrors life_os_conversations._CONVERSATIONS_INDEX — the digested index a
+# conversation log's own directory carries alongside it (#906).
+_CONVERSATIONS_INDEX = "index.json"
 
 
 # ------------------------------------------------------------- path jail
@@ -102,6 +109,61 @@ async def get_file(request: Request) -> Dict[str, Any]:
     return {"path": rel, "name": resolved.name, "content": content, "truncated": truncated}
 
 
+def _patch_conversation_index(
+    index_path: Path, mutate: Callable[[List[Any]], Optional[List[Any]]]
+) -> None:
+    """Best-effort read-mutate-write of a skill's ``conversations/index.json``.
+
+    The index is written by an external capture/index pipeline (life-os#68) —
+    this repo doesn't own its format, so any read/parse/write failure is
+    logged and swallowed rather than failing the delete/rename that triggered
+    it (#906). ``mutate`` returns the new row list, or ``None`` to skip the
+    write (nothing matched).
+    """
+    try:
+        raw = index_path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    try:
+        rows = json.loads(raw)
+    except ValueError:
+        logger.warning("⚠️ unreadable conversation index, leaving as-is: %s", index_path)
+        return
+    if not isinstance(rows, list):
+        return
+    updated = mutate(rows)
+    if updated is None:
+        return
+    try:
+        atomic_write_json(index_path, updated)
+    except OSError as exc:
+        logger.warning("⚠️ could not update conversation index: %s", exc)
+
+
+def _prune_conversation_index(resolved: Path) -> None:
+    """Drop ``resolved``'s row from its skill's digested index, if present (#906).
+
+    Keeps the Conversations view from showing a just-deleted log until the
+    external indexer next runs — see ``_patch_conversation_index``.
+    """
+    def _drop(rows: List[Any]) -> Optional[List[Any]]:
+        kept = [r for r in rows if not (isinstance(r, dict) and r.get("file") == resolved.name)]
+        return kept if len(kept) != len(rows) else None
+    _patch_conversation_index(resolved.parent / _CONVERSATIONS_INDEX, _drop)
+
+
+def _rename_conversation_index(resolved: Path, new_name: str) -> None:
+    """Point ``resolved``'s row at its new filename, if present (#906)."""
+    def _rename_row(rows: List[Any]) -> Optional[List[Any]]:
+        changed = False
+        for row in rows:
+            if isinstance(row, dict) and row.get("file") == resolved.name:
+                row["file"] = new_name
+                changed = True
+        return rows if changed else None
+    _patch_conversation_index(resolved.parent / _CONVERSATIONS_INDEX, _rename_row)
+
+
 @router.delete("/api/life-os/file")
 async def delete_file(request: Request) -> Dict[str, Any]:
     """Delete a single **conversation log** (Tailscale + passkey, path-jailed).
@@ -129,6 +191,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
         resolved.unlink()
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _prune_conversation_index(resolved)
     await audit_off_loop(
         audit.audit_event, "lifeos_delete", path=rel, client=client_ip(request)
     )
@@ -208,6 +271,7 @@ async def rename_file(request: Request) -> Dict[str, Any]:
         resolved.rename(target)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    _rename_conversation_index(resolved, target.name)
     await audit_off_loop(
         audit.audit_event,
         "lifeos_rename", path=rel, to=new_rel, client=client_ip(request)
