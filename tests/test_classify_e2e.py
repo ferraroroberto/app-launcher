@@ -12,6 +12,7 @@ import pathlib
 import pytest
 
 from scripts.classify_e2e import Category, _classify_one, classify
+from src.session_host_paths import declared_session_host_paths
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -36,6 +37,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
         ("app/session_host/server.py", Category.FULL),
         ("src/session_host.py", Category.FULL),
         ("src/session_host_pty.py", Category.FULL),  # future split, not on disk yet
+        ("src/vt_snapshot.py", Category.FULL),  # declared session-host path (#881)
         ("src/session_client.py", Category.FULL),
         ("src/launcher.py", Category.FULL),
         ("launcher.py", Category.FULL),
@@ -133,18 +135,32 @@ def test_session_host_python_forces_full() -> None:
 
 # --------------------------------------------------------- real-tree drift guard
 def test_real_session_host_files_route_full() -> None:
-    """Every real `src/session_host*.py` on disk must classify FULL.
+    """Every real session-host file on disk must classify FULL: each
+    `src/session_host*.py`, plus every path CLAUDE.md's `## session-host`
+    block declares (a declared directory contributes every file under it).
 
-    Guards against layout drift: a new session-host module added on disk
-    without the classifier being taught about it would silently narrow e2e
-    coverage while every hand-written test above stays green. This test
-    walks the real tree, so it fails loudly (naming the offending file) the
-    moment that happens.
+    Guards against layout drift: a new session-host module added on disk, or
+    declared in CLAUDE.md, without the classifier being taught about it would
+    silently narrow e2e coverage while every hand-written test above stays
+    green. The glob alone missed `src/vt_snapshot.py` — declared, but not
+    `session_host*`-named — which routed to no browser suite at all (#881).
+    Walking the declaration too means the list CLAUDE.md already maintains
+    for `stale_relevant` (#635) is the list routing is held to.
     """
-    src_dir = REPO_ROOT / "src"
-    session_host_files = sorted(src_dir.glob("session_host*.py"))
-    assert session_host_files, "expected src/session_host.py to exist on disk"
-    for f in session_host_files:
+    declared = declared_session_host_paths(REPO_ROOT / "CLAUDE.md")
+    assert declared, "expected CLAUDE.md to declare the session-host paths"
+
+    files = set((REPO_ROOT / "src").glob("session_host*.py"))
+    for path in declared:
+        target = REPO_ROOT / path
+        if path.endswith("/"):
+            files.update(f for f in target.rglob("*") if f.is_file())
+        else:
+            assert target.is_file(), f"{path} is declared in CLAUDE.md but missing on disk"
+            files.add(target)
+    assert REPO_ROOT / "src" / "session_host.py" in files
+
+    for f in sorted(files):
         rel = f.relative_to(REPO_ROOT).as_posix()
         cat, _label = _classify_one(rel)
         assert cat is Category.FULL, f"{rel} -> {cat.name}, expected FULL (layout drift?)"
