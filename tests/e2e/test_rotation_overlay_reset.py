@@ -29,6 +29,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 # The SPA loads its modules cache-busted (`terminal.js?v=<asset_hash>`); see
@@ -70,7 +72,7 @@ def test_orientationchange_releases_stale_overlay_pin(
         sid,
     )
     expect(authed_page.locator("#terminalOverlay")).to_be_visible()
-    authed_page.wait_for_selector("#terminalHost .xterm", timeout=10_000)
+    authed_page.wait_for_selector("#terminalHost .xterm", timeout=OVERLAY_OPEN_MS)
 
     # Stage the stuck state and dispatch the rotation in ONE synchronous JS
     # call — a live terminal's own applySize() runs on 'resize'/visualViewport

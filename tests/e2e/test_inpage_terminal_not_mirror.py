@@ -28,6 +28,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 
@@ -76,7 +78,7 @@ def test_inpage_loopback_open_is_not_treated_as_mirror(
     pty_row.locator(".session-open").click()
 
     authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=10_000
+        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
 
     # Non-mirror contract: the ✏️ compose button is shown (it is hidden only

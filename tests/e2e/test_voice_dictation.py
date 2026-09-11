@@ -27,6 +27,8 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 # Stub getUserMedia + MediaRecorder before the SPA loads. The fake recorder
@@ -110,11 +112,11 @@ def _skip_unless_phone(browser_name: str) -> None:
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
 
 
@@ -352,7 +354,7 @@ def test_leaving_terminal_mid_recording_releases_mic(
     )
     expect(row).to_be_visible(timeout=8_000)
     row.locator(".session-open").click()
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     _open_compose_with_record(authed_page)
     record = authed_page.locator("#terminalRecord")

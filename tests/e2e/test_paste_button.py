@@ -17,6 +17,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 _PASTE_PAYLOAD = "p4s7e-{regress}\n"
@@ -53,11 +55,11 @@ def test_paste_button_forwards_clipboard_to_pty(
     # in ws.onopen (terminal.js:64); wait_for_function avoids the
     # wait_for_selector default "visible" check, which would never
     # resolve against a hidden-attribute element.
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     authed_page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
 
     authed_page.locator("#terminalPaste").click()

@@ -28,6 +28,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 _WS_PROBE = """
@@ -77,12 +79,12 @@ def test_warm_reopen_reuses_terminal_and_ws(
     authed_page.wait_for_function(
         "() => window.__wsInstances && window.__wsInstances.length === 1 "
         "&& window.__wsInstances[0].readyState === 1",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
     expect(authed_page.locator("#terminalOverlay")).to_be_visible()
 
     # Tag the live xterm root so element identity survives the round-trip.
-    authed_page.wait_for_selector("#terminalHost .xterm", timeout=10_000)
+    authed_page.wait_for_selector("#terminalHost .xterm", timeout=OVERLAY_OPEN_MS)
     authed_page.evaluate(
         "document.querySelector('#terminalHost .xterm').dataset.warm = 'tagged'"
     )

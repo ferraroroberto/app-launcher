@@ -25,6 +25,8 @@ import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 # How long to wait for a typed marker to echo back through a REAL Claude Code
@@ -37,6 +39,13 @@ pytestmark = pytest.mark.smoke
 # so a loaded host gets headroom without slowing the common-case local pass.
 # 60s is roughly two cold boots' worth of headroom and still fails fast
 # against a genuinely broken replay.
+#
+# Deliberately NOT widened by #887: this budget was the obvious suspect when
+# this test kept failing at the tail of the gate, but raising it to 90s left
+# the test failing exactly as before — so the echo was never the wait that
+# blocked. The real culprit was the replay-frame wait below, which was still
+# on the old 10s. Recording the negative result so the next person does not
+# re-try the same widening.
 _REAL_AGENT_ECHO_MS = int(os.environ.get("E2E_REAL_AGENT_ECHO_MS", "60000"))
 
 # Wrap WebSocket so we can see every instance the SPA constructs. Runs
@@ -86,7 +95,7 @@ def test_terminal_reconnects_after_ws_drop(
     authed_page.wait_for_function(
         "() => window.__wsInstances && window.__wsInstances.length >= 1 "
         "&& window.__wsInstances[0].readyState === 1",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
 
     # Force-drop the live socket. close() with no args fires onclose with
@@ -199,7 +208,7 @@ def test_reconnect_replay_does_not_duplicate_scrollback(
     authed_page.wait_for_function(
         "() => window.__wsInstances && window.__wsInstances.length >= 1 "
         "&& window.__wsInstances[0].readyState === 1",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
     authed_page.evaluate(_BUF_COUNT_SETUP)
 
@@ -248,7 +257,11 @@ def test_reconnect_replay_does_not_duplicate_scrollback(
     # saturates past 256 KB and truncation eats that leading clear).
     authed_page.wait_for_function(
         "() => window.__wsInstances.at(-1).__firstMsg !== null",
-        timeout=10_000,
+        # A real session-host ring replay over a freshly reopened socket —
+        # the same server-round-trip-to-paint class as opening the terminal,
+        # so it shares that budget (#887). On the old 10s this was the wait
+        # that actually failed at the tail of a loaded gate.
+        timeout=OVERLAY_OPEN_MS,
     )
     first = authed_page.evaluate("window.__wsInstances.at(-1).__firstMsg")
     assert first is not None and first.startswith("\x1b[H\x1b[2J\x1b[3J"), (
@@ -400,14 +413,20 @@ def test_terminal_watchdog_fires_when_nothing_ever_paints(
     # which is what arms the watchdog) before waiting out its window.
     authed_page.wait_for_function(
         "() => window.__silentWs && window.__silentWs.readyState === 1",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
 
     # Past PAINT_WATCHDOG_MS (8000ms in terminal-connection.js) with margin.
+    # 11s gave that 8s window only 3s of slack, which is not margin at all on
+    # a box whose page timers slip under load — this was the other half of
+    # #887's residual flake. The watchdog is a page-side setTimeout, so the
+    # budget has to cover the window *plus* however far the event loop has
+    # drifted; OVERLAY_OPEN_MS on top of the window is the same headroom the
+    # rest of the pool now gets.
     authed_page.wait_for_function(
         "() => { const s = document.getElementById('terminalStatus'); "
         "return s && !s.hidden && s.textContent.indexOf('No response yet') !== -1; }",
-        timeout=11_000,
+        timeout=8_000 + OVERLAY_OPEN_MS,
     )
 
     # And it must be recoverable — tapping it starts a fresh connect attempt

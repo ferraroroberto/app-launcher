@@ -29,6 +29,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 
@@ -40,7 +42,7 @@ def test_mirror_page_keeps_close_marker_in_document_title(
     # {reachable: true, reason: 'loopback'}, which terminal.js picks up
     # at line 244-245 to flip isMirror = true.
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     # The marker must remain at the tail of the title (a human name may lead,
     # issue #266) so the launcher's substring EnumWindows scan still finds and
@@ -81,7 +83,7 @@ def test_mirror_marker_applies_on_tailnet_origin(
 
     authed_page.route("**/api/status", to_tailnet)
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     marker = f"app-launcher-mirror-{sid}"
     authed_page.wait_for_function(

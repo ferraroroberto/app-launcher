@@ -570,6 +570,39 @@ def browser_context_args(
 # runner can widen it without a code change.
 _DEFAULT_TIMEOUT_MS = int(os.environ.get("E2E_DEFAULT_TIMEOUT_MS", "15000"))
 
+# Opening the terminal overlay is the single slowest UI operation the suite
+# performs (issue #887), and ~19 test modules open it before they can assert
+# anything — the hub/voice/summarize readback tests, compose, screenshot
+# staging, keys popover, the terminal bar/theme/reconnect/mirror families.
+# Every one of them had hardcoded `timeout=10_000`, which is *tighter* than
+# the suite's own default just above, for the slowest thing in it. That was
+# backwards, and it silently became the gate's dominant failure mode: on a
+# loaded dev box the gate failed 8-17 tests per run with a different set each
+# time, drawn entirely from this pool, while a clean `main` failed at the
+# same rate (#887's control run) — so the gate blocked every ship and taught
+# us to wave the reds through.
+#
+# Measured on the reference dev box, 12 samples per projection, wall time
+# from `goto(/?terminal=<sid>)` to `#terminalOverlay:not([hidden])`:
+#
+#     chromium  p50 3.9 s   max  8.0 s
+#     webkit    p50 4.5 s   max 12.2 s   <- already over the old 10 s budget
+#
+# 30 s is ~2.5x the observed max and ~7x p50, with headroom for a box busier
+# than the one measured, while staying well under the 120 s `pytest-timeout`
+# (#184) so a genuinely dead overlay still fails fast and *named* rather than
+# as a black box — #186's point, which a blanket rise in _DEFAULT_TIMEOUT_MS
+# would have undone for every action in the suite.
+#
+# This is deliberately ONE budget shared by the whole pool: the per-leg vars
+# E2E_LOG_POLL_DEADLINE_MS (#58/#184), E2E_STOP_OVERLAY_HIDE_MS (#253/#286)
+# and E2E_REAL_AGENT_ECHO_MS (#444/#678) each widened exactly one test after
+# it became painful, which is how the other ~35 members of the same pool were
+# left marginal. Those three stay separate on purpose — they time different
+# things (a ConPTY keystroke round-trip, the host's 5 s grace-then-force stop
+# window, a real Claude cold boot), not this one.
+OVERLAY_OPEN_MS = int(os.environ.get("E2E_OVERLAY_OPEN_MS", "30000"))
+
 
 @pytest.fixture(autouse=True)
 def _bound_default_timeouts(context: BrowserContext) -> None:

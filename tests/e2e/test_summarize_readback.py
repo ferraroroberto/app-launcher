@@ -18,6 +18,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 # Stub Web Audio so prepareHub()/speakHubInto() can run without a real audio
@@ -74,7 +76,7 @@ _PCM = b"\xc2\xff\xc0\xff\xc5\xff\xca\xff"
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
 
 def _route_hub(page: Page, *, available: bool = True,

@@ -20,6 +20,8 @@ import re
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 
@@ -55,8 +57,8 @@ def test_open_terminal_restyles_live_on_theme_flip(
     element, so that is the observable."""
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
-    authed_page.wait_for_selector(".xterm-viewport", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    authed_page.wait_for_selector(".xterm-viewport", timeout=OVERLAY_OPEN_MS)
 
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
     authed_page.wait_for_function(
@@ -92,8 +94,8 @@ def test_user_theme_file_overrides_builtins(
     )
 
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
-    authed_page.wait_for_selector(".xterm-viewport", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    authed_page.wait_for_selector(".xterm-viewport", timeout=OVERLAY_OPEN_MS)
 
     # Light theme → the user background (not the built-in white).
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
