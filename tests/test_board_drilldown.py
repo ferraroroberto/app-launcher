@@ -198,6 +198,43 @@ def test_launcher_exchange_ignores_coloured_tool_block_and_reads_input_log(
     )
 
 
+def _input_filler(n_bytes: int) -> str:
+    """Non-submitting ``[input]`` lines (an arrow-key escape, stripped as CSI)
+    totalling at least ``n_bytes`` — the traffic that piles up in a
+    long-lived session's input log between submissions."""
+    line = "2026-07-02T12:00:00 [input] '\\x1b[A'\n"
+    return line * (n_bytes // len(line) + 1)
+
+
+def test_launcher_input_log_read_is_bounded_to_its_tail(tmp_path: Path):
+    """#881: ``webapp/sessions/<sid>.log`` grows forever and the chief drawer
+    re-reads it every 5s, so only a bounded tail is scanned. A submission
+    older than the window is out of reach by design (the caller falls back
+    to the prompt title) — previously the whole file was slurped and walked
+    character by character to find it."""
+    input_log = tmp_path / "s.log"
+    input_log.write_text(
+        "2026-07-02T11:00:00 [input] 'ancient prompt\\r'\n"
+        + _input_filler(board_exchange._INPUT_TAIL_BYTES),
+        encoding="utf-8",
+    )
+    assert board_exchange._last_submitted_input(input_log) == ""
+
+
+def test_launcher_input_log_tail_still_finds_the_recent_prompt(tmp_path: Path):
+    """The bounded read keeps the common case: a prompt submitted within the
+    tail window is found even behind more than a window's worth of older
+    input, with the seek's torn first line dropped rather than parsed."""
+    input_log = tmp_path / "s.log"
+    input_log.write_text(
+        _input_filler(board_exchange._INPUT_TAIL_BYTES * 2)
+        + "2026-07-02T12:00:00 [input] 'recent prompt'\n"
+        + "2026-07-02T12:00:01 [input] '\\r'\n",
+        encoding="utf-8",
+    )
+    assert board_exchange._last_submitted_input(input_log) == "recent prompt"
+
+
 def test_launcher_exchange_drops_grey_in_flight_tool_after_reply(tmp_path: Path):
     capture = tmp_path / "s.transcript"
     capture.write_text(
