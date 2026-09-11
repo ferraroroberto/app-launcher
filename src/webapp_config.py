@@ -63,12 +63,30 @@ DEFAULT_SESSION_HOST_PORT = 8446
 SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # Env override for the config file *path* itself. Set ONLY by the e2e
 # pre-ship gate's autoboot (tests/e2e/conftest.py) so the disposable webapp
-# reads AND writes a temp copy of the config instead of the real, shared
+# reads AND writes its own temp config (derived from the real one, minus every
+# credential — issue #907) instead of the real, shared
 # config/webapp_config.json — a Settings-tab e2e test that clicks Save must
 # never mutate the user's real file (issue #441; the #438 port corruption
 # was this exact shared-file design biting). Not a user-facing knob;
 # intentionally undocumented in the config sample.
 WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
+# Every on-disk key that holds a credential (issue #907). Anything that derives
+# a config for a test or disposable run from the real file must drop these —
+# the e2e autoboot does (tests/_credential_hygiene.py), and its failure-output
+# redaction scrubs their values. ``webhook_secrets`` is the legacy name
+# ``secrets`` still loads from (see ``_load_secrets``), so it is a credential
+# too. A new credential field must be added here: tests/test_credential_hygiene.py
+# fails on any credential-shaped field name this tuple doesn't list.
+CREDENTIAL_KEYS: Tuple[str, ...] = (
+    "auth_token",
+    "auth_password",
+    "pushover_api_token",
+    "pushover_user_key",
+    "telegram_bot_token",
+    "secrets",
+    "webhook_secrets",
+    "api_tokens",
+)
 
 # Bounded scrollback for full-screen (ratatui) agent sessions (issue #435
 # follow-up) — how many lines of history the session-host retains and
