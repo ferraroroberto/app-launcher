@@ -730,12 +730,15 @@ function renderKillButton(jobId, runId, status, extras) {
     killBtn.className = 'icon-btn danger jobs-kill-btn';
     killBtn.dataset.role = 'kill-btn';
     killBtn.innerHTML = icon('octagon-x') + ' Kill stuck run';
-    killBtn.addEventListener('click', function () { killRun(jobId, runId); });
+    // Exactly one listener for the button's lifetime, reading the run id the
+    // latest render stamped below — re-binding per render stacked a second
+    // handler on a stale run id, so one tap killed twice (#881).
+    killBtn.addEventListener('click', function () {
+      killRun(jobId, killBtn.dataset.runId);
+    });
     body.insertBefore(killBtn, body.querySelector('[data-role="output-label"]'));
-  } else {
-    // Re-bind in case runId has changed since the last render.
-    killBtn.onclick = function () { killRun(jobId, runId); };
   }
+  killBtn.dataset.runId = runId;
 }
 
 async function killRun(jobId, runId) {

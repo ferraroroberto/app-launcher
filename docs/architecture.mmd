@@ -52,7 +52,7 @@ flowchart TB
       R_SESS["sessions.py — /api/claude-code/sessions, WS\n+ voice_ocr_tts.py (transcribe/ocr/tts)"]
       R_CC["claude_code.py — favorites, flags, git-status, VS Code open"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n+ jobs_webhook_routes.py\n/api/jobs/* (Jobs tab)"]
-      R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab)"]
+      R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab) launch\n+ life_os_conversations.py (history index/search/relaunch)\n+ life_os_files.py (path-jailed content browser)\n+ life_os_spawn.py (shared skill resolve + spawn tail)"]
       R_BOARD["board.py — /api/board (Board tab) + dispatch\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_SYSMAP["system_map.py — fleet map section"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]

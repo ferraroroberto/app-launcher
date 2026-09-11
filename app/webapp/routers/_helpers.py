@@ -282,7 +282,7 @@ async def audit_session_start_and_maybe_mirror(
     call site (Coding tab ``apps.py``, Board issue-start/dispatch
     ``board.py``) needs right after ``spawn_claude_session`` (issue #334).
 
-    Life OS (``routers/life_os.py``) already has its own
+    Life OS (``routers/life_os_spawn.py``) already has its own
     ``_spawn_skill_session`` covering this same tail plus the "remote" kind
     and response-shaping, so it isn't routed through here — this helper only
     dedupes the three PTY call sites that don't have an equivalent.

@@ -26,6 +26,7 @@ from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional
 
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
 from src.board_transcript import (
+    _ExchangeTail,
     _external_row_liveness,
     _refine_waiting_status,
     _transcript_overlay,
@@ -345,6 +346,11 @@ def merge_sessions(
     knows the hook's transcript UUID, can still resolve to the right card
     (fleet-config#242 / #307). State-only cards don't get one: they have no
     session-host id and no drawer target, so a deep link to one is out of scope.
+
+    Blocking file IO (a transcript stat plus up to two bounded tail reads per
+    waiting card — the activity window and one shared
+    :class:`src.board_transcript._ExchangeTail`) — callers wrap in
+    ``asyncio.to_thread`` (#881).
     """
     now = now or _now()
     active_repos = active_issue_repos or frozenset()
@@ -359,6 +365,7 @@ def merge_sessions(
         anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
             _parse_iso(sess.get("started_at"))
         )
+        tail = _ExchangeTail((row or {}).get("transcript_path"))
         status, anchor = _transcript_overlay(
             row,
             status,
@@ -366,8 +373,9 @@ def merge_sessions(
             now=now,
             live_title=sess.get("live_title"),
             last_output_at=sess.get("last_output_at"),
+            tail=tail,
         )
-        status = _refine_waiting_status(status, (row or {}).get("transcript_path"))
+        status = _refine_waiting_status(status, tail)
         project = (row or {}).get("project") or Path(str(project_dir or "")).name
         if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
             status = "awaiting-input"
@@ -402,8 +410,9 @@ def merge_sessions(
         cwd = row.get("cwd")
         project = row.get("project") or Path(str(cwd or "")).name
         status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-        status, anchor = _transcript_overlay(row, status, stamp, now=now)
-        status = _refine_waiting_status(status, row.get("transcript_path"))
+        tail = _ExchangeTail(row.get("transcript_path"))
+        status, anchor = _transcript_overlay(row, status, stamp, now=now, tail=tail)
+        status = _refine_waiting_status(status, tail)
         if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
             status = "awaiting-input"
         externally_live, reason = _external_row_liveness(
