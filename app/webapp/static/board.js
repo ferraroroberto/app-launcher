@@ -12,8 +12,9 @@
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
- * refreshed via the ↻ button or on tab activation when the cache is older
- * than GH_STALE_MS — never on the 5 s poll, never while just looking at it.
+ * refreshed via the ↻ button, on tab activation when the cache is older
+ * than GH_STALE_MS, or on a poll that finds it never fetched (a webapp
+ * restart empties it, #910) — never on a poll of an already-fetched cache.
  *
  * Act-from-the-card loop (#301): tapping a live session card opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
@@ -51,17 +52,21 @@ import {
   wireDispatch,
 } from './board-dispatch.js';
 
+// `gh` marks where a column's cards come from (#910): 'all' columns are
+// GitHub-only, so before the cache is loaded their count is unknown, never
+// zero; 'part' (Other) mixes open PRs with job cards, whose count stays real.
 const COLUMNS = [
-  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
+  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', gh: 'all' },
   { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.' },
   { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.' },
-  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.' },
+  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', gh: 'part' },
+  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
 
 let refreshInFlight = false;
+let lastAutoRefreshAt = 0;
 
 // --------------------------------------------------------------- helpers
 
@@ -602,6 +607,26 @@ function renderCard(colKey, card) {
 
 // ---------------------------------------------------------------- render
 
+// The GitHub cache is process memory, so a webapp restart empties it:
+// `fetched_at` null means "never fetched", which must never render as the
+// genuine "fetched, nothing open" (#910).
+function ghFetched(body) {
+  return !!(body && body.github && body.github.fetched_at);
+}
+
+// Distinct text per condition: a real zero, a not-yet-fetched cache, and a
+// first fetch that failed are three different answers.
+function emptyText(col, ghLoaded, body) {
+  if (!col.gh || ghLoaded) return col.empty;
+  const failed = !!(body.github && body.github.error);
+  if (col.gh === 'part') {
+    return failed ? 'No stuck jobs — open PRs unavailable (GitHub fetch failed).'
+      : 'No stuck jobs — open PRs not loaded yet.';
+  }
+  return failed ? 'GitHub fetch failed — tap ↻ to retry.'
+    : 'Not loaded from GitHub yet — tap ↻.';
+}
+
 function renderStatusLine(body) {
   const parts = [];
   if (body.github && body.github.error) {
@@ -645,19 +670,22 @@ export function renderBoard() {
   if (!body || !els.boardColumns) return;
   const columns = body.columns || {};
   const repoFilter = boardRepoFilter();
+  const ghLoaded = ghFetched(body);
 
   COLUMNS.forEach(function (col) {
     const cards = (columns[col.key] || []).filter(function (card) {
       return matchesRepoFilter(card, repoFilter);
     });
+    const unknown = col.gh === 'all' && !ghLoaded;
+    const shown = unknown ? '—' : String(cards.length);
     const btn = els[col.btn];
     if (btn) {
       const count = btn.querySelector('.board-count');
-      if (count) count.textContent = String(cards.length);
+      if (count) count.textContent = shown;
       btn.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
     }
     const titleCount = els.boardColumns.querySelector('.board-col-count[data-col="' + col.key + '"]');
-    if (titleCount) titleCount.textContent = '(' + cards.length + ')';
+    if (titleCount) titleCount.textContent = '(' + shown + ')';
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
     if (!list) return;
@@ -666,7 +694,7 @@ export function renderBoard() {
       list.appendChild(renderCard(col.key, card));
     });
     if (empty) {
-      empty.textContent = col.empty;
+      empty.textContent = emptyText(col, ghLoaded, body);
       empty.hidden = cards.length > 0;
     }
   });
@@ -688,6 +716,16 @@ export async function fetchBoard() {
   if (state.tab !== 'board' || state.boardExpanded) return;
   state.board = await jsonApi('/api/board');
   renderBoard();
+  // A never-fetched cache (the webapp restarted since the last refresh) heals
+  // on the poll too, not only on tab activation — a Board left open across a
+  // restart would otherwise sit on "not loaded" until ↻ (#910). Still never
+  // an errored cache (that is ghStale's rule), and throttled so a refresh
+  // that throws before recording its error can't become a 5 s gh loop.
+  const gh = state.board && state.board.github;
+  if (gh && !ghFetched(state.board) && !gh.error && Date.now() - lastAutoRefreshAt > GH_STALE_MS) {
+    lastAutoRefreshAt = Date.now();
+    refreshGithub().catch(function () {});
+  }
 }
 
 // ?board=<sid> deep-link (#301): land on the Board with that card's drawer

@@ -1975,6 +1975,68 @@ def test_github_refresh_failure_keeps_old_data(monkeypatch):
     assert [i["number"] for i in snap["issues"]] == [164]  # previous data survives
 
 
+def _malformed_gh(argv, **kwargs):
+    """gh exits 0 but a row is not an object — the normalisers raise
+    AttributeError, which is not a GhError."""
+    return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(["not-a-row"]), stderr="")
+
+
+def test_github_refresh_unexpected_failure_records_error(monkeypatch):
+    """#910: *any* refresh failure leaves a non-null ``error`` for the next
+    reader — not just GhError. Previously the exception escaped refresh()
+    and the cache kept ``error: None``, so nothing recorded the failure."""
+    monkeypatch.setattr(github_client.subprocess, "run", _FakeGh())
+    github_client.refresh("ferraroroberto")
+
+    monkeypatch.setattr(github_client.subprocess, "run", _malformed_gh)
+    snap = github_client.refresh("ferraroroberto")
+    assert "AttributeError" in (snap["error"] or "")
+    assert [i["number"] for i in snap["issues"]] == [164]  # previous data survives
+    assert github_client.snapshot()["error"] == snap["error"]  # survives to the next read
+
+
+def test_api_refresh_unexpected_failure_surfaces_on_next_board_read(
+    webapp_client, monkeypatch
+):
+    """#910: the failure reaches the API — the refresh answers with the
+    error instead of a 500, and the following poll still carries it."""
+    client, _app, _overrides = webapp_client
+    monkeypatch.setattr(github_client.subprocess, "run", _malformed_gh)
+
+    github = client.post("/api/board/github/refresh").json()
+    assert github["available"] is False
+    assert "AttributeError" in (github["error"] or "")
+
+    body = client.get("/api/board").json()
+    assert body["github"]["error"] == github["error"]
+    assert body["github"]["available"] is False
+
+
+def test_api_board_distinguishes_unfetched_from_genuinely_empty(
+    webapp_client, monkeypatch
+):
+    """#910: a never-fetched cache and a fetched-but-empty one both give an
+    empty Backlog list, so the payload must say which it is. A real zero is
+    ``available: True`` — it must not look like a failure either."""
+    client, _app, _overrides = webapp_client
+
+    unfetched = client.get("/api/board").json()
+    assert unfetched["columns"]["backlog"] == []
+    assert unfetched["github"]["available"] is False
+
+    def _nothing_open(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", _nothing_open)
+    client.post("/api/board/github/refresh")
+
+    empty = client.get("/api/board").json()
+    assert empty["columns"]["backlog"] == []
+    assert empty["columns"]["done"] == []
+    assert empty["github"]["available"] is True
+    assert empty["github"]["error"] is None
+
+
 # ---------------------------------------------------------------- API shape
 
 
@@ -1982,7 +2044,7 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     client, _app, _overrides = webapp_client
     body = client.get("/api/board").json()
     assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "other", "done"}
-    assert body["github"] == {"fetched_at": None, "error": None}
+    assert body["github"] == {"available": False, "fetched_at": None, "error": None}
     assert body["sessions_state"]["available"] is False
     assert body["active_issues"]["available"] is False
     assert [l["harness"] for l in body["quota_lines"]] == ["claude", "codex"]

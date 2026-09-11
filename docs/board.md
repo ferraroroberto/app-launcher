@@ -36,7 +36,7 @@ All Board routes live in `app/webapp/routers/board.py`, except the `/api/board/c
 | `POST /api/board/chief/ensure` | Tailscale + passkey | Spawn the fleet chief if none is alive (`?fresh=1` kills + respawns — a manual operator action only, #616) — see "The fleet chief" below. |
 | `GET/PUT /api/board/chief/settings` | Tailscale + passkey | The chief settings block (model / worker cap). Also read by the `/chief` skill over loopback. |
 
-The `GET /api/board` response is `{ generated_at, columns, github: {fetched_at, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, rate_limits: {available, stale, updated_at, five_hour, seven_day} }`. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress`.
+The `GET /api/board` response is `{ generated_at, columns, github: {available, fetched_at, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, quota_lines: [...] }`. **`github.available: false` means the Backlog and Done lists — and the PR half of Other — are unknown, not empty** (#910): see "Refresh / cache contract" below. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress`.
 
 ## The session-state file join
 
@@ -258,14 +258,24 @@ Callers should treat anything other than `reason: "ok"` as unconfirmed and verif
 
 ## Refresh / cache contract
 
-GitHub data is fetched **server-side via `gh`** into a lock-guarded module-level cache in `src/github_client.py`. `snapshot()` is the pure in-memory read the 5 s poll hits for free; `refresh(owner)` runs the three `gh` subprocesses and replaces the cache. On failure the previous data is kept and only `error` is set — a flaky `gh` degrades to a badge, not an empty board.
+GitHub data is fetched **server-side via `gh`** into a lock-guarded module-level cache in `src/github_client.py`. `snapshot()` is the pure in-memory read the 5 s poll hits for free; `refresh(owner)` runs the three `gh` subprocesses and replaces the cache. On failure the previous data is kept and only `error` is set — a flaky `gh` degrades to a badge, not an empty board. That holds for **every** failure, not only a `gh` exit: a malformed row the normalisers choke on is recorded as `error` too, rather than escaping as a 500 and leaving `error: null` behind (#910).
+
+**Never fetched is not empty (#910).** The cache is process memory, so every webapp restart (each `tray.bat --restart`) starts it with `fetched_at: null` and empty lists. `GET /api/board` reports that as `github.available: false`, and the Board renders it as unknown: Backlog and Done show `—` instead of a count and a "not loaded" message, and Other keeps its real job count but says open PRs aren't loaded. A refresh that genuinely finds nothing gives `available: true` and a plain `0`. Headless readers of the payload (the fleet chief's digest) must check `available` before counting those lists. The four combinations of `available` and `error`:
+
+| `available` | `error` | Meaning |
+| --- | --- | --- |
+| `true` | `null` | Fresh data; an empty list is a real zero. |
+| `true` | set | The last refresh failed; the lists are the older good data. |
+| `false` | `null` | Never fetched in this process — unknown. |
+| `false` | set | Never fetched successfully; the first attempt failed — unknown. |
 
 The cache is refreshed **only** by:
 
-- the manual **↻** button, or
-- **tab activation** when the cache is stale — never fetched, or `fetched_at` older than `GH_STALE_MS` (2 minutes).
+- the manual **↻** button,
+- **tab activation** when the cache is stale — never fetched, or `fetched_at` older than `GH_STALE_MS` (2 minutes), or
+- a **poll that finds it never fetched** (#910) — a Board left open while the webapp restarts heals itself on the next 5 s poll instead of waiting for ↻. At most once per `GH_STALE_MS`, so a refresh that fails before recording its error can't loop.
 
-It is **never** refreshed on the 5 s poll (which only reads the snapshot), and an **errored** cache is never auto-retried — that would hammer a broken `gh`, so ↻ stays manual. This mirrors the Coding tab's ⎇ git-status on-demand contract exactly.
+A poll of an already-fetched cache never runs `gh` (it only reads the snapshot), and an **errored** cache is never auto-retried — that would hammer a broken `gh`, so ↻ stays manual. This mirrors the Coding tab's ⎇ git-status on-demand contract.
 
 ## Security boundary
 

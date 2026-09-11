@@ -90,7 +90,20 @@ _quota_refresh_task: asyncio.Task[str] | None = None
 
 
 def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
-    return {"fetched_at": snap.get("fetched_at"), "error": snap.get("error")}
+    """``available`` says whether the GitHub-sourced columns are real (#910).
+
+    ``False`` means the cache has never been filled in this process (a
+    webapp restart empties it), so an empty Backlog/Done is *unknown*, not
+    zero — the same ``available`` contract as ``sessions_state`` and
+    ``active_issues``. ``error`` is orthogonal: set with ``available: True``
+    it means the last refresh failed and the lists are the older good data.
+    """
+    fetched_at = snap.get("fetched_at")
+    return {
+        "available": fetched_at is not None,
+        "fetched_at": fetched_at,
+        "error": snap.get("error"),
+    }
 
 
 def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
