@@ -5,7 +5,8 @@ The Apps and Life OS launch handlers call ``open_local_terminal_window`` when
 ``should_mirror_to_pc`` is True, which it is under ``TestClient`` (its request
 host isn't loopback). Left real, every launch test leaks an Edge ``--app``
 window the test never closes. ``tests/conftest.py``'s autouse
-``_no_real_mirror_window`` fixture stubs the symbol in both routers; if that
+``_no_real_mirror_window`` fixture stubs the symbol in both routers (Life OS's
+lives in ``life_os_spawn`` since the #884 split); if that
 guard is ever removed, these tests fail loudly instead of silently leaking
 windows again (nothing else asserts on desktop state).
 """
@@ -15,11 +16,11 @@ from __future__ import annotations
 import pytest
 
 from app.webapp.routers import apps as apps_router
-from app.webapp.routers import life_os as life_os_router
+from app.webapp.routers import life_os_spawn
 from src import launcher
 
 
-@pytest.mark.parametrize("router", [apps_router, life_os_router],
+@pytest.mark.parametrize("router", [apps_router, life_os_spawn],
                          ids=["apps", "life_os"])
 def test_router_mirror_symbol_is_stubbed(router):
     """The autouse fixture replaces each router's imported
