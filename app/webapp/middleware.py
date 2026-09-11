@@ -79,8 +79,9 @@ def credential_accepted(cfg: Any, presented: str, method: str, path: str) -> boo
     """Does ``presented`` satisfy either credential class *for this request*?
 
     The yes/no form of the gate, for callers that only need the verdict —
-    today the WebSocket handshake in ``app.webapp.routers.sessions``, which
-    can do nothing with a reason but close the socket.
+    today the WebSocket handshakes in ``app.webapp.routers.sessions`` and
+    ``app.webapp.routers.jobs_run_store_routes``, which can do nothing with a
+    reason but close the socket.
     :meth:`BearerTokenMiddleware.dispatch` deliberately keeps its own
     longer-form version of these same steps: it has to tell a scope
     rejection (403, with the reason in the body) apart from a bad

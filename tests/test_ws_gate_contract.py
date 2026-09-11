@@ -21,6 +21,7 @@ pin the two invariants the HTTP half already states in its own comments:
 from __future__ import annotations
 
 import pytest
+from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from src import api_tokens
@@ -206,6 +207,42 @@ def test_run_stream_edge_request_is_not_treated_as_the_pc(
         with client.websocket_connect(
             _RUN_STREAM, headers={"cf-ray": "abc123-AMS"}
         ) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4401
+
+
+def test_run_stream_edge_header_decides_on_a_real_loopback_socket(webapp_client):
+    """Same contract as the case above, driven from a real loopback client
+    rather than a patched host set: without the edge header this is the PC
+    and bypasses (4404 = gate passed, run lookup refused it); with it, the
+    same socket must present a credential."""
+    _, app, _ = webapp_client
+    app.state.webapp_config.auth_token = "the-real-token"
+    app.state.webapp_config.api_tokens = []
+    loopback = TestClient(app, client=("127.0.0.1", 50000))
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with loopback.websocket_connect(_RUN_STREAM) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4404
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with loopback.websocket_connect(
+            _RUN_STREAM, headers={"cf-ray": "abc123-AMS"}
+        ) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4401
+
+
+def test_run_stream_refuses_a_job_scoped_token(minted_only_config):
+    """A job-scoped token is narrowed to triggering its own jobs, and scope is
+    re-checked per request — it must not open this socket either."""
+    client, app, _, _ = minted_only_config
+    record, raw = api_tokens.mint_token("stream-deck-job", {"jobs": ["no-such-job"]})
+    app.state.webapp_config.api_tokens = [record]
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(f"{_RUN_STREAM}?token={raw}") as ws:
             ws.receive_json()
     assert excinfo.value.code == 4401
 
