@@ -37,16 +37,27 @@ pytestmark = pytest.mark.smoke
 # long, especially on the slower WebKit/iPhone projection. Env-tunable like
 # ``E2E_LOG_POLL_DEADLINE_MS`` (#184) and ``E2E_STOP_OVERLAY_HIDE_MS`` (#286)
 # so a loaded host gets headroom without slowing the common-case local pass.
-# 60s is roughly two cold boots' worth of headroom and still fails fast
-# against a genuinely broken replay.
+# 60s -> 90s (#887 follow-up), matching what CI already sets.
 #
-# Deliberately NOT widened by #887: this budget was the obvious suspect when
-# this test kept failing at the tail of the gate, but raising it to 90s left
-# the test failing exactly as before — so the echo was never the wait that
-# blocked. The real culprit was the replay-frame wait below, which was still
-# on the old 10s. Recording the negative result so the next person does not
-# re-try the same widening.
-_REAL_AGENT_ECHO_MS = int(os.environ.get("E2E_REAL_AGENT_ECHO_MS", "60000"))
+# Correcting a claim #887 committed here: it asserted the echo "was never the
+# wait that blocked" and that the replay-frame wait below was the whole story.
+# That was inferred from a red gate whose traceback had been truncated away,
+# never actually read. The next full gate's traceback names *this* wait, at
+# this line, timing out at 60s — so both waits were under-budgeted, and
+# fixing only the replay frame left this one marginal.
+#
+# What the measurements actually show: typical is ~9s (sampled mid-run on the
+# reference dev box), but a REAL Claude Code cold boot at the tail of a full
+# ~19 min dual-projection gate exceeded 60s. The distribution has a long
+# right tail, not a slow median, so the budget has to cover the tail. 90s is
+# what CI already allows for the same reason.
+#
+# Honest limit: this widens the margin, it does not make the leg
+# deterministic — a real agent's cold boot on a loaded box has no bounded
+# worst case. A red here still reads as "check host load" (#678), and the
+# right response is still to look at what else the machine is running rather
+# than to widen again reflexively.
+_REAL_AGENT_ECHO_MS = int(os.environ.get("E2E_REAL_AGENT_ECHO_MS", "90000"))
 
 # Wrap WebSocket so we can see every instance the SPA constructs. Runs
 # before any page script, so connectWs() in terminal.js uses the wrapped
