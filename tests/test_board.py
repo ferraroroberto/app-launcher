@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import board as board_router
-from src import board, github_client, quota_usage
+from src import board, board_transcript, github_client, quota_usage
 
 
 def _iso(moment: datetime) -> str:
@@ -1525,6 +1525,51 @@ def test_refine_pending_ask_user_question_is_awaiting_decision(tmp_path: Path):
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
     assert cards[0]["status"] == "awaiting-decision"
+
+
+def _count_exchange_tail_reads(monkeypatch) -> list:
+    """Record every :data:`_EXCHANGE_TAIL_BYTES`-window read (#881)."""
+    reads: list = []
+    real = board_transcript._read_tail_bytes
+
+    def counting(path, n_bytes):
+        if n_bytes == board_transcript._EXCHANGE_TAIL_BYTES:
+            reads.append(path)
+        return real(path, n_bytes)
+
+    monkeypatch.setattr(board_transcript, "_read_tail_bytes", counting)
+    return reads
+
+
+def test_waiting_card_reads_its_exchange_tail_once(tmp_path: Path, monkeypatch):
+    """#881: the overlay's pending-dispatch scan and the refine step's
+    pending-tool scan walk the same 256 KB window of the same transcript.
+    They used to read and parse it once each, on every 5s poll, for every
+    ``needs-you`` card; now they share one :class:`_ExchangeTail`."""
+    reads = _count_exchange_tail_reads(monkeypatch)
+    stamp_time = NOW - timedelta(minutes=10)
+    content = _tool_use_line(stamp_time, "toolu_q1", "AskUserQuestion") + "\n"
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "awaiting-decision"
+    assert len(reads) == 1, f"expected one shared exchange-tail read, got {len(reads)}"
+
+
+def test_busy_card_never_reads_its_exchange_tail(tmp_path: Path, monkeypatch):
+    """The shared tail is lazy (#881): a fresh busy live title short-circuits
+    the overlay to ``working`` and the refine step passes ``working`` through,
+    so a card that needs neither scan must not pay for the read at all."""
+    reads = _count_exchange_tail_reads(monkeypatch)
+    stamp_time = NOW - timedelta(minutes=10)
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time)
+    live = _live(
+        "aaa", "E:/x/y", 30, live_title="◐ Working", last_output_at=NOW.timestamp()
+    )
+    cards = board.merge_sessions([live], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "working"
+    assert reads == []
 
 
 def test_refine_pending_exit_plan_mode_is_awaiting_decision(tmp_path: Path):

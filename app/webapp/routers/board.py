@@ -179,7 +179,11 @@ async def get_board(request: Request) -> Dict[str, Any]:
     github = github_client.snapshot()
 
     live = board_chief._reconcile_chief_labels(live, state["rows"])
-    session_cards = board.merge_sessions(
+    # Per-card transcript reads — unbounded in session count and re-run every
+    # 5s while the Board is open, so it goes off the loop like the five
+    # inputs above (#881).
+    session_cards = await asyncio.to_thread(
+        board.merge_sessions,
         live, state["rows"],
         active_issue_repos=board.active_issue_repos(active_issues["rows"]),
     )

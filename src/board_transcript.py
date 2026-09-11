@@ -249,6 +249,52 @@ def _tail_lines(path: Any, n_bytes: int) -> Tuple[List[str], bool]:
     return raw.decode("utf-8", errors="replace").splitlines(), size > n_bytes
 
 
+class _ExchangeTail:
+    """One card's :data:`_EXCHANGE_TAIL_BYTES` transcript tail, read and
+    parsed at most once (#881).
+
+    :func:`_transcript_overlay`'s pending-dispatch scan and
+    :func:`_refine_waiting_status`'s pending-tool scan both walk this same
+    window of the same transcript, back to back, for every waiting card on
+    every 5s Board poll. Each used to read and ``json.loads`` the whole
+    256 KB on its own; :func:`src.board_sessions.merge_sessions` now hands
+    both one of these, so
+    the pair costs a single read. Lazy, because either scan can be skipped
+    (a busy live title short-circuits the overlay, a non-``needs-you``
+    status skips the refine) and a card that needs neither must not pay for
+    the read at all.
+
+    ``objects()`` returns every parseable JSON object in the tail, oldest
+    first; a truncated read's first line is dropped (likely torn, matching
+    :func:`last_exchange`), and blank, unparseable or non-object lines are
+    skipped. Any IO error degrades to an empty list — "no signal", the same
+    as before.
+    """
+
+    def __init__(self, transcript_path: Any) -> None:
+        self.path = transcript_path
+        self._objects: Optional[List[Dict[str, Any]]] = None
+
+    def objects(self) -> List[Dict[str, Any]]:
+        if self._objects is None:
+            lines, truncated = _tail_lines(self.path, _EXCHANGE_TAIL_BYTES)
+            if truncated and lines:
+                lines = lines[1:]
+            parsed: List[Dict[str, Any]] = []
+            for raw in lines:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    obj = json.loads(raw)
+                except ValueError:
+                    continue
+                if isinstance(obj, dict):
+                    parsed.append(obj)
+            self._objects = parsed
+        return self._objects
+
+
 def _last_activity(transcript_path: Any) -> Optional[datetime]:
     """Timestamp of the newest real conversation event in the transcript tail.
 
@@ -324,6 +370,7 @@ def _transcript_overlay(
     now: Optional[datetime] = None,
     live_title: Optional[str] = None,
     last_output_at: Optional[float] = None,
+    tail: Optional[_ExchangeTail] = None,
 ) -> tuple:
     """Override a waiting status with ``working`` (or, for a long-stuck
     dispatch, ``stalled``) when the transcript says so.
@@ -369,6 +416,10 @@ def _transcript_overlay(
     split is scoped to ``needs-you``, and :func:`_refine_waiting_status` does
     the rest of that split once this function is done overriding.
 
+    ``tail`` is the card's shared :class:`_ExchangeTail` (#881) — pass the
+    same one on to :func:`_refine_waiting_status` so the two scans share one
+    read. Omitted, a private one is built for this path.
+
     Any failure keeps the hook status. Returns the (possibly overridden)
     ``(status, age-anchor)``.
     """
@@ -390,7 +441,9 @@ def _transcript_overlay(
         activity = _last_activity(transcript)
         if activity is not None and activity - updated > _RESUME_EPSILON:
             return "working", activity
-    pending_since = _pending_background_dispatch_launched_at(transcript)
+    pending_since = _pending_background_dispatch_launched_at(
+        tail if tail is not None else _ExchangeTail(transcript)
+    )
     if pending_since is not None:
         if (
             status == "needs-you"
@@ -518,7 +571,7 @@ def _notified_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     return _TOOL_USE_ID_RE.findall(text)
 
 
-def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[datetime]:
+def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[datetime]:
     """The earliest still-outstanding background dispatch's own launch
     timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
     needs *how long* a dispatch has been outstanding, not just whether one
@@ -556,9 +609,9 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
     ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
     large intervening tool result (e.g. a file ``Read``) by the time the turn
     ends, and the 8 KB window sized for the cheap #309 mtime pre-filter was
-    empirically too small to still reach it. A truncated read's first line is
-    dropped — it is likely torn — matching :func:`last_exchange`'s handling
-    of the same tail-read shape.
+    empirically too small to still reach it. The read, torn-first-line drop
+    and parse are :class:`_ExchangeTail`'s, shared with
+    :func:`_tail_tool_use_pairs` (#881).
 
     Even :data:`_EXCHANGE_TAIL_BYTES` is still just a window, and a long
     enough turn pushes the launch line past it — a real transcript (#627,
@@ -596,25 +649,13 @@ def _pending_background_dispatch_launched_at(transcript_path: Any) -> Optional[d
 
     Any failure degrades to "nothing pending" — callers keep the hook status.
     """
-    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
-    if truncated and lines:
-        lines = lines[1:]
     launched: Dict[str, Optional[datetime]] = {}
     completed: set = set()
     bash_launched: Dict[str, Optional[datetime]] = {}
     bash_completed: set = set()
     queued_notifications: List[Tuple[List[str], List[str]]] = []
     last_turn_pending_agent_count: Optional[int] = None
-    for raw in lines:
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            obj = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(obj, dict):
-            continue
+    for obj in tail.objects():
         if obj.get("type") == "system" and obj.get("subtype") == "turn_duration":
             count = obj.get("pendingBackgroundAgentCount")
             if isinstance(count, int):
@@ -662,7 +703,10 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
     — see :func:`_pending_background_dispatch_launched_at` for the full
     detection story; this is the plain boolean callers that don't need the
     age used before #613."""
-    return _pending_background_dispatch_launched_at(transcript_path) is not None
+    return (
+        _pending_background_dispatch_launched_at(_ExchangeTail(transcript_path))
+        is not None
+    )
 
 
 # #608: the tool_use names that block on a human decision, not just an async
@@ -671,14 +715,16 @@ def _has_pending_background_dispatch(transcript_path: Any) -> bool:
 _PENDING_DECISION_TOOL_NAMES = frozenset({"AskUserQuestion", "ExitPlanMode"})
 
 
-def _tail_tool_use_pairs(transcript_path: Any) -> Tuple[Dict[str, str], "set[str]", bool]:
+def _tail_tool_use_pairs(tail: _ExchangeTail) -> Tuple[Dict[str, str], "set[str]", bool]:
     """Every assistant ``tool_use`` in the tail (id -> tool name), every
     ``tool_use_id`` a later ``tool_result`` block resolves, and whether the
     tail held at least one genuine, parseable conversation line at all
     (#608).
 
-    Same tail-scan shape as :func:`_pending_background_dispatch_launched_at`,
-    generalized from "any backgrounded dispatch" to "any tool call at all" —
+    Same tail-scan shape as :func:`_pending_background_dispatch_launched_at`
+    — over the same :class:`_ExchangeTail`, so a card pays for one read
+    between them (#881) — generalized from "any backgrounded dispatch" to
+    "any tool call at all" —
     :func:`_refine_waiting_status` needs to know whether *anything* is still
     pending, not just a background one. A backgrounded ``Bash``/``PowerShell``
     call's own synchronous "launched" ack rides as a normal ``tool_result``
@@ -699,22 +745,10 @@ def _tail_tool_use_pairs(transcript_path: Any) -> Tuple[Dict[str, str], "set[str
     nothing pending" apart from "couldn't check at all" — the latter must
     never be read as proof of a clean stop.
     """
-    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
-    if truncated and lines:
-        lines = lines[1:]
     launched: Dict[str, str] = {}
     completed: "set[str]" = set()
     saw_message = False
-    for raw in lines:
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            obj = json.loads(raw)
-        except ValueError:
-            continue
-        if not isinstance(obj, dict):
-            continue
+    for obj in tail.objects():
         obj_type = obj.get("type")
         if obj_type not in ("assistant", "user"):
             continue
@@ -742,21 +776,21 @@ def _tail_tool_use_pairs(transcript_path: Any) -> Tuple[Dict[str, str], "set[str
     return launched, completed, saw_message
 
 
-def _pending_tool_use_names(transcript_path: Any) -> Optional["set[str]"]:
+def _pending_tool_use_names(tail: _ExchangeTail) -> Optional["set[str]"]:
     """Tool names of every ``tool_use`` still unresolved at the tail's end
     (#608) — empty set when the tail was read and genuinely has nothing
     pending; ``None`` when there was no usable signal at all (no path,
     missing file, or an unparseable tail) — the caller must not conflate the
     two."""
-    if not transcript_path:
+    if not tail.path:
         return None
-    launched, completed, saw_message = _tail_tool_use_pairs(transcript_path)
+    launched, completed, saw_message = _tail_tool_use_pairs(tail)
     if not saw_message:
         return None
     return {name for tid, name in launched.items() if tid not in completed}
 
 
-def _refine_waiting_status(status: str, transcript_path: Any) -> str:
+def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
     """Split the generic ``needs-you`` into a caller-actionable value (#608,
     sharpened by #813) without a caller ever needing to fetch the exchange to
     tell them apart:
@@ -798,7 +832,7 @@ def _refine_waiting_status(status: str, transcript_path: Any) -> str:
     """
     if status != "needs-you":
         return status
-    pending_names = _pending_tool_use_names(transcript_path)
+    pending_names = _pending_tool_use_names(tail)
     if pending_names is None:
         return "awaiting-input"
     if pending_names & _PENDING_DECISION_TOOL_NAMES:
