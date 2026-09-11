@@ -111,6 +111,9 @@ def _decorate_job(
     queue (0 when no group); ``coverage`` flags a schedule that isn't
     firing at all (issue #697) — a missing/disabled Task Scheduler entry or
     an elapsed slot with no run record, read from one cached scan per poll.
+
+    Blocking (a ``schtasks`` query plus a run-history disk walk) — async
+    callers wrap it in ``asyncio.to_thread`` (issue #881).
     """
     payload = job.to_dict()
     # Paused jobs render with a "paused — was X" chip so the user sees
@@ -342,7 +345,8 @@ async def create_job(request: Request) -> Dict[str, Any]:
     # Re-sync the Task Scheduler entries for this job. Best-effort —
     # schtasks failures log a warning but don't undo the registry write.
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job), "saved": True, "warnings": warnings}
+    decorated = await asyncio.to_thread(_decorate_job, job)
+    return {"job": decorated, "saved": True, "warnings": warnings}
 
 
 @router.put("/api/jobs/{job_id}")
@@ -404,7 +408,8 @@ async def edit_job(job_id: str, request: Request) -> Dict[str, Any]:
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job), "saved": True, "warnings": warnings}
+    decorated = await asyncio.to_thread(_decorate_job, job)
+    return {"job": decorated, "saved": True, "warnings": warnings}
 
 
 @router.delete("/api/jobs/{job_id}")
@@ -445,7 +450,7 @@ async def pause(job_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     # Schedule is now ``none`` → sync_schtasks deletes the entries.
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job)}
+    return {"job": await asyncio.to_thread(_decorate_job, job)}
 
 
 @router.post("/api/jobs/{job_id}/resume")
@@ -464,7 +469,7 @@ async def resume(job_id: str) -> Dict[str, Any]:
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
     await asyncio.to_thread(jobs_mod.sync_schtasks, job)
-    return {"job": _decorate_job(job)}
+    return {"job": await asyncio.to_thread(_decorate_job, job)}
 
 
 # ----------------------------------------------------------- run / dry-run
