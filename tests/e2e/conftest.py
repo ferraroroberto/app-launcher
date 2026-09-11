@@ -45,6 +45,12 @@ import pytest
 import requests
 from playwright.sync_api import BrowserContext, Page
 
+from tests._credential_hygiene import (
+    count_leaked_credentials,
+    disposable_token,
+    disposable_webapp_config,
+    register_secret,
+)
 from tests.e2e._browser_sweep import sweep_browser_helpers
 
 logger = logging.getLogger(__name__)
@@ -75,7 +81,8 @@ _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # Settings-tab e2e Save from ever mutating the user's real
 # config/webapp_config.json (issue #441; the #438 port corruption was this
 # exact shared-file design biting). Autoboot points the disposable webapp at
-# a temp COPY of the real config so it still boots with realistic values.
+# its own temp config, derived from the real one so it still boots with
+# realistic values but carrying no credential (issue #907).
 _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # Env var the webapp honours to override the boot-autostart Startup directory
 # (see src/boot_autostart.py:STARTUP_DIR_ENV) — the injection that stops the
@@ -286,7 +293,9 @@ def _write_claude_shim(shim_dir: Path) -> None:
 
 
 @pytest.fixture(scope="session")
-def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+def _autoboot_server(
+    tmp_path_factory: pytest.TempPathFactory, auth_token: str
+) -> Iterator[str]:
     """Spawn a disposable webapp (+ session-host) and yield its base URL.
 
     A hard failure (`pytest.fail`) — never a skip — if anything doesn't come
@@ -317,21 +326,29 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
             except Exception:  # pragma: no cover
                 pass
 
-    # Config isolation (issue #441): the disposable webapp gets a temp COPY
-    # of the real config — realistic values (projects_dir, auth_token, …)
-    # without write access to the real file. Any e2e test that Saves settings
-    # mutates only the copy. Snapshot the real file's bytes so the isolation
-    # can be *asserted* after the run, not just assumed.
-    cfg_copy = logs_dir / "e2e-autoboot-webapp-config.json"
+    # Config isolation (issue #441): the disposable webapp gets its own temp
+    # config — realistic values (projects_dir, agent settings, …) without
+    # write access to the real file. Any e2e test that Saves settings mutates
+    # only this one. Snapshot the real file's bytes so the isolation can be
+    # *asserted* after the run, not just assumed.
+    #
+    # Credential isolation (issue #907): it is derived from the real config
+    # with every credential dropped and this run's disposable auth_token in
+    # their place — the live token must never sit in a test run's config —
+    # and it lives in pytest's temp tree, not the checkout. Loopback bypasses
+    # the bearer gate, so nothing here needs the real one.
+    cfg_copy = tmp_path_factory.mktemp("webapp-config") / "webapp_config.json"
     real_cfg_bytes = (
         _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
     )
-    if real_cfg_bytes is not None:
-        cfg_copy.write_bytes(real_cfg_bytes)
-    elif cfg_copy.exists():
-        # No real config (fresh checkout) — a stale copy from a prior run
-        # must not leak its values into this one.
-        cfg_copy.unlink()
+    disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token)
+    if count_leaked_credentials(_WEBAPP_CONFIG, disposable_cfg):
+        pytest.fail(
+            "autoboot: the disposable webapp config still holds a credential "
+            f"from {_WEBAPP_CONFIG} (issue #907) — every key in "
+            "src.webapp_config.CREDENTIAL_KEYS must be dropped. Value withheld."
+        )
+    cfg_copy.write_text(json.dumps(disposable_cfg, indent=2), encoding="utf-8")
 
     # Startup-folder isolation (issue #698): give the disposable webapp its
     # own temp Startup dir so `src.boot_autostart.enable()/disable()` (called
@@ -469,18 +486,19 @@ def base_url(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(scope="session")
-def webapp_config() -> dict:
-    if not _WEBAPP_CONFIG.exists():
-        pytest.skip(f"{_WEBAPP_CONFIG} missing — copy webapp_config.sample.json first")
-    return json.loads(_WEBAPP_CONFIG.read_text(encoding="utf-8"))
+def auth_token() -> str:
+    """This run's disposable bearer token — never the live one (issue #907).
 
-
-@pytest.fixture(scope="session")
-def auth_token(webapp_config: dict) -> str:
-    # Loopback bypasses the bearer middleware (server.py:267), so an empty
-    # token is fine for local-only tests. We still seed it when present so
-    # the SPA boot path mirrors a real phone session.
-    return (webapp_config.get("auth_token") or "").strip()
+    Loopback bypasses the bearer middleware (``BearerTokenMiddleware``) and
+    every WS token gate, so no e2e test needs the real credential — against
+    the disposable autoboot webapp (whose config carries this same token) or
+    the live tray alike. It is still seeded so the SPA boot path mirrors a
+    real phone session, and registered for redaction so even this throwaway
+    value stays out of failure output.
+    """
+    token = disposable_token()
+    register_secret(token)
+    return token
 
 
 @pytest.fixture(scope="session", autouse=True)
