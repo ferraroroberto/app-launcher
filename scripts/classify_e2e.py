@@ -77,11 +77,15 @@ _STATIC_EXTS = {
 # launcher path CLAUDE.md calls out). Everything else under src/ is covered by
 # the non-e2e pytest suite and needs no browser.
 #
-# Matched as a `session_host` *prefix* (not an exact filename) so a future
-# split/extension of the session host (e.g. `src/session_host_pty.py`) is
-# caught automatically instead of falling through to the generic `src/*.py`
-# -> NONE rule below. See test_classify_e2e.py's real-tree drift guard.
-_FULL_SRC_PY_EXACT = ("src/session_client.py", "src/launcher.py")
+# `src/session_host*.py` is matched separately as a *prefix* in _classify_one
+# (not listed here), so a future split of the session host (e.g.
+# `src/session_host_pty.py`) is caught automatically instead of falling
+# through to the generic `src/*.py` -> NONE rule. This tuple holds the
+# surface modules that prefix can't reach — `vt_snapshot.py` is a declared
+# `## session-host` path in CLAUDE.md (the reconnect-snapshot VT mirror) and
+# silently routed to NONE until #881. See test_classify_e2e.py's drift guard,
+# which walks every path that CLAUDE.md block declares.
+_FULL_SRC_PY_EXACT = ("src/session_client.py", "src/launcher.py", "src/vt_snapshot.py")
 
 
 def _classify_one(path: str) -> tuple[Category, str]:
