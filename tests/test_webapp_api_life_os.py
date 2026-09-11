@@ -14,11 +14,9 @@ from pathlib import Path
 
 import pytest
 
-from app.webapp.routers.life_os import (
-    resolve_within,
-    _recap_staleness,
-    _search_cli,
-)
+from app.webapp.routers.life_os import _recap_staleness
+from app.webapp.routers.life_os_conversations import _search_cli
+from app.webapp.routers.life_os_files import resolve_within
 
 # A canonical session id — the only shape the launch route accepts, because
 # the value reaches claude's command line.
@@ -141,8 +139,8 @@ def life_os_client(webapp_client, tmp_path, monkeypatch):
     client, app, overrides = webapp_client
     life_os = _make_life_os(tmp_path / "life-os")
     app.state.webapp_config.life_os_dir = str(life_os)
-    from app.webapp.routers import life_os as life_os_router
-    monkeypatch.setattr(life_os_router, "is_installed", lambda agent: True)
+    from app.webapp.routers import life_os_conversations
+    monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
     # API tests own the external parser contract, so CI needs no sibling repo.
     # Native verification separately runs the real shared parser against synthetic captures.
     from src import life_os_history
@@ -193,7 +191,7 @@ class TestLaunchSkill:
         self, life_os_client, monkeypatch
     ):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -204,7 +202,7 @@ class TestLaunchSkill:
             )
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "opus": False},
@@ -229,7 +227,7 @@ class TestLaunchSkill:
         contract as the Coding-tab launch route (issue #126).
         """
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -238,7 +236,7 @@ class TestLaunchSkill:
             captured.update(rows=rows, cols=cols)
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "opus": False, "rows": 44, "cols": 54},
@@ -252,7 +250,7 @@ class TestLaunchSkill:
     ):
         """Desktop launches send no size — the legacy 40×120 still applies."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -261,7 +259,7 @@ class TestLaunchSkill:
             captured.update(rows=rows, cols=cols)
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "opus": False},
@@ -272,7 +270,7 @@ class TestLaunchSkill:
 
     def test_launch_opus_overrides_model(self, life_os_client, monkeypatch):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -281,7 +279,7 @@ class TestLaunchSkill:
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"opus": True},
@@ -297,7 +295,7 @@ class TestLaunchSkill:
         offered Claude tiers maps to its ``--model`` flag, and the response
         echoes it back."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -306,7 +304,7 @@ class TestLaunchSkill:
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "model": model},
@@ -318,7 +316,7 @@ class TestLaunchSkill:
     def test_launch_codex_astra_reads_project_skill(self, life_os_client, monkeypatch):
         """The Skills selector can launch the same skill through Codex/Astra."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -327,7 +325,7 @@ class TestLaunchSkill:
             captured.update(flags=flags, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "model": "codex:gpt-6-astra"},
@@ -345,7 +343,7 @@ class TestLaunchSkill:
         """When both are sent, the explicit ``model`` takes precedence over the
         legacy ``opus`` bool (#540 back-compat resolution order)."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -354,7 +352,7 @@ class TestLaunchSkill:
             captured["flags"] = flags
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"model": "fable", "opus": True},
@@ -382,7 +380,7 @@ class TestLaunchSkill:
         normally, then invoke the native picker with positional ``/resume``.
         """
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -391,7 +389,7 @@ class TestLaunchSkill:
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "resume": True, "opus": True},
@@ -415,7 +413,7 @@ class TestLaunchSkill:
         a detached console (kind=remote), still invoking the positional
         ``/resume`` picker and dropping the /<skill> prompt."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -424,7 +422,7 @@ class TestLaunchSkill:
             captured.update(flags=flags, kind=kind, agent=agent)
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "remote", "resume": True, "opus": True},
@@ -724,7 +722,7 @@ class TestRecapStatus:
 class TestLaunchRecap:
     def test_launch_invokes_weekly_recap_review(self, life_os_client, monkeypatch):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -733,7 +731,7 @@ class TestLaunchRecap:
             captured.update(flags=flags, kind=kind, name=name, agent=agent)
             return {"session_id": "r1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/recap/launch", json={"mode": "pty", "opus": False}
         )
@@ -748,7 +746,7 @@ class TestLaunchRecap:
 
     def test_launch_opus_detached(self, life_os_client, monkeypatch):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -757,7 +755,7 @@ class TestLaunchRecap:
             captured.update(flags=flags, kind=kind)
             return {"session_id": "r1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/recap/launch", json={"mode": "remote", "opus": True}
         )
@@ -769,7 +767,7 @@ class TestLaunchRecap:
         self, life_os_client, monkeypatch
     ):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         captured = {}
 
@@ -778,7 +776,7 @@ class TestLaunchRecap:
             captured.update(flags=flags, agent=agent)
             return {"session_id": "r1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/life-os/recap/launch",
             json={"mode": "pty", "model": "codex:gpt-6-astra"},
@@ -966,12 +964,12 @@ class TestConversationSearch:
     def stub_cli(self, monkeypatch):
         """Pretend fleet-config's CLI is installed (its own resolution is
         covered by TestSearchCliResolution)."""
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_conversations
         monkeypatch.setattr(
-            life_os_router, "_search_cli", lambda cfg: ["py", "search.py"]
+            life_os_conversations, "_search_cli", lambda cfg: ["py", "search.py"]
         )
-        monkeypatch.setattr(life_os_router, "subprocess", SimpleNamespace(**vars(subprocess)))
-        return life_os_router
+        monkeypatch.setattr(life_os_conversations, "subprocess", SimpleNamespace(**vars(subprocess)))
+        return life_os_conversations
 
     def _hit(self, life_os: Path, file_name: str, **over):
         row = {
@@ -1168,7 +1166,7 @@ class TestTargetedResume:
     """Resume one exact conversation — ``--resume <sid>``, not the picker."""
 
     def _spawn_capture(self, monkeypatch):
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
         captured = {}
 
         def fake_spawn(project_dir, name, flags, port, kind, agent,
@@ -1179,7 +1177,7 @@ class TestTargetedResume:
             )
             return {"session_id": "s1", "kind": kind}
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", fake_spawn)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
         return captured
 
     def test_resume_sid_pins_the_conversation(self, life_os_client, monkeypatch):
@@ -1234,12 +1232,12 @@ class TestTargetedResume:
         """The id reaches a command line, so it is validated by construction
         rather than sanitised — a near-miss is refused, not repaired."""
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         def boom(*a, **k):  # pragma: no cover - must not run
             raise AssertionError("a malformed sid must never reach the spawn")
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", boom)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", boom)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={"mode": "pty", "resume_sid": bad},
@@ -1283,12 +1281,12 @@ class TestTargetedResume:
         self, life_os_client, monkeypatch
     ):
         client, _, _ = life_os_client
-        from app.webapp.routers import life_os as life_os_router
+        from app.webapp.routers import life_os_spawn
 
         def boom(*a, **k):  # pragma: no cover - must not run
             raise AssertionError("cross-provider resume must not spawn")
 
-        monkeypatch.setattr(life_os_router, "spawn_claude_session", boom)
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", boom)
         resp = client.post(
             "/api/life-os/skills/journal-daily/launch",
             json={
@@ -1334,9 +1332,9 @@ class TestConversationGate:
 class TestSourceHistoryRegression:
     def test_unknown_uuid_cannot_resume(self, life_os_client, monkeypatch):
         from app.webapp import middleware
-        from app.webapp.routers import life_os as router
+        from app.webapp.routers import life_os_spawn
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
-        monkeypatch.setattr(router, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
         client, _, _ = life_os_client
         response = client.post("/api/life-os/skills/journal-daily/launch", json={
             "resume_sid": "12345678-1234-1234-1234-123456789abc",
@@ -1344,8 +1342,8 @@ class TestSourceHistoryRegression:
         assert response.status_code == 409, response.text
 
     def test_targeted_resume_requires_private_gate(self, life_os_client, monkeypatch):
-        from app.webapp.routers import life_os as router
-        monkeypatch.setattr(router, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
+        from app.webapp.routers import life_os_spawn
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
         client, _, _ = life_os_client
         response = client.post("/api/life-os/skills/journal-daily/launch",
             headers={"Cf-Ray": "synthetic"}, json={"resume_sid": RESUMABLE_SID})
@@ -1356,10 +1354,10 @@ class TestSourceHistory:
     @pytest.fixture(autouse=True)
     def _private_access(self, monkeypatch, tmp_path):
         from app.webapp import middleware
-        from app.webapp.routers import life_os as router
+        from app.webapp.routers import life_os_conversations
         from src import life_os_history
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
-        monkeypatch.setattr(router, "is_installed", lambda agent: True)
+        monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
         monkeypatch.setattr(life_os_history, "runtime_data_dir", lambda *a, **k: tmp_path)
 
     def _capture(self, life_os_client, *, agent="claude", content="selected only", sid=RESUMABLE_SID):
@@ -1447,12 +1445,12 @@ class TestSourceHistory:
         assert self._launch(client, row).status_code == 409
 
     def test_unavailable_cli_model_and_reader(self, life_os_client, monkeypatch):
-        from app.webapp.routers import life_os as router
+        from app.webapp.routers import life_os_conversations
         client, app, _ = life_os_client
         path, row = self._capture(life_os_client)
         captured = TestTargetedResume()._spawn_capture(monkeypatch)
         assert self._launch(client, row, model="codex:unavailable").status_code == 400
-        monkeypatch.setattr(router, "is_installed", lambda agent: False)
+        monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: False)
         assert "CLI is unavailable" in self._launch(client, row).json()["detail"]
         app.state.webapp_config.claude_config_dir = str(path.parent / "absent-fleet")
         unavailable = client.get("/api/life-os/skills/journal-daily/conversations").json()["conversations"][0]
@@ -1488,14 +1486,14 @@ class TestSourceHistory:
 
     def test_handoff_requires_confirmation_and_cleans_failed_spawn(self, life_os_client, monkeypatch, tmp_path):
         from fastapi import HTTPException
-        from app.webapp.routers import life_os as router
+        from app.webapp.routers import life_os_conversations
         client, _, _ = life_os_client
         _, row = self._capture(life_os_client)
         assert self._launch(client, row, action="handoff", model="codex:gpt-6-astra").status_code == 400
         assert not (tmp_path / "life-os-handoffs").exists()
         async def fail(*a, **k):
             raise HTTPException(503, "Synthetic spawn failure")
-        monkeypatch.setattr(router, "_spawn_skill_session", fail)
+        monkeypatch.setattr(life_os_conversations, "_spawn_skill_session", fail)
         response = self._launch(client, row, action="handoff", model="codex:gpt-6-astra", confirm_new=True)
         assert response.status_code == 503
         assert not list((tmp_path / "life-os-handoffs").glob("*.json"))

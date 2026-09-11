@@ -196,7 +196,8 @@ def _no_real_mirror_window(request, monkeypatch):
     """Never spawn a real PC mirror window from a non-e2e test (issue #279).
 
     Both launch handlers — the Apps tab (``routers/apps.py``) and the Life OS
-    tab (``routers/life_os.py``) — call ``open_local_terminal_window`` when
+    tab (``routers/life_os_spawn.py``'s shared spawn tail since the #884
+    split) — call ``open_local_terminal_window`` when
     ``should_mirror_to_pc`` is True, which it is under ``TestClient`` (its
     request host isn't loopback). Left real, each launch spawns an Edge
     ``--app`` window the unit test never tears down, littering the desktop with
@@ -213,7 +214,7 @@ def _no_real_mirror_window(request, monkeypatch):
         return
     for mod_name in (
         "app.webapp.routers.apps",
-        "app.webapp.routers.life_os",
+        "app.webapp.routers.life_os_spawn",
         "app.webapp.routers.board",
         "app.webapp.routers.board_chief",
     ):
@@ -394,7 +395,9 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import board as board_router
     from app.webapp.routers import board_chief as board_chief_router
     from app.webapp.routers import board_spawn as board_spawn_router
-    from app.webapp.routers import life_os as life_os_router
+    from app.webapp.routers import life_os_conversations as life_os_conversations_router
+    from app.webapp.routers import life_os_files as life_os_files_router
+    from app.webapp.routers import life_os_spawn as life_os_spawn_router
     from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
     from app.webapp.routers import misc as misc_router
     from app.webapp.routers import sessions as sessions_router
@@ -490,7 +493,11 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(sessions_router, "audit", audit_mock)
     monkeypatch.setattr(voice_ocr_tts_router, "audit", audit_mock)
     monkeypatch.setattr(webauthn_router, "audit", audit_mock)
-    monkeypatch.setattr(life_os_router, "audit", audit_mock)
+    # Life OS's launch tail, conversation search and file browser each hold
+    # their own reference since the #884 split; life_os.py itself has none.
+    monkeypatch.setattr(life_os_spawn_router, "audit", audit_mock)
+    monkeypatch.setattr(life_os_conversations_router, "audit", audit_mock)
+    monkeypatch.setattr(life_os_files_router, "audit", audit_mock)
     monkeypatch.setattr(board_router, "audit", audit_mock)
     monkeypatch.setattr(board_chief_router, "audit", audit_mock)
 
