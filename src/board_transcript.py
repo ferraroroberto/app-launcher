@@ -10,9 +10,10 @@ state file can't tell you on its own:
   (:func:`_external_row_liveness`, #322/#455);
 * whether a session stamped ``needs-you``/``idle`` is actually still waiting
   on its *own* backgrounded work — a background sub-agent or shell dispatch
-  it hasn't heard back from yet (:func:`_has_pending_background_dispatch`,
-  #464, hardened by #576 and #601 — see that function's docstring for why the
-  original ``toolUseResult``-keyed check alone isn't reliable);
+  it hasn't heard back from yet
+  (:func:`_pending_background_dispatch_launched_at`, #464, hardened by #576
+  and #601 — see that function's docstring for why the original
+  ``toolUseResult``-keyed check alone isn't reliable);
 * the last completed user→assistant exchange, for the drill-down drawer
   (:func:`last_exchange`, #301).
 
@@ -179,9 +180,10 @@ _ACTIVITY_TAIL_BYTES = 8 * 1024
 # exchange (or the launch line of a dispatch still in flight) always sits
 # within the final few hundred KB, even behind one large intervening tool
 # result (e.g. a file Read). Shared by :func:`last_exchange` and
-# :func:`_has_pending_background_dispatch` (#594 widened the latter from the
-# much smaller ``_ACTIVITY_TAIL_BYTES`` after a live dispatch's launch line —
-# 11.8 KB back — was pushed out of an 8 KB window by one such Read).
+# :func:`_pending_background_dispatch_launched_at` (#594 widened the latter
+# from the much smaller ``_ACTIVITY_TAIL_BYTES`` after a live dispatch's
+# launch line — 11.8 KB back — was pushed out of an 8 KB window by one such
+# Read).
 _EXCHANGE_TAIL_BYTES = 256 * 1024
 
 # Pending-background-dispatch detection (#464): the id a completed dispatch
@@ -575,8 +577,7 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     """The earliest still-outstanding background dispatch's own launch
     timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
     needs *how long* a dispatch has been outstanding, not just whether one
-    is — see :func:`_has_pending_background_dispatch` for the full detection
-    story this shares).
+    is).
 
     A ``Stop`` hook fires (stamping ``needs-you``) the moment Claude's own
     turn ends — even when that turn dispatched a background sub-agent or
@@ -696,17 +697,6 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
         # (which needs a real age) treats this as unknown rather than old.
         return _UNKNOWN_LAUNCH_STAMP
     return min(resolved_stamps)
-
-
-def _has_pending_background_dispatch(transcript_path: Any) -> bool:
-    """Whether the tail shows a background dispatch with no completion yet
-    — see :func:`_pending_background_dispatch_launched_at` for the full
-    detection story; this is the plain boolean callers that don't need the
-    age used before #613."""
-    return (
-        _pending_background_dispatch_launched_at(_ExchangeTail(transcript_path))
-        is not None
-    )
 
 
 # #608: the tool_use names that block on a human decision, not just an async
