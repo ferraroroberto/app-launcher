@@ -295,14 +295,65 @@ async def _coverage_tick(app: FastAPI) -> None:
         await asyncio.sleep(interval)
 
 
+# --- webapp/sessions retention sweep (issue #902) ------------------------
+# Once a day, off the event loop. The first sweep waits well past boot so it
+# never competes with the restart it follows.
+_RETENTION_FIRST_DELAY_SECONDS = 600.0
+_RETENTION_INTERVAL_SECONDS = 24 * 3600.0
+
+
+def _session_retention_days(cfg: object) -> int:
+    """The configured window in days; ``0`` (keep forever) when unset.
+
+    Unlike the coverage interval, a config object *without* the key reads as
+    off, not as the schema default: this tick deletes, so an absent setting
+    must never arm it. A real :class:`~src.webapp_config.WebappConfig` always
+    carries the field, so this only matters for stubs and garbage.
+    """
+    try:
+        return max(0, int(getattr(cfg, "session_retention_days", 0) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+async def _session_retention_tick(app: FastAPI) -> None:
+    """Sweep expired ``webapp/sessions`` files once a day (issue #902).
+
+    Canonical-instance only, like the coverage tick: a disposable gate webapp
+    shares this checkout's ``webapp/sessions`` but talks to its own empty
+    session-host, so its "live" list would protect none of the real sessions.
+    The config is re-read each cycle so a Settings save that swaps
+    ``app.state.webapp_config`` is honoured without a restart.
+    """
+    from src import session_retention
+
+    await asyncio.sleep(_RETENTION_FIRST_DELAY_SECONDS)
+    while True:
+        cfg = getattr(app.state, "webapp_config", None)
+        days = _session_retention_days(cfg)
+        if cfg is not None and days > 0:
+            try:
+                await asyncio.to_thread(
+                    session_retention.run_scheduled_sweep,
+                    cfg.session_host_port,
+                    days,
+                )
+            except Exception:  # noqa: BLE001 — never take the lifespan down
+                _log.exception("❌ session retention sweep failed")
+        await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
-    coverage_task = None
+    tasks = []
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
-    if cfg is not None and canonical and _coverage_interval_minutes(cfg) > 0:
-        coverage_task = asyncio.create_task(_coverage_tick(app))
+    if cfg is not None and canonical:
+        if _coverage_interval_minutes(cfg) > 0:
+            tasks.append(asyncio.create_task(_coverage_tick(app)))
+        if _session_retention_days(cfg) > 0:
+            tasks.append(asyncio.create_task(_session_retention_tick(app)))
     elif not canonical:
         # The autoboot case is expected on every gate run, so it stays quiet;
         # any *other* non-canonical instance is a surprise worth finding in
@@ -313,8 +364,9 @@ async def _lifespan(app: FastAPI):
             else (_log.warning, "⚠️")
         )
         emit(
-            "%s jobs coverage tick skipped — non-canonical instance "
-            "(%s, root=%s); only the canonical checkout may alert (#736)",
+            "%s jobs coverage + session retention ticks skipped — "
+            "non-canonical instance (%s, root=%s); only the canonical "
+            "checkout may alert or reap (#736, #902)",
             mark,
             role_reason,
             instance_role.PROJECT_ROOT,
@@ -322,10 +374,10 @@ async def _lifespan(app: FastAPI):
     try:
         yield
     finally:
-        if coverage_task is not None:
-            coverage_task.cancel()
+        for task in tasks:
+            task.cancel()
             try:
-                await coverage_task
+                await task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
 

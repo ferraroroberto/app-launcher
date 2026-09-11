@@ -112,6 +112,7 @@ flowchart TB
     JSONIO["_json_io.py"]
     LOOPHTTP["_loopback_http.py"]
     AUDIT["audit.py\ntranscript_path"]
+    SESSRETENTION["session_retention.py\nwebapp/sessions retention sweep (#902)"]
   end
 
   HOSTSERVER --> SESSHOST
@@ -136,6 +137,9 @@ flowchart TB
   JOBSCOVERAGE --> JOBSHISTORY
   JOBSCOVERAGE --> NOTIFY
   WSERVER -->|"lifespan coverage tick (#697)"| JOBSCOVERAGE
+  WSERVER -->|"lifespan daily retention tick (#902)"| SESSRETENTION
+  SESSRETENTION --> AUDIT
+  SESSRETENTION -->|"live session list"| SESSCLIENT
   JOBSFACADE --> JOBSCFG
   JOBSFACADE --> JOBSPREFLIGHT
   JOBSFACADE --> JOBSARGV
