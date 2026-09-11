@@ -23,9 +23,19 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pyte
 
-from src.board_transcript import _read_tail_bytes, last_exchange
+from src.board_transcript import _read_tail_bytes, _tail_lines, last_exchange
 
 _CAPTURE_TAIL_BYTES = 512 * 1024
+# The launcher input log (``webapp/sessions/<sid>.log``) is appended one
+# ``[input]`` line per chunk for a session's whole life, with no rotation, and
+# the chief drawer re-polls it every 5s — so only its tail is read (#881), like
+# every other reader here. Sized by measurement against the 12 largest logs
+# on this box: some sessions log 100+ KB of non-submitting input (keys,
+# terminal escape traffic) after their last Enter, so 64 KB changed the shown
+# prompt on 3 of 12 while 256 KB matched a full read on all 12 — the same
+# window as ``board_transcript._EXCHANGE_TAIL_BYTES``. A submission older than
+# the window falls back to the session's prompt title.
+_INPUT_TAIL_BYTES = 256 * 1024
 _CAPTURE_HISTORY_LINES = 2500
 _CODEX_TAIL_BYTES = 4 * 1024 * 1024
 _CODEX_START_SLOP_SECONDS = 120
@@ -401,10 +411,9 @@ def _is_rule_line(line: str) -> bool:
 def _last_submitted_input(path: Optional[Path]) -> str:
     if path is None:
         return ""
-    try:
-        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return ""
+    lines, truncated = _tail_lines(path, _INPUT_TAIL_BYTES)
+    if truncated and lines:
+        lines = lines[1:]  # likely torn by the seek
     buffer = ""
     submitted: List[str] = []
     for line in lines:
