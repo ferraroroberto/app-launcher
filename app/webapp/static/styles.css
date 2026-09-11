@@ -679,6 +679,9 @@ summary + .opt-group { border-top: 0; }
 .app-item .health-dot.up { background: var(--success); }
 .app-item .health-dot.down { background: var(--danger); }
 .app-item .health-dot.stuck { background: var(--attention); }
+/* A run whose delivery was never established (#916) — attention, not danger.
+   It may well have succeeded; what is certain is only that nobody checked. */
+.app-item .health-dot.unconfirmed { background: var(--attention); }
 
 /* Jobs tab action rail (issue #232): job tiles use the shared .app-item
    layout — info block on the left, a compact vertical action rail on the
@@ -747,6 +750,9 @@ summary + .opt-group { border-top: 0; }
 .job-spark-dot.up { color: var(--success); }
 .job-spark-dot.down { color: var(--danger); }
 .job-spark-dot.live { color: var(--attention); }
+.job-spark-dot.unconfirmed { color: var(--attention); }
+/* `unknown` is a run with no real outcome at all (skipped, dry run); an
+   unconfirmed one above did run and is worth a look, so it is not grey. */
 .job-spark-dot.unknown { color: var(--muted); }
 
 .job-duration-chip {
@@ -1181,6 +1187,13 @@ summary + .opt-group { border-top: 0; }
   min-width: 0;
 }
 .jobs-run-btn .jobs-run-icon { font-size: var(--font-label); }
+/* The three terminal outcomes are told apart by glyph AND status colour
+   (#916): ✓ success, ✗ failed, ? not confirmed. The glyph alone carried it
+   before, which is thin on a phone at a glance — and `unconfirmed` has to be
+   unmistakable from both neighbours, not merely different from one. */
+.jobs-run-btn .jobs-run-success { color: var(--success); }
+.jobs-run-btn .jobs-run-failed { color: var(--danger); }
+.jobs-run-btn .jobs-run-unconfirmed { color: var(--attention); }
 .jobs-run-btn .jobs-run-meta {
   flex: 1;
   min-width: 0;
@@ -3094,6 +3107,9 @@ body.terminal-open {
 .board-item.is-tool-pending .board-card { border-left: 3px solid var(--accent); }
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
+/* A job run the scheduled-run adapter could not verify (#916): it still wants
+   a human's eye, but it is not a failure and must not be drawn as one. */
+.board-item.is-unconfirmed .board-card { border-left: 3px solid var(--attention); }
 .board-item.is-idle .board-card,
 .board-item.is-idle-finished .board-card { opacity: 0.7; }
 /* Fleet chief card (#245): the standing orchestrator reads distinct from

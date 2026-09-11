@@ -27,11 +27,18 @@ function renderCountdownChip(job) {
   return chip;
 }
 
+/* Keyed by a run's `outcome` (issue #916), which is its persisted `status`
+ * widened with `unconfirmed`: the scheduled-run adapter reserves a block of
+ * exit codes for "this may well have delivered, but nobody established that",
+ * and drawing those as failures is what made the Board's red stop meaning
+ * anything. `status` still keys every other entry, so a caller that has only a
+ * status (or a payload predating #916) renders exactly as before. */
 const STATUS_META = {
   running: { class: 'up', icon: 'hourglass', spark: 'live' },
   pending: { class: '', icon: 'hourglass', spark: 'live' },
   success: { class: 'up', icon: 'circle-check', spark: 'up' },
   failed: { class: 'down', icon: 'circle-x', spark: 'down' },
+  unconfirmed: { class: 'unconfirmed', icon: 'circle-help', spark: 'unconfirmed' },
   skipped: { class: '', icon: 'skip-forward', spark: 'unknown' },
   queued: { class: '', icon: 'link', spark: 'live' },
   dry_run_success: { class: '', icon: 'flask-conical', spark: 'unknown' },
@@ -51,10 +58,29 @@ function sparkClass(status) {
   return statusMeta(status).spark;
 }
 
+/* A run's outcome, falling back to its persisted status. Every render path
+ * goes through this so none of them can drift back to reading `status`. */
+export function runOutcome(run) {
+  if (!run) return '';
+  return run.outcome || run.status || '';
+}
+
 function statusClass(job) {
   if (job.stuck) return 'stuck';
   if (job.running) return 'up';
-  return job.last_run ? statusMeta(job.last_run.status).class : '';
+  return job.last_run ? statusMeta(runOutcome(job.last_run)).class : '';
+}
+
+/* Single owner of the status dot's rendered state, shared by the initial
+ * render and the poll-time patch so the two cannot drift (this module's whole
+ * reason for existing). The title carries the exit code's own one-liner when
+ * the adapter defines one — "stalled …", "the run reported it delivered no
+ * work" — so an amber or red dot says why without a trip to the log (#916). */
+function applyStatusDot(dotEl, job) {
+  dotEl.className = 'health-dot ' + statusClass(job);
+  const reason = job.last_run && job.last_run.outcome_reason;
+  if (reason) dotEl.title = reason;
+  else dotEl.removeAttribute('title');
 }
 
 export function formatDuration(seconds) {
@@ -122,12 +148,12 @@ function renderSparkline(job) {
   span.setAttribute('aria-label', 'Last ' + last7.length + ' runs');
   last7.forEach(function (entry) {
     const dot = document.createElement('span');
-    const status = entry && entry.status ? entry.status : '';
+    const status = runOutcome(entry);
     const className = sparkClass(status);
     dot.className = 'job-spark-dot' + (className ? ' ' + className : '');
     dot.textContent = '●';
     dot.title = (entry && entry.run_id ? entry.run_id + ' · ' : '') +
-      (status || 'unknown');
+      (status === 'unconfirmed' ? 'not confirmed' : (status || 'unknown'));
     span.appendChild(dot);
   });
   return span;
@@ -137,12 +163,13 @@ function describeLastRun(job) {
   const bits = [];
   if (job.last_run) {
     const ago = fmtAgo(toEpoch(job.last_run.started_at));
-    const status = job.last_run.status || '?';
+    const status = runOutcome(job.last_run) || '?';
     const duration = formatDuration(job.last_run.duration_seconds);
     if (job.running || status === 'running' || status === 'pending') {
       bits.push('running now' + (ago ? ' · started ' + ago + ' ago' : ''));
     } else {
-      const tail = status +
+      const label = status === 'unconfirmed' ? 'not confirmed' : status;
+      const tail = label +
         (ago ? ' · ' + ago + ' ago' : '') +
         (duration ? ' · ' + duration : '');
       bits.push('last: ' + tail);
@@ -192,7 +219,7 @@ export function renderJobRow(job, options) {
   const head = document.createElement('div');
   head.className = 'session-head job-row-head';
   const dot = document.createElement('span');
-  dot.className = 'health-dot ' + statusClass(job);
+  applyStatusDot(dot, job);
   dot.dataset.role = 'status-dot';
   head.appendChild(dot);
   const name = document.createElement('span');
@@ -414,7 +441,7 @@ function swapChip(container, oldElement, freshElement, anchor) {
 }
 
 export function patchRowNodes(nodes, job) {
-  nodes.dotEl.className = 'health-dot ' + statusClass(job);
+  applyStatusDot(nodes.dotEl, job);
   nodes.metaEl.innerHTML = describeLastRun(job);
   if (nodes.runBtnEl) setRunBtnState(nodes.runBtnEl, job);
 

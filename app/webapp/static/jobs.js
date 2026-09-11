@@ -33,6 +33,7 @@ import {
   formatDuration,
   patchRowNodes,
   renderJobRow,
+  runOutcome,
   statusIcon,
   toEpoch,
 } from './jobs-row.js';
@@ -90,7 +91,7 @@ function renderSearchMatches(host) {
     button.className = 'launch-btn session-open';
     const title = document.createElement('span');
     title.className = 'session-head';
-    title.innerHTML = icon(statusIcon(match.status)) + ' ';
+    title.innerHTML = icon(statusIcon(runOutcome(match))) + ' ';
     title.append(match.job_id + ' · ' + match.run_id);
     button.appendChild(title);
     const snippet = document.createElement('span');
@@ -359,8 +360,12 @@ function redrawRunsList(jobId, runs) {
       btn.classList.add('selected');
     }
     const iconEl = document.createElement('span');
-    iconEl.className = 'jobs-run-icon';
-    iconEl.innerHTML = icon(statusIcon(r.status));
+    // `outcome` (issue #916), not `status`: an exit code the scheduled-run
+    // adapter reserves for "delivery was never established" is not a failure,
+    // and drawing it with the red ✗ is what buried the genuine ones.
+    const outcome = runOutcome(r);
+    iconEl.className = 'jobs-run-icon jobs-run-' + (outcome || 'unknown');
+    iconEl.innerHTML = icon(statusIcon(outcome));
     btn.appendChild(iconEl);
     const meta = document.createElement('span');
     meta.className = 'jobs-run-meta';
@@ -368,15 +373,20 @@ function redrawRunsList(jobId, runs) {
     const exitText = (r.exit_code === undefined || r.exit_code === null)
       ? '' : ' · exit ' + r.exit_code;
     const paramsChip = formatRunParams(r.params);
-    meta.innerHTML = escapeHtml(r.status || '?') +
+    meta.innerHTML = escapeHtml(
+      outcome === 'unconfirmed' ? 'not confirmed' : (outcome || '?')
+    ) +
       (ago ? ' · ' + escapeHtml(ago) + ' ago' : '') +
       ' · ' + triggerChip(r) + escapeHtml(exitText) +
       (r.dry_run ? ' · ' + icon('flask-conical') + ' dry' : '') +
       endedChip(r) +
       (paramsChip ? ' · ' + escapeHtml(paramsChip) : '');
     // A failed run says nothing about *who* ended it. The note carries
-    // the watchdog's own one-liner ("watchdog: no output for 68min").
+    // the watchdog's own one-liner ("watchdog: no output for 68min"); absent
+    // one, the exit code's own meaning (#916) is the next best explanation,
+    // and for 122/124 it is the whole answer.
     if (r.note) meta.title = r.note;
+    else if (r.outcome_reason) meta.title = r.outcome_reason;
     btn.appendChild(meta);
     btn.addEventListener('click', function () { selectRun(jobId, r.run_id); });
     li.appendChild(btn);

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_history
+from src.jobs_outcome import run_outcome
 from src.runtime_data import runtime_data_dir
 
 logger = logging.getLogger(__name__)
@@ -264,7 +265,14 @@ def search_runs(
     since: Optional[str] = None,
     limit: int = 100,
 ) -> List[Dict[str, Any]]:
-    """FTS-search output, newest first, with optional exact filters."""
+    """FTS-search output, newest first, with optional exact filters.
+
+    Each hit carries ``outcome`` alongside ``status`` (issue #916), classified
+    here from the indexed ``exit_code`` rather than re-derived in the client, so
+    a search hit's icon agrees with the same run's icon in the history list. The
+    ``status`` filter argument still matches the persisted column: filtering is
+    a query against what is stored, rendering is a question about what it meant.
+    """
     tokens = re.findall(r"[\w-]+", query, flags=re.UNICODE)
     if not tokens:
         return []
@@ -283,7 +291,8 @@ def search_runs(
     params.append(max(1, min(int(limit), 200)))
     ensure_index()
     sql = f"""
-        SELECT runs.job_id, runs.run_id, runs.status, runs.started_at,
+        SELECT runs.job_id, runs.run_id, runs.status, runs.exit_code,
+               runs.started_at,
                snippet(output_fts, 0, '', '', ' … ', 18) AS snippet
         FROM output_fts
         JOIN runs ON runs.rowid = output_fts.rowid
@@ -292,4 +301,7 @@ def search_runs(
         LIMIT ?
     """
     with _connect() as conn:
-        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        hits = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    for hit in hits:
+        hit["outcome"], hit["outcome_reason"] = run_outcome(hit)
+    return hits
