@@ -71,8 +71,9 @@ class TestGetConfig:
     def test_claude_models_available_includes_fable(self, webapp_client):
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
+        # Catalog display order, then the legacy-accepted Haiku (#883).
         assert body["claude"]["models_available"] == [
-            "opus", "sonnet", "haiku", "fable"
+            "sonnet", "opus", "fable", "haiku"
         ]
 
     def test_antigravity_block_shape(self, webapp_client):
