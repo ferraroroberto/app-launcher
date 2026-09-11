@@ -3094,6 +3094,8 @@ body.terminal-open {
 .board-item.is-tool-pending .board-card { border-left: 3px solid var(--accent); }
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
+/* A job whose run history can't be read (#915): unknown, not failed. */
+.board-item.is-unreadable .board-card { border-left: 3px solid var(--attention); }
 .board-item.is-idle .board-card,
 .board-item.is-idle-finished .board-card { opacity: 0.7; }
 /* Fleet chief card (#245): the standing orchestrator reads distinct from

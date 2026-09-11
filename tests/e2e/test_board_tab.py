@@ -347,6 +347,79 @@ def test_board_poll_heals_github_emptied_by_restart(
         current["body"] = _unfetched_payload()
 
 
+def _blind_payload() -> dict:
+    """The board with the session-host unreadable and one job whose run
+    history can't be read (#915): both live columns are empty lists that mean
+    "unknown", while GitHub keeps rendering."""
+    payload = _board_payload()
+    payload["live_sessions"] = {"available": False, "error": "session-host unreachable"}
+    payload["columns"]["claude_turn"] = []
+    payload["columns"]["your_turn"] = []
+    payload["columns"]["other"].append(
+        {"kind": "job", "job_id": "digest", "job_name": "daily digest",
+         "state": "unreadable", "run_id": None, "finished_at": None,
+         "age_seconds": None, "error": "[WinError 5] Access is denied"},
+    )
+    return payload
+
+
+def test_board_unreadable_sources_render_unknown_not_zero(
+    authed_page: Page, base_url: str
+) -> None:
+    """#915: an unreachable session-host must not read as "Nothing needs you
+    right now." — the live columns show an unknown count, a distinct message
+    and a status line; a job with unreadable history shows as a card, not as
+    nothing. Once the list is read and genuinely empty, the same columns show
+    a plain 0 and today's text — a real zero must not look like a failure."""
+    _mock_board(authed_page)
+    current = {"body": _blind_payload()}
+    _route_board_from(authed_page, current)
+    _open_board(authed_page, base_url)
+
+    for strip in ("#boardColClaude", "#boardColYours"):
+        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("—")
+    expect(
+        authed_page.locator('.board-col-count[data-col="your_turn"]')
+    ).to_have_text("(—)")
+    expect(
+        authed_page.locator('.board-empty[data-col="your_turn"]')
+    ).to_have_text("Session-host unreachable — sessions unknown.")
+    expect(authed_page.locator("#boardColYours")).not_to_have_class(
+        re.compile(r"\battention\b")
+    )
+    expect(authed_page.locator("#boardStatus")).to_contain_text(
+        "session-host unreachable"
+    )
+    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("3")
+    unreadable = authed_page.locator(
+        '.board-list[data-col="other"] li.board-item.is-unreadable'
+    )
+    expect(unreadable).to_contain_text("job · unreadable")
+    expect(unreadable).to_contain_text("daily digest")
+
+    read_empty = _board_payload()
+    read_empty["live_sessions"] = {"available": True, "error": None}
+    read_empty["columns"]["claude_turn"] = []
+    read_empty["columns"]["your_turn"] = []
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    current["body"] = read_empty
+    authed_page.locator("#boardRefresh").click()
+
+    for strip in ("#boardColClaude", "#boardColYours"):
+        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
+    expect(
+        authed_page.locator('.board-empty[data-col="your_turn"]')
+    ).to_have_text("Nothing needs you right now.")
+    expect(
+        authed_page.locator('.board-empty[data-col="claude_turn"]')
+    ).to_have_text("No sessions on Claude’s side.")
+    expect(authed_page.locator("#boardStatus")).not_to_contain_text(
+        "session-host unreachable"
+    )
+    expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
+
+
 def test_board_strip_click_scrolls_carousel_not_page(
     authed_page: Page, base_url: str
 ) -> None:

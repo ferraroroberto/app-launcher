@@ -55,10 +55,12 @@ import {
 // `gh` marks where a column's cards come from (#910): 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
 // zero; 'part' (Other) mixes open PRs with job cards, whose count stays real.
+// `live` columns are built from the session-host list, so an unreachable
+// session-host makes them unknown too (#915).
 const COLUMNS = [
   { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', gh: 'all' },
-  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.' },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.' },
+  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.', live: true },
+  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.', live: true },
   { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', gh: 'part' },
   { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', gh: 'all' },
 ];
@@ -574,9 +576,12 @@ function renderPrCard(card) {
 }
 
 function renderJobCard(card) {
-  const iconName = card.state === 'stuck' ? 'triangle-alert' : 'x';
+  // `unreadable` (#915): the job's run history could not be read, so whether
+  // it needs attention is unknown — surfaced, never silently dropped.
+  const iconName = card.state === 'failed' ? 'x' : 'triangle-alert';
   const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
   const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
+  if (card.error) shell.btn.title = card.error;
   shell.btn.addEventListener('click', function () { setTab('jobs'); });
   return shell.li;
 }
@@ -614,9 +619,19 @@ function ghFetched(body) {
   return !!(body && body.github && body.github.fetched_at);
 }
 
+// Only an explicit `available: false` is unknown — a payload without the
+// section (a stubbed test body) keeps today's render.
+function liveSessionsRead(body) {
+  return !(body && body.live_sessions && body.live_sessions.available === false);
+}
+
 // Distinct text per condition: a real zero, a not-yet-fetched cache, and a
-// first fetch that failed are three different answers.
-function emptyText(col, ghLoaded, body) {
+// first fetch that failed are three different answers. "Nothing needs you
+// right now." is reachable only from a session list actually read (#915).
+function emptyText(col, body, ghLoaded, liveRead) {
+  if (col.live) {
+    return liveRead ? col.empty : 'Session-host unreachable — sessions unknown.';
+  }
   if (!col.gh || ghLoaded) return col.empty;
   const failed = !!(body.github && body.github.error);
   if (col.gh === 'part') {
@@ -633,6 +648,9 @@ function renderStatusLine(body) {
     parts.push(icon('triangle-alert') + ' GitHub: ' + escapeHtml(body.github.error));
   } else if (body.github && !body.github.fetched_at) {
     parts.push('GitHub not fetched yet — tap ↻');
+  }
+  if (!liveSessionsRead(body)) {
+    parts.push(icon('triangle-alert') + ' session-host unreachable — live sessions unknown');
   }
   if (body.sessions_state && !body.sessions_state.available) {
     parts.push('session state unavailable (hooks not writing yet)');
@@ -671,12 +689,17 @@ export function renderBoard() {
   const columns = body.columns || {};
   const repoFilter = boardRepoFilter();
   const ghLoaded = ghFetched(body);
+  const liveRead = liveSessionsRead(body);
 
   COLUMNS.forEach(function (col) {
     const cards = (columns[col.key] || []).filter(function (card) {
       return matchesRepoFilter(card, repoFilter);
     });
-    const unknown = col.gh === 'all' && !ghLoaded;
+    // A live column can still hold external cards (hook state + fresh
+    // transcript) with the session-host down; those make a real lower bound,
+    // so only an empty one reads as unknown.
+    const unknown = (col.gh === 'all' && !ghLoaded)
+      || (col.live && !liveRead && cards.length === 0);
     const shown = unknown ? '—' : String(cards.length);
     const btn = els[col.btn];
     if (btn) {
@@ -694,7 +717,7 @@ export function renderBoard() {
       list.appendChild(renderCard(col.key, card));
     });
     if (empty) {
-      empty.textContent = emptyText(col, ghLoaded, body);
+      empty.textContent = emptyText(col, body, ghLoaded, liveRead);
       empty.hidden = cards.length > 0;
     }
   });
