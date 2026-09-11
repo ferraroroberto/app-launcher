@@ -26,6 +26,8 @@ import os
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 # How long to wait for the terminal overlay to hide after a kill (issue #286).
@@ -73,7 +75,7 @@ def test_terminal_view_has_back_arrow_and_kill_button(
 
     pty_row.locator(".session-open").click()
     authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=10_000
+        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
 
     # Both the icon-only back arrow and the kill button live in the bar.
@@ -97,7 +99,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     expect(pty_row).to_be_visible(timeout=8_000)
     pty_row.locator(".session-open").click()
     authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=10_000
+        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
 
     # One tap stops — stopSession() no longer guards with a confirm() dialog

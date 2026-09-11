@@ -22,6 +22,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 _CHIEF_SESSION = {
@@ -99,7 +101,7 @@ def test_chief_terminal_overlay_shows_crown_in_title(
     authed_page.locator(
         '#sessionsList li[data-session-id="s-chief"] .session-open'
     ).click()
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     expect(authed_page.locator("#terminalTitle .terminal-title-crown")).to_have_count(1)
 
 

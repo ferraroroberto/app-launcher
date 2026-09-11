@@ -19,6 +19,8 @@ import base64
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 # 1x1 transparent PNG — smallest valid image; staging only needs a File.
 _PNG_1x1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk"
@@ -30,11 +32,11 @@ pytestmark = pytest.mark.smoke
 
 def _open_compose(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     page.wait_for_function(
         "() => document.getElementById('terminalStatus') "
         "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=10_000,
+        timeout=OVERLAY_OPEN_MS,
     )
     # Un-hide + open the compose bar (mirror trick — see module docstring).
     page.evaluate("document.getElementById('terminalCompose').hidden = false")

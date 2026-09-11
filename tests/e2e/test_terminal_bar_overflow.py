@@ -31,6 +31,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import OVERLAY_OPEN_MS
+
 pytestmark = pytest.mark.smoke
 
 _NARROW_VIEWPORT = {"width": 320, "height": 640}
@@ -45,7 +47,7 @@ def test_terminal_bar_buttons_stay_within_viewport(
     authed_page.set_viewport_size(_NARROW_VIEWPORT)
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     viewport_width = authed_page.evaluate("window.innerWidth")
     assert viewport_width == _NARROW_VIEWPORT["width"]
@@ -103,7 +105,7 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
     )
     pty_row.locator(".session-open").click()
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=10_000)
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     viewport_width = authed_page.evaluate("window.innerWidth")
 
