@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 from pathlib import Path
 from typing import Optional
 
@@ -11,7 +10,11 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app.webapp.middleware import LOOPBACK_HOSTS
+from app.webapp.middleware import (
+    credential_accepted,
+    credential_required,
+    is_pc_itself,
+)
 from app.webapp.routers._helpers import maybe_json
 from src import jobs as jobs_mod
 from src.jobs_config import get_by_id, load_jobs
@@ -69,12 +72,23 @@ async def stream_job_run(websocket: WebSocket, job_id: str, run_id: str) -> None
     await websocket.accept()
     cfg = websocket.app.state.webapp_config
     client_host = websocket.client.host if websocket.client else ""
-    if client_host not in LOOPBACK_HOSTS:
-        expected = (cfg.auth_token or "").strip()
-        if expected:
+    # Starlette middleware never sees a WebSocket handshake, so the HTTP
+    # choke point's gate is re-applied inline here. Go through the shared
+    # helpers rather than keeping a local copy of the rule: `is_pc_itself`
+    # declines to treat an edge-forwarded request as the PC however its
+    # client address happens to resolve, and `credential_required` /
+    # `credential_accepted` honour both credential classes with the scope
+    # re-checked per request. Same sequence `sessions.proxy_session_ws`
+    # runs; the shared contract is pinned by tests/test_ws_gate_contract.py.
+    if not is_pc_itself(client_host, websocket.headers):
+        if credential_required(cfg):
             presented = websocket.query_params.get("token", "").strip()
-            if not (presented and hmac.compare_digest(presented, expected)):
-                await websocket.close(code=4401, reason="missing or invalid bearer token")
+            if not credential_accepted(
+                cfg, presented, "GET", websocket.url.path
+            ):
+                await websocket.close(
+                    code=4401, reason="missing or invalid bearer token"
+                )
                 return
     run_dir = _known_run_dir(job_id, run_id)
     if run_dir is None:
