@@ -464,6 +464,15 @@ class WebappConfig:
     # the notify_* switches above it pushes nothing on its own: alerts still
     # route through notify_on_failure / Job.alert_on_failure, both opt-in.
     jobs_coverage_interval_minutes: int = 60
+    # --- webapp/sessions retention (issue #902) --------------------------
+    # THE retention window for the per-session audit trail: every
+    # webapp/sessions/<id>.log and <id>.transcript whose mtime is older than
+    # this many days is deleted by the webapp's daily sweep
+    # (src/session_retention.py) — except files of a live session, which are
+    # never removed. 0 keeps everything forever (the pre-#902 behaviour).
+    # Deliberately not patchable from the Settings API: a deleting setting is
+    # edited here, by hand, or not at all.
+    session_retention_days: int = 365
     # --- Job secrets (issues #73, #72) ----------------------------------
     # One gitignored place for secret values, referenced from jobs.json by
     # opaque "$secret:<key>" strings resolved at fire time
@@ -834,6 +843,10 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             "jobs_coverage_interval_minutes must be >= 0; got "
             f"{cfg.jobs_coverage_interval_minutes}"
+        )
+    if cfg.session_retention_days < 0:
+        raise ValueError(
+            f"session_retention_days must be >= 0; got {cfg.session_retention_days}"
         )
     if not (MIN_CHIEF_WORKER_CAP <= cfg.chief_worker_cap <= MAX_CHIEF_WORKER_CAP):
         raise ValueError(
