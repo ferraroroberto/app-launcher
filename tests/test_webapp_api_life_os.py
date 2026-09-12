@@ -552,6 +552,46 @@ class TestContentBrowser:
         assert resp.json()["deleted"] == rel
         assert not target.exists()
 
+    def _index_path(self, life_os):
+        return (
+            life_os / ".claude" / "skills" / "journal-daily"
+            / "conversations" / "index.json"
+        )
+
+    def test_delete_conversation_log_prunes_digested_index(self, life_os_client):
+        # #906: a deleted log must disappear from the Conversations view on
+        # the same refresh, without waiting on the external indexer to catch
+        # up — so the digested index.json needs pruning too, not just disk.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+        rows = json.loads(self._index_path(life_os).read_text(encoding="utf-8"))
+        assert "2026-06-01-1917-trial.md" not in [r["file"] for r in rows]
+        conv = client.get("/api/life-os/skills/journal-daily/conversations").json()
+        assert "2026-06-01-1917-trial.md" not in [c["file"] for c in conv["conversations"]]
+
+    def test_delete_survives_missing_index(self, life_os_client):
+        # The launcher doesn't own index.json's lifecycle — a skill the
+        # indexer hasn't reached yet must not block deleting its raw logs.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        self._index_path(life_os).unlink()
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+        assert not (life_os / rel).exists()
+
+    def test_delete_survives_corrupt_index(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        self._index_path(life_os).write_text("{not json", encoding="utf-8")
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+        assert not (life_os / rel).exists()
+
     def test_delete_source_file_refused(self, life_os_client):
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
@@ -599,6 +639,24 @@ class TestContentBrowser:
         new = old.with_name("2026-06-01-1917-use-personal-journal.md")
         assert not old.exists()
         assert new.is_file()
+
+    def test_rename_updates_digested_index(self, life_os_client):
+        # #906: same gap as delete — the index row must follow the rename so
+        # the Conversations view shows the new name immediately.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+        rows = json.loads(self._index_path(life_os).read_text(encoding="utf-8"))
+        files = [r["file"] for r in rows]
+        assert "2026-06-01-1917-trial.md" not in files
+        assert "2026-06-01-1917-use-personal-journal.md" in files
+        conv = client.get("/api/life-os/skills/journal-daily/conversations").json()
+        assert "2026-06-01-1917-use-personal-journal.md" in [c["file"] for c in conv["conversations"]]
 
     def test_rename_sanitizes_slug(self, life_os_client):
         client, _, overrides = life_os_client

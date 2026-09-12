@@ -48,6 +48,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_REGISTRY_PATH = PROJECT_ROOT / "config" / "apps.json"
 
 
+class RegistryReadError(Exception):
+    """Raised by ``load_registry(strict=True)`` when ``config/apps.json``
+    exists but could not be read or parsed.
+
+    A missing file legitimately means "empty registry" (first run, nothing
+    scanned in yet) for every caller — that case never raises this, even in
+    strict mode. This is only for the narrower "the file is there but a read
+    or parse failed" case, which non-strict callers still fold into an empty
+    ``Registry`` (unchanged, so the Apps-tab scan/save flow keeps its existing
+    tolerance) but which a strict caller needs to distinguish from a
+    legitimately empty/unconfigured registry (issue #925).
+    """
+
+
 @dataclass
 class AppEntry:
     id: str
@@ -92,7 +106,18 @@ class Registry:
         }
 
 
-def load_registry(path: Optional[Path] = None) -> Registry:
+def load_registry(path: Optional[Path] = None, *, strict: bool = False) -> Registry:
+    """Load the registry from ``path`` (default ``config/apps.json``).
+
+    ``strict=True`` raises :class:`RegistryReadError` when the file exists but
+    fails to read/parse, instead of silently folding that failure into an
+    empty registry. Default (``strict=False``, every existing caller) keeps
+    the original behavior — a missing file, or a read/parse failure, both
+    just return an empty ``Registry``. Only ``app.tray.registered_trays``'s
+    boot-time autostart walk needs to tell "genuinely nothing configured"
+    apart from "couldn't read the file this time" (issue #925); the Apps-tab
+    scan/save flow and the CLI's ``scan`` command are unaffected.
+    """
     target = Path(path) if path is not None else DEFAULT_REGISTRY_PATH
     if not target.exists():
         return Registry(scan_root="")
@@ -100,6 +125,8 @@ def load_registry(path: Optional[Path] = None) -> Registry:
     try:
         raw = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
+        if strict:
+            raise RegistryReadError(f"could not read {target}: {exc}") from exc
         logger.warning(f"⚠️  Could not read {target} ({exc}); starting fresh")
         return Registry(scan_root="")
 

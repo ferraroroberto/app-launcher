@@ -63,12 +63,30 @@ DEFAULT_SESSION_HOST_PORT = 8446
 SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # Env override for the config file *path* itself. Set ONLY by the e2e
 # pre-ship gate's autoboot (tests/e2e/conftest.py) so the disposable webapp
-# reads AND writes a temp copy of the config instead of the real, shared
+# reads AND writes its own temp config (derived from the real one, minus every
+# credential — issue #907) instead of the real, shared
 # config/webapp_config.json — a Settings-tab e2e test that clicks Save must
 # never mutate the user's real file (issue #441; the #438 port corruption
 # was this exact shared-file design biting). Not a user-facing knob;
 # intentionally undocumented in the config sample.
 WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
+# Every on-disk key that holds a credential (issue #907). Anything that derives
+# a config for a test or disposable run from the real file must drop these —
+# the e2e autoboot does (tests/_credential_hygiene.py), and its failure-output
+# redaction scrubs their values. ``webhook_secrets`` is the legacy name
+# ``secrets`` still loads from (see ``_load_secrets``), so it is a credential
+# too. A new credential field must be added here: tests/test_credential_hygiene.py
+# fails on any credential-shaped field name this tuple doesn't list.
+CREDENTIAL_KEYS: Tuple[str, ...] = (
+    "auth_token",
+    "auth_password",
+    "pushover_api_token",
+    "pushover_user_key",
+    "telegram_bot_token",
+    "secrets",
+    "webhook_secrets",
+    "api_tokens",
+)
 
 # Bounded scrollback for full-screen (ratatui) agent sessions (issue #435
 # follow-up) — how many lines of history the session-host retains and
@@ -446,6 +464,15 @@ class WebappConfig:
     # the notify_* switches above it pushes nothing on its own: alerts still
     # route through notify_on_failure / Job.alert_on_failure, both opt-in.
     jobs_coverage_interval_minutes: int = 60
+    # --- webapp/sessions retention (issue #902) --------------------------
+    # THE retention window for the per-session audit trail: every
+    # webapp/sessions/<id>.log and <id>.transcript whose mtime is older than
+    # this many days is deleted by the webapp's daily sweep
+    # (src/session_retention.py) — except files of a live session, which are
+    # never removed. 0 keeps everything forever (the pre-#902 behaviour).
+    # Deliberately not patchable from the Settings API: a deleting setting is
+    # edited here, by hand, or not at all.
+    session_retention_days: int = 365
     # --- Job secrets (issues #73, #72) ----------------------------------
     # One gitignored place for secret values, referenced from jobs.json by
     # opaque "$secret:<key>" strings resolved at fire time
@@ -816,6 +843,10 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             "jobs_coverage_interval_minutes must be >= 0; got "
             f"{cfg.jobs_coverage_interval_minutes}"
+        )
+    if cfg.session_retention_days < 0:
+        raise ValueError(
+            f"session_retention_days must be >= 0; got {cfg.session_retention_days}"
         )
     if not (MIN_CHIEF_WORKER_CAP <= cfg.chief_worker_cap <= MAX_CHIEF_WORKER_CAP):
         raise ValueError(

@@ -11,17 +11,36 @@ Two tiers, both under ``webapp/`` (gitignored runtime state):
 The full terminal *output* transcript is written separately by the
 session-host (it owns the output stream) to
 ``webapp/sessions/<session_id>.transcript``.
+
+Both per-session kinds are kept for ``WebappConfig.session_retention_days``
+(issue #902) and then removed by :mod:`src.session_retention`; this module
+only ever appends.
+
+``LAUNCHER_AUDIT_DIR`` relocates that whole directory (issue #913). Nothing in
+production sets it; the e2e autoboot does, so a gate run inside the primary
+checkout writes its throwaway sessions to a per-run temp dir instead of the
+live ``webapp/sessions`` the phone reads. Resolved once at import — every
+process that needs it is given the variable at spawn time.
 """
 
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_AUDIT_DIR = PROJECT_ROOT / "webapp"
+AUDIT_DIR_ENV = "LAUNCHER_AUDIT_DIR"
+
+
+def _resolve_audit_dir() -> Path:
+    override = os.environ.get(AUDIT_DIR_ENV, "").strip()
+    return Path(override) if override else PROJECT_ROOT / "webapp"
+
+
+_AUDIT_DIR = _resolve_audit_dir()
 _SESSIONS_DIR = _AUDIT_DIR / "sessions"
 _AUDIT_LOG = _AUDIT_DIR / "terminal_audit.log"
 
@@ -87,6 +106,11 @@ def session_input(session_id: str, data: str) -> None:
             fh.write(f"{stamp} [input] {data!r}\n")
     except OSError as exc:  # pragma: no cover
         logger.debug(f"session_input write failed: {exc}")
+
+
+def sessions_dir() -> Path:
+    """The directory holding every per-session ``.log`` and ``.transcript``."""
+    return _SESSIONS_DIR
 
 
 def transcript_path(session_id: str) -> Path:

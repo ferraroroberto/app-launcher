@@ -15,7 +15,7 @@ import pytest
 
 import app.tray.registered_trays as rt_mod
 from app.tray.registered_trays import _fleet_toml_port
-from src.registry import AppEntry, Registry
+from src.registry import AppEntry, Registry, RegistryReadError
 
 
 @pytest.fixture(autouse=True)
@@ -77,7 +77,7 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         spawn = MagicMock()
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
         rt_mod.launch_all()
@@ -102,7 +102,7 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         spawned: list = []
         monkeypatch.setattr(
             rt_mod, "_spawn_tray_bat_detached",
@@ -132,7 +132,7 @@ class TestLaunchRegisteredTrays:
                 AppEntry(id="b", name="B", kind="tray", bat_path=str(bat_b), autostart=True),
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
 
         def _spawn(bat_path):
             if bat_path == bat_a:
@@ -158,7 +158,7 @@ class TestLaunchRegisteredTrays:
                 AppEntry(id="a", name="A", kind="tray", bat_path=None, autostart=True),
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         spawn = MagicMock()
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
         rt_mod.launch_all()  # must not raise
@@ -177,14 +177,14 @@ class TestLaunchRegisteredTrays:
                 ),
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         spawn = MagicMock()
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
         rt_mod.launch_all()
         spawn.assert_not_called()
 
     def test_registry_load_failure_does_not_raise(self, monkeypatch):
-        def _boom():
+        def _boom(strict=False):
             raise OSError("disk on fire")
 
         monkeypatch.setattr(rt_mod, "load_registry", _boom)
@@ -205,7 +205,7 @@ class TestBootBreadcrumbLog:
             scan_root=str(tmp_path),
             apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
         monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
 
@@ -225,7 +225,7 @@ class TestBootBreadcrumbLog:
             scan_root=str(tmp_path),
             apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
         monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
 
@@ -242,7 +242,7 @@ class TestBootBreadcrumbLog:
             scan_root=str(tmp_path),
             apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda: registry)
+        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
 
         def _boom(bat_path):
             raise OSError("boom")
@@ -256,7 +256,7 @@ class TestBootBreadcrumbLog:
 
     def test_registry_load_failure_still_logs(self, monkeypatch, tmp_path: Path):
 
-        def _boom():
+        def _boom(strict=False):
             raise OSError("disk on fire")
 
         monkeypatch.setattr(rt_mod, "load_registry", _boom)
@@ -265,6 +265,65 @@ class TestBootBreadcrumbLog:
 
         log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
         assert "could not load registry: disk on fire" in log_text
+
+    def test_registry_read_error_retries_then_succeeds(self, monkeypatch, tmp_path: Path):
+        """Issue #925 — a transient RegistryReadError (file exists but a read
+        glitches) is retried, and a later success still launches trays
+        normally with no leftover "giving up" breadcrumb."""
+        bat_a = tmp_path / "repo-a" / "tray.bat"
+        bat_a.parent.mkdir(parents=True, exist_ok=True)
+        bat_a.write_text("@echo off\r\n", encoding="utf-8")
+        registry = Registry(
+            scan_root=str(tmp_path),
+            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
+        )
+        calls = {"n": 0}
+
+        def _flaky(strict=False):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise RegistryReadError("transient read glitch")
+            return registry
+
+        monkeypatch.setattr(rt_mod, "load_registry", _flaky)
+        monkeypatch.setattr(rt_mod.time, "sleep", lambda s: None)
+        spawn = MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
+
+        rt_mod.launch_all()
+
+        assert calls["n"] == 3
+        spawn.assert_called_once_with(bat_a)
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "registry read failed (attempt 1/3): transient read glitch" in log_text
+        assert "registry read failed (attempt 2/3): transient read glitch" in log_text
+        assert "giving up" not in log_text
+
+    def test_registry_read_error_exhausts_retries_and_gives_up(
+        self, monkeypatch, tmp_path: Path
+    ):
+        """A persistent RegistryReadError (not a legitimately empty/missing
+        registry) is retried a bounded number of times, then gives up with an
+        explicit breadcrumb distinct from the silent "nothing configured"
+        no-op — the whole point of #925."""
+
+        def _always_boom(strict=False):
+            raise RegistryReadError("disk on fire")
+
+        monkeypatch.setattr(rt_mod, "load_registry", _always_boom)
+        monkeypatch.setattr(rt_mod.time, "sleep", lambda s: None)
+        spawn = MagicMock()
+        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", spawn)
+
+        rt_mod.launch_all()  # must not raise
+
+        spawn.assert_not_called()
+        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "registry read failed (attempt 1/3): disk on fire" in log_text
+        assert "registry read failed (attempt 2/3): disk on fire" in log_text
+        assert "registry read failed (attempt 3/3): disk on fire" in log_text
+        assert "registry unreadable after 3 attempts — giving up" in log_text
 
 
 class TestWaitForTrayReady:

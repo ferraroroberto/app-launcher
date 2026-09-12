@@ -45,6 +45,28 @@ os.environ.setdefault(
     str(Path(tempfile.gettempdir()) / "app-launcher-test-runtime-data"),
 )
 
+# Same shape, same reason, for the audit module's session files (issue #913).
+# `src.audit` resolves its directory from `__file__`, so the real-PTY tests
+# that drive a genuine ConPTY through `PtySession` — the submit probes and the
+# #64 readback — wrote their `<id>.transcript` into the checkout's own
+# `webapp/sessions`, the directory the phone reads. Small next to what the e2e
+# gate used to add there (5 files per run against a measured 228), but the
+# same defect, and it is the half a browser-suite fix can't reach: these
+# sessions live inside the pytest process, so the isolation has to be in place
+# before `src.audit` is imported. `setdefault`, so a deliberate outer override
+# still wins — and so the e2e autoboot's own per-run override still applies to
+# the processes it spawns.
+os.environ.setdefault(
+    "LAUNCHER_AUDIT_DIR",
+    str(Path(tempfile.gettempdir()) / "app-launcher-test-sessions"),
+)
+
+# Credential hygiene (issue #907): every test report — browser suite included —
+# is scrubbed of credentials before any reporter writes it. Re-exported so
+# pytest registers the hook from this conftest; imported only after the
+# runtime-data redirect above, since it pulls in `src.webapp_config`.
+from tests._credential_hygiene import pytest_runtest_makereport  # noqa: E402,F401
+
 
 # ------------------------------------------------- gate progress log (#534)
 # When the pre-ship gate (scripts/verify-before-ship.ps1) sets

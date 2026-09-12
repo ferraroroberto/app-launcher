@@ -6,14 +6,15 @@
  * tool-pending), Your turn (stalled/awaiting-decision/awaiting-input
  * sessions only — #608's split of the old undifferentiated needs-you,
  * sharpened by #813's tool-pending carve-out), Other (open PRs +
- * failed/stuck jobs), Done (closed issues today). Phone-first: the columns
+ * failed/unconfirmed/stuck jobs), Done (closed issues today). Phone-first: the columns
  * container is a scroll-snap carousel (one column per swipe) and the strip
  * above it doubles as column switcher + counts.
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
- * refreshed via the ↻ button or on tab activation when the cache is older
- * than GH_STALE_MS — never on the 5 s poll, never while just looking at it.
+ * refreshed via the ↻ button, on tab activation when the cache is older
+ * than GH_STALE_MS, or on a poll that finds it never fetched (a webapp
+ * restart empties it, #910) — never on a poll of an already-fetched cache.
  *
  * Act-from-the-card loop (#301): tapping a live session card opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
@@ -51,17 +52,23 @@ import {
   wireDispatch,
 } from './board-dispatch.js';
 
+// `gh` marks where a column's cards come from (#910): 'all' columns are
+// GitHub-only, so before the cache is loaded their count is unknown, never
+// zero; 'part' (Other) mixes open PRs with job cards, whose count stays real.
+// `live` columns are built from the session-host list, so an unreachable
+// session-host makes them unknown too (#915).
 const COLUMNS = [
-  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues cached — tap ↻ to fetch from GitHub.' },
-  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.' },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.' },
-  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.' },
+  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', gh: 'all' },
+  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.', live: true },
+  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.', live: true },
+  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', gh: 'part' },
+  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
 
 let refreshInFlight = false;
+let lastAutoRefreshAt = 0;
 
 // --------------------------------------------------------------- helpers
 
@@ -568,10 +575,25 @@ function renderPrCard(card) {
   return shell.li;
 }
 
+const JOB_CARD_ICONS = {
+  // `unconfirmed` (#916): the run may well have delivered, but the
+  // scheduled-run adapter could not establish that. It still wants a look, so
+  // it keeps its card — with the attention glyph and accent, never the red ✗
+  // that says the run is known to have failed.
+  // `unreadable` (#915): the same shape one step earlier — the run history
+  // itself could not be read, so whether the job needs attention is unknown.
+  // It must not fall through to the red ✗ either.
+  stuck: 'triangle-alert',
+  unconfirmed: 'circle-help',
+  unreadable: 'triangle-alert',
+};
+
 function renderJobCard(card) {
-  const iconName = card.state === 'stuck' ? 'triangle-alert' : 'x';
-  const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
+  const iconName = JOB_CARD_ICONS[card.state] || 'x';
+  const label = card.state === 'unconfirmed' ? 'not confirmed' : card.state;
+  const top = ' job · ' + label + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
   const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
+  if (card.error) shell.btn.title = card.error;
   shell.btn.addEventListener('click', function () { setTab('jobs'); });
   return shell.li;
 }
@@ -602,12 +624,45 @@ function renderCard(colKey, card) {
 
 // ---------------------------------------------------------------- render
 
+// The GitHub cache is process memory, so a webapp restart empties it:
+// `fetched_at` null means "never fetched", which must never render as the
+// genuine "fetched, nothing open" (#910).
+function ghFetched(body) {
+  return !!(body && body.github && body.github.fetched_at);
+}
+
+// Only an explicit `available: false` is unknown — a payload without the
+// section (a stubbed test body) keeps today's render.
+function liveSessionsRead(body) {
+  return !(body && body.live_sessions && body.live_sessions.available === false);
+}
+
+// Distinct text per condition: a real zero, a not-yet-fetched cache, and a
+// first fetch that failed are three different answers. "Nothing needs you
+// right now." is reachable only from a session list actually read (#915).
+function emptyText(col, body, ghLoaded, liveRead) {
+  if (col.live) {
+    return liveRead ? col.empty : 'Session-host unreachable — sessions unknown.';
+  }
+  if (!col.gh || ghLoaded) return col.empty;
+  const failed = !!(body.github && body.github.error);
+  if (col.gh === 'part') {
+    return failed ? 'No stuck jobs — open PRs unavailable (GitHub fetch failed).'
+      : 'No stuck jobs — open PRs not loaded yet.';
+  }
+  return failed ? 'GitHub fetch failed — tap ↻ to retry.'
+    : 'Not loaded from GitHub yet — tap ↻.';
+}
+
 function renderStatusLine(body) {
   const parts = [];
   if (body.github && body.github.error) {
     parts.push(icon('triangle-alert') + ' GitHub: ' + escapeHtml(body.github.error));
   } else if (body.github && !body.github.fetched_at) {
     parts.push('GitHub not fetched yet — tap ↻');
+  }
+  if (!liveSessionsRead(body)) {
+    parts.push(icon('triangle-alert') + ' session-host unreachable — live sessions unknown');
   }
   if (body.sessions_state && !body.sessions_state.available) {
     parts.push('session state unavailable (hooks not writing yet)');
@@ -645,19 +700,27 @@ export function renderBoard() {
   if (!body || !els.boardColumns) return;
   const columns = body.columns || {};
   const repoFilter = boardRepoFilter();
+  const ghLoaded = ghFetched(body);
+  const liveRead = liveSessionsRead(body);
 
   COLUMNS.forEach(function (col) {
     const cards = (columns[col.key] || []).filter(function (card) {
       return matchesRepoFilter(card, repoFilter);
     });
+    // A live column can still hold external cards (hook state + fresh
+    // transcript) with the session-host down; those make a real lower bound,
+    // so only an empty one reads as unknown.
+    const unknown = (col.gh === 'all' && !ghLoaded)
+      || (col.live && !liveRead && cards.length === 0);
+    const shown = unknown ? '—' : String(cards.length);
     const btn = els[col.btn];
     if (btn) {
       const count = btn.querySelector('.board-count');
-      if (count) count.textContent = String(cards.length);
+      if (count) count.textContent = shown;
       btn.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
     }
     const titleCount = els.boardColumns.querySelector('.board-col-count[data-col="' + col.key + '"]');
-    if (titleCount) titleCount.textContent = '(' + cards.length + ')';
+    if (titleCount) titleCount.textContent = '(' + shown + ')';
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
     if (!list) return;
@@ -666,7 +729,7 @@ export function renderBoard() {
       list.appendChild(renderCard(col.key, card));
     });
     if (empty) {
-      empty.textContent = col.empty;
+      empty.textContent = emptyText(col, body, ghLoaded, liveRead);
       empty.hidden = cards.length > 0;
     }
   });
@@ -688,6 +751,16 @@ export async function fetchBoard() {
   if (state.tab !== 'board' || state.boardExpanded) return;
   state.board = await jsonApi('/api/board');
   renderBoard();
+  // A never-fetched cache (the webapp restarted since the last refresh) heals
+  // on the poll too, not only on tab activation — a Board left open across a
+  // restart would otherwise sit on "not loaded" until ↻ (#910). Still never
+  // an errored cache (that is ghStale's rule), and throttled so a refresh
+  // that throws before recording its error can't become a 5 s gh loop.
+  const gh = state.board && state.board.github;
+  if (gh && !ghFetched(state.board) && !gh.error && Date.now() - lastAutoRefreshAt > GH_STALE_MS) {
+    lastAutoRefreshAt = Date.now();
+    refreshGithub().catch(function () {});
+  }
 }
 
 // ?board=<sid> deep-link (#301): land on the Board with that card's drawer

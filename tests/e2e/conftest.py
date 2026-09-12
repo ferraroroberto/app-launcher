@@ -45,6 +45,12 @@ import pytest
 import requests
 from playwright.sync_api import BrowserContext, Page
 
+from tests._credential_hygiene import (
+    count_leaked_credentials,
+    disposable_token,
+    disposable_webapp_config,
+    register_secret,
+)
 from tests.e2e._browser_sweep import sweep_browser_helpers
 
 logger = logging.getLogger(__name__)
@@ -75,7 +81,8 @@ _SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # Settings-tab e2e Save from ever mutating the user's real
 # config/webapp_config.json (issue #441; the #438 port corruption was this
 # exact shared-file design biting). Autoboot points the disposable webapp at
-# a temp COPY of the real config so it still boots with realistic values.
+# its own temp config, derived from the real one so it still boots with
+# realistic values but carrying no credential (issue #907).
 _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # Env var the webapp honours to override the boot-autostart Startup directory
 # (see src/boot_autostart.py:STARTUP_DIR_ENV) — the injection that stops the
@@ -84,6 +91,33 @@ _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # the real folder, so the test could only pass on a host with no
 # AppLauncher.bat installed there for real login-time autostart.
 _STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
+# Env var both the webapp and the session-host honour to relocate the audit
+# runtime dir (see src/audit.py:AUDIT_DIR_ENV) — the injection that stops a
+# gate run from writing its throwaway `<sid>.log` / `<sid>.transcript` pairs
+# into the checkout's live `webapp/sessions` (issue #913). Before it, a gate
+# in the primary checkout wrote its whole run straight into the directory the
+# user's phone reads — measured at 228 files (114 sessions) for one full
+# dual-projection run — because src/audit.py resolves that path from
+# `__file__`, so pointing the disposable processes at a temp *config* (#911)
+# never moved their session files.
+_AUDIT_DIR_ENV = "LAUNCHER_AUDIT_DIR"
+# Env var the session-host honours to relocate the root uploaded files hang
+# off (see app/session_host/server.py:UPLOAD_ROOT_ENV) — the same defect as
+# #913 in a different directory (issue #922). The disposable session-host
+# runs its sessions with `project_dir` set to this checkout, so every
+# compose-bar upload test wrote a file into the checkout's own
+# `.launcher-tmp`: 3,423 of the 3,600 files there were this suite's, with
+# nothing pruning them. A file-count leak, not a disk-space one — they are
+# 1x1 PNGs totalling ~15 KB, and the directory's bulk is real attachments.
+# Only the session-host needs the variable — the webapp proxies
+# `/sessions/{sid}/image` and never writes the file itself.
+_UPLOAD_ROOT_ENV = "LAUNCHER_UPLOAD_ROOT"
+_UPLOADS_DIR = _REPO_ROOT / ".launcher-tmp"
+# Filename marker every harness upload carries, so the teardown breach check
+# below accuses only on files this suite wrote. Same reasoning as the
+# `[e2e-stub]` transcript banner: a real photo the user sends from the phone
+# to the live tray mid-run must never trip the check.
+_UPLOAD_MARKER = "e2e-stub-"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
 # disposable session-host's PATH is prepended with a harness-generated
@@ -92,6 +126,9 @@ _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # startup each), while any other flag set falls through to the real `claude`.
 # Purely a harness substitution — no production code knows about it.
 _STUB_FLAG = "--e2e-stub"
+# The banner that child prints on startup — the marker that identifies a
+# transcript as harness-written (issue #913's isolation check).
+_STUB_BANNER = "[e2e-stub]"
 # Filled by _autoboot_server so the lightweight fixture can create sessions
 # directly on the disposable session-host (the sentinel flag can't travel
 # through the webapp's launch endpoint, which builds flags from config).
@@ -249,6 +286,10 @@ while True:
     print(text, flush=True)
 '''
 
+# Drift guard: `_leaked_stub_sessions` identifies a harness-written transcript
+# by this banner, so the child it comes from must actually print it.
+assert _STUB_BANNER in _STUB_CHILD_SOURCE
+
 
 def _write_claude_shim(shim_dir: Path) -> None:
     """Generate the `claude.cmd` PATH shim + stub child script (issue #534).
@@ -285,8 +326,81 @@ def _write_claude_shim(shim_dir: Path) -> None:
     (shim_dir / "claude.cmd").write_text(shim, encoding="ascii")
 
 
+def _leaked_stub_sessions(
+    sessions_dir: Path, since: float, *, limit: int = 5
+) -> List[Path]:
+    """Harness-written session files that landed in the *real* sessions dir.
+
+    A file counts only when it is newer than ``since`` **and** carries the
+    `[e2e-stub]` banner, so a genuine session written by the live tray while
+    the gate runs is never mistaken for a leak. Stops after ``limit`` hits:
+    the result names the breach, it is not a census — the caller must not
+    report its length as a total. Returns an empty list when the directory
+    doesn't exist or can't be scanned; a scan that cannot run proves nothing,
+    and this check only ever accuses on positive evidence.
+    """
+    hits: List[Path] = []
+    try:
+        with os.scandir(sessions_dir) as entries:
+            for entry in entries:
+                if not entry.name.endswith(".transcript"):
+                    continue
+                try:
+                    if entry.stat().st_mtime < since:
+                        continue
+                    with open(
+                        entry.path, "r", encoding="utf-8", errors="replace"
+                    ) as fh:
+                        head = fh.read(4096)
+                except OSError:
+                    continue
+                if _STUB_BANNER in head:
+                    hits.append(Path(entry.path))
+                    if len(hits) >= limit:
+                        break
+    except OSError:
+        return hits
+    return hits
+
+
+def _leaked_stub_uploads(
+    uploads_dir: Path, since: float, *, limit: int = 5
+) -> List[Path]:
+    """Harness-written uploads that landed in the *real* `.launcher-tmp`.
+
+    Marker-based like :func:`_leaked_stub_sessions`, not a plain before/after
+    count: the live tray shares this checkout, so a photo the user attaches
+    from the phone while the gate runs writes here legitimately. A file counts
+    only when it is newer than ``since`` **and** its name carries
+    ``_UPLOAD_MARKER``, which only this suite's uploads do. Stops after
+    ``limit`` hits — the result names the breach, it is not a census. Returns
+    an empty list when the directory doesn't exist or can't be scanned: a scan
+    that cannot run proves nothing, and this check only accuses on positive
+    evidence.
+    """
+    hits: List[Path] = []
+    try:
+        with os.scandir(uploads_dir) as entries:
+            for entry in entries:
+                if _UPLOAD_MARKER not in entry.name:
+                    continue
+                try:
+                    if entry.stat().st_mtime < since:
+                        continue
+                except OSError:
+                    continue
+                hits.append(Path(entry.path))
+                if len(hits) >= limit:
+                    break
+    except OSError:
+        return hits
+    return hits
+
+
 @pytest.fixture(scope="session")
-def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+def _autoboot_server(
+    tmp_path_factory: pytest.TempPathFactory, auth_token: str
+) -> Iterator[str]:
     """Spawn a disposable webapp (+ session-host) and yield its base URL.
 
     A hard failure (`pytest.fail`) — never a skip — if anything doesn't come
@@ -317,21 +431,29 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
             except Exception:  # pragma: no cover
                 pass
 
-    # Config isolation (issue #441): the disposable webapp gets a temp COPY
-    # of the real config — realistic values (projects_dir, auth_token, …)
-    # without write access to the real file. Any e2e test that Saves settings
-    # mutates only the copy. Snapshot the real file's bytes so the isolation
-    # can be *asserted* after the run, not just assumed.
-    cfg_copy = logs_dir / "e2e-autoboot-webapp-config.json"
+    # Config isolation (issue #441): the disposable webapp gets its own temp
+    # config — realistic values (projects_dir, agent settings, …) without
+    # write access to the real file. Any e2e test that Saves settings mutates
+    # only this one. Snapshot the real file's bytes so the isolation can be
+    # *asserted* after the run, not just assumed.
+    #
+    # Credential isolation (issue #907): it is derived from the real config
+    # with every credential dropped and this run's disposable auth_token in
+    # their place — the live token must never sit in a test run's config —
+    # and it lives in pytest's temp tree, not the checkout. Loopback bypasses
+    # the bearer gate, so nothing here needs the real one.
+    cfg_copy = tmp_path_factory.mktemp("webapp-config") / "webapp_config.json"
     real_cfg_bytes = (
         _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
     )
-    if real_cfg_bytes is not None:
-        cfg_copy.write_bytes(real_cfg_bytes)
-    elif cfg_copy.exists():
-        # No real config (fresh checkout) — a stale copy from a prior run
-        # must not leak its values into this one.
-        cfg_copy.unlink()
+    disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token)
+    if count_leaked_credentials(_WEBAPP_CONFIG, disposable_cfg):
+        pytest.fail(
+            "autoboot: the disposable webapp config still holds a credential "
+            f"from {_WEBAPP_CONFIG} (issue #907) — every key in "
+            "src.webapp_config.CREDENTIAL_KEYS must be dropped. Value withheld."
+        )
+    cfg_copy.write_text(json.dumps(disposable_cfg, indent=2), encoding="utf-8")
 
     # Startup-folder isolation (issue #698): give the disposable webapp its
     # own temp Startup dir so `src.boot_autostart.enable()/disable()` (called
@@ -346,6 +468,27 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
     real_wrapper_bytes = (
         real_wrapper_bat.read_bytes() if real_wrapper_bat.is_file() else None
     )
+
+    # Session-file isolation (issue #913): src/audit.py resolves its directory
+    # from `__file__`, so both disposable processes — spawned from this very
+    # checkout — appended their throwaway session logs and transcripts to the
+    # live `webapp/sessions`. Measured on this box: 94,672 files, ~400/day,
+    # the overwhelming majority `[e2e-stub]` sessions from gate runs. Give
+    # them a per-run temp dir; publish it so the log poller below reads the
+    # same place, and snapshot the run start so the teardown can assert no
+    # harness session leaked into the real directory.
+    audit_dir = tmp_path_factory.mktemp("audit-dir")
+    _AUTOBOOT_STATE["sessions_dir"] = audit_dir / "sessions"
+
+    # Upload isolation (issue #922): same defect, different directory. The
+    # disposable session-host runs its sessions with `project_dir` pointing at
+    # this checkout, so `_save_image` resolved `<checkout>/.launcher-tmp` and
+    # every compose-bar attach test left its file there — 3,423 of the 3,600
+    # files in it before the fix. Give it a per-run temp root; the teardown
+    # asserts nothing marked as ours reached the real directory.
+    uploads_root = tmp_path_factory.mktemp("upload-root")
+
+    run_started_at = time.time()
 
     try:
         # Session-host: ALWAYS spawn our own on a free port — never adopt a
@@ -371,7 +514,11 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
         sh_proc = _spawn(
             sh_cmd,
             _open_log("e2e-autoboot-session-host.log"),
-            extra_env={"PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"},
+            extra_env={
+                "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+                _AUDIT_DIR_ENV: str(audit_dir),
+                _UPLOAD_ROOT_ENV: str(uploads_root),
+            },
         )
         _AUTOBOOT_STATE["session_host_port"] = sh_port
         if not _wait_port(sh_port, timeout=15):
@@ -414,6 +561,7 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
                 _SESSION_HOST_PORT_ENV: str(sh_port),
                 _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
                 _STARTUP_DIR_ENV: str(startup_dir),
+                _AUDIT_DIR_ENV: str(audit_dir),
             },
         )
 
@@ -459,6 +607,35 @@ def _autoboot_server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
                 f"the temp Startup dir ({startup_dir}) — a test wrote to the "
                 "real Startup folder instead. Fix that before shipping."
             )
+        # Session-file isolation regression check (issue #913): no session
+        # this harness created may have landed in the checkout's real
+        # `webapp/sessions`. Keyed on the `[e2e-stub]` banner the lightweight
+        # PTY child prints (#534), which only this harness can produce — so a
+        # real session written by the live tray during the gate can never
+        # trip it, and the check needs no exclusive access to the directory.
+        leaked = _leaked_stub_sessions(_SESSIONS_DIR, run_started_at)
+        if leaked:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: at least {len(leaked)} harness "
+                f"session file(s) landed in {_SESSIONS_DIR} during the run "
+                f"instead of the temp audit dir ({audit_dir}) — e.g. "
+                f"{leaked[0].name}. Every process this fixture spawns must get "
+                f"{_AUDIT_DIR_ENV} (issue #913)."
+            )
+        # Upload isolation regression check (issue #922): no file this harness
+        # uploaded may have landed in the checkout's real `.launcher-tmp`.
+        # Keyed on the `_UPLOAD_MARKER` filename prefix every harness upload
+        # carries, so a photo the user attaches on the live tray during the
+        # gate can never trip it.
+        leaked_uploads = _leaked_stub_uploads(_UPLOADS_DIR, run_started_at)
+        if leaked_uploads:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: at least {len(leaked_uploads)} "
+                f"harness upload(s) landed in {_UPLOADS_DIR} during the run "
+                f"instead of the temp upload root ({uploads_root}) — e.g. "
+                f"{leaked_uploads[0].name}. The disposable session-host must "
+                f"get {_UPLOAD_ROOT_ENV} (issue #922)."
+            )
 
 
 @pytest.fixture(scope="session")
@@ -469,18 +646,19 @@ def base_url(request: pytest.FixtureRequest) -> str:
 
 
 @pytest.fixture(scope="session")
-def webapp_config() -> dict:
-    if not _WEBAPP_CONFIG.exists():
-        pytest.skip(f"{_WEBAPP_CONFIG} missing — copy webapp_config.sample.json first")
-    return json.loads(_WEBAPP_CONFIG.read_text(encoding="utf-8"))
+def auth_token() -> str:
+    """This run's disposable bearer token — never the live one (issue #907).
 
-
-@pytest.fixture(scope="session")
-def auth_token(webapp_config: dict) -> str:
-    # Loopback bypasses the bearer middleware (server.py:267), so an empty
-    # token is fine for local-only tests. We still seed it when present so
-    # the SPA boot path mirrors a real phone session.
-    return (webapp_config.get("auth_token") or "").strip()
+    Loopback bypasses the bearer middleware (``BearerTokenMiddleware``) and
+    every WS token gate, so no e2e test needs the real credential — against
+    the disposable autoboot webapp (whose config carries this same token) or
+    the live tray alike. It is still seeded so the SPA boot path mirrors a
+    real phone session, and registered for redaction so even this throwaway
+    value stays out of failure output.
+    """
+    token = disposable_token()
+    register_secret(token)
+    return token
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -809,10 +987,12 @@ def wait_for_session_log() -> Callable[..., bool]:
     """Return a poller for the per-session input log.
 
     ``wait(page, sid, needle, deadline_ms=_LOG_POLL_DEADLINE_MS)`` reads
-    ``webapp/sessions/<sid>.log`` every 200 ms until ``needle`` appears or the
-    deadline elapses, then returns ``True``/``False``. One source of truth for
-    the input-delivery wait that used to be a hardcoded 5 s poll loop copied
-    into four test files (issue #58).
+    ``<sessions dir>/<sid>.log`` every 200 ms until ``needle`` appears or the
+    deadline elapses, then returns ``True``/``False``. The directory is the
+    autoboot temp dir when the gate redirected it (issue #913), else the
+    checkout's own ``webapp/sessions`` — live mode reads the real one. One
+    source of truth for the input-delivery wait that used to be a hardcoded
+    5 s poll loop copied into four test files (issue #58).
     """
 
     def _wait(
@@ -821,7 +1001,8 @@ def wait_for_session_log() -> Callable[..., bool]:
         needle: str,
         deadline_ms: int = _LOG_POLL_DEADLINE_MS,
     ) -> bool:
-        log_path = _SESSIONS_DIR / f"{sid}.log"
+        sessions_dir = _AUTOBOOT_STATE.get("sessions_dir", _SESSIONS_DIR)
+        log_path = sessions_dir / f"{sid}.log"
 
         def _hit() -> bool:
             return log_path.exists() and needle in log_path.read_text(

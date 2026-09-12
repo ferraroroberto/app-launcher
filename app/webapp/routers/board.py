@@ -76,6 +76,7 @@ from app.webapp.routers._helpers import (
 )
 from app.webapp.routers.board_spawn import (
     _agent_and_flags,
+    _read_live_sessions,
     _resolve_repo_entry,
     _safe_list_sessions,
     _type_into_session,
@@ -90,7 +91,20 @@ _quota_refresh_task: asyncio.Task[str] | None = None
 
 
 def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
-    return {"fetched_at": snap.get("fetched_at"), "error": snap.get("error")}
+    """``available`` says whether the GitHub-sourced columns are real (#910).
+
+    ``False`` means the cache has never been filled in this process (a
+    webapp restart empties it), so an empty Backlog/Done is *unknown*, not
+    zero — the same ``available`` contract as ``sessions_state`` and
+    ``active_issues``. ``error`` is orthogonal: set with ``available: True``
+    it means the last refresh failed and the lists are the older good data.
+    """
+    fetched_at = snap.get("fetched_at")
+    return {
+        "available": fetched_at is not None,
+        "fetched_at": fetched_at,
+        "error": snap.get("error"),
+    }
 
 
 def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
@@ -169,14 +183,15 @@ async def get_board(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
 
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
-    live, state, active_issues, job_cards, quota_lines = await asyncio.gather(
-        asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
+    live_read, state, active_issues, job_cards, quota_lines = await asyncio.gather(
+        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
         asyncio.to_thread(board.read_active_issues, active_issues_file),
         asyncio.to_thread(board.jobs_attention),
         asyncio.to_thread(_read_quota_lines, cfg),
     )
     github = github_client.snapshot()
+    live, live_error = live_read
 
     live = board_chief._reconcile_chief_labels(live, state["rows"])
     # Per-card transcript reads — unbounded in session count and re-run every
@@ -197,6 +212,13 @@ async def get_board(request: Request) -> Dict[str, Any]:
         .replace("+00:00", "Z"),
         "columns": columns,
         "github": _github_section(github),
+        # ``available: false`` means the session-host could not be read, so
+        # Claude's turn and Your turn are unknown, not empty (#915) — the
+        # same contract as ``github.available``.
+        "live_sessions": {
+            "available": live_error is None,
+            "error": live_error,
+        },
         "sessions_state": {
             "available": state["available"],
             "stale": state["stale"],

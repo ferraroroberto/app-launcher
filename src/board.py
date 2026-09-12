@@ -11,7 +11,8 @@ Three inputs, one board:
 * the **sessions-state file** written by fleet-config's ``session_state`` hook
   (``~/.claude/hooks/state/sessions-state.json`` — ``working`` / ``needs-you``
   / ``idle`` rows per recent Claude Code session),
-* the **jobs attention scan** (failed-today / stuck runs from ``src.jobs``),
+* the **jobs attention scan** (failed-today / stuck / unreadable runs from
+  ``src.jobs``),
 
 plus the in-memory GitHub snapshot from :mod:`src.github_client`.
 
@@ -72,17 +73,32 @@ from src.board_transcript import (  # noqa: F401 — re-exported
     has_typed_user_prompt,
     last_exchange,
 )
+from src.jobs_outcome import OUTCOME_UNCONFIRMED
 
 logger = logging.getLogger(__name__)
 
+# Job ids whose run history is currently unreadable: one warning when a job
+# enters that state and one breadcrumb when it leaves, not one per 5 s Board
+# poll (#915). Bounded by the job registry, so no cap is needed.
+_UNREADABLE_JOBS: set[str] = set()
+
 
 def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
-    """Failed-today and stuck runs across all registered jobs.
+    """Failed-today, unconfirmed-today, stuck and unreadable runs across all jobs.
+
+    A card's ``state`` is ``"failed"``, ``"unconfirmed"`` (#916 — the run may
+    well have delivered, but the scheduled-run adapter could not establish it),
+    ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
+    one-liner when it has one, so the card can say *why* without a log dive.
 
     Blocking file IO (one ``list_runs`` walk per job) — callers wrap in
     ``asyncio.to_thread``. Job timestamps are naive local ISO strings
     (``run_job_cmd`` writes ``datetime.now().isoformat()``), so "today" is the
     local calendar day.
+
+    A job whose run history cannot be read gets an ``unreadable`` card rather
+    than being skipped (#915): skipping it meant that job could never raise
+    attention at all, and its absence read as "nothing stuck".
     """
     from src import jobs as jobs_mod
     from src.jobs_config import load_jobs
@@ -98,8 +114,27 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
             # "stuck" card for a run that nothing is actually executing.
             jobs_mod.reap_stranded_runs(job)
             latest = jobs_mod.latest_run(job.id)
-        except OSError:
+        except OSError as exc:
+            if job.id not in _UNREADABLE_JOBS:
+                logger.warning(
+                    "⚠️ board: run history of job %s unreadable, "
+                    "attention unknown: %s", job.id, exc,
+                )
+                _UNREADABLE_JOBS.add(job.id)
+            cards.append({
+                "kind": "job",
+                "job_id": job.id,
+                "job_name": job.name,
+                "state": "unreadable",
+                "run_id": None,
+                "finished_at": None,
+                "age_seconds": None,
+                "error": str(exc),
+            })
             continue
+        if job.id in _UNREADABLE_JOBS:
+            logger.info("✅ board: run history of job %s readable again", job.id)
+            _UNREADABLE_JOBS.discard(job.id)
         if not latest:
             continue
         if latest.get("status") == "running" and jobs_mod.is_stuck(
@@ -119,14 +154,23 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
         if latest.get("status") == "failed":
             finished = _parse_iso(latest.get("finished_at"))
             if finished is not None and finished.astimezone().date() == today:
+                # A run whose delivery the adapter could not establish still
+                # wants a human's eye, so it keeps its card — but it is not a
+                # failure and must not be drawn as one (#916). ``outcome`` is
+                # decorated onto every record by ``jobs_history.read_run``.
+                outcome = latest.get("outcome") or "failed"
                 cards.append({
                     "kind": "job",
                     "job_id": job.id,
                     "job_name": job.name,
-                    "state": "failed",
+                    "state": (
+                        "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
+                        else "failed"
+                    ),
                     "run_id": latest.get("run_id"),
                     "finished_at": latest.get("finished_at"),
                     "age_seconds": _age_seconds(finished, now_local),
+                    "error": latest.get("outcome_reason"),
                 })
 
     return cards
@@ -168,8 +212,8 @@ def build_board(
     / ``awaiting-input`` — the needs-you split's three genuinely
     human-actionable outcomes) — a terminal that needs a human.
     Other = everything else that needs attention but isn't a terminal: open
-    PRs, then failed/stuck jobs. Done = today's closed issues only — a merged
-    PR that closed one is already reflected by the issue itself.
+    PRs, then failed/stuck/unreadable jobs. Done = today's closed issues only
+    — a merged PR that closed one is already reflected by the issue itself.
 
     The standing fleet chief (#245) never routes to Your turn (#575): its
     ``Stop``-hook-driven status sits in the needs-you family for nearly its

@@ -1451,6 +1451,76 @@ class TestReapOnPoll:
         assert record["status"] == "failed"
         assert record["reaped"] is True
 
+    def test_last_run_carries_the_unconfirmed_outcome(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """Issue #916: the row payload must carry the *derived* outcome, not
+        just the persisted status, or the client has nothing to render the
+        third state from. The two are deliberately both present: ``status``
+        still says what was written to disk."""
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        from src import jobs as jobs_mod
+
+        run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
+        jobs_mod.write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            status="failed",
+            started_at="2026-05-24T08:00:00",
+            finished_at="2026-05-24T08:05:00",
+            exit_code=122,
+        )
+
+        last_run = client.get("/api/jobs").json()["jobs"][0]["last_run"]
+        assert last_run["status"] == "failed"
+        assert last_run["outcome"] == "unconfirmed"
+        assert "never verified" in last_run["outcome_reason"]
+
+    def test_last_run_keeps_a_genuine_failure_failed(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """The over-correction guard: 118 stays a failure, and names itself."""
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        from src import jobs as jobs_mod
+
+        run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
+        jobs_mod.write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            status="failed",
+            started_at="2026-05-24T08:00:00",
+            finished_at="2026-05-24T08:05:00",
+            exit_code=118,
+        )
+
+        last_run = client.get("/api/jobs").json()["jobs"][0]["last_run"]
+        assert last_run["outcome"] == "failed"
+        assert "delivered no work" in last_run["outcome_reason"]
+
+    def test_run_history_rows_carry_their_outcome(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """The expanded history list renders per run, so every row needs the
+        classification too — not only the newest one on the collapsed row."""
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        from src import jobs as jobs_mod
+
+        for run_id, code in (("20260524T080000", 118), ("20260524T090000", 122)):
+            rd = jobs_mod.new_run_dir(created["id"], run_id)
+            jobs_mod.write_run_json(
+                rd, run_id=run_id, status="failed",
+                started_at="2026-05-24T08:00:00", exit_code=code,
+            )
+
+        runs = client.get(f"/api/jobs/{created['id']}/runs").json()["runs"]
+        assert {r["run_id"]: r["outcome"] for r in runs} == {
+            "20260524T080000": "failed",
+            "20260524T090000": "unconfirmed",
+        }
+
     def test_get_jobs_leaves_a_live_run_running(
         self, webapp_client, mocked_jobs_side_effects, monkeypatch
     ):

@@ -35,6 +35,7 @@ def _seed_run(
     status: str,
     started_at: datetime,
     duration_seconds: float | None = None,
+    exit_code: int | None = None,
 ):
     """Write a run.json with consistent timestamps."""
     rd = jobs_mod.new_run_dir(job_id, run_id)
@@ -52,6 +53,8 @@ def _seed_run(
         fields["finished_at"] = finished_at.isoformat(timespec="seconds")
     if duration_seconds is not None:
         fields["duration_seconds"] = duration_seconds
+    if exit_code is not None:
+        fields["exit_code"] = exit_code
     jobs_mod.write_run_json(rd, **fields)
     return rd
 
@@ -219,3 +222,86 @@ class TestConsecutiveFailedRuns:
         _seed_run("demo", run_id="20260104T060000", status="failed",
                   started_at=now - timedelta(days=1), duration_seconds=1.0)
         assert jobs_mod.consecutive_failed_runs("demo") == 3
+
+
+# ====================================== unconfirmed outcomes (issue #916)
+
+
+class TestUnconfirmedRunsInStats:
+    """A run whose delivery was never established is not a failure, and the
+    aggregates on the job row must not quietly treat it as one."""
+
+    def test_unconfirmed_leaves_the_success_ratio_rather_than_failing_it(
+        self, temp_runs_dir
+    ):
+        """Counting it as a failure is the false alarm the issue is about;
+        counting it as a success is the worse half of the same mistake. It is
+        excluded and reported as its own number instead."""
+        now = datetime.now()
+        _seed_run("demo", run_id="20260101T060000", status="success",
+                  started_at=now - timedelta(days=3), duration_seconds=1.0,
+                  exit_code=0)
+        _seed_run("demo", run_id="20260102T060000", status="failed",
+                  started_at=now - timedelta(days=2), duration_seconds=1.0,
+                  exit_code=122)
+        _seed_run("demo", run_id="20260103T060000", status="failed",
+                  started_at=now - timedelta(days=1), duration_seconds=1.0,
+                  exit_code=122)
+        stats = jobs_mod.run_stats("demo", fresh=True)
+        # One known outcome in the window, and it succeeded.
+        assert stats["success_rate_30d"] == pytest.approx(1.0)
+        assert stats["unconfirmed_30d"] == 2
+
+    def test_all_unconfirmed_reports_no_rate_not_zero_percent(self, temp_runs_dir):
+        """"We cannot say" is not "0%" — the distinction this whole issue is
+        about, applied to the ratio."""
+        now = datetime.now()
+        for n in range(1, 4):
+            _seed_run("demo", run_id=f"2026010{n}T060000", status="failed",
+                      started_at=now - timedelta(days=n), duration_seconds=1.0,
+                      exit_code=122)
+        stats = jobs_mod.run_stats("demo", fresh=True)
+        assert stats["success_rate_30d"] is None
+        assert stats["unconfirmed_30d"] == 3
+
+    def test_genuine_failures_still_sink_the_ratio(self, temp_runs_dir):
+        """The guard against over-correcting: 118 means the run said itself it
+        delivered nothing, and that must still read as a failure."""
+        now = datetime.now()
+        _seed_run("demo", run_id="20260101T060000", status="success",
+                  started_at=now - timedelta(days=2), duration_seconds=1.0,
+                  exit_code=0)
+        _seed_run("demo", run_id="20260102T060000", status="failed",
+                  started_at=now - timedelta(days=1), duration_seconds=1.0,
+                  exit_code=118)
+        stats = jobs_mod.run_stats("demo", fresh=True)
+        assert stats["success_rate_30d"] == pytest.approx(0.5)
+        assert stats["unconfirmed_30d"] == 0
+
+    def test_sparkline_entry_carries_its_outcome(self, temp_runs_dir):
+        now = datetime.now()
+        _seed_run("demo", run_id="20260101T060000", status="failed",
+                  started_at=now - timedelta(days=1), duration_seconds=1.0,
+                  exit_code=122)
+        entry = jobs_mod.run_stats("demo", fresh=True)["last7"][0]
+        assert entry["outcome"] == "unconfirmed"
+        # `status` still rides for any consumer predating #916.
+        assert entry["status"] == "failed"
+
+    def test_unconfirmed_run_breaks_a_failure_streak(self, temp_runs_dir):
+        """The streak gate escalates a job that is provably broken. A run of
+        "we could not tell" is the opposite of proof, so it must not extend
+        one — otherwise every job on this box pages at streak length."""
+        now = datetime.now()
+        _seed_run("demo", run_id="20260101T060000", status="failed",
+                  started_at=now - timedelta(days=3), duration_seconds=1.0,
+                  exit_code=118)
+        _seed_run("demo", run_id="20260102T060000", status="failed",
+                  started_at=now - timedelta(days=2), duration_seconds=1.0,
+                  exit_code=122)
+        _seed_run("demo", run_id="20260103T060000", status="failed",
+                  started_at=now - timedelta(days=1), duration_seconds=1.0,
+                  exit_code=118)
+        # Newest is a real failure; the one below it is unconfirmed, so the
+        # contiguous run of *failures* is one long, not three.
+        assert jobs_mod.consecutive_failed_runs("demo") == 1

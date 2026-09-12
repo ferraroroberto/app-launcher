@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.jobs_config import Job
 from src.jobs_history import latest_run, list_runs
+from src.jobs_outcome import OUTCOME_UNCONFIRMED
 
 # Process-local TTL cache. Reset per job by `invalidate_stats_cache` once a
 # run finalises so the row updates promptly without waiting out the TTL.
@@ -113,22 +114,37 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
     completed_durations: List[float] = []
     success_recent = 0
     failed_recent = 0
+    unconfirmed_recent = 0
     cutoff = now - timedelta(days=30)
     for r in runs:
         status = r.get("status")
+        outcome = r.get("outcome") or status
         started = _parse_iso(r.get("started_at"))
         if status in {"success", "failed"}:
             d = _duration_for(r)
             if d is not None:
                 completed_durations.append(d)
             if started and started >= cutoff:
-                if status == "success":
+                # An unconfirmed run (issue #916) leaves the ratio entirely
+                # rather than joining either side of it: counting it as a
+                # failure is the false alarm this issue is about, and counting
+                # it as a success is the worse half of the same mistake. It is
+                # reported as its own number instead.
+                if outcome == OUTCOME_UNCONFIRMED:
+                    unconfirmed_recent += 1
+                elif status == "success":
                     success_recent += 1
                 else:
                     failed_recent += 1
     # last7 oldest-left so the sparkline reads left→right chronologically.
+    # Both keys ride: ``status`` for any consumer predating #916, ``outcome``
+    # for the dot colour.
     last7 = [
-        {"status": r.get("status"), "run_id": r.get("run_id")}
+        {
+            "status": r.get("status"),
+            "outcome": r.get("outcome") or r.get("status"),
+            "run_id": r.get("run_id"),
+        }
         for r in list(reversed(runs[:7]))
     ]
     p50 = _percentile(completed_durations, 0.5)
@@ -138,6 +154,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
         "p50": p50,
         "p95": p95,
         "success_rate_30d": (success_recent / total_recent) if total_recent else None,
+        "unconfirmed_30d": unconfirmed_recent,
         "completed_count": len(completed_durations),
         "last7": last7,
     }
@@ -152,9 +169,16 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
           "p50": Optional[float],          # seconds, completed runs only
           "p95": Optional[float],
           "success_rate_30d": Optional[float],  # None when zero recent runs
+          "unconfirmed_30d": int,          # runs whose delivery was never
+                                           # established; excluded from the
+                                           # ratio above (issue #916)
           "completed_count": int,
-          "last7": [{"status": str, "run_id": str}, ...]  # oldest-left
+          "last7": [{"status": str, "outcome": str, "run_id": str}, ...]
         }
+
+    ``success_rate_30d`` is a ratio over runs with a *known* outcome only. A
+    job whose every recent run was unconfirmed reports ``None`` there and a
+    non-zero ``unconfirmed_30d`` — "we cannot say", not "0%".
 
     ``fresh=True`` skips the cache — used by the stuck-run check, which
     pays the cost rarely (only when the latest run is still running).
@@ -273,14 +297,21 @@ def is_stuck(
 
 
 def consecutive_failed_runs(job_id: str) -> int:
-    """Count the contiguous ``failed`` runs at the top of the history.
+    """Count the contiguous genuinely-failed runs at the top of the history.
 
-    Stops at the first non-failed (success / running / pending / unknown).
+    Stops at the first run that is not a failure — success, running, pending,
+    unknown, or (issue #916) ``unconfirmed``. An unconfirmed run is not
+    evidence of a failure, so it must not extend a failure streak; the whole
+    point of the streak gate is to escalate a job that is provably broken, and
+    a run of "we could not tell" is the opposite of proof. It breaks the streak
+    rather than being skipped over: the runs on either side of it are not
+    contiguous failures either.
+
     Used by the notification streak gate.
     """
     n = 0
     for r in list_runs(job_id):
-        if r.get("status") != "failed":
+        if (r.get("outcome") or r.get("status")) != "failed":
             break
         n += 1
     return n

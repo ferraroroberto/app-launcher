@@ -7,13 +7,13 @@ determinism and never exercise these functions' real logic.
 
 from __future__ import annotations
 
-import ast
 import subprocess
 from pathlib import Path
 
 from src import session_host_paths
 
-_CLAUDE_MD = Path(__file__).resolve().parent.parent / "CLAUDE.md"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_CLAUDE_MD = _REPO_ROOT / "CLAUDE.md"
 
 
 class TestDeclaredSessionHostPaths:
@@ -22,33 +22,56 @@ class TestDeclaredSessionHostPaths:
         assert "src/session_host.py" in paths
         assert "app/session_host/" in paths
 
-    def test_declaration_covers_every_module_session_host_owns(self):
-        """Regression for #832: `src/session_host.py` imports gained
-        `session_host_input.py`, `session_host_scan.py` and `vt_snapshot.py`
-        (split out by #753/#798) that the CLAUDE.md declaration never picked
-        up, so `_touched_by` silently returned False for changes that needed
-        a `:8446` restart. Every sibling ``session_host_*`` module plus
-        ``vt_snapshot`` (the terminal-buffer protocol code session_host.py
-        owns) must appear in the declared path list — parsed from the real
-        imports so a future module split fails this test instead of
-        regressing the same way silently.
+    def test_declaration_covers_the_whole_import_closure(self):
+        """The declaration must name every module the session-host loads.
+
+        #832 pinned this for the ``session_host_*`` siblings only, by grepping
+        `src/session_host.py`'s own imports for names starting with
+        ``session_host`` — a hand-picked shape that #923 found still let
+        `src/audit.py` (imported by `session_host.py` to write transcripts,
+        named nothing like the rest) go undeclared. An undeclared module makes
+        `_touched_by` return a confident False for a change that genuinely
+        needs a `:8446` restart, and nobody finds out.
+
+        So the check is now against the real transitive closure, with no name
+        filter: a module reachable from the server entry point that isn't
+        declared fails here, whatever it's called.
         """
-        session_host_py = _CLAUDE_MD.parent / "src" / "session_host.py"
-        tree = ast.parse(session_host_py.read_text(encoding="utf-8"))
-        local_modules = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src."):
-                local_modules.add(node.module.split(".", 1)[1])
-        owned = {m for m in local_modules if m.startswith("session_host") or m == "vt_snapshot"}
-        assert owned, "sanity: session_host.py should import its own protocol modules"
+        closure = session_host_paths.session_host_import_closure(_REPO_ROOT)
+        assert closure is not None, "session-host import closure could not be computed"
+        assert "app/session_host/server.py" in closure, "sanity: entry point missing"
+        assert "src/session_host.py" in closure, "sanity: closure did not follow imports"
 
         declared = session_host_paths.declared_session_host_paths(_CLAUDE_MD)
-        for mod in owned:
-            expected = f"src/{mod}.py"
-            assert expected in declared, (
-                f"{expected} is imported by session_host.py but not declared in "
-                "CLAUDE.md's ## session-host block"
-            )
+        undeclared = [
+            path
+            for path in closure
+            if not session_host_paths._touched_by([path], declared)
+        ]
+        assert not undeclared, (
+            f"{undeclared} are imported by the session-host but not declared in "
+            "CLAUDE.md's ## session-host block. Add them there (see its 'path "
+            "list' bullet) and to scripts/classify_e2e.py's _FULL_SRC_PY_EXACT."
+        )
+
+    def test_declaration_names_nothing_the_session_host_does_not_load(self):
+        """The inverse guard: no declared path outside the closure.
+
+        `stale_relevant` is only worth reading if it stays narrow — declaring
+        a module the host never loads would flip it `true` after merges that
+        need no restart, which is the noise #635 removed.
+        """
+        closure = session_host_paths.session_host_import_closure(_REPO_ROOT)
+        assert closure is not None
+        stray = [
+            path
+            for path in session_host_paths.declared_session_host_paths(_CLAUDE_MD)
+            if not any(session_host_paths._touched_by([f], [path]) for f in closure)
+        ]
+        assert not stray, (
+            f"{stray} are declared session-host paths but nothing in the "
+            "session-host's import closure lives there"
+        )
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert session_host_paths.declared_session_host_paths(tmp_path / "missing.md") == []
@@ -78,6 +101,85 @@ class TestDeclaredSessionHostPaths:
             encoding="utf-8",
         )
         assert session_host_paths.declared_session_host_paths(md) == ["app/session_host/"]
+
+
+class TestSessionHostImportClosure:
+    """``session_host_import_closure`` — #923's drift check on the declaration."""
+
+    def _tree(self, tmp_path: Path) -> Path:
+        (tmp_path / "app" / "session_host").mkdir(parents=True)
+        (tmp_path / "src").mkdir()
+        (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "app" / "session_host" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
+        return tmp_path
+
+    def test_follows_transitive_first_party_imports(self, tmp_path):
+        repo = self._tree(tmp_path)
+        (repo / "app" / "session_host" / "server.py").write_text(
+            "import json\nfrom src.host import Manager\n", encoding="utf-8"
+        )
+        (repo / "src" / "host.py").write_text(
+            "from src.deep import thing\n", encoding="utf-8"
+        )
+        (repo / "src" / "deep.py").write_text("thing = 1\n", encoding="utf-8")
+        (repo / "src" / "unrelated.py").write_text("x = 1\n", encoding="utf-8")
+
+        closure = session_host_paths.session_host_import_closure(repo)
+        assert closure == [
+            "app/__init__.py",
+            "app/session_host/__init__.py",
+            "app/session_host/server.py",
+            "src/__init__.py",
+            "src/deep.py",
+            "src/host.py",
+        ]
+
+    def test_follows_imports_nested_in_functions(self, tmp_path):
+        """A lazy import inside a function still loads the module at runtime."""
+        repo = self._tree(tmp_path)
+        (repo / "app" / "session_host" / "server.py").write_text(
+            "def run():\n    from src.late import go\n    return go\n", encoding="utf-8"
+        )
+        (repo / "src" / "late.py").write_text("go = 1\n", encoding="utf-8")
+        closure = session_host_paths.session_host_import_closure(repo)
+        assert "src/late.py" in closure
+
+    def test_resolves_relative_imports(self, tmp_path):
+        repo = self._tree(tmp_path)
+        (repo / "app" / "session_host" / "server.py").write_text(
+            "from .helper import h\n", encoding="utf-8"
+        )
+        (repo / "app" / "session_host" / "helper.py").write_text("h = 1\n", encoding="utf-8")
+        closure = session_host_paths.session_host_import_closure(repo)
+        assert "app/session_host/helper.py" in closure
+
+    def test_survives_an_import_cycle(self, tmp_path):
+        repo = self._tree(tmp_path)
+        (repo / "app" / "session_host" / "server.py").write_text(
+            "from src.a import x\n", encoding="utf-8"
+        )
+        (repo / "src" / "a.py").write_text("from src.b import y\n", encoding="utf-8")
+        (repo / "src" / "b.py").write_text("from src.a import x\n", encoding="utf-8")
+        closure = session_host_paths.session_host_import_closure(repo)
+        assert "src/a.py" in closure and "src/b.py" in closure
+
+    def test_returns_none_when_entry_module_is_missing(self, tmp_path):
+        assert session_host_paths.session_host_import_closure(tmp_path) is None
+
+    def test_returns_none_rather_than_a_partial_closure_on_a_parse_error(self, tmp_path):
+        """A file it can't parse makes the whole closure unknown.
+
+        Returning what it managed to walk would under-declare silently — the
+        exact shape this check exists to catch (#923's "unknown is its own
+        state" constraint).
+        """
+        repo = self._tree(tmp_path)
+        (repo / "app" / "session_host" / "server.py").write_text(
+            "from src.broken import x\n", encoding="utf-8"
+        )
+        (repo / "src" / "broken.py").write_text("def (:\n", encoding="utf-8")
+        assert session_host_paths.session_host_import_closure(repo) is None
 
 
 class TestPathsTouchedBetween:

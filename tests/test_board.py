@@ -5,7 +5,8 @@ Covers the three sources and their degradation contract:
   * ``board.read_active_issues`` — absent / corrupt / fresh / expired markers.
   * ``board.merge_sessions`` — agent-aware state claims (exact launcher id,
     normalized-cwd fallback), external-card freshness, unknown fallback.
-  * ``board.jobs_attention`` — failed-today and stuck runs from run.json trees.
+  * ``board.jobs_attention`` — failed-today, stuck, and unreadable runs from
+    run.json trees.
   * ``src.github_client`` — canned ``gh`` JSON via a monkeypatched
     ``subprocess.run``; missing binary → error surfaced, old data kept.
   * ``GET /api/board`` + ``POST /api/board/github/refresh`` via the standard
@@ -24,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import board as board_router
+from app.webapp.routers import board_spawn
 from src import board, board_transcript, github_client, quota_usage
 
 
@@ -40,6 +42,13 @@ def _pristine_gh_cache():
     github_client.reset_cache()
     yield
     github_client.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def _pristine_failure_latches(monkeypatch):
+    """The once-per-failure log latches (#915) are module-global too."""
+    monkeypatch.setattr(board_spawn, "_session_host_down", False, raising=False)
+    monkeypatch.setattr(board, "_UNREADABLE_JOBS", set(), raising=False)
 
 
 # ------------------------------------------------------ read_sessions_state
@@ -1801,6 +1810,48 @@ def test_jobs_attention_ignores_yesterdays_failure(webapp_client):
     assert board.jobs_attention() == []
 
 
+def test_jobs_attention_unconfirmed_run_is_not_a_failed_card(webapp_client):
+    """Issue #916: exit 122 is the scheduled-run adapter saying "this may well
+    have delivered, but nobody established that". The card stays — an
+    unverified run still wants a human's eye — but it must not be drawn as a
+    failure, because a Board that cries failure on healthy runs is a Board
+    whose failures stop being read."""
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "truncated", {
+        "status": "failed",
+        "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
+        "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
+        "exit_code": 122,
+    })
+    cards = board.jobs_attention(now=local_now)
+    assert [(c["job_id"], c["state"]) for c in cards] == [
+        ("truncated", "unconfirmed")
+    ]
+    # And it says why, so the card is actionable without a log dive.
+    assert "never verified" in cards[0]["error"]
+
+
+def test_jobs_attention_genuine_failure_still_reads_as_failed(webapp_client):
+    """The other half of #916, and the one that makes the fix worth having:
+    exit 118 is the run reporting it delivered no work. It must keep the
+    failure rendering it had, or the false alarms are simply replaced by
+    false comfort."""
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "delivered-nothing", {
+        "status": "failed",
+        "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
+        "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
+        "exit_code": 118,
+    })
+    cards = board.jobs_attention(now=local_now)
+    assert [(c["job_id"], c["state"]) for c in cards] == [
+        ("delivered-nothing", "failed")
+    ]
+    assert "delivered no work" in cards[0]["error"]
+
+
 def test_jobs_attention_stuck_run(webapp_client):
     _client, _app, overrides = webapp_client
     local_now = datetime.now()
@@ -1812,6 +1863,48 @@ def test_jobs_attention_stuck_run(webapp_client):
     })
     cards = board.jobs_attention()
     assert [(c["job_id"], c["state"]) for c in cards] == [("wedged", "stuck")]
+
+
+def test_jobs_attention_unreadable_history_surfaces_not_skipped(
+    webapp_client, monkeypatch, caplog
+):
+    """#915: a job whose run history can't be read raises an ``unreadable``
+    card instead of dropping out of the check, and says so above debug —
+    once per job, not once per 5 s poll. A readable quiet job beside it
+    still raises nothing, and a recovery clears the card."""
+    from src import jobs as jobs_mod
+
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    finished = (local_now - timedelta(minutes=50)).isoformat(timespec="seconds")
+    _seed_job(overrides, "quiet", {"status": "success", "finished_at": finished})
+    _seed_job(overrides, "locked", {"status": "success", "finished_at": finished})
+
+    real_latest_run = jobs_mod.latest_run
+
+    def _locked_latest_run(job_id):
+        if job_id == "locked":
+            raise PermissionError(13, "Access is denied", "run.json")
+        return real_latest_run(job_id)
+
+    monkeypatch.setattr(jobs_mod, "latest_run", _locked_latest_run)
+    with caplog.at_level(logging.DEBUG, logger="src.board"):
+        cards = board.jobs_attention(now=local_now)
+        board.jobs_attention(now=local_now)  # the next poll must not re-warn
+
+    assert [(c["job_id"], c["state"]) for c in cards] == [("locked", "unreadable")]
+    assert "Access is denied" in cards[0]["error"]
+    warnings = [
+        r for r in caplog.records
+        if r.levelno >= logging.WARNING and "locked" in r.getMessage()
+    ]
+    assert len(warnings) == 1
+
+    monkeypatch.setattr(jobs_mod, "latest_run", real_latest_run)
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="src.board"):
+        assert board.jobs_attention(now=local_now) == []
+    assert any("readable again" in r.getMessage() for r in caplog.records)
 
 
 # ------------------------------------------------------------- github_client
@@ -1975,6 +2068,68 @@ def test_github_refresh_failure_keeps_old_data(monkeypatch):
     assert [i["number"] for i in snap["issues"]] == [164]  # previous data survives
 
 
+def _malformed_gh(argv, **kwargs):
+    """gh exits 0 but a row is not an object — the normalisers raise
+    AttributeError, which is not a GhError."""
+    return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(["not-a-row"]), stderr="")
+
+
+def test_github_refresh_unexpected_failure_records_error(monkeypatch):
+    """#910: *any* refresh failure leaves a non-null ``error`` for the next
+    reader — not just GhError. Previously the exception escaped refresh()
+    and the cache kept ``error: None``, so nothing recorded the failure."""
+    monkeypatch.setattr(github_client.subprocess, "run", _FakeGh())
+    github_client.refresh("ferraroroberto")
+
+    monkeypatch.setattr(github_client.subprocess, "run", _malformed_gh)
+    snap = github_client.refresh("ferraroroberto")
+    assert "AttributeError" in (snap["error"] or "")
+    assert [i["number"] for i in snap["issues"]] == [164]  # previous data survives
+    assert github_client.snapshot()["error"] == snap["error"]  # survives to the next read
+
+
+def test_api_refresh_unexpected_failure_surfaces_on_next_board_read(
+    webapp_client, monkeypatch
+):
+    """#910: the failure reaches the API — the refresh answers with the
+    error instead of a 500, and the following poll still carries it."""
+    client, _app, _overrides = webapp_client
+    monkeypatch.setattr(github_client.subprocess, "run", _malformed_gh)
+
+    github = client.post("/api/board/github/refresh").json()
+    assert github["available"] is False
+    assert "AttributeError" in (github["error"] or "")
+
+    body = client.get("/api/board").json()
+    assert body["github"]["error"] == github["error"]
+    assert body["github"]["available"] is False
+
+
+def test_api_board_distinguishes_unfetched_from_genuinely_empty(
+    webapp_client, monkeypatch
+):
+    """#910: a never-fetched cache and a fetched-but-empty one both give an
+    empty Backlog list, so the payload must say which it is. A real zero is
+    ``available: True`` — it must not look like a failure either."""
+    client, _app, _overrides = webapp_client
+
+    unfetched = client.get("/api/board").json()
+    assert unfetched["columns"]["backlog"] == []
+    assert unfetched["github"]["available"] is False
+
+    def _nothing_open(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", _nothing_open)
+    client.post("/api/board/github/refresh")
+
+    empty = client.get("/api/board").json()
+    assert empty["columns"]["backlog"] == []
+    assert empty["columns"]["done"] == []
+    assert empty["github"]["available"] is True
+    assert empty["github"]["error"] is None
+
+
 # ---------------------------------------------------------------- API shape
 
 
@@ -1982,7 +2137,9 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     client, _app, _overrides = webapp_client
     body = client.get("/api/board").json()
     assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "other", "done"}
-    assert body["github"] == {"fetched_at": None, "error": None}
+    assert body["github"] == {"available": False, "fetched_at": None, "error": None}
+    # A session list read and found empty is a real zero (#915).
+    assert body["live_sessions"] == {"available": True, "error": None}
     assert body["sessions_state"]["available"] is False
     assert body["active_issues"]["available"] is False
     assert [l["harness"] for l in body["quota_lines"]] == ["claude", "codex"]
@@ -2140,12 +2297,33 @@ def test_api_board_chief_never_lands_in_your_turn(webapp_client):
     assert claude_turn[0]["status"] == "awaiting-input"
 
 
-def test_api_board_survives_session_host_down(webapp_client):
+def test_api_board_survives_session_host_down(webapp_client, caplog):
+    """The Board keeps rendering with the session-host down (#164), but its
+    empty live columns are unknown, not empty (#915): ``live_sessions`` says
+    so, the failure logs one warning rather than one per poll, and a read
+    that genuinely comes back empty is ``available`` again."""
     client, _app, overrides = webapp_client
     from src.session_client import SessionHostError
     overrides["session"].list_sessions.side_effect = SessionHostError("down")
-    body = client.get("/api/board").json()
+    with caplog.at_level(logging.DEBUG, logger="app.webapp.routers.board_spawn"):
+        body = client.get("/api/board").json()
+        client.get("/api/board")  # the next poll must not re-warn
     assert body["columns"]["claude_turn"] == []
+    assert body["columns"]["your_turn"] == []
+    assert body["live_sessions"]["available"] is False
+    assert "down" in body["live_sessions"]["error"]
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1
+    assert "live sessions unknown" in warnings[0].getMessage()
+
+    overrides["session"].list_sessions.side_effect = None
+    overrides["session"].list_sessions.return_value = []
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="app.webapp.routers.board_spawn"):
+        body = client.get("/api/board").json()
+    assert body["live_sessions"] == {"available": True, "error": None}
+    assert body["columns"]["your_turn"] == []
+    assert any("readable again" in r.getMessage() for r in caplog.records)
 
 
 def test_api_refresh_endpoint_fills_cache(webapp_client, monkeypatch):

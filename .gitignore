@@ -44,7 +44,9 @@ webapp/sessions/
 webapp/jobs/
 # durable chief-conversation pointer (issue #675) — machine-written state
 webapp/chief-pointer.json
-# e2e-gate temp copy of the real config (issue #441) — carries auth secrets
+# Former e2e-gate config path (issue #441). No longer written — the gate's
+# config moved to pytest's temp dir, credential-free (issue #907) — but kept
+# ignored so a file left by an older run can never be committed.
 webapp/e2e-autoboot-webapp-config.json
 
 # --- Interactive-terminal scratch (image uploads land here) --------------

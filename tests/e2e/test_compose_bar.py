@@ -40,9 +40,16 @@ _PNG_1x1 = base64.b64decode(
     "YAAAAAYAAjCB0C8AAAAASUVORK5CYII="
 )
 
-# The session-host stores uploads under <project>\.launcher-tmp\ — the
-# inline path dropped into the compose bar must point there.
+# The session-host stores uploads under <root>\.launcher-tmp\ — the inline
+# path dropped into the compose bar must point there. Under autoboot that
+# root is a per-run temp dir rather than this checkout (issue #922), so the
+# leaf is what these patterns pin, not the parent.
 _PATH_RE = re.compile(r"\.launcher-tmp.*\.png$")
+
+# Every file this module uploads is named `e2e-stub-…` on purpose: it is the
+# marker `tests/e2e/conftest.py`'s teardown scans for when asserting that no
+# harness upload landed in the checkout's real `.launcher-tmp` (issue #922).
+# Renaming one silently weakens that check — keep the prefix.
 
 pytestmark = pytest.mark.smoke
 
@@ -175,7 +182,8 @@ def test_compose_image_inserts_path_into_bar(
 
     # The file input is triggered by the 🖼 button click; set it directly.
     authed_page.locator("#terminalImageInput").set_input_files(
-        files=[{"name": "regress.png", "mimeType": "image/png", "buffer": _PNG_1x1}]
+        files=[{"name": "e2e-stub-regress.png", "mimeType": "image/png",
+                "buffer": _PNG_1x1}]
     )
 
     # The uploaded image path lands in the textarea, not the PTY.
@@ -211,7 +219,7 @@ def test_compose_attach_appends_at_end_with_blank_line(
     # First attach: a plain-text file through the compose-bar attach button's
     # input (same #terminalImageInput the button clicks).
     authed_page.locator("#terminalImageInput").set_input_files(
-        files=[{"name": "notes.txt", "mimeType": "text/plain",
+        files=[{"name": "e2e-stub-notes.txt", "mimeType": "text/plain",
                 "buffer": b"hello attach"}]
     )
     expect(compose).to_have_value(
@@ -221,7 +229,8 @@ def test_compose_attach_appends_at_end_with_blank_line(
 
     # Second attach stacks below the first, blank-line separated.
     authed_page.locator("#terminalImageInput").set_input_files(
-        files=[{"name": "shot.png", "mimeType": "image/png", "buffer": _PNG_1x1}]
+        files=[{"name": "e2e-stub-shot.png", "mimeType": "image/png",
+                "buffer": _PNG_1x1}]
     )
     expect(compose).to_have_value(
         re.compile(
@@ -259,8 +268,10 @@ def test_compose_attach_multiple_images_in_one_pick(
 
     authed_page.locator("#terminalImageInput").set_input_files(
         files=[
-            {"name": "shot1.png", "mimeType": "image/png", "buffer": _PNG_1x1},
-            {"name": "shot2.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+            {"name": "e2e-stub-shot1.png", "mimeType": "image/png",
+             "buffer": _PNG_1x1},
+            {"name": "e2e-stub-shot2.png", "mimeType": "image/png",
+             "buffer": _PNG_1x1},
         ]
     )
 
