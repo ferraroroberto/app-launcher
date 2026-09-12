@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 import uuid
@@ -88,6 +89,14 @@ _CLEAR_FRAME = "\x1b[H\x1b[2J\x1b[3J"
 _IMAGE_DIR_NAME = ".launcher-tmp"
 _SAFE_SUFFIX_RE = re.compile(r"^\.[A-Za-z0-9]{1,10}$")
 _MAX_IMAGE_BYTES = 12 * 1024 * 1024
+# Harness-only override for the *root* those uploads hang off (issue #922),
+# the same shape as `LAUNCHER_AUDIT_DIR` (#913). Nothing in production sets
+# it, so where a real upload lands is unchanged; the e2e gate points it at a
+# per-run temp dir, because the disposable session-host it spawns runs
+# sessions whose project dir is this very checkout — so every image-upload
+# test wrote into the checkout's own `.launcher-tmp`, where 3,423 of the
+# 3,600 files turned out to be its 1x1 test PNGs, with nothing pruning them.
+UPLOAD_ROOT_ENV = "LAUNCHER_UPLOAD_ROOT"
 
 # Captured once at import — the whole point is that this does NOT track live
 # git state (#615): it's what this specific process loaded when it started,
@@ -435,11 +444,30 @@ async def _pump_from_client(
             session.resize(int(msg.get("rows") or 40), int(msg.get("cols") or 120))
 
 
+def _upload_dir(project_dir: str) -> Path:
+    """Where an upload for ``project_dir`` lands.
+
+    Normally ``<project>/.launcher-tmp`` — beside the code the agent is
+    working on, so the path pasted into its prompt is already inside the
+    directory it has access to. ``LAUNCHER_UPLOAD_ROOT`` replaces the *root*
+    only and keeps the ``.launcher-tmp`` leaf, so a redirected upload is
+    still recognisably one. Blank or whitespace counts as unset, so an empty
+    variable can't silently turn the path into a relative one off the CWD.
+
+    Read per call rather than resolved at import — unlike ``src.audit`` this
+    module builds no import-time state from it, and per-call keeps the
+    override exercisable without reloading a module that owns the FastAPI app
+    and the live ``SessionManager``.
+    """
+    override = os.environ.get(UPLOAD_ROOT_ENV, "").strip()
+    return Path(override or project_dir) / _IMAGE_DIR_NAME
+
+
 async def _save_image(project_dir: str, file: UploadFile) -> str:
-    """Persist an uploaded file under ``<project>/.launcher-tmp`` and return
-    its absolute path. Any type is stored (issue #366); oversize and empty
-    uploads are rejected, and an odd-looking extension is stripped rather
-    than written."""
+    """Persist an uploaded file under ``<project>/.launcher-tmp`` (see
+    :func:`_upload_dir`) and return its absolute path. Any type is stored
+    (issue #366); oversize and empty uploads are rejected, and an odd-looking
+    extension is stripped rather than written."""
     suffix = Path(file.filename or "").suffix.lower()
     if not _SAFE_SUFFIX_RE.match(suffix):
         suffix = ""
@@ -448,7 +476,7 @@ async def _save_image(project_dir: str, file: UploadFile) -> str:
         raise HTTPException(status_code=400, detail="file exceeds 12 MB")
     if not data:
         raise HTTPException(status_code=400, detail="empty upload")
-    target_dir = Path(project_dir) / _IMAGE_DIR_NAME
+    target_dir = _upload_dir(project_dir)
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
         stamp = time.strftime("%Y%m%d-%H%M%S")
