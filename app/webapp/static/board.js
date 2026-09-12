@@ -6,7 +6,7 @@
  * tool-pending), Your turn (stalled/awaiting-decision/awaiting-input
  * sessions only — #608's split of the old undifferentiated needs-you,
  * sharpened by #813's tool-pending carve-out), Other (open PRs +
- * failed/stuck jobs), Done (closed issues today). Phone-first: the columns
+ * failed/unconfirmed/stuck jobs), Done (closed issues today). Phone-first: the columns
  * container is a scroll-snap carousel (one column per swipe) and the strip
  * above it doubles as column switcher + counts.
  *
@@ -575,11 +575,23 @@ function renderPrCard(card) {
   return shell.li;
 }
 
+const JOB_CARD_ICONS = {
+  // `unconfirmed` (#916): the run may well have delivered, but the
+  // scheduled-run adapter could not establish that. It still wants a look, so
+  // it keeps its card — with the attention glyph and accent, never the red ✗
+  // that says the run is known to have failed.
+  // `unreadable` (#915): the same shape one step earlier — the run history
+  // itself could not be read, so whether the job needs attention is unknown.
+  // It must not fall through to the red ✗ either.
+  stuck: 'triangle-alert',
+  unconfirmed: 'circle-help',
+  unreadable: 'triangle-alert',
+};
+
 function renderJobCard(card) {
-  // `unreadable` (#915): the job's run history could not be read, so whether
-  // it needs attention is unknown — surfaced, never silently dropped.
-  const iconName = card.state === 'failed' ? 'x' : 'triangle-alert';
-  const top = ' job · ' + card.state + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
+  const iconName = JOB_CARD_ICONS[card.state] || 'x';
+  const label = card.state === 'unconfirmed' ? 'not confirmed' : card.state;
+  const top = ' job · ' + label + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
   const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
   if (card.error) shell.btn.title = card.error;
   shell.btn.addEventListener('click', function () { setTab('jobs'); });

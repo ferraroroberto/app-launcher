@@ -1810,6 +1810,48 @@ def test_jobs_attention_ignores_yesterdays_failure(webapp_client):
     assert board.jobs_attention() == []
 
 
+def test_jobs_attention_unconfirmed_run_is_not_a_failed_card(webapp_client):
+    """Issue #916: exit 122 is the scheduled-run adapter saying "this may well
+    have delivered, but nobody established that". The card stays — an
+    unverified run still wants a human's eye — but it must not be drawn as a
+    failure, because a Board that cries failure on healthy runs is a Board
+    whose failures stop being read."""
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "truncated", {
+        "status": "failed",
+        "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
+        "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
+        "exit_code": 122,
+    })
+    cards = board.jobs_attention(now=local_now)
+    assert [(c["job_id"], c["state"]) for c in cards] == [
+        ("truncated", "unconfirmed")
+    ]
+    # And it says why, so the card is actionable without a log dive.
+    assert "never verified" in cards[0]["error"]
+
+
+def test_jobs_attention_genuine_failure_still_reads_as_failed(webapp_client):
+    """The other half of #916, and the one that makes the fix worth having:
+    exit 118 is the run reporting it delivered no work. It must keep the
+    failure rendering it had, or the false alarms are simply replaced by
+    false comfort."""
+    _client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "delivered-nothing", {
+        "status": "failed",
+        "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
+        "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
+        "exit_code": 118,
+    })
+    cards = board.jobs_attention(now=local_now)
+    assert [(c["job_id"], c["state"]) for c in cards] == [
+        ("delivered-nothing", "failed")
+    ]
+    assert "delivered no work" in cards[0]["error"]
+
+
 def test_jobs_attention_stuck_run(webapp_client):
     _client, _app, overrides = webapp_client
     local_now = datetime.now()

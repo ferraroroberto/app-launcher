@@ -569,7 +569,7 @@ Unpinned history is pruned to the most recent **20 runs per job** by the executo
 | `started_at` | ISO 8601 | both | `pending` write or `running` re-write |
 | `status` | `"pending"` \| `"running"` \| `"success"` \| `"failed"` | both | Final value lands at executor exit |
 | `finished_at` | ISO 8601 | executor | Only on final write |
-| `exit_code` | int | executor | `-9` is reserved for `/kill` (`SIGKILL` analogue) |
+| `exit_code` | int | executor | `-9` is reserved for `/kill` (`SIGKILL` analogue). Also the input to the derived `outcome` below — see "Terminal outcomes" |
 | `pid` | int | executor | The child PID, persisted at spawn so the kill endpoint works even if the executor itself crashes between spawn and `wait()` |
 | `pid_create_time` | float (epoch) | executor | Captured immediately after spawn (issue #591) — lets the reap check (below) tell "still this process" apart from a since-recycled pid; absent on pre-#591 records |
 | `duration_seconds` | float | executor | Wall-clock seconds the child ran for; rounded to 3 d.p. |
@@ -688,13 +688,49 @@ A foldable **🗓️ Schedule** panel sits above Registered jobs (collapsed by d
 {
   "p50": 4.2,                            # seconds, completed runs only
   "p95": 11.7,
-  "success_rate_30d": 0.72,              # None when zero completed in 30 d
+  "success_rate_30d": 0.72,              # None when zero *known* outcomes in 30 d
+  "unconfirmed_30d": 2,                  # excluded from the ratio above
   "completed_count": 18,
-  "last7": [{"status": "success", "run_id": "20260524T080000"}, ...]
+  "last7": [{"status": "success", "outcome": "success", "run_id": "20260524T080000"}, ...]
 }
 ```
 
 Process-local 30 s TTL cache per job id; invalidated explicitly when a run finalises (`invalidate_stats_cache(job_id)`).
+
+## Terminal outcomes — `outcome` vs `status` (issue #916)
+
+`status` on disk is binary: `success` for exit 0, `failed` for everything else. That was right while a job's child was an ordinary script, where a non-zero exit means "this broke". It stopped being right once most jobs became scheduled Claude runs driven by fleet-config's `skills/_lib/scheduled_runner.py`, which spends a block of exit codes distinguishing *why* a run did not report success — and three of those codes do not mean failure at all. They mean **the adapter could not establish whether the run delivered**, which is a different fact, and folding it into `failed` produced exactly the failure this repo has been fixing all week in its other direction: an unknown rendered as a definite state. Four healthy weekly jobs showed red for it (each had committed, pushed and posted to Telegram), and the genuinely failed ones beside them stopped being distinguishable from the noise.
+
+So `src/jobs_outcome.py` classifies the exit code into a third state, and `jobs_history.read_run()` decorates **every** run record it reads with two derived keys:
+
+| Key | Meaning |
+| --- | --- |
+| `outcome` | `status` widened with `"unconfirmed"`. Equal to `status` for every record except a `failed` one whose exit code says delivery was never established |
+| `outcome_reason` | The exit code's own one-line meaning, or `null` for a code the adapter does not define (a child's own bare `1`) |
+
+Derived on read, never persisted: the records already on disk re-render correctly with no migration, and `status` keeps meaning exactly what it always meant for any consumer that has not been taught the new word.
+
+| Code | Outcome | Meaning |
+| --- | --- | --- |
+| `0` | success | Completed |
+| `114` | **unconfirmed** | Cancellation not confirmed — owned descendants could not be verified |
+| `115` / `116` / `117` | failed | Required tools / model / auth unavailable |
+| `118` | failed | The run reported it delivered no work |
+| `119` | failed | Transient upstream API error (5xx) — an API-side fault, not the job's |
+| `120` | failed | The run invoked no tools at all — the skill never started |
+| `121` | **unconfirmed** | The delivery check could not confirm the run delivered anything |
+| `122` | **unconfirmed** | The completion stream was truncated — the run was cut off mid-flight |
+| `123` | failed | The run printed its own failure marker |
+| `124` | failed | Stalled — no stream activity before the watchdog killed it |
+| `125` | failed | Background tasks killed after timeout |
+| `127` | failed | The agent failed to start |
+| `130` | failed | Cancelled — the owned process tree was stopped |
+
+A run **this launcher** killed, reaped or watchdogged (`killed` / `reaped` / `watchdog` on the record) is always `failed`, whatever code the torn-down tree reported on its way out: we know what happened to it, and it is not "unconfirmed".
+
+**Where it shows.** The job row's status dot and its sparkline dots use the `--attention` accent rather than `--danger`, and the row reads `last: not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.
+
+**The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. It skips where the checkout is absent (CI, a fresh clone).
 
 ### Stuck-run kill
 
@@ -778,6 +814,8 @@ Set the Pushover keys in `config/webapp_config.json` and flip `notify_on_failure
 | `notify_on_failure` | `false` | Master switch — even with creds present, nothing is sent until this flips on |
 | `notify_failure_streak` | `0` | When > 0, also fires a separate "🔁 N consecutive failures" push when the streak ticks to exactly this count. Useful when individual-failure pushes are muted via Pushover quiet hours |
 | `notify_failure_summary` | `false` | When `true`, pipe the last ~500 chars of `output.log` through the local LLM hub (`http://127.0.0.1:8000`, `claude-haiku-4-5`) and prepend the model's one-line root-cause summary to the push body. Hub down → silently falls back to raw tail |
+
+**Not every `failed` run is announced as a failure** (issue #916). Both channels classify the exit code through `src/jobs_outcome.py` first: a code meaning "delivery was never established" pushes as `❓ <job> — not confirmed` at `warning` severity (Pushover priority 0, so it does not bypass quiet hours) instead of `❌ <job> — failed` at `error`, and the footer carries the code's own meaning so `124` says "stalled" without a log dive. It still pushes — nobody established that the run delivered — but calling it a failure is what made these alerts stop being read. A `killed` / `reaped` / `watchdog` run is a failure regardless. The streak gate follows the same rule: an unconfirmed run **breaks** a failure streak rather than extending it.
 
 The push body always includes: optional LLM summary, the raw output tail (last 500 chars), then a footer `— job=<id> run=<rid> exit=<code>`, with `(reaped — end time not confirmed)` and/or `(watchdog: <note>)` (issue #819) appended when applicable — see the Telegram body below, which shares the same qualifier logic. Pushover caps individual messages at ~1024 chars; longer bodies are truncated server-side, so the tail is what the executor budgets toward.
 

@@ -73,6 +73,7 @@ from src.board_transcript import (  # noqa: F401 — re-exported
     has_typed_user_prompt,
     last_exchange,
 )
+from src.jobs_outcome import OUTCOME_UNCONFIRMED
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,12 @@ _UNREADABLE_JOBS: set[str] = set()
 
 
 def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
-    """Failed-today, stuck, and unreadable runs across all registered jobs.
+    """Failed-today, unconfirmed-today, stuck and unreadable runs across all jobs.
+
+    A card's ``state`` is ``"failed"``, ``"unconfirmed"`` (#916 — the run may
+    well have delivered, but the scheduled-run adapter could not establish it),
+    ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
+    one-liner when it has one, so the card can say *why* without a log dive.
 
     Blocking file IO (one ``list_runs`` walk per job) — callers wrap in
     ``asyncio.to_thread``. Job timestamps are naive local ISO strings
@@ -148,14 +154,23 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
         if latest.get("status") == "failed":
             finished = _parse_iso(latest.get("finished_at"))
             if finished is not None and finished.astimezone().date() == today:
+                # A run whose delivery the adapter could not establish still
+                # wants a human's eye, so it keeps its card — but it is not a
+                # failure and must not be drawn as one (#916). ``outcome`` is
+                # decorated onto every record by ``jobs_history.read_run``.
+                outcome = latest.get("outcome") or "failed"
                 cards.append({
                     "kind": "job",
                     "job_id": job.id,
                     "job_name": job.name,
-                    "state": "failed",
+                    "state": (
+                        "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
+                        else "failed"
+                    ),
                     "run_id": latest.get("run_id"),
                     "finished_at": latest.get("finished_at"),
                     "age_seconds": _age_seconds(finished, now_local),
+                    "error": latest.get("outcome_reason"),
                 })
 
     return cards

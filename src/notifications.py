@@ -44,6 +44,7 @@ import requests
 
 from src import llm_client
 from src.jobs_history import read_output_tail
+from src.jobs_outcome import OUTCOME_UNCONFIRMED, run_outcome
 from src.jobs_stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
 from src.notify import TelegramNotifier
@@ -274,6 +275,15 @@ def notify_failure(
     from a watchdog kill is otherwise indistinguishable from the job's own
     failure and actively misleading (the process was healthy, just slow).
     Composes with ``reaped`` if a future caller ever has both.
+
+    **Not every ``failed`` finalisation is reported as a failure** (issue
+    #916). Both channels consult :func:`src.jobs_outcome.run_outcome`: an exit
+    code meaning "delivery was never established" pages as ``❓ … not
+    confirmed`` at ``warning`` severity (Pushover priority 0 — no quiet-hour
+    bypass) instead of ``❌ … failed`` at ``error``, and both bodies name the
+    exit code's own meaning so the recipient need not open the log to learn
+    that 124 is a stall. A run this launcher killed, reaped or watchdogged is
+    a failure regardless of the code the torn-down tree reported.
     """
     try:
         if status != "failed":
@@ -283,6 +293,24 @@ def notify_failure(
         origin_note = " (reaped — end time not confirmed)" if reaped else ""
         if watchdog_note:
             origin_note += f" ({watchdog_note})"
+
+        # A run this launcher itself ended or found dead is a failure whatever
+        # exit code the torn-down tree reported; otherwise the scheduled-run
+        # adapter's exit code decides whether this alert may use the word
+        # "failed" at all (issue #916). An unconfirmed run still pages —
+        # nobody established that it delivered — but calling it a failure is
+        # exactly what made these alerts stop being read.
+        outcome, outcome_reason = run_outcome({
+            "status": status,
+            "exit_code": exit_code,
+            "reaped": reaped,
+            "watchdog": bool(watchdog_note),
+        })
+        unconfirmed = outcome == OUTCOME_UNCONFIRMED
+        mark = "❓" if unconfirmed else "❌"
+        verdict = "not confirmed" if unconfirmed else "failed"
+        severity = "warning" if unconfirmed else "error"
+        reason_note = f" — {outcome_reason}" if outcome_reason else ""
 
         if cfg.notify_on_failure:
             notifier = notifier or build_notifier_from_config(cfg)
@@ -297,10 +325,16 @@ def notify_failure(
                 # missing or wrong — always include the last 500 chars.
                 body_parts.append(tail[-500:] if tail else "(no output captured)")
                 body_parts.append(
-                    f"— job={job.id} run={run_dir.name} exit={exit_text}{origin_note}"
+                    f"— job={job.id} run={run_dir.name} exit={exit_text}"
+                    f"{origin_note}{reason_note}"
                 )
-                title = f"❌ {job.name}"
-                notifier.notify(title, "\n\n".join(body_parts), severity="error")
+                # The failed title is unchanged — "❌ <job>" already said it.
+                # Only the new state needs the word, because ❓ alone is not
+                # self-explanatory the way ❌ is.
+                title = f"{mark} {job.name}" + (
+                    f" — {verdict}" if unconfirmed else ""
+                )
+                notifier.notify(title, "\n\n".join(body_parts), severity=severity)
 
                 streak = cfg.notify_failure_streak
                 if streak and streak > 1:
@@ -318,9 +352,10 @@ def notify_failure(
             if not isinstance(telegram_notifier, NoopNotifier):
                 when = datetime.now().strftime("%Y-%m-%d %H:%M")
                 telegram_notifier.notify(
-                    f"❌ {job.name} failed",
-                    f"{when} — run={run_dir.name} exit={exit_text}{origin_note}",
-                    severity="error",
+                    f"{mark} {job.name} {verdict}",
+                    f"{when} — run={run_dir.name} exit={exit_text}"
+                    f"{origin_note}{reason_note}",
+                    severity=severity,
                 )
     except Exception as exc:  # noqa: BLE001 — never block finalisation
         logger.warning(f"⚠️  notification path raised: {exc}")

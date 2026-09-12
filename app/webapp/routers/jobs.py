@@ -103,7 +103,9 @@ def _decorate_job(
     """API shape for one job — base fields plus runtime decoration.
 
     ``next_run`` is queried from schtasks (best-effort, ``None`` on
-    error or N/A); ``last_run`` is the most recent on-disk run record;
+    error or N/A); ``last_run`` is the most recent on-disk run record,
+    carrying both its persisted ``status`` and the derived ``outcome`` /
+    ``outcome_reason`` pair (issue #916);
     ``running`` is a quick "is the latest run still in progress" flag;
     ``stats`` carries the p50/p95/success-rate aggregates plus the
     ``last7`` sparkline payload; ``stuck`` flags an over-long running run;
@@ -162,6 +164,11 @@ def _decorate_job(
             "started_at": latest.get("started_at"),
             "finished_at": latest.get("finished_at"),
             "exit_code": latest.get("exit_code"),
+            # ``status`` widened with "unconfirmed" plus the exit code's own
+            # one-liner (issue #916) — a run the adapter could not verify is
+            # not a failed run, and "stalled" beats a bare `exit 124`.
+            "outcome": latest.get("outcome"),
+            "outcome_reason": latest.get("outcome_reason"),
             "trigger": latest.get("trigger"),
             "duration_seconds": latest.get("duration_seconds"),
         }

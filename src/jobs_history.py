@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from src._json_io import atomic_write_json, file_lock
+from src.jobs_outcome import run_outcome
 
 logger = logging.getLogger(__name__)
 
@@ -171,14 +172,38 @@ def read_webhook_payload(run_dir: Path) -> Optional[Dict[str, Any]]:
 
 
 def read_run(run_dir: Path) -> Dict[str, Any]:
-    """Read ``run.json`` from ``run_dir``. Missing file → empty dict."""
+    """Read ``run.json`` from ``run_dir``, decorated with its outcome.
+
+    Missing/malformed file → empty dict.
+
+    The two derived keys (issue #916) are added here, at the one place every
+    reader of a run record passes through, so the Jobs list, the run history,
+    the Board's job cards and the stats aggregates cannot disagree about what a
+    run's exit code meant:
+
+    * ``outcome`` — ``status`` widened with ``"unconfirmed"`` for the exit codes
+      fleet-config's scheduled-run adapter uses to say "this may well have
+      delivered, but nobody established that". See :mod:`src.jobs_outcome`.
+    * ``outcome_reason`` — the code's one-line meaning, or ``None`` for an exit
+      code the adapter does not define.
+
+    Derived on read rather than persisted on write: the records already on disk
+    showing a false red re-render correctly with no migration, and ``status``
+    on disk keeps its original meaning.
+    """
     target = run_dir / "run.json"
     if not target.exists():
         return {}
     try:
-        return json.loads(target.read_text(encoding="utf-8"))
+        record = json.loads(target.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+    if not isinstance(record, dict):
+        return {}
+    outcome, reason = run_outcome(record)
+    record["outcome"] = outcome
+    record["outcome_reason"] = reason
+    return record
 
 
 def list_runs(job_id: str) -> List[Dict[str, Any]]:
