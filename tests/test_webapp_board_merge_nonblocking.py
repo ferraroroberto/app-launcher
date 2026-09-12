@@ -40,7 +40,7 @@ def _no_rows(_path) -> dict:
 
 async def test_slow_session_merge_does_not_stall_the_board_poll(monkeypatch, tmp_path):
     monkeypatch.setattr(board_router.board, "merge_sessions", _slow_merge_sessions)
-    monkeypatch.setattr(board_router, "_safe_list_sessions", lambda port: [])
+    monkeypatch.setattr(board_router, "_read_live_sessions", lambda port: ([], None))
     monkeypatch.setattr(board_router.board, "read_sessions_state", _no_rows)
     monkeypatch.setattr(board_router.board, "read_active_issues", _no_rows)
     monkeypatch.setattr(board_router.board, "jobs_attention", lambda: [])

@@ -3107,6 +3107,8 @@ body.terminal-open {
 .board-item.is-tool-pending .board-card { border-left: 3px solid var(--accent); }
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
+/* A job whose run history can't be read (#915): unknown, not failed. */
+.board-item.is-unreadable .board-card { border-left: 3px solid var(--attention); }
 /* A job run the scheduled-run adapter could not verify (#916): it still wants
    a human's eye, but it is not a failure and must not be drawn as one. */
 .board-item.is-unconfirmed .board-card { border-left: 3px solid var(--attention); }
