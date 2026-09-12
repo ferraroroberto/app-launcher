@@ -91,6 +91,16 @@ _WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # the real folder, so the test could only pass on a host with no
 # AppLauncher.bat installed there for real login-time autostart.
 _STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
+# Env var both the webapp and the session-host honour to relocate the audit
+# runtime dir (see src/audit.py:AUDIT_DIR_ENV) — the injection that stops a
+# gate run from writing its throwaway `<sid>.log` / `<sid>.transcript` pairs
+# into the checkout's live `webapp/sessions` (issue #913). Before it, a gate
+# in the primary checkout wrote its whole run straight into the directory the
+# user's phone reads — measured at 228 files (114 sessions) for one full
+# dual-projection run — because src/audit.py resolves that path from
+# `__file__`, so pointing the disposable processes at a temp *config* (#911)
+# never moved their session files.
+_AUDIT_DIR_ENV = "LAUNCHER_AUDIT_DIR"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
 # disposable session-host's PATH is prepended with a harness-generated
@@ -99,6 +109,9 @@ _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # startup each), while any other flag set falls through to the real `claude`.
 # Purely a harness substitution — no production code knows about it.
 _STUB_FLAG = "--e2e-stub"
+# The banner that child prints on startup — the marker that identifies a
+# transcript as harness-written (issue #913's isolation check).
+_STUB_BANNER = "[e2e-stub]"
 # Filled by _autoboot_server so the lightweight fixture can create sessions
 # directly on the disposable session-host (the sentinel flag can't travel
 # through the webapp's launch endpoint, which builds flags from config).
@@ -256,6 +269,10 @@ while True:
     print(text, flush=True)
 '''
 
+# Drift guard: `_leaked_stub_sessions` identifies a harness-written transcript
+# by this banner, so the child it comes from must actually print it.
+assert _STUB_BANNER in _STUB_CHILD_SOURCE
+
 
 def _write_claude_shim(shim_dir: Path) -> None:
     """Generate the `claude.cmd` PATH shim + stub child script (issue #534).
@@ -290,6 +307,43 @@ def _write_claude_shim(shim_dir: Path) -> None:
     # Text-mode write translates \n -> os.linesep, so the .cmd lands with
     # proper CRLF line endings on Windows.
     (shim_dir / "claude.cmd").write_text(shim, encoding="ascii")
+
+
+def _leaked_stub_sessions(
+    sessions_dir: Path, since: float, *, limit: int = 5
+) -> List[Path]:
+    """Harness-written session files that landed in the *real* sessions dir.
+
+    A file counts only when it is newer than ``since`` **and** carries the
+    `[e2e-stub]` banner, so a genuine session written by the live tray while
+    the gate runs is never mistaken for a leak. Stops after ``limit`` hits:
+    the result names the breach, it is not a census — the caller must not
+    report its length as a total. Returns an empty list when the directory
+    doesn't exist or can't be scanned; a scan that cannot run proves nothing,
+    and this check only ever accuses on positive evidence.
+    """
+    hits: List[Path] = []
+    try:
+        with os.scandir(sessions_dir) as entries:
+            for entry in entries:
+                if not entry.name.endswith(".transcript"):
+                    continue
+                try:
+                    if entry.stat().st_mtime < since:
+                        continue
+                    with open(
+                        entry.path, "r", encoding="utf-8", errors="replace"
+                    ) as fh:
+                        head = fh.read(4096)
+                except OSError:
+                    continue
+                if _STUB_BANNER in head:
+                    hits.append(Path(entry.path))
+                    if len(hits) >= limit:
+                        break
+    except OSError:
+        return hits
+    return hits
 
 
 @pytest.fixture(scope="session")
@@ -364,6 +418,18 @@ def _autoboot_server(
         real_wrapper_bat.read_bytes() if real_wrapper_bat.is_file() else None
     )
 
+    # Session-file isolation (issue #913): src/audit.py resolves its directory
+    # from `__file__`, so both disposable processes — spawned from this very
+    # checkout — appended their throwaway session logs and transcripts to the
+    # live `webapp/sessions`. Measured on this box: 94,672 files, ~400/day,
+    # the overwhelming majority `[e2e-stub]` sessions from gate runs. Give
+    # them a per-run temp dir; publish it so the log poller below reads the
+    # same place, and snapshot the run start so the teardown can assert no
+    # harness session leaked into the real directory.
+    audit_dir = tmp_path_factory.mktemp("audit-dir")
+    _AUTOBOOT_STATE["sessions_dir"] = audit_dir / "sessions"
+    run_started_at = time.time()
+
     try:
         # Session-host: ALWAYS spawn our own on a free port — never adopt a
         # host already listening on the live :8446, which on a dev box owns
@@ -388,7 +454,10 @@ def _autoboot_server(
         sh_proc = _spawn(
             sh_cmd,
             _open_log("e2e-autoboot-session-host.log"),
-            extra_env={"PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}"},
+            extra_env={
+                "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+                _AUDIT_DIR_ENV: str(audit_dir),
+            },
         )
         _AUTOBOOT_STATE["session_host_port"] = sh_port
         if not _wait_port(sh_port, timeout=15):
@@ -431,6 +500,7 @@ def _autoboot_server(
                 _SESSION_HOST_PORT_ENV: str(sh_port),
                 _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
                 _STARTUP_DIR_ENV: str(startup_dir),
+                _AUDIT_DIR_ENV: str(audit_dir),
             },
         )
 
@@ -475,6 +545,21 @@ def _autoboot_server(
                 "during the run. The disposable webapp must only ever write "
                 f"the temp Startup dir ({startup_dir}) — a test wrote to the "
                 "real Startup folder instead. Fix that before shipping."
+            )
+        # Session-file isolation regression check (issue #913): no session
+        # this harness created may have landed in the checkout's real
+        # `webapp/sessions`. Keyed on the `[e2e-stub]` banner the lightweight
+        # PTY child prints (#534), which only this harness can produce — so a
+        # real session written by the live tray during the gate can never
+        # trip it, and the check needs no exclusive access to the directory.
+        leaked = _leaked_stub_sessions(_SESSIONS_DIR, run_started_at)
+        if leaked:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: at least {len(leaked)} harness "
+                f"session file(s) landed in {_SESSIONS_DIR} during the run "
+                f"instead of the temp audit dir ({audit_dir}) — e.g. "
+                f"{leaked[0].name}. Every process this fixture spawns must get "
+                f"{_AUDIT_DIR_ENV} (issue #913)."
             )
 
 
@@ -827,10 +912,12 @@ def wait_for_session_log() -> Callable[..., bool]:
     """Return a poller for the per-session input log.
 
     ``wait(page, sid, needle, deadline_ms=_LOG_POLL_DEADLINE_MS)`` reads
-    ``webapp/sessions/<sid>.log`` every 200 ms until ``needle`` appears or the
-    deadline elapses, then returns ``True``/``False``. One source of truth for
-    the input-delivery wait that used to be a hardcoded 5 s poll loop copied
-    into four test files (issue #58).
+    ``<sessions dir>/<sid>.log`` every 200 ms until ``needle`` appears or the
+    deadline elapses, then returns ``True``/``False``. The directory is the
+    autoboot temp dir when the gate redirected it (issue #913), else the
+    checkout's own ``webapp/sessions`` — live mode reads the real one. One
+    source of truth for the input-delivery wait that used to be a hardcoded
+    5 s poll loop copied into four test files (issue #58).
     """
 
     def _wait(
@@ -839,7 +926,8 @@ def wait_for_session_log() -> Callable[..., bool]:
         needle: str,
         deadline_ms: int = _LOG_POLL_DEADLINE_MS,
     ) -> bool:
-        log_path = _SESSIONS_DIR / f"{sid}.log"
+        sessions_dir = _AUTOBOOT_STATE.get("sessions_dir", _SESSIONS_DIR)
+        log_path = sessions_dir / f"{sid}.log"
 
         def _hit() -> bool:
             return log_path.exists() and needle in log_path.read_text(
