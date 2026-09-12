@@ -28,7 +28,7 @@ import tomllib
 from pathlib import Path
 from typing import Optional
 
-from src.registry import load_registry
+from src.registry import RegistryReadError, load_registry
 from src.scanner import KIND_TRAY
 from src.subprocess_flags import NO_WINDOW
 
@@ -41,6 +41,16 @@ _TRAY_READY_POLL_S = 0.5
 # Fallback wait when a tray's repo has no readable .fleet.toml port — still
 # gives it a head start before the next tray launches, without a real signal.
 _TRAY_FALLBACK_DELAY_S = 5.0
+
+# Issue #925: a genuine config/apps.json read failure (as opposed to "no
+# autostart trays configured") is retried a small, bounded number of times —
+# the suspected trigger is a transient early-boot I/O hiccup (this repo lives
+# on a second drive that may still be settling right at login on a full
+# restart), likely to clear within a second or two. Kept small on purpose:
+# this runs synchronously in TrayApp._start()'s thread on every boot and must
+# not meaningfully delay the webapp becoming usable.
+_REGISTRY_LOAD_ATTEMPTS = 3
+_REGISTRY_LOAD_RETRY_DELAY_S = 1.0
 
 
 def _log_path() -> Path:
@@ -162,11 +172,36 @@ def launch_all() -> None:
     is logged and does NOT abort the rest of the sequence — this
     function itself must never raise into its caller (``TrayApp._start``).
     """
-    try:
-        registry = load_registry()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(f"⚠️  Registered Trays: could not load registry: {exc}")
-        _log_breadcrumb(f"could not load registry: {exc}")
+    registry = None
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, _REGISTRY_LOAD_ATTEMPTS + 1):
+        try:
+            registry = load_registry(strict=True)
+            break
+        except RegistryReadError as exc:
+            last_exc = exc
+            logger.warning(
+                f"⚠️  Registered Trays: registry read failed "
+                f"(attempt {attempt}/{_REGISTRY_LOAD_ATTEMPTS}): {exc}"
+            )
+            _log_breadcrumb(
+                f"registry read failed (attempt {attempt}/{_REGISTRY_LOAD_ATTEMPTS}): {exc}"
+            )
+            if attempt < _REGISTRY_LOAD_ATTEMPTS:
+                time.sleep(_REGISTRY_LOAD_RETRY_DELAY_S)
+        except Exception as exc:  # noqa: BLE001 — unexpected, not retried
+            logger.warning(f"⚠️  Registered Trays: could not load registry: {exc}")
+            _log_breadcrumb(f"could not load registry: {exc}")
+            return
+    if registry is None:
+        logger.warning(
+            f"⚠️  Registered Trays: registry unreadable after "
+            f"{_REGISTRY_LOAD_ATTEMPTS} attempts — giving up: {last_exc}"
+        )
+        _log_breadcrumb(
+            f"registry unreadable after {_REGISTRY_LOAD_ATTEMPTS} attempts "
+            f"— giving up: {last_exc}"
+        )
         return
     trays = [a for a in registry.apps if a.kind == KIND_TRAY and a.autostart]
     if not trays:
