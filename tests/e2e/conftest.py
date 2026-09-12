@@ -28,6 +28,7 @@ remove` fail as "busy"). See issue #709.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import os
@@ -39,11 +40,14 @@ import sys
 import time
 import urllib3
 from pathlib import Path
-from typing import Callable, IO, Iterator, List, Optional
+from typing import Callable, IO, Iterator, List, Optional, Tuple
 
 import pytest
 import requests
 from playwright.sync_api import BrowserContext, Page
+
+from src.git_utils import run_git
+from src.scanner import dir_ignored, slugify
 
 from tests._credential_hygiene import (
     count_leaked_credentials,
@@ -447,6 +451,7 @@ def _autoboot_server(
         _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
     )
     disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token)
+    pin_launch_target(disposable_cfg, launch_target_dir() or _REPO_ROOT)
     if count_leaked_credentials(_WEBAPP_CONFIG, disposable_cfg):
         pytest.fail(
             "autoboot: the disposable webapp config still holds a credential "
@@ -824,11 +829,135 @@ def unauthed_page(context: BrowserContext) -> Iterator[Page]:
 
 # ---------------------------------------------------------------- session API
 # Opt-in fixtures: tests that need state in #sessionsList depend on one of
-# these; other tests don't pay any launch + teardown cost. Target is
-# `app-launcher` itself (self-launching is harmless — just spawns the agent
-# in this repo dir).
+# these; other tests don't pay any launch + teardown cost. The lightweight stub
+# session runs in THIS checkout; the real-agent session runs in the first
+# agent-trusted checkout of this repository (see `launch_target_dir`).
+# Self-launching is harmless — it just spawns the agent in a repo dir, and the
+# real-agent pin never submits a prompt.
+#
+# Neither is the literal `app-launcher` any more (issue #932). A
+# merge-verification run works from a fresh detached checkout under a scratch
+# root (`E:\tmp\al-merge-<date>`), where no sibling directory is called
+# `app-launcher` at all — so the hardcoded id resolved to no coding row, the
+# launch 404'd, and the real-agent tests *skipped* while the gate printed the
+# same green as a run that covered them.
+_CHECKOUT_ID = slugify(_REPO_ROOT.name)
 
-_LAUNCH_TARGET_ID = "app-launcher"
+# Claude Code's per-directory folder-trust gate (issue #932). A directory the
+# user has never opened the agent in gets a full-screen "Is this a project you
+# created or one you trust?" prompt on first launch, *instead* of the composer
+# — so a real-agent assertion can never land there. It is independent of the
+# permission mode: `--dangerously-skip-permissions` was measured NOT to clear
+# it. The only ways to clear it are answering the prompt or writing
+# `hasTrustDialogAccepted` into the user's global `~/.claude.json`, and a test
+# harness must do neither — so a real-agent test launches in a checkout that
+# already cleared it, or skips naming trust rather than time out against a
+# prompt that will never go away.
+_CLAUDE_STATE_FILE = Path.home() / ".claude.json"
+
+
+def agent_trusts_dir(project_dir: Path) -> Optional[bool]:
+    """Has the agent's folder-trust gate been accepted for ``project_dir``?
+
+    ``None`` when the answer can't be established at all (no state file, or
+    one this harness can't parse) — an unknown, never folded into either
+    answer. A directory absent from the map is a definite ``False``: the agent
+    records an entry when the gate is accepted.
+    """
+    try:
+        state = json.loads(_CLAUDE_STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    projects = state.get("projects") if isinstance(state, dict) else None
+    if not isinstance(projects, dict):
+        return None
+
+    def _key(value: str) -> str:
+        return os.path.normcase(os.path.normpath(value))
+
+    want = _key(str(project_dir))
+    for recorded, entry in projects.items():
+        if _key(str(recorded)) == want:
+            return bool(
+                isinstance(entry, dict) and entry.get("hasTrustDialogAccepted")
+            )
+    return False
+
+
+def repository_checkouts(repo_root: Path) -> List[Path]:
+    """``repo_root``, then its repository's main checkout if it is a linked worktree.
+
+    A linked worktree (`app-launcher-wt-N`) has never cleared the agent's
+    trust gate, but the main checkout it hangs off usually has — and before
+    #932 the literal target id quietly launched there, so worktree gates ran
+    the real-agent pin. Keeping that as an explicit, derived fallback stops
+    the fix for fresh checkouts from costing worktrees the same coverage. A
+    fresh clone *is* its own main checkout, so it gets no fallback.
+    """
+    checkouts = [repo_root]
+    common = run_git(repo_root, ["rev-parse", "--path-format=absolute", "--git-common-dir"])
+    if common:
+        common_dir = Path(common)
+        if common_dir.name == ".git":
+            main = common_dir.parent
+            if os.path.normcase(str(main.resolve())) != os.path.normcase(
+                str(repo_root.resolve())
+            ):
+                checkouts.append(main)
+    return checkouts
+
+
+@functools.lru_cache(maxsize=None)
+def _launch_target_resolution() -> Tuple[Optional[Path], Tuple[Tuple[Path, Optional[bool]], ...]]:
+    probed = tuple((d, agent_trusts_dir(d)) for d in repository_checkouts(_REPO_ROOT))
+    target = next((d for d, trusted in probed if trusted is True), None)
+    return target, probed
+
+
+def launch_target_dir() -> Optional[Path]:
+    """The checkout a real-agent test launches in, or ``None`` if none is trusted."""
+    return _launch_target_resolution()[0]
+
+
+def pin_launch_target(cfg: dict, target: Path) -> dict:
+    """Make ``cfg`` scan ``target``, so its coding row always resolves.
+
+    Pins the Coding-tab scan root to ``target``'s parent and drops any
+    inherited ignore pattern that would hide ``target`` itself. On the primary
+    checkout this is already exactly what the real config says, so it changes
+    nothing there; in a fresh scratch checkout (which has no config at all) it
+    is what stops the launch 404ing (issue #932). Nothing here is a credential
+    — a checkout's own path is not secret — so it does not reopen #907 / PR
+    #911.
+
+    Mutates and returns ``cfg``. Pinned by ``tests/test_e2e_launch_target.py``.
+    """
+    cfg["projects_dir"] = str(target.parent)
+    cfg["projects_ignore"] = [
+        pattern
+        for pattern in (cfg.get("projects_ignore") or [])
+        if not dir_ignored(target.name, [pattern])
+    ]
+    return cfg
+
+
+def _require_trusted_launch_target() -> Path:
+    """The real-agent launch target, or a skip that names why there is none."""
+    target, probed = _launch_target_resolution()
+    if target is not None:
+        return target
+    states = "; ".join(
+        f"{d}: {'untrusted' if trusted is False else 'UNKNOWN'}"
+        for d, trusted in probed
+    )
+    pytest.skip(
+        "no checkout of this repository has cleared the agent's folder-trust "
+        f"gate ({states}), so the agent would paint its trust prompt instead "
+        "of a composer and a real-agent assertion can never land (issue #932). "
+        "An unknown state is not assumed trusted. Clearing the gate would mean "
+        "writing the user's global agent state, which the gate must not do — "
+        "this is the residual coverage a fresh detached checkout costs."
+    )
 
 
 def _auth_headers(auth_token: str) -> dict:
@@ -851,7 +980,9 @@ def _stop_session(base_url: str, headers: dict, sid: str) -> None:
         logger.warning("⚠️  session %s teardown failed: %s", sid, exc)
 
 
-def _launch_claude_via_webapp(base_url: str, auth_token: str) -> str:
+def _launch_claude_via_webapp(
+    base_url: str, auth_token: str, *, autoboot: bool = False
+) -> str:
     """Launch a REAL claude PTY session through the webapp's launch endpoint.
 
     Where `claude` isn't on PATH — notably the CI runner, which never
@@ -862,6 +993,9 @@ def _launch_claude_via_webapp(base_url: str, auth_token: str) -> str:
     The test process shares the live session-host's PATH (same machine), so
     `which` here faithfully predicts whether the session-host can spawn it.
     See #58.
+
+    The target is the first agent-trusted checkout of this repository — a
+    skip naming trust when there is none (issue #932).
     """
     if shutil.which("claude") is None:
         pytest.skip(
@@ -869,11 +1003,12 @@ def _launch_claude_via_webapp(base_url: str, auth_token: str) -> str:
             "claude CLI and skip cleanly where it isn't installed (e.g. the "
             "CI runner)"
         )
+    target_id = slugify(_require_trusted_launch_target().name)
 
     headers = _auth_headers(auth_token)
     try:
         res = requests.post(
-            f"{base_url}/api/apps/{_LAUNCH_TARGET_ID}/launch",
+            f"{base_url}/api/apps/{target_id}/launch",
             json={"mode": "pty"},
             headers=headers,
             verify=False,
@@ -883,9 +1018,20 @@ def _launch_claude_via_webapp(base_url: str, auth_token: str) -> str:
         pytest.skip(f"launch request failed: {exc.__class__.__name__}: {exc}")
 
     if res.status_code != 200:
+        detail = f"HTTP {res.status_code}: {res.text[:200]}"
+        if autoboot:
+            # Under the gate the disposable config pins the scan root to the
+            # launch target's parent, so the row always exists — a non-200
+            # here is a harness bug, never a missing dependency. It used to
+            # skip, which is how #932's fresh-checkout 404 ("unknown app
+            # app-launcher") cost two tests while the gate still printed green.
+            pytest.fail(
+                f"could not launch PTY session for target {target_id!r} "
+                f"({detail}) — under autoboot this is a harness bug (issue #932)"
+            )
         # 400 is the expected failure when the project_dir is invalid — skip
         # cleanly rather than fail the suite.
-        pytest.skip(f"could not launch PTY session (HTTP {res.status_code}: {res.text[:200]})")
+        pytest.skip(f"could not launch PTY session ({detail})")
 
     body = res.json()
     sid = body.get("session", {}).get("session_id")
@@ -930,7 +1076,7 @@ def launched_pty_session(
             f"http://127.0.0.1:{sh_port}/sessions",
             json={
                 "project_dir": str(_REPO_ROOT),
-                "name": _LAUNCH_TARGET_ID,
+                "name": _CHECKOUT_ID,
                 "flags": _STUB_FLAG,
                 "agent": "claude",
             },
@@ -958,16 +1104,24 @@ def launched_pty_session(
 
 
 @pytest.fixture
-def launched_claude_pty_session(base_url: str, auth_token: str) -> Iterator[str]:
+def launched_claude_pty_session(
+    request: pytest.FixtureRequest, base_url: str, auth_token: str
+) -> Iterator[str]:
     """A live PTY session running the REAL Claude CLI (issue #534).
 
     Only for tests whose assertions depend on the real agent — rendered
     Claude output in the xterm buffer, agent input echo, Claude lifecycle
     semantics. Spawns a real node process per test: keep its consumer set
     minimal, and put UI-only assertions on `launched_pty_session`.
+
+    Precondition: some checkout of this repository must already have cleared
+    the agent's folder-trust gate (issue #932) — a fresh detached clone has
+    not, and the agent paints its trust prompt where the composer should be.
     """
     headers = _auth_headers(auth_token)
-    sid = _launch_claude_via_webapp(base_url, auth_token)
+    sid = _launch_claude_via_webapp(
+        base_url, auth_token, autoboot=_autoboot_enabled(request.config)
+    )
     try:
         yield sid
     finally:
