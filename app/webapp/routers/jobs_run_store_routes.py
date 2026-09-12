@@ -78,8 +78,10 @@ async def stream_job_run(websocket: WebSocket, job_id: str, run_id: str) -> None
     # declines to treat an edge-forwarded request as the PC however its
     # client address happens to resolve, and `credential_required` /
     # `credential_accepted` honour both credential classes with the scope
-    # re-checked per request. Same sequence `sessions.proxy_session_ws`
-    # runs; the shared contract is pinned by tests/test_ws_gate_contract.py.
+    # re-checked per request. Same credential leg `sessions.proxy_session_ws`
+    # runs — that socket is terminal-grade and adds Tailscale + passkey legs
+    # on top; this one is not, so the shape it owes is the HTTP choke point's.
+    # The shared contract is pinned by tests/test_ws_gate_contract.py.
     if not is_pc_itself(client_host, websocket.headers):
         if credential_required(cfg):
             presented = websocket.query_params.get("token", "").strip()
