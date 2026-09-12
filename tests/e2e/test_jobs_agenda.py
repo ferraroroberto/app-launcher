@@ -7,8 +7,9 @@ day-grouped list (``Today`` / ``Tomorrow`` / weekday), time-ordered, with a
 job expanded in the list below.
 
 Hermetic: route-mock the agenda + jobs + run-list endpoints with fixed
-occurrences anchored to local midnight (so the Today/Tomorrow grouping is
-deterministic regardless of run time). Both projections.
+occurrences anchored to a fixed local midnight, and pin the *browser's* clock
+to that same anchor (so the Today/Tomorrow grouping is deterministic
+regardless of run time). Both projections.
 """
 
 from __future__ import annotations
@@ -22,10 +23,23 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
-# Anchor to local midnight so calendar-day grouping is fixed: 13:00 today,
-# then 01:00 and 07:00 tomorrow. (The client renders what the mock returns;
-# it does not filter by "now", so a past time-of-day is fine.)
-_MIDNIGHT = _dt.datetime.combine(_dt.date.today(), _dt.time(0, 0))
+# One anchor for both sides of the comparison (#918). `_dayHeader` in
+# jobs-agenda.js labels a row by diffing its epoch against the browser's
+# `new Date()`, so the fixture's day and the page's "now" have to come from
+# the same clock or the labels are a wall-clock race: anchoring the fixture to
+# `date.today()` (bound at import) while the page read the real clock at
+# assert time turned any gate run straddling local midnight into a red
+# ("assert 'Fri 11 Sep' == 'Today'"). A fixed calendar day rather than the
+# real one also makes the weekday-name branch deterministic (no test asserts
+# a weekday label today, but one added later would not have to move with the
+# calendar). Mid-June is far from any plausible host's DST transition; noon
+# is far from either day boundary.
+_ANCHOR = _dt.datetime(2026, 6, 11, 12, 0)  # a Thursday, local wall clock
+_MIDNIGHT = _ANCHOR.replace(hour=0, minute=0)
+
+# Rows: 13:00 on the anchor day, then 01:00 and 07:00 the next day. (The
+# client renders what the mock returns; it does not filter by "now", so a
+# past time-of-day is fine.)
 
 
 def _epoch(hours: float) -> int:
@@ -59,7 +73,11 @@ def _job(job_id, name):
     }
 
 
-def _wire(page: Page, agenda=_AGENDA) -> None:
+def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> None:
+    # Freeze the page's `new Date()` at the same anchor the fixture epochs are
+    # built from (#918). `set_fixed_time` pins Date only — timers keep running,
+    # so boot and the panel's fetch are unaffected.
+    page.clock.set_fixed_time(now)
     page.route(
         re.compile(r".*/api/jobs/agenda(\?.*)?$"),
         lambda route: route.fulfill(
@@ -103,6 +121,40 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
 
     # Dense cadences are summarised, not expanded into the list.
     expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")
+
+
+def test_agenda_day_labels_hold_across_local_midnight(
+    authed_page: Page, base_url: str
+) -> None:
+    """#918: the boundary, faked rather than waited for.
+
+    Thirty seconds before local midnight, with one row either side of it. The
+    labels must still read Today/Tomorrow — under the old wall-clock anchoring
+    the page's "now" could land on the far side of 00:00 from the fixture and
+    the first header rendered as a bare date.
+    """
+    late = _MIDNIGHT + _dt.timedelta(hours=23, minutes=59, seconds=30)
+    agenda = {
+        "days": 7,
+        "generated_epoch": _epoch(0),
+        "occurrences": [
+            {"job_id": "alpha", "name": "Alpha", "fire_epoch": _epoch(23.75),
+             "fire_iso": "", "cadence": "daily 23:45"},
+            {"job_id": "zeta", "name": "Zeta", "fire_epoch": _epoch(24.25),
+             "fire_iso": "", "cadence": "daily 00:15"},
+        ],
+        "frequent": [],
+    }
+    _wire(authed_page, agenda=agenda, now=late)
+    _open_agenda(authed_page, base_url)
+
+    headers = authed_page.eval_on_selector_all(
+        ".jobs-agenda-day", "els => els.map(e => e.textContent)")
+    assert headers == ["Today", "Tomorrow"]
+
+    ids = authed_page.eval_on_selector_all(
+        ".jobs-agenda-row", "els => els.map(e => e.dataset.jobId)")
+    assert ids == ["alpha", "zeta"]
 
 
 def test_agenda_row_reveals_job(authed_page: Page, base_url: str) -> None:
