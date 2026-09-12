@@ -22,13 +22,23 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 from app.webapp.routers import _helpers
 from app.webapp.routers._helpers import (
     mirror_url,
     should_mirror_to_pc,
     tsnet_host_from_cert,
 )
+from src.webapp_config import SESSION_HOST_PORT_ENV
 from src.webauthn_gate import WebAuthnGate
+
+
+@pytest.fixture(autouse=True)
+def _not_a_disposable_instance(monkeypatch) -> None:
+    """The mirror decision reads the autoboot marker from the environment;
+    a stray one would silently flip every default-mirror case below."""
+    monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
 
 
 def _request(host: str) -> SimpleNamespace:
@@ -94,6 +104,24 @@ def test_disabled_flag_never_mirrors() -> None:
     assert should_mirror_to_pc(False, _request("100.64.0.5"), {}) is False
     # ...or for a loopback caller with no in_page flag, the new default-mirror case.
     assert should_mirror_to_pc(False, _request("127.0.0.1"), {}) is False
+
+
+@pytest.mark.parametrize(
+    "host, body",
+    [
+        ("127.0.0.1", {"mode": "pty"}),  # the e2e real-agent launch (#938)
+        ("127.0.0.1", {"desktop": True}),
+        ("100.64.0.5", {}),
+    ],
+    ids=["loopback-api", "desktop", "phone"],
+)
+def test_disposable_autoboot_instance_never_mirrors(monkeypatch, host, body) -> None:
+    """Issue #938: the gate's throwaway webapp opened a real Edge window per
+    real-agent launch, one the sweeps can never close. Every caller shape that
+    mirrors on a real instance must not mirror on a disposable one."""
+    assert should_mirror_to_pc(True, _request(host), body) is True
+    monkeypatch.setenv(SESSION_HOST_PORT_ENV, "18446")
+    assert should_mirror_to_pc(True, _request(host), body) is False
 
 
 # --------------------------------------------------- tsnet_host_from_cert

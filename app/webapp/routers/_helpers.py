@@ -5,6 +5,7 @@ lives here instead.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlencode
@@ -15,6 +16,7 @@ from src.launch_flags import build_claude_flags
 from src.session_client import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
+    SESSION_HOST_PORT_ENV,
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
     VALID_CLAUDE_PERMISSION_MODES,
@@ -218,12 +220,23 @@ def should_mirror_to_pc(
       there was no page for them to render into, so "skip" meant "renders
       nowhere". Any other loopback caller — including one that sends neither
       flag — now mirrors by default.
+
+    A disposable e2e / verify-before-ship instance (``LAUNCHER_SESSION_HOST_PORT``
+    set, which only autoboot does) never mirrors, whatever the caller sends —
+    the rule ``/api/claude-code/sessions/<sid>/mirror`` and the orphan-mirror
+    sweep already follow (issue #278). Without it, every gate run's real-agent
+    launch left a real Edge window on the user's desktop (issue #938): the
+    window loads the throwaway instance, can't authenticate, never reaches
+    ``announceMirrorWindow`` to set its ``app-launcher-mirror-<sid>`` title
+    marker, and so is invisible to both the Stop & Close and orphan sweeps.
     """
     # Imported here to avoid a module-load cycle (middleware imports nothing
     # from the routers package, but keep the dependency edge one-directional).
     from app.webapp.middleware import LOOPBACK_HOSTS
 
     if not show_local_window:
+        return False
+    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
         return False
     if bool(body.get("desktop")):
         return True

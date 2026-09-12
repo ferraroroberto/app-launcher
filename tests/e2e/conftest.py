@@ -1015,7 +1015,10 @@ def _launch_claude_via_webapp(
     try:
         res = requests.post(
             f"{base_url}/api/apps/{target_id}/launch",
-            json={"mode": "pty"},
+            # The test renders the session in its own Playwright page, so say
+            # so: without `in_page` the launch mirrors to a real PC Edge window
+            # (issue #938; the disposable instance also refuses to mirror).
+            json={"mode": "pty", "in_page": True},
             headers=headers,
             verify=False,
             timeout=10,
