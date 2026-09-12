@@ -895,7 +895,9 @@ def repository_checkouts(repo_root: Path) -> List[Path]:
     fresh clone *is* its own main checkout, so it gets no fallback.
     """
     checkouts = [repo_root]
-    common = run_git(repo_root, ["rev-parse", "--path-format=absolute", "--git-common-dir"])
+    common = run_git(
+        repo_root, ["rev-parse", "--path-format=absolute", "--git-common-dir"]
+    )
     if common:
         common_dir = Path(common)
         if common_dir.name == ".git":
@@ -907,8 +909,12 @@ def repository_checkouts(repo_root: Path) -> List[Path]:
     return checkouts
 
 
+_TrustProbe = Tuple[Tuple[Path, Optional[bool]], ...]
+
+
 @functools.lru_cache(maxsize=None)
-def _launch_target_resolution() -> Tuple[Optional[Path], Tuple[Tuple[Path, Optional[bool]], ...]]:
+def _launch_target_resolution() -> Tuple[Optional[Path], _TrustProbe]:
+    """Resolve once per run: (first trusted checkout or ``None``, every probe)."""
     probed = tuple((d, agent_trusts_dir(d)) for d in repository_checkouts(_REPO_ROOT))
     target = next((d for d, trusted in probed if trusted is True), None)
     return target, probed

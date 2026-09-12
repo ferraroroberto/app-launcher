@@ -196,7 +196,9 @@ def test_trust_is_read_across_separator_and_case_differences(
     monkeypatch.setattr(
         e2e_conftest,
         "_CLAUDE_STATE_FILE",
-        _state_file(tmp_path, {"projects": {recorded: {"hasTrustDialogAccepted": True}}}),
+        _state_file(
+            tmp_path, {"projects": {recorded: {"hasTrustDialogAccepted": True}}}
+        ),
     )
 
     assert e2e_conftest.agent_trusts_dir(Path(r"E:\Some\Checkout")) is True
