@@ -108,7 +108,8 @@ def test_chief_terminal_overlay_shows_crown_in_title(
 def test_chief_stop_requires_confirm_worker_row_does_not(
     authed_page: Page, base_url: str
 ) -> None:
-    """Parity with the Board drawer's own guard (#245/board.js:302, mirrored
+    """Parity with the Board drawer's own guard (#245, the isChiefCard()
+    check on the stop button in board.js::buildDrawer, mirrored
     here via the shared isChiefSession() predicate, #547): the chief's stop
     button asks first (dismiss -> no stop, accept -> stop); the worker row
     keeps the deliberate one-tap stop (#253) with no dialog at all."""

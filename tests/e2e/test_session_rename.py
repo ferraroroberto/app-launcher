@@ -122,10 +122,12 @@ def _mock_board(page: Page) -> None:
     )
     # #510/#680: the real /api/claude-code/git-status boot fetch is
     # git-subprocess-backed and non-deterministic in timing; its completion
-    # calls renderBoard() whenever the Board tab is active (apps.js), which
-    # rebuilds the DOM — including an open drawer's rename button — out from
-    # under an in-progress interaction. Stubbed in the shared helper so every
-    # test here gets it, not just the ones that remembered to ask.
+    # calls renderBoard() whenever the Board tab is active with no drawer
+    # open (apps-coding.js::refreshGitStatus — drawer-gated since #512, so
+    # the window it can still land in is before the drawer opens), which
+    # rebuilds the DOM out from under an in-progress interaction. Stubbed
+    # in the shared helper so every test here gets it, not just the ones
+    # that remembered to ask.
     page.route(
         re.compile(r".*/api/claude-code/git-status$"),
         lambda route: route.fulfill(

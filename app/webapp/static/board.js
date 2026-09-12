@@ -199,7 +199,7 @@ const CHIEF_EXCHANGE_POLL_MS = 5000;
 
 // The current drawer's reply-box dictation instance (#755), same lifecycle
 // problem as chiefExchangeTimer above: buildDrawer() mounts a fresh
-// per-render `createDictation` instance (board.js:228), but a drawer
+// per-render `createDictation` instance (in buildDrawer below), but a drawer
 // collapse (state.boardExpanded set to null, then renderBoard() rebuilds
 // the card list) drops that mic's DOM node with no stop()/dispose() call —
 // if a recording (or a still-finalizing one) was in flight, it stayed live
