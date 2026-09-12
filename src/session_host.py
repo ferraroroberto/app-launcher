@@ -86,6 +86,15 @@ _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
 
+# Smallest PTY size a resize may set (issue #930). Every resize SIGWINCHes an
+# inline agent (Claude Code) into a full-viewport repaint that leaves the
+# previous copy in the client's scrollback, and the iOS keyboard sweep samples
+# 1- and 6-row sizes mid-animation that are never a real viewport. The phone
+# floors its frames to the same values (terminal.js PTY_MIN_*); this clamp
+# covers every other caller (the WS frame, POST /sessions/{sid}/resize).
+PTY_MIN_ROWS = 8
+PTY_MIN_COLS = 20
+
 # The server-initiated input-delivery protocol — bracketed-paste framing,
 # bulk settle-then-submit, ingest/echo verification, and the deferred-submit
 # watcher (issues #611/#760/#763) — lives in :mod:`src.session_host_input`
@@ -496,8 +505,16 @@ class PtySession(InputProtocol):
             return False
 
     def resize(self, rows: int, cols: int) -> None:
-        rows = max(1, min(rows, 1000))
-        cols = max(1, min(cols, 1000))
+        rows = max(PTY_MIN_ROWS, min(rows, 1000))
+        cols = max(PTY_MIN_COLS, min(cols, 1000))
+        if (rows, cols) == (self.rows, self.cols):
+            # Nothing to change — a same-size setwinsize would only cost a
+            # round-trip, and must never be what repaints the agent (#930).
+            return
+        logger.info(
+            f"↔️ PTY {self.session_id[:8]} resize "
+            f"{self.rows}x{self.cols} -> {rows}x{cols}"
+        )
         self.rows = rows
         self.cols = cols
         if self._vt is not None:
