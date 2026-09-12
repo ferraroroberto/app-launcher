@@ -101,6 +101,23 @@ _STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
 # `__file__`, so pointing the disposable processes at a temp *config* (#911)
 # never moved their session files.
 _AUDIT_DIR_ENV = "LAUNCHER_AUDIT_DIR"
+# Env var the session-host honours to relocate the root uploaded files hang
+# off (see app/session_host/server.py:UPLOAD_ROOT_ENV) — the same defect as
+# #913 in a different directory (issue #922). The disposable session-host
+# runs its sessions with `project_dir` set to this checkout, so every
+# compose-bar upload test wrote a file into the checkout's own
+# `.launcher-tmp`: 3,423 of the 3,600 files there were this suite's, with
+# nothing pruning them. A file-count leak, not a disk-space one — they are
+# 1x1 PNGs totalling ~15 KB, and the directory's bulk is real attachments.
+# Only the session-host needs the variable — the webapp proxies
+# `/sessions/{sid}/image` and never writes the file itself.
+_UPLOAD_ROOT_ENV = "LAUNCHER_UPLOAD_ROOT"
+_UPLOADS_DIR = _REPO_ROOT / ".launcher-tmp"
+# Filename marker every harness upload carries, so the teardown breach check
+# below accuses only on files this suite wrote. Same reasoning as the
+# `[e2e-stub]` transcript banner: a real photo the user sends from the phone
+# to the live tray mid-run must never trip the check.
+_UPLOAD_MARKER = "e2e-stub-"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
 # disposable session-host's PATH is prepended with a harness-generated
@@ -346,6 +363,40 @@ def _leaked_stub_sessions(
     return hits
 
 
+def _leaked_stub_uploads(
+    uploads_dir: Path, since: float, *, limit: int = 5
+) -> List[Path]:
+    """Harness-written uploads that landed in the *real* `.launcher-tmp`.
+
+    Marker-based like :func:`_leaked_stub_sessions`, not a plain before/after
+    count: the live tray shares this checkout, so a photo the user attaches
+    from the phone while the gate runs writes here legitimately. A file counts
+    only when it is newer than ``since`` **and** its name carries
+    ``_UPLOAD_MARKER``, which only this suite's uploads do. Stops after
+    ``limit`` hits — the result names the breach, it is not a census. Returns
+    an empty list when the directory doesn't exist or can't be scanned: a scan
+    that cannot run proves nothing, and this check only accuses on positive
+    evidence.
+    """
+    hits: List[Path] = []
+    try:
+        with os.scandir(uploads_dir) as entries:
+            for entry in entries:
+                if _UPLOAD_MARKER not in entry.name:
+                    continue
+                try:
+                    if entry.stat().st_mtime < since:
+                        continue
+                except OSError:
+                    continue
+                hits.append(Path(entry.path))
+                if len(hits) >= limit:
+                    break
+    except OSError:
+        return hits
+    return hits
+
+
 @pytest.fixture(scope="session")
 def _autoboot_server(
     tmp_path_factory: pytest.TempPathFactory, auth_token: str
@@ -428,6 +479,15 @@ def _autoboot_server(
     # harness session leaked into the real directory.
     audit_dir = tmp_path_factory.mktemp("audit-dir")
     _AUTOBOOT_STATE["sessions_dir"] = audit_dir / "sessions"
+
+    # Upload isolation (issue #922): same defect, different directory. The
+    # disposable session-host runs its sessions with `project_dir` pointing at
+    # this checkout, so `_save_image` resolved `<checkout>/.launcher-tmp` and
+    # every compose-bar attach test left its file there — 3,423 of the 3,600
+    # files in it before the fix. Give it a per-run temp root; the teardown
+    # asserts nothing marked as ours reached the real directory.
+    uploads_root = tmp_path_factory.mktemp("upload-root")
+
     run_started_at = time.time()
 
     try:
@@ -457,6 +517,7 @@ def _autoboot_server(
             extra_env={
                 "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
                 _AUDIT_DIR_ENV: str(audit_dir),
+                _UPLOAD_ROOT_ENV: str(uploads_root),
             },
         )
         _AUTOBOOT_STATE["session_host_port"] = sh_port
@@ -560,6 +621,20 @@ def _autoboot_server(
                 f"instead of the temp audit dir ({audit_dir}) — e.g. "
                 f"{leaked[0].name}. Every process this fixture spawns must get "
                 f"{_AUDIT_DIR_ENV} (issue #913)."
+            )
+        # Upload isolation regression check (issue #922): no file this harness
+        # uploaded may have landed in the checkout's real `.launcher-tmp`.
+        # Keyed on the `_UPLOAD_MARKER` filename prefix every harness upload
+        # carries, so a photo the user attaches on the live tray during the
+        # gate can never trip it.
+        leaked_uploads = _leaked_stub_uploads(_UPLOADS_DIR, run_started_at)
+        if leaked_uploads:
+            raise RuntimeError(
+                f"e2e autoboot isolation breach: at least {len(leaked_uploads)} "
+                f"harness upload(s) landed in {_UPLOADS_DIR} during the run "
+                f"instead of the temp upload root ({uploads_root}) — e.g. "
+                f"{leaked_uploads[0].name}. The disposable session-host must "
+                f"get {_UPLOAD_ROOT_ENV} (issue #922)."
             )
 
 
