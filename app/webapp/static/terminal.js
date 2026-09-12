@@ -186,6 +186,31 @@ export function terminalPanY(contentHeight, visibleHeight) {
   return Math.max(0, Math.round(contentHeight - visibleHeight));
 }
 
+// The PTY size the phone is willing to send (issue #930). Every PTY resize
+// SIGWINCHes an inline agent (Claude) into a full-viewport repaint, and the
+// copy already in xterm's scrollback survives it — so each resize frame can
+// land a duplicate of the visible conversation. The iOS keyboard sweep fires
+// visualViewport events mid-animation, sampling 1- and 6-row sizes that are
+// never a real viewport; floor them so no such frame reaches the PTY. The
+// session-host clamps to the same floor (src/session_host.py PTY_MIN_*) for
+// its non-WS callers.
+export const PTY_MIN_ROWS = 8;
+export const PTY_MIN_COLS = 20;
+
+export function ptySendSize(rows, cols) {
+  return {
+    rows: Math.max(PTY_MIN_ROWS, Math.round(rows) || 0),
+    cols: Math.max(PTY_MIN_COLS, Math.round(cols) || 0),
+  };
+}
+
+// How long xterm's size must hold still before the resize frame goes out
+// (issue #930). Only the frame is settled — fit()/pan/scrollToBottom still
+// track the keyboard immediately — so a keyboard open/close cycle costs the
+// agent two repaints instead of one per intermediate sample. Same order as
+// the 350ms orientation settle below.
+const RESIZE_SETTLE_MS = 300;
+
 // Warm-terminal cache (#430 round 3): sid → the live terminal object.
 // Closing the overlay does NOT dispose the xterm or the WebSocket any
 // more — the painted frame and the stream stay warm so re-opening a
@@ -239,6 +264,7 @@ function disposeTerminal(t) {
     window.removeEventListener('orientationchange', t.onOrientationChange);
   }
   if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
+  if (t.resizeSettleTimer) clearTimeout(t.resizeSettleTimer);
   try { if (t.ws) { t.ws.onclose = null; t.ws.close(); } } catch (_) {}
   try { if (t.webgl) t.webgl.dispose(); } catch (_) {}
   const el = t.term ? t.term.element : null;
@@ -436,7 +462,8 @@ export async function openTerminal(session) {
     // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
     // same-size resize frames; fsSized gates the fullscreen pan path until
     // the first real fit has run; batch* is owned by terminal-connection.js.
-    lastSentSize: null, fsSized: false,
+    // resizeSettleTimer holds a pending settled resize frame (#930).
+    lastSentSize: null, fsSized: false, resizeSettleTimer: null,
     batchBuf: null, batchTimer: null, batchQuietTimer: null, batchDeadline: 0,
     onShutdown: closeTerminal,
   };
@@ -569,22 +596,38 @@ export async function openTerminal(session) {
       if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
     } catch (_) {}
     if (t.ws && t.ws.readyState === WebSocket.OPEN) {
-      // Same-size dedupe (#430): a resize frame that changes nothing
-      // still costs a setwinsize round-trip; skip it. A real change on a
-      // fullscreen agent triggers the transcript re-emission — batch it
-      // into a single paint (terminal-connection.js).
-      const size = term.rows + 'x' + term.cols;
-      if (size !== t.lastSentSize) {
-        t.lastSentSize = size;
-        if (t.isFullscreen) beginRepaintBatch(t);
-        t.ws.send(JSON.stringify({
-          type: 'resize', rows: term.rows, cols: term.cols,
-        }));
+      // The first size on this terminal is the phone's authoritative one
+      // and goes out at once; every later change is settled (#930) so a
+      // keyboard sweep's intermediate samples never reach the PTY.
+      if (t.resizeSettleTimer) clearTimeout(t.resizeSettleTimer);
+      t.resizeSettleTimer = null;
+      if (t.lastSentSize) {
+        t.resizeSettleTimer = setTimeout(sendPtySize, RESIZE_SETTLE_MS);
+      } else {
+        sendPtySize();
       }
     }
     t.fsSized = true;
   }
   t.applySize = applySize;
+
+  function sendPtySize() {
+    t.resizeSettleTimer = null;
+    if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+    // Same-size dedupe (#430): a resize frame that changes nothing still
+    // costs a setwinsize round-trip; skip it. Compared on the floored size,
+    // so a settled sweep that lands back where it started sends nothing. A
+    // real change on a fullscreen agent triggers the transcript
+    // re-emission — batch it into a single paint (terminal-connection.js).
+    const size = ptySendSize(term.rows, term.cols);
+    const key = size.rows + 'x' + size.cols;
+    if (key === t.lastSentSize) return;
+    t.lastSentSize = key;
+    if (t.isFullscreen) beginRepaintBatch(t);
+    t.ws.send(JSON.stringify({
+      type: 'resize', rows: size.rows, cols: size.cols,
+    }));
+  }
 
   if (isMirror) {
     // The phone may rotate or resize — re-sync to its size periodically.

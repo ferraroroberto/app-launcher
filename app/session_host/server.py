@@ -49,7 +49,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
-from src.session_host import _EOF, SessionManager
+from src.session_host import _EOF, PTY_MIN_COLS, SessionManager
 from src.session_host_input import INPUT_DEFERRED, INPUT_DROPPED, INPUT_NOT_INGESTED
 
 logger = logging.getLogger(__name__)
@@ -393,13 +393,16 @@ async def _force_repaint(session) -> None:
     one column and back: each ``setwinsize`` fires a SIGWINCH-equivalent,
     so ratatui clears and redraws the *current* frame at the real size.
     The toggle guarantees a change even on a same-size reconnect (where a
-    single ``setwinsize`` to the unchanged size is a no-op). Best-effort —
-    a dead PTY's ``resize`` already swallows its own errors.
+    single ``setwinsize`` to the unchanged size is a no-op). A PTY already at
+    the width floor toggles one column *up* instead — ``resize`` clamps to
+    the floor and skips an unchanged size (#930), so a toggle down would be
+    swallowed and fire no SIGWINCH. Best-effort — a dead PTY's ``resize``
+    already swallows its own errors.
     """
     try:
         await asyncio.sleep(_REPAINT_SETTLE)
         rows, cols = session.rows, session.cols
-        session.resize(rows, max(1, cols - 1))
+        session.resize(rows, cols - 1 if cols - 1 >= PTY_MIN_COLS else cols + 1)
         await asyncio.sleep(_REPAINT_TOGGLE_GAP)
         session.resize(rows, cols)
     except asyncio.CancelledError:  # pragma: no cover

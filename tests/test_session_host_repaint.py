@@ -14,6 +14,7 @@ Two halves of the fix live in ``app/session_host/server.py``:
 from __future__ import annotations
 
 import asyncio
+import time
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,7 +22,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from app.session_host import server
-from src.session_host import _EOF
+from src.session_host import _EOF, PTY_MIN_COLS, PtySession
 
 
 async def _async_noop(*_args, **_kwargs) -> None:
@@ -58,14 +59,39 @@ async def test_force_repaint_toggles_width_and_restores(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_force_repaint_clamps_one_column_width(monkeypatch):
+async def test_force_repaint_toggles_up_at_the_width_floor(monkeypatch):
     monkeypatch.setattr(server.asyncio, "sleep", _async_noop)
-    sess = _StubSession(rows=10, cols=1)
+    sess = _StubSession(rows=10, cols=PTY_MIN_COLS)
 
     await server._force_repaint(sess)
 
-    # cols-1 would be 0 — clamp to >=1 so the toggle never goes invalid.
-    assert sess.resizes == [(10, 1), (10, 1)]
+    # cols-1 would sit below the floor PtySession.resize clamps to (#930), so
+    # the toggle down would be swallowed as a no-op — go one column up instead.
+    assert sess.resizes == [(10, PTY_MIN_COLS + 1), (10, PTY_MIN_COLS)]
+
+
+@pytest.mark.asyncio
+async def test_force_repaint_fires_two_real_resizes_at_the_floor(monkeypatch):
+    # Against a real PtySession (floor clamp + unchanged-size guard), the
+    # nudge must still reach setwinsize twice — or it repaints nothing.
+    monkeypatch.setattr(server.asyncio, "sleep", _async_noop)
+    sess = PtySession(
+        session_id="sid-repaint",
+        project_dir=r"C:\stub",
+        name="proj",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(),
+        agent="codex",
+        rows=30,
+        cols=PTY_MIN_COLS,
+    )
+
+    await server._force_repaint(sess)
+
+    assert sess._pty.setwinsize.call_count == 2
+    assert (sess.rows, sess.cols) == (30, PTY_MIN_COLS)
 
 
 @pytest.mark.asyncio
