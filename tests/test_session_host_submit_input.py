@@ -36,6 +36,7 @@ from src.session_host_input import (
     INPUT_NOT_INGESTED,
     INPUT_OK,
     INPUT_UNVERIFIED,
+    InputOutcome,
 )
 from src import session_host as session_host_module
 from src import session_host_input
@@ -324,9 +325,10 @@ def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, monkey
     assert outcome.submitted is False
     # Not established, not False: the watcher has not run yet.
     assert outcome.submit_confirmed is None
-    # delivered stays true — the payload really did reach the terminal; it is
-    # the *submit* that is still outstanding, and the two are reported apart.
-    assert outcome.delivered is True
+    # The payload reached the composer, not the agent: until the watcher's CR
+    # lands this is not a delivery (#929), and the in-flight state is named.
+    assert outcome.delivered is False
+    assert outcome.submit_state == "pending"
     # The decisive assertion: no CR was written into the busy terminal.
     assert "\r" not in [c.args[0] for c in session._pty.write.call_args_list]
     assert len(armed) == 1
@@ -435,8 +437,69 @@ def test_deferred_watcher_is_bounded_and_gives_up_without_firing(clock):
     assert outcome is not None
     assert outcome.reason == INPUT_DEFER_TIMEOUT
     assert outcome.submit_confirmed is False
+    # #929: a paste stranded in the composer is not delivered.
+    assert outcome.submitted is False
+    assert outcome.delivered is False
+    assert outcome.submit_state == "not_submitted"
     session._pty.write.assert_not_called()
     assert outcome.waited_ms >= _DEFER_CAP_MS
+
+
+@pytest.mark.parametrize(
+    "outcome, submit_state, delivered",
+    [
+        # Submitted and confirmed.
+        (dict(reason=INPUT_OK, ingested=True, submitted=True, submit_confirmed=True),
+         "confirmed", True),
+        # Submitted, confirmation not established.
+        (dict(reason=INPUT_UNVERIFIED, submitted=True), "unconfirmed", True),
+        # In flight with the watcher.
+        (dict(reason=INPUT_DEFERRED, ingested=True, deferred=True), "pending", False),
+        # Never submitted — every watcher give-up and both immediate negatives.
+        (dict(reason=INPUT_DEFER_TIMEOUT, ingested=True, deferred=True,
+              submit_confirmed=False), "not_submitted", False),
+        (dict(reason=INPUT_DEFER_VANISHED, ingested=True, deferred=True,
+              submit_confirmed=False), "not_submitted", False),
+        (dict(reason=INPUT_DEFER_UNCLEAR, ingested=True, deferred=True,
+              submit_confirmed=False), "not_submitted", False),
+        (dict(reason=INPUT_NOT_INGESTED, ingested=False), "not_submitted", False),
+        (dict(reason=INPUT_DROPPED), "not_submitted", False),
+        # No submit asked for: a paste that landed is the whole job.
+        (dict(reason=INPUT_OK, ingested=True, submit_requested=False),
+         "not_requested", True),
+        (dict(reason=INPUT_UNVERIFIED, submit_requested=False), "not_requested", True),
+        (dict(reason=INPUT_NOOP, submit_requested=False), "not_requested", True),
+        (dict(reason=INPUT_DROPPED, submit_requested=False), "not_requested", False),
+    ],
+)
+def test_submit_state_and_delivered_never_disagree(outcome, submit_state, delivered):
+    """#929's contract: ``delivered`` is never more optimistic than the fields
+    it summarises — no outcome carries ``delivered: true`` next to a submit
+    that was asked for and never happened — and ``submit_state`` alone tells
+    confirmed / unconfirmed / pending / never-submitted apart."""
+    result = InputOutcome(**outcome)
+
+    assert result.submit_state == submit_state
+    assert result.delivered is delivered
+    api = result.to_api()
+    assert api["submit_state"] == submit_state
+    assert api["delivered"] is delivered
+    assert not (api["delivered"] and outcome.get("submit_requested", True)
+                and not api["submitted"])
+
+
+def test_submit_input_records_whether_a_submit_was_asked_for(clock):
+    """``submit_requested`` is stamped from the call itself, so a plain paste
+    reads ``not_requested`` rather than ``not_submitted``."""
+    session = _make_session()
+
+    draft = session.submit_input("draft", False)
+    sent = session.submit_input("hello", True)
+
+    assert draft.submit_state == "not_requested"
+    assert draft.delivered is True
+    assert sent.submit_state == "unconfirmed"
+    assert sent.delivered is True
 
 
 def test_a_newer_write_supersedes_a_pending_watcher(clock):

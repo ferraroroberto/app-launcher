@@ -247,9 +247,10 @@ def create_app() -> FastAPI:
             # session's ``last_input`` (GET /sessions/{sid}), so a caller can
             # follow it up without holding the request open.
             return JSONResponse(status_code=202, content={"ok": True, **outcome.to_api()})
-        # 200 carries the whole verdict: an ingested payload whose submit could
-        # not be confirmed is a success-shaped response that must still say
-        # submit_confirmed=false rather than imply the message landed.
+        # 200 carries the whole verdict: a submit that went out unverified is
+        # a success-shaped response that must still say so
+        # (submit_state="unconfirmed") rather than imply a confirmed landing.
+        # ``delivered`` is never true for a submit that was not sent (#929).
         return {"ok": True, **outcome.to_api()}
 
     @app.post("/sessions/{sid}/resize")

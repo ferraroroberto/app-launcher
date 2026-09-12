@@ -22,7 +22,7 @@ import re
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,16 @@ INPUT_DEFER_TIMEOUT = "defer_timeout"  # never went quiet within _DEFER_CAP_MS
 INPUT_DEFER_VANISHED = "defer_vanished"  # quiet, but the payload is gone
 INPUT_DEFER_UNCLEAR = "defer_unclear"  # quiet, payload there, but a dialog too
 
+# What happened to the submit, as one field a caller can read without
+# re-deriving it from ``reason`` + ``submitted`` + ``submit_confirmed``
+# (issue #929). "Submitted but unconfirmed" and "never submitted" are
+# distinct states, and neither is folded into "confirmed".
+SUBMIT_CONFIRMED = "confirmed"          # CR sent after a verified settle
+SUBMIT_UNCONFIRMED = "unconfirmed"      # CR sent, nothing verified it landed
+SUBMIT_PENDING = "pending"              # CR is with the deferred watcher
+SUBMIT_NOT_SUBMITTED = "not_submitted"  # asked for, and no CR was ever sent
+SUBMIT_NOT_REQUESTED = "not_requested"  # the call did not ask for a submit
+
 
 @dataclass(frozen=True)
 class InputOutcome:
@@ -163,19 +173,46 @@ class InputOutcome:
     # armed, and on every verdict the watcher itself later records. Lets a
     # reader tell "the submit is still coming" apart from a finished call.
     deferred: bool = False
+    # Whether the call asked for a submit at all (issue #929). Defaults to
+    # True so an outcome built without saying reads as a submit that did not
+    # happen — never as a plain paste that needed none. ``submit_input``
+    # stamps the real value from its own ``submit`` argument.
+    submit_requested: bool = True
+
+    @property
+    def submit_state(self) -> str:
+        """The submit's fate as one of the ``SUBMIT_*`` values (issue #929)."""
+        if self.submitted:
+            return SUBMIT_CONFIRMED if self.submit_confirmed is True else SUBMIT_UNCONFIRMED
+        if not self.submit_requested:
+            return SUBMIT_NOT_REQUESTED
+        if self.reason == INPUT_DEFERRED:
+            return SUBMIT_PENDING
+        return SUBMIT_NOT_SUBMITTED
 
     @property
     def delivered(self) -> bool:
-        """Whether everything this call attempted actually reached the PTY.
+        """Whether everything this call asked for actually reached the agent.
 
         ``INPUT_NOT_INGESTED`` counts as *not* delivered: the write returned
         without raising, but the terminal never showed the payload, which is
-        exactly the silent drop #760 was filed over. The deferred-submit
-        verdicts (#763) all stay *delivered*: the payload demonstrably
-        reached the composer — it is only the submitting CR that is pending,
-        withheld, or refused, and ``submit_confirmed`` says which.
+        exactly the silent drop #760 was filed over.
+
+        A submit that was asked for and not sent is not delivered either
+        (issue #929) — including ``deferred`` (the CR is still with the
+        watcher) and every watcher give-up (``defer_timeout`` /
+        ``defer_vanished`` / ``defer_unclear``). The payload reached the
+        composer, but a paste sitting unsubmitted there has not reached the
+        agent, and ``delivered`` must never be more optimistic than
+        ``submitted``. Before #929 all of those read ``delivered: true`` next
+        to ``submitted: false``, and three stranded briefs were reported as
+        landed. ``submit_state`` says which of those it was.
         """
-        return self.reason not in (INPUT_DROPPED, INPUT_NOT_INGESTED)
+        if self.reason in (INPUT_DROPPED, INPUT_NOT_INGESTED):
+            return False
+        return self.submit_state in (
+            SUBMIT_CONFIRMED, SUBMIT_UNCONFIRMED, SUBMIT_NOT_REQUESTED
+        )
 
     def to_api(self) -> Dict[str, Any]:
         return {
@@ -184,6 +221,7 @@ class InputOutcome:
             "ingested": self.ingested,
             "submitted": self.submitted,
             "submit_confirmed": self.submit_confirmed,
+            "submit_state": self.submit_state,
             "waited_ms": self.waited_ms,
             "deferred": self.deferred,
         }
@@ -346,7 +384,9 @@ class InputProtocol:
         on the failing path, so a keyboard writer is never blocked for long.
         """
         with self._write_lock:
-            outcome = self._submit_input_locked(data, submit)
+            outcome = replace(
+                self._submit_input_locked(data, submit), submit_requested=submit
+            )
             defer_args = self._defer_args
             self._defer_args = None
         self._record_input(outcome, len(data), submit)
@@ -377,13 +417,7 @@ class InputProtocol:
         # unconfirmed submit — the shape all three 2026-08-14 stalls took —
         # get an INFO line naming which condition it was.
         sid = self.session_id[:8]
-        if not outcome.delivered:
-            logger.info(
-                f"⚠️ PTY {sid} input not delivered "
-                f"({outcome.reason}, {nbytes} chars, "
-                f"waited {outcome.waited_ms}ms)"
-            )
-        elif outcome.reason == INPUT_DEFERRED:
+        if outcome.reason == INPUT_DEFERRED:
             logger.info(
                 f"⏳ PTY {sid} input ingested but the agent is still busy — "
                 f"submit deferred to a watcher ({nbytes} chars, waited "
@@ -394,11 +428,15 @@ class InputProtocol:
                 f"✅ PTY {sid} deferred submit landed after "
                 f"{outcome.waited_ms}ms ({nbytes} chars)"
             )
-        elif outcome.submit_confirmed is False:
+        elif not outcome.delivered:
+            # Names the submit's fate too (#929): a paste stranded unsent in
+            # the composer (ingested, not_submitted) reads differently from
+            # one that never reached the terminal at all.
             logger.info(
-                f"ℹ️ PTY {sid} input ingested but not submitted "
-                f"({outcome.reason}, {nbytes} chars, waited "
-                f"{outcome.waited_ms}ms)"
+                f"⚠️ PTY {sid} input not delivered "
+                f"({outcome.reason}, ingested={outcome.ingested}, "
+                f"submit={outcome.submit_state}, {nbytes} chars, "
+                f"waited {outcome.waited_ms}ms)"
             )
 
     def _submit_input_locked(self, data: str, submit: bool) -> "InputOutcome":

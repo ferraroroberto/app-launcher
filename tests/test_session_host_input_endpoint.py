@@ -18,17 +18,25 @@ a 200 carries the verdict so an unconfirmed submit can't read as success.
 
 #763: a submit handed to the deferred watcher answers 202 — accepted, not
 completed — rather than a 200 that would read as a finished delivery.
+
+#929: ``delivered`` is never more optimistic than ``submitted`` — a paste the
+watcher gave up on (``defer_timeout``) reported ``delivered: true`` while its
+own sibling fields said the submit never happened.
 """
 
 from __future__ import annotations
 
+import threading
+import time
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from app.session_host import server
 from src import session_client, session_host_input
+from src.session_host import PtySession
 from src.session_host_input import (
+    INPUT_DEFER_TIMEOUT,
     INPUT_DEFERRED,
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
@@ -171,10 +179,82 @@ def test_deferred_submit_returns_202_not_a_completed_200(monkeypatch):
     assert body["ok"] is True
     assert body["reason"] == INPUT_DEFERRED
     assert body["deferred"] is True
-    # Delivered (the payload really is in the composer), but the submit is
-    # explicitly not established yet — never folded into the passing state.
-    assert body["delivered"] is True
+    # The payload is in the composer but has not reached the agent: the
+    # submit is still with the watcher, so this is not a delivery yet (#929)
+    # — and the pending state is named, never folded into the passing one.
+    assert body["delivered"] is False
+    assert body["submitted"] is False
+    assert body["submit_state"] == "pending"
     assert body["submit_confirmed"] is None
+
+
+def test_defer_timeout_is_reported_as_not_delivered_end_to_end(monkeypatch):
+    """#929, driven for real: no mocked outcome, no fake clock.
+
+    A real ``PtySession`` behind the real session-host route, a busy agent
+    whose composer keeps repainting the paste, and the real watcher thread
+    running out its (shortened) window. Before #929 both the 202 and the
+    watcher's ``defer_timeout`` verdict on ``last_input`` said
+    ``delivered: true`` next to ``submitted: false`` — the three stranded
+    fleet-chief briefs of 2026-09-12.
+    """
+    monkeypatch.setattr(session_host_input, "_BULK_FLOOR_MS", 50)
+    monkeypatch.setattr(session_host_input, "_BULK_CAP_MS", 300)
+    monkeypatch.setattr(session_host_input, "_DEFER_CAP_MS", 800)
+    session = PtySession(
+        session_id="sid-929",
+        project_dir=r"C:\stub",
+        name="claude",
+        flags="",
+        started_at=time.time(),
+        _loop=MagicMock(),
+        _pty=MagicMock(name="PtyProcess"),
+    )
+    payload = "CHIEF - standing brief, read before doing anything else. " * 20
+    stop = threading.Event()
+
+    def _busy_agent() -> None:
+        # The composer shows the paste on every frame while the spinner never
+        # stops — the stream is never quiet for _DEFER_QUIET_MS.
+        while not stop.is_set():
+            frame = "\x1b[2K\r> [Pasted text #1 +20 lines]  ✻ Working…"
+            with session._ring_lock:
+                session._ring += frame
+                session._output_total += len(frame)
+            session._last_output_at = time.time()
+            stop.wait(0.05)
+
+    monkeypatch.setattr(server.manager, "get", lambda sid: session)
+    client = TestClient(server.app)
+    pump = threading.Thread(target=_busy_agent, daemon=True)
+    pump.start()
+    try:
+        resp = client.post(
+            "/sessions/sid-929/input", json={"data": payload, "submit": True}
+        )
+        assert resp.status_code == 202
+        posted = resp.json()
+        assert posted["reason"] == INPUT_DEFERRED
+        assert posted["delivered"] is False
+
+        deadline = time.time() + 15
+        last_input = None
+        while time.time() < deadline:
+            last_input = client.get("/sessions/sid-929").json()["last_input"]
+            if last_input and last_input["reason"] != INPUT_DEFERRED:
+                break
+            time.sleep(0.05)
+    finally:
+        stop.set()
+        pump.join(timeout=2)
+
+    assert last_input is not None
+    assert last_input["reason"] == INPUT_DEFER_TIMEOUT
+    # The decisive pair: the object must not disagree with itself.
+    assert last_input["submitted"] is False
+    assert last_input["delivered"] is False
+    assert last_input["submit_state"] == "not_submitted"
+    assert "\r" not in [c.args[0] for c in session._pty.write.call_args_list]
 
 
 def test_deferred_reason_constant_does_not_drift_across_the_process_boundary():
