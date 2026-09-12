@@ -25,9 +25,10 @@ pytestmark = pytest.mark.smoke
 def _install_mocks(page: Page) -> None:
     """Route-mock the Coding tab's data + launch so the test is hermetic.
 
-    The launch endpoint is stubbed (no `session` in the reply, so apps.js
-    skips openTerminal and no WebSocket is opened); tests read the POST
-    body via ``page.expect_request`` rather than a shared capture.
+    The launch endpoint is stubbed (no `session` in the reply, so apps.js's
+    launchApp skips handleLaunchResponse → openTerminal and no WebSocket is
+    opened); tests read the POST body via ``page.expect_request`` rather
+    than a shared capture.
     """
     page.route(
         "**/api/agents",
@@ -57,7 +58,8 @@ def _install_mocks(page: Page) -> None:
         ),
     )
 
-    # No `session` in the reply → apps.js skips openTerminal (no WS).
+    # No `session` in the reply → launchApp (apps.js) skips
+    # handleLaunchResponse, so openTerminal never runs (no WS).
     # Registered after the broad /api/apps mock so it takes precedence for
     # the .../launch sub-path (Playwright checks newest route first).
     page.route(

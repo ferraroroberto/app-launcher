@@ -3,16 +3,18 @@
 The bug: iOS aggressively suspends backgrounded PWAs; uvicorn's ping
 timeout then closes the half-dead WebSocket and the overlay was left
 frozen on "Disconnected." until the user manually re-opened the
-session. The fix factors the ws setup into ``connectWs(t)`` and
-re-runs it after non-final close codes with 1s/2s/4s/8s backoff.
+session. The fix factors the ws setup into ``connectWs(t)`` (now
+``connectTerminalWs`` in ``terminal-connection.js``) and re-runs it after
+non-final close codes with 1s/2s/4s/8s backoff.
 
 This test exercises the JS half of the fix by:
   1. Wrapping ``window.WebSocket`` in an init script so the test can
      observe every WS the SPA opens (no product change).
   2. Opening the terminal via ``?terminal=<sid>`` deep-link.
-  3. Force-closing the open WS from the page (code 1005). Per
-     ``terminal.js:113-114`` this is the "iOS-suspend" path — same
-     code reached when uvicorn's ping timeout fires.
+  3. Force-closing the open WS from the page (code 1005). Any code the
+     ``ws.onclose`` handler in ``connectTerminalWs`` doesn't special-case
+     (4000/4401/4403/4404) falls through to ``scheduleReconnect`` — the
+     "iOS-suspend" path, same one reached when uvicorn's ping timeout fires.
   4. Asserting the SPA opens a fresh WS and that input sent on the
      fresh socket reaches ``webapp/sessions/<sid>.log``.
 """

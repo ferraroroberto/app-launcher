@@ -66,7 +66,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _WEBAPP_CONFIG = _REPO_ROOT / "config" / "webapp_config.json"
 _SESSIONS_DIR = _REPO_ROOT / "webapp" / "sessions"
 _BASE_URL = "https://127.0.0.1:8445"
-_TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/state.js:21
+_TOKEN_KEY = "launcher.token"  # must match TOKEN_KEY in app/webapp/static/state.js
 
 # The live tray's loopback PTY session-host port. Autoboot must NEVER adopt a
 # host listening here: on a dev box it holds the user's real PTY/Claude
