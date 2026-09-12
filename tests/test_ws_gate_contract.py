@@ -1,10 +1,12 @@
 """Contract: the terminal gate reaches the same verdict on every protocol.
 
-Two surfaces re-apply the same gate against the same config:
+Three surfaces re-apply the same gate against the same config:
 
 * ``app.webapp.middleware.BearerTokenMiddleware`` — the HTTP choke point.
 * ``app.webapp.routers.sessions.proxy_session_ws`` — re-applied inline,
   because Starlette middleware never sees a WebSocket handshake.
+* ``app.webapp.routers.jobs_run_store_routes.stream_job_run`` — the other
+  WebSocket route, inline for the same reason.
 
 Any divergence between them is invisible from the HTTP side, so these tests
 pin the two invariants the HTTP half already states in its own comments:
@@ -19,6 +21,7 @@ pin the two invariants the HTTP half already states in its own comments:
 from __future__ import annotations
 
 import pytest
+from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from src import api_tokens
@@ -145,6 +148,102 @@ def test_ws_still_refuses_a_wrong_legacy_token(webapp_client, monkeypatch):
             "/api/claude-code/sessions/some-sid/ws?token=wrong"
         ) as ws:
             ws.receive_text()
+    assert excinfo.value.code == 4401
+
+
+# --- the run-output socket: same contract, same two invariants -------------
+#
+# This route is not terminal-grade (no Tailscale / passkey leg), so the shape
+# it must match is the HTTP choke point's: the PC bypasses, everyone else
+# presents a credential whenever either class is configured. A miss here is
+# invisible from the HTTP side, exactly as it is for the sessions socket.
+
+_RUN_STREAM = "/api/jobs/no-such-job/runs/20260101T000000/stream"
+
+
+def test_run_stream_requires_a_credential_when_only_minted_tokens_exist(
+    minted_only_config,
+):
+    """With ``auth_token`` empty but minted tokens configured, an
+    uncredentialed socket must be refused rather than reaching the run
+    lookup — "a config with only minted tokens must not be an open gate"."""
+    client, _, _, _ = minted_only_config
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(_RUN_STREAM) as ws:
+            ws.receive_json()
+    # 4401 = refused by the gate. 4404 would mean the gate let it through and
+    # only the unknown-run lookup stopped it.
+    assert excinfo.value.code == 4401
+
+
+def test_run_stream_accepts_a_valid_minted_token(minted_only_config):
+    """A minted full-scope token behaves like the legacy one everywhere else;
+    it must not be rejected here. Reaching the unknown-run close (4404) is the
+    signal that the gate passed."""
+    client, _, _, raw = minted_only_config
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(f"{_RUN_STREAM}?token={raw}") as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4404
+
+
+def test_run_stream_edge_request_is_not_treated_as_the_pc(
+    webapp_client, monkeypatch
+):
+    """A request carrying the public edge's own header must not inherit the
+    PC's bypass on this socket either, whatever client address reaches it."""
+    client, app, _ = webapp_client
+    from app.webapp import middleware as mw
+
+    app.state.webapp_config.auth_token = "the-real-token"
+    app.state.webapp_config.api_tokens = []
+    monkeypatch.setattr(
+        mw, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1"})
+    )
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(
+            _RUN_STREAM, headers={"cf-ray": "abc123-AMS"}
+        ) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4401
+
+
+def test_run_stream_edge_header_decides_on_a_real_loopback_socket(webapp_client):
+    """Same contract as the case above, driven from a real loopback client
+    rather than a patched host set: without the edge header this is the PC
+    and bypasses (4404 = gate passed, run lookup refused it); with it, the
+    same socket must present a credential."""
+    _, app, _ = webapp_client
+    app.state.webapp_config.auth_token = "the-real-token"
+    app.state.webapp_config.api_tokens = []
+    loopback = TestClient(app, client=("127.0.0.1", 50000))
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with loopback.websocket_connect(_RUN_STREAM) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4404
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with loopback.websocket_connect(
+            _RUN_STREAM, headers={"cf-ray": "abc123-AMS"}
+        ) as ws:
+            ws.receive_json()
+    assert excinfo.value.code == 4401
+
+
+def test_run_stream_refuses_a_job_scoped_token(minted_only_config):
+    """A job-scoped token is narrowed to triggering its own jobs, and scope is
+    re-checked per request — it must not open this socket either."""
+    client, app, _, _ = minted_only_config
+    record, raw = api_tokens.mint_token("stream-deck-job", {"jobs": ["no-such-job"]})
+    app.state.webapp_config.api_tokens = [record]
+
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(f"{_RUN_STREAM}?token={raw}") as ws:
+            ws.receive_json()
     assert excinfo.value.code == 4401
 
 
