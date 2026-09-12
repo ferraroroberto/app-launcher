@@ -18,7 +18,7 @@ import json as _json
 import re
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e.conftest import stable_read
 
@@ -637,6 +637,25 @@ def _mock_conversations(page: Page, body: dict = None) -> None:
     )
 
 
+def _open_convos_model_menu(page: Page, value: str) -> Locator:
+    """Open the Conversations model combo once ``value`` is one of its options.
+
+    #935: the options arrive with the boot GET /api/config, and
+    ``wireModelCombo``'s ``setOptions`` closes the menu and replaces every
+    option. The tab is interactive before that fetch resolves, so on a loaded
+    host the test could open the menu first and have it shut underneath it —
+    the option click then timed out on "element is not visible". The option
+    existing is the real readiness signal: ``setOptions`` runs once at boot, so
+    a menu opened after it stays open. ``wait_for`` rather than ``expect``'s 5s
+    keeps the suite's default action budget the option click already had.
+    """
+    option = page.locator(f"#lifeOsConvosModelMenu button[data-value='{value}']")
+    option.wait_for(state="attached")
+    page.locator("#lifeOsConvosModelCombo .model-combo-trigger").click()
+    expect(option).to_be_visible()
+    return option
+
+
 def _open_conversations(page: Page, base_url: str) -> None:
     """Open the Life OS tab and the per-skill Conversations view."""
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -869,9 +888,8 @@ def test_life_os_conversation_resume_posts_the_session_id(
         "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
     ).click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
-    convo_model = authed_page.locator("#lifeOsConvosModelCombo")
-    expect(convo_model).to_be_visible()
-    convo_model.locator(".model-combo-trigger").click()
+    expect(authed_page.locator("#lifeOsConvosModelCombo")).to_be_visible()
+    option = _open_convos_model_menu(authed_page, "claude:opus")
     menu = authed_page.locator("#lifeOsConvosModelMenu")
     expect(menu).to_have_class(re.compile(r"\bmodel-combo-menu--portal\b"))
     assert menu.evaluate("el => el.parentElement === document.body")
@@ -888,9 +906,6 @@ def test_life_os_conversation_resume_posts_the_session_id(
         ]"""
     )
     assert z_indexes[0] > z_indexes[1], z_indexes
-    option = authed_page.locator(
-        "#lifeOsConvosModelMenu button[data-value='claude:opus']"
-    )
     hit_target = option.evaluate(
         """el => {
           const box = el.getBoundingClientRect();
@@ -1038,14 +1053,11 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     rows.first.locator(".lifeos-convo-head").click()
     detail = rows.first.locator(".lifeos-convo-detail")
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
-    combo = page.locator("#lifeOsConvosModelCombo")
-    combo.locator(".model-combo-trigger").click()
-    page.locator(f"#lifeOsConvosModelMenu button[data-value='{source_choice}']").click()
+    _open_convos_model_menu(page, source_choice).click()
     expect(detail.locator(".lifeos-convo-resume")).to_be_enabled()
     expect(detail).to_contain_text("Source: " + source)
     expect(detail.locator(".lifeos-convo-handoff")).to_have_count(0)
-    combo.locator(".model-combo-trigger").click()
-    page.locator(f"#lifeOsConvosModelMenu button[data-value='{target}']").click()
+    _open_convos_model_menu(page, target).click()
     expect(detail).to_be_visible()
     expect(detail.locator(".lifeos-convo-resume")).to_be_disabled()
     expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()
