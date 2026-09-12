@@ -154,8 +154,10 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
     requests.
 
     The returned body carries the host's delivery verdict (``reason``,
-    ``ingested``, ``submitted``, ``submit_confirmed``, ``deferred`` — issues
-    #760/#763); a payload the terminal never echoed raises
+    ``ingested``, ``submitted``, ``submit_confirmed``, ``submit_state``,
+    ``delivered``, ``deferred`` — issues #760/#763/#929; ``delivered`` is
+    never true for a requested submit that was not sent — see
+    ``docs/board.md``); a payload the terminal never echoed raises
     ``SessionHostError`` with a 502 rather than returning a success body.
     ``reason: "deferred"`` (the host answers 202) means the payload is in the
     composer and its submit is with a background watcher — the final verdict

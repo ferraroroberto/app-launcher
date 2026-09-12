@@ -232,7 +232,19 @@ So a bulk payload (≥ `_BULK_SUBMIT_THRESHOLD_CHARS`) is now checked for **inge
 | `not_ingested` | **502** | Written, never painted back within `_INGEST_CAP_MS`. Treated as **not delivered**, and **no CR is sent** — a blind CR into a terminal that never showed the text can answer whatever modal dialog is open instead of submitting anything. |
 | `dropped` | 409 | A write never reached the PTY (session exited, or the write raised). |
 
-`submit_confirmed` and `ingested` are tri-state: `null` means *not established*, which is never folded into the passing state. The same verdict is recorded on the session as `last_input` (visible in `GET /sessions/{sid}` / the session list alongside `alive` and `output_chars`), so "this session has gone deaf to API input" is a readable state rather than something only a human with a keyboard can tell apart from a busy agent. Every non-delivery also leaves an info-level breadcrumb in the session-host log and a `reason=` field in the session's own audit log, which previously recorded only `bytes=N submit=True` for steers that were never submitted.
+`submit_confirmed` and `ingested` are tri-state: `null` means *not established*, which is never folded into the passing state.
+
+**`delivered` and `submit_state` (#929).** `delivered` means the input reached the *agent*, not just the composer: it is `true` only when every write landed **and** either the submit was sent or none was asked for. It is never more optimistic than `submitted` — a paste sitting unsent as a `[Pasted text #N]` chip is `delivered: false`, whatever put it there. (Before #929 the watcher's `defer_timeout` verdict read `delivered: true` next to `submitted: false`, and three fleet-chief briefs stranded in their workers' composers were reported as landed.) `submit_state` names the submit's fate in one field, so a caller never re-derives it from `reason` + `submitted` + `submit_confirmed`:
+
+| `submit_state` | `delivered` | Meaning |
+|---|---|---|
+| `confirmed` | `true` | CR sent after a verified echo-then-quiet settle (`reason: ok`). |
+| `unconfirmed` | `true` | CR sent, but nothing verified it landed (`reason: unverified` — a short payload or a bare submit). |
+| `pending` | `false` | The CR is with the deferred watcher (`reason: deferred`, HTTP 202). Read `last_input` for its final verdict. |
+| `not_submitted` | `false` | A submit was asked for and no CR was ever sent — `not_ingested`, `dropped`, or any watcher give-up (`defer_timeout` / `defer_vanished` / `defer_unclear`). The payload may still be sitting in the composer. |
+| `not_requested` | `true`* | The call sent `submit: false`; the paste was the whole job. (*`false` if the write itself was `dropped`/`not_ingested`.) |
+
+`ok: true` on the HTTP body only means the request was accepted by a live session; read `delivered` / `submit_state` for what actually happened. The same verdict is recorded on the session as `last_input` (visible in `GET /sessions/{sid}` / the session list alongside `alive` and `output_chars`), so "this session has gone deaf to API input" is a readable state rather than something only a human with a keyboard can tell apart from a busy agent. Every non-delivery also leaves an info-level breadcrumb in the session-host log and a `reason=` field in the session's own audit log, which previously recorded only `bytes=N submit=True` for steers that were never submitted.
 
 **Deferred submit (#763).** Ingest verification closed the *silent* half of the defect but not the stall itself: a steer to a busy agent was still reported honestly and still left sitting unsent, because the settle wait can never see a quiet window while the agent repaints. A human does not have that problem — they see the stranded chip, wait for the agent to finish, and press Enter. That retry-by-observation is now server-side, and it replaces the former `settle_cap` reason (which reported a CR already fired blind mid-repaint; there is no such CR any more).
 
@@ -244,12 +256,12 @@ On reaching `_BULK_CAP_MS` ingested-but-noisy, `submit_input` releases `_write_l
 
 Any of those failing means **nothing is written** and the steer stays stranded and honestly reported — the pre-#763 state, never worse. The watcher is also superseded (exits without firing, leaving `last_input` alone) by any newer `/input` call or any `stop()`, since somebody else writing to the PTY invalidates its premise. Raw keystrokes from the WebSocket pump deliberately do *not* supersede it — a PC mirror typing anywhere would otherwise cancel every steer, and check 2 already catches a composer the human has changed.
 
-The watcher's own verdict is recorded onto `last_input` in the same shape as an immediate write, with `deferred: true`:
+The watcher's own verdict is recorded onto `last_input` in the same shape as an immediate write, with `deferred: true`. Only `ok` is a delivery; every other verdict is `delivered: false`, `submit_state: not_submitted` (#929):
 
 | `reason` | Meaning |
 |---|---|
-| `ok` | Quiet window reached, payload re-verified, CR sent — `submit_confirmed: true`. |
-| `defer_timeout` | Never went quiet within `_DEFER_CAP_MS`. Nothing written. |
+| `ok` | Quiet window reached, payload re-verified, CR sent — `submit_confirmed: true`, `submit_state: confirmed`. |
+| `defer_timeout` | Never went quiet within `_DEFER_CAP_MS`. Nothing written — the paste is left in the composer, unsent. |
 | `defer_vanished` | Quiet, but the payload is no longer visible — it either already went, or the terminal moved on. Nothing written. |
 | `defer_unclear` | Quiet and the payload is there, but so is a dialog. Nothing written. |
 | `dropped` | The session exited, or the CR write raised. |

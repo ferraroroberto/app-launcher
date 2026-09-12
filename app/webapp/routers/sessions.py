@@ -331,6 +331,15 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
     ``defer_timeout`` / ``defer_vanished`` / ``defer_unclear``) lands on the
     session's ``last_input``, readable via the session list, so a caller
     follows it up there rather than by holding this request open.
+
+    Issue #929: ``delivered`` means the input reached the *agent*, so it is
+    never ``true`` beside a requested submit that was not sent — ``deferred``
+    and every watcher give-up (``defer_timeout`` et al.) read
+    ``delivered: false``. ``submit_state`` names the submit's fate in one
+    field: ``confirmed`` / ``unconfirmed`` (sent, nothing verified it) /
+    ``pending`` (with the watcher) / ``not_submitted`` / ``not_requested``.
+    ``ok: true`` only means a live session accepted the request. Full table:
+    ``docs/board.md``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
