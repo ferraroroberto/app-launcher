@@ -85,7 +85,27 @@ _STATIC_EXTS = {
 # `## session-host` path in CLAUDE.md (the reconnect-snapshot VT mirror) and
 # silently routed to NONE until #881. See test_classify_e2e.py's drift guard,
 # which walks every path that CLAUDE.md block declares.
-_FULL_SRC_PY_EXACT = ("src/session_client.py", "src/launcher.py", "src/vt_snapshot.py")
+#
+# #923 completed that block to the session-host's real import closure, so the
+# rest of this tuple arrived with it: the e2e suite drives a live session-host,
+# and every module below runs inside it (agent registry, PATH resolution,
+# transcript writing, spawn flags, build identity). Kept as a literal rather
+# than parsed from CLAUDE.md at classify time on purpose — a parse failure
+# would narrow routing silently, and routing must only ever fail *safe*.
+_FULL_SRC_PY_EXACT = (
+    "src/session_client.py",
+    "src/launcher.py",
+    "src/vt_snapshot.py",
+    "src/__init__.py",
+    "src/agents.py",
+    "src/app_config.py",
+    "src/audit.py",
+    "src/build_info.py",
+    "src/diagnostics.py",
+    "src/env_path.py",
+    "src/git_utils.py",
+    "src/subprocess_flags.py",
+)
 
 
 def _classify_one(path: str) -> tuple[Category, str]:
