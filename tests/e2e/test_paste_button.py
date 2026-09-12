@@ -2,7 +2,8 @@
 
 The bug: tapping ``#terminalPaste`` did nothing in iOS Safari PWA — the
 JS reached ``navigator.clipboard.readText()`` but no input arrived at
-the session-host. The handler is at ``terminal.js:468-479``.
+the session-host. The handler is the ``els.terminalPaste`` click listener
+wired in ``wireTerminal()`` (``terminal.js``).
 
 Approach: mock ``navigator.clipboard.readText`` via init script (Playwright
 WebKit headless clipboard perms are not reliable), seed a payload that
@@ -50,9 +51,10 @@ def test_paste_button_forwards_clipboard_to_pty(
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
 
     # Wait for the terminal overlay to mount and the WS to reach OPEN —
-    # the paste handler is a no-op before then (terminal.js:470). The
-    # status line gets `hidden = true` once setTerminalStatus(null) fires
-    # in ws.onopen (terminal.js:64); wait_for_function avoids the
+    # the paste handler returns early before then (its `readyState !==
+    # WebSocket.OPEN` guard). The status line gets `hidden = true` once
+    # setTerminalStatus(null) fires in ws.onopen (connectTerminalWs in
+    # terminal-connection.js); wait_for_function avoids the
     # wait_for_selector default "visible" check, which would never
     # resolve against a hidden-attribute element.
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
