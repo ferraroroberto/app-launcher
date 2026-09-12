@@ -259,12 +259,13 @@ export async function stopSession(s) {
   // No confirm — one tap stops (issue #253 follow-up). The stop is graceful
   // (the agent's own quit, then force-fallback) and a mis-tap is resumable,
   // so a confirmation dialog is just friction. The one exception is the
-  // fleet chief (#547 — parity with the Board tab's own drawer guard,
-  // board.js:302): the chief is the one session a mis-tap shouldn't take
-  // down, from either the Coding tab's row or the terminal overlay's kill
-  // button (which calls this same function). The Board drawer's own call
-  // passes a stripped {session_id, name} object with no kind/label, so
-  // isChiefSession() is a safe no-op there and it never double-confirms.
+  // fleet chief (#547 — parity with the Board tab's own drawer guard, the
+  // isChiefCard() check on the drawer's stop button in board.js::buildDrawer):
+  // the chief is the one session a mis-tap shouldn't take down, from either
+  // the Coding tab's row or the terminal overlay's kill button (which calls
+  // this same function). The Board drawer's own call passes a stripped
+  // {session_id, name} object with no kind/label, so isChiefSession() is a
+  // safe no-op there and it never double-confirms.
   if (isChiefSession(s) && !confirm(CHIEF_KILL_CONFIRM)) return;
   try {
     await jsonApi(
