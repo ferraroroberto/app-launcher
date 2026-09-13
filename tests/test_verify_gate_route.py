@@ -69,7 +69,7 @@ $out | ConvertTo-Json -Depth 4 -Compress
 @pytest.fixture(scope="module")
 def routes() -> dict[str, dict]:
     """Every case's route, from one PowerShell run. Includes "real": the real
-    classifier's verdict on a board.js diff."""
+    classifier's verdict on a Board-only diff."""
     classify = subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts" / "classify_e2e.py"), "app/webapp/static/board.js"],
         capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=REPO_ROOT,
@@ -129,10 +129,13 @@ def test_unusable_classifier_output_runs_the_whole_suite(routes: dict, case: str
     assert "fail-safe" in routes[case]["Reason"]
 
 
-def test_real_classifier_verdict_reaches_the_helper(routes: dict) -> None:
-    """End to end: the real classifier's output on a webapp JS diff, through the helper."""
-    assert _shape(routes["real"]) == _FULL
-    assert "fail-safe" not in routes["real"]["Reason"]
+def test_real_classifier_surface_verdict_reaches_pytest_as_separate_targets(routes: dict) -> None:
+    """End to end: the real classifier on a Board-only diff, through the helper."""
+    real = routes["real"]
+    assert real["Tier"] == "surface"
+    assert len(real["Targets"]) > 1
+    assert all(" " not in t and (REPO_ROOT / t).is_file() for t in real["Targets"])
+    assert real["Serialize"] is True
 
 
 def test_gate_runs_the_helper_verdict() -> None:

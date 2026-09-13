@@ -13,6 +13,7 @@ must route to the fast ``static`` / Chromium-only tier.
 from __future__ import annotations
 
 import pathlib
+import re
 
 import pytest
 
@@ -230,3 +231,126 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
     assert real_js.is_file(), "fixture file moved/renamed; update this test"
     cat, _label = _classify_one("app/webapp/static/apps.js", cfg.rules)
     assert cat is Category.FULL
+
+
+# ------------------------------------------------------------------- surfaces
+# #955: `.fleet.toml` declares [[e2e.surface]] entries that narrow a would-be
+# full diff to one tab's tests. Each surface is pinned with a path that narrows
+# and shared paths that must keep the whole suite.
+_BOARD_TARGETS = (
+    "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py tests/e2e/test_coding_chief.py "
+    "tests/e2e/test_session_rename.py tests/e2e/test_shared_session_title.py "
+    "tests/e2e/test_coding_model_selector.py tests/e2e/test_terminal_bar_overflow.py "
+    "tests/e2e/test_primary_nav.py tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py"
+)
+_LIFEOS_TARGETS = (
+    "tests/e2e/test_life_os_tab.py tests/e2e/test_markdown_link_rendering.py "
+    "tests/e2e/test_collapsible_other_tabs.py tests/e2e/test_coding_model_selector.py "
+    "tests/e2e/test_terminal_bar_overflow.py tests/e2e/test_primary_nav.py "
+    "tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py"
+)
+
+# What an e2e test says when it exercises a surface's modules: the module file,
+# its API prefix, its tab/pane ids, or its DOM id/class prefix. Any test module
+# matching must be in that surface's targets, or a surface edit would narrow
+# past a test it can break.
+_SURFACE_MARKERS = {
+    "board": re.compile(r"(?<![A-Za-z])board[A-Z-]|board(-dispatch)?\.js|/api/board|tabBoard|paneBoard"),
+    "lifeos": re.compile(r"(?<![A-Za-z])(lifeOs|lifeos-)|life-os\.js|/api/life-os|tabLifeOS|paneLifeOS"),
+}
+
+
+def _route(cfg: E2EConfig, *paths: str) -> tuple[str, str]:
+    r = classify(list(paths), cfg)
+    return r.tier, r.pytest_target
+
+
+def test_real_surfaces_are_usable(cfg: E2EConfig) -> None:
+    """One malformed entry disables every surface silently (only a note in E2E_REASON)."""
+    assert cfg.surfaces_note == "", cfg.surfaces_note
+    assert {s.name for s in cfg.surfaces} == set(_SURFACE_MARKERS)
+
+
+@pytest.mark.parametrize(
+    "path,surface,targets",
+    [
+        ("app/webapp/static/board.js", "board", _BOARD_TARGETS),
+        ("app/webapp/static/board-dispatch.js", "board", _BOARD_TARGETS),
+        ("app/webapp/routers/board_chief.py", "board", _BOARD_TARGETS),
+        ("tests/e2e/test_board_tab.py", "board", _BOARD_TARGETS),
+        ("app/webapp/static/life-os.js", "lifeos", _LIFEOS_TARGETS),
+        ("app/webapp/routers/life_os_files.py", "lifeos", _LIFEOS_TARGETS),
+        ("tests/e2e/test_life_os_tab.py", "lifeos", _LIFEOS_TARGETS),
+    ],
+)
+def test_surface_path_narrows_to_its_surface(cfg: E2EConfig, path: str, surface: str, targets: str) -> None:
+    r = classify([path], cfg)
+    assert (r.tier, r.surface, r.pytest_target) == ("surface", surface, targets)
+    assert r.browsers == []  # both projections, same as full
+
+
+def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
+    """`none` paths (backend src/, unit tests, docs) ride along without widening."""
+    assert _route(cfg, "app/webapp/static/board.js", "src/board.py",
+                  "tests/test_board.py", "README.md") == ("surface", _BOARD_TARGETS)
+
+
+@pytest.mark.parametrize(
+    "shared",
+    [
+        "app/webapp/static/styles.css",
+        "app/webapp/static/index.html",
+        "app/webapp/static/main.js",
+        "app/webapp/static/state.js",
+        "app/webapp/static/claude-options.js",
+        "app/webapp/server.py",
+        "app/webapp/routers/_helpers.py",
+        "src/session_host.py",
+        "src/launcher.py",
+        "app/session_host/server.py",
+        "tests/e2e/conftest.py",
+        "tests/conftest.py",
+        "app/webapp/static/icon-512.png",   # static, owned by no surface
+    ],
+)
+def test_shared_path_keeps_the_whole_suite(cfg: E2EConfig, shared: str) -> None:
+    """Shared CSS/JS, the session host and the conftests belong to no surface:
+    alone or riding along with a surface change, they run everything."""
+    assert classify([shared], cfg).tier != "surface"
+    assert _route(cfg, "app/webapp/static/board.js", shared) == ("full", "tests/e2e")
+
+
+def test_session_host_declared_paths_are_in_no_surface(cfg: E2EConfig) -> None:
+    declared = declared_session_host_paths(REPO_ROOT / "CLAUDE.md")
+    for surface in cfg.surfaces:
+        for path in declared:
+            assert not surface.matches(path), (surface.name, path)
+            assert not any(p.startswith(path) for p in surface.paths + surface.prefixes), (surface.name, path)
+
+
+def test_multi_surface_diff_keeps_the_whole_suite(cfg: E2EConfig) -> None:
+    assert _route(cfg, "app/webapp/static/board.js",
+                  "app/webapp/static/life-os.js") == ("full", "tests/e2e")
+
+
+def test_unclassified_path_keeps_the_whole_suite(cfg: E2EConfig) -> None:
+    assert _route(cfg, "app/webapp/static/board.js", "random/thing.xyz") == ("full", "tests/e2e")
+
+
+def test_editing_the_routing_map_keeps_the_whole_suite(cfg: E2EConfig) -> None:
+    """A diff that edits `.fleet.toml` (the surface map) is never judged by it."""
+    assert _route(cfg, "app/webapp/static/board.js", ".fleet.toml") == ("full", "tests/e2e")
+
+
+def test_every_test_exercising_a_surface_is_in_its_targets(cfg: E2EConfig) -> None:
+    suite = REPO_ROOT / "tests" / "e2e"
+    by_name = {s.name: s for s in cfg.surfaces}
+    for name, marker in _SURFACE_MARKERS.items():
+        users = {
+            f"tests/e2e/{f.name}"
+            for f in suite.glob("test_*.py")
+            if marker.search(f.read_text(encoding="utf-8"))
+        }
+        assert users, f"marker for {name} matches no test; stale marker?"
+        missing = users - set(by_name[name].pytest_targets)
+        assert not missing, f"{sorted(missing)} exercise surface {name!r} but are not in its pytest_targets"
