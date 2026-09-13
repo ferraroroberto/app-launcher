@@ -11,3 +11,188 @@ description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs �
 switch = { src = "app/webapp/static/_vendored/switch", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/switch" }
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
+
+# ---------------------------------------------------------------------------
+# [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
+# browser phase (#568, migrated to the scaffold classifier in #955).
+# scripts/classify_e2e.py is project-scaffolding's classifier copied
+# byte-verbatim (`e2e_route.py bootstrap`); every app-launcher routing decision
+# lives here. Schema: project-scaffolding docs/e2e-routing.md.
+#
+# Rules are tried top to bottom, first match wins. A path no rule matches is
+# "unclassified" and runs the whole dual-projection suite: uncertainty always
+# escalates, never narrows. Labels are echoed into E2E_REASON, and the gate's
+# session-host warning keys on the "session-host" labels below, so keep them.
+[e2e]
+static_pytest_target = "tests/e2e/test_smoke.py"
+static_browsers       = ["chromium"]
+full_pytest_target    = "tests/e2e"
+
+# --- static assets under the webapp's static dir -> Chromium smoke ----------
+[[e2e.rule]]
+tier       = "static"
+prefix     = "app/webapp/static/"
+extensions = ["svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "avif", "woff", "woff2", "ttf", "eot", "otf", "webmanifest"]
+label      = "static-asset"
+# A vendored HTML *fragment* (e.g. the icons sprite) is pure markup the smoke
+# suite loads, with no behaviour of its own. Non-vendored .html (index.html,
+# spike pages) are real app pages and fall through to full below.
+[[e2e.rule]]
+tier       = "static"
+prefix     = "app/webapp/static/_vendored/"
+extensions = ["html"]
+label      = "static-asset"
+
+# --- the real browser surface -> full ---------------------------------------
+# CSS routes full rather than to a curated "layout subset": styles.css is
+# global and WebKit is exactly where layout regressions surface, so a
+# hand-kept subset would be drift-prone and an under-testing risk.
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/webapp/static/"
+label  = "webapp-static-code"
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/webapp/"
+label  = "webapp"
+
+# --- session-host / launcher on the e2e surface -> full ---------------------
+# The e2e suite drives a live session-host, so every module it loads is
+# browser surface: the CLAUDE.md `## session-host` import closure (#881, #923),
+# plus the launcher entry points. Kept as literal paths rather than parsed
+# from CLAUDE.md at classify time on purpose -- a parse failure would narrow
+# routing silently. tests/test_classify_e2e.py walks that CLAUDE.md block and
+# fails when a declared path stops routing full.
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/session_host/"
+label  = "session-host"
+[[e2e.rule]]
+tier = "full"
+path = "src/session_client.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/launcher.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/vt_snapshot.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/__init__.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/agents.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/app_config.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/audit.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/build_info.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/diagnostics.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/env_path.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/git_utils.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/subprocess_flags.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "launcher.py"
+label = "session-host/launcher"
+# A prefix, not a list, so a future split of the session host
+# (e.g. src/session_host_pty.py) routes full without an edit here.
+[[e2e.rule]]
+tier       = "full"
+prefix     = "src/session_host"
+extensions = ["py"]
+label      = "session-host/launcher"
+
+# --- the e2e suite itself, and the shared root conftest -> full -------------
+[[e2e.rule]]
+tier   = "full"
+prefix = "tests/e2e/"
+label  = "e2e-test"
+[[e2e.rule]]
+tier  = "full"
+path  = "tests/conftest.py"
+label = "shared-conftest"
+
+# --- no browser impact -> no browser suite ----------------------------------
+# Deliberate #568 decision, not an oversight: backend src/ code off the
+# session-host path has no browser surface of its own. The non-e2e pytest
+# suite (TestClient etc.) covers it, and that phase always runs. Do not
+# "fix" this by routing all of src/ to full.
+[[e2e.rule]]
+tier       = "none"
+prefix     = "src/"
+extensions = ["py"]
+label      = "backend-python"
+[[e2e.rule]]
+tier       = "none"
+prefix     = "tests/"
+extensions = ["py"]
+label      = "non-e2e-test"
+[[e2e.rule]]
+tier       = "none"
+extensions = ["md"]
+label      = "docs"
+[[e2e.rule]]
+tier   = "none"
+prefix = "docs/"
+label  = "docs"
+[[e2e.rule]]
+tier   = "none"
+prefix = "scripts/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier   = "none"
+prefix = "config/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier   = "none"
+prefix = ".github/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier  = "none"
+path  = ".fleet.toml"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = ".gitignore"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "LICENSE"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "AGENTS.md"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "CLAUDE.md"
+label = "repo-meta"
+[[e2e.rule]]
+tier       = "none"
+extensions = ["bat"]
+label      = "repo-meta"
