@@ -185,6 +185,6 @@ if ($routeReason -match "session-host") {
     Write-Host "    this change as shipped -- if true, report it as merged but not yet live." -ForegroundColor Yellow
     Write-Host "    (Raw session_host.stale is true after ANY merge, not just a session-host" -ForegroundColor Yellow
     Write-Host "    one -- #635; null in either field means unknown, never a confident false.)" -ForegroundColor Yellow
-    Write-Host "    See CLAUDE.md's restart section for the one supported way to restart :8446." -ForegroundColor Yellow
+    Write-Host "    See CLAUDE.md's session-host block for the one supported way to restart :8446." -ForegroundColor Yellow
 }
 exit 0
