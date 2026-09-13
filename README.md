@@ -499,6 +499,7 @@ app-launcher/
 │   ├── session_retention.py    # dry-run: what the webapp/sessions retention sweep would remove
 │   ├── run_named_tunnel.py     # uvicorn + cloudflared (headless)
 │   ├── classify_e2e.py         # diff-proportionate e2e-tier routing against `main`
+│   ├── e2e-gate-route.ps1      # turns the classifier's verdict into the gate's pytest args + mutex flag
 │   ├── run-e2e.ps1             # dev-loop e2e runner (dual-projection, or --browser chromium)
 │   ├── restart-session-host.ps1 # confirmation-gated `:8446` restart — see CLAUDE.md `## session-host`
 │   └── verify-before-ship.ps1  # the pre-ship gate — disposable webapp + session-host, no tray needed

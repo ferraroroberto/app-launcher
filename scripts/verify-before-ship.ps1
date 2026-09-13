@@ -65,31 +65,26 @@ try {
     & $python -m pytest -q --ignore=tests/e2e
     if ($LASTEXITCODE -ne 0) { Fail "non-e2e pytest suite failed." }
 
-    # Diff-proportionate e2e routing (issue #568). Classify the branch's
+    # Diff-proportionate e2e routing (issues #568, #955). Classify the branch's
     # changed files vs main and run an e2e slice proportionate to the diff:
     # static assets -> Chromium smoke only, real UI/behaviour -> the full
-    # dual-projection suite, backend/docs-only -> no browser suite. Fail-safe:
-    # any mixed/ambiguous/unrecognized diff runs the full suite. The path->tier
-    # rules live in scripts/classify_e2e.py (one reviewable place). On CI the
-    # full suite always runs -- the local gate is where routing is proven first.
-    $tier = "full"; $e2eTarget = "tests/e2e"; $e2eBrowsers = ""; $routeReason = ""
-    if ($env:CI -eq "true") {
-        $routeReason = "CI always runs the full dual-projection suite"
-    } else {
+    # dual-projection suite, or only one declared surface's tests when every
+    # full-tier path sits in that surface, backend/docs-only -> no browser
+    # suite. Fail-safe: any mixed/ambiguous/unrecognized diff runs the full
+    # suite. The path->tier rules and surfaces live in .fleet.toml [e2e];
+    # scripts/classify_e2e.py is the scaffold's mechanism, and
+    # scripts/e2e-gate-route.ps1 turns its verdict into pytest arguments. On CI
+    # the full suite always runs -- the local gate is where routing is proven.
+    . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
+    $classifyOut = @()
+    if ($env:CI -ne "true") {
         $classifyOut = & $python (Join-Path $repoRoot "scripts\classify_e2e.py")
-        $kv = @{}
-        foreach ($line in $classifyOut) {
-            if ($line -match '^(E2E_[A-Z_]+)=(.*)$') { $kv[$matches[1]] = $matches[2] }
-        }
-        if ($kv.ContainsKey("E2E_TIER") -and $kv["E2E_TIER"]) {
-            $tier = $kv["E2E_TIER"]
-            $e2eTarget = $kv["E2E_PYTEST_TARGET"]
-            $e2eBrowsers = $kv["E2E_BROWSERS"]
-            $routeReason = $kv["E2E_REASON"]
-        } else {
-            $routeReason = "classifier gave no verdict -- defaulting to full suite (fail-safe)"
-        }
     }
+    $route = Get-E2ERoute -ClassifierOutput $classifyOut -IsCI ($env:CI -eq "true")
+    $tier = $route.Tier
+    $routeReason = $route.Reason
+    $e2eTargetLabel = @($route.Targets) -join " "
+    $e2eBrowsers = @($route.Browsers) -join ","
 
     if ($tier -eq "skip") {
         Phase "e2e routing: SKIP browser suite (backend/docs-only diff)"
@@ -97,32 +92,32 @@ try {
         Log-Progress "e2e routing: tier=skip reason=$routeReason"
     } else {
         Phase "e2e routing: $tier ($routeReason)"
-        Log-Progress "e2e routing: tier=$tier target=$e2eTarget browsers=$e2eBrowsers reason=$routeReason"
+        Log-Progress "e2e routing: tier=$tier target=$e2eTargetLabel browsers=$e2eBrowsers reason=$routeReason"
 
-        # Serialize full-tier (dual-projection) e2e legs across concurrent
-        # primary/worktree gate runs on this machine (issue #685). Two
-        # overlapping full-tier runs -- a normal outcome of the fleet's own
-        # claim-or-worktree concurrency model -- each spinning up ~400x2
-        # browser contexts is the ephemeral-port burst fleet-config#498 traced
-        # to this suite (Tcpip 4231, TIME_WAIT 206->979). A kernel-managed
-        # named mutex, not a lockfile: auto-released if a holder crashes, no
-        # stale-file cleanup path. Scoped to only this e2e leg -- byte-compile
-        # and the non-e2e pytest phase above never wait on it -- and only to
-        # the "full" tier; "static" (chromium-smoke-only) runs are cheap
-        # enough not to need it.
+        # Serialize dual-projection e2e legs across concurrent primary/worktree
+        # gate runs on this machine (issue #685). Two overlapping runs -- a
+        # normal outcome of the fleet's own claim-or-worktree concurrency
+        # model -- each spinning up hundreds of browser contexts is the
+        # ephemeral-port burst fleet-config#498 traced to this suite (Tcpip
+        # 4231, TIME_WAIT 206->979). A kernel-managed named mutex, not a
+        # lockfile: auto-released if a holder crashes, no stale-file cleanup
+        # path. Scoped to only this e2e leg -- byte-compile and the non-e2e
+        # pytest phase above never wait on it -- and taken by the "full" and
+        # "surface" tiers, which both run both projections (#955); "static"
+        # (chromium-smoke-only) runs are cheap enough not to need it.
         $e2eMutexName = "Global\AppLauncherFullE2EGate"
         $e2eMutex = $null
         $e2eMutexAcquired = $false
-        if ($tier -eq "full") {
+        if ($route.Serialize) {
             $e2eMutex = New-Object System.Threading.Mutex($false, $e2eMutexName)
             $e2eMutexAcquired = $e2eMutex.WaitOne(0)
             if (-not $e2eMutexAcquired) {
-                Phase "e2e gate: queued behind another full gate run (waiting on $e2eMutexName)..."
-                Log-Progress "e2e gate: queued -- another verify-before-ship full e2e run holds $e2eMutexName"
+                Phase "e2e gate: queued behind another dual-projection gate run (waiting on $e2eMutexName)..."
+                Log-Progress "e2e gate: queued -- another verify-before-ship dual-projection e2e run holds $e2eMutexName"
                 $e2eMutexAcquired = $e2eMutex.WaitOne([TimeSpan]::FromMinutes(30))
                 if (-not $e2eMutexAcquired) {
                     $e2eMutex.Dispose()
-                    Fail ("Timed out after 30 min waiting for another full e2e gate run to release " +
+                    Fail ("Timed out after 30 min waiting for another dual-projection e2e gate run to release " +
                           "$e2eMutexName -- check for a stuck/hung gate elsewhere on this machine (issue #685).")
                 }
                 Log-Progress "e2e gate: acquired $e2eMutexName after queueing"
@@ -137,12 +132,12 @@ try {
             # (#184).
             $verbosity = if ($env:CI -eq "true") { "-v" } else { "-q" }
             if ($env:CI -eq "true") { $env:PYTHONUNBUFFERED = "1" }
-            $e2eArgs = @($e2eTarget, $verbosity)
-            foreach ($b in ($e2eBrowsers -split ',' | Where-Object { $_ })) {
+            $e2eArgs = @($route.Targets) + @($verbosity)
+            foreach ($b in @($route.Browsers)) {
                 $e2eArgs += @("--browser", $b)
             }
             $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
-            Phase "pytest e2e ($e2eTarget, $projLabel, auto-booted)..."
+            Phase "pytest e2e ($e2eTargetLabel, $projLabel, auto-booted)..."
             try {
                 & $python -m pytest @e2eArgs
                 $e2eExit = $LASTEXITCODE
