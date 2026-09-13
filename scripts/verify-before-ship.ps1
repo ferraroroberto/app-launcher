@@ -20,7 +20,7 @@ $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # Persistent progress log (issue #534): phase markers land here from this
-# script, per-test START/DONE lines from the pytest hook in tests/conftest.py
+# script, per-test START/DONE lines from the pytest hook in tests/_progress_log.py
 # (via LAUNCHER_VERIFY_PROGRESS_LOG). If an outer timeout kills the gate, the
 # last lines name the active phase + node id and the per-test timings survive.
 # Gitignored via the blanket *.log rule; overwritten each run.
