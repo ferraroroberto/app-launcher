@@ -38,10 +38,42 @@ export function mirrorDocTitle(sid, title) {
 // 'tailnet', not 'loopback' — requiring loopback here left every ts.net
 // mirror unmarked (no EnumWindows match) and un-self-closing (issue #371).
 export function isMirrorWindowSession() {
-  const reason = state.status && state.status.terminal &&
+  return !!state.isMirrorWindow && isMirrorOrigin(terminalReason());
+}
+
+function terminalReason() {
+  return state.status && state.status.terminal &&
     state.status.terminal.reason;
-  return !!state.isMirrorWindow &&
-    (reason === 'loopback' || reason === 'tailnet');
+}
+
+function isMirrorOrigin(reason) {
+  return reason === 'loopback' || reason === 'tailnet';
+}
+
+// The page title a boot-time marker replaced, so dropEarlyMirrorMarker can
+// put it back; null when no early marker is in place.
+let _preMarkerTitle = null;
+
+// Stamp the bare close marker the moment boot() sees ?terminal=<sid>, before
+// any network call (issue #940). A mirror window whose /api/config 401s stops
+// boot() early and never reaches announceMirrorWindow, so without this it has
+// no title the launcher's Stop & Close / orphan sweep can match, and lingers
+// on the desktop. announceMirrorWindow later replaces it with the human title.
+export function markMirrorWindowEarly(sid) {
+  _preMarkerTitle = document.title;
+  document.title = mirrorDocTitle(sid, '');
+}
+
+// A ?terminal= page that turns out not to be a mirror (a non-mirror origin)
+// must not keep the marker, or the orphan sweep could WM_CLOSE a window that
+// isn't ours. Only drops it once the origin is actually known — an unresolved
+// /api/status keeps the marker, so a real mirror stays closable.
+export function dropEarlyMirrorMarker() {
+  if (_preMarkerTitle === null) return;
+  const reason = terminalReason();
+  if (!reason || isMirrorOrigin(reason)) return;
+  document.title = _preMarkerTitle;
+  _preMarkerTitle = null;
 }
 
 // Set the overlay header's title text, prepending the fleet chief's crown
