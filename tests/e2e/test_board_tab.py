@@ -789,6 +789,43 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     )
 
 
+def test_backlog_issue_claim_states_stale_and_unverified(
+    authed_page: Page, base_url: str
+) -> None:
+    """#948: a claim whose owner lane is provably gone reads as a stale claim
+    and stays startable; an unverifiable owner keeps the in-progress lock but
+    says so."""
+    payload = _board_payload()
+    payload["columns"]["backlog"][0].update(in_progress=False, claim_state="dead")
+    payload["columns"]["backlog"].append({
+        "kind": "issue", "repo": "app-launcher", "number": 302,
+        "title": "An owner-less legacy claim", "url": "https://example.test/302",
+        "updated_at": "2026-07-01T11:00:00Z", "labels": ["enhancement"],
+        "in_progress": True, "claim_state": "unknown",
+    })
+    _mock_apps_with_app_launcher(authed_page)
+    _mock_board(authed_page, payload)
+    _open_board(authed_page, base_url)
+    _switch_to_backlog(authed_page)
+
+    stale = authed_page.locator(
+        '.board-list[data-col="backlog"] li.board-item', has_text="#301"
+    )
+    unverified = authed_page.locator(
+        '.board-list[data-col="backlog"] li.board-item', has_text="#302"
+    )
+    expect(stale).to_be_visible(timeout=15_000)
+    expect(stale.locator(".board-card-meta-inline")).to_contain_text("stale claim")
+    expect(stale).not_to_have_class(re.compile(r"\bis-in-progress\b"))
+    expect(stale.locator(".board-issue-btn").first).to_be_enabled()
+
+    expect(unverified.locator(".board-card-meta-inline")).to_contain_text(
+        "in progress (unverified)"
+    )
+    expect(unverified).to_have_class(re.compile(r"\bis-in-progress\b"))
+    expect(unverified.locator(".board-issue-btn").first).to_be_disabled()
+
+
 def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     authed_page: Page, base_url: str
 ) -> None:

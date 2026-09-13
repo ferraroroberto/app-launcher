@@ -501,7 +501,12 @@ async function startIssue(card, mode, btn) {
 function renderIssueCard(card) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-issue';
+  // Claim owner liveness (#948): 'dead' is a provably gone lane — not in
+  // progress, startable again; 'unknown' keeps the in-progress lock but says
+  // the owner could not be verified.
   const isInProgress = card.in_progress === true;
+  const claimUnverified = isInProgress && card.claim_state === 'unknown';
+  const claimStale = card.claim_state === 'dead';
   if (isInProgress) li.classList.add('is-in-progress');
 
   const btn = document.createElement('button');
@@ -512,7 +517,9 @@ function renderIssueCard(card) {
   const meta = document.createElement('span');
   meta.className = 'board-card-meta-inline';
   meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  if (isInProgress) meta.textContent += ' · in progress';
+  if (claimUnverified) meta.textContent += ' · in progress (unverified)';
+  else if (isInProgress) meta.textContent += ' · in progress';
+  else if (claimStale) meta.textContent += ' · stale claim';
   // Repo-state colour (#496 item 4): red = dirty working tree, yellow =
   // parked off the default branch — "don't start this issue right now".
   // Same precedence as the Coding tiles: red wins when both apply.
@@ -550,7 +557,8 @@ function renderIssueCard(card) {
       actionBtn.innerHTML = icon(pair[1]);
       actionBtn.disabled = isInProgress;
       actionBtn.title = isInProgress
-        ? 'Issue #' + card.number + ' is already in progress'
+        ? 'Issue #' + card.number + ' is already in progress' +
+          (claimUnverified ? ' (owner unverified)' : '')
         : '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
       actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
       actionBtn.addEventListener('click', function () {

@@ -61,7 +61,15 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import agents, audit, board, github_client, quota_usage, session_client
+from src import (
+    active_issue_claims,
+    agents,
+    audit,
+    board,
+    github_client,
+    quota_usage,
+    session_client,
+)
 from src.board_exchange import resolve_exchange, unavailable
 from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
@@ -166,15 +174,33 @@ def _refresh_codex_for_lines(
 
 
 def _mark_active_backlog(
-    columns: Dict[str, List[Dict[str, Any]]], active_rows: Dict[str, Any]
+    columns: Dict[str, List[Dict[str, Any]]],
+    active_rows: Dict[str, Any],
+    claim_states: Dict[str, str],
 ) -> None:
-    """Annotate each backlog card from the shared ``repo#number`` mapping."""
-    active_keys = {str(key).lower() for key in active_rows}
+    """Annotate each backlog card from the shared ``repo#number`` mapping.
+
+    ``claim_state`` is ``None`` (no claim) or the row owner's ``live`` /
+    ``dead`` / ``unknown`` verdict (#948). A ``dead`` claim is a lane that
+    is provably gone, so the card is not ``in_progress``; ``unknown`` (an
+    owner-less row, or liveness that could not be read) keeps the pre-#948
+    ``in_progress`` behaviour and the UI flags it unverified.
+    """
+    active_keys = {str(key).lower(): key for key in active_rows}
     for card in columns.get("backlog", []):
         repo = str(card.get("repo") or "").strip().lower()
         number = card.get("number")
         key = f"{repo}#{number}" if repo and isinstance(number, int) else ""
-        card["in_progress"] = key in active_keys
+        row_key = active_keys.get(key)
+        state = (
+            claim_states.get(row_key, active_issue_claims.CLAIM_UNKNOWN)
+            if row_key is not None
+            else None
+        )
+        card["claim_state"] = state
+        card["in_progress"] = state in (
+            active_issue_claims.CLAIM_LIVE, active_issue_claims.CLAIM_UNKNOWN
+        )
 
 
 @router.get("/api/board")
@@ -194,16 +220,26 @@ async def get_board(request: Request) -> Dict[str, Any]:
     live, live_error = live_read
 
     live = board_chief._reconcile_chief_labels(live, state["rows"])
+    # Claim owner liveness (#948): an unreadable session list is None, so the
+    # contract answers unknown rather than calling every owner dead.
+    claim_states = await asyncio.to_thread(
+        active_issue_claims.classify_claims,
+        active_issues["rows"],
+        live_session_ids=(
+            board._live_launcher_session_ids(live) if live_error is None else None
+        ),
+        fleet_config_dir=Path(cfg.claude_config_dir),
+    )
     # Per-card transcript reads — unbounded in session count and re-run every
     # 5s while the Board is open, so it goes off the loop like the five
     # inputs above (#881).
     session_cards = await asyncio.to_thread(
         board.merge_sessions,
         live, state["rows"],
-        active_issue_repos=board.active_issue_repos(active_issues["rows"]),
+        active_issue_repos=board.active_issue_repos(active_issues["rows"], claim_states),
     )
     columns = board.build_board(session_cards, github, job_cards)
-    _mark_active_backlog(columns, active_issues["rows"])
+    _mark_active_backlog(columns, active_issues["rows"], claim_states)
     _refresh_codex_for_lines(cfg, quota_lines)
 
     return {
