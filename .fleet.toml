@@ -11,3 +11,260 @@ description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs �
 switch = { src = "app/webapp/static/_vendored/switch", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/switch" }
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
+
+# ---------------------------------------------------------------------------
+# [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
+# browser phase (#568, migrated to the scaffold classifier in #955).
+# scripts/classify_e2e.py is project-scaffolding's classifier copied
+# byte-verbatim (`e2e_route.py bootstrap`); every app-launcher routing decision
+# lives here. Schema: project-scaffolding docs/e2e-routing.md.
+#
+# Rules are tried top to bottom, first match wins. A path no rule matches is
+# "unclassified" and runs the whole dual-projection suite: uncertainty always
+# escalates, never narrows. Labels are echoed into E2E_REASON, and the gate's
+# session-host warning keys on the "session-host" labels below, so keep them.
+[e2e]
+static_pytest_target = "tests/e2e/test_smoke.py"
+static_browsers       = ["chromium"]
+full_pytest_target    = "tests/e2e"
+
+# --- static assets under the webapp's static dir -> Chromium smoke ----------
+[[e2e.rule]]
+tier       = "static"
+prefix     = "app/webapp/static/"
+extensions = ["svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "avif", "woff", "woff2", "ttf", "eot", "otf", "webmanifest"]
+label      = "static-asset"
+# A vendored HTML *fragment* (e.g. the icons sprite) is pure markup the smoke
+# suite loads, with no behaviour of its own. Non-vendored .html (index.html,
+# spike pages) are real app pages and fall through to full below.
+[[e2e.rule]]
+tier       = "static"
+prefix     = "app/webapp/static/_vendored/"
+extensions = ["html"]
+label      = "static-asset"
+
+# --- the real browser surface -> full ---------------------------------------
+# CSS routes full rather than to a curated "layout subset": styles.css is
+# global and WebKit is exactly where layout regressions surface, so a
+# hand-kept subset would be drift-prone and an under-testing risk.
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/webapp/static/"
+label  = "webapp-static-code"
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/webapp/"
+label  = "webapp"
+
+# --- session-host / launcher on the e2e surface -> full ---------------------
+# The e2e suite drives a live session-host, so every module it loads is
+# browser surface: the CLAUDE.md `## session-host` import closure (#881, #923),
+# plus the launcher entry points. Kept as literal paths rather than parsed
+# from CLAUDE.md at classify time on purpose -- a parse failure would narrow
+# routing silently. tests/test_classify_e2e.py walks that CLAUDE.md block and
+# fails when a declared path stops routing full.
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/session_host/"
+label  = "session-host"
+[[e2e.rule]]
+tier = "full"
+path = "src/session_client.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/launcher.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/vt_snapshot.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/__init__.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/agents.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/app_config.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/audit.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/build_info.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/diagnostics.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/env_path.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/git_utils.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/subprocess_flags.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "launcher.py"
+label = "session-host/launcher"
+# A prefix, not a list, so a future split of the session host
+# (e.g. src/session_host_pty.py) routes full without an edit here.
+[[e2e.rule]]
+tier       = "full"
+prefix     = "src/session_host"
+extensions = ["py"]
+label      = "session-host/launcher"
+
+# --- the e2e suite itself, and the shared root conftest -> full -------------
+[[e2e.rule]]
+tier   = "full"
+prefix = "tests/e2e/"
+label  = "e2e-test"
+[[e2e.rule]]
+tier  = "full"
+path  = "tests/conftest.py"
+label = "shared-conftest"
+
+# --- no browser impact -> no browser suite ----------------------------------
+# Deliberate #568 decision, not an oversight: backend src/ code off the
+# session-host path has no browser surface of its own. The non-e2e pytest
+# suite (TestClient etc.) covers it, and that phase always runs. Do not
+# "fix" this by routing all of src/ to full.
+[[e2e.rule]]
+tier       = "none"
+prefix     = "src/"
+extensions = ["py"]
+label      = "backend-python"
+[[e2e.rule]]
+tier       = "none"
+prefix     = "tests/"
+extensions = ["py"]
+label      = "non-e2e-test"
+[[e2e.rule]]
+tier       = "none"
+extensions = ["md"]
+label      = "docs"
+[[e2e.rule]]
+tier   = "none"
+prefix = "docs/"
+label  = "docs"
+[[e2e.rule]]
+tier   = "none"
+prefix = "scripts/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier   = "none"
+prefix = "config/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier   = "none"
+prefix = ".github/"
+label  = "tooling/config"
+[[e2e.rule]]
+tier  = "none"
+path  = ".fleet.toml"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = ".gitignore"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "LICENSE"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "AGENTS.md"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = "CLAUDE.md"
+label = "repo-meta"
+[[e2e.rule]]
+tier       = "none"
+extensions = ["bat"]
+label      = "repo-meta"
+
+# --- surfaces (#955, project-scaffolding#258) -------------------------------
+# A diff that would route "full" but whose every full- or static-tier path
+# sits in ONE surface below runs only that surface's pytest_targets, on both
+# projections. A surface owns a tab's own modules and its own tests, nothing
+# shared: styles.css, index.html, main.js/state.js/api.js/tabs.js and the other
+# shared JS, server.py, the session-host paths and both conftests stay out of
+# every surface, so a change there still runs the whole suite. So do a path in
+# two surfaces, a diff spanning two, any unclassified path, and any diff that
+# edits this file or the classifier.
+#
+# Targets are wider than the owned tests on purpose. Each tab module is
+# imported by main.js, so a broken one takes the whole SPA down: test_smoke,
+# test_primary_nav and test_bottom_tab_bar catch that. test_coding_model_selector
+# drives both tabs' model combos (claude-options.js imports them), and
+# test_terminal_bar_overflow shares the terminal bar's classes with the Life OS
+# doc-browser bar and mirrors the board carousel's overflow pattern.
+# tests/test_classify_e2e.py pins every surface with a narrowing path and a
+# shared path that must stay full, and checks that every e2e test naming a
+# surface module is in that surface's targets.
+
+# The Board tab: kanban + drawer (board.js), the dispatch bar and fleet-chief
+# lifecycle (board-dispatch.js), and their routers. test_coding_chief drives the
+# chief from the Coding tab through board-dispatch.js; test_session_rename and
+# test_shared_session_title render board cards.
+[[e2e.surface]]
+name     = "board"
+paths    = [
+    "app/webapp/static/board.js",
+    "app/webapp/static/board-dispatch.js",
+    "app/webapp/routers/board.py",
+    "app/webapp/routers/board_chief.py",
+    "app/webapp/routers/board_spawn.py",
+    "tests/e2e/test_board_tab.py",
+    "tests/e2e/test_board_chief.py",
+]
+pytest_targets = [
+    "tests/e2e/test_board_tab.py",
+    "tests/e2e/test_board_chief.py",
+    "tests/e2e/test_coding_chief.py",
+    "tests/e2e/test_session_rename.py",
+    "tests/e2e/test_shared_session_title.py",
+    "tests/e2e/test_coding_model_selector.py",
+    "tests/e2e/test_terminal_bar_overflow.py",
+    "tests/e2e/test_primary_nav.py",
+    "tests/e2e/test_bottom_tab_bar.py",
+    "tests/e2e/test_smoke.py",
+]
+
+# The Life OS tab: skills list, conversations and the doc browser (life-os.js)
+# and their routers. test_markdown_link_rendering imports life-os.js directly.
+[[e2e.surface]]
+name     = "lifeos"
+paths    = [
+    "app/webapp/static/life-os.js",
+    "app/webapp/routers/life_os.py",
+    "app/webapp/routers/life_os_conversations.py",
+    "app/webapp/routers/life_os_files.py",
+    "app/webapp/routers/life_os_spawn.py",
+    "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_markdown_link_rendering.py",
+]
+pytest_targets = [
+    "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_markdown_link_rendering.py",
+    "tests/e2e/test_collapsible_other_tabs.py",
+    "tests/e2e/test_coding_model_selector.py",
+    "tests/e2e/test_terminal_bar_overflow.py",
+    "tests/e2e/test_primary_nav.py",
+    "tests/e2e/test_bottom_tab_bar.py",
+    "tests/e2e/test_smoke.py",
+]

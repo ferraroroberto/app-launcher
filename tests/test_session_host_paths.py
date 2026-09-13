@@ -51,7 +51,7 @@ class TestDeclaredSessionHostPaths:
         assert not undeclared, (
             f"{undeclared} are imported by the session-host but not declared in "
             "CLAUDE.md's ## session-host block. Add them there (see its 'path "
-            "list' bullet) and to scripts/classify_e2e.py's _FULL_SRC_PY_EXACT."
+            "list' bullet) and as a full-tier path rule in .fleet.toml's [e2e] table."
         )
 
     def test_declaration_names_nothing_the_session_host_does_not_load(self):
