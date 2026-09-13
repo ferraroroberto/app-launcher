@@ -17,7 +17,6 @@ import json
 import os
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Iterator
 from unittest.mock import MagicMock
@@ -67,50 +66,16 @@ os.environ.setdefault(
 # runtime-data redirect above, since it pulls in `src.webapp_config`.
 from tests._credential_hygiene import pytest_runtest_makereport  # noqa: E402,F401
 
-
-# ------------------------------------------------- gate progress log (#534)
-# When the pre-ship gate (scripts/verify-before-ship.ps1) sets
-# LAUNCHER_VERIFY_PROGRESS_LOG, every test's start and finish is appended —
-# and flushed — to that file as it happens. A gate that wedges or is killed
-# by an outer timeout then leaves the ACTIVE node id (last START without a
-# DONE), per-test totals (setup+call+teardown, so fixture cost is visible),
-# and a slowest-tests summary on disk, instead of an opaque dead console.
-# Inert for normal pytest runs (env var absent → every hook no-ops).
-
-_PROGRESS_ENV = "LAUNCHER_VERIFY_PROGRESS_LOG"
-_progress_t0 = time.monotonic()
-_progress_node_totals: dict = {}
-_progress_durations: list = []
-
-
-def _progress_write(line: str) -> None:
-    path = os.environ.get(_PROGRESS_ENV, "").strip()
-    if not path:
-        return
-    stamp = time.strftime("%H:%M:%S")
-    elapsed = time.monotonic() - _progress_t0
-    try:
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(f"[{stamp} +{elapsed:7.1f}s] {line}\n")
-    except OSError:  # never let diagnostics fail the run
-        pass
-
-
-def pytest_runtest_logstart(nodeid, location) -> None:
-    _progress_write(f"START {nodeid}")
-
-
-def pytest_runtest_logreport(report: pytest.TestReport) -> None:
-    total = _progress_node_totals.get(report.nodeid, 0.0) + report.duration
-    _progress_node_totals[report.nodeid] = total
-    if report.when in ("setup", "call") and report.outcome != "passed":
-        # skipped / failed / errored — name the phase so a fixture skip is
-        # distinguishable from an assertion failure.
-        _progress_write(f"{report.outcome.upper()} ({report.when}) {report.nodeid}")
-    if report.when == "teardown":
-        _progress_node_totals.pop(report.nodeid, None)
-        _progress_durations.append((total, report.nodeid))
-        _progress_write(f"DONE  {report.nodeid} ({total:.1f}s)")
+# Gate progress log (issues #534, #943): per-test START/DONE lines, a bounded
+# traceback excerpt under each FAILED line, and a slowest-tests summary, written
+# to LAUNCHER_VERIFY_PROGRESS_LOG when the pre-ship gate sets it. Re-exported so
+# pytest registers the hooks from this conftest; the summary is written from
+# `pytest_sessionfinish` below.
+from tests import _progress_log  # noqa: E402
+from tests._progress_log import (  # noqa: E402,F401
+    pytest_runtest_logreport,
+    pytest_runtest_logstart,
+)
 
 
 # --- tests/ source-mutation guard (#822) -------------------------------------
@@ -198,14 +163,7 @@ def _check_test_sources_unmodified(session) -> None:
 
 def pytest_sessionfinish(session, exitstatus) -> None:
     _check_test_sources_unmodified(session)
-    if not os.environ.get(_PROGRESS_ENV, "").strip():
-        return
-    _progress_write(f"pytest session finished (exit status {exitstatus})")
-    slowest = sorted(_progress_durations, key=lambda t: t[0], reverse=True)[:15]
-    if slowest:
-        _progress_write("slowest tests (setup+call+teardown):")
-        for duration, nodeid in slowest:
-            _progress_write(f"  {duration:7.1f}s  {nodeid}")
+    _progress_log.write_session_summary(exitstatus)
 
 
 @pytest.fixture
