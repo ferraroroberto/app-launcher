@@ -20,6 +20,7 @@ import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
 import { openTerminal, wireTerminal } from './terminal.js';
+import { markMirrorWindowEarly } from './terminal-mirror.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
@@ -181,6 +182,10 @@ async function boot() {
   // Recording only the former here is what lets terminal.js tell a real
   // mirror apart from an ordinary browser (issues #241/#877).
   state.isMirrorWindow = !!mirrorSid;
+  // Mark the window closable before the first network call: a mirror whose
+  // /api/config 401s returns below and never reaches announceMirrorWindow
+  // (issue #940). ?session= links stay unmarked.
+  if (mirrorSid) markMirrorWindowEarly(mirrorSid);
 
   try {
     await fetchConfig();

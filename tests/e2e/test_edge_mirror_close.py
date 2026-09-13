@@ -27,7 +27,7 @@ the Windows/PTI title bar), e.g. ``"fix the login bug — app-launcher-mirror-
 from __future__ import annotations
 
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
@@ -90,3 +90,63 @@ def test_mirror_marker_applies_on_tailnet_origin(
         f"() => document.title.endsWith({marker!r})",
         timeout=5_000,
     )
+
+
+# Issue #940: the marker must not depend on boot() getting past /api/config.
+# These pages never open a real terminal, so a synthetic sid is enough.
+_SIGNED_OUT_SID = "s-signed-out-940"
+
+
+def _config_401(route) -> None:
+    route.fulfill(status=401, json={"detail": "auth required"})
+
+
+def test_signed_out_mirror_still_carries_close_marker(
+    authed_page: Page, base_url: str
+) -> None:
+    """A ?terminal= mirror whose /api/config 401s stops boot() early and never
+    reaches announceMirrorWindow. The marker has to be in place before that
+    call, or Stop & Close and the orphan sweep cannot find the window."""
+    authed_page.route("**/api/config", _config_401)
+    authed_page.goto(
+        f"{base_url}/?terminal={_SIGNED_OUT_SID}", wait_until="domcontentloaded"
+    )
+    # The login overlay is what a 401 raises, so boot() has already returned.
+    expect(authed_page.locator("#loginOverlay")).to_be_visible()
+    expect(authed_page).to_have_title(f"app-launcher-mirror-{_SIGNED_OUT_SID}")
+
+
+@pytest.mark.parametrize(
+    "query", [f"?session={_SIGNED_OUT_SID}", ""], ids=["shared-link", "plain"]
+)
+def test_signed_out_non_mirror_page_stays_unmarked(
+    authed_page: Page, base_url: str, query: str
+) -> None:
+    """The human-shareable ?session= link and a plain open are never mirrors
+    (#241/#877); the early marker must not land on them either."""
+    authed_page.route("**/api/config", _config_401)
+    authed_page.goto(f"{base_url}/{query}", wait_until="domcontentloaded")
+    expect(authed_page.locator("#loginOverlay")).to_be_visible()
+    expect(authed_page).to_have_title("Launcher")
+
+
+def test_terminal_link_on_unreachable_origin_sheds_early_marker(
+    authed_page: Page, base_url: str
+) -> None:
+    """A ?terminal= page on an origin that cannot reach the terminal (the
+    public tunnel) is not a mirror. It must drop the boot-time marker, or the
+    orphan sweep could close a window that is not ours."""
+
+    def via_tunnel(route):
+        route.fulfill(
+            json={"terminal": {"reachable": False, "reason": "tunnel-only"}}
+        )
+
+    authed_page.route("**/api/status", via_tunnel)
+    authed_page.goto(
+        f"{base_url}/?terminal={_SIGNED_OUT_SID}", wait_until="domcontentloaded"
+    )
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible(
+        timeout=OVERLAY_OPEN_MS
+    )
+    expect(authed_page).to_have_title("Launcher")

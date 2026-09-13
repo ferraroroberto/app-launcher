@@ -25,6 +25,7 @@ import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
   announceMirrorWindow,
+  dropEarlyMirrorMarker,
   isMirrorWindowSession,
   mirrorDocTitle,
   refreshTerminalTitle,
@@ -298,6 +299,8 @@ export async function openTerminal(session) {
     document.body.classList.add('terminal-open');
     lockBodyScroll();
     setTerminalTitleText(session);
+    // An unreachable origin is never a mirror: shed a ?terminal= marker (#940).
+    dropEarlyMirrorMarker();
     setTerminalStatus(
       state.status.terminal.reason ||
         'The live terminal is Tailscale-only.',
