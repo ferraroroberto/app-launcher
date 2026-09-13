@@ -26,7 +26,7 @@ import pytest
 
 from app.webapp.routers import board as board_router
 from app.webapp.routers import board_spawn
-from src import board, board_transcript, github_client, quota_usage
+from src import active_issue_claims, board, board_transcript, github_client, quota_usage
 
 
 def _iso(moment: datetime) -> str:
@@ -1089,6 +1089,133 @@ def test_active_issue_repos_lowercases_and_dedupes():
         "bad-row": {"number": 1},
     }
     assert board.active_issue_repos(rows) == frozenset({"app-launcher", "reporting"})
+
+
+# ------------------------------------------------ active-issue claims (#948)
+
+# A stand-in for fleet-config's skills/_lib/active_issue.py contract: the real
+# classifier's semantics are fleet-config#852's to test; these pin only how
+# the Board consumes whatever verdict it returns.
+_FAKE_CLAIM_CONTRACT = '''
+def current_host():
+    return "HOST"
+
+def pid_state(pid):
+    return None
+
+def classify_owner(row, *, live_session_ids, pid_probe, host):
+    assert pid_probe is pid_state and host == "HOST"
+    sid = row.get("owner_session_id")
+    if sid == "raise":
+        raise RuntimeError("boom")
+    if sid == "bogus":
+        return "zombie"
+    if not sid or live_session_ids is None:
+        return "unknown"
+    return "live" if sid in live_session_ids else "dead"
+'''
+
+
+def _claim_contract(tmp_path: Path) -> Path:
+    fleet_config = tmp_path / "fleet-config"
+    lib = fleet_config / "skills" / "_lib"
+    lib.mkdir(parents=True)
+    (lib / "active_issue.py").write_text(_FAKE_CLAIM_CONTRACT, encoding="utf-8")
+    return fleet_config
+
+
+def test_classify_claims_maps_each_row_through_the_contract(tmp_path: Path):
+    rows = {
+        "a#1": {"repo": "a", "number": 1, "owner_session_id": "alive"},
+        "a#2": {"repo": "a", "number": 2, "owner_session_id": "gone"},
+        "a#3": {"repo": "a", "number": 3},
+        "a#4": {"repo": "a", "number": 4, "owner_session_id": "raise"},
+        "a#5": {"repo": "a", "number": 5, "owner_session_id": "bogus"},
+    }
+    states = active_issue_claims.classify_claims(
+        rows, live_session_ids={"alive"}, fleet_config_dir=_claim_contract(tmp_path)
+    )
+    assert states == {
+        "a#1": "live", "a#2": "dead", "a#3": "unknown",
+        # A classifier that raises or answers outside the contract is unknown,
+        # never folded into either verdict.
+        "a#4": "unknown", "a#5": "unknown",
+    }
+
+
+def test_classify_claims_unreadable_session_list_is_unknown(tmp_path: Path):
+    rows = {"a#2": {"repo": "a", "number": 2, "owner_session_id": "gone"}}
+    states = active_issue_claims.classify_claims(
+        rows, live_session_ids=None, fleet_config_dir=_claim_contract(tmp_path)
+    )
+    assert states == {"a#2": "unknown"}
+
+
+def test_classify_claims_missing_contract_is_unknown_not_dead(tmp_path: Path, caplog):
+    rows = {"a#2": {"repo": "a", "number": 2, "owner_session_id": "gone"}}
+    with caplog.at_level(logging.WARNING):
+        states = active_issue_claims.classify_claims(
+            rows, live_session_ids=set(), fleet_config_dir=tmp_path / "no-fleet-config"
+        )
+    assert states == {"a#2": "unknown"}
+    assert "claims unverified" in caplog.text
+
+
+def test_mark_active_backlog_three_claim_states():
+    columns = {"backlog": [
+        {"repo": "App-Launcher", "number": n} for n in (1, 2, 3, 4, 5)
+    ]}
+    rows = {
+        "app-launcher#1": {}, "app-launcher#2": {}, "app-launcher#3": {},
+        "app-launcher#5": {},
+    }
+    claim_states = {
+        "app-launcher#1": "live", "app-launcher#2": "dead",
+        "app-launcher#3": "unknown",
+        # #5 has a row but no verdict: unknown, never an unclaimed card.
+    }
+    board_router._mark_active_backlog(columns, rows, claim_states)
+    seen = [(c["claim_state"], c["in_progress"]) for c in columns["backlog"]]
+    assert seen == [
+        ("live", True),
+        ("dead", False),      # the owner is provably gone: a stale claim
+        ("unknown", True),    # pre-#948 behaviour, flagged unverified
+        (None, False),        # no claim at all
+        ("unknown", True),
+    ]
+
+
+def test_active_issue_repos_drops_only_dead_claims():
+    rows = {
+        "a#1": {"repo": "a", "number": 1},
+        "b#1": {"repo": "b", "number": 1},
+        "c#1": {"repo": "c", "number": 1},
+        "c#2": {"repo": "c", "number": 2},
+    }
+    states = {"a#1": "dead", "b#1": "unknown", "c#1": "dead", "c#2": "live"}
+    assert board.active_issue_repos(rows, states) == frozenset({"b", "c"})
+
+
+def test_dead_claim_no_longer_holds_finished_session_awaiting_input(tmp_path: Path):
+    """#948 on #627's downgrade: a repo whose only claim is dead lets a
+    genuinely finished session read idle-finished again."""
+    row = _state_row("E:/automation/app-launcher", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=5)
+    )
+    live = [_live("aaa", "E:/automation/app-launcher", 30)]
+    claims = {"app-launcher#9": {"repo": "app-launcher", "number": 9}}
+
+    held = board.merge_sessions(
+        live, {"t": dict(row)}, now=NOW,
+        active_issue_repos=board.active_issue_repos(claims, {"app-launcher#9": "unknown"}),
+    )
+    released = board.merge_sessions(
+        live, {"t": dict(row)}, now=NOW,
+        active_issue_repos=board.active_issue_repos(claims, {"app-launcher#9": "dead"}),
+    )
+    assert held[0]["status"] == "awaiting-input"
+    assert released[0]["status"] == "idle-finished"
 
 
 def test_overlay_missing_transcript_keeps_hook_status(tmp_path: Path):
@@ -2170,6 +2297,50 @@ def test_api_board_marks_active_backlog_issue(
     assert body["active_issues"]["available"] is True
     assert body["active_issues"]["count"] == 1
     assert body["columns"]["backlog"][0]["in_progress"] is True
+
+
+def test_api_board_exposes_claim_state_per_backlog_card(
+    webapp_client, monkeypatch, tmp_path
+):
+    """#948: the owner's live-session verdict reaches every backlog card, and
+    an unreadable session list never turns a claim into a dead one."""
+    from src.session_client import SessionHostError
+
+    client, app, overrides = webapp_client
+    fake = _FakeGh()
+    monkeypatch.setattr(github_client.subprocess, "run", fake)
+    github_client.refresh("ferraroroberto")
+    app.state.webapp_config.claude_config_dir = str(_claim_contract(tmp_path))
+
+    active_file = Path(app.state.webapp_config.sessions_state_file).with_name(
+        "active-issues.json"
+    )
+
+    def _claim(owner):
+        active_file.write_text(json.dumps({"app-launcher#164": {
+            "repo": "app-launcher", "number": 164, "branch": "feat/164-board",
+            "started_at": _iso(datetime.now(timezone.utc)),
+            **({"owner_session_id": owner} if owner else {}),
+        }}), encoding="utf-8")
+
+    def _card():
+        return client.get("/api/board").json()["columns"]["backlog"][0]
+
+    overrides["session"].list_sessions.return_value = [
+        {"session_id": "owner-1", "alive": True, "kind": "pty", "project_dir": "E:/x"},
+    ]
+    _claim("owner-1")
+    assert (_card()["claim_state"], _card()["in_progress"]) == ("live", True)
+
+    _claim("owner-gone")
+    assert (_card()["claim_state"], _card()["in_progress"]) == ("dead", False)
+
+    _claim(None)
+    assert (_card()["claim_state"], _card()["in_progress"]) == ("unknown", True)
+
+    _claim("owner-gone")
+    overrides["session"].list_sessions.side_effect = SessionHostError("down")
+    assert (_card()["claim_state"], _card()["in_progress"]) == ("unknown", True)
 
 
 def test_api_board_quota_lines_present(webapp_client):

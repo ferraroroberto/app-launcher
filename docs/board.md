@@ -16,7 +16,7 @@ Column assembly is pure logic in `src/board.py::build_board()`. Each column hold
 | **Other** | Open PRs, then today's failed / unconfirmed / stuck job runs — everything else that needs attention but isn't a terminal. An `unconfirmed` card (#916) is a run whose exit code says the scheduled-run adapter could not establish whether it delivered: it still wants a look, so it keeps its card, but it carries the `--attention` accent and a `?` glyph rather than the failure red, and its `error` field holds the exit code's own one-line meaning. See [jobs-tab.md](jobs-tab.md) "Terminal outcomes". |
 | **Done** | Today's closed issues, since local midnight. |
 
-**Backlog** cards render thin (repo · #N · title · age) and link out to GitHub. A Backlog card whose repo is present in the projects folder additionally carries **▶ Start / ⚡ YOLO** (see "One-tap issue start" below). If fleet-config's issue workflows have an active marker for the same `<repo>#<number>`, the row gains the accent-soft tint and an explicit “in progress” label, and both launch buttons are truly disabled (#528).
+**Backlog** cards render thin (repo · #N · title · age) and link out to GitHub. A Backlog card whose repo is present in the projects folder additionally carries **▶ Start / ⚡ YOLO** (see "One-tap issue start" below). If fleet-config's issue workflows have an active marker for the same `<repo>#<number>`, the row gains the accent-soft tint and an explicit “in progress” label, and both launch buttons are truly disabled (#528). A marker whose owner lane is provably gone reads “stale claim” instead and stays startable; one whose owner can't be verified keeps the lock and reads “in progress (unverified)” (#948, see the lifecycle join below).
 
 **Done is issues only** (#399): a merged PR that closed an issue is already reflected by that issue showing closed, so there is no PR/issue pairing step any more — `src/github_client.py::search_done_today()` is just the closed-issues search.
 
@@ -36,7 +36,7 @@ All Board routes live in `app/webapp/routers/board.py`, except the `/api/board/c
 | `POST /api/board/chief/ensure` | Tailscale + passkey | Spawn the fleet chief if none is alive (`?fresh=1` kills + respawns — a manual operator action only, #616) — see "The fleet chief" below. |
 | `GET/PUT /api/board/chief/settings` | Tailscale + passkey | The chief settings block (model / worker cap). Also read by the `/chief` skill over loopback. |
 
-The `GET /api/board` response is `{ generated_at, columns, github: {available, fetched_at, error}, live_sessions: {available, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, quota_lines: [...] }`. **`github.available: false` means the Backlog and Done lists — and the PR half of Other — are unknown, not empty** (#910): see "Refresh / cache contract" below. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress`.
+The `GET /api/board` response is `{ generated_at, columns, github: {available, fetched_at, error}, live_sessions: {available, error}, sessions_state: {available, stale, updated_at}, active_issues: {available, updated_at, count}, quota_lines: [...] }`. **`github.available: false` means the Backlog and Done lists — and the PR half of Other — are unknown, not empty** (#910): see "Refresh / cache contract" below. Each session card carries its raw session fields plus `project`, `status`, and `age_seconds`; each Backlog issue carries a boolean `in_progress` and a `claim_state` (`null` with no marker, else `live` / `dead` / `unknown`, #948).
 
 **`live_sessions.available: false` means the session-host list could not be read** (#915), with the reason in `error`. Claude's turn and Your turn are then unknown, not empty: an empty one shows `—` instead of `0` and "Session-host unreachable — sessions unknown." instead of its usual text, and the status line says the session-host is unreachable. **"Nothing needs you right now." is reachable only from a session list actually read.** A live column can still hold external cards (hook state backed by a fresh transcript) while the session-host is down; those count as a real lower bound. The failure logs one warning when the session-host goes unreadable and an info breadcrumb when it recovers, not one line per 5 s poll. Headless readers (the fleet chief's digest) must check `available` before counting those two lists, as with `github.available`.
 
@@ -83,6 +83,16 @@ Agent capability matrix:
 Fleet-config's shared issue workflows publish `~/.claude/hooks/state/active-issues.json` (fleet-config#376) once an issue branch is ready and remove its row only after the PR merges. Rows are keyed by `<repo>#<number>` and carry `repo`, `number`, `branch`, and `started_at`. `GET /api/board` reads the file beside `sessions-state.json`, canonicalizes the key case-insensitively, and annotates every Backlog issue with `in_progress` before returning the columns.
 
 `read_active_issues()` has the same never-break-Board contract as the session-state reader: a missing, unreadable, corrupt, or non-dict file yields `available: False` with no rows. Invalid records are ignored individually. A record older than `STATE_STALE_AFTER` (24 h) expires on read, matching the writer's prune horizon, so a crashed workflow that never reaches `/issue-finish` cannot permanently block Start/YOLO. This is deliberately a lightweight lifecycle marker, not a GitHub/branch reconciliation source.
+
+**Claim owner liveness (#948).** A lane killed before `/issue-finish` leaves its row for up to that 24 h horizon. Rows written since fleet-config#852 carry optional `owner_session_id` / `owner_pid` / `owner_host`, and fleet-config owns the verdict: `src/active_issue_claims.py` loads `<claude_config_dir>/skills/_lib/active_issue.py` by file path (the `quota_snapshot.py` pattern) and calls its `classify_owner` with the session-host's alive session ids — `None` when the list could not be read — plus its own `pid_state` probe and `current_host()`. Each Backlog card gets `claim_state`:
+
+| `claim_state` | Meaning | `in_progress` | Card |
+|---|---|---|---|
+| `live` | owner session or pid positively alive | `true` | tinted, “in progress”, actions disabled |
+| `dead` | owner session absent from a readable list, or pid confirmed gone | `false` | “stale claim”, actions enabled |
+| `unknown` | owner-less legacy row, other host, unreadable list, missing contract, or classifier error | `true` | tinted, “in progress (unverified)”, actions disabled |
+
+`unknown` is never folded into either verdict. The same judgement feeds #627's downgrade below: a `dead` row no longer holds its repo's sessions at `awaiting-input`; `unknown` still does. Classification is read-only — the Board never rewrites or prunes the file.
 
 ## Shared session title, cross-tab (#396)
 

@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional
 
+from src.active_issue_claims import CLAIM_DEAD
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
 from src.board_transcript import (
     _ExchangeTail,
@@ -46,12 +47,19 @@ def _normalize_repo_name(name: str) -> str:
     return _WORKTREE_SUFFIX_RE.sub("", str(name or "").strip().lower())
 
 
-def active_issue_repos(active_issue_rows: Dict[str, Any]) -> FrozenSet[str]:
+def active_issue_repos(
+    active_issue_rows: Dict[str, Any],
+    claim_states: Optional[Dict[str, str]] = None,
+) -> FrozenSet[str]:
     """Distinct lower-cased repo names carrying a live active-issue marker.
 
     :func:`src.board_state.read_active_issues` already prunes stale/malformed
     rows, so every ``repo`` value seen here is a currently-open issue
-    workflow. This is the cheap, already-fetched-every-poll signal
+    workflow — unless ``claim_states`` (keyed like the rows, see
+    :func:`src.active_issue_claims.classify_claims`) positively marks a row
+    ``dead``, whose lane is gone and so no longer holds its repo's sessions
+    out of ``idle-finished`` (#948). ``unknown`` keeps the row, as before.
+    This is the cheap, already-fetched-every-poll signal
     :func:`merge_sessions` uses to keep a session's card out of
     ``idle-finished`` while its own repo's issue work is still open (#627) —
     coarser than the branch/PR-level evidence the issue itself describes
@@ -60,8 +68,11 @@ def active_issue_repos(active_issue_rows: Dict[str, Any]) -> FrozenSet[str]:
     on-demand-only docstring), but free and directionally right: prefer
     under-claiming ``idle-finished`` over asserting it from mere silence.
     """
+    states = claim_states or {}
     repos = set()
-    for row in active_issue_rows.values():
+    for key, row in active_issue_rows.items():
+        if states.get(key) == CLAIM_DEAD:
+            continue
         if isinstance(row, dict):
             repo = row.get("repo")
             if isinstance(repo, str) and repo.strip():
