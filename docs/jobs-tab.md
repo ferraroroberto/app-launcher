@@ -699,7 +699,7 @@ Process-local 30 s TTL cache per job id; invalidated explicitly when a run final
 
 ## Terminal outcomes — `outcome` vs `status` (issue #916)
 
-`status` on disk is binary: `success` for exit 0, `failed` for everything else. That was right while a job's child was an ordinary script, where a non-zero exit means "this broke". It stopped being right once most jobs became scheduled Claude runs driven by fleet-config's `skills/_lib/scheduled_runner.py`, which spends a block of exit codes distinguishing *why* a run did not report success — and three of those codes do not mean failure at all. They mean **the adapter could not establish whether the run delivered**, which is a different fact, and folding it into `failed` produced exactly the failure this repo has been fixing all week in its other direction: an unknown rendered as a definite state. Four healthy weekly jobs showed red for it (each had committed, pushed and posted to Telegram), and the genuinely failed ones beside them stopped being distinguishable from the noise.
+`status` on disk is binary: `success` for exit 0, `failed` for everything else. That was right while a job's child was an ordinary script, where a non-zero exit means "this broke". It stopped being right once most jobs became scheduled Claude runs driven by fleet-config's `skills/_lib/scheduled_runner.py`, which spends a block of exit codes distinguishing *why* a run did not report success — and four of those codes do not mean failure at all. They mean **the adapter could not establish whether the run delivered**, which is a different fact, and folding it into `failed` produced exactly the failure this repo has been fixing all week in its other direction: an unknown rendered as a definite state. Four healthy weekly jobs showed red for it (each had committed, pushed and posted to Telegram), and the genuinely failed ones beside them stopped being distinguishable from the noise.
 
 So `src/jobs_outcome.py` classifies the exit code into a third state, and `jobs_history.read_run()` decorates **every** run record it reads with two derived keys:
 
@@ -715,12 +715,12 @@ Derived on read, never persisted: the records already on disk re-render correctl
 | `0` | success | Completed |
 | `114` | **unconfirmed** | Cancellation not confirmed — owned descendants could not be verified |
 | `115` / `116` / `117` | failed | Required tools / model / auth unavailable |
-| `118` | failed | The run reported it delivered no work |
+| `118` | **unconfirmed** | Work still unfinished when the provider exited — open tools/children or owned descendants still running; the log's verdict line names which (#959) |
 | `119` | failed | Transient upstream API error (5xx) — an API-side fault, not the job's |
 | `120` | failed | The run invoked no tools at all — the skill never started |
 | `121` | **unconfirmed** | The delivery check could not confirm the run delivered anything |
 | `122` | **unconfirmed** | The completion stream was truncated — the run was cut off mid-flight |
-| `123` | failed | The run printed its own failure marker |
+| `123` | failed | The run reported it delivered no work — its final report names the failed delivery assertion |
 | `124` | failed | Stalled — no stream activity before the watchdog killed it |
 | `125` | failed | Background tasks killed after timeout |
 | `127` | failed | The agent failed to start |
@@ -730,7 +730,7 @@ A run **this launcher** killed, reaped or watchdogged (`killed` / `reaped` / `wa
 
 **Where it shows.** The job row's status dot and its sparkline dots use the `--attention` accent rather than `--danger`, and the row reads `last: not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.
 
-**The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. It skips where the checkout is absent (CI, a fresh clone).
+**The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. A second test, `test_exit_code_outcomes_match_scheduled_runner_verdicts`, pins each row's *outcome* too: it reads the `❓`/`❌` glyph `ProgressFormatter.finish` prints for every code-keyed verdict rung, so a row whose class drifts from the adapter's own verdict fails (#959 — 118 sat here as `failed` under 123's wording while the adapter printed `❓ not confirmed`). Rungs keyed on a formatter flag rather than the code are classified by constant name in the test. Both skip where the checkout is absent (CI, a fresh clone).
 
 ### Stuck-run kill
 

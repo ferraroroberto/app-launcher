@@ -4,7 +4,7 @@ The Jobs surface rendered every non-zero exit as ``failed``. Exit 122 is
 fleet-config's scheduled-run adapter saying the completion stream was
 truncated — the run may well have delivered, but nobody established that — so
 four healthy weekly jobs showed red for it, and the genuinely failed ones
-beside them (exit 118, "the run reported it delivered no work") became
+beside them (exit 123, "the run reported it delivered no work") became
 indistinguishable from the noise.
 
 These pin the render, which is the half a Python test cannot reach: the
@@ -12,7 +12,7 @@ unconfirmed row must be tellable apart from **both** neighbours, not merely
 different from one of them.
 
 Hermetic: route-mock ``/api/jobs`` and one job's run history with three fixed
-rows — exit 0, exit 122, exit 118 — so nothing here depends on real run
+rows — exit 0, exit 122, exit 123 — so nothing here depends on real run
 history or on a job ever having failed. Runs in both projections.
 """
 
@@ -85,7 +85,7 @@ _JOBS = [
     _job("Delivered nothing", job_id="broken",
          last7=[{"status": "failed", "outcome": "failed", "run_id": "r2"}],
          last_run=_last_run(
-             status="failed", outcome="failed", exit_code=118,
+             status="failed", outcome="failed", exit_code=123,
              reason="the run reported it delivered no work",
          )),
 ]
@@ -129,7 +129,7 @@ def test_unconfirmed_row_is_not_rendered_as_failed(
 def test_genuine_failure_still_renders_as_failed(
     authed_page: Page, base_url: str
 ) -> None:
-    """The over-correction guard. Exit 118 is the run reporting it delivered
+    """The over-correction guard. Exit 123 is the run reporting it delivered
     no work; replacing false alarms with false comfort would be worse than the
     bug."""
     _open_jobs(authed_page, base_url)
