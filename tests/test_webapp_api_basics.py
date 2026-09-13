@@ -28,7 +28,9 @@ class TestIndex:
         # exists. Cache hygiene contract for issue #30.
         client, _, _ = webapp_client
         resp = client.get("/")
-        assert "no-cache" in resp.headers.get("cache-control", "")
+        cache_control = resp.headers.get("cache-control", "")
+        assert "no-cache" in cache_control
+        assert "must-revalidate" in cache_control
 
     def test_index_stamps_asset_urls(self, webapp_client):
         # Every /static/<name>.(css|js) referenced from the index must

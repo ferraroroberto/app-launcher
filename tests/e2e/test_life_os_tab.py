@@ -219,11 +219,16 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     )
 
 
-def test_life_os_launch_posts_mode_and_model(
-    authed_page: Page, base_url: str
-) -> None:
-    """#540/#845: launch carries the provider-qualified model choice."""
-    _mock_skills(authed_page)
+def _launch_journal_daily(
+    page: Page, base_url: str, *, model: str | None = None,
+    detached: bool = False, resume: bool = False,
+) -> dict:
+    """Open the Life OS tab, set the model/Detached/Resume controls, tap the
+    journal-daily tile's launch, and return the POSTed launch payload. The
+    mocked response is ``kind=remote`` so the client never opens a terminal
+    overlay against the fake sid — ``launchSkill`` reads only ``body.session``,
+    so the request payload is the whole observable."""
+    _mock_skills(page)
 
     captured: dict = {}
 
@@ -233,39 +238,46 @@ def test_life_os_launch_posts_mode_and_model(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "remote", "model": "fable",
                 "session": {"session_id": "x", "kind": "remote"},
             }),
         )
 
-    authed_page.route(
+    page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
         _capture_launch,
     )
 
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabLifeOS").click()
+    expect(page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
         timeout=5_000
     )
 
-    # Pick a non-default model + Detached on (so it launches detached → no
-    # terminal overlay / WS to deal with in the assertion).
-    authed_page.locator("#lifeOsModelBtn").click()
-    authed_page.locator(
-        "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
-    ).click()
-    authed_page.locator("#lifeOsDetached").click()
+    if model:
+        page.locator("#lifeOsModelBtn").click()
+        page.locator(f"#lifeOsModelMenu button[data-value='{model}']").click()
+    if detached:
+        page.locator("#lifeOsDetached").click()
+    if resume:
+        page.locator("#lifeOsResume").click()
 
-    tile = authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
-    )
+    tile = page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily']")
     tile.locator(".lifeos-launch").click()
 
     # Wait for the launch route to capture the POST body.
-    authed_page.wait_for_timeout(400)
+    page.wait_for_timeout(400)
     assert "body" in captured, "launch POST was never intercepted"
-    payload = _json.loads(captured["body"])
+    return _json.loads(captured["body"])
+
+
+def test_life_os_launch_posts_mode_and_model(
+    authed_page: Page, base_url: str
+) -> None:
+    """#540/#845: launch carries the provider-qualified model choice. Detached
+    on, so it launches detached → no terminal overlay / WS in the assertion."""
+    payload = _launch_journal_daily(
+        authed_page, base_url, model="codex:gpt-6-astra", detached=True,
+    )
     # resume defaults to False on a normal (non-resume) launch (issue #151).
     assert payload == {
         "mode": "remote", "model": "codex:gpt-6-astra", "resume": False
@@ -282,43 +294,8 @@ def test_life_os_pty_launch_carries_terminal_size(
     launch must carry rows/cols (estimateTermSize, same contract as the
     Coding tab, #126); a desktop client sends the mirror flag instead and
     keeps the Edge-window default."""
-    _mock_skills(authed_page)
-
-    captured: dict = {}
-
-    def _capture_launch(route):
-        captured["body"] = route.request.post_data or ""
-        # Answer with kind=remote so the client skips opening the terminal
-        # overlay against the fake sid — only the request payload matters.
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "pty", "model": "sonnet",
-                "session": {"session_id": "x", "kind": "remote"},
-            }),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
-        _capture_launch,
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-
     # Detached stays OFF — this is the streamed pty path #374 is about.
-    tile = authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
-    )
-    tile.locator(".lifeos-launch").click()
-
-    authed_page.wait_for_timeout(400)
-    assert "body" in captured, "launch POST was never intercepted"
-    payload = _json.loads(captured["body"])
+    payload = _launch_journal_daily(authed_page, base_url)
     assert payload.get("mode") == "pty"
     if payload.get("desktop"):
         assert "rows" not in payload and "cols" not in payload
@@ -333,46 +310,9 @@ def test_life_os_detached_resume_posts_remote_console(
     tab (matching the Coding tab, #157). Flipping both must POST
     ``mode: remote`` AND ``resume: true`` — the picker renders in the detached
     console — rather than Resume silently forcing a streamed PTY."""
-    _mock_skills(authed_page)
-
-    captured: dict = {}
-
-    def _capture_launch(route):
-        captured["body"] = route.request.post_data or ""
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "remote", "model": "sonnet",
-                "resume": True,
-                "session": {"session_id": "x", "kind": "remote"},
-            }),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/launch$"),
-        _capture_launch,
+    payload = _launch_journal_daily(
+        authed_page, base_url, detached=True, resume=True,
     )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-
-    # Flip Detached + Resume both on. A remote launch has no terminal overlay
-    # / WS, so the assertion stays clean.
-    authed_page.locator("#lifeOsDetached").click()
-    authed_page.locator("#lifeOsResume").click()
-
-    tile = authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
-    )
-    tile.locator(".lifeos-launch").click()
-
-    authed_page.wait_for_timeout(400)
-    assert "body" in captured, "launch POST was never intercepted"
-    payload = _json.loads(captured["body"])
     assert payload.get("mode") == "remote", payload
     assert payload.get("resume") is True, payload
 

@@ -20,18 +20,12 @@ from __future__ import annotations
 import pytest
 import requests
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("chromium_projection_only")]
 
 # pywinpty opens its ephemerals in the dynamic/private range. The
 # diagnostics filter uses the same threshold (IANA dynamic ports start
 # at 49152), so this is the regression boundary.
 _EPHEMERAL_THRESHOLD = 49152
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _run_once(browser_name: str) -> None:
-    if browser_name != "chromium":
-        pytest.skip("server-side check; runs once on the chromium projection")
 
 
 def test_probe_hides_pywinpty_ephemerals(

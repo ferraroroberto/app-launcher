@@ -209,12 +209,18 @@ def test_board_refresh_button_posts_gh_refresh(
     )
 
 
-def test_board_auto_refreshes_stale_github_on_open(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize("gh_age_seconds, expected_posts", [
+    pytest.param(15 * 60, ["POST"], id="stale-refreshes-once"),
+    pytest.param(0, [], id="fresh-not-refreshed"),
+])
+def test_board_github_refresh_on_open_tracks_cache_age(
+    authed_page: Page, base_url: str, gh_age_seconds: int,
+    expected_posts: list[str],
 ) -> None:
     """Opening the tab with a gh cache older than the client's staleness
-    window (2 min) fires one automatic refresh POST — no ↻ tap needed."""
-    _mock_board(authed_page, _board_payload(gh_age_seconds=15 * 60))
+    window (2 min) fires exactly one automatic refresh POST — no ↻ tap
+    needed; a fresh cache must NOT auto-refresh, so tab-open stays free."""
+    _mock_board(authed_page, _board_payload(gh_age_seconds=gh_age_seconds))
 
     posts: list[str] = []
 
@@ -232,30 +238,10 @@ def test_board_auto_refreshes_stale_github_on_open(
     _open_board(authed_page, base_url)
     authed_page.wait_for_timeout(1_000)
 
-    assert posts == ["POST"], (
-        f"stale gh cache should auto-refresh exactly once on tab open, got {posts}"
+    assert posts == expected_posts, (
+        f"gh cache aged {gh_age_seconds}s should auto-refresh {expected_posts} "
+        f"on tab open, got {posts}"
     )
-
-
-def test_board_fresh_github_not_refreshed_on_open(
-    authed_page: Page, base_url: str
-) -> None:
-    """A fresh cache must NOT auto-refresh — tab-open stays free."""
-    _mock_board(authed_page, _board_payload(gh_age_seconds=0))
-
-    posts: list[str] = []
-    authed_page.route(
-        re.compile(r".*/api/board/github/refresh$"),
-        lambda route: (posts.append(route.request.method), route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"fetched_at": None, "error": None}),
-        )),
-    )
-
-    _open_board(authed_page, base_url)
-    authed_page.wait_for_timeout(1_000)
-
-    assert posts == [], f"fresh gh cache must not auto-refresh on open, got {posts}"
 
 
 def _unfetched_payload() -> dict:
@@ -902,29 +888,26 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     )
 
 
-def test_board_deep_link_opens_drawer(authed_page: Page, base_url: str) -> None:
+@pytest.mark.parametrize("state_sid", [
+    pytest.param(None, id="session-id"),
+    pytest.param("t-uuid-wait", id="state-sid"),
+])
+def test_board_deep_link_opens_drawer(
+    authed_page: Page, base_url: str, state_sid: str | None
+) -> None:
     """#301: ?board=<sid> lands on the Board with that card's drawer open —
-    the target of the Slack-ping deep link."""
-    _mock_board(authed_page)
-    _mock_exchange(authed_page)
-
-    authed_page.goto(f"{base_url}/?board=s-wait", wait_until="domcontentloaded")
-    expect(authed_page.locator("#paneBoard")).to_be_visible(timeout=10_000)
-    drawer = authed_page.locator(".board-drawer")
-    expect(drawer).to_be_visible(timeout=10_000)
-    expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
-
-
-def test_board_deep_link_resolves_via_state_sid(authed_page: Page, base_url: str) -> None:
-    """#307: a Slack ping's ?board=<sid> carries the hook's transcript UUID,
-    not the card's session_id — resolve it via the card's state_sid instead,
-    and expand the drawer keyed by the card's real session_id."""
-    payload = copy.deepcopy(_FAKE_BOARD)
-    payload["columns"]["your_turn"][0]["state_sid"] = "t-uuid-wait"
+    the target of the Slack-ping deep link. #307: a Slack ping's ?board=<sid>
+    carries the hook's transcript UUID, not the card's session_id — resolve it
+    via the card's state_sid instead, and expand the drawer keyed by the card's
+    real session_id."""
+    payload = _board_payload()
+    if state_sid:
+        payload["columns"]["your_turn"][0]["state_sid"] = state_sid
     _mock_board(authed_page, payload)
     _mock_exchange(authed_page)  # keyed by the real session_id, s-wait
 
-    authed_page.goto(f"{base_url}/?board=t-uuid-wait", wait_until="domcontentloaded")
+    link_sid = state_sid or "s-wait"
+    authed_page.goto(f"{base_url}/?board={link_sid}", wait_until="domcontentloaded")
     expect(authed_page.locator("#paneBoard")).to_be_visible(timeout=10_000)
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible(timeout=10_000)
