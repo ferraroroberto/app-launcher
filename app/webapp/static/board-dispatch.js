@@ -332,7 +332,9 @@ async function dispatchChat() {
     }
     // Open the chief's drawer so the reply lands somewhere visible. The
     // card is already in /api/board (live sessions fold in before hook
-    // state exists); fetch once with no drawer open, then expand.
+    // state exists); fetch once with no drawer open, then expand — closing
+    // first rebuilds an already-open chief drawer, so its exchange reloads
+    // now instead of on the next exchange poll.
     state.boardExpanded = null;
     await fetchBoard().catch(function () {});
     state.boardExpanded = sid;

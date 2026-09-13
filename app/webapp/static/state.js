@@ -102,8 +102,9 @@ export const state = {
   board: null,
   // Which board column the phone carousel has in view.
   boardCol: 'your_turn',
-  // Session id whose drawer is open (#301). The board poll pauses while
-  // set, so a re-render can never wipe a reply being typed.
+  // Session id whose drawer is open (#301). The board poll keeps running;
+  // renderBoard() keeps this drawer's node so a reply being typed survives
+  // (#958).
   boardExpanded: null,
   // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
   // read-only content browser's current skill + loaded files.

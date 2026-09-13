@@ -354,11 +354,10 @@ export async function refreshGitStatus(options) {
     renderApps();
     renderHomeHead();
     // The Board backlog reads the same cache (#496 item 4); repaint it if
-    // it's the visible tab — its own 5 s poll does no git work. Self-gate on
-    // an open drawer (pattern: fetchBoard()'s own drawer gate in board.js) so
-    // this refresh can't tear down a drawer's DOM out from under an
-    // in-progress interaction (#512).
-    if (state.tab === 'board' && !state.boardExpanded) renderBoard();
+    // it's the visible tab — its own 5 s poll does no git work. renderBoard()
+    // keeps an open drawer's DOM (#958), so this refresh can't tear it down
+    // out from under an in-progress interaction (#512).
+    if (state.tab === 'board') renderBoard();
   } catch (exc) {
     if (!quiet) throw exc;
     logPollFailure('git status refresh failed', exc);
