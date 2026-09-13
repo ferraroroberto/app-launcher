@@ -6,7 +6,7 @@ fine while a job's child was an ordinary script whose non-zero exit meant "this
 broke". It stopped being fine once most jobs became scheduled Claude runs driven
 by fleet-config's ``skills/_lib/scheduled_runner.py``, which spends a whole
 block of exit codes distinguishing *why* a run did not report success — and
-three of those codes do not mean failure at all. They mean **the adapter could
+four of those codes do not mean failure at all. They mean **the adapter could
 not establish whether the run delivered**, which is a different fact and the one
 the global rule insists must be its own state rather than folded into a
 neighbour.
@@ -27,6 +27,9 @@ been taught the new vocabulary.
 parses that file (when the sibling fleet-config checkout is present) and fails
 if it grows a code this table does not name. A new upstream code would otherwise
 land here silently as a generic failure — the drift the issue asked to prevent.
+``test_exit_code_outcomes_match_scheduled_runner_verdicts`` goes one further and
+pins each row's outcome against the ``❓``/``❌`` verdict the adapter prints for
+that code (#959).
 """
 
 from __future__ import annotations
@@ -54,10 +57,15 @@ _EXIT_CODES: Dict[int, Tuple[str, str]] = {
     115: (OUTCOME_FAILED, "required tools were unavailable"),
     116: (OUTCOME_FAILED, "the model was unavailable"),
     117: (OUTCOME_FAILED, "authentication was unavailable"),
+    # Unconfirmed, not failed (#959): the adapter prints `❓ not confirmed` for
+    # 118 because work outliving the provider says nothing about whether the
+    # run delivered. The exit code alone cannot say which of its two causes
+    # fired, so the reason points at the verdict line rather than guessing.
     118: (
-        OUTCOME_FAILED,
-        "the run reported it delivered no work — see its final report for "
-        "which delivery assertion failed",
+        OUTCOME_UNCONFIRMED,
+        "work still unfinished when the provider exited (open tools/children "
+        "or owned descendants still running) — the log's verdict line names "
+        "which",
     ),
     119: (
         OUTCOME_FAILED,
@@ -79,7 +87,8 @@ _EXIT_CODES: Dict[int, Tuple[str, str]] = {
     ),
     123: (
         OUTCOME_FAILED,
-        "the run printed its own failure marker",
+        "the run reported it delivered no work — see its final report for "
+        "which delivery assertion failed",
     ),
     124: (
         OUTCOME_FAILED,

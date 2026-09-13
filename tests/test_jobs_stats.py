@@ -265,7 +265,7 @@ class TestUnconfirmedRunsInStats:
         assert stats["unconfirmed_30d"] == 3
 
     def test_genuine_failures_still_sink_the_ratio(self, temp_runs_dir):
-        """The guard against over-correcting: 118 means the run said itself it
+        """The guard against over-correcting: 123 means the run said itself it
         delivered nothing, and that must still read as a failure."""
         now = datetime.now()
         _seed_run("demo", run_id="20260101T060000", status="success",
@@ -273,7 +273,7 @@ class TestUnconfirmedRunsInStats:
                   exit_code=0)
         _seed_run("demo", run_id="20260102T060000", status="failed",
                   started_at=now - timedelta(days=1), duration_seconds=1.0,
-                  exit_code=118)
+                  exit_code=123)
         stats = jobs_mod.run_stats("demo", fresh=True)
         assert stats["success_rate_30d"] == pytest.approx(0.5)
         assert stats["unconfirmed_30d"] == 0
@@ -295,13 +295,13 @@ class TestUnconfirmedRunsInStats:
         now = datetime.now()
         _seed_run("demo", run_id="20260101T060000", status="failed",
                   started_at=now - timedelta(days=3), duration_seconds=1.0,
-                  exit_code=118)
+                  exit_code=123)
         _seed_run("demo", run_id="20260102T060000", status="failed",
                   started_at=now - timedelta(days=2), duration_seconds=1.0,
                   exit_code=122)
         _seed_run("demo", run_id="20260103T060000", status="failed",
                   started_at=now - timedelta(days=1), duration_seconds=1.0,
-                  exit_code=118)
+                  exit_code=123)
         # Newest is a real failure; the one below it is unconfirmed, so the
         # contiguous run of *failures* is one long, not three.
         assert jobs_mod.consecutive_failed_runs("demo") == 1

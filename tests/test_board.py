@@ -1961,7 +1961,7 @@ def test_jobs_attention_unconfirmed_run_is_not_a_failed_card(webapp_client):
 
 def test_jobs_attention_genuine_failure_still_reads_as_failed(webapp_client):
     """The other half of #916, and the one that makes the fix worth having:
-    exit 118 is the run reporting it delivered no work. It must keep the
+    exit 123 is the run reporting it delivered no work. It must keep the
     failure rendering it had, or the false alarms are simply replaced by
     false comfort."""
     _client, _app, overrides = webapp_client
@@ -1970,7 +1970,7 @@ def test_jobs_attention_genuine_failure_still_reads_as_failed(webapp_client):
         "status": "failed",
         "started_at": (local_now - timedelta(hours=1)).isoformat(timespec="seconds"),
         "finished_at": (local_now - timedelta(minutes=50)).isoformat(timespec="seconds"),
-        "exit_code": 118,
+        "exit_code": 123,
     })
     cards = board.jobs_attention(now=local_now)
     assert [(c["job_id"], c["state"]) for c in cards] == [

@@ -144,7 +144,7 @@ class TestNotifyUnconfirmedIsNotAFailureAlert:
     delivery was never verified") and each pushed ``❌ <job> failed`` to the
     phone at error severity. An alert channel that cries failure on healthy
     runs is an alert channel that stops being read, which is what buried the
-    genuine 118s beside them.
+    genuine 123s beside them.
     """
 
     def _cfg(self, **kw):
@@ -203,13 +203,27 @@ class TestNotifyUnconfirmedIsNotAFailureAlert:
         """The failure titles are deliberately byte-identical to pre-#916 —
         "❌ Demo" (Pushover) and "❌ Demo failed" (Telegram). Only the body
         gains the exit code's meaning, and only the new state gains a word."""
-        pushover, telegram = self._fire(tmp_path, monkeypatch, exit_code=118)
+        pushover, telegram = self._fire(tmp_path, monkeypatch, exit_code=123)
         assert pushover.notify.call_args.args[0] == "❌ Demo"
         assert telegram.notify.call_args.args[0] == "❌ Demo failed"
         for notifier in (pushover, telegram):
             assert "not confirmed" not in notifier.notify.call_args.args[0]
             assert notifier.notify.call_args.kwargs["severity"] == "error"
             assert "delivered no work" in notifier.notify.call_args.args[1]
+
+    def test_incomplete_work_118_pages_as_not_confirmed(self, tmp_path, monkeypatch):
+        """#959: a run that delivered and then left owned descendants running
+        exits 118. It still pages, but as ❓ not confirmed at warning — never
+        as a failed delivery assertion that did not exist."""
+        pushover, telegram = self._fire(tmp_path, monkeypatch, exit_code=118)
+        assert telegram.notify.call_args.args[0] == "❓ Demo not confirmed"
+        for notifier in (pushover, telegram):
+            notifier.notify.assert_called_once()
+            title, body = notifier.notify.call_args.args[:2]
+            assert "not confirmed" in title and "failed" not in title.lower()
+            assert notifier.notify.call_args.kwargs["severity"] == "warning"
+            assert "unfinished" in body
+            assert "delivered no work" not in body
 
     def test_watchdog_kill_is_a_failure_whatever_code_it_reported(
         self, tmp_path, monkeypatch

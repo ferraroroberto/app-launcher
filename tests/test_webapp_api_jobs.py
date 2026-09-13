@@ -1480,7 +1480,7 @@ class TestReapOnPoll:
     def test_last_run_keeps_a_genuine_failure_failed(
         self, webapp_client, mocked_jobs_side_effects
     ):
-        """The over-correction guard: 118 stays a failure, and names itself."""
+        """The over-correction guard: 123 stays a failure, and names itself."""
         client, _, _ = webapp_client
         created = _seed_one_job(client, name="Demo").json()["job"]
         from src import jobs as jobs_mod
@@ -1492,12 +1492,37 @@ class TestReapOnPoll:
             status="failed",
             started_at="2026-05-24T08:00:00",
             finished_at="2026-05-24T08:05:00",
-            exit_code=118,
+            exit_code=123,
         )
 
         last_run = client.get("/api/jobs").json()["jobs"][0]["last_run"]
         assert last_run["outcome"] == "failed"
         assert "delivered no work" in last_run["outcome_reason"]
+
+    def test_last_run_with_unfinished_work_is_unconfirmed(
+        self, webapp_client, mocked_jobs_side_effects
+    ):
+        """#959: exit 118 is work still running when the provider exited — the
+        weekly-recap-draft runs that delivered and still read as a failed
+        delivery assertion."""
+        client, _, _ = webapp_client
+        created = _seed_one_job(client, name="Demo").json()["job"]
+        from src import jobs as jobs_mod
+
+        run_dir = jobs_mod.new_run_dir(created["id"], "20260913T220007")
+        jobs_mod.write_run_json(
+            run_dir,
+            run_id=run_dir.name,
+            status="failed",
+            started_at="2026-09-13T22:00:07",
+            finished_at="2026-09-13T22:09:00",
+            exit_code=118,
+        )
+
+        last_run = client.get("/api/jobs").json()["jobs"][0]["last_run"]
+        assert last_run["outcome"] == "unconfirmed"
+        assert "delivery assertion" not in last_run["outcome_reason"]
+        assert "unfinished" in last_run["outcome_reason"]
 
     def test_run_history_rows_carry_their_outcome(
         self, webapp_client, mocked_jobs_side_effects
@@ -1508,7 +1533,7 @@ class TestReapOnPoll:
         created = _seed_one_job(client, name="Demo").json()["job"]
         from src import jobs as jobs_mod
 
-        for run_id, code in (("20260524T080000", 118), ("20260524T090000", 122)):
+        for run_id, code in (("20260524T080000", 123), ("20260524T090000", 122)):
             rd = jobs_mod.new_run_dir(created["id"], run_id)
             jobs_mod.write_run_json(
                 rd, run_id=run_id, status="failed",
