@@ -21,9 +21,11 @@
  * is transcript text) and a reply box that writes straight into the PTY;
  * backlog cards of repos present in the projects folder carry ▶ Start /
  * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
- * card with its drawer open. While a drawer is open the poll pauses, so a
- * re-render can never wipe a reply being typed. Issue/PR/done cards open
- * GitHub, job cards (Other column) jump to the Jobs tab.
+ * card with its drawer open. The poll keeps running while a drawer is open
+ * (#958 — the chief chat holds one open for hours), and renderBoard() keeps
+ * the open drawer's own node across the re-render, so it can never wipe a
+ * reply being typed. Issue/PR/done cards open GitHub, job cards (Other
+ * column) jump to the Jobs tab.
  *
  * Split off a single-file module (issue #691, `/codebase-audit`), the way
  * `jobs.js` and `terminal.js` already were: the dispatch bar above the
@@ -138,7 +140,9 @@ function cardShell(iconName, topText, titleText, cls) {
   return { li: li, btn: btn };
 }
 
-function renderSessionCard(card) {
+// `openItem` is the open drawer's current <li> when renderBoard() can keep it
+// (#958); the card's fresh header is swapped into it instead of a new drawer.
+function renderSessionCard(card, openItem) {
   const meta =
     isChiefCard(card) && CHIEF_STANDING_BY_STATUSES.has(card.status)
       ? CHIEF_STANDING_BY_META
@@ -168,6 +172,7 @@ function renderSessionCard(card) {
   const top = shell.btn.querySelector('.board-card-top');
   top.insertBefore(agentIcon, top.firstChild);
   if (card.session_id) {
+    shell.li.dataset.sessionId = card.session_id;
     // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
     // the way into the full terminal now.
     shell.btn.addEventListener('click', function () {
@@ -177,7 +182,15 @@ function renderSessionCard(card) {
       if (!state.boardExpanded) fetchBoard().catch(function () {});
     });
     if (state.boardExpanded === card.session_id) {
+      if (openItem) {
+        // The header button is always the <li>'s first child, the drawer
+        // after it — only the header is replaced.
+        openItem.className = shell.li.className + ' expanded';
+        openItem.replaceChild(shell.btn, openItem.firstElementChild);
+        return openItem;
+      }
       shell.li.classList.add('expanded');
+      shell.li.dataset.drawerShape = drawerShape(card);
       shell.li.appendChild(buildDrawer(card));
     }
   } else {
@@ -193,7 +206,8 @@ function renderSessionCard(card) {
 // worker drawer you glance at — but a chat conversation needs the chief's
 // reply to *arrive*. While the chief's drawer is open, re-run loadExchange
 // on a short interval. Cleared unconditionally at the top of renderBoard()
-// (drawers are rebuilt every render, and every close path goes through it).
+// whenever that render doesn't keep the open drawer (#958), and every close
+// path goes through it.
 let chiefExchangeTimer = null;
 const CHIEF_EXCHANGE_POLL_MS = 5000;
 
@@ -203,8 +217,8 @@ const CHIEF_EXCHANGE_POLL_MS = 5000;
 // collapse (state.boardExpanded set to null, then renderBoard() rebuilds
 // the card list) drops that mic's DOM node with no stop()/dispose() call —
 // if a recording (or a still-finalizing one) was in flight, it stayed live
-// and held the app-wide dictation mutex indefinitely. Disposed
-// unconditionally at the top of renderBoard(), same as chiefExchangeTimer.
+// and held the app-wide dictation mutex indefinitely. Disposed at the top of
+// renderBoard() under the same rule as chiefExchangeTimer.
 let drawerDictation = null;
 
 function buildDrawer(card) {
@@ -273,9 +287,9 @@ function buildDrawer(card) {
   // Same launcher-native override as the Coding tab's row rename button,
   // reachable for detached sessions too (no PTY needed). The drawer stays
   // open across a rename (unlike Terminal, which navigates away), so the
-  // completion callback patches this card in place rather than calling
-  // fetchBoard() — that would no-op under its own drawer-open self-gate
-  // (see fetchBoard()).
+  // completion callback patches the card optimistically rather than waiting
+  // for the next poll. A kept drawer (#958) can outlive the payload its
+  // `card` came from, so the patch goes to the card in the current payload.
   if (card.alive) {
     const rename = document.createElement('button');
     rename.type = 'button';
@@ -286,6 +300,8 @@ function buildDrawer(card) {
     rename.addEventListener('click', function () {
       openSessionRename(card, function (title) {
         card.manual_title = title;
+        const current = boardCard(card.session_id);
+        if (current) current.manual_title = title;
         renderBoard();
       });
     });
@@ -309,8 +325,7 @@ function buildDrawer(card) {
       // Every other card keeps the deliberate one-tap stop (#253).
       if (isChiefCard(card) && !confirm(CHIEF_KILL_CONFIRM)) return;
       stop.disabled = true;
-      // Close the drawer first — fetchBoard() self-gates while it's open,
-      // so a stop with the drawer up would never see the card clear.
+      // Close the drawer first — the session it belongs to is going away.
       state.boardExpanded = null;
       renderBoard();
       await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
@@ -622,12 +637,53 @@ function renderDoneCard(card) {
   return shell.li;
 }
 
-function renderCard(colKey, card) {
+function renderCard(colKey, card, openItem) {
   if (card.kind === 'issue' && colKey === 'backlog') return renderIssueCard(card);
   if (colKey === 'done') return renderDoneCard(card);
   if (card.kind === 'pr') return renderPrCard(card);
   if (card.kind === 'job') return renderJobCard(card);
-  return renderSessionCard(card);
+  return renderSessionCard(card, openItem);
+}
+
+function boardCard(sessionId) {
+  const columns = (state.board && state.board.columns) || {};
+  for (const key of Object.keys(columns)) {
+    const found = (columns[key] || []).find(function (c) { return c.session_id === sessionId; });
+    if (found) return found;
+  }
+  return null;
+}
+
+// What buildDrawer() decides its actions from. A kept drawer is only valid
+// while this holds — a session that died keeps no reply box for a dead PTY.
+function drawerShape(card) {
+  return String(!!card.alive) + ':' + String(card.kind || '');
+}
+
+// The open drawer's <li> as it stands in the DOM right now, if it can be kept
+// for `card` (the expanded card in the payload being rendered), else null.
+function openDrawerItem(card) {
+  if (!card || !els.boardColumns) return null;
+  const items = els.boardColumns.querySelectorAll('li.board-item.expanded');
+  return Array.from(items).find(function (li) {
+    return li.dataset.sessionId === card.session_id &&
+      li.dataset.drawerShape === drawerShape(card);
+  }) || null;
+}
+
+// Set a list's children to `nodes` without ever detaching a node that is
+// already in place — moving a focused <textarea> blurs it, which on a phone
+// drops the keyboard mid-reply (#958). Only the kept drawer <li> can already
+// be a child; everything else is freshly built.
+function placeChildren(list, nodes) {
+  Array.from(list.children).forEach(function (child) {
+    if (nodes.indexOf(child) === -1) child.remove();
+  });
+  let ref = list.firstChild;
+  nodes.forEach(function (node) {
+    if (node === ref) ref = ref.nextSibling;
+    else list.insertBefore(node, ref);
+  });
 }
 
 // ---------------------------------------------------------------- render
@@ -690,31 +746,55 @@ function renderStatusLine(body) {
 // the Coding tab — see dom-utils.js::renderQuotaLines.
 
 export function renderBoard() {
-  // Drawers rebuild every render — the chief exchange poll (#245) must
-  // never outlive the DOM node it writes into.
-  if (chiefExchangeTimer) {
-    clearInterval(chiefExchangeTimer);
-    chiefExchangeTimer = null;
-  }
-  // Same lifecycle rule for the reply-box mic (#755): dispose() before the
-  // rebuild below drops its DOM node, so a live or still-finalizing
-  // recording is force-stopped and the mic mutex released instead of
-  // wedging every other mic in the app.
-  if (drawerDictation) {
-    drawerDictation.dispose();
-    drawerDictation = null;
-  }
   const body = state.board;
-  if (!body || !els.boardColumns) return;
-  const columns = body.columns || {};
+  const columns = (body && body.columns) || {};
   const repoFilter = boardRepoFilter();
+  const visible = {};
+  COLUMNS.forEach(function (col) {
+    visible[col.key] = (columns[col.key] || []).filter(function (card) {
+      return matchesRepoFilter(card, repoFilter);
+    });
+  });
+  let expandedCard = null;
+  if (state.boardExpanded) {
+    COLUMNS.forEach(function (col) {
+      expandedCard = expandedCard || visible[col.key].find(function (c) {
+        return c.session_id === state.boardExpanded;
+      }) || null;
+    });
+    // An open drawer whose card is gone (session ended) or filtered out has
+    // nothing to render into; collapse it rather than hold an expanded id no
+    // card matches.
+    if (body && !expandedCard) state.boardExpanded = null;
+  }
+  // The poll keeps running with a drawer open (#958), so a render that still
+  // shows the same drawer keeps its node — reply text, focus, a live mic and
+  // the chief exchange poll all live on it.
+  const openItem = openDrawerItem(expandedCard);
+  const activeEl = openItem && openItem.contains(document.activeElement)
+    ? document.activeElement : null;
+  if (!openItem) {
+    // Drawers that aren't kept are rebuilt — the chief exchange poll (#245)
+    // must never outlive the DOM node it writes into.
+    if (chiefExchangeTimer) {
+      clearInterval(chiefExchangeTimer);
+      chiefExchangeTimer = null;
+    }
+    // Same lifecycle rule for the reply-box mic (#755): dispose() before the
+    // rebuild below drops its DOM node, so a live or still-finalizing
+    // recording is force-stopped and the mic mutex released instead of
+    // wedging every other mic in the app.
+    if (drawerDictation) {
+      drawerDictation.dispose();
+      drawerDictation = null;
+    }
+  }
+  if (!body || !els.boardColumns) return;
   const ghLoaded = ghFetched(body);
   const liveRead = liveSessionsRead(body);
 
   COLUMNS.forEach(function (col) {
-    const cards = (columns[col.key] || []).filter(function (card) {
-      return matchesRepoFilter(card, repoFilter);
-    });
+    const cards = visible[col.key];
     // A live column can still hold external cards (hook state + fresh
     // transcript) with the session-host down; those make a real lower bound,
     // so only an empty one reads as unknown.
@@ -732,15 +812,20 @@ export function renderBoard() {
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
     if (!list) return;
-    list.replaceChildren();
-    cards.forEach(function (card) {
-      list.appendChild(renderCard(col.key, card));
-    });
+    placeChildren(list, cards.map(function (card) {
+      return renderCard(col.key, card, openItem);
+    }));
     if (empty) {
       empty.textContent = emptyText(col, body, ghLoaded, liveRead);
       empty.hidden = cards.length > 0;
     }
   });
+
+  // A card that changed column moved its kept <li> between lists, which
+  // blurs; hand the focus back.
+  if (activeEl && document.activeElement !== activeEl && activeEl.isConnected) {
+    activeEl.focus({ preventScroll: true });
+  }
 
   renderStatusLine(body);
   renderQuotaLines(els.boardUsage, body.quota_lines);
@@ -753,10 +838,11 @@ export function renderBoard() {
 // ----------------------------------------------------------------- fetch
 
 export async function fetchBoard() {
-  // Self-gate: costs nothing while another tab is up (pattern: fetchJobs),
-  // and pauses while a drawer is open so the re-render can't wipe a reply
-  // being typed (pattern: the terminal pausing the session poll).
-  if (state.tab !== 'board' || state.boardExpanded) return;
+  // Self-gate: costs nothing while another tab is up (pattern: fetchJobs).
+  // No drawer gate (#958): the chief chat keeps a drawer open for hours, and
+  // pausing on it froze the whole Board silently. renderBoard() keeps the
+  // open drawer's node instead, so a poll can't wipe a reply being typed.
+  if (state.tab !== 'board') return;
   state.board = await jsonApi('/api/board');
   renderBoard();
   // A never-fetched cache (the webapp restarted since the last refresh) heals
@@ -809,8 +895,7 @@ export async function openBoardCard(sid) {
   });
   if (!colKey || !matchedCard) {
     // Fetch succeeded but the sid isn't there — session genuinely gone
-    // (stopped between the ping and the tap). Leave the board browsable; an
-    // expanded id with no card would pause the poll forever.
+    // (stopped between the ping and the tap). Leave the board browsable.
     toast('Session not on the board any more.', 'error');
     return;
   }

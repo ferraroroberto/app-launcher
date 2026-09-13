@@ -122,10 +122,10 @@ def _mock_board(page: Page) -> None:
     )
     # #510/#680: the real /api/claude-code/git-status boot fetch is
     # git-subprocess-backed and non-deterministic in timing; its completion
-    # calls renderBoard() whenever the Board tab is active with no drawer
-    # open (apps-coding.js::refreshGitStatus — drawer-gated since #512, so
-    # the window it can still land in is before the drawer opens), which
-    # rebuilds the DOM out from under an in-progress interaction. Stubbed
+    # calls renderBoard() whenever the Board tab is active
+    # (apps-coding.js::refreshGitStatus; an open drawer is kept since #958),
+    # which rebuilds the card DOM out from under an in-progress interaction
+    # before the drawer opens. Stubbed
     # in the shared helper so every test here gets it, not just the ones
     # that remembered to ask.
     page.route(
@@ -288,8 +288,8 @@ def test_board_drawer_rename_patches_card_in_place(
         timeout=3_000,
     )
     assert captured.get("body") == {"title": "Board custom title"}
-    # Optimistic in-place patch — no second /api/board fetch is needed (the
-    # drawer stays open, which would make fetchBoard() a no-op anyway).
+    # Optimistic in-place patch — the title updates without waiting for the
+    # next /api/board poll.
     expect(card.locator(".board-card-title")).to_have_text(
         "Board custom title", timeout=5_000
     )

@@ -114,8 +114,8 @@ def _mock_board(page: Page, payload: dict | None = None) -> None:
     )
     # Same reasoning for the boot-time git-status fetch, which is backed by a
     # real `git` subprocess per project and so lands whenever it likes; its
-    # completion calls renderBoard() whenever the Board tab is up with no
-    # drawer open (apps-coding.js::refreshGitStatus), rebuilding the DOM
+    # completion calls renderBoard() whenever the Board tab is up
+    # (apps-coding.js::refreshGitStatus), rebuilding the card DOM
     # mid-test (#510/#680). Clean payload so it can't perturb the rendered
     # annotations other tests read.
     # test_board_chief.py's own _mock_board already does this; the two tests
@@ -1261,11 +1261,11 @@ def test_backlog_cards_color_coded_from_shared_git_cache(
 def test_board_drawer_survives_git_status_poll_mid_interaction(
     authed_page: Page, base_url: str
 ) -> None:
-    """#512: refreshGitStatus() (apps-coding.js) must self-gate on
-    state.boardExpanded the same way fetchBoard()'s own poll does (its
-    drawer gate in board.js) — otherwise an unconditional renderBoard() rebuilds
-    the whole column/card DOM, including an open drawer, out from under an
-    in-progress interaction. Reproduced with the #510 diagnostic technique:
+    """#512: refreshGitStatus() (apps-coding.js) re-renders the Board, and
+    that must not rebuild an open drawer out from under an in-progress
+    interaction — renderBoard() keeps the open drawer's node (#958), the
+    same path the Board's own poll takes. Reproduced with the #510
+    diagnostic technique:
     tag the rename button's live DOM node, hold the boot-time
     /api/claude-code/git-status fetch open until after the drawer is open
     and tagged, then release it and confirm the tagged node (and the

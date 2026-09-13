@@ -325,8 +325,7 @@ export async function fetchRateLimits() {
 // way #renameDialog is shared across the Apps tab's rename affordances.
 // ``onDone`` lets a caller optimistically patch its own view of the session
 // instead of always re-fetching (the Board drawer stays open across a
-// rename, so a plain re-fetch would no-op under fetchBoard()'s
-// drawer-open self-gate — see board.js).
+// rename, and patching shows the new title without waiting on a poll).
 let renameSessionTarget = null;
 let renameSessionOnDone = null;
 let sessionLinkFeedbackTimer = null;

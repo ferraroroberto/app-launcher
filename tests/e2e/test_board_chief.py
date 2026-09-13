@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import json as _json
 import re
+from datetime import datetime, timezone
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -71,7 +72,6 @@ def _board_payload(*, with_chief: bool) -> dict:
         payload["columns"]["claude_turn"] = [copy.deepcopy(_CHIEF_CARD)]
     payload["columns"]["claude_turn"].append(copy.deepcopy(_WORKER_CARD))
     # Stamp gh fresh at real-clock time so tab open never auto-refreshes.
-    from datetime import datetime, timezone
     payload["github"]["fetched_at"] = datetime.now(timezone.utc).isoformat(
         timespec="seconds").replace("+00:00", "Z")
     return payload
@@ -85,12 +85,18 @@ def _mock_board(page: Page, payload: dict) -> None:
             status=200, content_type="application/json", body=body,
         ),
     )
+    _mock_board_side_routes(page)
+
+
+def _mock_board_side_routes(page: Page) -> None:
+    """Everything _mock_board stubs besides /api/board itself, for a test
+    that serves a payload it changes mid-test."""
     page.route(
         re.compile(r".*/api/board/github/refresh$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({"fetched_at": payload["github"]["fetched_at"],
-                              "error": None}),
+            body=_json.dumps({"fetched_at": datetime.now(timezone.utc).isoformat(
+                timespec="seconds").replace("+00:00", "Z"), "error": None}),
         ),
     )
     # Boot-time git-status is git-subprocess-backed and lands whenever it
@@ -486,3 +492,72 @@ def test_chief_settings_dialog_roundtrip(
 
     assert put.get("body") == {"model": "opus", "worker_cap": 5}
     expect(dialog).not_to_be_visible()
+
+
+def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
+    authed_page: Page, base_url: str
+) -> None:
+    """#958: chatting with the chief keeps its drawer open for the whole
+    conversation, so a poll paused on any open drawer froze the card list
+    for hours with no sign it was stale. The poll must keep landing — a
+    lane dispatched and an issue closed show up within one poll interval —
+    while the open drawer's own node (reply box text, focus) survives the
+    re-render, which is the #301 typing guarantee the pause used to buy."""
+    board = {"body": _json.dumps(_board_payload(with_chief=True))}
+    authed_page.route(
+        re.compile(r".*/api/board(?:\?.*)?$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=board["body"],
+        ),
+    )
+    _mock_board_side_routes(authed_page)
+    _mock_exchange(authed_page)
+    _mock_ensure(authed_page, {})
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        ),
+    )
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+    authed_page.locator("#boardDispatchGoal").fill("start the next lane")
+    authed_page.locator("#boardDispatchSend").click()
+
+    drawer = authed_page.locator("li.board-item-chief .board-drawer")
+    expect(drawer).to_be_visible()
+    reply = drawer.locator(".board-reply-input")
+    reply.fill("half-typed follow-up")
+    # Tag the live node: a drawer rebuilt by the poll loses the tag even
+    # when it re-opens looking identical.
+    drawer.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
+
+    changed = _board_payload(with_chief=True)
+    changed["columns"]["claude_turn"].insert(0, {
+        "session_id": "s-fresh", "kind": "pty", "agent": "claude",
+        "project_dir": "E:/automation/whatsapp-radar", "name": "whatsapp-radar",
+        "alive": True, "started_at": "2026-07-18T07:02:00Z",
+        "live_title": "fresh lane", "prompt_title": "",
+        "project": "whatsapp-radar", "status": "working", "age_seconds": 5,
+    })
+    changed["columns"]["done"] = [{
+        "kind": "issue", "repo": "fleet-config", "number": 905,
+        "title": "closed while chatting",
+        "url": "https://github.com/ferraroroberto/fleet-config/issues/905",
+        "updated_at": "2026-07-18T07:02:30Z", "state": "closed", "labels": [],
+    }]
+    board["body"] = _json.dumps(changed)
+
+    # Two poll intervals (BOARD_POLL_MS is 5 s) of margin for a loaded box.
+    expect(
+        authed_page.locator('.board-list[data-col="claude_turn"]')
+    ).to_contain_text("fresh lane", timeout=12_000)
+    expect(
+        authed_page.locator('.board-list[data-col="done"]')
+    ).to_contain_text("closed while chatting")
+
+    expect(drawer).to_have_attribute("data-e2e-tag", "pre-poll")
+    expect(reply).to_have_value("half-typed follow-up")
+    expect(reply).to_be_focused()

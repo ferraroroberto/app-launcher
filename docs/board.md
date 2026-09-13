@@ -216,7 +216,7 @@ The chief's card is **visually distinct** (accent tint + crown) and **kill-prote
 
 ## The drill-down drawer and its PTY-write path (#301)
 
-Tapping a live session card opens an **inline drill-down drawer** on the card (`board.js::buildDrawer`). It shows the last user↔assistant exchange plus a reply box, and while any drawer is open the **5 s poll pauses** (`fetchBoard()` self-gates on `state.boardExpanded`) so a re-render can never wipe a half-typed reply.
+Tapping a live session card opens an **inline drill-down drawer** on the card (`board.js::buildDrawer`). It shows the last user↔assistant exchange plus a reply box. The **5 s poll keeps running** while a drawer is open — the chief chat holds its drawer open for a whole conversation, and an earlier pause on any open drawer froze the card list for hours with no sign it was stale (#958). Instead `renderBoard()` keeps the open drawer's own `<li>` in place and swaps in only its fresh card header, so a half-typed reply, the reply box's focus (the phone keyboard), a live dictation and the chief's exchange poll all survive every re-render. A drawer whose card leaves the payload (session ended) or the repo filter collapses.
 
 **Reading the exchange (#457).** `GET /api/board/sessions/{sid}/exchange` first resolves the exact live session-host row; a missing session returns `reason: session_not_found`, so the endpoint never guesses by cwd. The source hierarchy is then:
 
