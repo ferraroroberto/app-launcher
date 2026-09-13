@@ -28,7 +28,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("chromium_projection_only")]
 
 _TITLE_PROBE = r"""
 async () => {

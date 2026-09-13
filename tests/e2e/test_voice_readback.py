@@ -262,6 +262,15 @@ def test_toast_sits_above_terminal_overlay(
     assert z["toast"] > z["overlay"], z
 
 
+def _load_readback(page: Page, base_url: str) -> None:
+    """Land on the SPA until the ``window.__readback`` seam and xterm's global
+    ``Terminal`` exist. The extraction tests below feed synthetic rows or write
+    into their own Terminal, so they need the page's modules, not a live PTY
+    session or the terminal overlay (#954)."""
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.wait_for_function("() => window.__readback && window.Terminal")
+
+
 def _last_reply(page: Page, rows) -> str:
     """Last reply block from the pure segmenter (== extractLastReply's value)."""
     return page.evaluate(
@@ -272,12 +281,12 @@ def _last_reply(page: Page, rows) -> str:
 
 
 def test_extraction_reads_reply_not_footer_or_recap(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The segmenter returns the de-wrapped last ● block, dropping the composer
     box, the status footer (folder/permission/tokens), the recap, "Worked for",
     the live spinner and its "Tip:" hint."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     assert _last_reply(authed_page, _IDLE_LINES) == _EXPECTED
     # No ● assistant block anywhere (only a spinner / pending tool) → nothing.
     assert _last_reply(authed_page, _RUNNING_LINES) == ""
@@ -297,11 +306,11 @@ def test_extraction_reads_reply_not_footer_or_recap(
 
 
 def test_extraction_returns_ordered_block_list(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The segmenter exposes every ● reply in order (the seam the future
     "read last N" depth-selector slices, #197) — tool blocks excluded."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     rows = _rows(
         ("a", "● First reply."),
         ("t", "● Bash(ls)"),
@@ -321,12 +330,12 @@ def test_extraction_returns_ordered_block_list(
 
 
 def test_color_path_classifies_bullets_from_real_buffer(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The live cell-colour reader, end-to-end: a default/white ● opens an
     assistant block; a green ● opens a tool block. Drives a real xterm Terminal
     so bufferToRows + the colour classifier run, not just the pure segmenter."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         r"""() => {
           const term = new window.Terminal({ cols: 80, rows: 30 });

@@ -22,7 +22,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("chromium_projection_only")]
 
 # Exercise routeFrame in the page across the frame kinds that share the
 # server→client stream. The only variables are the frame text and whether

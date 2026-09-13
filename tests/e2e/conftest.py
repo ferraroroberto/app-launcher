@@ -739,6 +739,22 @@ def browser_context_args(
     return args
 
 
+@pytest.fixture(scope="session")
+def chromium_projection_only(browser_name: str) -> None:
+    """Skip the WebKit projection for a check with no browser-dependent signal.
+
+    Opt in per module with ``pytest.mark.usefixtures("chromium_projection_only")``:
+    server-side ``requests`` checks, and pure-JS helpers probed through
+    ``page.evaluate`` with no DOM geometry or CSS, give the same answer on both
+    engines, so a second projection only doubles the runtime (#954). Chromium is
+    the one kept because the diff-proportionate gate's narrow static tier
+    (#568) runs Chromium only. Session-scoped so the skip fires before any
+    function-scoped fixture (browser context, PTY launch) is built for nothing.
+    """
+    if browser_name != "chromium":
+        pytest.skip("no browser-dependent signal; runs once on the chromium projection")
+
+
 # Bound the default Playwright action + navigation timeout (issue #186).
 # Playwright defaults both to 30 s, so a single auto-waiting action whose
 # target never settles on a loaded hosted runner — a `.click()` / `goto` /
