@@ -28,6 +28,11 @@ classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546
 static_pytest_target = "tests/e2e/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
+# Ratchet at the measured size (app-launcher#972): this repo's dual-projection
+# suite spans six tabs, so the scaffold's 15-test target doesn't apply here.
+# Lower this as the suite trims; /e2e-audit re-fires when the real count
+# exceeds it again.
+test_budget = 528
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
