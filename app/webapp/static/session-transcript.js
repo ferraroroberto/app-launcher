@@ -24,7 +24,6 @@ const PAGE_LIMIT = 40;
 // "couldn't read it" (and vice versa).
 const REASON_COPY = {
   session_not_found: 'This session is no longer running',
-  detached: 'Transcript unavailable for detached sessions',
   unsupported_agent: 'Transcript not supported for this agent yet',
   no_transcript: 'No transcript found for this session',
   read_failed: 'Couldn’t read the transcript',
