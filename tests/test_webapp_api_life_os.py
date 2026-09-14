@@ -713,6 +713,226 @@ class TestContentBrowser:
         assert resp.status_code == 403
         assert (life_os / rel).is_file()
 
+    # --- rename/delete: keep index.md + cross-skill search in sync (#971) --
+    # #906 fixed the browse-view mirror (conversations/index.json) but
+    # explicitly deferred fleet-config's own index.md (the format index.json
+    # is regenerated *from*) and its cross-skill FTS5 search db — leaving a
+    # renamed/deleted conversation resolvable through Search under its stale
+    # pre-change identity until an unrelated external pipeline run resyncs
+    # it. These tests cover the deferred half.
+    def _index_md_path(self, life_os):
+        return (
+            life_os / ".claude" / "skills" / "journal-daily"
+            / "conversations" / "index.md"
+        )
+
+    def _stub_search_cli(self, monkeypatch, argv=("py", "conversation_search.py")):
+        """Pretend fleet-config's search CLI is installed, on an isolated
+        ``subprocess`` binding so patching ``.run`` can't leak into the real
+        module (mirrors ``TestConversationSearch.stub_cli``)."""
+        from app.webapp.routers import life_os_files
+        monkeypatch.setattr(life_os_files, "_search_cli", lambda cfg: list(argv))
+        monkeypatch.setattr(life_os_files, "subprocess", SimpleNamespace(**vars(subprocess)))
+        return life_os_files
+
+    def test_rename_updates_index_md(self, life_os_client):
+        # #971: index.json's own source of truth (fleet-config's index.md)
+        # must follow the rename too — otherwise the external pipeline's
+        # next run can silently overwrite or orphan the index.json patch
+        # #906 already made.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        self._index_md_path(life_os).write_text(
+            '<!-- idx file="2026-06-01-1917-trial.md" mtime=1 turns=4 sid="" agent="codex" -->\n'
+            '### 2026-06-01 · trial\n- **Topic:** a codex trial\n',
+            encoding="utf-8",
+        )
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+        text = self._index_md_path(life_os).read_text(encoding="utf-8")
+        assert 'file="2026-06-01-1917-trial.md"' not in text
+        assert 'file="2026-06-01-1917-use-personal-journal.md"' in text
+
+    def test_rename_survives_missing_index_md(self, life_os_client):
+        # A skill the external indexer hasn't reached yet must not block a
+        # rename of its raw logs (same stance as #906's index.json handling).
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        assert not self._index_md_path(life_os).exists()
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_delete_prunes_index_md(self, life_os_client):
+        # #971 delete-half: index.md must lose the deleted entry's whole
+        # block too — otherwise it's left holding a permanently stale
+        # <!-- idx file="..." --> pointing at a file that no longer exists,
+        # indistinguishable from a legacy entry the pipeline should re-digest.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        self._index_md_path(life_os).write_text(
+            '# Conversation index — journal-daily\n\n'
+            '<!-- idx file="2026-06-01-1917-trial.md" mtime=1 turns=4 sid="" agent="codex" -->\n'
+            '### 2026-06-01 · trial\n'
+            '- **Topic:** a codex trial\n'
+            '- **Decisions:** none\n'
+            '- **Open loops:** none\n\n'
+            '<!-- idx file="2026-08-01-0900-ferry-booking.md" mtime=1 turns=1 sid="" agent="claude" -->\n'
+            '### 2026-08-01 · ferry booking\n'
+            '- **Topic:** booking the ferry\n'
+            '- **Decisions:** took the 07:40\n'
+            '- **Open loops:** confirm the return leg\n',
+            encoding="utf-8",
+        )
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+        text = self._index_md_path(life_os).read_text(encoding="utf-8")
+        assert 'file="2026-06-01-1917-trial.md"' not in text
+        assert "a codex trial" not in text
+        # The sibling entry must survive untouched.
+        assert 'file="2026-08-01-0900-ferry-booking.md"' in text
+        assert "booking the ferry" in text
+
+    def test_delete_survives_missing_index_md(self, life_os_client):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        assert not self._index_md_path(life_os).exists()
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+
+    def test_rename_triggers_search_resync(self, life_os_client, monkeypatch):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        life_os_files = self._stub_search_cli(monkeypatch)
+        calls = []
+        monkeypatch.setattr(
+            life_os_files.subprocess, "run",
+            lambda argv, **kwargs: calls.append(argv) or _completed(),
+        )
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert len(calls) == 1
+        argv = calls[0]
+        assert argv[:2] == ["py", "conversation_search.py"]
+        assert "--rebuild" in argv
+        assert str(life_os) in argv
+
+    def test_delete_triggers_search_resync(self, life_os_client, monkeypatch):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        life_os_files = self._stub_search_cli(monkeypatch)
+        calls = []
+        monkeypatch.setattr(
+            life_os_files.subprocess, "run",
+            lambda argv, **kwargs: calls.append(argv) or _completed(),
+        )
+        rel = self._conv_path(life_os)
+        resp = client.request("DELETE", f"/api/life-os/file?path={rel}")
+        assert resp.status_code == 200, resp.text
+        assert len(calls) == 1
+        assert "--rebuild" in calls[0]
+
+    def test_rename_survives_search_resync_nonzero_exit(self, life_os_client, monkeypatch):
+        # A resync that runs but fails (e.g. life_os_dir not opted into
+        # fleet-config's capture pipeline) must not fail the rename either —
+        # only logged, per search_conversations's own returncode convention.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        life_os_files = self._stub_search_cli(monkeypatch)
+        monkeypatch.setattr(
+            life_os_files.subprocess, "run",
+            lambda *a, **k: _completed("", 1, "project not found"),
+        )
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_rename_survives_search_resync_failure(self, life_os_client, monkeypatch):
+        # A locked/corrupt search db, or a slow machine, must not fail the
+        # rename that triggered the resync — the launcher doesn't own that
+        # pipeline's health.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        life_os_files = self._stub_search_cli(monkeypatch)
+        def raising_run(*a, **k):
+            raise subprocess.TimeoutExpired(cmd="conversation_search.py", timeout=30)
+        monkeypatch.setattr(life_os_files.subprocess, "run", raising_run)
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+
+    def test_rename_survives_no_fleet_config(self, life_os_client):
+        # life_os_client's claude_config_dir has no hooks/ script, so this
+        # exercises the "no checkout at all" path explicitly.
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._conv_path(life_os)
+        resp = client.post(
+            "/api/life-os/file/rename",
+            json={"path": rel, "slug": "Use Personal Journal"},
+        )
+        assert resp.status_code == 200, resp.text
+
+
+class TestFilesSearchCliResolution:
+    """``life_os_files._search_cli`` — same resolution as
+    ``life_os_conversations._search_cli`` (``TestSearchCliResolution``),
+    duplicated because ``life_os_files`` is a deliberate import leaf."""
+
+    def _tree(self, root: Path, *, script: bool, venv: bool) -> Path:
+        if script:
+            (root / "hooks").mkdir(parents=True, exist_ok=True)
+            (root / "hooks" / "conversation_search.py").write_text(
+                "", encoding="utf-8"
+            )
+        if venv:
+            win = root / ".venv" / "Scripts"
+            win.mkdir(parents=True, exist_ok=True)
+            (win / "python.exe").write_text("", encoding="utf-8")
+        return root
+
+    def _cfg(self, root: Path):
+        class _Cfg:
+            claude_config_dir = str(root)
+        return _Cfg()
+
+    def test_resolves_when_both_present(self, tmp_path):
+        from app.webapp.routers.life_os_files import _search_cli
+        root = self._tree(tmp_path / "fleet-config", script=True, venv=True)
+        cli = _search_cli(self._cfg(root))
+        assert cli is not None
+        assert cli[0].endswith("python.exe")
+        assert cli[1].endswith("conversation_search.py")
+
+    def test_none_without_script(self, tmp_path):
+        from app.webapp.routers.life_os_files import _search_cli
+        root = self._tree(tmp_path / "fleet-config", script=False, venv=True)
+        assert _search_cli(self._cfg(root)) is None
+
+    def test_none_without_interpreter(self, tmp_path):
+        from app.webapp.routers.life_os_files import _search_cli
+        root = self._tree(tmp_path / "fleet-config", script=True, venv=False)
+        assert _search_cli(self._cfg(root)) is None
+
 
 # ------------------------------------------------------- recap-status endpoint
 def _write_ledger(life_os: Path, age_days: float) -> Path:
