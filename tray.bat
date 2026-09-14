@@ -70,7 +70,11 @@ set "SCRIPT_DIR_ARG=%SCRIPT_DIR:~0,-1%"
 cd /d "%SCRIPT_DIR%" || exit /b 1
 
 REM === ADAPT (1/4): short app name, used in messages + the start window title ===
-set "APP_NAME=AppLauncher"
+REM  Namespaced, never a bare APP_NAME: setlocal hides a variable from the
+REM  calling console but NOT from children, so the whole tray -> webapp ->
+REM  session-host chain inherits it, and so does every session and app it
+REM  spawns -- where APP_NAME is another project's own config key (#963).
+set "TRAY_APP_NAME=AppLauncher"
 REM === ADAPT (2/4): the args python is started with to launch the tray,
 REM     e.g. "launcher.py tray"  or  "-m tray" ===
 set "TRAY_LAUNCH=launcher.py tray"
@@ -102,5 +106,5 @@ set "VERSION_URL="
 set "RESTART_ARG="
 if defined WANT_RESTART set "RESTART_ARG=-Restart"
 
-%PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%APP_NAME%" -ScriptDir "%SCRIPT_DIR_ARG%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
+%PS% -NoProfile -NonInteractive -File "%TRAY_PS%" launch -AppName "%TRAY_APP_NAME%" -ScriptDir "%SCRIPT_DIR_ARG%" -VenvDir "%TRAY_VENV%" -TrayMatch "launcher\.py\s+tray" -Ports "%OWNED_PORTS%" -TrayLaunch "%TRAY_LAUNCH%" -VersionUrl "%VERSION_URL%" !RESTART_ARG!
 exit /b %ERRORLEVEL%
