@@ -283,3 +283,40 @@ class TestPathsTouchedBetween:
             tmp_path, "abc1234", "def5678", ["src/session_host.py"]
         )
         assert result is None
+
+
+class TestShaContainsCommit:
+    """#967 reopen: whether a running session-host's loaded sha already has a
+    feature commit — the fact the webapp needs to say "restart needed"
+    instead of forwarding the stale host's bare HTTP 500."""
+
+    def _commit(self, repo: Path, name: str) -> str:
+        (repo / f"{name}.txt").write_text(name, encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", name], cwd=repo, check=True, capture_output=True
+        )
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
+            capture_output=True, text=True,
+        ).stdout.strip()
+
+    def test_true_when_sha_descends_from_commit(self, tmp_path):
+        repo = TestPathsTouchedBetween()._init_repo(tmp_path)
+        feature = self._commit(repo, "feature")
+        later = self._commit(repo, "later")
+        assert session_host_paths.sha_contains_commit(repo, later, feature) is True
+        assert session_host_paths.sha_contains_commit(repo, feature, feature) is True
+
+    def test_false_when_sha_predates_commit(self, tmp_path):
+        repo = TestPathsTouchedBetween()._init_repo(tmp_path)
+        old = self._commit(repo, "old")
+        feature = self._commit(repo, "feature")
+        assert session_host_paths.sha_contains_commit(repo, old, feature) is False
+
+    def test_none_for_unresolvable_sha(self, tmp_path):
+        # Unknown is its own state — never a confident "predates".
+        repo = TestPathsTouchedBetween()._init_repo(tmp_path)
+        feature = self._commit(repo, "feature")
+        assert session_host_paths.sha_contains_commit(repo, "deadbee", feature) is None
+        assert session_host_paths.sha_contains_commit(repo, feature, "deadbee") is None

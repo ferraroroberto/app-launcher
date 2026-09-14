@@ -485,9 +485,9 @@ function wireSessionSendDialog() {
       if (els.sessionSendDialog.close) els.sessionSendDialog.close();
       toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
     } catch (exc) {
-      // Dialog stays open with the text intact — an honest failure (the
-      // old session-host answers HTTP 500 here until :8446 restarts, an
-      // unattached console 502) is never reported as sent.
+      // Dialog stays open with the text intact — an honest failure (a
+      // session-host that predates detached input is a 501 naming the
+      // restart, an unattached console 502) is never reported as sent.
       apiFailToast('Send failed', exc);
     } finally {
       submitBtn.disabled = false;

@@ -20,7 +20,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from fastapi import (
     APIRouter,
@@ -36,6 +36,7 @@ from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
 from src import audit, board, launcher, session_client
+from src.session_host_paths import sha_contains_commit
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -48,6 +49,7 @@ from app.webapp.middleware import (
 )
 from app.webapp.routers import voice_ocr_tts
 from app.webapp.routers._helpers import (
+    PROJECT_ROOT,
     audit_off_loop,
     client_ip,
     client_ip_ws,
@@ -281,6 +283,60 @@ async def session_image(
     return result
 
 
+# The squash-merge that gave the session-host its detached-session input path
+# (``RemoteSession.submit_input`` behind the kind-agnostic ``/input`` route,
+# #967 / PR #969). A session-host whose loaded ``git_sha`` does not contain it
+# answers a detached Send with an unhandled ``AttributeError`` — a bare 500.
+_DETACHED_INPUT_COMMIT = "1cf17209c86885ff3a488bd2501e26e8a69c4580"
+
+
+def _classify_input_500(port: int, sid: str, detail: str) -> Tuple[int, str]:
+    """Name a session-host 500 on ``/input`` when the facts allow (#967 reopen).
+
+    The first real-device Send hit a session-host still running a build from
+    before detached input existed; the phone saw only "session-host HTTP 500".
+    That condition is established here from two facts, never from the 500
+    alone: the target is a detached (``remote``) session, and the host's
+    loaded ``git_sha`` does not contain :data:`_DETACHED_INPUT_COMMIT`. Then
+    it is a **501** saying a restart is needed. A PTY target, or a host that
+    already has the feature (the new path genuinely failed), keeps the
+    original 500 untouched. When either fact can't be established for a
+    detached target, the 500 says so — unknown, not stale.
+    """
+    try:
+        kind = session_client.get_session(port, sid).get("kind")
+    except session_client.SessionHostError as exc:
+        logger.warning(f"⚠️ input 500 on {sid[:8]}: session kind unresolved ({exc})")
+        return 500, detail
+    if kind != "remote":
+        return 500, detail
+    identity = session_client.identity(port) or {}
+    host_sha = str(identity.get("git_sha") or "")
+    contains = (
+        sha_contains_commit(PROJECT_ROOT, host_sha, _DETACHED_INPUT_COMMIT)
+        if host_sha and host_sha != "unknown" else None
+    )
+    if contains is False:
+        logger.info(
+            f"ℹ️ detached send to {sid[:8]} refused: session-host {host_sha} "
+            f"predates detached input ({_DETACHED_INPUT_COMMIT[:7]})"
+        )
+        return 501, (
+            f"session-host restart needed: the running build ({host_sha}) "
+            f"predates detached Send message"
+        )
+    if contains is None:
+        logger.warning(
+            f"⚠️ detached send to {sid[:8]} failed with 500; could not confirm "
+            f"whether session-host {host_sha or '(unreachable)'} has detached input"
+        )
+        return 500, (
+            f"{detail} (could not confirm whether the running session-host "
+            f"supports detached Send message)"
+        )
+    return 500, detail
+
+
 @router.post("/api/claude-code/sessions/{sid}/input")
 async def session_input(sid: str, request: Request, response: Response) -> Dict[str, Any]:
     """Write composed text into a session's PTY (Tailscale-only + passkey, #301).
@@ -355,14 +411,19 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
             session_client.send_input, cfg.session_host_port, sid, text, submit
         )
     except session_client.SessionHostError as exc:
+        status, detail = exc.status, str(exc)
+        if exc.status == 500:
+            status, detail = await asyncio.to_thread(
+                _classify_input_500, cfg.session_host_port, sid, detail
+            )
         # Includes the 502 the host raises for a payload it wrote but never
         # saw echoed (#760) — audited too, since a *failed* steer is the
         # event worth finding in the log afterwards.
         await audit_off_loop(
             audit.session_log, sid, "input", bytes=len(text), submit=submit,
-            reason="error", detail=str(exc)[:200],
+            reason="stale_host" if status == 501 else "error", detail=detail[:200],
         )
-        raise HTTPException(status_code=exc.status, detail=str(exc))
+        raise HTTPException(status_code=status, detail=detail)
     verdict = result if isinstance(result, dict) else {}
     # Audit the verdict, not just the byte count (#760): the three stalled
     # sessions' logs recorded `bytes=6637 submit=True` for steers that were
