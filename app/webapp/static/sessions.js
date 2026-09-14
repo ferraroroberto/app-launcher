@@ -10,7 +10,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { apiFailToast, escapeHtml, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
 import { CHIEF_KILL_CONFIRM, bindOutsideClickToClose, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
@@ -139,11 +139,15 @@ export function closeSessionMenu() {
   });
 }
 
-function menuButton(className, glyph, label, onTap) {
+// One menu row: Lucide glyph + a visible text label (#967 — the menu is a
+// vertical list, readable at a glance). ``label`` is the accessible name
+// (aria-label/title, the stable hook the e2e sites target); ``text`` is
+// the short caption painted next to the glyph.
+function menuButton(className, glyph, label, text, onTap) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn session-menu-btn ' + className;
-  btn.innerHTML = icon(glyph);
+  btn.innerHTML = icon(glyph) + '<span class="session-menu-label">' + escapeHtml(text) + '</span>';
   btn.title = label;
   btn.setAttribute('aria-label', label);
   btn.setAttribute('role', 'menuitem');
@@ -242,10 +246,16 @@ export function renderSessions() {
     actions.className = 'row-actions session-actions';
 
     // One gear, vertically centred, opens the row's floating action menu
-    // (#953). The menu holds, in order:
+    // (#953) — a vertical icon + label list (#967). The menu holds, in order:
     //   · Transcript — every full-control row; a detached row only when its
     //     agent is Claude or Codex (#966) — the reader uses their native
     //     history, never the PTY capture a detached row lacks.
+    //   · Send message (#967) — detached rows only (a full-control row has
+    //     the terminal's compose bar), and only for an agent the recorded
+    //     console-input probe proved (the registry's ``console_input`` flag,
+    //     served by /api/claude-code/agents) — the menu never offers a dead
+    //     end. Delivery is unconfirmed by design: the message is typed into
+    //     the PC console and nothing can watch the agent consume it.
     //   · Rename (issue #458) — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
@@ -271,12 +281,18 @@ export function renderSessions() {
     const rowAgent = (s.agent || 'claude').toLowerCase();
     if (!remote || rowAgent === 'claude' || rowAgent === 'codex') {
       menu.appendChild(menuButton('session-transcript-btn', 'messages-square', 'Session transcript',
-        function () { openTranscript(s); }));
+        'Transcript', function () { openTranscript(s); }));
+    }
+    // ``known`` is the registry entry for the row's agent (unknown agent →
+    // undefined → no item): the flag is the server's, never guessed here.
+    if (remote && known && known.console_input === true) {
+      menu.appendChild(menuButton('session-send-btn', 'send-horizontal', 'Send message',
+        'Send message', function () { openSessionSend(s); }));
     }
     menu.appendChild(menuButton('', 'pencil', 'Rename session',
-      function () { openSessionRename(s); }));
+      'Rename', function () { openSessionRename(s); }));
     menu.appendChild(menuButton('action-stop-close', 'x', 'Stop and kill session',
-      function () { stopSession(s); }));
+      'Stop', function () { stopSession(s); }));
     gear.addEventListener('click', function () {
       if (openMenuSid === s.session_id) closeSessionMenu();
       else showSessionMenu(s.session_id, gear, menu);
@@ -423,6 +439,62 @@ export function openSessionRename(s, onDone) {
   if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
 }
 
+// Send a follow-up message to a detached session (issue #967). Posts to
+// the same /input route the Board drawer's reply proxy and the terminal
+// compose bar use; the session-host types it into the console by PID. The
+// verdict is ``delivered: "unconfirmed"`` — the toast says so rather than
+// claiming delivery, because nothing on this side can watch the agent
+// consume the keystrokes.
+let sendSessionTarget = null;
+
+export function openSessionSend(s) {
+  sendSessionTarget = s;
+  els.sessionSendHeading.textContent = 'Send message';
+  els.sessionSendInput.value = '';
+  if (els.sessionSendDialog.showModal) els.sessionSendDialog.showModal();
+  els.sessionSendInput.focus();
+}
+
+function sendOutcomeText(verdict) {
+  const delivered = verdict && verdict.delivered;
+  if (delivered === true) return 'Sent';
+  return 'Sent, not confirmed: typed into the PC console';
+}
+
+function wireSessionSendDialog() {
+  els.sessionSendCancel.addEventListener('click', function () {
+    if (els.sessionSendDialog.close) els.sessionSendDialog.close();
+  });
+  els.sessionSendForm.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    if (!sendSessionTarget) return;
+    const text = els.sessionSendInput.value.trim();
+    if (!text) return;
+    const submitBtn = els.sessionSendForm.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    try {
+      const verdict = await jsonApi(
+        '/api/claude-code/sessions/' +
+          encodeURIComponent(sendSessionTarget.session_id) + '/input',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: text, submit: true }),
+        }
+      );
+      if (els.sessionSendDialog.close) els.sessionSendDialog.close();
+      toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
+    } catch (exc) {
+      // Dialog stays open with the text intact — an honest failure (the
+      // old session-host answers HTTP 500 here until :8446 restarts, an
+      // unattached console 502) is never reported as sent.
+      apiFailToast('Send failed', exc);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
 function wireSessionRenameDialog() {
   els.sessionRenameCancel.addEventListener('click', function () {
     if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
@@ -503,4 +575,5 @@ export function wireSessions() {
     });
   }
   wireSessionRenameDialog();
+  wireSessionSendDialog();
 }

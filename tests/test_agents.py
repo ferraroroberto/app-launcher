@@ -161,9 +161,10 @@ class TestDetectAgents:
         # One entry per known agent, each with the SPA-facing keys.
         assert {d["id"] for d in detected} == set(agents.AGENTS)
         for d in detected:
-            assert set(d) == {"id", "label", "available", "fullscreen"}
+            assert set(d) == {"id", "label", "available", "fullscreen", "console_input"}
             assert isinstance(d["available"], bool)
             assert isinstance(d["fullscreen"], bool)
+            assert isinstance(d["console_input"], bool)
         # The SPA pans (vs reflows) the phone terminal off this flag, so the
         # fullscreen TUIs must report True and inline Claude False (#264).
         by_id = {d["id"]: d["fullscreen"] for d in detected}
@@ -171,6 +172,23 @@ class TestDetectAgents:
         assert by_id["codex"] is True
         assert by_id["pi"] is True  # differential TUI, forced-repaint path (#291)
         assert "ssh" not in by_id  # service integration, not a Coding-tab button
+
+    def test_console_input_flags_match_the_967_probe(self, monkeypatch):
+        # Issue #967: the Coding tab offers a detached row's "Send message"
+        # item only for agents the recorded probe proved take console input
+        # (the comment on the issue). Grok was *not probed* (not signed in
+        # on the dev box) — False means unprobed, and it must stay False
+        # until a probe says otherwise, never be flipped by analogy.
+        monkeypatch.setattr(agents.shutil, "which", lambda cmd, path=None: None)
+        by_id = {d["id"]: d["console_input"] for d in agents.detect_agents()}
+        assert by_id == {
+            "claude": True, "codex": True, "antigravity": True,
+            "copilot": True, "pi": True, "grok": False,
+        }
+        assert agents.supports_console_input("claude") is True
+        assert agents.supports_console_input("grok") is False
+        assert agents.supports_console_input("ssh") is False
+        assert agents.supports_console_input("no-such-agent") is False
 
     def test_availability_reflects_path(self, monkeypatch):
         # Only `claude` resolves; `agy` does not.

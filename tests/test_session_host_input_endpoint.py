@@ -271,3 +271,54 @@ def test_input_unknown_session_returns_404(monkeypatch):
     resp = client.post("/sessions/no-such/input", json={"data": "hello"})
 
     assert resp.status_code == 404
+
+
+# --- detached (console) targets, issue #967 ---------------------------------
+
+def test_remote_input_answers_200_with_delivered_unconfirmed(monkeypatch):
+    # RemoteSession.submit_input's verdict flows through the same route: a
+    # console has no output stream to verify against, so the 200 body says
+    # "unconfirmed" — a third state, never folded into True.
+    from src.session_host import RemoteInputOutcome
+
+    session = _session(
+        RemoteInputOutcome(reason=INPUT_UNVERIFIED, submitted=True, units=8)
+    )
+    monkeypatch.setattr(server.manager, "get", lambda sid: session)
+    client = TestClient(server.app)
+
+    resp = client.post("/sessions/sid-967/input", json={"data": "continue", "submit": True})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["delivered"] == "unconfirmed"
+    assert body["delivered"] is not True
+    assert body["submit_state"] == "unconfirmed"
+    assert body["reason"] == INPUT_UNVERIFIED
+    assert body["units"] == 8
+    session.submit_input.assert_called_once_with("continue", True)
+
+
+def test_remote_console_failure_is_a_502_naming_the_error(monkeypatch):
+    # Distinct from not_ingested's 502 wording: nothing was typed at all.
+    from src.session_host import RemoteInputOutcome
+    from src.session_host_input import INPUT_CONSOLE_FAILED
+
+    session = _session(
+        RemoteInputOutcome(
+            reason=INPUT_CONSOLE_FAILED,
+            error="AttachConsole(4321) failed: [5] Access is denied.",
+        )
+    )
+    monkeypatch.setattr(server.manager, "get", lambda sid: session)
+    client = TestClient(server.app)
+
+    resp = client.post("/sessions/sid-967/input", json={"data": "continue"})
+
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "console input failed" in detail
+    assert "NOT typed" in detail
+    assert "AttachConsole(4321) failed" in detail
+    assert "never echoed" not in detail

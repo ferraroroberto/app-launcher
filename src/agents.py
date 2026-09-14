@@ -65,6 +65,15 @@ class Agent:
     picker-visible title. It is intentionally separate from a live rename:
     the launcher must never type into a running agent TUI (#555). Empty means
     the agent exposes no verified non-PTY naming mechanism.
+
+    ``console_input`` records whether a *detached* session of this agent
+    was empirically shown to take a follow-up message typed into its
+    console from outside (``AttachConsole`` + ``WriteConsoleInputW`` key
+    records — ``src/console_input.py``, issue #967). Only agents the probe
+    on the issue proved get the Coding tab's **Send message** item and the
+    session-host's remote input path; ``False`` means *not probed*, never
+    *known broken* — a menu must not offer a dead end, so an unprobed
+    agent simply gets no item until it is probed.
     """
 
     id: str
@@ -74,6 +83,7 @@ class Agent:
     fullscreen: bool = False
     resume_token: str = ""
     native_name_flag: str = ""
+    console_input: bool = False
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -82,20 +92,22 @@ AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
-        native_name_flag="--name",
+        native_name_flag="--name", console_input=True,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
         quit_command="/quit", fullscreen=True, resume_token="resume",
+        console_input=True,
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",
         quit_command="/quit", fullscreen=True, resume_token="--continue",
+        console_input=True,
     ),
     "copilot": Agent(
         id="copilot", label="GitHub Copilot CLI", command="copilot",
         quit_command="/exit", fullscreen=True, resume_token="--resume",
-        native_name_flag="--name",
+        native_name_flag="--name", console_input=True,
     ),
     # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
     # the Claude **subscription** path (no API credits); see the launch flags
@@ -111,7 +123,7 @@ AGENTS: Dict[str, Agent] = {
     "pi": Agent(
         id="pi", label="Pi", command="pi",
         quit_command="/quit", fullscreen=True, resume_token="-r",
-        native_name_flag="--name",
+        native_name_flag="--name", console_input=True,
     ),
     # Grok Build (issue #626). fullscreen=True is empirical, not assumed: a
     # ConPTY probe of grok 0.2.112 showed an alt-screen enter (CSI ?1049h)
@@ -122,7 +134,9 @@ AGENTS: Dict[str, Agent] = {
     # session title), so no spawn-time name flag is needed — and none
     # exists (`--session-id` takes only a UUID, not a label).
     # Bare `--resume` resumes the cwd's most recent session (Antigravity's
-    # `--continue` shape, not a Claude-style picker).
+    # `--continue` shape, not a Claude-style picker). console_input stays
+    # False: the #967 probe could not sign Grok in on the dev box, so it is
+    # *not probed* — flip it only after a recorded probe, never by analogy.
     "grok": Agent(
         id="grok", label="Grok Build", command="grok",
         quit_command="/quit", fullscreen=True, resume_token="--resume",
@@ -246,6 +260,18 @@ def is_fullscreen(agent_id: str) -> bool:
     return bool(agent and agent.fullscreen)
 
 
+def supports_console_input(agent_id: str) -> bool:
+    """Whether a detached session of ``agent_id`` may be sent a message
+    through its console (``Agent.console_input``, issue #967).
+
+    Unknown ids are ``False`` — the same *not probed* reading as an agent
+    whose flag is unset, and the guard the session-host's remote input path
+    applies before it spawns anything.
+    """
+    agent = SESSION_HOST_AGENTS.get(agent_id)
+    return bool(agent is not None and agent.console_input)
+
+
 def is_installed(agent_id: str) -> bool:
     """Whether ``agent_id``'s command resolves on the **effective** PATH.
 
@@ -266,8 +292,10 @@ def is_installed(agent_id: str) -> bool:
 def detect_agents() -> List[Dict[str, object]]:
     """Detection snapshot for the SPA — one dict per known agent.
 
-    Each dict is ``{"id", "label", "available", "fullscreen"}``;
-    ``available`` is the live ``PATH`` check, and ``fullscreen`` lets the
+    Each dict is ``{"id", "label", "available", "fullscreen",
+    "console_input"}``; ``available`` is the live ``PATH`` check,
+    ``console_input`` is the probe-proven detached-send flag (#967) the
+    Coding tab gates its **Send message** item on, and ``fullscreen`` lets the
     SPA tell a differential TUI (Codex/ratatui) apart from inline Claude so
     the phone terminal can pan the fixed canvas above the keyboard instead
     of reflowing — reflowing resizes the PTY and makes ratatui repaint on
@@ -281,6 +309,7 @@ def detect_agents() -> List[Dict[str, object]]:
             "label": agent.label,
             "available": is_installed(agent.id),
             "fullscreen": agent.fullscreen,
+            "console_input": agent.console_input,
         }
         for agent in AGENTS.values()
     ]

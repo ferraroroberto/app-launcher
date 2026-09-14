@@ -251,7 +251,7 @@ class TestAgents:
         ids = {a["id"] for a in body["agents"]}
         assert {"claude", "antigravity", "copilot"} <= ids
         for a in body["agents"]:
-            assert set(a) == {"id", "label", "available", "fullscreen"}
+            assert set(a) == {"id", "label", "available", "fullscreen", "console_input"}
             assert isinstance(a["available"], bool)
             assert isinstance(a["fullscreen"], bool)
 
