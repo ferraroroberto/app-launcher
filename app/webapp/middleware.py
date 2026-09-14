@@ -166,6 +166,11 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board drill-down (#301): last-exchange surfaces transcript text (terminal-grade content).",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript"),
+        "passkey",
+        "Coding-tab transcript view (#953): the whole conversation, terminal-grade content.",
+    ),
+    (
         lambda p: p == "/api/board/issues/start",
         "passkey",
         "Board drill-down (#301): issue-start spawns a coding session.",
