@@ -1,5 +1,6 @@
 """Declared session-host paths + touched-path diff, for `/api/version`'s
-staleness scoping (#635).
+staleness scoping (#635), and the loaded-sha lineage check the webapp uses to
+name a session-host that predates a feature (#967).
 
 `_session_host_freshness()` in `app/webapp/routers/misc.py` used to flag the
 session-host `stale` the instant its loaded `git_sha` differed from the
@@ -196,6 +197,25 @@ def paths_touched_between(
         return None
     changed = [ln.strip() for ln in out.splitlines() if ln.strip()]
     return _touched_by(changed, paths)
+
+
+def sha_contains_commit(repo_root: Path, sha: str, commit: str) -> Optional[bool]:
+    """Whether ``commit`` is in ``sha``'s history (``sha`` itself counts).
+
+    The build-lineage companion to :func:`paths_touched_between`: it answers
+    "does the session-host's loaded ``git_sha`` already have feature X", which
+    the webapp needs to name a stale host instead of forwarding its bare
+    HTTP 500 (#967 reopen). ``None`` when either sha can't be resolved — never
+    a confident "predates" when the comparison couldn't actually run.
+    """
+    commit_full = run_git(repo_root, ["rev-parse", "--verify", "--quiet", f"{commit}^{{commit}}"])
+    sha_full = run_git(repo_root, ["rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"])
+    if not commit_full or not sha_full:
+        return None
+    base = run_git(repo_root, ["merge-base", commit_full, sha_full], warn_on_failure=True)
+    if base is None:
+        return None
+    return base == commit_full
 
 
 def _touched_by(changed_files: List[str], path_tokens: List[str]) -> bool:
