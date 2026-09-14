@@ -1876,6 +1876,211 @@ summary + .opt-group { border-top: 0; }
   display: block;
 }
 
+/* ---------- session row: gear + floating action menu (#953) ---------- */
+/* One gear centred in the rail; the menu floats to its left, over the row,
+   on the same raised-chrome recipe as the git-status summary popover. */
+.app-item .row-actions.session-actions {
+  position: relative;
+  justify-content: center;
+}
+.app-item .row-actions.session-actions .session-gear {
+  flex: 0 0 auto;
+  min-height: var(--row-sm);
+}
+.app-item .row-actions.session-actions .session-gear[aria-expanded="true"] {
+  color: var(--accent);
+}
+.session-menu {
+  position: absolute;
+  top: 50%;
+  right: calc(100% - 4px);
+  transform: translateY(-50%);
+  z-index: 30;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+/* Menu items are square 44px targets (hit-target.min), not rail cells. */
+.app-item .row-actions.session-actions .session-menu .icon-btn {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  border-top: 0;
+  border-radius: var(--radius-sm);
+}
+
+/* ---------- session transcript overlay (#953) ---------- */
+/* Same fixed overlay + bar chrome as the terminal, on the app canvas rather
+   than the terminal's own black — this is a reading surface, not a TTY. */
+.transcript-overlay { background: var(--bg); }
+/* One 12px gutter everywhere: page edge, between cards, and (below) the
+   row padding inside an opened group — nothing else sets a gap here. */
+.transcript-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+/* Ghost tertiary action: transparent fill on a hairline. */
+.transcript-older {
+  align-self: center;
+  min-height: var(--control-h);
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+}
+.transcript-older:disabled { opacity: 0.5; cursor: default; }
+.transcript-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tr-turn-item, .tr-run { min-width: 0; }
+/* A turn is a collapsible card: the summary carries the meta line (and,
+   closed, a one-line hint), the body the text. Same 14px side inset as the
+   disclosure component so cards line up. */
+.tr-turn {
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+/* The user's turn: the accent tint the app already uses for the chief row
+   and the active nav tab — nothing new. */
+.tr-user {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-soft);
+}
+.tr-turn-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.tr-turn-summary::-webkit-details-marker { display: none; }
+.tr-meta {
+  flex: none;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.tr-turn-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-turn[open] .tr-turn-hint { visibility: hidden; }
+.tr-turn-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--font-heading-lg);
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.tr-turn[open] .tr-turn-chevron { transform: rotate(90deg); }
+.tr-text {
+  padding: 0 14px 14px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tr-turn > .tr-trunc { padding: 0 14px 12px; }
+.tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
+.tr-md { white-space: normal; }
+.tr-md p { margin: 0 0 8px; }
+.tr-md p:last-child, .tr-md ul:last-child { margin-bottom: 0; }
+.tr-md ul { margin: 0 0 8px; padding-left: 20px; }
+.tr-md h1, .tr-md h2, .tr-md h3, .tr-md h4, .tr-md h5, .tr-md h6 {
+  margin: 8px 0 4px;
+  font-size: var(--font-label);
+}
+.tr-md pre { overflow-x: auto; }
+.tr-trunc { font-size: var(--font-caption); color: var(--muted); }
+/* A run of folded entries is one vendored disclosure card; the items inside
+   are flat list rows on a hairline, each its own <details>. */
+/* The bar's eye toggle: groups stay in the DOM (a tap brings them back
+   exactly where they were) but leave the flow entirely, gap included. */
+.transcript-list.tr-hide-groups .tr-run { display: none; }
+/* A group card sits on the same geometry as a closed turn card — the 44px
+   row, 10px 14px summary padding, label-size title — and drops the app's
+   global `.card` bottom margin, which otherwise stacked on the list gap and
+   made the spacing around groups wider than around turns. */
+.tr-group.card { margin: 0; }
+.tr-group.card--collapsible > .collapse-summary {
+  height: auto;
+  min-height: var(--row-sm);
+  padding: 10px 14px;
+}
+.tr-group .collapse-title {
+  font-size: var(--font-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Items are the shared list-row contract: flat full-bleed rows on a
+   hairline, 12px 0 row padding — the same 12px the cards sit apart. */
+.tr-group-body { padding: 0 14px 2px; }
+.tr-item + .tr-item { border-top: 1px solid var(--line-muted); }
+.tr-item > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 12px 0;
+  cursor: pointer;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
+.tr-item > summary::-webkit-details-marker { display: none; }
+.tr-item > summary .icon { width: 16px; height: 16px; flex: none; }
+.tr-item-name { flex: none; font-weight: 600; color: var(--fg); }
+.tr-item-hint {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-item-body { padding-bottom: 12px; }
+.tr-pre {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  max-height: 40vh;
+  overflow-y: auto;
+  background: var(--card-off);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- webauthn / passkey settings ---------- */
 .webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
 .webauthn-devices {

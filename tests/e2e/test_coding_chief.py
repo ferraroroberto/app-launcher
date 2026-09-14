@@ -142,6 +142,7 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
 
     # 1. Chief + dismiss -> stop never fires.
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    chief_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     chief_row.locator(".action-stop-close").click()
     authed_page.wait_for_timeout(400)
     assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
@@ -149,6 +150,7 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
 
     # 2. Chief + accept -> stop fires.
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    chief_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     chief_row.locator(".action-stop-close").click()
     authed_page.wait_for_timeout(600)
     assert len(dialogs) == 2
@@ -156,6 +158,7 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
 
     # 3. Worker row -> one-tap stop, no dialog. (An unexpected confirm would
     # be auto-dismissed by Playwright and show up as a missing stop call.)
+    worker_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     worker_row.locator(".action-stop-close").click()
     authed_page.wait_for_timeout(600)
     assert len(dialogs) == 2, "worker row must not raise a confirm dialog"

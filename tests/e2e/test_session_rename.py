@@ -149,6 +149,7 @@ def test_coding_tab_rename_wins_over_launch_name(
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
     expect(row.locator(".name")).to_have_text("renameproj", timeout=10_000)
 
+    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     row.locator('button[aria-label="Rename session"]').click()
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
@@ -175,6 +176,7 @@ def test_full_control_rename_dialog_copies_session_link(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     row.locator('button[aria-label="Rename session"]').click()
 
     dialog = authed_page.locator("#sessionRenameDialog")
@@ -232,6 +234,7 @@ def test_codex_rename_dialog_reports_web_link_unavailable(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     row.locator('button[aria-label="Rename session"]').click()
 
     expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename / link")
@@ -247,6 +250,7 @@ def test_detached_rename_dialog_does_not_offer_terminal_link(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
+    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     row.locator('button[aria-label="Rename session"]').click()
 
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
@@ -311,6 +315,7 @@ def test_rename_dialog_adopts_modal_contract(
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
     expect(row.locator(".name")).to_have_text("renameproj", timeout=10_000)
 
+    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
     row.locator('button[aria-label="Rename session"]').click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
 

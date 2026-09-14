@@ -195,6 +195,18 @@ export const els = {
   lifeOsConvoList: document.getElementById('lifeOsConvoList'),
   lifeOsConvoState: document.getElementById('lifeOsConvoState'),
 
+  // Session transcript overlay (#953)
+  transcriptOverlay: document.getElementById('transcriptOverlay'),
+  transcriptClose: document.getElementById('transcriptClose'),
+  transcriptTitle: document.getElementById('transcriptTitle'),
+  transcriptRefresh: document.getElementById('transcriptRefresh'),
+  transcriptToggleGroups: document.getElementById('transcriptToggleGroups'),
+  transcriptToggleAll: document.getElementById('transcriptToggleAll'),
+  transcriptBody: document.getElementById('transcriptBody'),
+  transcriptOlder: document.getElementById('transcriptOlder'),
+  transcriptList: document.getElementById('transcriptList'),
+  transcriptState: document.getElementById('transcriptState'),
+
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),
   jobsAddBtn: document.getElementById('jobsAddBtn'),

@@ -13,8 +13,11 @@ import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, bindOutsideClickToClose, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
+// Same circular-import shape as terminal.js above: session-transcript.js
+// imports sessionTitle from here for its overlay title (#953).
+import { openTranscript } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js in #691; the shared helper landed in #828), exported
 // for this cross-tab use (#547); board.js already imports
@@ -105,12 +108,59 @@ function renderCodingChiefStatus() {
   els.codingChiefStatusText.textContent = alive ? 'chief: running' : 'chief: not running';
 }
 
+// ------------------------------------------------- row action menu (#953)
+//
+// One gear per row opens a floating menu of the row's actions (transcript ·
+// rename · stop) — the rail had no room for a third icon on the phone
+// without crowding the title. The list re-renders on every sessions poll,
+// which would tear an open menu down: the open row's id is remembered here
+// and renderSessions() reopens it on the rebuilt row.
+let openMenuSid = null;
+let disposeMenuOutside = null;
+
+function showSessionMenu(sid, gear, menu) {
+  openMenuSid = sid;
+  menu.hidden = false;
+  gear.setAttribute('aria-expanded', 'true');
+  if (disposeMenuOutside) disposeMenuOutside();
+  disposeMenuOutside = bindOutsideClickToClose(menu, gear, closeSessionMenu);
+}
+
+export function closeSessionMenu() {
+  openMenuSid = null;
+  if (disposeMenuOutside) {
+    disposeMenuOutside();
+    disposeMenuOutside = null;
+  }
+  if (!els.sessionsList) return;
+  els.sessionsList.querySelectorAll('.session-menu').forEach(function (m) { m.hidden = true; });
+  els.sessionsList.querySelectorAll('.session-gear[aria-expanded="true"]').forEach(function (g) {
+    g.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function menuButton(className, glyph, label, onTap) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-btn session-menu-btn ' + className;
+  btn.innerHTML = icon(glyph);
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+  btn.setAttribute('role', 'menuitem');
+  btn.addEventListener('click', function () {
+    closeSessionMenu();
+    onTap();
+  });
+  return btn;
+}
+
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
   els.sessionsEmpty.hidden = state.sessions.length !== 0;
   renderHomeHead();
   renderCodingChiefStatus();
+  let menuReopened = false;
 
   state.sessions.forEach(function (s) {
     const li = document.createElement('li');
@@ -191,35 +241,55 @@ export function renderSessions() {
     const actions = document.createElement('div');
     actions.className = 'row-actions session-actions';
 
-    // Rename (issue #458) — a launcher-native override that always wins in
-    // sessionTitle()'s precedence, for both kinds. Submitting a blank title
-    // clears it, reverting to the automatic precedence.
-    const renameBtn = document.createElement('button');
-    renameBtn.type = 'button';
-    renameBtn.className = 'icon-btn';
-    renameBtn.innerHTML = icon('pencil');
-    renameBtn.title = 'Rename';
-    renameBtn.setAttribute('aria-label', 'Rename session');
-    renameBtn.addEventListener('click', function () { openSessionRename(s); });
-    actions.appendChild(renameBtn);
-
-    // Single Stop-and-kill button per row, both kinds (issue #253). The
-    // session-host quits gracefully then force-falls-back; the window
-    // always closes. A plain ✕ glyph (not a loud 🛑 emoji) inherits the
-    // theme — muted by default via `action-stop-close`, danger-red on press.
-    const stopBtn = document.createElement('button');
-    stopBtn.type = 'button';
-    stopBtn.className = 'icon-btn action-stop-close';
-    stopBtn.innerHTML = icon('x');
-    stopBtn.title = 'Stop and kill';
-    stopBtn.setAttribute('aria-label', 'Stop and kill session');
-    stopBtn.addEventListener('click', function () { stopSession(s); });
-    actions.appendChild(stopBtn);
+    // One gear, vertically centred, opens the row's floating action menu
+    // (#953). The menu holds, in order:
+    //   · Transcript — full-control rows only (a detached row has no
+    //     launcher capture and no structured history to show).
+    //   · Rename (issue #458) — a launcher-native override that always wins
+    //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
+    //     title clears it, reverting to the automatic precedence.
+    //   · Stop-and-kill (issue #253), both kinds: the session-host quits
+    //     gracefully then force-falls-back; the window always closes. Keeps
+    //     the `action-stop-close` class (muted by default, danger-red on
+    //     press). Two taps from the list now — the in-terminal ✕ is still
+    //     one — a deliberate trade for the third action fitting the phone.
+    const gear = document.createElement('button');
+    gear.type = 'button';
+    gear.className = 'icon-btn session-gear';
+    gear.innerHTML = icon('settings');
+    gear.title = 'Session actions';
+    gear.setAttribute('aria-label', 'Session actions');
+    gear.setAttribute('aria-haspopup', 'menu');
+    gear.setAttribute('aria-expanded', 'false');
+    const menu = document.createElement('div');
+    menu.className = 'session-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    if (!remote) {
+      menu.appendChild(menuButton('session-transcript-btn', 'messages-square', 'Session transcript',
+        function () { openTranscript(s); }));
+    }
+    menu.appendChild(menuButton('', 'pencil', 'Rename session',
+      function () { openSessionRename(s); }));
+    menu.appendChild(menuButton('action-stop-close', 'x', 'Stop and kill session',
+      function () { stopSession(s); }));
+    gear.addEventListener('click', function () {
+      if (openMenuSid === s.session_id) closeSessionMenu();
+      else showSessionMenu(s.session_id, gear, menu);
+    });
+    actions.appendChild(gear);
+    actions.appendChild(menu);
+    if (openMenuSid === s.session_id) {
+      showSessionMenu(s.session_id, gear, menu);
+      menuReopened = true;
+    }
 
     li.appendChild(actions);
 
     host.appendChild(li);
   });
+  // The open menu's row is gone (session ended) — drop the stale state.
+  if (openMenuSid && !menuReopened) closeSessionMenu();
 }
 
 // Open a full-control session when its row is tapped. On a desktop browser

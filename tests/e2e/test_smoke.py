@@ -152,7 +152,13 @@ def test_pty_session_renders_with_both_stop_buttons(
         stop_kill = row.locator(".action-stop-close")
         assert stop.count() == 0, f"row {i} ({kind}): stray legacy Stop button"
         assert stop_kill.count() == 1, f"row {i} ({kind}): expected one 🛑 button"
+        # #953: the rail is one gear; the stop button lives in its menu.
+        gear = row.locator(".session-gear")
+        expect(gear).to_be_visible()
+        gear.click()
         expect(stop_kill.first).to_be_visible()
+        gear.click()
+        expect(stop_kill.first).to_be_hidden()
         if "detached" in kind:
             pass
         elif "full control" in kind:
