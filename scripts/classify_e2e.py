@@ -154,7 +154,9 @@ def _target_problem(target: str, repo_root: Path, suite_dir: str) -> str | None:
     return None
 
 
-def load_surfaces(raw: object, repo_root: Path, suite_dir: str = "tests/e2e") -> tuple[list[Surface], str]:
+def load_surfaces(
+    raw: object, repo_root: Path, suite_dir: str = "tests/e2e"
+) -> tuple[list[Surface], str]:
     """Parse `[[e2e.surface]]` into `(surfaces, note)`.
 
     All-or-nothing: one malformed entry, a duplicate name, or an unusable
@@ -232,7 +234,9 @@ def load_config(fleet_toml: Path = FLEET_TOML) -> E2EConfig:
         return E2EConfig(rules=[], source="empty")
 
     full_pytest_target = str(e2e.get("full_pytest_target", "tests/e2e"))
-    surfaces, surfaces_note = load_surfaces(e2e.get("surface"), fleet_toml.parent, full_pytest_target)
+    surfaces, surfaces_note = load_surfaces(
+        e2e.get("surface"), fleet_toml.parent, full_pytest_target
+    )
     return E2EConfig(
         rules=rules,
         static_pytest_target=str(e2e.get("static_pytest_target", "tests/e2e")),
