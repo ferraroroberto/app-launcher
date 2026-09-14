@@ -120,6 +120,25 @@ def _key_pair(vk: int, scan: int, unit: int, control_state: int) -> List[INPUT_R
     return pair
 
 
+_USER32 = None
+
+
+def _user32():
+    """``user32`` loaded once, with ``VkKeyScanW``'s return declared as the
+    ``SHORT`` it is — ctypes' default ``c_int`` leaves the upper bits of a
+    16-bit return undefined on x64, so the ``-1`` "no key" sentinel could
+    miss and a surrogate half would get a junk VK (review nit on #967)."""
+    global _USER32
+    if _USER32 is None:
+        lib = ctypes.WinDLL("user32", use_last_error=True)
+        lib.VkKeyScanW.argtypes = [wt.WCHAR]
+        lib.VkKeyScanW.restype = ctypes.c_short
+        lib.MapVirtualKeyW.argtypes = [wt.UINT, wt.UINT]
+        lib.MapVirtualKeyW.restype = wt.UINT
+        _USER32 = lib
+    return _USER32
+
+
 def _vk_for(unit: int) -> "tuple[int, int, int]":
     """``(virtual key, scan code, control state)`` for one UTF-16 unit.
 
@@ -131,8 +150,7 @@ def _vk_for(unit: int) -> "tuple[int, int, int]":
     """
     if sys.platform != "win32":
         return 0, 0, 0
-    user32 = ctypes.WinDLL("user32", use_last_error=True)
-    vk_scan = user32.VkKeyScanW(wt.WCHAR(chr(unit)))
+    vk_scan = _user32().VkKeyScanW(wt.WCHAR(chr(unit)))
     if vk_scan == -1:
         return 0, 0, 0
     vk = vk_scan & 0xFF
@@ -140,7 +158,7 @@ def _vk_for(unit: int) -> "tuple[int, int, int]":
     # read as a control chord to a TUI, while the UnicodeChar already
     # carries the character.
     shift = SHIFT_PRESSED if (vk_scan >> 8) & 1 else 0
-    scan = user32.MapVirtualKeyW(vk, 0)
+    scan = _user32().MapVirtualKeyW(vk, 0)
     return vk, scan, shift
 
 
