@@ -1631,7 +1631,8 @@ summary + .opt-group { border-top: 0; }
   cursor: default;
 }
 .session-link-row .session-link-copy,
-#sessionRenameCancel {
+#sessionRenameCancel,
+#sessionSendCancel {
   width: var(--row-sm);
   height: var(--row-sm);
   flex: 0 0 var(--row-sm);
@@ -1639,8 +1640,10 @@ summary + .opt-group { border-top: 0; }
 /* Adjacent controls need real, non-overlapping 44px geometry; the modal
    close button's invisible expansion is only safe while isolated. */
 .session-link-row .session-link-copy::before,
-#sessionRenameCancel::before { content: none; }
-#sessionRenameCancel .icon { width: 20px; height: 20px; }
+#sessionRenameCancel::before,
+#sessionSendCancel::before { content: none; }
+#sessionRenameCancel .icon,
+#sessionSendCancel .icon { width: 20px; height: 20px; }
 .session-link-row .session-link-copy:disabled {
   background: var(--card-off);
   border-color: var(--line);
@@ -1650,6 +1653,16 @@ summary + .opt-group { border-top: 0; }
 .session-link-row .session-link-copy:active,
 .session-link-row .session-link-copy.is-copied { opacity: 0.5; }
 #sessionRenameDialog .dialog-actions--stacked { border-top: 0; }
+/* Send-message dialog (#967): same bare-field shape as rename — a textarea
+   in place of the title input, a one-line hint under it, one primary. */
+#sessionSendDialog .dialog-actions--stacked { border-top: 0; }
+#sessionSendDialog .session-send-input {
+  resize: vertical;
+  min-height: calc(var(--row-sm) * 2);
+  font: inherit;
+  line-height: 1.4;
+}
+#sessionSendDialog .session-send-hint { margin: 8px 0 0; }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {
@@ -1878,7 +1891,11 @@ summary + .opt-group { border-top: 0; }
 
 /* ---------- session row: gear + floating action menu (#953) ---------- */
 /* One gear centred in the rail; the menu floats to its left, over the row,
-   on the same raised-chrome recipe as the git-status summary popover. */
+   on the same raised-chrome recipe as the git-status summary popover. Since
+   #967 it is a vertical list — one icon + label row per action, top-aligned
+   with the rail so a four-row menu grows downward over the rows below it
+   (z-index) rather than centring on the gear and climbing off the top of
+   the list. */
 .app-item .row-actions.session-actions {
   position: relative;
   justify-content: center;
@@ -1892,26 +1909,39 @@ summary + .opt-group { border-top: 0; }
 }
 .session-menu {
   position: absolute;
-  top: 50%;
+  top: 0;
   right: calc(100% - 4px);
-  transform: translateY(-50%);
   z-index: 30;
   display: flex;
+  flex-direction: column;
   gap: 2px;
+  min-width: 200px;
   padding: 4px;
   background: var(--card-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
 }
-/* Menu items are square 44px targets (hit-target.min), not rail cells. */
+/* Menu rows: full-width, 44px min (hit-target.min), glyph then label,
+   left-aligned — not rail cells. The stop row keeps `action-stop-close`
+   (danger tint on press, below). */
 .app-item .row-actions.session-actions .session-menu .icon-btn {
   flex: none;
-  width: 44px;
+  width: 100%;
   min-height: 44px;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 12px;
   border-top: 0;
   border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--font-body);
+  font-weight: 500;
+  color: var(--fg);
+  text-align: left;
+  white-space: nowrap;
 }
+.session-menu .session-menu-label { line-height: 1.2; }
 
 /* ---------- session transcript overlay (#953) ---------- */
 /* Same fixed overlay + bar chrome as the terminal, on the app canvas rather

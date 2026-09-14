@@ -137,7 +137,8 @@ def test_detached_claude_row_opens_transcript(authed_page: Page, base_url: str) 
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    expect(menu.locator("button")).to_have_count(3)
+    # Transcript · Send message (#967) · Rename · Stop
+    expect(menu.locator("button")).to_have_count(4)
     menu.locator('button[aria-label="Session transcript"]').click()
     expect(authed_page.locator("#transcriptOverlay")).to_be_visible()
     expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("older prompt")
@@ -150,7 +151,8 @@ def test_detached_unsupported_agent_menu_has_no_transcript(authed_page: Page, ba
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    expect(menu.locator("button")).to_have_count(2)
+    # Send message (#967, pi is probe-proven) · Rename · Stop — no Transcript
+    expect(menu.locator("button")).to_have_count(3)
     expect(menu.locator('button[aria-label="Session transcript"]')).to_have_count(0)
 
 

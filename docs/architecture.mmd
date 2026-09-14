@@ -78,6 +78,7 @@ flowchart TB
 
   subgraph srclib["src/ — shared library"]
     SESSHOST["session_host.py\nPtySession + SessionManager\nConPTY via winpty (Windows-only)"]
+    CONSOLEINPUT["console_input.py\nAttachConsole + WriteConsoleInputW\nhelper process per detached send (#967)\nstring-referenced, off the host closure"]
     VTSNAP["vt_snapshot.py\nheadless pyte VT mirror per\nfullscreen session — reconnect snapshot"]
     AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi · grok"]
     SESSCLIENT["session_client.py\nHTTP client → session-host over loopback"]
@@ -118,6 +119,10 @@ flowchart TB
   end
 
   HOSTSERVER --> SESSHOST
+  DETACHEDWIN["detached agent console window\nStart-Process cmd /c <agent>, orphaned (#130)\ntracked by PID only"]
+  SESSHOST -->|create_remote: spawn + PID| DETACHEDWIN
+  SESSHOST -.->|spawns per message, CREATE_NO_WINDOW,\ntext on stdin, JSON verdict on stdout| CONSOLEINPUT
+  CONSOLEINPUT -.->|key records into the\nconsole's shared input buffer| DETACHEDWIN
   SESSHOST --> VTSNAP
   SESSHOST --> AGENTS
   R_SESS --> SESSCLIENT

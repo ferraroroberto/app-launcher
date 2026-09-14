@@ -1530,6 +1530,26 @@
         </div>
       </form>
     </dialog>
+
+    <!-- Send message to a detached session (issue #967): the #545 modal
+         contract (header × close + one full-width primary). Opened from a
+         detached row's gear menu only — full-control rows have the
+         terminal's own compose bar. -->
+    <dialog id="sessionSendDialog" class="rename-dialog">
+      <form id="sessionSendForm">
+        <div class="dialog-head">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg> <span id="sessionSendHeading">Send message</span></h2>
+          <button type="button" id="sessionSendCancel" class="dialog-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <textarea id="sessionSendInput" class="input-native session-send-input" rows="4" placeholder="Message for the agent" aria-label="Message" required></textarea>
+        <p class="muted small session-send-hint">Typed into the PC console and submitted with Enter. Delivery cannot be confirmed from here.</p>
+        <div class="dialog-actions dialog-actions--stacked">
+          <button type="submit" class="button-primary">Send</button>
+        </div>
+      </form>
+    </dialog>
   </main>
 
   <!-- Body-level toast, sibling of <main class="app"> — never nested inside

@@ -141,6 +141,14 @@ INPUT_DEFERRED = "deferred"            # ingested; submit handed to the watcher
 INPUT_DEFER_TIMEOUT = "defer_timeout"  # never went quiet within _DEFER_CAP_MS
 INPUT_DEFER_VANISHED = "defer_vanished"  # quiet, but the payload is gone
 INPUT_DEFER_UNCLEAR = "defer_unclear"  # quiet, payload there, but a dialog too
+# Detached (console) targets only — RemoteSession.submit_input (issue #967):
+# the console-input helper could not attach/type (a distinct 502 from
+# ``not_ingested``: nothing was written, the console may be gone).
+INPUT_CONSOLE_FAILED = "console_failed"
+# The ``delivered`` value a detached target reports (issue #967). A console
+# has no output stream to verify a write against, so the answer is neither
+# True nor False — a third state, never folded into the passing one.
+DELIVERED_UNCONFIRMED = "unconfirmed"
 
 # What happened to the submit, as one field a caller can read without
 # re-deriving it from ``reason`` + ``submitted`` + ``submit_confirmed``

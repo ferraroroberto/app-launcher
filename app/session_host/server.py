@@ -10,7 +10,9 @@ Routes:
     POST   /sessions                  → spawn a registered terminal command
     GET    /sessions                  → list live sessions
     GET    /sessions/{sid}            → one session's detail
-    POST   /sessions/{sid}/input      → write text to the PTY
+    POST   /sessions/{sid}/input      → write text to the PTY (or, for a
+                                        detached session, type it into its
+                                        console — delivered "unconfirmed", #967)
     POST   /sessions/{sid}/resize     → resize the PTY
     POST   /sessions/{sid}/stop       → interrupt | quit | kill
     POST   /sessions/{sid}/rename     → set/clear a manual title override
@@ -50,7 +52,12 @@ from starlette.websockets import WebSocketDisconnect
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
 from src.session_host import _EOF, PTY_MIN_COLS, SessionManager
-from src.session_host_input import INPUT_DEFERRED, INPUT_DROPPED, INPUT_NOT_INGESTED
+from src.session_host_input import (
+    INPUT_CONSOLE_FAILED,
+    INPUT_DEFERRED,
+    INPUT_DROPPED,
+    INPUT_NOT_INGESTED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -214,6 +221,10 @@ def create_app() -> FastAPI:
         # (issue #611) plus its ingest verification (#760) plus write()'s own
         # chunk-and-pace pauses over ~512 bytes — so offload it like .stop
         # (issue #253) so it doesn't stall every other live session's WS pump.
+        # Both session kinds implement submit_input (issue #967): a PtySession
+        # writes the PTY with the framing/settle protocol, a RemoteSession
+        # spawns the console-input helper against its console PID and can
+        # only ever answer ``delivered: "unconfirmed"``.
         outcome = await asyncio.to_thread(session.submit_input, data, submit)
         if outcome.reason == INPUT_DROPPED:
             # The session had already exited (or the PTY write raised) — it
@@ -237,6 +248,19 @@ def create_app() -> FastAPI:
                     f"session {sid} never echoed the input after "
                     f"{outcome.waited_ms}ms — NOT delivered, and no submit was "
                     f"sent; the terminal may be in a modal/dialog state"
+                ),
+            )
+        if outcome.reason == INPUT_CONSOLE_FAILED:
+            # Detached target (issue #967): the helper could not attach to or
+            # type into the console — the session is alive by PID but its
+            # console did not take the keystrokes (or the agent was never
+            # probed for console input). Nothing was typed, nothing was
+            # submitted; a caller may retry once the console is back.
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"session {sid} console input failed — NOT typed, no "
+                    f"submit was sent: {outcome.error}"
                 ),
             )
         if outcome.reason == INPUT_DEFERRED:
