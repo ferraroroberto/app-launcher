@@ -49,9 +49,11 @@ def test_tray_bat_does_not_leak_app_name_to_the_tray(tmp_path: Path) -> None:
     stub.write_text(_STUB_PS1, encoding="ascii")
     out = tmp_path / "stub_out.txt"
 
-    # This test may itself run under a launcher-hosted session that still
-    # carries the leaked variable, so start from an environment without it.
+    # The usual restart route is an agent running `tray.bat --restart` from a
+    # launcher-hosted session that already inherited the leak, so the caller
+    # carries it: tray.bat must clear it, not merely stop setting it.
     env = {k: v for k, v in os.environ.items() if k.upper() != "APP_NAME"}
+    env["APP_NAME"] = "AppLauncher"
     env["USERPROFILE"] = str(home)
     env["TRAY_STUB_OUT"] = str(out)
 

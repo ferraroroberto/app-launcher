@@ -56,6 +56,11 @@ REM  and cycles, is reclaimed.
 REM ============================================================================
 
 setlocal EnableDelayedExpansion
+REM  Clear an APP_NAME inherited from the caller (#963): the usual restart route
+REM  is an agent inside a launcher-hosted session that already carries the old
+REM  leaked value, and the tray chain hands its whole environment down. Cleared
+REM  inside setlocal, so the calling console keeps its own copy.
+set "APP_NAME="
 set "SCRIPT_DIR=%~dp0"
 REM  `%~dp0` always ends in a trailing backslash, which is what the path joins
 REM  below want -- but NOT what a quoted argument can carry. Windows argv parsing
