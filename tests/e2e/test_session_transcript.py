@@ -6,7 +6,8 @@ under a click:
 
   * the row's single gear opens a floating menu of three actions
     (transcript · rename · stop) and any tap outside closes it; a detached
-    row's menu has no transcript entry;
+    Claude/Codex row offers the transcript too (#966), a detached row of any
+    other agent does not;
   * the transcript overlay shows prompts and replies expanded, folds a run
     of tool calls / thinking into one closed disclosure, and expanding it
     (then one item) reveals the tool result;
@@ -26,14 +27,14 @@ from playwright.sync_api import Page, expect
 _SID = "sid-transcript-953"
 
 
-def _mock_sessions_list(page: Page, *, kind: str = "pty") -> None:
+def _mock_sessions_list(page: Page, *, kind: str = "pty", agent: str = "claude") -> None:
     def _handler(route):
         route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"sessions": [{
                 "session_id": _SID,
                 "kind": kind,
-                "agent": "claude",
+                "agent": agent,
                 "project_dir": "E:/automation/transcriptproj",
                 "name": "transcriptproj",
                 "alive": True,
@@ -126,15 +127,31 @@ def test_gear_menu_holds_three_actions_and_closes_on_outside_tap(
     expect(menu).to_be_hidden()
 
 
-def test_detached_row_menu_has_no_transcript(authed_page: Page, base_url: str) -> None:
+def test_detached_claude_row_opens_transcript(authed_page: Page, base_url: str) -> None:
+    # #966: a detached Claude row reads the same native history a PTY row does.
+    calls: list = []
     _mock_sessions_list(authed_page, kind="remote")
+    _mock_transcript(authed_page, {None: _OLDER}, calls)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    assert menu.locator('button[aria-label="Session transcript"]').count() == 0
-    assert menu.locator("button").count() == 2
+    expect(menu.locator("button")).to_have_count(3)
+    menu.locator('button[aria-label="Session transcript"]').click()
+    expect(authed_page.locator("#transcriptOverlay")).to_be_visible()
+    expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("older prompt")
+
+
+def test_detached_unsupported_agent_menu_has_no_transcript(authed_page: Page, base_url: str) -> None:
+    _mock_sessions_list(authed_page, kind="remote", agent="pi")
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = _row(authed_page)
+    row.locator(".session-gear").click()
+    menu = row.locator(".session-menu")
+    expect(menu).to_be_visible()
+    expect(menu.locator("button")).to_have_count(2)
+    expect(menu.locator('button[aria-label="Session transcript"]')).to_have_count(0)
 
 
 def test_transcript_shows_turns_folds_tools_and_loads_older(

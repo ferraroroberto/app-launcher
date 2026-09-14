@@ -243,8 +243,9 @@ export function renderSessions() {
 
     // One gear, vertically centred, opens the row's floating action menu
     // (#953). The menu holds, in order:
-    //   · Transcript — full-control rows only (a detached row has no
-    //     launcher capture and no structured history to show).
+    //   · Transcript — every full-control row; a detached row only when its
+    //     agent is Claude or Codex (#966) — the reader uses their native
+    //     history, never the PTY capture a detached row lacks.
     //   · Rename (issue #458) — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
@@ -265,7 +266,10 @@ export function renderSessions() {
     menu.className = 'session-menu';
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
-    if (!remote) {
+    // The row's own agent, defaulted as the endpoint does — not agentId,
+    // whose icon fallback would turn an unknown agent into Claude.
+    const rowAgent = (s.agent || 'claude').toLowerCase();
+    if (!remote || rowAgent === 'claude' || rowAgent === 'codex') {
       menu.appendChild(menuButton('session-transcript-btn', 'messages-square', 'Session transcript',
         function () { openTranscript(s); }));
     }

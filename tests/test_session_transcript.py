@@ -364,10 +364,35 @@ class TestTranscriptEndpoint:
         assert body["available"] is False and body["reason"] == "session_not_found"
         assert body["entries"] == [] and body["next_cursor"] is None
 
-    def test_detached_row(self, webapp_client, _bypass_gate):
+    def test_detached_claude_row_reads_its_claimed_history(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        # #966: a detached row has no PTY capture, but the reader never uses one.
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_live(kind="remote")]
-        assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "detached"
+        path = _write_jsonl(tmp_path / "t.jsonl", _conversation(2))
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "native"
+        assert "prompt 1 p" in [e["text"] for e in body["entries"] if e["kind"] == "user"]
+
+    def test_detached_codex_row_reads_its_rollout(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        from app.webapp.routers import session_transcript as router_mod
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="codex")]
+        path = _write_jsonl(tmp_path / "rollout.jsonl", [
+            _codex({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hey"}]}),
+        ])
+        monkeypatch.setattr(router_mod, "_find_codex_transcript", lambda session: path)
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "codex"
+        monkeypatch.setattr(router_mod, "_find_codex_transcript", lambda session: None)
+        assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "no_transcript"
+
+    def test_detached_unsupported_agent(self, webapp_client, _bypass_gate):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="pi")]
+        assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "unsupported_agent"
 
     def test_unsupported_agent(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client

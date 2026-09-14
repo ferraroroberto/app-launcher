@@ -6,13 +6,15 @@ entries (``user`` / ``assistant`` / ``tool_call`` / ``tool_result`` /
 plus a byte-offset cursor for the next older page. Source resolution is the
 same as the Board drawer's ``/exchange`` (#301): the Claude Code hook JSONL
 the Board's claim walk assigns to this session-host id, else — for a Codex
-session — the rollout correlated by cwd + launch time. Terminal-grade
-content, so it sits behind the Tailscale + passkey gate like ``/exchange``.
+session — the rollout correlated by cwd + launch time. Neither reads the
+launcher's PTY capture, so detached rows are served the same way (#966).
+Terminal-grade content, so it sits behind the Tailscale + passkey gate like
+``/exchange``.
 
 Unavailable sources are told apart on purpose (``reason``): a session the
-host doesn't know, a detached row (no capture, not openable), an agent with
-no structured history, a history file that isn't there, and a file that
-*is* there but couldn't be read. Bodies are never logged.
+host doesn't know, an agent with no structured history, a history file that
+isn't there, and a file that *is* there but couldn't be read. Bodies are
+never logged.
 """
 
 from __future__ import annotations
@@ -79,15 +81,11 @@ async def session_transcript(
     if session is None:
         return _unavailable(sid, "session_not_found")
     agent = str(session.get("agent") or "claude").lower()
-    if session.get("kind") == "remote":
-        reason = "detached"
-    elif agent not in _FLAVOR_BY_AGENT:
-        reason = "unsupported_agent"
-    else:
-        reason = None
-    if reason:
-        logger.info("ℹ️ transcript %s (%s) unavailable: %s", sid[:8], agent, reason)
-        return _unavailable(sid, reason)
+    # A detached row resolves exactly like a full-control one (#966): neither
+    # source reads the launcher's PTY capture.
+    if agent not in _FLAVOR_BY_AGENT:
+        logger.info("ℹ️ transcript %s (%s) unavailable: unsupported_agent", sid[:8], agent)
+        return _unavailable(sid, "unsupported_agent")
 
     flavor = _FLAVOR_BY_AGENT[agent]
     row = board.state_row_for_session(live, state["rows"], sid)
