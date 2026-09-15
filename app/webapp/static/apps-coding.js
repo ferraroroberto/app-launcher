@@ -13,6 +13,8 @@ import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
 import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
+import { createRowMenu } from './row-menu.js';
+import { openChanges } from './changes-overlay.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 import { patchConfig } from './claude-options.js';
@@ -27,11 +29,18 @@ import { fetchApps, launchApp, renderApps } from './apps.js';
 //
 // `github` and `vscode` are pseudo-agent ids: neither button spawns a coding
 // agent, but both are hideable the same way, without inventing a second
-// config key per button.
+// config key per button. Since #977 `vscode` names the whole ⋯ project menu
+// (VS Code · Show changes · Open folder) — the key is kept so an existing
+// hidden list keeps working, the label says what it hides now.
 const GITHUB_BUTTON_ID = 'github';
 const GITHUB_BUTTON_LABEL = 'GitHub issues';
 const VSCODE_BUTTON_ID = 'vscode';
 const VSCODE_BUTTON_LABEL = 'Visual Studio Code';
+const PROJECT_MENU_LABEL = 'Project menu (VS Code · changes · folder)';
+
+// The ⋯ menu shared by every Coding row; drops below the rail (see
+// `.project-menu` in styles.css) and survives the ~4 s apps re-render.
+const projectMenu = createRowMenu('project-menu');
 
 function hiddenButtons() {
   const cfg = state.config || {};
@@ -73,7 +82,7 @@ export function renderAgentVisibility() {
   });
   // Same order as the row strip itself, so the toggle list reads as a map
   // of the buttons it controls.
-  rows.push({ id: VSCODE_BUTTON_ID, label: VSCODE_BUTTON_LABEL });
+  rows.push({ id: VSCODE_BUTTON_ID, label: PROJECT_MENU_LABEL });
   rows.push({ id: GITHUB_BUTTON_ID, label: GITHUB_BUTTON_LABEL });
 
   rows.forEach(function (row) {
@@ -119,10 +128,11 @@ export function renderAgentVisibility() {
 // ------------------------------------------------------ Coding tab tiles
 // A Coding tile shows only the bare on-disk folder name plus one icon
 // button per coding agent (the /api/agents registry drives the set), then
-// the two non-agent buttons — VS Code (#802) and GitHub issues — and the
-// favorite star last. An agent's button is disabled with a hover hint when
-// its CLI isn't installed. Coding rows are disk-scanned, so they carry no
-// rename/remove controls — Settings → Edit mode does not apply here.
+// the two non-agent buttons — the ⋯ project menu (#977: VS Code #802 ·
+// Show changes · Open folder) and GitHub issues — and the favorite star
+// last. An agent's button is disabled with a hover hint when its CLI isn't
+// installed. Coding rows are disk-scanned, so they carry no rename/remove
+// controls — Settings → Edit mode does not apply here.
 export function renderCodingList(host, items) {
   host.innerHTML = '';
   // Favorites pinned to the top (issue #250). `items` arrives alphabetical
@@ -139,6 +149,7 @@ export function renderCodingList(host, items) {
     note.className = 'coding-fav-empty muted small';
     note.innerHTML = 'No favorites yet — tap a project’s ' + icon('star') + ' to star it.';
     host.appendChild(note);
+    projectMenu.close();
     return;
   }
 
@@ -152,7 +163,7 @@ export function renderCodingList(host, items) {
     const name = document.createElement('div');
     name.className = 'coding-name';
     name.textContent = a.name;   // raw folder name, exactly as on disk
-    annotateGitStatus(name, a.id);
+    annotateGitStatus(name, a);
     main.appendChild(name);
     li.appendChild(main);
 
@@ -187,32 +198,52 @@ export function renderCodingList(host, items) {
       actions.appendChild(btn);
     });
 
-    // Visual Studio Code — opens the project's sibling `.code-workspace`
-    // file in the local editor (issue #802), creating that file server-side
-    // first if it doesn't exist yet. Not a coding-agent launch: no PTY, no
-    // session, nothing in the Running-sessions panel afterwards. Disabled
-    // with a hover hint when the `code` CLI isn't on PATH, exactly like an
-    // uninstalled agent. Hideable under the same pseudo-id scheme as GitHub.
+    // ⋯ project menu (#977) — the three things a project row wants that are
+    // neither an agent launch nor GitHub, in one anchor so the strip stays
+    // one row on the phone:
+    //   · Open in VS Code (#802) — the project's sibling `.code-workspace`,
+    //     created server-side first if missing; no PTY, no session. Greyed
+    //     with the same hint an uninstalled agent gets when the `code` CLI
+    //     isn't on PATH.
+    //   · Show changes — the read-only working-tree viewer (changes-
+    //     overlay.js). Hidden once git-status says the folder isn't a repo.
+    //   · Open folder — the project directory in Explorer on the PC.
+    // The menu is appended after the star so the rail's `.icon-btn +
+    // .icon-btn` divider rules still see adjacent buttons; it floats, so
+    // DOM order doesn't show. Hideable as a whole under the `vscode`
+    // pseudo-id (#666).
+    let menuEl = null;
     if (!hidden.has(VSCODE_BUTTON_ID)) {
-      const codeBtn = document.createElement('button');
-      codeBtn.type = 'button';
-      codeBtn.className = 'icon-btn agent-btn';
-      codeBtn.dataset.agent = VSCODE_BUTTON_ID;
-      const codeIcon = document.createElement('img');
-      codeIcon.className = 'agent-icon';
-      codeIcon.src = iconUrl('vscode');
-      codeIcon.alt = VSCODE_BUTTON_LABEL;
-      codeBtn.appendChild(codeIcon);
-      if (state.vscodeAvailable) {
-        codeBtn.title = 'Open in ' + VSCODE_BUTTON_LABEL;
-        codeBtn.setAttribute('aria-label', 'Open in ' + VSCODE_BUTTON_LABEL);
-        codeBtn.addEventListener('click', function () { openInVscode(a); });
-      } else {
-        codeBtn.disabled = true;
-        codeBtn.title = VSCODE_BUTTON_LABEL + ' is not installed';
-        codeBtn.setAttribute('aria-label', VSCODE_BUTTON_LABEL + ' is not installed');
-      }
-      actions.appendChild(codeBtn);
+      const anchor = document.createElement('button');
+      anchor.type = 'button';
+      anchor.className = 'icon-btn agent-btn project-menu-anchor';
+      anchor.dataset.agent = VSCODE_BUTTON_ID;
+      anchor.innerHTML = icon('ellipsis-vertical');
+      anchor.title = 'Project actions';
+      anchor.setAttribute('aria-label', 'Project actions');
+      const gs = state.gitStatus && state.gitStatus[a.id];
+      menuEl = projectMenu.attach(a.id, anchor, [
+        {
+          className: 'project-vscode-btn',
+          html: '<img class="agent-icon row-menu-brand" src="' + iconUrl('vscode') + '" alt="">',
+          label: 'Open in ' + VSCODE_BUTTON_LABEL, text: 'Open in VS Code',
+          disabled: !state.vscodeAvailable,
+          title: VSCODE_BUTTON_LABEL + ' is not installed',
+          onTap: function () { openInVscode(a); },
+        },
+        {
+          className: 'project-changes-btn', glyph: 'git-branch',
+          label: 'Show changes', text: 'Show changes',
+          hidden: !!(gs && !gs.is_git),
+          onTap: function () { openChanges(a); },
+        },
+        {
+          className: 'project-folder-btn', glyph: 'folder',
+          label: 'Open folder', text: 'Open folder',
+          onTap: function () { openFolder(a); },
+        },
+      ]);
+      actions.appendChild(anchor);
     }
 
     // GitHub repo icon — opens the repo's open-issues list (sorted by last
@@ -256,10 +287,24 @@ export function renderCodingList(host, items) {
     starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
     starBtn.addEventListener('click', function () { toggleFavorite(a); });
     actions.appendChild(starBtn);
+    if (menuEl) actions.appendChild(menuEl);
 
     li.appendChild(actions);
     host.appendChild(li);
   });
+  // An open menu whose row is gone drops its state; a reopened one keeps it.
+  projectMenu.endRender();
+}
+
+// Open the project directory in Explorer on the PC (#977). Fire-and-report,
+// like VS Code below: Explorer is its own app, nothing to track afterwards.
+async function openFolder(a) {
+  try {
+    await jsonApi('/api/claude-code/folder/' + encodeURIComponent(a.id), { method: 'POST' });
+    toast('Opening ' + a.name + ' in Explorer', 'ok');
+  } catch (exc) {
+    apiFailToast('Could not open folder', exc);
+  }
 }
 
 // Open a coding project in the local VS Code (issue #802). Fire-and-report:
@@ -320,8 +365,12 @@ function syncFavFilterBtn() {
 // wins the colour when both apply, but the branch tag still shows so the
 // "why" behind a yellow stays visible. No-op only until the boot fetch
 // lands (#496) — state.gitStatus fills automatically now, no tap needed.
-function annotateGitStatus(nameEl, id) {
-  const gs = state.gitStatus && state.gitStatus[id];
+//
+// A coloured name is also the shortcut into Show changes (#977): the colour
+// asks "what's different here?", one tap answers it. A clean, on-default
+// name stays inert — nothing to show.
+function annotateGitStatus(nameEl, a) {
+  const gs = state.gitStatus && state.gitStatus[a.id];
   if (!gs || !gs.is_git) return;
   const offMain = !!gs.branch && !gs.on_default_branch;
   if (gs.dirty) nameEl.classList.add('git-dirty');
@@ -333,6 +382,18 @@ function annotateGitStatus(nameEl, id) {
     tag.title = 'on ' + gs.branch +
       (gs.default_branch ? ' (default: ' + gs.default_branch + ')' : '');
     nameEl.appendChild(tag);
+  }
+  if (gs.dirty || offMain) {
+    nameEl.setAttribute('role', 'button');
+    nameEl.tabIndex = 0;
+    nameEl.title = 'Show changes';
+    nameEl.addEventListener('click', function () { openChanges(a); });
+    nameEl.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        openChanges(a);
+      }
+    });
   }
 }
 

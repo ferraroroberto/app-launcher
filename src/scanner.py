@@ -422,9 +422,11 @@ def git_status(project_dir: Path) -> GitStatus:
     Unlike :func:`github_repo_url` (a plain ``.git/config`` read), this
     shells out to ``git`` — ``status --porcelain=v2 --branch`` for the
     current branch and dirty flag in one call, then a default-branch
-    resolve. That subprocess cost is why the Coding tab runs this only
-    on demand, never on render or poll. Non-git folders and any git
-    failure return :data:`_NOT_GIT`.
+    resolve. Fanned out across threads by ``/api/claude-code/git-status``
+    on a slow (~45 s) poll (#496) — the per-file detail is deliberately
+    dropped here so that poll stays cheap; :mod:`src.git_changes` lists
+    it on demand. Non-git folders and any git failure return
+    :data:`_NOT_GIT`.
     """
     if not (project_dir / ".git").exists():
         return _NOT_GIT

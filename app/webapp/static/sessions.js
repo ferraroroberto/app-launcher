@@ -10,10 +10,11 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, escapeHtml, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { hideTerminal, openTerminal } from './terminal.js';
-import { CHIEF_KILL_CONFIRM, bindOutsideClickToClose, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
+import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 // Same circular-import shape as terminal.js above: session-transcript.js
 // imports sessionTitle from here for its overlay title (#953).
@@ -112,50 +113,13 @@ function renderCodingChiefStatus() {
 //
 // One gear per row opens a floating menu of the row's actions (transcript ·
 // rename · stop) — the rail had no room for a third icon on the phone
-// without crowding the title. The list re-renders on every sessions poll,
-// which would tear an open menu down: the open row's id is remembered here
-// and renderSessions() reopens it on the rebuilt row.
-let openMenuSid = null;
-let disposeMenuOutside = null;
-
-function showSessionMenu(sid, gear, menu) {
-  openMenuSid = sid;
-  menu.hidden = false;
-  gear.setAttribute('aria-expanded', 'true');
-  if (disposeMenuOutside) disposeMenuOutside();
-  disposeMenuOutside = bindOutsideClickToClose(menu, gear, closeSessionMenu);
-}
+// without crowding the title. The menu machinery (open/close, outside tap,
+// Escape, surviving the poll re-render) is the shared row-menu.js helper
+// since #977, when the Coding tile grew the same shape.
+const sessionMenu = createRowMenu('session-menu');
 
 export function closeSessionMenu() {
-  openMenuSid = null;
-  if (disposeMenuOutside) {
-    disposeMenuOutside();
-    disposeMenuOutside = null;
-  }
-  if (!els.sessionsList) return;
-  els.sessionsList.querySelectorAll('.session-menu').forEach(function (m) { m.hidden = true; });
-  els.sessionsList.querySelectorAll('.session-gear[aria-expanded="true"]').forEach(function (g) {
-    g.setAttribute('aria-expanded', 'false');
-  });
-}
-
-// One menu row: Lucide glyph + a visible text label (#967 — the menu is a
-// vertical list, readable at a glance). ``label`` is the accessible name
-// (aria-label/title, the stable hook the e2e sites target); ``text`` is
-// the short caption painted next to the glyph.
-function menuButton(className, glyph, label, text, onTap) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'icon-btn session-menu-btn ' + className;
-  btn.innerHTML = icon(glyph) + '<span class="session-menu-label">' + escapeHtml(text) + '</span>';
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.setAttribute('role', 'menuitem');
-  btn.addEventListener('click', function () {
-    closeSessionMenu();
-    onTap();
-  });
-  return btn;
+  sessionMenu.close();
 }
 
 export function renderSessions() {
@@ -164,7 +128,6 @@ export function renderSessions() {
   els.sessionsEmpty.hidden = state.sessions.length !== 0;
   renderHomeHead();
   renderCodingChiefStatus();
-  let menuReopened = false;
 
   state.sessions.forEach(function (s) {
     const li = document.createElement('li');
@@ -270,46 +233,43 @@ export function renderSessions() {
     gear.innerHTML = icon('settings');
     gear.title = 'Session actions';
     gear.setAttribute('aria-label', 'Session actions');
-    gear.setAttribute('aria-haspopup', 'menu');
-    gear.setAttribute('aria-expanded', 'false');
-    const menu = document.createElement('div');
-    menu.className = 'session-menu';
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
     // The row's own agent, defaulted as the endpoint does — not agentId,
     // whose icon fallback would turn an unknown agent into Claude.
     const rowAgent = (s.agent || 'claude').toLowerCase();
-    if (!remote || rowAgent === 'claude' || rowAgent === 'codex') {
-      menu.appendChild(menuButton('session-transcript-btn', 'messages-square', 'Session transcript',
-        'Transcript', function () { openTranscript(s); }));
-    }
-    // The registry's flag for the row's agent (unknown agent → no item):
-    // the server's, never guessed here.
-    if (canSendToDetached(s)) {
-      menu.appendChild(menuButton('session-send-btn', 'send-horizontal', 'Send message',
-        'Send message', function () { openSessionSend(s); }));
-    }
-    menu.appendChild(menuButton('', 'pencil', 'Rename session',
-      'Rename', function () { openSessionRename(s); }));
-    menu.appendChild(menuButton('action-stop-close', 'x', 'Stop and kill session',
-      'Stop', function () { stopSession(s); }));
-    gear.addEventListener('click', function () {
-      if (openMenuSid === s.session_id) closeSessionMenu();
-      else showSessionMenu(s.session_id, gear, menu);
-    });
+    const menu = sessionMenu.attach(s.session_id, gear, [
+      {
+        className: 'session-transcript-btn', glyph: 'messages-square',
+        label: 'Session transcript', text: 'Transcript',
+        hidden: remote && rowAgent !== 'claude' && rowAgent !== 'codex',
+        onTap: function () { openTranscript(s); },
+      },
+      // The registry's flag for the row's agent (unknown agent → no item):
+      // the server's, never guessed here.
+      {
+        className: 'session-send-btn', glyph: 'send-horizontal',
+        label: 'Send message', text: 'Send message',
+        hidden: !canSendToDetached(s),
+        onTap: function () { openSessionSend(s); },
+      },
+      {
+        glyph: 'pencil', label: 'Rename session', text: 'Rename',
+        onTap: function () { openSessionRename(s); },
+      },
+      {
+        className: 'action-stop-close', glyph: 'x',
+        label: 'Stop and kill session', text: 'Stop',
+        onTap: function () { stopSession(s); },
+      },
+    ]);
     actions.appendChild(gear);
     actions.appendChild(menu);
-    if (openMenuSid === s.session_id) {
-      showSessionMenu(s.session_id, gear, menu);
-      menuReopened = true;
-    }
 
     li.appendChild(actions);
 
     host.appendChild(li);
   });
   // The open menu's row is gone (session ended) — drop the stale state.
-  if (openMenuSid && !menuReopened) closeSessionMenu();
+  sessionMenu.endRender();
 }
 
 // Open a full-control session when its row is tapped. On a desktop browser

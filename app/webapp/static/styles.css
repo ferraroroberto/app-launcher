@@ -30,6 +30,14 @@
   --danger: #cf222e;
   --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
   --code-fg: #1f2328;        /* text inside a code/output inset */
+  /* Unified-diff line tints (#977, GitHub's light diff palette): added /
+     removed line background + text, hunk-header text. Status colors stay
+     for state; these are the one legitimately green/red *surface* pair. */
+  --diff-add-bg: #dafbe1;
+  --diff-add-fg: #1a7f37;
+  --diff-del-bg: #ffebe9;
+  --diff-del-fg: #cf222e;
+  --diff-hunk-fg: #0969da;
   /* Terminal screen: dark in both themes by default (ANSI output is
      authored against dark), same model as home-automation's --video-matte
      (#383). terminal.js reads these. The opt-in override after the dark
@@ -127,6 +135,11 @@
   --danger: #f85149;
   --star: #d29922;           /* spec tile-yellow, dark value */
   --code-fg: #e6edf3;
+  --diff-add-bg: rgba(46, 160, 67, 0.15);
+  --diff-add-fg: #3fb950;
+  --diff-del-bg: rgba(248, 81, 73, 0.15);
+  --diff-del-fg: #f85149;
+  --diff-hunk-fg: #2f81f7;
   /* Depth on a near-black canvas comes from surface lightness, not shadow. */
   --shadow: 0 8px 24px rgba(1, 4, 9, 0.6);
   --shadow-nav: 0 10px 34px rgba(0, 0, 0, 0.5);
@@ -828,6 +841,9 @@ summary + .opt-group { border-top: 0; }
 .git-summary-empty { font-size: var(--font-caption); color: var(--muted); }
 .coding-name.git-off-main { color: var(--attention); }
 .coding-name.git-dirty { color: var(--danger); }
+/* A coloured name is the tap-shortcut into Show changes (#977); the colour
+   already signals, so the only added affordance is the pointer. */
+.coding-name[role="button"] { cursor: pointer; }
 .git-branch-tag {
   display: inline-block;
   margin-left: 8px;
@@ -1891,28 +1907,28 @@ summary + .opt-group { border-top: 0; }
   display: block;
 }
 
-/* ---------- session row: gear + floating action menu (#953) ---------- */
-/* One gear centred in the rail; the menu floats to its left, over the row,
-   on the same raised-chrome recipe as the git-status summary popover. Since
-   #967 it is a vertical list — one icon + label row per action, top-aligned
-   with the rail so a four-row menu grows downward over the rows below it
-   (z-index) rather than centring on the gear and climbing off the top of
-   the list. */
+/* ---------- row action menus: session gear (#953) + project ⋯ (#977) ---------- */
+/* One anchor in the rail opens a floating vertical list — one icon + label
+   row per action — on the same raised-chrome recipe as the git-status
+   summary popover (row-menu.js). Two placements: the session menu floats
+   left of the rail, top-aligned so a four-row menu grows downward over the
+   rows below it (z-index) rather than climbing off the top of the list; the
+   project menu drops below its rail, right-aligned, so it works both beside
+   the name (desktop) and on the stacked phone row. */
 .app-item .row-actions.session-actions {
   position: relative;
   justify-content: center;
 }
+.app-item .row-actions.agent-actions { position: relative; }
 .app-item .row-actions.session-actions .session-gear {
   flex: 0 0 auto;
   min-height: var(--row-sm);
 }
-.app-item .row-actions.session-actions .session-gear[aria-expanded="true"] {
+.app-item .row-actions .row-menu-anchor[aria-expanded="true"] {
   color: var(--accent);
 }
-.session-menu {
+.row-menu {
   position: absolute;
-  top: 0;
-  right: calc(100% - 4px);
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -1924,10 +1940,13 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
 }
+.session-menu { top: 0; right: calc(100% - 4px); }
+.project-menu { top: calc(100% + 2px); right: 4px; }
 /* Menu rows: full-width, 44px min (hit-target.min), glyph then label,
-   left-aligned — not rail cells. The stop row keeps `action-stop-close`
-   (danger tint on press, below). */
-.app-item .row-actions.session-actions .session-menu .icon-btn {
+   left-aligned — not rail cells (the .icon-btn.row-menu-btn specificity
+   outranks the rail's width / divider rules). The stop row keeps
+   `action-stop-close` (danger tint on press, below). */
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn {
   flex: none;
   width: 100%;
   min-height: 44px;
@@ -1935,6 +1954,7 @@ summary + .opt-group { border-top: 0; }
   gap: 10px;
   padding: 0 12px;
   border-top: 0;
+  border-left: 0;
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: var(--font-body);
@@ -1943,15 +1963,32 @@ summary + .opt-group { border-top: 0; }
   text-align: left;
   white-space: nowrap;
 }
-.session-menu .session-menu-label { line-height: 1.2; }
+/* One shared disabled recipe (design.md button-disabled): flat muted text,
+   never opacity — the VS Code item when the `code` CLI is off PATH. */
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.row-menu .row-menu-label { line-height: 1.2; }
+/* A brand <img> as a menu glyph sits at the Lucide inline step, no chip. */
+.row-menu .row-menu-brand {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border-radius: 0;
+}
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand {
+  filter: grayscale(1);
+}
 
 /* ---------- session transcript overlay (#953) ---------- */
 /* Same fixed overlay + bar chrome as the terminal, on the app canvas rather
-   than the terminal's own black — this is a reading surface, not a TTY. */
-.transcript-overlay { background: var(--bg); }
+   than the terminal's own black — this is a reading surface, not a TTY.
+   The Show-changes overlay (#977) is the same reading surface. */
+.transcript-overlay, .changes-overlay { background: var(--bg); }
 /* One 12px gutter everywhere: page edge, between cards, and (below) the
    row padding inside an opened group — nothing else sets a gap here. */
-.transcript-body {
+.transcript-body, .changes-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2128,6 +2165,119 @@ summary + .opt-group { border-top: 0; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* ---------- Show changes overlay (#977) ---------- */
+/* GitHub "Files changed" on the phone: a summary line, then flat list-row
+   groups (Changes / Untracked) whose rows are <details> — badge · path ·
+   +N −N in the summary, the file's unified diff in the body, tinted per
+   line. The overlay + body chrome is shared with the transcript above. */
+.changes-body { gap: 0; }
+.chg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-size: var(--font-body);
+}
+.chg-state .icon { width: 24px; height: 24px; }
+.chg-summary { padding: 0 0 8px; }
+.chg-group { margin: 0 0 12px; }
+.chg-group-title {
+  margin: 8px 0 0;
+  padding: 0 0 4px;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--fg);
+}
+/* list-row contract: full-bleed rows, 12px 0, hairline between rows. */
+.chg-file + .chg-file { border-top: 1px solid var(--line-muted); }
+.chg-file > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--row-sm);
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: var(--font-label);
+}
+.chg-file > summary::-webkit-details-marker { display: none; }
+.chg-badge {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  background: var(--card-2);
+  color: var(--muted);
+}
+.chg-badge-M { color: var(--attention); }
+.chg-badge-A, .chg-badge-U { color: var(--success); }
+.chg-badge-D, .chg-badge-C { color: var(--danger); }
+.chg-badge-R, .chg-badge-T { color: var(--accent); }
+.chg-path {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
+.chg-dir { color: var(--muted); font-weight: 400; }
+.chg-base { color: var(--fg); font-weight: 600; }
+.chg-staged {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.chg-counts {
+  flex: none;
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chg-add { color: var(--diff-add-fg); }
+.chg-del { color: var(--diff-del-fg); }
+.chg-body { padding: 0 0 10px; }
+.chg-note { padding: 4px 0 6px; }
+/* The diff: the transcript's mono inset recipe, uncapped (the <details>
+   already scopes it), every line a block so a wrapped long line keeps its
+   tint across the continuation. */
+.chg-diff {
+  margin: 0;
+  padding: 6px 0;
+  background: var(--card-off);
+  border-radius: var(--radius-sm);
+  color: var(--code-fg);
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--font-caption);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chg-diff > span { display: block; padding: 0 8px; }
+.chg-diff .d-add { background: var(--diff-add-bg); color: var(--diff-add-fg); }
+.chg-diff .d-del { background: var(--diff-del-bg); color: var(--diff-del-fg); }
+.chg-diff .d-hunk { color: var(--diff-hunk-fg); padding-top: 4px; padding-bottom: 4px; }
+.chg-diff .d-meta { color: var(--muted); }
+.chg-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: var(--font-caption);
+  font-weight: 400;
+  color: var(--muted);
+}
+.chg-branch .icon { width: 14px; height: 14px; }
 
 /* ---------- webauthn / passkey settings ---------- */
 .webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
