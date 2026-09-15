@@ -85,6 +85,7 @@ flowchart TB
     REGISTRY["registry.py\nconfig/apps.json load/save/scan"]
     SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]
     VSCODEWS["vscode_workspace.py\n.code-workspace resolve + create,\ncode CLI spawn (#802)"]
+    GITCHANGES["git_changes.py\nworking-tree list + per-file diff,\nexplorer spawn (#977)"]
     JOBSFACADE["jobs.py (facade)"]
     JOBSCFG["jobs_config.py"]
     JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
@@ -130,6 +131,7 @@ flowchart TB
   R_APPS --> REGISTRY
   R_APPS --> SCANNER
   R_CC --> VSCODEWS
+  R_CC --> GITCHANGES
   R_JOBS --> JOBSFACADE
   RUNJOBCMD --> JOBSFACADE
   RUNJOBCMD --> NOTIFY

@@ -91,6 +91,11 @@
   <symbol id="i-folder" viewBox="0 0 24 24" fill="none">
     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
   </symbol>
+  <symbol id="i-ellipsis-vertical" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </symbol>
   <symbol id="i-star" viewBox="0 0 24 24" fill="none">
     <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" />
   </symbol>
@@ -1239,6 +1244,26 @@
         <textarea id="transcriptComposeInput" class="compose-input transcript-compose-input" rows="1" placeholder="Message for the agent" aria-label="Message for the agent"></textarea>
         <button id="transcriptComposeSend" type="submit" class="compose-send" title="Send message" aria-label="Send message"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
       </form>
+    </div>
+
+    <!-- Show changes (#977): one Coding project's working tree, read-only —
+         files grouped Changes / Untracked, each row expanding to its unified
+         diff (GitHub "Files changed" shape, phone-first). Opened from the
+         row's ⋯ project menu or by tapping a red / yellow tile name. Same
+         overlay chrome as the transcript. Driven by changes-overlay.js. -->
+    <div id="changesOverlay" class="terminal-overlay changes-overlay" hidden>
+      <div class="terminal-bar">
+        <span id="changesTitle" class="terminal-title">changes</span>
+        <div class="terminal-bar-actions">
+          <button id="changesRefresh" type="button" class="term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
+          <!-- ✕ close is always the rightmost control (modal contract #545). -->
+          <button id="changesClose" type="button" class="term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+        </div>
+      </div>
+      <div id="changesBody" class="changes-body">
+        <div id="changesState" class="chg-state" role="status" aria-live="polite" hidden></div>
+        <div id="changesList" class="chg-list"></div>
+      </div>
     </div>
 
     <dialog id="jobDialog" class="rename-dialog">

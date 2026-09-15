@@ -2,8 +2,9 @@
 
 Favorites, the launch-flag preview (a small read of webapp_config's `claude`
 subtree, surfaced on its own path for the options card), the per-project git
-status the tiles colour themselves from, and the VS Code open button — none
-of which spawn or track a PTY session.
+status the tiles colour themselves from, and the row's ``⋯`` project menu —
+VS Code, the read-only changes viewer, Explorer (#802, #977) — none of which
+spawn or track a PTY session.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.scanner import git_status, scan_project_dirs
+from src.git_changes import file_diff, is_git_repo, list_changes, open_folder
+from src.scanner import ProjectDir, git_status, scan_project_dirs
 from src.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
@@ -25,6 +27,20 @@ from src.webapp_config import WebappConfig, update_webapp_config
 from app.webapp.routers._helpers import claude_flags_payload, maybe_json
 
 router = APIRouter()
+
+
+def _project_or_404(request: Request, project_id: str) -> ProjectDir:
+    """Resolve a Coding-row project id through the same scan the tiles use.
+
+    The row's actions (VS Code, changes, folder) all take the scanner slug,
+    never a path from the browser — the directory comes from the scan.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+    project = next((p for p in projects if p.id == project_id), None)
+    if project is None:
+        raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+    return project
 
 
 @router.post("/api/claude-code/favorites")
@@ -69,11 +85,7 @@ async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str,
     opens on the PC the launcher runs on, not on the phone that tapped it.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    projects_dir = Path(cfg.projects_dir)
-    projects = scan_project_dirs(projects_dir, list(cfg.projects_ignore))
-    project = next((p for p in projects if p.id == project_id), None)
-    if project is None:
-        raise HTTPException(status_code=404, detail=f"unknown project: {project_id}")
+    project = _project_or_404(request, project_id)
     # Re-checked server-side rather than trusted from the greyed-out button:
     # the SPA's `available` flag is a poll-old snapshot, and the 503 names the
     # real reason instead of surfacing a spawn failure as a generic 500.
@@ -81,7 +93,7 @@ async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str,
         raise HTTPException(status_code=503, detail="the 'code' CLI is not on PATH")
     try:
         workspace, created = await asyncio.to_thread(
-            ensure_workspace_file, projects_dir, project.name
+            ensure_workspace_file, Path(cfg.projects_dir), project.name
         )
         pid = await asyncio.to_thread(open_workspace, workspace)
     except OSError as exc:
@@ -89,6 +101,58 @@ async def open_project_in_vscode(project_id: str, request: Request) -> Dict[str,
             status_code=500, detail=f"could not open VS Code: {exc}"
         ) from exc
     return {"ok": True, "workspace": str(workspace), "created": created, "pid": pid}
+
+
+@router.get("/api/claude-code/changes/{project_id}")
+async def project_changes(project_id: str, request: Request) -> Dict[str, Any]:
+    """The working-tree file list behind the row menu's *Show changes* (#977).
+
+    Read-only and on demand — never folded into the 45 s ``git-status``
+    poll, whose payload stays a cheap ``dirty`` bool per project. A folder
+    that isn't a git repository answers 409 so the SPA can say so inline
+    instead of showing an empty list.
+    """
+    project = _project_or_404(request, project_id)
+    if not is_git_repo(project.project_dir):
+        raise HTTPException(status_code=409, detail="not a git repository")
+    changes = await asyncio.to_thread(list_changes, project.project_dir)
+    return {"id": project.id, "name": project.name, **changes.to_dict()}
+
+
+@router.get("/api/claude-code/changes/{project_id}/diff")
+async def project_file_diff(project_id: str, request: Request, path: str = "") -> Dict[str, Any]:
+    """One file's unified diff for the accordion viewer (#977).
+
+    ``path`` is a repo-relative path the ``changes`` payload handed out;
+    anything else — absolute, ``..``, a symlink out of the tree — is 400,
+    checked in :func:`src.git_changes.safe_relative_path` before git sees it.
+    """
+    project = _project_or_404(request, project_id)
+    if not is_git_repo(project.project_dir):
+        raise HTTPException(status_code=409, detail="not a git repository")
+    try:
+        result = await asyncio.to_thread(file_diff, project.project_dir, path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"bad path: {exc}") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return result.to_dict()
+
+
+@router.post("/api/claude-code/folder/{project_id}")
+async def open_project_folder(project_id: str, request: Request) -> Dict[str, Any]:
+    """Open the project directory in Windows Explorer on the PC (#977).
+
+    A local-machine action like the VS Code route above: Explorer opens on
+    the launcher host, not the phone. Nothing is tracked afterwards. A host
+    without Explorer answers 503 with the reason.
+    """
+    project = _project_or_404(request, project_id)
+    try:
+        pid = await asyncio.to_thread(open_folder, project.project_dir)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"could not open folder: {exc}") from exc
+    return {"ok": True, "path": str(project.project_dir), "pid": pid}
 
 
 @router.get("/api/claude-code/flags")

@@ -178,7 +178,7 @@ def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url
 
     buttons = menu.locator("button")
     expect(buttons).to_have_count(4)
-    labels = menu.locator(".session-menu-label")
+    labels = menu.locator(".row-menu-label")
     expect(labels).to_have_count(4)
     expect(labels).to_have_text(["Transcript", "Send message", "Rename", "Stop"])
     for i in range(4):

@@ -210,6 +210,14 @@ export const els = {
   transcriptComposeInput: document.getElementById('transcriptComposeInput'),
   transcriptComposeSend: document.getElementById('transcriptComposeSend'),
 
+  // Show changes overlay (#977)
+  changesOverlay: document.getElementById('changesOverlay'),
+  changesClose: document.getElementById('changesClose'),
+  changesRefresh: document.getElementById('changesRefresh'),
+  changesTitle: document.getElementById('changesTitle'),
+  changesState: document.getElementById('changesState'),
+  changesList: document.getElementById('changesList'),
+
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),
   jobsAddBtn: document.getElementById('jobsAddBtn'),
