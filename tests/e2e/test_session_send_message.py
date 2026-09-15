@@ -5,7 +5,9 @@ agents the console-input probe on the issue proved (``console_input`` on
 ``/api/claude-code/agents``) — opening a #545-contract dialog whose Send
 POSTs ``{"data", "submit": true}`` to the existing ``/input`` route. The
 verdict is ``delivered: "unconfirmed"`` and the toast says so. The menu
-itself becomes a vertical icon + label list. Boot fetches are stubbed before
+itself becomes a vertical icon + label list. The same send is also offered
+inline, as a composer docked under a detached session's transcript (#975);
+a full-control transcript has none. Boot fetches are stubbed before
 ``goto()`` (#510) and every geometry read goes through ``stable_read`` (#680):
 the sessions list re-renders on its poll, so a raw ``bounding_box()`` can
 land across a rebuild.
@@ -233,3 +235,109 @@ def test_send_dialog_adopts_modal_contract(authed_page: Page, base_url: str) -> 
     authed_page.wait_for_function(
         "() => !document.getElementById('sessionSendDialog').open", timeout=3_000,
     )
+
+
+# ------------------------------------------ send from the transcript (#975)
+
+_TRANSCRIPT = {
+    "available": True, "source": "native", "reason": None, "session_id": _SID,
+    "next_cursor": None,
+    "entries": [
+        {"kind": "user", "timestamp": "2026-09-15T06:20:00Z",
+         "text": "this is a test", "truncated": False, "sidechain": False},
+        {"kind": "assistant", "timestamp": "2026-09-15T06:20:05Z",
+         "text": "Got it.", "truncated": False, "sidechain": False},
+    ],
+}
+
+
+def _mock_transcript(page: Page, calls: list) -> None:
+    def _handler(route):
+        calls.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(_TRANSCRIPT))
+
+    page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript(\?.*)?$"), _handler)
+
+
+def _open_transcript(page: Page) -> None:
+    _, menu = _open_menu(page)
+    menu.locator('button[aria-label="Session transcript"]').click()
+    expect(page.locator("#transcriptOverlay")).to_be_visible()
+    expect(page.locator("#transcriptList .tr-user").first).to_contain_text("this is a test")
+
+
+def test_transcript_composer_sends_to_detached_session_and_refreshes(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    captured: dict = {}
+    statuses = [502, 200]
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(authed_page, calls)
+
+    def _input(route):
+        captured["body"] = route.request.post_data_json
+        captured["calls"] = captured.get("calls", 0) + 1
+        status = statuses.pop(0)
+        body = (
+            {"detail": "console input failed — NOT typed, no submit was sent"}
+            if status != 200 else
+            {"ok": True, "submit": True, "delivered": "unconfirmed", "reason": "unverified"}
+        )
+        route.fulfill(status=status, content_type="application/json", body=_json.dumps(body))
+
+    authed_page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"), _input)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_transcript(authed_page)
+    compose = authed_page.locator("#transcriptCompose")
+    field = authed_page.locator("#transcriptComposeInput")
+    send = authed_page.locator("#transcriptComposeSend")
+    expect(compose).to_be_visible()
+    if browser_name == "webkit":
+        # The phone's floating nav pill hides under the overlay, so it can't
+        # sit on top of the composer.
+        expect(authed_page.locator("nav.tabs")).to_be_hidden()
+
+    def _send_box():
+        return send.bounding_box()
+
+    box = stable_read(_send_box)
+    viewport = authed_page.viewport_size
+    assert box is not None and box["y"] + box["height"] <= viewport["height"], box
+    assert box["width"] >= 44 - 1 and box["height"] >= 44 - 1, box
+
+    # A failed send keeps the text to retry and never says "sent".
+    field.fill("continue")
+    send.click()
+    toast = authed_page.locator("#toast")
+    expect(toast).to_have_class(re.compile(r"\berror\b"))
+    expect(toast).to_contain_text("Send failed")
+    expect(field).to_have_value("continue")
+    expect(send).to_be_enabled()
+
+    # The retry lands: same request as the gear dialog, box cleared, the
+    # unconfirmed wording, then one reload of the newest page.
+    send.click()
+    expect(field).to_have_value("")
+    assert captured["body"] == {"data": "continue", "submit": True}
+    assert captured["calls"] == 2
+    expect(toast).to_contain_text("not confirmed")
+    expect(toast).not_to_have_class(re.compile(r"\berror\b"))
+    # Route handlers run while Playwright waits, so poll by waiting.
+    for _ in range(40):
+        if len(calls) >= 2:
+            break
+        authed_page.wait_for_timeout(250)
+    assert len(calls) == 2, f"transcript not reloaded once after the send: {calls}"
+    expect(authed_page.locator("#transcriptList .tr-user")).to_have_count(1)
+
+
+def test_full_control_transcript_has_no_composer(authed_page: Page, base_url: str) -> None:
+    # A PTY row's input surface is the terminal; its transcript stays read-only.
+    calls: list = []
+    _mock_sessions_list(authed_page, kind="pty")
+    _mock_transcript(authed_page, calls)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_transcript(authed_page)
+    expect(authed_page.locator("#transcriptCompose")).to_be_hidden()

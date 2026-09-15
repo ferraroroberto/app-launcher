@@ -283,9 +283,9 @@ export function renderSessions() {
       menu.appendChild(menuButton('session-transcript-btn', 'messages-square', 'Session transcript',
         'Transcript', function () { openTranscript(s); }));
     }
-    // ``known`` is the registry entry for the row's agent (unknown agent →
-    // undefined → no item): the flag is the server's, never guessed here.
-    if (remote && known && known.console_input === true) {
+    // The registry's flag for the row's agent (unknown agent → no item):
+    // the server's, never guessed here.
+    if (canSendToDetached(s)) {
       menu.appendChild(menuButton('session-send-btn', 'send-horizontal', 'Send message',
         'Send message', function () { openSessionSend(s); }));
     }
@@ -445,7 +445,36 @@ export function openSessionRename(s, onDone) {
 // verdict is ``delivered: "unconfirmed"`` — the toast says so rather than
 // claiming delivery, because nothing on this side can watch the agent
 // consume the keystrokes.
+//
+// The gear menu's dialog and the transcript overlay's composer (#975) both
+// go through the three helpers below, so the gate, the request, and the
+// outcome wording can't drift between the two surfaces.
 let sendSessionTarget = null;
+
+// A detached row whose agent the console-input probe proved (the
+// registry's ``console_input`` flag, served by /api/claude-code/agents).
+export function canSendToDetached(s) {
+  if (!s || s.kind !== 'remote') return false;
+  const known = state.agents.find(function (a) { return a.id === s.agent; });
+  return !!(known && known.console_input === true);
+}
+
+export function sendSessionMessage(sid, text) {
+  return jsonApi(
+    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: text, submit: true }),
+    }
+  );
+}
+
+export function sendOutcomeText(verdict) {
+  const delivered = verdict && verdict.delivered;
+  if (delivered === true) return 'Sent';
+  return 'Sent, not confirmed: typed into the PC console';
+}
 
 export function openSessionSend(s) {
   sendSessionTarget = s;
@@ -453,12 +482,6 @@ export function openSessionSend(s) {
   els.sessionSendInput.value = '';
   if (els.sessionSendDialog.showModal) els.sessionSendDialog.showModal();
   els.sessionSendInput.focus();
-}
-
-function sendOutcomeText(verdict) {
-  const delivered = verdict && verdict.delivered;
-  if (delivered === true) return 'Sent';
-  return 'Sent, not confirmed: typed into the PC console';
 }
 
 function wireSessionSendDialog() {
@@ -473,15 +496,7 @@ function wireSessionSendDialog() {
     const submitBtn = els.sessionSendForm.querySelector('button[type="submit"]');
     submitBtn.disabled = true;
     try {
-      const verdict = await jsonApi(
-        '/api/claude-code/sessions/' +
-          encodeURIComponent(sendSessionTarget.session_id) + '/input',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ data: text, submit: true }),
-        }
-      );
+      const verdict = await sendSessionMessage(sendSessionTarget.session_id, text);
       if (els.sessionSendDialog.close) els.sessionSendDialog.close();
       toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
     } catch (exc) {
