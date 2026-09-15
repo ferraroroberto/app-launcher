@@ -206,6 +206,9 @@ export const els = {
   transcriptOlder: document.getElementById('transcriptOlder'),
   transcriptList: document.getElementById('transcriptList'),
   transcriptState: document.getElementById('transcriptState'),
+  transcriptCompose: document.getElementById('transcriptCompose'),
+  transcriptComposeInput: document.getElementById('transcriptComposeInput'),
+  transcriptComposeSend: document.getElementById('transcriptComposeSend'),
 
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),

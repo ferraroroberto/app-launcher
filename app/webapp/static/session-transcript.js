@@ -7,18 +7,28 @@
  * the paginated `/api/claude-code/sessions/{sid}/transcript` endpoint
  * (Tailscale + passkey gated, like the Board drawer's /exchange): the
  * newest page loads first, older pages prepend on "Load older" or when the
- * list is scrolled to its top. Read-only — the terminal stays the input
- * surface.
+ * list is scrolled to its top. Read-only for a full-control session — the
+ * terminal stays its input surface. A detached session whose agent takes
+ * console input gets a composer docked under the list (#975), sending
+ * through the same helpers as the gear menu's Send dialog (#967).
  */
 
 import { els } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './life-os.js';
-import { sessionTitle } from './sessions.js';
+import { canSendToDetached, sendOutcomeText, sendSessionMessage, sessionTitle } from './sessions.js';
+import { keyboardOverlayHeight } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // Conversation turns (user + assistant entries) per page — ~20 exchanges.
 const PAGE_LIMIT = 40;
+
+// After a send, reload the newest page once this long later so the sent
+// turn shows up — the agent appends it to its history file only after the
+// console has consumed the keystrokes, which nothing here can observe.
+const SENT_REFRESH_MS = 3000;
+// The composer grows with its text up to this many lines, then scrolls.
+const COMPOSE_MAX_ROWS = 5;
 
 // One line per server-side reason, so "nothing there" never reads like
 // "couldn't read it" (and vice versa).
@@ -406,24 +416,97 @@ async function loadOlder() {
   box.scrollTop = topBefore + (box.scrollHeight - heightBefore);
 }
 
+// iOS shrinks the visual viewport for the software keyboard but not the
+// layout viewport, so this fixed inset:0 overlay would keep the composer
+// under the keyboard (the terminal's #135). Same fix as the terminal:
+// pin the overlay to the visual viewport while the keyboard is up, and
+// release it to the CSS when it hides or the overlay closes.
+function pinToKeyboard() {
+  const o = els.transcriptOverlay;
+  const vp = window.visualViewport;
+  const kbH = (view && vp) ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
+  if (kbH != null) {
+    o.style.height = kbH + 'px';
+    o.style.bottom = 'auto';
+    o.style.top = Math.round(vp.offsetTop || 0) + 'px';
+  } else {
+    o.style.height = '';
+    o.style.bottom = '';
+    o.style.top = '';
+  }
+}
+
+function growComposeInput() {
+  const ta = els.transcriptComposeInput;
+  ta.style.height = 'auto';
+  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+  ta.style.height = Math.min(ta.scrollHeight, COMPOSE_MAX_ROWS * lineHeight + 22) + 'px';
+}
+
+function resetCompose() {
+  els.transcriptComposeInput.value = '';
+  els.transcriptComposeInput.style.height = '';
+  els.transcriptComposeSend.disabled = false;
+}
+
+async function sendFromTranscript(ev) {
+  ev.preventDefault();
+  if (!view || view.sending) return;
+  const text = els.transcriptComposeInput.value.trim();
+  if (!text) return;
+  const target = view;
+  target.sending = true;
+  els.transcriptComposeSend.disabled = true;
+  let verdict;
+  try {
+    verdict = await sendSessionMessage(target.session.session_id, text);
+  } catch (exc) {
+    // The text stays in the box to retry — a failed send (501 stale host,
+    // 502 unattached console) is never reported as sent.
+    apiFailToast('Send failed', exc);
+    return;
+  } finally {
+    target.sending = false;
+    if (view === target) els.transcriptComposeSend.disabled = false;
+  }
+  toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
+  // Closed, or reopened on another session, while the send was in flight:
+  // that view's composer and list aren't ours to touch.
+  if (view !== target) return;
+  resetCompose();
+  window.clearTimeout(target.refreshTimer);
+  target.refreshTimer = window.setTimeout(function () {
+    if (view === target) loadNewest();
+  }, SENT_REFRESH_MS);
+}
+
 export function openTranscript(s) {
   if (!els.transcriptOverlay) return;
-  view = { session: s, cursor: null, loading: false, seq: 0 };
+  if (view) window.clearTimeout(view.refreshTimer);
+  view = { session: s, cursor: null, loading: false, seq: 0, sending: false, refreshTimer: null };
   turnsOpen = true;
   groupsHidden = true;
   syncToggleAll();
   syncToggleGroups();
   els.transcriptTitle.textContent = sessionTitle(s);
+  resetCompose();
+  els.transcriptCompose.hidden = !canSendToDetached(s);
   els.transcriptOverlay.hidden = false;
   loadNewest();
 }
 
 export function closeTranscript() {
-  if (view) view.seq += 1;  // any in-flight page lands nowhere
+  if (view) {
+    view.seq += 1;  // any in-flight page lands nowhere
+    window.clearTimeout(view.refreshTimer);
+  }
   view = null;
   if (!els.transcriptOverlay) return;
   els.transcriptOverlay.hidden = true;
   els.transcriptList.innerHTML = '';
+  els.transcriptCompose.hidden = true;
+  resetCompose();
+  pinToKeyboard();
   hideState();
 }
 
@@ -436,6 +519,12 @@ export function wireTranscript() {
   syncToggleAll();
   syncToggleGroups();
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
+  els.transcriptCompose.addEventListener('submit', sendFromTranscript);
+  els.transcriptComposeInput.addEventListener('input', growComposeInput);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', pinToKeyboard);
+    window.visualViewport.addEventListener('scroll', pinToKeyboard);
+  }
   // Scrolling to the very top pulls the next older page in without a tap.
   els.transcriptBody.addEventListener('scroll', function () {
     if (view && view.cursor != null && !view.loading && els.transcriptBody.scrollTop <= 0) {

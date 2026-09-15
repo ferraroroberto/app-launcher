@@ -255,12 +255,13 @@ html, body {
 
    The overlay-hide rule below is app-specific glue the vendored file
    anticipates (its README: "a non-<dialog> overlay -> add the class
-   nav-hidden to <body>") — these five are hand-rolled [hidden]-toggled
+   nav-hidden to <body>") — these six are hand-rolled [hidden]-toggled
    overlays, not native <dialog>, which the vendored file already covers via
    body:has(dialog[open]). visibility (not display) matches the vendored
    technique — gentler on iOS fixed-layer repainting across show/hide. */
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
+  body:has(#transcriptOverlay:not([hidden])) .tabs,
   body:has(#lifeOsBrowser:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
   body:has(#systemMapLightbox:not([hidden])) .tabs,
@@ -275,10 +276,11 @@ html, body {
      never the scroller in standalone — so without this, .app's own content
      stays touch-scrollable behind a hand-rolled overlay. Mirrors
      home-automation's `body:has(dialog[open]) .app { overflow: hidden }`;
-     the five app-specific overlays get the same treatment as the .tabs hide
+     the six app-specific overlays get the same treatment as the .tabs hide
      rule above, plus native <dialog> for completeness (this app has both). */
   @media (display-mode: standalone) {
     body.terminal-open .app,
+    body:has(#transcriptOverlay:not([hidden])) .app,
     body:has(#lifeOsBrowser:not([hidden])) .app,
     body:has(#loginOverlay:not([hidden])) .app,
     body:has(#systemMapLightbox:not([hidden])) .app,
@@ -1975,6 +1977,22 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
+/* Detached-session composer (#975): the terminal's compose bar recipe,
+   single-line to start (JS grows it to 5 lines) so the transcript keeps
+   the screen. The overlay has no bottom padding, so the bar clears the
+   home indicator itself. */
+.transcript-compose {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
+}
+.transcript-compose .transcript-compose-input { min-height: 44px; }
+.transcript-compose .compose-send {
+  width: 44px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.transcript-compose .compose-send:disabled { opacity: 0.5; cursor: default; }
 .transcript-list {
   list-style: none;
   margin: 0;
