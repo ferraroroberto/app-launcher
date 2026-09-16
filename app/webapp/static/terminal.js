@@ -17,7 +17,12 @@
  * PC-mirror-window title/guard logic (terminal-mirror.js) by issue #315,
  * then the on-screen keys D-pad (terminal-keys.js) and image paste / drop /
  * attach (terminal-image.js) by issue #723. The bar's ⋮ session menu and
- * the floating Latest pill live in terminal-bar.js (#981).
+ * the floating Latest pill live in terminal-bar.js (#981). Since #982 this
+ * module is the *terminal pane* of the session overlay: session-overlay.js
+ * decides which pane (terminal / chat) shows and calls attachTerminalPane()
+ * when the terminal is wanted; the shell (overlay visible, body locked,
+ * title set) is shared by both panes via showSessionShell(). openTerminal()
+ * stays as the Terminal-mode entry every launch tail and deep link uses.
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
@@ -63,6 +68,14 @@ import {
 } from './terminal-theme.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
+// Mode routing (#982). Circular with this module by design (same shape as
+// sessions.js ↔ terminal.js): nothing here runs at import time.
+import {
+  closeSessionOverlay,
+  inChatMode,
+  openSessionOverlay,
+  wireSessionModeToggle,
+} from './session-overlay.js';
 
 // Test seam (#20/#135/#166/#181/#264): several pure helpers below are
 // imported directly by the e2e suite via `import('/static/terminal.js')`
@@ -231,8 +244,11 @@ const _TERM_CACHE_MAX = 3;
 
 // Hide the active terminal without tearing it down: its WS, timers and
 // listeners keep running (guards on `state.terminal` make them inert),
-// its canvas is just display:none'd until the next openTerminal(sid).
-function stashActiveTerminal() {
+// its canvas is just display:none'd until the next attachTerminalPane(sid).
+// Exported for session-overlay.js: opening another session straight into
+// Chat must stash the previous session's terminal too, or its title poll
+// would keep writing the old title over the new session's bar.
+export function stashActiveTerminal() {
   const t = state.terminal;
   state.terminal = null;
   if (!t) return;
@@ -293,7 +309,30 @@ function pruneTermCache() {
   }
 }
 
-export async function openTerminal(session) {
+// The overlay shell both panes share (#982): visible, body pinned against
+// iOS rubber-band, title set. Idempotent — re-opens from the sessions list
+// and mode switches re-enter through here.
+export function showSessionShell(session) {
+  els.terminalOverlay.hidden = false;
+  document.body.classList.add('terminal-open');
+  lockBodyScroll();
+  // Use the same stripping sessionTitle() applies elsewhere so Claude's
+  // leading ✻/☁️/emoji prefix doesn't show up on first paint — the
+  // agent icon next to the title is the redundancy. Also prepends the
+  // chief's crown marker (#547) when this session is the chief.
+  setTerminalTitleText(session);
+}
+
+// Open the session overlay in Terminal mode — the entry every PTY-launch
+// tail, ?terminal=/?session= deep link and Board drill-down uses.
+// session-overlay.js owns the mode; it calls attachTerminalPane() below.
+export function openTerminal(session) {
+  openSessionOverlay(session, 'terminal');
+}
+
+// Connect (or warm-resume) the terminal pane for `session` inside the
+// already-shown overlay shell.
+export async function attachTerminalPane(session) {
   const sid = session.session_id;
   if (!sid) return;
 
@@ -303,10 +342,7 @@ export async function openTerminal(session) {
   if (state.status && state.status.terminal &&
       state.status.terminal.reachable === false) {
     stashActiveTerminal();
-    els.terminalOverlay.hidden = false;
-    document.body.classList.add('terminal-open');
-    lockBodyScroll();
-    setTerminalTitleText(session);
+    showSessionShell(session);
     // An unreachable origin is never a mirror: shed a ?terminal= marker (#940).
     dropEarlyMirrorMarker();
     setTerminalStatus(
@@ -326,14 +362,7 @@ export async function openTerminal(session) {
   }
   stashActiveTerminal();
   pruneTermCache();
-  els.terminalOverlay.hidden = false;
-  document.body.classList.add('terminal-open');
-  lockBodyScroll();
-  // Use the same stripping sessionTitle() applies elsewhere so Claude's
-  // leading ✻/☁️/emoji prefix doesn't show up on first paint — the
-  // agent icon next to the title is the redundancy. Also prepends the
-  // chief's crown marker (#547) when this session is the chief.
-  setTerminalTitleText(session);
+  showSessionShell(session);
   setTerminalStatus('Connecting…');
 
   // The PC mirror window is the launcher-spawned Edge --app window (issue
@@ -518,7 +547,11 @@ export async function openTerminal(session) {
     // A stashed warm terminal (#430) is inert: its resize listeners stay
     // bound while hidden, but only the ACTIVE terminal may touch the
     // shared overlay chrome or its own layout. Resume re-runs applySize.
-    if (t !== state.terminal) return;
+    // Same while the Chat pane is showing (#982): the host is display:none,
+    // so fit() would measure 0 rows/cols, floor to the PTY minimum and
+    // SIGWINCH the agent into a repaint (#930's class of bug) — the switch
+    // back to Terminal re-runs applySize once against the real box.
+    if (t !== state.terminal || inChatMode()) return;
     if (isMirror) {
       // Match the phone's PTY dimensions; never touch the PTY itself.
       const s = (state.sessions || []).find(function (x) {
@@ -677,8 +710,9 @@ export async function openTerminal(session) {
     t.onOrientationChange = function () {
       // Stashed (warm-cached, #430) terminals keep this listener bound
       // while hidden — same as applySize()'s own guard, only the ACTIVE
-      // terminal may touch the shared overlay chrome.
-      if (t !== state.terminal) return;
+      // terminal may touch the shared overlay chrome, and not while the
+      // Chat pane owns it (#982).
+      if (t !== state.terminal || inChatMode()) return;
       if (els.terminalOverlay) {
         els.terminalOverlay.style.height = '';
         els.terminalOverlay.style.bottom = '';
@@ -748,6 +782,9 @@ function unlockBodyScroll() {
   window.scrollTo(0, _savedScrollY);
 }
 
+// The terminal half of closing the session overlay — session-overlay.js's
+// closeSessionOverlay() (the ‹ Back button, stop-from-anywhere) calls this
+// after it has closed the chat pane; nothing else should.
 export function hideTerminal() {
   // Leaving the Coding tab silences any in-flight read-aloud (#190) — the
   // speech queue / hub audio is global and would otherwise keep talking
@@ -783,7 +820,9 @@ export function wireTerminal() {
     setUserTermThemes(body && body.themes);
     applyTermTheme();
   }).catch(function () { /* built-ins stand */ });
-  els.terminalBack.addEventListener('click', hideTerminal);
+  // ‹ Back closes the whole overlay, whichever pane is showing (#982).
+  els.terminalBack.addEventListener('click', closeSessionOverlay);
+  wireSessionModeToggle();
   // ⋮ session menu + the Latest pill (#981) — terminal-bar.js. Stop and
   // kill moved into the menu from the old in-bar ✕ (#253).
   wireTerminalMenu();

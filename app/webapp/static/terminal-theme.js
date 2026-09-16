@@ -68,7 +68,12 @@ export function termContrastRatio() {
 
 export function applyTermTheme() {
   if (els.terminalOverlay) {
-    els.terminalOverlay.style.background = userOverride().background || '';
+    // The user override paints the overlay chrome behind the terminal only;
+    // in Chat mode (#982) the stylesheet's app-canvas background must win,
+    // and an inline style would beat it.
+    const chat = els.terminalOverlay.dataset.mode === 'chat';
+    els.terminalOverlay.style.background =
+      chat ? '' : (userOverride().background || '');
   }
   const terminal = state.terminal;
   if (terminal && terminal.term) {

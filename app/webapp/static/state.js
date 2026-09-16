@@ -115,6 +115,12 @@ export const state = {
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
+  // The session overlay's open view (#982): null while closed, else the
+  // session it shows and its render mode ('terminal' | 'chat'). Distinct
+  // from `terminal` above — a detached session viewed in Chat has no
+  // terminal at all, and a full-control session keeps its warm terminal
+  // while Chat is showing. Owned by session-overlay.js.
+  sessionView: null,
   status: null,     // /api/status payload (incl. terminal reachability)
   // True only when this page was opened as the launcher-spawned PC mirror
   // window — i.e. via the ?terminal=<sid> deep-link (set at boot, issue
@@ -195,13 +201,12 @@ export const els = {
   lifeOsConvoList: document.getElementById('lifeOsConvoList'),
   lifeOsConvoState: document.getElementById('lifeOsConvoState'),
 
-  // Session transcript overlay (#953)
-  transcriptOverlay: document.getElementById('transcriptOverlay'),
-  transcriptClose: document.getElementById('transcriptClose'),
-  transcriptTitle: document.getElementById('transcriptTitle'),
-  transcriptRefresh: document.getElementById('transcriptRefresh'),
-  transcriptToggleGroups: document.getElementById('transcriptToggleGroups'),
-  transcriptToggleAll: document.getElementById('transcriptToggleAll'),
+  // Chat pane of the session overlay (#953 transcript, #982 mode)
+  chatPane: document.getElementById('chatPane'),
+  chatNote: document.getElementById('chatNote'),
+  sessionMode: document.getElementById('sessionMode'),
+  sessionModeTerminal: document.getElementById('sessionModeTerminal'),
+  sessionModeChat: document.getElementById('sessionModeChat'),
   transcriptBody: document.getElementById('transcriptBody'),
   transcriptOlder: document.getElementById('transcriptOlder'),
   transcriptList: document.getElementById('transcriptList'),

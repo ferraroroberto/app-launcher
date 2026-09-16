@@ -67,7 +67,10 @@ flowchart TB
 
   subgraph static["app/webapp/static/ — vanilla JS PWA"]
     STATICJS["index.html, tabs.js, state.js,
-terminal*.js, composer.js (shared composer, #980),
+session-overlay.js (Terminal ⇄ Chat modes of one
+session overlay, #982) over terminal*.js (PTY pane)
++ session-transcript.js (chat pane),
+composer.js (shared composer, #980),
 sessions.js, jobs*.js, board*.js, apps*.js,
 life-os.js, voice.js"]
   end

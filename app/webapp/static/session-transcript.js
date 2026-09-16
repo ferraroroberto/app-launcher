@@ -1,4 +1,4 @@
-/* Session transcript overlay (issue #953).
+/* Session transcript — the Chat pane of the session overlay (#953, #982).
  *
  * The whole conversation of one live Coding session, chat-style: typed
  * user prompts and assistant replies expanded, everything else — tool calls
@@ -8,17 +8,36 @@
  * (Tailscale + passkey gated, like the Board drawer's /exchange): the
  * newest page loads first, older pages prepend on "Load older" or when the
  * list is scrolled to its top. Read-only for a full-control session — the
- * terminal stays its input surface. A detached session whose agent takes
- * console input gets a composer docked under the list (#975), sending
+ * terminal pane stays its input surface. A detached session whose agent
+ * takes console input gets a composer docked under the list (#975), sending
  * through the same helpers as the gear menu's Send dialog (#967).
+ *
+ * Since #982 this is one pane of #terminalOverlay, not its own overlay:
+ * session-overlay.js opens/closes it and flips the overlay's data-mode;
+ * the bar's ⋮ menu (terminal-bar.js) carries the pane's Show-tool-calls and
+ * Reload actions. Switching panes never reloads: the pages and fold state
+ * loaded here survive a trip through Terminal mode.
  */
 
 import { els } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './life-os.js';
-import { canSendToDetached, sendOutcomeText, sendSessionMessage, sessionTitle } from './sessions.js';
+import { canSendToDetached, sendOutcomeText, sendSessionMessage } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
+
+// Agents whose native history the server-side reader understands — the
+// same pair as the endpoint's flavour map (app/webapp/routers/
+// session_transcript.py). Decides Chat availability without a probe; the
+// pane still shows the server's own reason line if it disagrees. An absent
+// agent field (a ?session= deep link's bare {session_id, name}) defaults
+// to Claude, as the endpoint does.
+const TRANSCRIPT_AGENTS = ['claude', 'codex'];
+
+export function hasTranscriptReader(s) {
+  const agent = String((s && s.agent) || 'claude').toLowerCase();
+  return TRANSCRIPT_AGENTS.indexOf(agent) !== -1;
+}
 
 // Conversation turns (user + assistant entries) per page — ~20 exchanges.
 const PAGE_LIMIT = 40;
@@ -48,18 +67,22 @@ const KIND_ICON = {
   assistant: 'messages-square',
 };
 
-// null when the overlay is closed, else the session it shows plus the
-// cursor for the next older page. `seq` guards a slow response from a
-// previous open/refresh landing in a newer view.
+// null when the pane is closed, else the session it shows plus the cursor
+// for the next older page. `seq` guards a slow response from a previous
+// open/refresh landing in a newer view.
 let view = null;
-// Whether user + agent turns render open. The bar's toggle flips every
-// turn on screen and sets the default for pages loaded afterwards; tool
-// groups are never touched by it — they stay closed until tapped.
-let turnsOpen = true;
 // Whether the folded tool-call / system groups are hidden from the list.
 // Hidden by default: the view opens as a plain user ↔ agent exchange; the
-// bar's eye toggle reveals the groups, still folded, between the turns.
+// ⋮ menu's "Show tool calls" reveals the groups, still folded, between the
+// turns. Turns themselves render open and collapse one at a time on their
+// own summary (the bar-wide collapse-all left with the bar, #982).
 let groupsHidden = true;
+
+// The session id the pane currently shows, or null — session-overlay.js
+// uses it so a switch back to Chat never reloads the same session.
+export function chatPaneSession() {
+  return view ? view.session.session_id : null;
+}
 
 function isTurn(e) {
   return (e.kind === 'user' || e.kind === 'assistant') && !e.sidechain;
@@ -155,7 +178,7 @@ function renderTurn(e) {
   li.className = 'tr-turn-item';
   const d = document.createElement('details');
   d.className = 'tr-turn tr-' + e.kind;
-  d.open = turnsOpen;
+  d.open = true;
   const s = document.createElement('summary');
   s.className = 'tr-turn-summary';
   s.appendChild(meta(e.kind === 'user' ? 'You' : 'Agent', e.timestamp));
@@ -189,38 +212,24 @@ function renderTurn(e) {
   return li;
 }
 
-function syncToggleAll() {
-  const btn = els.transcriptToggleAll;
-  if (!btn) return;
-  const label = turnsOpen ? 'Collapse all turns' : 'Expand all turns';
-  btn.innerHTML = icon(turnsOpen ? 'chevrons-down-up' : 'chevrons-up-down');
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.setAttribute('aria-pressed', turnsOpen ? 'false' : 'true');
-}
-
-function toggleAllTurns() {
-  turnsOpen = !turnsOpen;
-  els.transcriptList.querySelectorAll('details.tr-turn').forEach(function (d) {
-    d.open = turnsOpen;
-  });
-  syncToggleAll();
-}
-
-function syncToggleGroups() {
-  const btn = els.transcriptToggleGroups;
-  if (!btn) return;
-  const label = groupsHidden ? 'Show tool calls and system entries' : 'Hide tool calls and system entries';
-  btn.innerHTML = icon(groupsHidden ? 'eye-off' : 'eye');
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.setAttribute('aria-pressed', groupsHidden ? 'true' : 'false');
+function syncGroups() {
   els.transcriptList.classList.toggle('tr-hide-groups', groupsHidden);
 }
 
-function toggleGroups() {
+// ⋮ menu (terminal-bar.js) — the chat-only "Show / Hide tool calls" item.
+export function groupsAreHidden() {
+  return groupsHidden;
+}
+
+export function toggleGroups() {
   groupsHidden = !groupsHidden;
-  syncToggleGroups();
+  syncGroups();
+}
+
+// ⋮ menu — "Reload transcript": the newest page again (the only refresh
+// path besides the post-send one; a mode switch deliberately never reloads).
+export function reloadNewest() {
+  if (view) loadNewest();
 }
 
 // One folded item inside a run group — its own <details>, so a single
@@ -417,19 +426,25 @@ async function loadOlder() {
 }
 
 // iOS shrinks the visual viewport for the software keyboard but not the
-// layout viewport, so this fixed inset:0 overlay would keep the composer
-// under the keyboard (the terminal's #135). Same fix as the terminal:
+// layout viewport, so the fixed inset:0 overlay would keep the composer
+// under the keyboard (the terminal's #135). Same fix as the terminal pane:
 // pin the overlay to the visual viewport while the keyboard is up, and
-// release it to the CSS when it hides or the overlay closes.
-function pinToKeyboard() {
-  const o = els.transcriptOverlay;
+// release it to the CSS when it hides or the pane closes. Only while the
+// chat pane owns the overlay — in Terminal mode terminal.js's applySize
+// does the pinning, and the two must never fight over the same styles.
+export function pinChatToKeyboard() {
+  const o = els.terminalOverlay;
+  if (!o) return;
+  const chatShowing = !!view && o.dataset.mode === 'chat';
   const vp = window.visualViewport;
-  const kbH = (view && vp) ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
+  const kbH = (chatShowing && vp) ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
   if (kbH != null) {
     o.style.height = kbH + 'px';
     o.style.bottom = 'auto';
     o.style.top = Math.round(vp.offsetTop || 0) + 'px';
-  } else {
+  } else if (chatShowing || !view) {
+    // Release only what this pane may own: with Terminal showing, the
+    // terminal's own pin (if any) stands.
     o.style.height = '';
     o.style.bottom = '';
     o.style.top = '';
@@ -480,50 +495,46 @@ async function sendFromTranscript(ev) {
   }, SENT_REFRESH_MS);
 }
 
-export function openTranscript(s) {
-  if (!els.transcriptOverlay) return;
+// Load `s` into the chat pane. The overlay shell (visibility, title, body
+// lock) and the data-mode flip are session-overlay.js's; this only owns the
+// pane's content. The inline "Detached session — no terminal" note explains
+// the disabled Terminal segment (mockup screen 6).
+export function openChatPane(s) {
+  if (!els.chatPane) return;
   if (view) window.clearTimeout(view.refreshTimer);
   view = { session: s, cursor: null, loading: false, seq: 0, sending: false, refreshTimer: null };
-  turnsOpen = true;
   groupsHidden = true;
-  syncToggleAll();
-  syncToggleGroups();
-  els.transcriptTitle.textContent = sessionTitle(s);
+  syncGroups();
   resetCompose();
+  els.chatNote.hidden = s.kind !== 'remote';
   els.transcriptCompose.hidden = !canSendToDetached(s);
-  els.transcriptOverlay.hidden = false;
   loadNewest();
 }
 
-export function closeTranscript() {
+export function closeChatPane() {
   if (view) {
     view.seq += 1;  // any in-flight page lands nowhere
     window.clearTimeout(view.refreshTimer);
   }
   view = null;
-  if (!els.transcriptOverlay) return;
-  els.transcriptOverlay.hidden = true;
+  if (!els.chatPane) return;
   els.transcriptList.innerHTML = '';
   els.transcriptCompose.hidden = true;
+  els.chatNote.hidden = true;
   resetCompose();
-  pinToKeyboard();
+  pinChatToKeyboard();
   hideState();
 }
 
-export function wireTranscript() {
-  if (!els.transcriptOverlay) return;
-  els.transcriptClose.addEventListener('click', closeTranscript);
-  els.transcriptRefresh.addEventListener('click', function () { loadNewest(); });
-  els.transcriptToggleAll.addEventListener('click', toggleAllTurns);
-  els.transcriptToggleGroups.addEventListener('click', toggleGroups);
-  syncToggleAll();
-  syncToggleGroups();
+export function wireChatPane() {
+  if (!els.chatPane) return;
+  syncGroups();
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
   els.transcriptCompose.addEventListener('submit', sendFromTranscript);
   els.transcriptComposeInput.addEventListener('input', growComposeInput);
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', pinToKeyboard);
-    window.visualViewport.addEventListener('scroll', pinToKeyboard);
+    window.visualViewport.addEventListener('resize', pinChatToKeyboard);
+    window.visualViewport.addEventListener('scroll', pinChatToKeyboard);
   }
   // Scrolling to the very top pulls the next older page in without a tap.
   els.transcriptBody.addEventListener('scroll', function () {

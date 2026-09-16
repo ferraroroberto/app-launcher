@@ -9,13 +9,14 @@ the group `min-width: 0` and an internal `overflow-x: auto` scroller and put
 every bar button back on the uniform 44px target at a 6px gap.
 
 #980 moved Paste, Image, Compose and Keys into the composer, and #981 moved
-✕ Kill and ↓ Jump into the ⋮ session menu and a floating Latest pill. The
-session overlay's bar is now ‹ Back · title · [mode toggle, #982] · 🔊 · ⋮,
-so it no longer needs the scroller at all: `#terminalOverlay
-.terminal-bar-actions` is `overflow-x: visible` (the Life OS bars that share
-the class keep scrolling, #886). Both tests assert the row fits without any
-scrolling — at 320px (iPhone SE 1st-gen, the narrowest phone) and at the
-suite's default iPhone 15 Pro Max projection.
+✕ Kill and ↓ Jump into the ⋮ session menu and a floating Latest pill, and
+#982 put the icon-only Terminal ⇄ Chat toggle first in the actions group. The
+session overlay's bar is now ‹ Back · title · Terminal⇄Chat · 🔊 · ⋮, so it
+no longer needs the scroller at all: `#terminalOverlay .terminal-bar-actions`
+is `overflow-x: visible` (the Life OS bars that share the class keep
+scrolling, #886). Both tests assert the row — the two-segment toggle
+included — fits without any scrolling: at 320px (iPhone SE 1st-gen, the
+narrowest phone) and at the suite's default iPhone 15 Pro Max projection.
 """
 
 from __future__ import annotations
@@ -54,18 +55,19 @@ def test_terminal_bar_buttons_stay_within_viewport(
     # past the screen edge.
     authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
     boxes = authed_page.eval_on_selector_all(
-        "#terminalOverlay .terminal-bar-actions .term-btn",
+        "#terminalOverlay .terminal-bar-actions .term-btn, #sessionMode",
         "els => els.map(el => el.getBoundingClientRect())",
     )
-    assert boxes, "expected terminal-bar-actions buttons to be present"
+    assert len(boxes) == 3, "expected 🔊, ⋮ and the mode toggle in the actions group"
     for box in boxes:
         assert box["left"] >= 0, f"button left edge {box['left']} clipped before the viewport"
         assert box["right"] <= viewport_width, (
             f"button right edge {box['right']} overflows viewport width {viewport_width}"
         )
 
-    # Back anchors the bar's left edge and ⋮ its right edge (#981).
-    for selector in ("#terminalBack", "#terminalMenu"):
+    # Back anchors the bar's left edge and ⋮ its right edge (#981); the mode
+    # toggle (#982) sits between them, fully on-screen.
+    for selector in ("#terminalBack", "#sessionMode", "#terminalMenu"):
         box = authed_page.eval_on_selector(selector, "el => el.getBoundingClientRect()")
         assert box["left"] >= 0
         assert box["right"] <= viewport_width
@@ -80,8 +82,8 @@ def test_terminal_bar_fits_at_once_on_default_phone(
     uniform 6px gaps, the full row — including the read-aloud button, hidden by
     default and force-shown here to measure the worst case — must be fully
     visible at once on the suite's default iPhone 15 Pro Max (430px) viewport,
-    with no internal scrolling and no clipped button. Three buttons since #981
-    (Back, Read aloud, ⋮ menu); #982 adds the mode toggle to the same group.
+    with no internal scrolling and no clipped button. Four controls since #982
+    (Back, the Terminal⇄Chat toggle, Read aloud, ⋮ menu).
     """
     if browser_name != "webkit":
         pytest.skip("phone-width row-fit only meaningful under the iPhone projection")
@@ -109,6 +111,14 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         ".map(s => document.querySelector(s).getBoundingClientRect().width)"
     )
     assert max(widths) - min(widths) <= 1, f"bar buttons unequal widths: {widths}"
+    # The toggle is the same 44px tall as its neighbours (#982) and is the
+    # group's first control, right before 🔊.
+    toggle = authed_page.eval_on_selector("#sessionMode", "el => el.getBoundingClientRect()")
+    assert abs(toggle["height"] - widths[0]) <= 1, f"toggle height {toggle['height']} vs 44px controls"
+    order = authed_page.eval_on_selector_all(
+        "#terminalOverlay .terminal-bar-actions > *", "els => els.map(el => el.id)"
+    )
+    assert order[:2] == ["sessionMode", "terminalSpeak"], order
 
     # The actions group must not need its scroller on this width…
     group = authed_page.eval_on_selector(
