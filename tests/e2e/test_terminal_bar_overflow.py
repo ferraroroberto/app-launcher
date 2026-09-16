@@ -1,30 +1,21 @@
-"""Terminal-bar action buttons stay inside the viewport (issue #514).
+"""Terminal-bar controls stay inside the viewport (issues #514, #981).
 
-Regression for a same-day double regression: `.terminal-bar-actions` (then
-six of the eight terminal-bar buttons; four buttons in all since #980 moved
-Paste, Image, Compose and Keys into the composer) had no `min-width: 0`, so as a flex item of
-the row-flex `.terminal-bar` its automatic minimum size was its content's
-min-content width — it could never shrink below the sum of its buttons. That
-ceiling was already tight on a narrow phone; #496 (widening `#terminalBack`
-56px -> 64px + `#terminalKill` margin) tipped it further, and
-`.terminal-overlay { overflow: hidden }` silently clipped the last button off
-the screen instead of showing it.
+History: `.terminal-bar-actions` (then six of eight bar buttons) had no
+`min-width: 0`, so as a flex item of the row-flex `.terminal-bar` it could
+never shrink below its buttons' summed width, and #496's wider Back button
+plus a Kill clearance margin pushed the last button past the screen edge,
+where `.terminal-overlay { overflow: hidden }` silently clipped it. #514 gave
+the group `min-width: 0` and an internal `overflow-x: auto` scroller and put
+every bar button back on the uniform 44px target at a 6px gap.
 
-The fix has two halves:
-
-- `.terminal-bar-actions` gets `min-width: 0` plus its own `overflow-x: auto`
-  scroller (same pattern as `.board-columns`), so a too-narrow bar scrolls
-  internally within its own padding instead of bleeding past the viewport
-  edge (safety net for the narrowest phones).
-- #496's Back-button widening (64px) and Kill clearance margin are reverted:
-  every bar button is the uniform 44px HIG target at a uniform 6px gap, so
-  the full eight-button row (420px) genuinely fits a 430px phone viewport at
-  once — no scrolling needed on the default projection.
-
-The narrow-viewport test uses 320px (iPhone SE 1st-gen width) because that is
-where the scroller safety net actually engages; the fits-at-once test runs on
-the suite's default iPhone 15 Pro Max (430px) projection where the whole row
-must be visible without scrolling.
+#980 moved Paste, Image, Compose and Keys into the composer, and #981 moved
+✕ Kill and ↓ Jump into the ⋮ session menu and a floating Latest pill. The
+session overlay's bar is now ‹ Back · title · [mode toggle, #982] · 🔊 · ⋮,
+so it no longer needs the scroller at all: `#terminalOverlay
+.terminal-bar-actions` is `overflow-x: visible` (the Life OS bars that share
+the class keep scrolling, #886). Both tests assert the row fits without any
+scrolling — at 320px (iPhone SE 1st-gen, the narrowest phone) and at the
+suite's default iPhone 15 Pro Max projection.
 """
 
 from __future__ import annotations
@@ -58,13 +49,10 @@ def test_terminal_bar_buttons_stay_within_viewport(
     # measurement targets the actual open terminal, not the other (hidden,
     # zero-size) bar sharing the same class names.
     #
-    # Scroll the actions group as far right as it goes, then confirm every
-    # button in it lands fully inside the viewport — i.e. reachable, not
-    # clipped unreachable past the screen edge.
-    authed_page.evaluate(
-        "() => { const g = document.querySelector('#terminalOverlay .terminal-bar-actions');"
-        " g.scrollLeft = g.scrollWidth; }"
-    )
+    # Force 🔊 visible (the worst case), then confirm every button lands
+    # fully inside the viewport with no scrolling — reachable, not clipped
+    # past the screen edge.
+    authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
     boxes = authed_page.eval_on_selector_all(
         "#terminalOverlay .terminal-bar-actions .term-btn",
         "els => els.map(el => el.getBoundingClientRect())",
@@ -76,9 +64,8 @@ def test_terminal_bar_buttons_stay_within_viewport(
             f"button right edge {box['right']} overflows viewport width {viewport_width}"
         )
 
-    # The always-visible Back/Kill pair (outside the scroller) must also stay
-    # on-screen — they anchor the bar's left edge.
-    for selector in ("#terminalBack", "#terminalKill"):
+    # Back anchors the bar's left edge and ⋮ its right edge (#981).
+    for selector in ("#terminalBack", "#terminalMenu"):
         box = authed_page.eval_on_selector(selector, "el => el.getBoundingClientRect()")
         assert box["left"] >= 0
         assert box["right"] <= viewport_width
@@ -93,8 +80,8 @@ def test_terminal_bar_fits_at_once_on_default_phone(
     uniform 6px gaps, the full row — including the read-aloud button, hidden by
     default and force-shown here to measure the worst case — must be fully
     visible at once on the suite's default iPhone 15 Pro Max (430px) viewport,
-    with no internal scrolling and no clipped button. Four buttons since #980
-    (Back, Kill, Jump, Read aloud); #981 reshapes the bar again.
+    with no internal scrolling and no clipped button. Three buttons since #981
+    (Back, Read aloud, ⋮ menu); #982 adds the mode toggle to the same group.
     """
     if browser_name != "webkit":
         pytest.skip("phone-width row-fit only meaningful under the iPhone projection")
@@ -118,7 +105,7 @@ def test_terminal_bar_fits_at_once_on_default_phone(
     # Equal-size contract: the Back button is the same 44px target as every
     # other bar button (the #496 64px widening is what tipped the row over).
     widths = authed_page.evaluate(
-        "() => ['#terminalBack', '#terminalKill', '#terminalJumpEnd']"
+        "() => ['#terminalBack', '#terminalSpeak', '#terminalMenu']"
         ".map(s => document.querySelector(s).getBoundingClientRect().width)"
     )
     assert max(widths) - min(widths) <= 1, f"bar buttons unequal widths: {widths}"
@@ -139,8 +126,8 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         " box: el.getBoundingClientRect()}))",
     )
     visible = [b for b in buttons if not b["hidden"]]
-    assert len(visible) == 4, (
-        f"expected all 4 bar buttons visible, hidden: "
+    assert len(visible) == 3, (
+        f"expected all 3 bar buttons visible, hidden: "
         f"{[b['id'] for b in buttons if b['hidden']]}"
     )
     for b in visible:

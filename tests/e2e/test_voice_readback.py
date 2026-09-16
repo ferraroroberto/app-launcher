@@ -227,21 +227,25 @@ def _open_terminal(page: Page, base_url: str, sid: str) -> None:
 def test_speak_button_in_toolbar(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """The 🔊 button is a top-bar control, right after ↓ Jump — NOT in the
-    composer (which is for editing). Paste, Image, Compose and Keys left the
-    bar in #980; #981 finishes the five-control bar."""
+    """The 🔊 button is a top-bar control, right before the ⋮ session menu —
+    NOT in the composer (which is for editing). Paste, Image, Compose and
+    Keys left the bar in #980; ✕ Kill and ↓ Jump left it in #981."""
     _open_terminal(authed_page, base_url, launched_pty_session)
     expect(
         authed_page.locator(".terminal-bar-actions #terminalSpeak")
     ).to_have_count(1)
     expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
-    # Document order: ↓ Jump → 🔊 Speak.
+    # Document order: 🔊 Speak → ⋮ menu, the group's last control.
     order = authed_page.eval_on_selector_all(
         ".terminal-bar-actions .term-btn", "els => els.map(e => e.id)"
     )
-    assert order.index("terminalSpeak") == order.index("terminalJumpEnd") + 1
-    for gone in ("terminalPaste", "terminalImage", "terminalCompose", "terminalKeys"):
-        assert gone not in order, f"{gone} is back in the bar — it moved into the composer (#980)"
+    assert order.index("terminalMenu") == order.index("terminalSpeak") + 1
+    assert order[-1] == "terminalMenu"
+    for gone in (
+        "terminalPaste", "terminalImage", "terminalCompose", "terminalKeys",
+        "terminalKill", "terminalJumpEnd",
+    ):
+        assert gone not in order, f"{gone} is back in the bar (#980 / #981 removed it)"
 
 
 def test_toast_sits_above_terminal_overlay(
