@@ -20,7 +20,7 @@
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
 import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
@@ -33,12 +33,11 @@ import {
 } from './terminal-mirror.js';
 import {
   framePaste,
+  mountTerminalComposer,
   resetComposeBar,
   sendSubmit,
-  wireCompose,
-  growComposeInput,
+  terminalComposer,
 } from './terminal-compose.js';
-import { closeKeysPopover, wireKeysPopover } from './terminal-keys.js';
 import { wireTerminalImage } from './terminal-image.js';
 import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
 import {
@@ -335,23 +334,21 @@ export async function openTerminal(session) {
   // never fight (the server also ignores resize frames from role=pc).
   const isMirror = isMirrorWindowSession();
 
-  // The compose bar (issue #37) is phone-only — the PC mirror already
-  // has a real keyboard with full predictive support. Reset the button
-  // visible on every (non-mirror) open so a prior mirror open can't
+  // The composer (issue #37, always docked since #980) is phone-only — the
+  // PC mirror already has a real keyboard with full predictive support.
+  // Reset visible on every (non-mirror) open so a prior mirror open can't
   // leave it stuck hidden.
-  els.terminalCompose.hidden = isMirror;
+  els.terminalComposeBar.hidden = isMirror;
 
-  // The 🎤 dictation button (issue #165) needs the voice-transcriber
-  // configured *and* MediaRecorder support; hide it otherwise so the
-  // compose bar degrades to type-only. (It lives inside the compose bar,
-  // so the PC mirror — where the bar never opens — already won't show it.)
-  els.terminalRecord.hidden = !voiceDictationAvailable();
-
-  // The 📷 screenshot-OCR button (issue #171) needs photo-ocr configured;
-  // hide it otherwise. A plain file input, so no capability check beyond
-  // the server flag. Pixel counterpart to the 🎤 dictation button.
-  const ocrOn = !!(state.status && state.status.screenshot_ocr);
-  els.terminalScreenshot.hidden = !ocrOn;
+  // 🎤 dictation (issue #165) needs the voice-transcriber configured *and*
+  // MediaRecorder support; 📷 screenshot OCR (issue #171) needs photo-ocr
+  // configured. Re-synced per open because /api/status can land after the
+  // composer mounted at boot — the mic renders disabled, the OCR option
+  // hides inside the image menu (composer.js).
+  terminalComposer.setAvailability({
+    dictate: voiceDictationAvailable(),
+    ocr: !!(state.status && state.status.screenshot_ocr),
+  });
 
   // The 🔊 read-aloud button (issue #190) reveal/probe lives in
   // terminal-readaloud.js — it needs both the cheap status flag and a live
@@ -460,7 +457,7 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
-    disposeTouch: null, composeOpen: false, composeHasImage: false,
+    disposeTouch: null,
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
     // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
     // same-size resize frames; fsSized gates the fullscreen pan path until
@@ -750,7 +747,7 @@ export function hideTerminal() {
   // never triggers the server's repaint nudge. The host's DOM is NOT
   // cleared for the same reason.
   stashActiveTerminal();
-  closeKeysPopover();
+  terminalComposer.closePopovers();
   closeSpeakPopover();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
@@ -787,8 +784,7 @@ export function wireTerminal() {
     });
     if (s) stopSession(s);
   });
-  wireKeysPopover();
-  wireCompose();
+  mountTerminalComposer();
   wireTerminalImage();
   els.terminalJumpEnd.addEventListener('click', function () {
     const t = state.terminal;
@@ -800,26 +796,4 @@ export function wireTerminal() {
   // terminal-readaloud.js, alongside the button's action menu and the
   // summary modal it opens.
   wireReadAloud();
-  els.terminalPaste.addEventListener('click', async function () {
-    const t = state.terminal;
-    if (!t) return;
-    try {
-      const text = await navigator.clipboard.readText();
-      if (!text) return;
-      // Compose bar open: drop the clipboard at the textarea caret so
-      // the user can review/edit before Send — don't WS-send.
-      if (t.composeOpen) {
-        const ta = els.terminalComposeInput;
-        ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, 'end');
-        growComposeInput();
-        ta.focus();
-        return;
-      }
-      if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-      t.ws.send(JSON.stringify({ type: 'input', data: framePaste(t, text) }));
-      if (t.term) t.term.focus();
-    } catch (exc) {
-      toast('Clipboard unavailable — paste manually', 'error');
-    }
-  });
 }

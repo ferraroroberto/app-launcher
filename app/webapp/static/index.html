@@ -1611,58 +1611,20 @@
       <div class="terminal-bar-actions">
         <button id="terminalJumpEnd" type="button" class="term-btn" title="Jump to latest">↓</button>
         <button id="terminalSpeak" type="button" class="term-btn" title="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
-        <button id="terminalPaste" type="button" class="term-btn" title="Paste from clipboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg></button>
-        <button id="terminalImage" type="button" class="term-btn" title="Send image"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg></button>
-        <button id="terminalCompose" type="button" class="term-btn" title="Compose text with predictive keyboard"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></button>
-        <button id="terminalKeys" type="button" class="term-btn" title="Keyboard keys"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg></button>
       </div>
       <div id="terminalSpeakPopover" class="speak-popover" hidden>
         <button type="button" class="speak-action" data-action="read"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Read aloud</button>
         <button type="button" class="speak-action" data-action="summarize" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summarize &amp; read</button>
       </div>
-      <div id="terminalKeysPopover" class="keys-popover" hidden>
-        <button type="button" class="key-btn" data-key="esc">Esc</button>
-        <button type="button" class="key-btn" data-key="up">↑</button>
-        <button type="button" class="key-btn" data-key="tab">Tab</button>
-        <button type="button" class="key-btn" data-key="left">←</button>
-        <button type="button" class="key-btn" data-key="enter">↵</button>
-        <button type="button" class="key-btn" data-key="right">→</button>
-        <button type="button" class="key-btn key-shift" data-key="shift" aria-pressed="false">⇧</button>
-        <button type="button" class="key-btn" data-key="down">↓</button>
-        <span class="key-spacer"></span>
-      </div>
     </div>
     <div id="terminalHost" class="terminal-host"></div>
-    <div id="terminalOcrTray" class="ocr-tray" hidden>
-      <div id="terminalOcrThumbs" class="ocr-thumbs"></div>
-      <button id="terminalOcrExtract" type="button" class="ocr-extract"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan-text"></use></svg> Extract text</button>
-    </div>
-    <div id="terminalComposeBar" class="compose-bar" hidden>
-      <textarea
-        id="terminalComposeInput"
-        class="compose-input"
-        rows="2"
-        placeholder="Type a prompt — predictive on."
-        enterkeyhint="enter"></textarea>
-      <div class="compose-tools">
-        <button id="terminalRecord" type="button" class="compose-record" title="Dictate (voice → text)" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
-        <button id="terminalScreenshot" type="button" class="compose-record" title="Extract text from screenshots (OCR)" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-scan-text"></use></svg></button>
-        <!-- General attach (issue #366): same sendImage()/#terminalImageInput
-             flow as the outer-bar 🖼 button, reachable from the compose view;
-             the OCR control above carries the distinct scan-text glyph so the
-             two no longer both read as "photo". -->
-        <button id="terminalComposeAttach" type="button" class="compose-record" title="Attach image or file (path added to the prompt)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-image"></use></svg></button>
-        <button id="terminalComposeSend" type="button" class="compose-send" title="Send (with Enter)"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
-      </div>
-    </div>
+    <!-- The shared composer (#980): always docked under the terminal on the
+         phone (hidden only in the PC mirror window, terminal.js). Markup is
+         rendered by composer.js, mounted from terminal-compose.js —
+         textarea + 2x2 grid (mic · keys / image · send), the image button's
+         attach / OCR options menu, the OCR staging tray, the keys D-pad. -->
+    <div id="terminalComposeBar" class="composer" hidden></div>
     <div id="terminalStatus" class="terminal-status" hidden></div>
-    <!-- No accept filter (issue #366): iOS then offers Photo Library / Take
-         Photo / Choose Files, so arbitrary files can be attached — the
-         session-host stores any type (size-capped) and returns the path.
-         `multiple` (issue #448): one gallery tap can pick several photos at
-         once instead of a pick-upload-repeat loop. -->
-    <input id="terminalImageInput" type="file" multiple hidden>
-    <input id="terminalScreenshotInput" type="file" accept="image/*" multiple hidden>
   </div>
 
   <!-- Read-aloud summary modal (issue #210): shows the hub summary text while

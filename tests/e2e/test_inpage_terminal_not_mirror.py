@@ -81,9 +81,9 @@ def test_inpage_loopback_open_is_not_treated_as_mirror(
         "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
 
-    # Non-mirror contract: the ✏️ compose button is shown (it is hidden only
+    # Non-mirror contract: the docked composer is shown (it is hidden only
     # in the PC mirror window), proving isMirror resolved false over loopback.
-    expect(authed_page.locator("#terminalCompose")).to_be_visible()
+    expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
 
     # And the unique mirror marker title — set only in mirror mode so the
     # launcher's EnumWindows can find the Edge --app window — is never applied

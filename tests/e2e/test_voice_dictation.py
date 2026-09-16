@@ -8,10 +8,11 @@ session, POST chunks, and revise the dictated span live from a Server-Sent
 If streaming setup fails it falls back to the #165 single-shot ``/upload``.
 
 The harness connects from loopback, so the terminal opens as the PC mirror
-(``isMirror`` true) and the compose bar / record button start hidden. As in
-``test_compose_bar.py`` we un-hide the compose toggle and drive the real
-handlers — the record/transcribe logic is not mirror-gated, only the
-buttons' visibility is.
+(``isMirror`` true) and the composer starts hidden, with the mic disabled
+because the disposable webapp has no voice-transcriber. As in
+``test_compose_bar.py`` we un-hide the composer and enable the mic, then
+drive the real handlers — the record/transcribe logic is not mirror-gated,
+only the composer's visibility is.
 
 ``MediaRecorder`` + ``getUserMedia`` aren't available/grantable in headless
 WebKit, so both are stubbed via an init script; the transcribe endpoints
@@ -121,19 +122,20 @@ def _open_terminal(page: Page, base_url: str, sid: str) -> None:
 
 
 def _open_compose_with_record(page: Page) -> None:
-    """Un-hide + open the compose bar, then un-hide the record button."""
-    page.evaluate("document.getElementById('terminalCompose').hidden = false")
-    page.locator("#terminalCompose").click()
+    """Un-hide the composer (mirror trick), then enable the mic button."""
+    page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
     expect(page.locator("#terminalComposeBar")).to_be_visible()
-    page.evaluate("document.getElementById('terminalRecord').hidden = false")
+    page.evaluate(
+        "document.querySelector('#terminalComposeBar .composer-mic').disabled = false"
+    )
 
 
 def test_record_button_lives_in_compose_bar(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """The 🎤 button is a child of the compose bar, beside ➤ Send."""
+    """The 🎤 button is a child of the composer, first slot of its grid."""
     _open_terminal(authed_page, base_url, launched_pty_session)
-    record = authed_page.locator("#terminalComposeBar #terminalRecord")
+    record = authed_page.locator("#terminalComposeBar .compose-tools .composer-mic")
     expect(record).to_have_count(1)
 
 
@@ -173,17 +175,17 @@ def test_streamed_partials_then_final(
     _open_terminal(authed_page, base_url, sid)
     _open_compose_with_record(authed_page)
 
-    record = authed_page.locator("#terminalRecord")
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
     record.click()
     expect(record).to_have_class(re.compile(r"\brecording\b"))
     # The SSE partial revises the dictated span live, before stop.
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         re.compile(re.escape(_PARTIAL)), timeout=10_000
     )
 
     record.click()
     # finish() settles the canonical transcript into the same span.
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         _FINAL, timeout=10_000
     )
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
@@ -210,11 +212,11 @@ def test_single_shot_fallback_when_no_session(
     _open_terminal(authed_page, base_url, sid)
     _open_compose_with_record(authed_page)
 
-    record = authed_page.locator("#terminalRecord")
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
     record.click()
     record.click()  # stop → buffered blob → single-shot POST
 
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         _FINAL, timeout=10_000
     )
 
@@ -281,9 +283,9 @@ def test_send_refuses_while_dictation_still_finishing(
     _open_terminal(authed_page, base_url, sid)
     _open_compose_with_record(authed_page)
 
-    record = authed_page.locator("#terminalRecord")
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
     record.click()
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         re.compile(re.escape(_PARTIAL)), timeout=10_000
     )
     record.click()  # stop -> finishStreaming() begins; /finish is held pending
@@ -295,12 +297,12 @@ def test_send_refuses_while_dictation_still_finishing(
     assert "route" in held_finish, "finishStreaming() never called /finish"
 
     # Tap Send while the finalize is still in flight.
-    authed_page.locator("#terminalComposeSend").click()
+    authed_page.locator("#terminalComposeBar .composer-send").click()
 
     # The refused Send must not have touched the textarea — it should still
     # hold the pre-finalize partial, unchanged, not cleared out from under
     # the in-flight render.
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         re.compile(re.escape(_PARTIAL))
     )
 
@@ -309,13 +311,13 @@ def test_send_refuses_while_dictation_still_finishing(
         status=200, content_type="application/json",
         body='{"transcript": "%s", "language": "en"}' % _FINAL,
     )
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value(
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         _FINAL, timeout=10_000
     )
 
     # Dictation is idle now — Send works normally and reaches the real PTY.
-    authed_page.locator("#terminalComposeSend").click()
-    expect(authed_page.locator("#terminalComposeInput")).to_have_value("")
+    authed_page.locator("#terminalComposeBar .composer-send").click()
+    expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value("")
     assert wait_for_session_log(authed_page, sid, _FINAL), (
         "the settled transcript never reached the live PTY session"
     )
@@ -330,7 +332,7 @@ def test_leaving_terminal_mid_recording_releases_mic(
     Before the fix, ``resetComposeBar()`` (run by ``stashActiveTerminal()``,
     which the Back button and a tab switch both call) never called
     ``composeDictation.stop()``/``dispose()`` — only closing the compose bar
-    via its own toggle did. So the mic stayed live and ``_activeInstance``
+    via its (since removed, #980) toggle did. So the mic stayed live and ``_activeInstance``
     stayed held indefinitely, refusing every other mic in the app until the
     user navigated back into the terminal and explicitly tapped stop.
     """
@@ -357,13 +359,12 @@ def test_leaving_terminal_mid_recording_releases_mic(
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
     _open_compose_with_record(authed_page)
-    record = authed_page.locator("#terminalRecord")
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
     record.click()
     expect(record).to_have_class(re.compile(r"\brecording\b"))
 
-    # Leave via Back — never via toggling the record button or closing the
-    # compose bar through its own control. That's the exact path
-    # resetComposeBar() used to miss.
+    # Leave via Back — never via toggling the record button. That's the
+    # exact path resetComposeBar() used to miss.
     authed_page.locator("#terminalBack").click()
     expect(authed_page.locator("#terminalOverlay")).to_be_hidden(timeout=10_000)
 
@@ -372,16 +373,17 @@ def test_leaving_terminal_mid_recording_releases_mic(
         "() => window.__micTracksStopped >= 1", timeout=5_000
     )
 
-    # Dictate again on the same (module-level, shared-across-terminals)
-    # compose bar — no reload, so this is the same `composeDictation`
-    # instance and the same `_activeInstance` mutex as above. Directly
-    # re-showing the bar/button (rather than reopening a terminal and
-    # replaying the toggle click) keeps this assertion scoped to the mic
-    # mutex, independent of the terminal-reopen UI flow. If the mutex
+    # Dictate again on the same (mounted-once, shared-across-terminals)
+    # composer — no reload, so this is the same dictation instance and the
+    # same `_activeInstance` mutex as above. Directly re-showing the
+    # composer (rather than reopening a terminal) keeps this assertion
+    # scoped to the mic mutex, independent of the terminal-reopen UI flow. If the mutex
     # weren't released, this second recording would be silently refused
     # and the button would never gain the recording class.
     authed_page.evaluate("document.getElementById('terminalOverlay').hidden = false")
     authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
-    authed_page.evaluate("document.getElementById('terminalRecord').hidden = false")
+    authed_page.evaluate(
+        "document.querySelector('#terminalComposeBar .composer-mic').disabled = false"
+    )
     record.click()
     expect(record).to_have_class(re.compile(r"\brecording\b"), timeout=5_000)
