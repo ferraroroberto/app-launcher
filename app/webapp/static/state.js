@@ -402,14 +402,14 @@ export const els = {
 
   terminalOverlay: document.getElementById('terminalOverlay'),
   terminalBack: document.getElementById('terminalBack'),
-  terminalKill: document.getElementById('terminalKill'),
   terminalTitle: document.getElementById('terminalTitle'),
   terminalHost: document.getElementById('terminalHost'),
   terminalStatus: document.getElementById('terminalStatus'),
-  terminalJumpEnd: document.getElementById('terminalJumpEnd'),
+  terminalLatest: document.getElementById('terminalLatest'),
   terminalComposeBar: document.getElementById('terminalComposeBar'),
   terminalSpeak: document.getElementById('terminalSpeak'),
   terminalSpeakPopover: document.getElementById('terminalSpeakPopover'),
+  terminalMenu: document.getElementById('terminalMenu'),
   summaryModal: document.getElementById('summaryModal'),
   summaryModalText: document.getElementById('summaryModalText'),
 

@@ -673,7 +673,8 @@ summary + .opt-group { border-top: 0; }
   color: var(--fg);
 }
 .app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
-.app-item .row-actions .action-stop-close:active {
+.app-item .row-actions .action-stop-close:active,
+.terminal-bar .row-menu .action-stop-close:active {
   background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger);
 }
@@ -1924,7 +1925,8 @@ summary + .opt-group { border-top: 0; }
   flex: 0 0 auto;
   min-height: var(--row-sm);
 }
-.app-item .row-actions .row-menu-anchor[aria-expanded="true"] {
+.app-item .row-actions .row-menu-anchor[aria-expanded="true"],
+.terminal-bar .row-menu-anchor[aria-expanded="true"] {
   color: var(--accent);
 }
 .row-menu {
@@ -1942,14 +1944,18 @@ summary + .opt-group { border-top: 0; }
 }
 .session-menu { top: 0; right: calc(100% - 4px); }
 .project-menu { top: calc(100% + 2px); right: 4px; }
+/* The terminal bar's ⋮ menu (#981) drops below the bar, right-aligned under
+   its anchor — the bar itself is the positioned box, as for .speak-popover. */
+.terminal-menu { top: calc(100% + 2px); right: 8px; }
 /* Menu rows: full-width, 44px min (hit-target.min), glyph then label,
    left-aligned — not rail cells (the .icon-btn.row-menu-btn specificity
    outranks the rail's width / divider rules). The stop row keeps
    `action-stop-close` (danger tint on press, below). */
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn,
-.composer .row-menu .icon-btn.row-menu-btn {
-  /* The composer's menu sits outside a rail, so it never inherits the rail
-     .icon-btn's flex box — set the flex/border/background basics here too,
+.composer .row-menu .icon-btn.row-menu-btn,
+.terminal-bar .row-menu .icon-btn.row-menu-btn {
+  /* The composer's and terminal bar's menus sit outside a rail, so they
+     never inherit the rail .icon-btn's flex box — set the flex/border/background basics here too,
      or `gap` has nothing to act on and the glyph glues to its label. */
   display: flex;
   align-items: center;
@@ -1975,7 +1981,8 @@ summary + .opt-group { border-top: 0; }
 /* One shared disabled recipe (design.md button-disabled): flat muted text,
    never opacity — the VS Code item when the `code` CLI is off PATH. */
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled,
-.composer .row-menu .icon-btn.row-menu-btn:disabled {
+.composer .row-menu .icon-btn.row-menu-btn:disabled,
+.terminal-bar .row-menu .icon-btn.row-menu-btn:disabled {
   color: var(--muted);
   cursor: default;
 }
@@ -2371,9 +2378,10 @@ body.terminal-open {
   position: relative;
   display: flex;
   align-items: center;
-  /* (#514) 6px, matching .terminal-bar-actions' own gap, so all eight
-     buttons sit at one uniform distance — and the full row (8 × 44px
-     + gaps + bar padding = 420px) fits a 430px phone viewport at once. */
+  /* (#514) 6px, matching .terminal-bar-actions' own gap, so every button
+     sits at one uniform distance. The session overlay's row is five 44px
+     controls at most since #981 (‹ Back · title · mode toggle · 🔊 · ⋮),
+     which leaves the title most of a 390px phone. */
   gap: 6px;
   padding: 8px 10px;
   background: var(--card);
@@ -2415,6 +2423,10 @@ body.terminal-open {
   scrollbar-width: none;
 }
 .terminal-bar-actions::-webkit-scrollbar { display: none; }
+/* The session overlay's bar no longer needs that scroller (#981): with ✕ and
+   ↓ gone its group holds the mode toggle (#982), 🔊 and ⋮, which always fit
+   beside a shrinking title. Only the Life OS bars (#886) still scroll. */
+#terminalOverlay .terminal-bar-actions { overflow-x: visible; }
 .term-btn {
   background: var(--card-2);
   color: var(--fg);
@@ -2471,17 +2483,6 @@ body.terminal-open {
    target (#477) every other bar button uses, at the bar's uniform 6px gap,
    so the whole row fits on-screen at once. */
 #terminalBack { text-align: center; }
-/* ✕ Stop-and-kill in the terminal bar (issue #253) — a muted glyph that
-   blends with the dark bar by default, flashing danger-red on press like
-   the list row's stop button (so it doesn't shout a loud red emoji). */
-.term-btn.term-kill {
-  color: var(--muted);
-}
-.term-btn.term-kill:active {
-  background: rgb(from var(--danger) r g b / 0.25);
-  color: var(--danger);
-  border-color: var(--danger);
-}
 /* Read-aloud action menu (issue #210): a small dropdown anchored below the
    terminal bar under the 🔊 button — "Read aloud" (verbatim) and
    "Summarize & read" (hub-condensed for hands-free / driving). */
@@ -2598,6 +2599,7 @@ body.terminal-open {
 /* Empty grid cell to the right of ⇧ keeps the down-arrow centered in row 3. */
 .key-spacer { display: block; }
 .terminal-host {
+  position: relative;
   flex: 1;
   min-height: 0;
   padding: 6px 4px 4px 8px;
@@ -2620,6 +2622,34 @@ body.terminal-open {
   overscroll-behavior: contain;
 }
 .terminal-host .xterm { height: 100%; }
+/* Floating "Latest" pill (#981): replaces the bar's ↓ Jump, shown only while
+   scrolled more than a screen above the tail. Bottom-right of the terminal,
+   so it sits just above the docked composer. A hairline border and the card
+   surface lift it off the screen — no shadow (design.md keeps real elevation
+   for the bottom nav). */
+.terminal-latest {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  /* Above xterm's own layers (its helper textarea sits at z-index 5 and
+     follows the pill in the DOM), below the bar's menus (30). */
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+}
+.terminal-latest[hidden] { display: none; }
+.terminal-latest:active { border-color: var(--accent); color: var(--accent); }
 /* The shared composer (#980, composer.js): a column of OCR tray + compose
    bar, always docked under the terminal (and, later, under Chat mode and
    in the Board drawer). Positioned so the keys D-pad and the image menu

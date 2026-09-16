@@ -1606,18 +1606,26 @@
   <div id="terminalOverlay" class="terminal-overlay" hidden>
     <div class="terminal-bar">
       <button id="terminalBack" type="button" class="term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
-      <button id="terminalKill" type="button" class="term-btn term-kill" title="Stop and kill this session" aria-label="Stop and kill this session"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
       <div class="terminal-bar-actions">
-        <button id="terminalJumpEnd" type="button" class="term-btn" title="Jump to latest">↓</button>
+        <!-- #982 (Step 3 of #979) puts the icon-only Terminal / Chat toggle
+             here, first in this group: ‹ Back · title · toggle · 🔊 · ⋮. -->
         <button id="terminalSpeak" type="button" class="term-btn" title="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
+        <!-- ⋮ session menu (#981): Rename · Copy link · Stop and kill, built by
+             terminal-bar.js on the shared row-menu component. -->
+        <button id="terminalMenu" type="button" class="term-btn" title="Session actions" aria-label="Session actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
       </div>
       <div id="terminalSpeakPopover" class="speak-popover" hidden>
         <button type="button" class="speak-action" data-action="read"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Read aloud</button>
         <button type="button" class="speak-action" data-action="summarize" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summarize &amp; read</button>
       </div>
     </div>
-    <div id="terminalHost" class="terminal-host"></div>
+    <div id="terminalHost" class="terminal-host">
+      <!-- Floating "Latest" pill (#981): shown only while scrolled more than a
+           screen above the tail (terminal-bar.js). A text arrow, as the old
+           ↓ Jump had: the vendored Lucide sprite carries no arrow-down. -->
+      <button id="terminalLatest" type="button" class="terminal-latest" title="Jump to latest output" aria-label="Jump to latest output" hidden><span aria-hidden="true">↓</span> Latest</button>
+    </div>
     <!-- The shared composer (#980): always docked under the terminal on the
          phone (hidden only in the PC mirror window, terminal.js). Markup is
          rendered by composer.js, mounted from terminal-compose.js —

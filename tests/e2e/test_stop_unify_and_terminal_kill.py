@@ -4,9 +4,10 @@ Two iPhone bites in one issue:
 
 1. Each running-sessions row has exactly **one** 🛑 Stop-and-kill button
    (the old ⏹ "leave window open" + ⏏ "stop & close" pair collapsed to one).
-2. The in-page terminal view has a 🛑 Kill button beside the ‹ back arrow,
-   so a finished session can be stopped without going back to the list
-   first. Killing it returns to the list (the overlay hides).
+2. The in-page terminal view can stop its session without going back to the
+   list first. Killing it returns to the list (the overlay hides). Since
+   #981 the kill lives in the bar's ⋮ session menu (Rename · Copy link ·
+   Stop and kill) instead of a permanent ✕ beside the back arrow.
 
 Complements ``test_smoke.py``'s per-row button assertion; this one drives
 the terminal-view kill end to end.
@@ -52,7 +53,7 @@ def _skip_unless_phone(browser_name: str) -> None:
         )
 
 
-def test_terminal_view_has_back_arrow_and_kill_button(
+def test_terminal_view_has_back_arrow_and_session_menu(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
     _skip_unless_phone(browser_name)
@@ -78,9 +79,23 @@ def test_terminal_view_has_back_arrow_and_kill_button(
         "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
 
-    # Both the icon-only back arrow and the kill button live in the bar.
+    # The icon-only back arrow and the ⋮ session menu live in the bar; the
+    # old permanent ✕ and ↓ are gone from it (#981).
     expect(authed_page.locator("#terminalBack")).to_be_visible()
-    expect(authed_page.locator("#terminalKill")).to_be_visible()
+    expect(authed_page.locator("#terminalMenu")).to_be_visible()
+    expect(authed_page.locator("#terminalKill")).to_have_count(0)
+    expect(authed_page.locator("#terminalJumpEnd")).to_have_count(0)
+
+    # ⋮ opens Rename · Copy link · Stop and kill, in that order.
+    authed_page.locator("#terminalMenu").click()
+    menu = authed_page.locator("#terminalOverlay .terminal-menu")
+    expect(menu).to_be_visible()
+    expect(menu.locator(".row-menu-label")).to_have_text(
+        ["Rename", "Copy link", "Stop and kill"]
+    )
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute(
+        "aria-expanded", "true"
+    )
 
 
 def test_kill_from_terminal_view_stops_and_returns_to_list(
@@ -106,7 +121,10 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     # (issue #253 follow-up); a stray dialog would mean the guard came back.
     authed_page.on("dialog", lambda d: pytest.fail(f"unexpected dialog: {d.message}"))
 
-    authed_page.locator("#terminalKill").click()
+    # Two taps from the terminal since #981, matching the list row: ⋮, then
+    # Stop and kill.
+    authed_page.locator("#terminalMenu").click()
+    authed_page.get_by_role("menuitem", name="Stop and kill session").click()
 
     # The stop POST waits out the graceful-then-force window on the host;
     # on success stopSession() hides the overlay (we were viewing the

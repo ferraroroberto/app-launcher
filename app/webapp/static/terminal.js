@@ -16,12 +16,13 @@
  * UI (terminal-readaloud.js, atop the terminal-readback.js engine) and the
  * PC-mirror-window title/guard logic (terminal-mirror.js) by issue #315,
  * then the on-screen keys D-pad (terminal-keys.js) and image paste / drop /
- * attach (terminal-image.js) by issue #723.
+ * attach (terminal-image.js) by issue #723. The bar's ⋮ session menu and
+ * the floating Latest pill live in terminal-bar.js (#981).
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
-import { fetchSessions, sessionTitle, stopSession } from './sessions.js';
+import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal-touch.js';
 import {
   announceMirrorWindow,
@@ -39,6 +40,12 @@ import {
   terminalComposer,
 } from './terminal-compose.js';
 import { wireTerminalImage } from './terminal-image.js';
+import {
+  closeTerminalMenu,
+  updateLatestPill,
+  watchLatestPill,
+  wireTerminalMenu,
+} from './terminal-bar.js';
 import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
 import {
   beginRepaintBatch,
@@ -232,6 +239,7 @@ function stashActiveTerminal() {
   // Drop compose state so a re-open never shows a stale bar/draft.
   resetComposeBar();
   if (t.term && t.term.element) t.term.element.style.display = 'none';
+  updateLatestPill();
   // Release any keyboard-driven override (issue #135) so the next open
   // starts from the CSS-driven full height and inset:0 origin.
   if (els.terminalOverlay) {
@@ -255,6 +263,7 @@ function disposeTerminal(t) {
   if (t.sizeTimer) clearInterval(t.sizeTimer);
   if (t.titleTimer) clearInterval(t.titleTimer);
   if (t.disposeTouch) { try { t.disposeTouch(); } catch (_) {} }
+  if (t.disposeLatest) { try { t.disposeLatest(); } catch (_) {} }
   if (t.onWindowResize) window.removeEventListener('resize', t.onWindowResize);
   if (t.onVisualViewport && window.visualViewport) {
     window.visualViewport.removeEventListener('resize', t.onVisualViewport);
@@ -384,6 +393,7 @@ export async function openTerminal(session) {
         cached.term.refresh(0, cached.term.rows - 1);
         cached.term.scrollToBottom();
       } catch (_) { /* best effort */ }
+      updateLatestPill();
       cached.term.focus();
     } else {
       cached.retryCount = 0;
@@ -457,7 +467,7 @@ export async function openTerminal(session) {
     sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
     mirror: isMirror, retryCount: 0, giveUpAt: 0,
     retryTimer: null, visibilityListener: null, tapHandler: null,
-    disposeTouch: null,
+    disposeTouch: null, disposeLatest: null,
     isFullscreen: !!(knownAgent && knownAgent.fullscreen),
     // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
     // same-size resize frames; fsSized gates the fullscreen pan path until
@@ -502,6 +512,7 @@ export async function openTerminal(session) {
   // Skipped for the PC mirror window — it scrolls with a wheel and
   // should keep mouse text-selection.
   if (!isMirror) t.disposeTouch = enableNativeTouchScroll(term);
+  t.disposeLatest = watchLatestPill(t);
 
   function applySize() {
     // A stashed warm terminal (#430) is inert: its resize listeners stay
@@ -749,6 +760,7 @@ export function hideTerminal() {
   stashActiveTerminal();
   terminalComposer.closePopovers();
   closeSpeakPopover();
+  closeTerminalMenu();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
   unlockBodyScroll();
@@ -772,26 +784,11 @@ export function wireTerminal() {
     applyTermTheme();
   }).catch(function () { /* built-ins stand */ });
   els.terminalBack.addEventListener('click', hideTerminal);
-  // 🛑 Stop-and-kill the session straight from the terminal view (issue
-  // #253) — no need to go back to the list first. Resolve the open
-  // session from state.sessions by sid; stopSession() confirms, then
-  // hides the overlay when it stops the session we're viewing.
-  els.terminalKill.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t) return;
-    const s = (state.sessions || []).find(function (x) {
-      return x.session_id === t.sid;
-    });
-    if (s) stopSession(s);
-  });
+  // ⋮ session menu + the Latest pill (#981) — terminal-bar.js. Stop and
+  // kill moved into the menu from the old in-bar ✕ (#253).
+  wireTerminalMenu();
   mountTerminalComposer();
   wireTerminalImage();
-  els.terminalJumpEnd.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t || !t.term) return;
-    try { t.term.scrollToBottom(); } catch (_) {}
-    t.term.focus();
-  });
   // 🔊 read-aloud control (issues #190, #210) — wiring lives in
   // terminal-readaloud.js, alongside the button's action menu and the
   // summary modal it opens.
