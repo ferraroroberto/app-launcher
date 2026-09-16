@@ -1946,7 +1946,8 @@ summary + .opt-group { border-top: 0; }
    left-aligned — not rail cells (the .icon-btn.row-menu-btn specificity
    outranks the rail's width / divider rules). The stop row keeps
    `action-stop-close` (danger tint on press, below). */
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn {
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn,
+.composer .row-menu .icon-btn.row-menu-btn {
   flex: none;
   width: 100%;
   min-height: 44px;
@@ -2549,11 +2550,12 @@ body.terminal-open {
   white-space: pre-wrap;
 }
 .summary-foot { text-align: center; }
-/* On-screen keys popover (issue #36): D-pad anchored below the
-   terminal bar, right-aligned under the ⌨️ button. */
+/* On-screen keys popover (issue #36): D-pad floating ABOVE the composer
+   (#980 — it used to hang under the terminal bar), right-aligned over the
+   ⌨ button in the composer grid so the thumb reaches it. */
 .keys-popover {
   position: absolute;
-  top: 48px;
+  bottom: calc(100% + 6px);
   right: 8px;
   display: grid;
   grid-template-columns: repeat(3, 56px);
@@ -2609,6 +2611,38 @@ body.terminal-open {
   overscroll-behavior: contain;
 }
 .terminal-host .xterm { height: 100%; }
+/* The shared composer (#980, composer.js): a column of OCR tray + compose
+   bar, always docked under the terminal (and, later, under Chat mode and
+   in the Board drawer). Positioned so the keys D-pad and the image menu
+   can float above it. */
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+/* The image button's options menu (Attach image or file / Extract text from
+   screenshots): the row-menu recipe, floating above the composer at its
+   right edge — mockup screen 3. */
+.composer-menu {
+  bottom: calc(100% + 6px);
+  right: 10px;
+  min-width: 260px;
+}
+/* A small dot marks the image button as having options; it hides with the
+   OCR option when photo-ocr is unconfigured (the button then opens the
+   picker directly). */
+.composer-image { position: relative; }
+.composer-image.has-options::after {
+  content: '';
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--muted);
+}
 /* Compose bar (issue #37): a predictive-keyboard text surface docked
    at the bottom of the overlay, between the xterm host and the status
    line. flex-shrink:0 lets it claim its height; the host (flex:1)
@@ -2630,11 +2664,11 @@ body.terminal-open {
   border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
-/* 🎤 / 🔍 / 🖼 / ➤ sit in a 2x2 grid, anchored bottom-right of the bar, so
-   the textarea keeps the horizontal space (issue #171 UX) while all four
-   buttons read as one matched cluster (issue #453) instead of a tall 1x4
-   column. Fixed cell size + the size rule below give every button the same
-   canonical footprint and tap area. */
+/* 🎤 / ⌨ / 🖼 / ➤ sit in a 2x2 grid (mic · keys / image · send since #980),
+   anchored bottom-right of the bar, so the textarea keeps the horizontal
+   space (issue #171 UX) while all four buttons read as one matched cluster
+   (issue #453) instead of a tall 1x4 column. Fixed cell size + the size rule
+   below give every button the same canonical footprint and tap area. */
 .compose-tools {
   display: grid;
   grid-template-columns: repeat(2, 44px);
@@ -2655,6 +2689,14 @@ body.terminal-open {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+/* An unavailable mic / keys button stays in the grid, disabled — the one
+   shared disabled recipe (design.md button-disabled): flat muted text on
+   the same surface, never opacity, so the 2x2 shape never collapses. */
+.compose-tools .compose-record:disabled {
+  opacity: 1;
+  color: var(--muted);
+  background: var(--card-2);
 }
 .compose-input {
   flex: 1;

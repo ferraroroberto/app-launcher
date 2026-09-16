@@ -227,19 +227,21 @@ def _open_terminal(page: Page, base_url: str, sid: str) -> None:
 def test_speak_button_in_toolbar(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """The 🔊 button is a top-bar control, between ↓ Jump and 📋 Paste — NOT in
-    the compose bar (which is for editing)."""
+    """The 🔊 button is a top-bar control, right after ↓ Jump — NOT in the
+    composer (which is for editing). Paste, Image, Compose and Keys left the
+    bar in #980; #981 finishes the five-control bar."""
     _open_terminal(authed_page, base_url, launched_pty_session)
     expect(
         authed_page.locator(".terminal-bar-actions #terminalSpeak")
     ).to_have_count(1)
     expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
-    # Document order: ↓ Jump → 🔊 Speak → 📋 Paste.
+    # Document order: ↓ Jump → 🔊 Speak.
     order = authed_page.eval_on_selector_all(
         ".terminal-bar-actions .term-btn", "els => els.map(e => e.id)"
     )
     assert order.index("terminalSpeak") == order.index("terminalJumpEnd") + 1
-    assert order.index("terminalPaste") == order.index("terminalSpeak") + 1
+    for gone in ("terminalPaste", "terminalImage", "terminalCompose", "terminalKeys"):
+        assert gone not in order, f"{gone} is back in the bar — it moved into the composer (#980)"
 
 
 def test_toast_sits_above_terminal_overlay(
@@ -433,13 +435,14 @@ def test_new_dictation_cancels_speech(
         lambda route: route.fulfill(status=503, body="nope"),
     )
     _open_terminal(authed_page, base_url, launched_pty_session)
-    authed_page.evaluate("document.getElementById('terminalCompose').hidden = false")
-    authed_page.locator("#terminalCompose").click()
+    authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
-    authed_page.evaluate("document.getElementById('terminalRecord').hidden = false")
+    authed_page.evaluate(
+        "document.querySelector('#terminalComposeBar .composer-mic').disabled = false"
+    )
 
     authed_page.evaluate("() => window.__readback.speak('Reading this aloud now.')")
     before = authed_page.evaluate("() => window.speechSynthesis._cancels")
-    authed_page.locator("#terminalRecord").click()
+    authed_page.locator("#terminalComposeBar .composer-mic").click()
     after = authed_page.evaluate("() => window.speechSynthesis._cancels")
     assert after > before

@@ -1,42 +1,24 @@
-/* Compose bar for the live terminal (issue #315 split off terminal.js):
- * the predictive-text textarea, voice dictation, and screenshot-OCR staging
- * tray that feed it — everything behind the ➤ Send / 🎤 / 📷 button row.
+/* The live terminal's composer transport (issue #315 split off terminal.js;
+ * #980 moved the composer itself into composer.js).
  *
- * Compose bar (issue #37): a normal <textarea> with default predictive/
- * autocorrect/spellcheck so iOS/Android keyboards offer suggestions —
- * which they can't inside xterm's per-keystroke-wiped helper textarea.
- * ➤ Send forwards the buffered text, then a submitting \r as a SEPARATE
- * WS frame (see sendSubmit / #166).
- *
- * Voice dictation (issues #165 / #168): the 🎤 button records the mic and
- * drops the transcript into the compose textarea for review — never
- * straight into the PTY. The recording pipeline itself (streamed partials
- * with the single-shot fallback) lives in the shared voice.js since #302 —
- * this is just the compose bar's mounted instance. ➤ Send refuses to run
- * while composeDictation.isBusy() (#489) — a stopped-but-still-finalizing
- * dictation is still writing into the tracked span; Send racing that window
- * cleared the buffer under it instead of ever seeing the settled transcript.
- *
- * Screenshot OCR (issue #171): the 📷 button *stages* one or more
- * screenshots into a tray; nothing is sent yet. Each tap accumulates more
- * images. When the user taps Extract, ALL staged images go to photo-ocr in
- * a SINGLE /api/ocr call, so photo-ocr collates them into one deduplicated
- * text (overlapping shots of one document are merged, duplicate boundary
- * lines removed) — instead of one isolated OCR per image. The text drops
- * into the compose textarea for review before ➤ Send.
+ * composer.js owns the surface — textarea, mic, keys, image menu, OCR tray,
+ * send — and knows nothing about sessions. This module is the terminal's
+ * binding of it: ➤ Send forwards the buffered text over the PTY WebSocket,
+ * then a submitting \r as a SEPARATE WS frame (sendSubmit / #166); attach
+ * uploads through the session-host's inline image route and hands the
+ * composer the stored path; the ⌨ D-pad writes escape bytes down the same
+ * `input` channel. The compose bar was born here (#37) as a normal
+ * <textarea> with default predictive/autocorrect so iOS/Android keyboards
+ * offer suggestions — which they can't inside xterm's per-keystroke-wiped
+ * helper textarea — and since #980 it is always docked: no ✏️ toggle, the
+ * PC mirror window is the only place it hides (terminal.js).
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, apiRaw, toast } from './api.js';
+import { apiFailToast, apiRaw } from './api.js';
 import { readTerminalToken } from './webauthn.js';
-import { createDictation, startWorkTimer } from './voice.js';
-import { icon } from './_vendored/icons/icons.js';
+import { mountComposer } from './composer.js';
 import { stopReading } from './terminal-readaloud.js';
-
-// Max visible rows before the textarea scrolls internally. Roomy enough
-// for a long dictated voice note (#165) without the bar eating the whole
-// screen when the keyboard is up. The CSS min-height floors it at 2 rows.
-const _COMPOSE_MAX_ROWS = 8;
 
 // Delay (ms) before the submitting CR when the compose payload carries a
 // pasted image path (issue #450). Gives Claude Code's path→attachment
@@ -66,64 +48,20 @@ const _BULK_FLOOR_MS = 350;
 const _BULK_QUIET_MS = 350;
 const _BULK_CAP_MS = 3000;
 
-export function growComposeInput() {
-  // Auto-grow up to _COMPOSE_MAX_ROWS; the iOS return key adds newlines,
-  // only ➤ Send forwards to the PTY.
-  const ta = els.terminalComposeInput;
-  ta.style.height = 'auto';
-  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-  ta.style.height =
-    Math.min(ta.scrollHeight, _COMPOSE_MAX_ROWS * lineHeight + 16) + 'px';
-  // Keep the caret (end of a freshly inserted transcript) in view.
-  ta.scrollTop = ta.scrollHeight;
-}
-
-export function resetComposeBar() {
-  els.terminalComposeBar.hidden = true;
-  els.terminalComposeInput.value = '';
-  els.terminalComposeInput.style.height = '';
-  // #450: an emptied buffer no longer carries an attached image path.
-  if (state.terminal) state.terminal.composeHasImage = false;
-  clearOcrStaging();
-  // #755: unlike setComposeOpen(false), this also runs on the leave-
-  // terminal path (stashActiveTerminal / disposeTerminal in terminal.js),
-  // which never calls setComposeOpen — so it must independently force-stop
-  // any in-flight recording. dispose() (not stop()) so the mic and the
-  // app-wide dictation mutex release even mid-permission-prompt or
-  // mid-finalize, and any in-flight transcript is dropped rather than
-  // written into a compose bar that's about to be hidden and cleared.
-  composeDictation.dispose();
-}
-
-function setComposeOpen(open) {
-  const t = state.terminal;
-  if (!t) return;
-  t.composeOpen = open;
-  els.terminalComposeBar.hidden = !open;
-  if (!open) {
-    // Closing the bar abandons any in-flight recording so the mic isn't
-    // left live behind a hidden bar, and drops any staged OCR images.
-    composeDictation.stop();
-    clearOcrStaging();
-  }
-  if (open) {
-    // Focusing the textarea pops the phone keyboard with predictive on.
-    els.terminalComposeInput.focus();
-  } else if (t.term) {
-    // Direct mode resumes — hand focus back to xterm.
-    t.term.focus();
-  }
-}
+// The terminal's mounted composer handle (composer.js), set once by
+// mountTerminalComposer() from wireTerminal(). Live binding: importers read
+// it after wiring.
+export let terminalComposer = null;
 
 // Wrap a clipboard / compose payload in bracketed-paste markers (DECSET
 // 2004) when the agent's TUI has them enabled, so it buffers the whole
 // block as one atomic paste instead of absorbing a per-keystroke burst —
 // which the Windows console input queue silently drops spans of under a
 // multi-KB load (#64). This is exactly what xterm already does for its own
-// native paste (term.onData); the 📋 button and compose ➤ Send bypass
-// xterm, so they have to replicate it. Only bracket when the app actually
-// asked for it (`term.modes.bracketedPasteMode`) — otherwise the literal
-// `\x1b[200~` would land as garbage in an agent that doesn't grok it.
+// native paste (term.onData); compose ➤ Send bypasses xterm, so it has to
+// replicate it. Only bracket when the app actually asked for it
+// (`term.modes.bracketedPasteMode`) — otherwise the literal `\x1b[200~`
+// would land as garbage in an agent that doesn't grok it.
 //
 // Framing only — this never appends the submitting carriage return. A
 // submit goes through `sendSubmit`, which delivers the CR as its OWN WS
@@ -186,179 +124,83 @@ export function sendSubmit(t, text, opts) {
   if (delay > 0) setTimeout(submit, delay); else submit();
 }
 
-// Voice dictation instance mounted on the compose bar. Starting to talk
-// silences any in-flight read-aloud (issue #190): you're answering, not
-// still listening.
-const composeDictation = createDictation({
-  button: els.terminalRecord,
-  getTextarea: function () { return els.terminalComposeInput; },
-  onRender: growComposeInput,
-  onStart: stopReading,
-});
-
-let _ocrStaged = [];        // File objects awaiting a collated extraction
-let _ocrThumbUrls = [];     // object URLs to revoke when the tray clears
-
-function clearOcrStaging() {
-  _ocrStaged = [];
-  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
-  _ocrThumbUrls = [];
-  renderOcrTray();
-}
-
-function renderOcrTray() {
-  const strip = els.terminalOcrThumbs;
-  strip.innerHTML = '';
-  _ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
-  _ocrThumbUrls = [];
-  if (!_ocrStaged.length) {
-    els.terminalOcrTray.hidden = true;
-    return;
-  }
-  els.terminalOcrTray.hidden = false;
-  _ocrStaged.forEach(function (file, idx) {
-    const cell = document.createElement('div');
-    cell.className = 'ocr-thumb';
-    const img = document.createElement('img');
-    const url = URL.createObjectURL(file);
-    _ocrThumbUrls.push(url);
-    img.src = url;
-    img.alt = 'staged screenshot ' + (idx + 1);
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'ocr-thumb-x';
-    rm.innerHTML = icon('x');
-    rm.title = 'Remove';
-    rm.addEventListener('click', function () {
-      _ocrStaged.splice(idx, 1);
-      renderOcrTray();
-    });
-    cell.appendChild(img);
-    cell.appendChild(rm);
-    strip.appendChild(cell);
-  });
-  els.terminalOcrExtract.innerHTML =
-    icon('camera') + ' Extract text (' + _ocrStaged.length + ')';
-}
-
-function stageOcrImages(files) {
-  const list = files ? Array.prototype.slice.call(files) : [];
-  if (!list.length) return;
-  _ocrStaged = _ocrStaged.concat(list);
-  renderOcrTray();
-}
-
-// Run OCR over EVERY staged image in one call so photo-ocr deduplicates the
-// overlap. Headers mirror sendImage in terminal.js (bearer + passkey terminal
-// token).
-async function runOcrExtraction() {
-  const list = _ocrStaged.slice();
-  if (!list.length) return;
+// Store one attachment on the session-host and resolve its path. `inline=1`
+// asks the host to skip its paste-into-PTY step and just return the stored
+// path (#41), so the composer can append it for review-before-send. A
+// terminal can't hold an image: the agent is handed the *file path* and
+// reads the image from there. Errors toast here and resolve null so the
+// composer's batch loop counts only the files that landed (#448).
+async function uploadTerminalImage(file) {
+  const t = state.terminal;
+  if (!t || !file) return null;
   const fd = new FormData();
-  list.forEach(function (f, i) {
-    fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
-  });
-  const btn = els.terminalOcrExtract;
-  btn.disabled = true;
-  els.terminalScreenshot.disabled = true;
-  const stopTimer = startWorkTimer(btn, icon('camera') + ' Extract text', icon('hourglass') + ' Reading ');
+  fd.append('file', file, file.name || 'image.png');
   try {
-    const tt = readTerminalToken();
-    const res = await apiRaw('/api/ocr', {
-      method: 'POST', terminalToken: tt, body: fd,
-    });
+    const res = await apiRaw(
+      '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image?inline=1',
+      { method: 'POST', terminalToken: readTerminalToken(), body: fd }
+    );
     if (!res.ok) {
       const b = await res.json().catch(function () { return null; });
       throw new Error((b && b.detail) || ('HTTP ' + res.status));
     }
     const body = await res.json().catch(function () { return null; });
-    const text = body && body.text;
-    const plural = list.length > 1;
-    if (!text) {
-      toast('No text found in the image' + (plural ? 's' : ''), undefined, { icon: 'camera' });
-      return;
-    }
-    // Insert at the caret with a leading space when the textarea already
-    // has trailing content, so the OCR appends cleanly to typed text.
-    const ta = els.terminalComposeInput;
-    const before = ta.value.slice(0, ta.selectionStart);
-    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
-    ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
-    growComposeInput();
-    ta.focus();
-    clearOcrStaging();
-    toast(
-      'Text extracted from ' + list.length + ' image' +
-        (plural ? 's' : '') + ' — review, then tap Send.',
-      'good',
-      { icon: 'camera' }
-    );
+    return (body && body.path) || null;
   } catch (exc) {
-    apiFailToast('OCR failed', exc);
-  } finally {
-    stopTimer();
-    btn.disabled = false;
-    els.terminalScreenshot.disabled = false;
+    apiFailToast('Image failed', exc);
+    return null;
   }
 }
 
-export function wireCompose() {
-  els.terminalCompose.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t) return;
-    setComposeOpen(!t.composeOpen);
-  });
-  els.terminalRecord.addEventListener('click', composeDictation.toggle);
-  els.terminalScreenshot.addEventListener('click', function () {
-    els.terminalScreenshotInput.click();
-  });
-  // General attach (issue #366): second entry point into the existing
-  // sendImage()/#terminalImageInput flow (terminal.js owns the change
-  // handler) — reachable from the compose-bar view, unlike the outer-bar
-  // 🖼 button. No accept filter, so iOS offers Files as well as Photos.
-  if (els.terminalComposeAttach) {
-    els.terminalComposeAttach.addEventListener('click', function () {
-      els.terminalImageInput.click();
-    });
+function sendComposed(text, meta) {
+  const t = state.terminal;
+  if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return false;
+  // #499: bulk text (a long dictation) holds the CR until the paste's
+  // ingest visibly settles — under machine load a fixed defer still lands
+  // mid-ingest and the CR becomes a newline instead of Submit. The settle
+  // watch also covers #450's image-conversion window when both apply.
+  // #450: an image path in a short buffer keeps its fixed conversion defer.
+  const opts = text.length >= _BULK_SUBMIT_THRESHOLD_CHARS
+    ? { bulkSettle: true }
+    : (meta.hasImage ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined);
+  sendSubmit(t, text, opts);
+  return true;
+}
+
+function sendKeyBytes(bytes) {
+  const t = state.terminal;
+  if (t && t.ws && t.ws.readyState === WebSocket.OPEN) {
+    t.ws.send(JSON.stringify({ type: 'input', data: bytes }));
   }
-  els.terminalScreenshotInput.addEventListener('change', function () {
-    const picked = els.terminalScreenshotInput.files;
-    const list = picked && picked.length
-      ? Array.prototype.slice.call(picked) : [];
-    els.terminalScreenshotInput.value = '';
-    // Stage, don't send — accumulate across taps; Extract collates them all.
-    if (list.length) stageOcrImages(list);
+  if (t && t.term) t.term.focus();
+}
+
+function snapToTail() {
+  // Opening the D-pad means the user is about to drive a prompt, which
+  // lives at the tail — snap to the bottom like the ↓ button.
+  const t = state.terminal;
+  if (t && t.term) { try { t.term.scrollToBottom(); } catch (_) {} }
+}
+
+// Mount the shared composer into the terminal overlay, bound to the live
+// PTY session. Called once from wireTerminal(); the mirror rule and the
+// per-open availability sync (dictation / OCR) live in openTerminal.
+export function mountTerminalComposer() {
+  terminalComposer = mountComposer(els.terminalComposeBar, {
+    placeholder: 'Type a prompt — predictive on.',
+    send: sendComposed,
+    upload: uploadTerminalImage,
+    keys: { send: sendKeyBytes, onOpen: snapToTail },
+    // Starting to talk silences any in-flight read-aloud (issue #190):
+    // you're answering, not still listening.
+    onDictationStart: stopReading,
   });
-  els.terminalOcrExtract.addEventListener('click', runOcrExtraction);
-  els.terminalComposeSend.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-    // #489: a dictation that just stopped is still finalizing (POST
-    // /finish) until composeDictation settles the canonical transcript into
-    // the textarea. Reading+clearing the buffer mid-window raced that
-    // settle — the longer the recording, the wider the window. Wait it out
-    // instead of racing it; the transcript lands a beat later and Send works
-    // normally then.
-    if (composeDictation.isBusy()) {
-      toast('Still transcribing — wait for the transcript, then tap Send', 'error', { icon: 'mic' });
-      return;
-    }
-    const text = els.terminalComposeInput.value;
-    if (!text) return;
-    // #499: bulk text (a long dictation) holds the CR until the paste's
-    // ingest visibly settles — under machine load a fixed defer still lands
-    // mid-ingest and the CR becomes a newline instead of Submit. The settle
-    // watch also covers #450's image-conversion window when both apply.
-    // #450: an image path in a short buffer keeps its fixed conversion defer.
-    const opts = text.length >= _BULK_SUBMIT_THRESHOLD_CHARS
-      ? { bulkSettle: true }
-      : (t.composeHasImage
-        ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined);
-    sendSubmit(t, text, opts);
-    t.composeHasImage = false;
-    els.terminalComposeInput.value = '';
-    els.terminalComposeInput.style.height = '';
-    els.terminalComposeInput.focus();
-  });
-  els.terminalComposeInput.addEventListener('input', growComposeInput);
+  return terminalComposer;
+}
+
+// Leave-terminal teardown (stashActiveTerminal / disposeTerminal in
+// terminal.js): drop the draft, staged screenshots and any in-flight
+// recording (#755) so a re-open never shows a stale bar.
+export function resetComposeBar() {
+  if (terminalComposer) terminalComposer.reset();
 }

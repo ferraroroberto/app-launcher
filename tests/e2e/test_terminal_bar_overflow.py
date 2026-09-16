@@ -1,7 +1,8 @@
 """Terminal-bar action buttons stay inside the viewport (issue #514).
 
-Regression for a same-day double regression: `.terminal-bar-actions` (six of
-the eight terminal-bar buttons) had no `min-width: 0`, so as a flex item of
+Regression for a same-day double regression: `.terminal-bar-actions` (then
+six of the eight terminal-bar buttons; four buttons in all since #980 moved
+Paste, Image, Compose and Keys into the composer) had no `min-width: 0`, so as a flex item of
 the row-flex `.terminal-bar` its automatic minimum size was its content's
 min-content width — it could never shrink below the sum of its buttons. That
 ceiling was already tight on a narrow phone; #496 (widening `#terminalBack`
@@ -86,20 +87,21 @@ def test_terminal_bar_buttons_stay_within_viewport(
 def test_terminal_bar_fits_at_once_on_default_phone(
     authed_page: Page, base_url: str, browser_name: str, launched_pty_session: str
 ) -> None:
-    """All eight bar buttons fit the default iPhone projection without scrolling.
+    """Every bar button fits the default iPhone projection without scrolling.
 
     The second half of #514: with the Back button back at the uniform 44px and
     uniform 6px gaps, the full row — including the read-aloud button, hidden by
     default and force-shown here to measure the worst case — must be fully
     visible at once on the suite's default iPhone 15 Pro Max (430px) viewport,
-    with no internal scrolling and no clipped button.
+    with no internal scrolling and no clipped button. Four buttons since #980
+    (Back, Kill, Jump, Read aloud); #981 reshapes the bar again.
     """
     if browser_name != "webkit":
         pytest.skip("phone-width row-fit only meaningful under the iPhone projection")
 
     # Open via the session-list row tap — the phone path. The ?terminal= deep
     # link would classify this loopback open as a PC mirror window (#241) and
-    # hide the compose button, undercounting the row's real phone width.
+    # hide the composer, undercounting the row's real phone width.
     authed_page.goto(base_url, wait_until="domcontentloaded")
     pty_row = authed_page.locator(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
@@ -110,13 +112,13 @@ def test_terminal_bar_fits_at_once_on_default_phone(
     viewport_width = authed_page.evaluate("window.innerWidth")
 
     # Worst case is a Claude session where the 🔊 read-aloud button (#190) is
-    # visible — unhide it so the measurement covers all six action buttons.
+    # visible — unhide it so the measurement covers every action button.
     authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
 
     # Equal-size contract: the Back button is the same 44px target as every
     # other bar button (the #496 64px widening is what tipped the row over).
     widths = authed_page.evaluate(
-        "() => ['#terminalBack', '#terminalKill', '#terminalKeys']"
+        "() => ['#terminalBack', '#terminalKill', '#terminalJumpEnd']"
         ".map(s => document.querySelector(s).getBoundingClientRect().width)"
     )
     assert max(widths) - min(widths) <= 1, f"bar buttons unequal widths: {widths}"
@@ -137,8 +139,8 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         " box: el.getBoundingClientRect()}))",
     )
     visible = [b for b in buttons if not b["hidden"]]
-    assert len(visible) == 8, (
-        f"expected all 8 bar buttons visible, hidden: "
+    assert len(visible) == 4, (
+        f"expected all 4 bar buttons visible, hidden: "
         f"{[b['id'] for b in buttons if b['hidden']]}"
     )
     for b in visible:
