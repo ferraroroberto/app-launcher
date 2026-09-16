@@ -1948,6 +1948,14 @@ summary + .opt-group { border-top: 0; }
    `action-stop-close` (danger tint on press, below). */
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn,
 .composer .row-menu .icon-btn.row-menu-btn {
+  /* The composer's menu sits outside a rail, so it never inherits the rail
+     .icon-btn's flex box — set the flex/border/background basics here too,
+     or `gap` has nothing to act on and the glyph glues to its label. */
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
   flex: none;
   width: 100%;
   min-height: 44px;
@@ -1966,7 +1974,8 @@ summary + .opt-group { border-top: 0; }
 }
 /* One shared disabled recipe (design.md button-disabled): flat muted text,
    never opacity — the VS Code item when the `code` CLI is off PATH. */
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled {
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled,
+.composer .row-menu .icon-btn.row-menu-btn:disabled {
   color: var(--muted);
   cursor: default;
 }
