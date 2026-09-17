@@ -124,20 +124,21 @@ export function sendSubmit(t, text, opts) {
   if (delay > 0) setTimeout(submit, delay); else submit();
 }
 
-// Store one attachment on the session-host and resolve its path. `inline=1`
-// asks the host to skip its paste-into-PTY step and just return the stored
-// path (#41), so the composer can append it for review-before-send. A
-// terminal can't hold an image: the agent is handed the *file path* and
-// reads the image from there. Errors toast here and resolve null so the
-// composer's batch loop counts only the files that landed (#448).
-async function uploadTerminalImage(file) {
-  const t = state.terminal;
-  if (!t || !file) return null;
+// Store one attachment on the session-host for session `sid` and resolve its
+// path. `inline=1` asks the host to skip its paste-into-PTY step and just
+// return the stored path (#41), so the composer can append it for
+// review-before-send. A terminal can't hold an image: the agent is handed
+// the *file path* and reads the image from there. Always inline, so it
+// serves a detached session too (#983) — the host saves under the session's
+// project_dir and never writes to it. Errors toast here and resolve null so
+// the composer's batch loop counts only the files that landed (#448).
+export async function uploadSessionFile(sid, file) {
+  if (!sid || !file) return null;
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   try {
     const res = await apiRaw(
-      '/api/claude-code/sessions/' + encodeURIComponent(t.sid) + '/image?inline=1',
+      '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
       { method: 'POST', terminalToken: readTerminalToken(), body: fd }
     );
     if (!res.ok) {
@@ -150,6 +151,11 @@ async function uploadTerminalImage(file) {
     apiFailToast('Image failed', exc);
     return null;
   }
+}
+
+function uploadTerminalImage(file) {
+  const t = state.terminal;
+  return t ? uploadSessionFile(t.sid, file) : Promise.resolve(null);
 }
 
 function sendComposed(text, meta) {

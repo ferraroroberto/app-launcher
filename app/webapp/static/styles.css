@@ -1648,8 +1648,7 @@ summary + .opt-group { border-top: 0; }
   cursor: default;
 }
 .session-link-row .session-link-copy,
-#sessionRenameCancel,
-#sessionSendCancel {
+#sessionRenameCancel {
   width: var(--row-sm);
   height: var(--row-sm);
   flex: 0 0 var(--row-sm);
@@ -1657,10 +1656,8 @@ summary + .opt-group { border-top: 0; }
 /* Adjacent controls need real, non-overlapping 44px geometry; the modal
    close button's invisible expansion is only safe while isolated. */
 .session-link-row .session-link-copy::before,
-#sessionRenameCancel::before,
-#sessionSendCancel::before { content: none; }
-#sessionRenameCancel .icon,
-#sessionSendCancel .icon { width: 20px; height: 20px; }
+#sessionRenameCancel::before { content: none; }
+#sessionRenameCancel .icon { width: 20px; height: 20px; }
 .session-link-row .session-link-copy:disabled {
   background: var(--card-off);
   border-color: var(--line);
@@ -1670,16 +1667,6 @@ summary + .opt-group { border-top: 0; }
 .session-link-row .session-link-copy:active,
 .session-link-row .session-link-copy.is-copied { opacity: 0.5; }
 #sessionRenameDialog .dialog-actions--stacked { border-top: 0; }
-/* Send-message dialog (#967): same bare-field shape as rename — a textarea
-   in place of the title input, a one-line hint under it, one primary. */
-#sessionSendDialog .dialog-actions--stacked { border-top: 0; }
-#sessionSendDialog .session-send-input {
-  resize: vertical;
-  min-height: calc(var(--row-sm) * 2);
-  font: inherit;
-  line-height: 1.4;
-}
-#sessionSendDialog .session-send-hint { margin: 8px 0 0; }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {
@@ -2015,7 +2002,7 @@ summary + .opt-group { border-top: 0; }
 #terminalOverlay[data-mode="chat"] #terminalComposeBar,
 #terminalOverlay[data-mode="chat"] #terminalStatus { display: none; }
 /* Why the Terminal segment is off (a detached session) — caption under the
-   list, above the #975 composer. */
+   list, above the composer. */
 .chat-note {
   display: flex;
   align-items: center;
@@ -2092,22 +2079,12 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
-/* Detached-session composer (#975): the terminal's compose bar recipe,
-   single-line to start (JS grows it to 5 lines) so the transcript keeps
-   the screen. The overlay has no bottom padding, so the bar clears the
-   home indicator itself. */
-.transcript-compose {
+/* Chat mode's mount of the shared composer (#983). The overlay has no
+   bottom padding (the terminal runs edge to edge), so under Chat the bar
+   clears the home indicator itself, as the #975 composer it replaced did. */
+#chatComposeBar .compose-bar {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
 }
-.transcript-compose .transcript-compose-input { min-height: 44px; }
-.transcript-compose .compose-send {
-  width: 44px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.transcript-compose .compose-send:disabled { opacity: 0.5; cursor: default; }
 .transcript-list {
   list-style: none;
   margin: 0;

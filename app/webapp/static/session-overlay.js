@@ -32,6 +32,7 @@ import {
 } from './terminal.js';
 import {
   chatPaneSession,
+  closeChatComposerPopovers,
   closeChatPane,
   hasTranscriptReader,
   openChatPane,
@@ -152,6 +153,7 @@ export function setSessionMode(mode) {
     closeTerminalMenu();
     closeSpeakPopover();
     terminalComposer.closePopovers();
+    closeChatComposerPopovers();
   }
   if (mode === 'terminal') {
     const t = state.terminal;

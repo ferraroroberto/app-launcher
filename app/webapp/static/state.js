@@ -211,9 +211,7 @@ export const els = {
   transcriptOlder: document.getElementById('transcriptOlder'),
   transcriptList: document.getElementById('transcriptList'),
   transcriptState: document.getElementById('transcriptState'),
-  transcriptCompose: document.getElementById('transcriptCompose'),
-  transcriptComposeInput: document.getElementById('transcriptComposeInput'),
-  transcriptComposeSend: document.getElementById('transcriptComposeSend'),
+  chatComposeBar: document.getElementById('chatComposeBar'),
 
   // Show changes overlay (#977)
   changesOverlay: document.getElementById('changesOverlay'),
@@ -392,11 +390,6 @@ export const els = {
   sessionLinkRow: document.getElementById('sessionLinkRow'),
   sessionLinkInput: document.getElementById('sessionLinkInput'),
   sessionLinkCopy: document.getElementById('sessionLinkCopy'),
-  sessionSendDialog: document.getElementById('sessionSendDialog'),
-  sessionSendForm: document.getElementById('sessionSendForm'),
-  sessionSendInput: document.getElementById('sessionSendInput'),
-  sessionSendCancel: document.getElementById('sessionSendCancel'),
-  sessionSendHeading: document.getElementById('sessionSendHeading'),
 
   toast: document.getElementById('toast'),
 

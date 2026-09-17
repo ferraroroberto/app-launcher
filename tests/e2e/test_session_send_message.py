@@ -1,20 +1,25 @@
-"""Send a follow-up message to a detached session from the gear menu (#967).
+"""Send from a session's Chat mode, for both session kinds (#967 → #975 → #983).
 
-A detached (``kind: remote``) row's ⚙️ menu gains **Send message** — for the
-agents the console-input probe on the issue proved (``console_input`` on
-``/api/claude-code/agents``) — opening a #545-contract dialog whose Send
-POSTs ``{"data", "submit": true}`` to the existing ``/input`` route. The
-verdict is ``delivered: "unconfirmed"`` and the toast says so. The menu
-itself becomes a vertical icon + label list. The same send is also offered
-inline, as a composer docked under a detached session's transcript (#975) —
-since #982 the Chat mode of the session overlay; a full-control chat has none. Boot fetches are stubbed before
-``goto()`` (#510) and every geometry read goes through ``stable_read`` (#680):
-the sessions list re-renders on its poll, so a raw ``bounding_box()`` can
-land across a rebuild.
+The shared composer (``composer.js``, #980) is mounted under the chat pane
+(``#chatComposeBar``) for every session kind. ➤ Send POSTs
+``{"data", "submit": true}`` to the kind-agnostic ``/input`` route and toasts
+the route's own verdict in its own words — ``confirmed`` / ``unconfirmed`` /
+``pending`` (202) — with a detached session's ``delivered: "unconfirmed"``
+reading *Sent, not confirmed* and never as a failure; a failed send keeps the
+draft. Attach uploads ``?inline=1`` and appends the stored path, which a
+detached session can take too; the ⌨ keys are disabled for a detached
+session; an agent never probed for console input keeps the composer but not
+➤ Send. The gear menu's Send message item and its dialog are gone.
+
+Tests key on class hooks scoped to the mount (``#chatComposeBar
+.composer-*``), never ids (#980's decision). Boot fetches are stubbed before
+``goto()`` (#510) and every geometry read goes through ``stable_read``
+(#680): the sessions list re-renders on its poll.
 """
 
 from __future__ import annotations
 
+import base64
 import json as _json
 import re
 
@@ -27,14 +32,45 @@ pytestmark = pytest.mark.smoke
 
 _SID = "s-send-967"
 
+COMPOSER = "#chatComposeBar"
+INPUT = f"{COMPOSER} .composer-input"
+SEND = f"{COMPOSER} .composer-send"
+KEYS = f"{COMPOSER} .composer-keys"
+ATTACH_INPUT = f"{COMPOSER} .composer-attach-input"
 
-def _mock_sessions_list(page: Page, *, kind: str = "remote", agent: str = "claude") -> None:
+# 1x1 transparent PNG — smallest valid image the session-host will accept.
+# Named `e2e-stub-…` on purpose: the marker conftest's upload-leak check
+# scans for (issue #922).
+_PNG_1x1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk"
+    "YAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
+_PATH_RE = re.compile(r"\.launcher-tmp.*\.png$")
+
+_UNCONFIRMED_DETACHED = {
+    "ok": True, "bytes": 8, "submit": True,
+    "delivered": "unconfirmed", "reason": "unverified", "ingested": None,
+    "submitted": True, "submit_confirmed": None, "submit_state": "unconfirmed",
+    "waited_ms": 0, "deferred": False, "units": 8, "error": None,
+}
+
+
+def _pty_verdict(reason: str, submit_state: str, *, delivered: bool, deferred: bool = False) -> dict:
+    return {
+        "ok": True, "bytes": 8, "submit": True, "delivered": delivered,
+        "reason": reason, "ingested": True, "submitted": submit_state in ("confirmed", "unconfirmed"),
+        "submit_confirmed": True if submit_state == "confirmed" else None,
+        "submit_state": submit_state, "waited_ms": 40, "deferred": deferred,
+    }
+
+
+def _mock_sessions_list(page: Page, *, sid: str = _SID, kind: str = "remote", agent: str = "claude") -> None:
     page.route(
         re.compile(r".*/api/claude-code/sessions$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"sessions": [{
-                "session_id": _SID,
+                "session_id": sid,
                 "kind": kind,
                 "agent": agent,
                 "project_dir": "E:/automation/sendproj",
@@ -59,131 +95,85 @@ def _mock_sessions_list(page: Page, *, kind: str = "remote", agent: str = "claud
     )
 
 
-def _mock_input(page: Page, captured: dict, *, status: int = 200, body: dict = None) -> None:
-    if body is None:
-        body = {
-            "ok": True, "bytes": 8, "submit": True,
-            "delivered": "unconfirmed", "reason": "unverified", "ingested": None,
-            "submitted": True, "submit_confirmed": None, "submit_state": "unconfirmed",
-            "waited_ms": 0, "deferred": False, "units": 8, "error": None,
-        }
+def _transcript(sid: str) -> dict:
+    return {
+        "available": True, "source": "native", "reason": None, "session_id": sid,
+        "next_cursor": None,
+        "entries": [
+            {"kind": "user", "timestamp": "2026-09-15T06:20:00Z",
+             "text": "this is a test", "truncated": False, "sidechain": False},
+            {"kind": "assistant", "timestamp": "2026-09-15T06:20:05Z",
+             "text": "Got it.", "truncated": False, "sidechain": False},
+        ],
+    }
 
+
+def _mock_transcript(page: Page, calls: list, *, sid: str = _SID) -> None:
     def _handler(route):
-        captured["method"] = route.request.method
+        calls.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(_transcript(sid)))
+
+    page.route(re.compile(r".*/api/claude-code/sessions/" + sid + r"/transcript(\?.*)?$"), _handler)
+
+
+def _mock_input(page: Page, captured: dict, responses: list, *, sid: str = _SID) -> None:
+    """Serve ``responses`` — ``(status, body)`` pairs — one per call, in order."""
+    def _handler(route):
         captured["body"] = route.request.post_data_json
-        captured.setdefault("calls", 0)
-        captured["calls"] += 1
+        captured["calls"] = captured.get("calls", 0) + 1
+        status, body = responses.pop(0)
         route.fulfill(status=status, content_type="application/json", body=_json.dumps(body))
 
-    page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"), _handler)
+    page.route(re.compile(r".*/api/claude-code/sessions/" + sid + r"/input$"), _handler)
 
 
-def _row(page: Page):
-    return page.locator(f'#sessionsList li[data-session-id="{_SID}"]')
-
-
-def _open_menu(page: Page):
-    row = _row(page)
+def _open_menu(page: Page, sid: str = _SID):
+    row = page.locator(f'#sessionsList li[data-session-id="{sid}"]')
     expect(row.locator(".name")).to_have_text("Send demo", timeout=10_000)
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    return row, menu
+    return menu
 
 
-def test_detached_claude_send_message_posts_input_and_toasts_unconfirmed(
-    authed_page: Page, base_url: str
-) -> None:
-    captured: dict = {}
-    _mock_sessions_list(authed_page)
-    _mock_input(authed_page, captured)
+def _open_chat(page: Page, sid: str = _SID) -> None:
+    # #982: Chat mode of the session overlay, from the gear's "Open chat".
+    _open_menu(page, sid).locator('button[aria-label="Open chat"]').click()
+    overlay = page.locator("#terminalOverlay")
+    expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
+    expect(page.locator("#transcriptList .tr-user").first).to_contain_text("this is a test")
 
+
+def _wait_for_calls(page: Page, calls: list, n: int) -> None:
+    # Route handlers run while Playwright waits, so poll by waiting.
+    for _ in range(40):
+        if len(calls) >= n:
+            return
+        page.wait_for_timeout(250)
+
+
+@pytest.mark.parametrize("kind", ["pty", "remote"])
+def test_gear_menu_has_no_send_message_item(authed_page: Page, base_url: str, kind: str) -> None:
+    # #983: the chat composer covers both kinds, so the menu never offers Send.
+    _mock_sessions_list(authed_page, kind=kind)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
-    menu.locator('button[aria-label="Send message"]').click()
-
-    dialog = authed_page.locator("#sessionSendDialog")
-    expect(dialog).to_be_visible()
-    expect(authed_page.locator("#sessionSendHeading")).to_have_text("Send message")
-    authed_page.locator("#sessionSendInput").fill("continue")
-    authed_page.locator("#sessionSendForm button[type='submit']").click()
-
-    authed_page.wait_for_function(
-        "() => !document.getElementById('sessionSendDialog').open", timeout=5_000,
-    )
-    assert captured.get("method") == "POST"
-    assert captured.get("body") == {"data": "continue", "submit": True}
-    assert captured.get("calls") == 1
-    toast = authed_page.locator("#toast")
-    expect(toast).to_be_visible()
-    expect(toast).to_contain_text("not confirmed")
-    expect(toast).not_to_contain_text("delivered")
-    expect(toast).not_to_have_class(re.compile(r"\berror\b"))
-
-
-def test_send_failure_keeps_dialog_open_and_toasts_error(
-    authed_page: Page, base_url: str
-) -> None:
-    # What the phone sees against a session-host that cannot type into the
-    # console (502) — and, until :8446 restarts onto this build, the old
-    # host's HTTP 500 takes the same path: an error toast, never "sent".
-    captured: dict = {}
-    _mock_sessions_list(authed_page)
-    _mock_input(
-        authed_page, captured, status=502,
-        body={"detail": "session s-send-967 console input failed — NOT typed, no submit was sent"},
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
-    menu.locator('button[aria-label="Send message"]').click()
-    authed_page.locator("#sessionSendInput").fill("continue")
-    authed_page.locator("#sessionSendForm button[type='submit']").click()
-
-    toast = authed_page.locator("#toast")
-    expect(toast).to_have_class(re.compile(r"\berror\b"))
-    expect(toast).to_contain_text("Send failed")
-    expect(toast).to_contain_text("NOT typed")
-    expect(toast).not_to_contain_text("Sent,")
-    # The message is still there to retry; nothing was silently dropped.
-    expect(authed_page.locator("#sessionSendDialog")).to_be_visible()
-    expect(authed_page.locator("#sessionSendInput")).to_have_value("continue")
-    expect(authed_page.locator("#sessionSendForm button[type='submit']")).to_be_enabled()
-
-
-def test_full_control_row_has_no_send_message_item(authed_page: Page, base_url: str) -> None:
-    # A PTY row already has the terminal compose bar.
-    _mock_sessions_list(authed_page, kind="pty")
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
+    menu = _open_menu(authed_page)
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    # Terminal · Chat · Rename · Stop (#982)
-    expect(menu.locator("button")).to_have_count(4)
-
-
-def test_detached_unprobed_agent_has_no_send_message_item(authed_page: Page, base_url: str) -> None:
-    # Grok was *not probed* on the issue (console_input false in the
-    # registry) — the menu never offers a dead end.
-    _mock_sessions_list(authed_page, kind="remote", agent="grok")
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
-    expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
+    expected = ["Terminal", "Chat", "Rename", "Stop"] if kind == "pty" else ["Chat", "Rename", "Stop"]
+    expect(menu.locator(".row-menu-label")).to_have_text(expected)
+    expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 
 
 def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
-    _mock_sessions_list(authed_page)
+    _mock_sessions_list(authed_page, kind="pty")
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
+    menu = _open_menu(authed_page)
 
     buttons = menu.locator("button")
     expect(buttons).to_have_count(4)
     labels = menu.locator(".row-menu-label")
     expect(labels).to_have_count(4)
-    # A detached Claude row: Chat (#982, was Transcript) · Send message ·
-    # Rename · Stop — no Terminal, it has no PTY.
-    expect(labels).to_have_text(["Chat", "Send message", "Rename", "Stop"])
     for i in range(4):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
@@ -208,108 +198,34 @@ def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url
     )
 
 
-def test_send_dialog_adopts_modal_contract(authed_page: Page, base_url: str) -> None:
-    # #545: header × close + exactly one full-width primary; no footer Cancel.
-    _mock_sessions_list(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _, menu = _open_menu(authed_page)
-    menu.locator('button[aria-label="Send message"]').click()
-    expect(authed_page.locator("#sessionSendDialog")).to_be_visible()
-
-    close = authed_page.locator("#sessionSendCancel")
-    expect(close).to_have_class(re.compile(r"\bdialog-close\b"))
-    field = authed_page.locator("#sessionSendInput")
-    expect(field).to_be_focused()
-    footer_buttons = authed_page.locator("#sessionSendForm .dialog-actions button")
-    expect(footer_buttons).to_have_count(1)
-    expect(footer_buttons).to_have_text(re.compile(r"Send"))
-
-    def _geom():
-        c, f, s = close.bounding_box(), field.bounding_box(), footer_buttons.first.bounding_box()
-        return (c, f, s) if (c and f and s) else None
-
-    close_box, field_box, send_box = stable_read(_geom)
-    assert close_box["width"] == 44 and close_box["height"] == 44
-    assert close_box["y"] < field_box["y"], "× close must sit in the header, above the textarea"
-    assert send_box["width"] >= field_box["width"] - 3, "Send is not full-width"
-
-    # × closes without sending.
-    close.click()
-    authed_page.wait_for_function(
-        "() => !document.getElementById('sessionSendDialog').open", timeout=3_000,
-    )
-
-
-# ------------------------------------------ send from the transcript (#975)
-
-_TRANSCRIPT = {
-    "available": True, "source": "native", "reason": None, "session_id": _SID,
-    "next_cursor": None,
-    "entries": [
-        {"kind": "user", "timestamp": "2026-09-15T06:20:00Z",
-         "text": "this is a test", "truncated": False, "sidechain": False},
-        {"kind": "assistant", "timestamp": "2026-09-15T06:20:05Z",
-         "text": "Got it.", "truncated": False, "sidechain": False},
-    ],
-}
-
-
-def _mock_transcript(page: Page, calls: list) -> None:
-    def _handler(route):
-        calls.append(route.request.url)
-        route.fulfill(status=200, content_type="application/json", body=_json.dumps(_TRANSCRIPT))
-
-    page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript(\?.*)?$"), _handler)
-
-
-def _open_transcript(page: Page) -> None:
-    # #982: the transcript is the session overlay's Chat mode, opened from
-    # the gear's "Open chat" item; the pane's own ids are unchanged.
-    _, menu = _open_menu(page)
-    menu.locator('button[aria-label="Open chat"]').click()
-    overlay = page.locator("#terminalOverlay")
-    expect(overlay).to_be_visible()
-    expect(overlay).to_have_attribute("data-mode", "chat")
-    expect(page.locator("#transcriptList .tr-user").first).to_contain_text("this is a test")
-
-
-def test_transcript_composer_sends_to_detached_session_and_refreshes(
+def test_chat_composer_sends_to_detached_session_and_refreshes(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     captured: dict = {}
-    statuses = [502, 200]
     calls: list = []
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, calls)
-
-    def _input(route):
-        captured["body"] = route.request.post_data_json
-        captured["calls"] = captured.get("calls", 0) + 1
-        status = statuses.pop(0)
-        body = (
-            {"detail": "console input failed — NOT typed, no submit was sent"}
-            if status != 200 else
-            {"ok": True, "submit": True, "delivered": "unconfirmed", "reason": "unverified"}
-        )
-        route.fulfill(status=status, content_type="application/json", body=_json.dumps(body))
-
-    authed_page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"), _input)
+    _mock_input(authed_page, captured, [
+        (502, {"detail": "console input failed — NOT typed, no submit was sent"}),
+        (200, _UNCONFIRMED_DETACHED),
+    ])
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_transcript(authed_page)
-    compose = authed_page.locator("#transcriptCompose")
-    field = authed_page.locator("#transcriptComposeInput")
-    send = authed_page.locator("#transcriptComposeSend")
-    expect(compose).to_be_visible()
+    _open_chat(authed_page)
+    field = authed_page.locator(INPUT)
+    send = authed_page.locator(SEND)
+    expect(authed_page.locator(COMPOSER)).to_be_visible()
+    expect(field).to_have_attribute("placeholder", "Message for the agent")
+    expect(authed_page.locator("#chatNote")).to_contain_text("not confirmed")
+    # A detached session has no PTY: the keys render disabled, in place.
+    expect(authed_page.locator(KEYS)).to_be_disabled()
+    expect(send).to_be_enabled()
     if browser_name == "webkit":
         # The phone's floating nav pill hides under the overlay, so it can't
         # sit on top of the composer.
         expect(authed_page.locator("nav.tabs")).to_be_hidden()
 
-    def _send_box():
-        return send.bounding_box()
-
-    box = stable_read(_send_box)
+    box = stable_read(lambda: send.bounding_box())
     viewport = authed_page.viewport_size
     assert box is not None and box["y"] + box["height"] <= viewport["height"], box
     assert box["width"] >= 44 - 1 and box["height"] >= 44 - 1, box
@@ -320,31 +236,140 @@ def test_transcript_composer_sends_to_detached_session_and_refreshes(
     toast = authed_page.locator("#toast")
     expect(toast).to_have_class(re.compile(r"\berror\b"))
     expect(toast).to_contain_text("Send failed")
+    expect(toast).not_to_contain_text("Sent")
     expect(field).to_have_value("continue")
     expect(send).to_be_enabled()
 
-    # The retry lands: same request as the gear dialog, box cleared, the
-    # unconfirmed wording, then one reload of the newest page.
+    # The retry lands: box cleared, the unconfirmed wording (not a failure),
+    # then one reload of the newest page.
     send.click()
     expect(field).to_have_value("")
     assert captured["body"] == {"data": "continue", "submit": True}
     assert captured["calls"] == 2
-    expect(toast).to_contain_text("not confirmed")
+    expect(toast).to_contain_text("Sent, not confirmed")
     expect(toast).not_to_have_class(re.compile(r"\berror\b"))
-    # Route handlers run while Playwright waits, so poll by waiting.
-    for _ in range(40):
-        if len(calls) >= 2:
-            break
-        authed_page.wait_for_timeout(250)
+    _wait_for_calls(authed_page, calls, 2)
     assert len(calls) == 2, f"transcript not reloaded once after the send: {calls}"
     expect(authed_page.locator("#transcriptList .tr-user")).to_have_count(1)
 
 
-def test_full_control_transcript_has_no_composer(authed_page: Page, base_url: str) -> None:
-    # A PTY row's input surface is the terminal; its transcript stays read-only.
+@pytest.mark.parametrize(
+    "status, verdict, wording, is_error",
+    [
+        (200, _pty_verdict("ok", "confirmed", delivered=True), r"^\W*Sent$", False),
+        (200, _pty_verdict("unverified", "unconfirmed", delivered=True), r"Sent, not confirmed", False),
+        (202, _pty_verdict("deferred", "pending", delivered=False, deferred=True), r"Queued", False),
+        (200, _pty_verdict("noop", "not_submitted", delivered=False), r"Not submitted", True),
+    ],
+    ids=["confirmed", "unconfirmed", "pending-202", "not-submitted"],
+)
+def test_chat_composer_sends_to_full_control_session_with_honest_wording(
+    authed_page: Page, base_url: str, status: int, verdict: dict, wording: str, is_error: bool
+) -> None:
+    # #983: a full-control session sends from Chat through /input too, so the
+    # verdict — the only feedback Chat has — reaches the toast verbatim in
+    # meaning: a submit that was not sent never reads as a success.
+    captured: dict = {}
     calls: list = []
     _mock_sessions_list(authed_page, kind="pty")
     _mock_transcript(authed_page, calls)
+    _mock_input(authed_page, captured, [(status, verdict)])
+
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_transcript(authed_page)
-    expect(authed_page.locator("#transcriptCompose")).to_be_hidden()
+    _open_chat(authed_page)
+    field = authed_page.locator(INPUT)
+    expect(field).to_have_attribute("placeholder", "Message")
+    expect(authed_page.locator("#chatNote")).to_be_hidden()
+    expect(authed_page.locator(KEYS)).to_be_enabled()
+
+    field.fill("run the gate")
+    authed_page.locator(SEND).click()
+    expect(field).to_have_value("")
+    assert captured["body"] == {"data": "run the gate", "submit": True}
+    toast = authed_page.locator("#toast")
+    expect(toast).to_have_text(re.compile(wording))
+    if is_error:
+        expect(toast).to_have_class(re.compile(r"\berror\b"))
+    else:
+        expect(toast).not_to_have_class(re.compile(r"\berror\b"))
+    _wait_for_calls(authed_page, calls, 2)
+    assert len(calls) == 2, f"transcript not reloaded once after the send: {calls}"
+
+
+@pytest.mark.parametrize("registry", ["refused", "unknown"])
+def test_chat_send_gate_follows_the_console_input_flag(
+    authed_page: Page, base_url: str, registry: str
+) -> None:
+    # The registry's console_input flag gates ➤ Send alone (disabled with its
+    # reason), never the whole composer. Only an explicit false refuses: when
+    # /api/agents never lands the boot fallback carries no flag, and unknown
+    # must not grey Send out — the session-host still refuses an unprobed
+    # agent with its own 502.
+    def _agents(route):
+        if registry == "unknown":
+            route.abort()
+            return
+        resp = route.fetch()
+        data = resp.json()
+        for a in data.get("agents", []):
+            if a.get("id") == "claude":
+                a["console_input"] = False
+        route.fulfill(response=resp, json=data)
+
+    authed_page.route(re.compile(r".*/api/agents$"), _agents)
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(authed_page, calls)
+    if registry == "unknown":
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    else:
+        # Open only once the registry answered, so the gate reads the flag.
+        with authed_page.expect_response(re.compile(r".*/api/agents$")):
+            authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page)
+
+    send = authed_page.locator(SEND)
+    field = authed_page.locator(INPUT)
+    if registry == "refused":
+        expect(send).to_be_disabled()
+        expect(send).to_have_attribute("title", re.compile(r"No console input"))
+    else:
+        expect(send).to_be_enabled()
+    expect(field).to_be_editable()
+    field.fill("draft survives")
+    expect(field).to_have_value("draft survives")
+
+
+def test_detached_chat_attach_uploads_inline_and_sends_the_path(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    # The upload goes to the real (disposable) session-host's inline route;
+    # the list presents the session as detached, and /input is stubbed so
+    # nothing is typed into the live PTY. Inline storage never writes to the
+    # session, which is what makes attach work for a detached one.
+    sid = launched_pty_session
+    captured: dict = {}
+    calls: list = []
+    uploads: list = []
+    _mock_sessions_list(authed_page, sid=sid, kind="remote")
+    _mock_transcript(authed_page, calls, sid=sid)
+    _mock_input(authed_page, captured, [(200, _UNCONFIRMED_DETACHED)], sid=sid)
+    authed_page.on(
+        "request",
+        lambda req: uploads.append(req.url) if "/image" in req.url else None,
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page, sid)
+    authed_page.locator(ATTACH_INPUT).set_input_files(
+        files=[{"name": "e2e-stub-detached.png", "mimeType": "image/png", "buffer": _PNG_1x1}]
+    )
+    field = authed_page.locator(INPUT)
+    expect(field).to_have_value(_PATH_RE, timeout=10_000)
+    assert uploads and all("inline=1" in u for u in uploads), uploads
+
+    path = field.input_value()
+    authed_page.locator(SEND).click()
+    expect(field).to_have_value("")
+    assert captured["body"] == {"data": path, "submit": True}
+    expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
