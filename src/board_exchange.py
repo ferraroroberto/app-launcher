@@ -70,6 +70,18 @@ _PI_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
 # A Pi session id is a UUID; anything else is refused before it reaches
 # `glob`, where `*`/`?`/`[` would be pattern syntax rather than a literal.
 _PI_SID_RE = re.compile(r"^[0-9a-fA-F][0-9a-fA-F-]{7,63}$")
+_AGY_ROOT = Path.home() / ".gemini" / "antigravity-cli"
+# Antigravity names a conversation directory by UUID; the strict shape keeps
+# a mangled cache key from being joined onto a path.
+_AGY_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$")
+# `cache/last_conversations.json` is a flat workspace→uuid map, a few KB on a
+# box with 100 workspaces. Read bounded anyway, like every other reader here.
+_AGY_CACHE_CAP_BYTES = 1024 * 1024
+# How far before a session's own `started_at` its conversation's last write
+# may sit and still count as "written by this session" — the launcher stamps
+# `started_at` when it spawns the PTY, the harness writes a moment later, and
+# clock granularity between the two is not worth a false negative.
+_AGY_MTIME_SLOP_SECONDS = 60
 
 
 def unavailable(reason: str) -> Dict[str, Any]:
@@ -260,6 +272,104 @@ def find_pi_transcript(state_sid: str) -> Optional[Path]:
     except OSError:
         return None
     return matches[0] if len(matches) == 1 else None
+
+
+def _started_epoch(session: Dict[str, Any]) -> Optional[float]:
+    """A live session's ``started_at`` as epoch seconds, or None.
+
+    The session-host reports it as a float, but a row read back from JSON
+    state can carry an ISO string, so both are accepted.
+    """
+    raw = session.get("started_at")
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def find_antigravity_transcript(
+    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
+) -> Optional[Path]:
+    """The Antigravity conversation log for a live session (#1014).
+
+    Antigravity writes nothing that names the launcher session: its
+    conversation store is keyed by its own UUID, and `history.jsonl` — the
+    one file appended per typed prompt — **omits `conversationId` on a
+    conversation's first row** (measured on a session launched through the
+    launcher's own API: the first prompt's row carries only `display`,
+    `timestamp` and `workspace`). So a one-prompt session cannot be
+    correlated through it at all.
+
+    What *is* written the moment the first prompt lands, and updated while
+    the session is still running, is ``cache/last_conversations.json`` —
+    a flat ``workspace path → newest conversation uuid`` map. That is the
+    correlation: the session's own ``project_dir``, looked up there.
+
+    It answers "the newest conversation in this folder", not "this
+    session's conversation", so two guards make the difference fail safe:
+
+    * **One live session per folder.** If the launcher is hosting another
+      live Antigravity session with the same ``project_dir``, the map
+      cannot say which of them the uuid belongs to — refuse, rather than
+      show one session's text under the other's name.
+    * **Written since this session started.** The conversation log's mtime
+      must be at or after ``started_at`` (less
+      :data:`_AGY_MTIME_SLOP_SECONDS`). A session whose user has not typed
+      yet leaves the map pointing at whatever ran in that folder before,
+      and that file has not been touched since — so it is refused, which is
+      also the right answer (there is no transcript yet).
+
+    Prefers ``transcript_full.jsonl`` over ``transcript.jsonl``: the flat
+    file truncates long ``content``/``thinking`` (naming the casualties in
+    ``truncated_fields``) and JSON-encodes each tool argument a second
+    time, so it cannot serve ``entry_full_text``'s uncapped promise. 55 of
+    265 conversations on this box have only the flat file, for no reason
+    established by the probe, so it stays a fallback rather than an error.
+    """
+    project_dir = _normalize_dir(session.get("project_dir"))
+    started = _started_epoch(session)
+    if not project_dir or started is None:
+        return None
+    sid = str(session.get("session_id") or "")
+    for other in live or ():
+        if (
+            str(other.get("session_id") or "") != sid
+            and str(other.get("agent") or "").lower() == "antigravity"
+            and other.get("alive")
+            and _normalize_dir(other.get("project_dir")) == project_dir
+        ):
+            return None
+
+    try:
+        with (_AGY_ROOT / "cache" / "last_conversations.json").open("rb") as fh:
+            raw = fh.read(_AGY_CACHE_CAP_BYTES)
+        mapping = json.loads(raw.decode("utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(mapping, dict):
+        return None
+    uuid = next(
+        (
+            str(value)
+            for key, value in mapping.items()
+            if _normalize_dir(key) == project_dir
+        ),
+        "",
+    )
+    if not _AGY_UUID_RE.match(uuid):
+        return None
+
+    logs = _AGY_ROOT / "brain" / uuid / ".system_generated" / "logs"
+    for name in ("transcript_full.jsonl", "transcript.jsonl"):
+        path = logs / name
+        try:
+            written = path.stat().st_mtime
+        except OSError:
+            continue
+        return path if written >= started - _AGY_MTIME_SLOP_SECONDS else None
+    return None
 
 
 def _codex_cwd(path: Path) -> str:

@@ -9,8 +9,10 @@ same as the Board drawer's ``/exchange`` (#301): the history file the
 Board's claim walk assigns to this session-host id — Claude Code's hook
 JSONL, or Grok Build's ``updates.jsonl`` (#1012), both carried on the state
 row; a Pi session JSONL, named by the claimed row's own *key* (#1013);
-else, for a Codex session, the rollout correlated by cwd + launch time. A
-session the claim walk gives no row answers ``no_transcript`` rather than
+else, for a session whose harness writes the launcher nothing at all, a
+file correlated from the filesystem — a Codex rollout by cwd + launch
+time, an Antigravity conversation by its newest-per-folder cache (#1014).
+A session the claim walk gives no row answers ``no_transcript`` rather than
 guessing a neighbour's file, so a harness that keeps one session folder per
 working directory (Grok does, including for directories that no longer
 exist) can never show another session's text. None of them read the
@@ -37,12 +39,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Query, Request
 
 from src import board
-from src.board_exchange import _find_codex_transcript, find_pi_transcript
+from src.board_exchange import (
+    _find_codex_transcript,
+    find_antigravity_transcript,
+    find_pi_transcript,
+)
 from src.session_transcript import DEFAULT_LIMIT, MAX_LIMIT, entry_full_text, transcript_page
 from src.webapp_config import WebappConfig
 
@@ -56,7 +62,10 @@ router = APIRouter()
 # line grammars in `src.session_transcript.FLAVORS`; the client's own
 # availability list (`session-transcript.js`'s `TRANSCRIPT_AGENTS`) mirrors
 # the keys, so Chat mode is offered for exactly these agents.
-_FLAVOR_BY_AGENT = {"claude": "claude", "codex": "codex", "grok": "grok", "pi": "pi"}
+_FLAVOR_BY_AGENT = {
+    "claude": "claude", "codex": "codex", "grok": "grok", "pi": "pi",
+    "antigravity": "antigravity",
+}
 
 
 def _unavailable(sid: str, reason: str) -> Dict[str, Any]:
@@ -71,18 +80,24 @@ def _resolve_path(
     row: Optional[Dict[str, Any]],
     state_sid: Optional[str],
     flavor: str,
+    live: List[Dict[str, Any]],
 ) -> Optional[Path]:
     """The history file for this session, or None when none is known.
 
-    Three shapes, in decreasing directness: the row carries the path
+    Four shapes, in decreasing directness: the row carries the path
     (Claude, Grok); the row's own *key* is the harness's session id and
-    names the file (Pi, #1013); or nothing on the row helps and the file
-    has to be correlated by cwd + launch time (Codex).
+    names the file (Pi, #1013); or nothing on the row helps at all and the
+    file has to be correlated from the filesystem — by cwd + launch time
+    (Codex), or by the harness's own newest-conversation-per-folder cache,
+    which needs ``live`` to refuse a folder hosting two sessions at once
+    (Antigravity, #1014).
     """
     if flavor == "codex":
         return _find_codex_transcript(session)
     if flavor == "pi":
         return find_pi_transcript(str(state_sid or ""))
+    if flavor == "antigravity":
+        return find_antigravity_transcript(session, live)
     raw = (row or {}).get("transcript_path")
     return Path(str(raw)) if raw else None
 
@@ -119,7 +134,7 @@ async def _resolve_source(
     state_sid = (
         board.state_sid_for_session(live, state["rows"], sid) if flavor == "pi" else None
     )
-    path = await asyncio.to_thread(_resolve_path, session, row, state_sid, flavor)
+    path = await asyncio.to_thread(_resolve_path, session, row, state_sid, flavor, live)
     if path is None or not path.is_file():
         return "no_transcript", None, None, agent
     return None, flavor, path, agent
