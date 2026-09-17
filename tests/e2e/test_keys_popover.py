@@ -5,7 +5,9 @@ single ``⌨️`` button that toggles a D-pad popover. Each key sends the
 matching VT/xterm escape sequence over the existing WS ``input`` channel
 so iPhone keyboards without arrows/Esc/Tab can drive Claude's TUI prompts.
 Since #980 the button is the composer grid's second slot and the popover
-floats above the composer (composer.js / terminal-keys.js).
+floats above the composer (composer.js / terminal-keys.js). Since #986 the
+popover also carries a sticky Ctrl toggle exposing C/U/X control bytes,
+mutually exclusive with ⇧.
 
 Approach: open the terminal overlay, wait for the WS to reach OPEN, un-hide
 the composer (the loopback harness opens every terminal as the PC mirror,
@@ -108,6 +110,68 @@ def test_shift_toggle_sends_back_tab(
     # Tapping ⇧ again releases the sticky modifier.
     shift.click()
     expect(shift).not_to_have_class(re.compile(r"\bactive\b"))
+
+
+def test_ctrl_toggle_sends_control_c(
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
+) -> None:
+    """Issue #986: Ctrl is a sticky toggle like ⇧ — Ctrl then C sends \\x03
+    (interrupt). C/U/X are disabled until Ctrl is armed (so a stray tap can't
+    type a letter into the prompt), and Ctrl/⇧ are mutually exclusive.
+    """
+    sid = launched_pty_session
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    authed_page.wait_for_function(
+        "() => document.getElementById('terminalStatus') "
+        "&& document.getElementById('terminalStatus').hidden === true",
+        timeout=OVERLAY_OPEN_MS,
+    )
+
+    authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
+    popover = authed_page.locator("#terminalComposeBar .keys-popover")
+    ctrl = authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="ctrl"]')
+    shift = authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="shift"]')
+    c_key = authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="c"]')
+    authed_page.locator("#terminalComposeBar .composer-keys").click()
+    expect(popover).to_be_visible()
+
+    # C is disabled until Ctrl is armed.
+    expect(c_key).to_be_disabled()
+
+    # Engage Ctrl — it lights up, C becomes tappable, nothing is sent yet.
+    ctrl.click()
+    expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
+    expect(c_key).to_be_enabled()
+
+    # Engaging ⇧ releases Ctrl (mutually exclusive) and re-disables C.
+    shift.click()
+    expect(shift).to_have_class(re.compile(r"\bactive\b"))
+    expect(ctrl).not_to_have_class(re.compile(r"\bactive\b"))
+    expect(c_key).to_be_disabled()
+    shift.click()  # release ⇧ again before re-arming Ctrl
+
+    # Re-arm Ctrl, tap C — the interrupt byte reaches the live PTY session,
+    # and the popover stays open (Ctrl+C may need a second tap).
+    ctrl.click()
+    expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
+    c_key.click()
+    expect(popover).to_be_visible()
+    assert wait_for_session_log(authed_page, sid, "\\x03"), (
+        "Ctrl + C did not deliver the interrupt byte to "
+        f"webapp/sessions/{sid}.log — the phone can't interrupt a live agent"
+    )
+
+    # Ctrl stays armed across the tap (chaining a second interrupt); closing
+    # the popover releases it.
+    expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
+    ctrl.click()
+    expect(ctrl).not_to_have_class(re.compile(r"\bactive\b"))
+    expect(c_key).to_be_disabled()
 
 
 def test_no_stale_ctrlc_quit_buttons(authed_page: Page, base_url: str) -> None:

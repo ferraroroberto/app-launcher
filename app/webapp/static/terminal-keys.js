@@ -4,45 +4,34 @@
  * lack them, so an agent's TUI prompts stay navigable from the phone. Each
  * key hands the matching VT/xterm escape sequence to the mounting surface's
  * `send(bytes)` (the terminal writes it over the same WS `input` channel as
- * a composed prompt), and ⇧ is a sticky modifier (issue #137).
+ * a composed prompt). ⇧ and Ctrl are sticky modifiers (issue #137, #986) —
+ * mutually exclusive, engaging one releases the other.
  *
  * Split out of terminal.js in issue #723, continuing the #315 split. Since
  * #980 it is mounted by the shared composer (composer.js) — the ⌨ button is
  * the composer grid's second slot and the popover anchors above the
  * composer, where the thumb reaches it — instead of hanging under the
  * terminal bar. The popover renders its own markup so a second composer
- * mount gets its own D-pad.
+ * mount gets its own D-pad. The key -> bytes tables are pure data in
+ * terminal-keys-bytes.js so they are unit-testable without a browser.
  */
 
 import { bindOutsideClickToClose } from './dom-utils.js';
-
-const KEY_BYTES = {
-  up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D',
-  enter: '\r', esc: '\x1b', tab: '\t',
-};
-
-// Shift-modified variants (issue #137). The ⇧ key is a sticky toggle that
-// simulates holding Shift, so the next key sent uses these sequences. Tab
-// becomes back-tab (`\x1b[Z`) — that's Shift+Tab, the way Claude Code cycles
-// permission modes — and the arrows get their xterm Shift CSI form (modifier
-// 2). Esc/Enter have no standard Shift sequence, so they fall back to the
-// plain KEY_BYTES entry.
-const SHIFT_KEY_BYTES = {
-  tab: '\x1b[Z',
-  up: '\x1b[1;2A', down: '\x1b[1;2B', right: '\x1b[1;2C', left: '\x1b[1;2D',
-};
+import { KEY_BYTES, SHIFT_KEY_BYTES, CTRL_KEY_BYTES } from './terminal-keys-bytes.js';
 
 const _KEYS_MARKUP =
   '<button type="button" class="key-btn" data-key="esc">Esc</button>' +
   '<button type="button" class="key-btn" data-key="up">↑</button>' +
   '<button type="button" class="key-btn" data-key="tab">Tab</button>' +
+  '<button type="button" class="key-btn key-ctrl" data-key="ctrl" aria-pressed="false">Ctrl</button>' +
   '<button type="button" class="key-btn" data-key="left">←</button>' +
   '<button type="button" class="key-btn" data-key="enter">↵</button>' +
   '<button type="button" class="key-btn" data-key="right">→</button>' +
+  '<button type="button" class="key-btn" data-key="c" disabled>C</button>' +
   '<button type="button" class="key-btn key-shift" data-key="shift" aria-pressed="false">⇧</button>' +
   '<button type="button" class="key-btn" data-key="down">↓</button>' +
-  // Empty cell to the right of ⇧ keeps the down-arrow centred in row 3.
-  '<span class="key-spacer"></span>';
+  '<button type="button" class="key-btn" data-key="u" disabled>U</button>' +
+  '<button type="button" class="key-btn" data-key="x" disabled>X</button>';
 
 // Mount one D-pad: `anchor` is the ⌨ button that toggles it, `container`
 // the positioned element the popover floats inside (the composer root),
@@ -59,20 +48,35 @@ export function mountKeysPopover(anchor, container, opts) {
   container.appendChild(pop);
 
   let disposeOutsideClick = null;
-  // Sticky-Shift state: stays engaged across taps (so ⇧ then Tab Tab Tab
-  // cycles modes) until ⇧ is tapped again or the popover closes.
+  // Sticky-Shift / sticky-Ctrl state: each stays engaged across taps (so ⇧
+  // then Tab Tab Tab cycles modes, or Ctrl then C C interrupts twice) until
+  // its own key is tapped again, the popover closes, or the other modifier
+  // is engaged (issue #986 — ⇧ and Ctrl are mutually exclusive here).
   let shiftHeld = false;
+  let ctrlHeld = false;
   const shiftBtn = pop.querySelector('.key-shift');
+  const ctrlBtn = pop.querySelector('.key-ctrl');
+  const ctrlLetterBtns = pop.querySelectorAll('[data-key="c"], [data-key="u"], [data-key="x"]');
 
   function setShiftHeld(held) {
     shiftHeld = held;
     shiftBtn.classList.toggle('active', held);
     shiftBtn.setAttribute('aria-pressed', held ? 'true' : 'false');
+    if (held && ctrlHeld) setCtrlHeld(false);
+  }
+
+  function setCtrlHeld(held) {
+    ctrlHeld = held;
+    ctrlBtn.classList.toggle('active', held);
+    ctrlBtn.setAttribute('aria-pressed', held ? 'true' : 'false');
+    ctrlLetterBtns.forEach(function (btn) { btn.disabled = !held; });
+    if (held && shiftHeld) setShiftHeld(false);
   }
 
   function close() {
     pop.hidden = true;
     setShiftHeld(false);
+    setCtrlHeld(false);
     if (disposeOutsideClick) {
       disposeOutsideClick();
       disposeOutsideClick = null;
@@ -96,13 +100,19 @@ export function mountKeysPopover(anchor, container, opts) {
     const btn = ev.target.closest('.key-btn');
     if (!btn) return;
     const key = btn.getAttribute('data-key');
-    // ⇧ toggles the sticky-Shift state and sends nothing on its own; the
-    // modifier applies to the next key tap (and stays held for chaining).
+    // ⇧ / Ctrl toggle their own sticky state and send nothing on their own;
+    // the modifier applies to the next key tap (and stays held for
+    // chaining — e.g. Ctrl then C twice to interrupt again).
     if (key === 'shift') {
       setShiftHeld(!shiftHeld);
       return;
     }
-    const bytes = (shiftHeld && SHIFT_KEY_BYTES[key]) || KEY_BYTES[key];
+    if (key === 'ctrl') {
+      setCtrlHeld(!ctrlHeld);
+      return;
+    }
+    const bytes = (ctrlHeld && CTRL_KEY_BYTES[key]) ||
+      (shiftHeld && SHIFT_KEY_BYTES[key]) || KEY_BYTES[key];
     if (!bytes) return;
     opts.send(bytes);
     if (bytes === '\r' || bytes === '\x1b') close();
