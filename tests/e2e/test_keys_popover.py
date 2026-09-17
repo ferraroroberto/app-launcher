@@ -65,6 +65,42 @@ def test_keys_popover_sends_escape_sequences(
     expect(popover).to_be_hidden()
 
 
+def test_esc_key_sends_bare_escape_and_closes(
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
+) -> None:
+    """Issue #987: Esc delivers exactly one bare ``\\x1b`` and closes the popover.
+
+    The phone leg of the Esc path. Every other key's bytes *start* with
+    ``\\x1b``, so a substring match on it would pass for an arrow or a focus
+    report; the needle is the whole logged chunk. The agent leg (a real
+    ConPTY acting on that byte) is pinned by ``tests/test_claude_pty_esc.py``.
+    """
+    sid = launched_pty_session
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+
+    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    authed_page.wait_for_function(
+        "() => document.getElementById('terminalStatus') "
+        "&& document.getElementById('terminalStatus').hidden === true",
+        timeout=OVERLAY_OPEN_MS,
+    )
+
+    authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
+    popover = authed_page.locator("#terminalComposeBar .keys-popover")
+    authed_page.locator("#terminalComposeBar .composer-keys").click()
+    expect(popover).to_be_visible()
+
+    authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="esc"]').click()
+    expect(popover).to_be_hidden()
+    assert wait_for_session_log(authed_page, sid, "[input] '\\x1b'\n"), (
+        "Esc did not deliver a bare \\x1b chunk to "
+        f"webapp/sessions/{sid}.log — the phone can't dismiss or interrupt the agent"
+    )
+
+
 def test_shift_toggle_sends_back_tab(
     authed_page: Page,
     base_url: str,
