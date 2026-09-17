@@ -172,7 +172,10 @@ def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> Non
 
 
 def test_detached_unsupported_agent_menu_has_no_chat(authed_page: Page, base_url: str) -> None:
-    _mock_sessions_list(authed_page, kind="remote", agent="pi")
+    # `ssh`, not a coding agent: it is the one registered agent that will
+    # never have a harness history, so this stays true as the remaining
+    # readers land (Pi #1013, Antigravity #1014, Copilot #1015).
+    _mock_sessions_list(authed_page, kind="remote", agent="ssh")
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
     # Nothing to open: neither a terminal nor a readable history — the row

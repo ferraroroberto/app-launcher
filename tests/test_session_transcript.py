@@ -15,6 +15,14 @@
     grammar (#1012), driven by a captured session: chunk kinds, tool calls
     paired with their completion, the three result shapes, epoch stamps
     normalised to ISO, and consecutive-only chunk coalescing.
+  * ``session_transcript.pi_entries`` — the Pi session JSONL grammar
+    (#1013), driven by a captured session: tool calls as assistant content
+    blocks paired with their own ``toolResult`` message, failed results,
+    several entries sharing one line's offset, the encrypted thinking
+    signature never shown, and ``custom`` records dropped so a tool result
+    is not counted twice.
+  * ``board_exchange.find_pi_transcript`` — the Pi source correlation: the
+    state row's own key names the file, ambiguity answers ``None``.
   * ``GET /api/claude-code/sessions/{sid}/transcript`` — passkey-gated,
     distinct unavailable reasons, no transcript bodies in the log.
 """
@@ -63,17 +71,23 @@ def _tool_result(tid: str, content: Any) -> Dict[str, Any]:
     return {"type": "tool_result", "tool_use_id": tid, "content": content}
 
 
-def _parse_whole(path: Path, build=st.claude_entries) -> List[Dict[str, Any]]:
-    """Reference: one parse of the whole file — offset stripped from the
-    folded kinds, kept on turns, matching :func:`session_transcript._page`
-    (#985)."""
+def _lines_of(path: Path) -> List[Any]:
+    """Every non-blank line of ``path`` as the ``(byte offset, text)`` pairs
+    the entry builders take."""
     raw = path.read_bytes()
     lines, pos = [], 0
     for chunk in raw.split(b"\n"):
         if chunk.strip():
             lines.append((pos, chunk.decode("utf-8", errors="replace")))
         pos += len(chunk) + 1
-    entries = build(lines)
+    return lines
+
+
+def _parse_whole(path: Path, build=st.claude_entries) -> List[Dict[str, Any]]:
+    """Reference: one parse of the whole file — offset stripped from the
+    folded kinds, kept on turns, matching :func:`session_transcript._page`
+    (#985)."""
+    entries = build(_lines_of(path))
     for e in entries:
         if not st._is_turn(e):
             e.pop("offset", None)
@@ -591,6 +605,245 @@ def test_grok_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     assert st.entry_full_text(path, 99_999, "grok") is None  # past EOF
 
 
+# ------------------------------------------------------------ pi_entries
+
+# A Pi session captured for #1013 by launching Pi through the launcher's own
+# API and driving it over `/input`, so the correlation below is the real one.
+# Two turns: a read-only tool call whose result succeeds, and one whose
+# result fails (`isError: true`) — plus the `quit`/`Goodbye.` pair the
+# launcher's Stop leaks into the history, left in on purpose (the parser must
+# not special-case it; it is a stop-path bug tracked separately).
+# Redacted: the working directory becomes `E:\work\project`, and the
+# `thinkingSignature` / `textSignature` blobs are trimmed to 80 chars.
+PI_CAPTURE = Path(__file__).parent / "fixtures" / "pi_session.jsonl"
+
+
+def _pi_msg(role: str, content: Any, mid: str = "m1", **extra: Any) -> Dict[str, Any]:
+    message: Dict[str, Any] = {"role": role, "content": content}
+    message.update(extra)
+    return {"type": "message", "id": mid, "timestamp": "2026-09-17T19:41:00.000Z",
+            "message": message}
+
+
+def _pi_text(text: str) -> Dict[str, Any]:
+    return {"type": "text", "text": text}
+
+
+def test_pi_entries_grammar_from_capture():
+    """The real capture, parsed whole: the grammar and the turn order.
+
+    The shape the issue guessed at is wrong in two ways this pins — a tool
+    call is an *assistant content block*, and its result is a separate
+    message with ``role: "toolResult"``, not a block of the user turn.
+    """
+    entries = _parse_whole(PI_CAPTURE, st.pi_entries)
+    assert _kinds(entries) == [
+        "system", "system",                              # model + thinking level
+        "user", "thinking", "tool_call", "thinking", "assistant",
+        "user", "tool_call", "assistant",
+        "user", "assistant",                             # the leaked Stop turn
+    ]
+    assert entries[0]["text"] == "openai-codex gpt-5.6-sol"
+    assert entries[2]["text"].startswith("List the files in the docs folder")
+    # The tool call: name and arguments from the assistant block, result
+    # attached from the separate `toolResult` message via `toolCallId`.
+    assert entries[4]["name"] == "bash"
+    assert entries[4]["summary"].startswith("find docs")
+    assert "architecture.mmd" in entries[4]["result"]
+    assert entries[6]["text"].count("\n\n") >= 2         # the multi-paragraph reply
+
+
+def test_pi_one_line_carries_a_whole_message():
+    """Pi puts a message's entire content list on one line, so several
+    entries share its byte offset — unlike Claude's one-block-per-line.
+
+    The consequence that matters: exactly one *turn* entry per offset, which
+    is what ``entry_full_text`` resolves against.
+    """
+    entries = _parse_whole(PI_CAPTURE, st.pi_entries)
+    thinking, reply = entries[5], entries[6]
+    assert thinking["kind"] == "thinking" and reply["kind"] == "assistant"
+    # Same record: the folded kinds have their offset stripped, so compare
+    # against the raw parse instead.
+    raw = st.pi_entries(_lines_of(PI_CAPTURE))
+    at_offset = [e for e in raw if e["offset"] == reply["offset"]]
+    assert _kinds(at_offset) == ["thinking", "assistant"]
+    assert sum(1 for e in at_offset if st._is_turn(e)) == 1
+
+
+def test_pi_failed_tool_result_still_pairs_with_its_call():
+    """A failed call (``isError: true``) attaches like any other — the
+    ``Entry`` contract has no error field, so the failure reads as the
+    tool's own message rather than being dropped."""
+    entries = _parse_whole(PI_CAPTURE, st.pi_entries)
+    failed = entries[8]
+    assert failed["kind"] == "tool_call" and failed["name"] == "read"
+    assert failed["result"].startswith("ENOENT: no such file or directory")
+
+
+def test_pi_thinking_signature_never_reaches_an_entry():
+    """``thinkingSignature`` is an encrypted blob many times the size of the
+    thought it accompanies; only ``thinking`` is shown."""
+    entries = _parse_whole(PI_CAPTURE, st.pi_entries)
+    thoughts = [e for e in entries if e["kind"] == "thinking"]
+    assert thoughts and all("TRIMMED" not in e["text"] for e in thoughts)
+    assert thoughts[0]["text"] == "**Planning single read-only directory listing**"
+
+
+def test_pi_timestamps_are_the_outer_iso_string(tmp_path: Path):
+    """The trap the Grok flavour hit (#1012): the *inner* ``message
+    .timestamp`` is epoch milliseconds, so reading it would render every
+    turn as 1970 in the client's ``new Date(ts)``."""
+    path = _write_jsonl(tmp_path / "pi.jsonl", [
+        _pi_msg("user", [_pi_text("hi")], timestamp=1789674055249),
+    ])
+    assert _parse_whole(path, st.pi_entries)[0]["timestamp"] == "2026-09-17T19:41:00.000Z"
+
+
+def test_pi_custom_tool_watch_records_are_dropped(tmp_path: Path):
+    """``custom`` records restate a tool execution the ``toolResult``
+    message already carries (228 of them in the on-disk corpus, all
+    ``claude-agent-sdk-tool-watch``), so reading them would show every tool
+    result twice."""
+    path = _write_jsonl(tmp_path / "pi.jsonl", [
+        _pi_msg("assistant", [{"type": "toolCall", "id": "t1", "name": "bash",
+                               "arguments": {"command": "git branch"}}]),
+        {"type": "custom", "customType": "claude-agent-sdk-tool-watch",
+         "id": "c1", "timestamp": "2026-09-17T19:41:01.000Z",
+         "data": {"type": "tool_execution_end", "toolCallId": "t1",
+                  "toolName": "bash", "content": "main\n", "isError": False}},
+        _pi_msg("toolResult", [_pi_text("main")], mid="m2",
+                toolCallId="t1", toolName="bash", isError=False),
+    ])
+    entries = _parse_whole(path, st.pi_entries)
+    assert _kinds(entries) == ["tool_call"]      # not ["tool_call", "tool_result"]
+    assert entries[0]["result"] == "main"
+
+
+def test_pi_image_tool_result_is_a_placeholder(tmp_path: Path):
+    """An ``image`` block carries raw base64 in ``data`` (35 of them in the
+    corpus, from screenshot tools) — counted, never decoded into text."""
+    blob = "iVBORw0KGgoAAAANSUhEUg" * 200
+    path = _write_jsonl(tmp_path / "pi.jsonl", [
+        _pi_msg("assistant", [{"type": "toolCall", "id": "t1", "name": "screenshot",
+                               "arguments": {"path": "shot.png"}}]),
+        _pi_msg("toolResult", [_pi_text("captured"), {"type": "image", "data": blob}],
+                mid="m2", toolCallId="t1", toolName="screenshot", isError=False),
+    ])
+    result = _parse_whole(path, st.pi_entries)[0]["result"]
+    assert result == "captured\n\n[image]"
+    assert "iVBORw0" not in result
+
+
+def test_pi_skill_injection_and_compaction_fold_as_system(tmp_path: Path):
+    """Pi's skill loader injects a whole SKILL.md as a user turn, and a
+    ``compaction`` record summarises what was rewound — both are plumbing,
+    folded so the chat reads as a plain you-to-agent exchange."""
+    path = _write_jsonl(tmp_path / "pi.jsonl", [
+        _pi_msg("user", [_pi_text('<skill name="issue-finish" location="~/skills">…</skill>')]),
+        {"type": "compaction", "id": "k1", "timestamp": "2026-09-17T19:41:02.000Z",
+         "summary": "## Goal\nShip the reader."},
+        {"type": "session_info", "id": "s1", "timestamp": "2026-09-17T19:41:03.000Z",
+         "name": "renamed"},
+        _pi_msg("user", [_pi_text("a real prompt")], mid="m2"),
+    ])
+    entries = _parse_whole(path, st.pi_entries)
+    assert _kinds(entries) == ["system", "system", "user"]   # session_info dropped
+    assert entries[0]["label"] == "skill"
+    assert entries[1]["label"] == "compaction"
+    assert entries[2]["text"] == "a real prompt"
+
+
+def _pi_conversation(turns: int) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = [
+        {"type": "session", "version": 3, "id": "01a0", "timestamp": "2026-09-17T19:40:30.292Z",
+         "cwd": r"E:\work\project"},
+    ]
+    for i in range(turns):
+        rows.append(_pi_msg("user", [_pi_text(f"ask {i}")], mid=f"u{i}"))
+        rows.append(_pi_msg("assistant", [
+            {"type": "thinking", "thinking": f"weighing {i} " * 3,
+             "thinkingSignature": "sig" * 40},
+            {"type": "toolCall", "id": f"t{i}", "name": "bash",
+             "arguments": {"command": f"echo {i}"}},
+        ], mid=f"a{i}"))
+        rows.append(_pi_msg("toolResult", [_pi_text(f"out {i}")], mid=f"r{i}",
+                            toolCallId=f"t{i}", toolName="bash", isError=False))
+        rows.append(_pi_msg("assistant", [_pi_text(f"answer {i}")], mid=f"z{i}"))
+    return rows
+
+
+def test_pi_pages_concatenate_across_window_boundaries(tmp_path: Path, monkeypatch):
+    """Every page, oldest-first, equals one whole parse — nothing split or
+    duplicated when the window edge lands mid-turn."""
+    monkeypatch.setattr(st, "WINDOW_BYTES", 400)
+    path = _write_jsonl(tmp_path / "pi.jsonl", _pi_conversation(20))
+    pages = _walk(path, 4, flavor="pi")
+    assert len(pages) > 1
+    assert [e for page in reversed(pages) for e in page] == _parse_whole(path, st.pi_entries)
+
+
+def test_pi_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
+    """A truncated turn reads back whole — what Chat's copy (#985) and
+    read-aloud (#988) call when a page entry came back ``truncated``."""
+    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    long_reply = "paragraph one. " * 40
+    path = _write_jsonl(tmp_path / "pi.jsonl", [
+        _pi_msg("user", [_pi_text("ask")]),
+        _pi_msg("assistant", [
+            {"type": "thinking", "thinking": "brief", "thinkingSignature": "sig" * 40},
+            _pi_text(long_reply),
+        ], mid="m2"),
+    ])
+    page = st.transcript_page(path, flavor="pi")
+    reply = [e for e in page["entries"] if e["kind"] == "assistant"][0]
+    assert reply["truncated"] is True and len(reply["text"]) == 40
+    full = st.entry_full_text(path, reply["offset"], "pi")
+    assert full["text"] == long_reply.strip() and full["truncated"] is False
+    assert st.entry_full_text(path, 3, "pi") is None       # mid-line
+    assert st.entry_full_text(path, 99_999, "pi") is None  # past EOF
+
+
+# --------------------------------------------------- pi source correlation
+
+
+def test_find_pi_transcript_matches_the_state_row_key(tmp_path: Path, monkeypatch):
+    """Pi's state row is keyed by Pi's own session uuid and carries no
+    ``transcript_path``; the file is named after that same uuid (#1013)."""
+    from src import board_exchange
+
+    sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
+    folder = tmp_path / "--E--work-project--"
+    folder.mkdir()
+    wanted = folder / f"2026-09-17T19-40-30-292Z_{sid}.jsonl"
+    wanted.write_text("{}\n", encoding="utf-8")
+    (folder / "2026-09-06T12-14-59-246Z_01a076a4-aeae-789e-80fb-39494a6844c9.jsonl").write_text(
+        "{}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(board_exchange, "_PI_SESSIONS_DIR", tmp_path)
+    assert board_exchange.find_pi_transcript(sid) == wanted
+    assert board_exchange.find_pi_transcript("01a076a4-0000-0000-0000-000000000000") is None
+
+
+def test_find_pi_transcript_refuses_ambiguity_and_glob_syntax(tmp_path: Path, monkeypatch):
+    """Fail safe, the rule ``_find_codex_transcript`` follows: anything but
+    exactly one match answers ``None`` so the route says "no transcript"
+    rather than risking a neighbouring session's text. A key carrying glob
+    metacharacters is refused before it can match anything at all."""
+    from src import board_exchange
+
+    sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
+    for name in ("--E--work-a--", "--E--work-b--"):
+        folder = tmp_path / name
+        folder.mkdir()
+        (folder / f"2026-09-17T19-40-30-292Z_{sid}.jsonl").write_text("{}\n", encoding="utf-8")
+    monkeypatch.setattr(board_exchange, "_PI_SESSIONS_DIR", tmp_path)
+    assert board_exchange.find_pi_transcript(sid) is None      # two candidates
+    assert board_exchange.find_pi_transcript("*") is None      # would match every file
+    assert board_exchange.find_pi_transcript("") is None
+    assert board_exchange.find_pi_transcript("../../etc") is None
+
+
 # --------------------------------------------------------------- router
 
 
@@ -690,14 +943,19 @@ class TestTranscriptEndpoint:
         assert body["available"] is False and body["reason"] == "no_transcript"
         assert body["entries"] == []
 
+    # `ssh` on purpose: it is the one registered agent that is not a coding
+    # harness and so will never have a history file, unlike Copilot (#1015)
+    # and Antigravity (#1014) which are getting readers next — those lanes
+    # would otherwise have to repoint these two tests again, as #1013 had to
+    # when Pi stopped being unsupported.
     def test_detached_unsupported_agent(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
-        overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="pi")]
+        overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="ssh")]
         assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "unsupported_agent"
 
     def test_unsupported_agent(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
-        overrides["session"].list_sessions.return_value = [_live(agent="pi")]
+        overrides["session"].list_sessions.return_value = [_live(agent="ssh")]
         assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "unsupported_agent"
 
     def test_no_transcript_when_no_row_or_no_file(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
