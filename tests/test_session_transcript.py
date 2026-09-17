@@ -21,8 +21,19 @@
     several entries sharing one line's offset, the encrypted thinking
     signature never shown, and ``custom`` records dropped so a tool result
     is not counted twice.
+  * ``session_transcript.antigravity_entries`` — the Antigravity CLI
+    conversation-log grammar (#1014), driven by a captured session: a tool
+    call riding on a contentless ``PLANNER_RESPONSE`` paired FIFO with the
+    next ``MODEL`` step (whose type does not name the tool), the timing
+    header dropped, the ``<USER_REQUEST>`` wrapper unwrapped, harness
+    plumbing folded, and the flat file's self-truncation and
+    double-encoded arguments undone.
   * ``board_exchange.find_pi_transcript`` — the Pi source correlation: the
     state row's own key names the file, ambiguity answers ``None``.
+  * ``board_exchange.find_antigravity_transcript`` — the Antigravity source
+    correlation: the harness's newest-conversation-per-folder cache, refused
+    when a second live session shares the folder or nothing was written
+    since this session started.
   * ``GET /api/claude-code/sessions/{sid}/transcript`` — passkey-gated,
     distinct unavailable reasons, no transcript bodies in the log.
 """
@@ -804,6 +815,304 @@ def test_pi_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     assert st.entry_full_text(path, 99_999, "pi") is None  # past EOF
 
 
+# --------------------------------------------------- antigravity_entries
+
+
+# An Antigravity CLI session captured for #1014 by launching it through the
+# launcher's own API from this repo's folder and driving it over `/input`,
+# so the correlation below is the real one. Two turns — a read-only
+# `list_dir` and a `run_command` made to fail on purpose — plus the
+# `quit`/`Goodbye!` pair the launcher's Stop leaks into the history (#1016),
+# left in on purpose: the parser must not special-case it.
+# Redacted: the working directory becomes `E:\work\project`, and each
+# `thinking` block is trimmed to 240 chars.
+AGY_CAPTURE = Path(__file__).parent / "fixtures" / "antigravity_transcript.jsonl"
+
+
+def _agy(step: int, source: str, step_type: str, **extra: Any) -> Dict[str, Any]:
+    row = {"step_index": step, "source": source, "type": step_type,
+           "status": "DONE", "created_at": "2026-09-17T21:08:20Z"}
+    row.update(extra)
+    return row
+
+
+def _agy_prompt(text: str, step: int = 0) -> Dict[str, Any]:
+    return _agy(step, "USER_EXPLICIT", "USER_INPUT", content=(
+        f"<USER_REQUEST>\n{text}\n</USER_REQUEST>\n"
+        "<ADDITIONAL_METADATA>\nThe current local time is: 2026-09-17T23:08:20+02:00.\n"
+        "</ADDITIONAL_METADATA>"
+    ))
+
+
+def test_antigravity_entries_grammar_from_capture():
+    """The real capture, parsed whole: the grammar and the turn order.
+
+    Pins the two shapes the issue could not know without a capture — a tool
+    call rides on the ``PLANNER_RESPONSE`` that has no ``content`` of its
+    own, and its result is the next ``MODEL`` step whose type does *not*
+    name the tool (``list_dir`` answered as ``GENERIC``).
+    """
+    entries = _parse_whole(AGY_CAPTURE, st.antigravity_entries)
+    assert _kinds(entries) == [
+        "user", "thinking", "tool_call", "thinking", "assistant",
+        "user", "thinking", "tool_call", "assistant",
+        "user", "thinking", "assistant",          # the leaked Stop turn (#1016)
+    ]
+    assert entries[0]["text"].startswith("List the files in the current folder")
+    # The tool call: name from the step's `tool_calls`, summary from its
+    # first real argument (not the `toolAction`/`toolSummary` UI labels),
+    # result attached from the *following* step.
+    assert entries[2]["name"] == "list_dir"
+    assert entries[2]["summary"] == r"E:\work\project"
+    assert entries[2]["result"].startswith('{"name":".agents"')
+    # The harness's own timing header never reaches the card.
+    assert "Created At:" not in entries[2]["result"]
+    assert entries[4]["text"].count("\n\n") >= 2          # the multi-paragraph reply
+    # A failed tool call is not distinguishable from a successful one
+    # (#1020): same `status: "DONE"`, the failure only in English prose.
+    assert entries[7]["name"] == "run_command"
+    assert "exited with code 1" in entries[7]["result"]
+    assert entries[9]["text"] == "quit"
+
+
+def test_antigravity_user_prompt_shows_only_the_request():
+    """A typed prompt arrives wrapped in ``<USER_REQUEST>`` with the local
+    time — and sometimes a settings change — appended after it. Only the
+    request is shown; an unwrapped step still renders rather than vanishing.
+    """
+    entries = st.antigravity_entries([
+        (0, json.dumps(_agy(0, "USER_EXPLICIT", "USER_INPUT", content=(
+            "<USER_REQUEST>\nsay hi\n</USER_REQUEST>\n"
+            "<ADDITIONAL_METADATA>\nThe current local time is: 2026-09-17T23:08:20+02:00.\n"
+            "</ADDITIONAL_METADATA>\n<USER_SETTINGS_CHANGE>\nThe user changed setting "
+            "`Model Selection` from None to Gemini 3.1 Pro (Low).\n</USER_SETTINGS_CHANGE>"
+        )))),
+        (1, json.dumps(_agy(1, "USER_EXPLICIT", "USER_INPUT", content="bare prompt"))),
+    ])
+    assert [e["text"] for e in entries] == ["say hi", "bare prompt"]
+
+
+def test_antigravity_tool_results_pair_positionally_and_orphans_stand_alone():
+    """No call id exists anywhere, so calls and results pair FIFO — and a
+    result arriving with nothing outstanding stands on its own rather than
+    attaching to an unrelated call. (Six of the 210 logs on this box have a
+    dropped step, which is exactly that case.)"""
+    rows = [
+        _agy(0, "MODEL", "PLANNER_RESPONSE", tool_calls=[
+            {"name": "list_dir", "args": {"DirectoryPath": "a"}},
+            {"name": "view_file", "args": {"AbsolutePath": "b"}},
+        ]),
+        _agy(1, "MODEL", "GENERIC", content="Created At: t\nCompleted At: t\nfirst"),
+        _agy(2, "MODEL", "VIEW_FILE", content="Created At: t\nCompleted At: t\nsecond"),
+        _agy(3, "MODEL", "RUN_COMMAND", content="Created At: t\norphan"),
+    ]
+    entries = st.antigravity_entries([(i * 10, json.dumps(r)) for i, r in enumerate(rows)])
+    assert _kinds(entries) == ["tool_call", "tool_call", "tool_result"]
+    assert [e["name"] for e in entries[:2]] == ["list_dir", "view_file"]
+    assert entries[0]["result"] == "first" and entries[1]["result"] == "second"
+    assert entries[2]["text"] == "orphan"
+    # A call left unanswered keeps `result: None` rather than stealing the
+    # next turn's result.
+    tail = st.antigravity_entries([(0, json.dumps(rows[0]))])
+    assert [e["result"] for e in tail] == [None, None]
+
+
+def test_antigravity_system_steps_fold_and_contentless_ones_vanish():
+    """``SYSTEM``-sourced steps are harness plumbing, folded and labelled;
+    ``CONVERSATION_HISTORY`` carries no ``content`` and produces nothing, so
+    a resumed session does not open with an empty card."""
+    rows = [
+        _agy(0, "SYSTEM", "CONVERSATION_HISTORY"),
+        _agy(1, "SYSTEM", "EPHEMERAL_MESSAGE", content="<EPHEMERAL_MESSAGE>\nreminder"),
+        _agy(2, "SYSTEM", "CHECKPOINT", content="# Resuming from a compaction"),
+        _agy(3, "SYSTEM", "ERROR_MESSAGE", status="ERROR",
+             error="invalid tool call", exit_code=1),
+        _agy(4, "SYSTEM", "SOMETHING_NEW", content="a type this reader has not seen"),
+    ]
+    entries = st.antigravity_entries([(i * 10, json.dumps(r)) for i, r in enumerate(rows)])
+    assert _kinds(entries) == ["system"] * 4
+    assert [e["label"] for e in entries] == [
+        "ephemeral", "compaction", "error", "system",
+    ]
+    # An ERROR_MESSAGE with no `content` still shows its `error`.
+    assert entries[2]["text"] == "invalid tool call"
+
+
+def test_antigravity_flat_file_truncation_and_double_encoded_args():
+    """The fallback ``transcript.jsonl`` cuts long fields itself (naming
+    them in ``truncated_fields``) and JSON-encodes each tool argument a
+    second time. Both are undone here, or a turn would report itself whole
+    when it is not and a tool card would show escaped quotes."""
+    rows = [
+        _agy(0, "MODEL", "PLANNER_RESPONSE", content="a short reply",
+             thinking="a cut thought", truncated_fields=["content", "thinking"]),
+        _agy(1, "MODEL", "PLANNER_RESPONSE", tool_calls=[{
+            "name": "run_command",
+            "args": {"CommandLine": "\"dir C:\\\\tmp\"", "toolSummary": "\"Listing\""},
+        }]),
+    ]
+    entries = st.antigravity_entries([(i * 10, json.dumps(r)) for i, r in enumerate(rows)])
+    assert [e["kind"] for e in entries] == ["thinking", "assistant", "tool_call"]
+    assert entries[0]["truncated"] is True and entries[1]["truncated"] is True
+    assert entries[2]["summary"] == "dir C:\\tmp"
+    # A call whose only string arguments are UI labels falls back to them.
+    labels_only = st.antigravity_entries([(0, json.dumps(_agy(
+        0, "MODEL", "PLANNER_RESPONSE",
+        tool_calls=[{"name": "wait", "args": {"Ms": 500, "toolSummary": "Waiting"}}],
+    )))])
+    assert labels_only[0]["summary"] == "Waiting"
+
+
+def _agy_conversation(turns: int) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for i in range(turns):
+        rows.append(_agy_prompt(f"prompt {i} " + "p" * i, step=i * 3))
+        rows.append(_agy(i * 3 + 1, "MODEL", "PLANNER_RESPONSE", thinking=f"think {i}",
+                         tool_calls=[{"name": "list_dir", "args": {"DirectoryPath": f"d{i}"}}]))
+        rows.append(_agy(i * 3 + 2, "MODEL", "GENERIC",
+                         content=f"Created At: t\nCompleted At: t\nout {i}"))
+        rows.append(_agy(i * 3 + 3, "MODEL", "PLANNER_RESPONSE", content=f"answer {i}"))
+    return rows
+
+
+def test_antigravity_pages_concatenate_across_window_boundaries(tmp_path: Path, monkeypatch):
+    """Every page, oldest-first, equals one whole parse — nothing split or
+    duplicated when the window edge lands mid-turn."""
+    monkeypatch.setattr(st, "WINDOW_BYTES", 400)
+    path = _write_jsonl(tmp_path / "agy.jsonl", _agy_conversation(20))
+    pages = _walk(path, 4, flavor="antigravity")
+    assert len(pages) > 1
+    assert [e for page in reversed(pages) for e in page] == _parse_whole(
+        path, st.antigravity_entries
+    )
+
+
+def test_antigravity_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
+    """A truncated turn reads back whole — what Chat's copy (#985) and
+    read-aloud (#988) call when a page entry came back ``truncated``."""
+    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    long_reply = "paragraph one. " * 40
+    path = _write_jsonl(tmp_path / "agy.jsonl", [
+        _agy_prompt("ask"),
+        _agy(1, "MODEL", "PLANNER_RESPONSE", thinking="brief", content=long_reply),
+    ])
+    page = st.transcript_page(path, flavor="antigravity")
+    reply = [e for e in page["entries"] if e["kind"] == "assistant"][0]
+    assert reply["truncated"] is True and len(reply["text"]) == 40
+    full = st.entry_full_text(path, reply["offset"], "antigravity")
+    assert full["text"] == long_reply.strip() and full["truncated"] is False
+    assert st.entry_full_text(path, 3, "antigravity") is None       # mid-line
+    assert st.entry_full_text(path, 99_999, "antigravity") is None  # past EOF
+
+
+# ----------------------------------------- antigravity source correlation
+
+
+def _agy_tree(root: Path, folder: str, uuid: str, *, full: bool = True) -> Path:
+    """An Antigravity home with one conversation logged for ``folder``."""
+    (root / "cache").mkdir(parents=True, exist_ok=True)
+    (root / "cache" / "last_conversations.json").write_text(
+        json.dumps({folder: uuid}), encoding="utf-8"
+    )
+    logs = root / "brain" / uuid / ".system_generated" / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    written = logs / ("transcript_full.jsonl" if full else "transcript.jsonl")
+    written.write_text("{}\n", encoding="utf-8")
+    return written
+
+
+def _agy_session(**extra: Any) -> Dict[str, Any]:
+    row = {"session_id": "s1", "agent": "antigravity", "alive": True,
+           "project_dir": r"E:\work\project", "started_at": 1_000_000.0}
+    row.update(extra)
+    return row
+
+
+def test_find_antigravity_transcript_uses_the_newest_conversation_cache(
+    tmp_path: Path, monkeypatch
+):
+    """Antigravity links its conversation to nothing the launcher knows, and
+    omits `conversationId` on a conversation's first history row — so the
+    correlation is its own ``workspace → newest conversation`` cache, which
+    *is* written the moment the first prompt lands (#1014 probe)."""
+    from src import board_exchange
+
+    uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
+    wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
+    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
+    session = _agy_session()
+    assert board_exchange.find_antigravity_transcript(session, [session]) == wanted
+    # The path separator and case of the cache key need not match the
+    # session's own spelling.
+    assert board_exchange.find_antigravity_transcript(
+        _agy_session(project_dir="e:/work/project/"), []
+    ) == wanted
+    # A different folder is not this session's conversation.
+    assert board_exchange.find_antigravity_transcript(
+        _agy_session(project_dir=r"E:\work\other"), []
+    ) is None
+
+
+def test_find_antigravity_transcript_falls_back_to_the_flat_file(tmp_path: Path, monkeypatch):
+    """``transcript_full.jsonl`` is preferred — it alone can serve
+    ``entry_full_text`` uncapped — but 55 of 265 conversations on this box
+    have only the flat file, so its absence is a fallback, not an error."""
+    from src import board_exchange
+
+    uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
+    flat = _agy_tree(tmp_path, r"E:\work\project", uuid, full=False)
+    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
+    assert board_exchange.find_antigravity_transcript(_agy_session(), []) == flat
+    full = flat.with_name("transcript_full.jsonl")
+    full.write_text("{}\n", encoding="utf-8")
+    assert board_exchange.find_antigravity_transcript(_agy_session(), []) == full
+
+
+def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
+    tmp_path: Path, monkeypatch
+):
+    """The cache answers "the newest conversation in this folder", not "this
+    session's" — so two guards keep it from showing another session's text,
+    the rule ``_find_codex_transcript`` follows.
+    """
+    from src import board_exchange
+
+    uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
+    wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
+    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
+
+    # A second live Antigravity session in the same folder: the cache cannot
+    # say which of the two the uuid belongs to.
+    sibling = _agy_session(session_id="s2")
+    assert board_exchange.find_antigravity_transcript(_agy_session(), [sibling]) is None
+    # Not a sibling: a dead one, another agent, another folder.
+    for other in (
+        _agy_session(session_id="s2", alive=False),
+        _agy_session(session_id="s2", agent="claude"),
+        _agy_session(session_id="s2", project_dir=r"E:\work\other"),
+    ):
+        assert board_exchange.find_antigravity_transcript(_agy_session(), [other]) == wanted
+
+    # Nothing written since this session started: the cache is pointing at
+    # whatever ran in the folder before it, and there is no transcript yet.
+    import os
+
+    stamp = 1_000_000.0 - board_exchange._AGY_MTIME_SLOP_SECONDS - 1
+    os.utime(wanted, (stamp, stamp))
+    assert board_exchange.find_antigravity_transcript(_agy_session(), []) is None
+
+    # A session with no usable launch time, and a cache value that is not a
+    # conversation uuid, are both refused before any path is built.
+    os.utime(wanted, (2_000_000.0, 2_000_000.0))
+    assert board_exchange.find_antigravity_transcript(
+        _agy_session(started_at="not a time"), []
+    ) is None
+    (tmp_path / "cache" / "last_conversations.json").write_text(
+        json.dumps({r"E:\work\project": "../../../etc"}), encoding="utf-8"
+    )
+    assert board_exchange.find_antigravity_transcript(_agy_session(), []) is None
+
+
 # --------------------------------------------------- pi source correlation
 
 
@@ -943,11 +1252,43 @@ class TestTranscriptEndpoint:
         assert body["available"] is False and body["reason"] == "no_transcript"
         assert body["entries"] == []
 
+    def test_antigravity_row_reads_its_conversation_log(
+        self, webapp_client, _bypass_gate, monkeypatch
+    ):
+        """An Antigravity session has no state row at all — the fleet's
+        `session_state` hook does not reach it — so the route resolves its
+        log from the filesystem and reports its own source name."""
+        from app.webapp.routers import session_transcript as router_mod
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live(agent="antigravity")]
+        monkeypatch.setattr(
+            router_mod, "find_antigravity_transcript",
+            lambda session, live: AGY_CAPTURE,
+        )
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "antigravity"
+        assert [e["kind"] for e in body["entries"]][:3] == ["user", "thinking", "tool_call"]
+        entry = [e for e in body["entries"] if e["kind"] == "assistant"][0]
+        full = client.get(
+            f"/api/claude-code/sessions/s1/transcript/entry?offset={entry['offset']}"
+        ).json()
+        assert full["available"] is True
+        assert full["text"].startswith("Based on the directory listing")
+        # Correlation refused (a second live session in the folder, or a
+        # session that has not prompted yet) is "no transcript", never a
+        # neighbour's conversation.
+        monkeypatch.setattr(
+            router_mod, "find_antigravity_transcript", lambda session, live: None
+        )
+        assert client.get(
+            "/api/claude-code/sessions/s1/transcript"
+        ).json()["reason"] == "no_transcript"
+
     # `ssh` on purpose: it is the one registered agent that is not a coding
     # harness and so will never have a history file, unlike Copilot (#1015)
-    # and Antigravity (#1014) which are getting readers next — those lanes
-    # would otherwise have to repoint these two tests again, as #1013 had to
-    # when Pi stopped being unsupported.
+    # which is getting a reader next — that lane would otherwise have to
+    # repoint these two tests again, as #1013 had to when Pi stopped being
+    # unsupported.
     def test_detached_unsupported_agent(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="ssh")]
