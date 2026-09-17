@@ -160,8 +160,9 @@ def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> Non
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    # Chat · Send message (#967) · Rename · Stop — no Terminal for a detached row
-    expect(menu.locator("button")).to_have_count(4)
+    # Chat · Rename · Stop — no Terminal for a detached row, and no Send
+    # message since #983 (the chat composer sends)
+    expect(menu.locator("button")).to_have_count(3)
     expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
     menu.locator('button[aria-label="Open chat"]').click()
     overlay = authed_page.locator("#terminalOverlay")
@@ -180,8 +181,8 @@ def test_detached_unsupported_agent_menu_has_no_chat(authed_page: Page, base_url
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    # Send message (#967, pi is probe-proven) · Rename · Stop — no Chat, no Terminal
-    expect(menu.locator("button")).to_have_count(3)
+    # Rename · Stop — no Chat, no Terminal (and no Send message since #983)
+    expect(menu.locator("button")).to_have_count(2)
     expect(menu.locator('button[aria-label="Open chat"]')).to_have_count(0)
     expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
 

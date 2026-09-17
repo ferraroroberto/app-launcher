@@ -174,8 +174,8 @@ class TestDetectAgents:
         assert "ssh" not in by_id  # service integration, not a Coding-tab button
 
     def test_console_input_flags_match_the_967_probe(self, monkeypatch):
-        # Issue #967: the Coding tab offers a detached row's "Send message"
-        # item only for agents the recorded probe proved take console input
+        # Issue #967 (#983): the Coding tab enables a detached session's
+        # Chat-mode Send only for agents the recorded probe proved take console input
         # (the comment on the issue). Grok was *not probed* (not signed in
         # on the dev box) — False means unprobed, and it must stay False
         # until a probe says otherwise, never be flipped by analogy.

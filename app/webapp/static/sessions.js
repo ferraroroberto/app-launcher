@@ -223,13 +223,6 @@ export function renderSessions() {
     //     endpoint's flavour map): the same overlay in Chat mode. The reader
     //     uses the agent's native history, never the PTY capture a detached
     //     row lacks.
-    //   · Send message (#967) — detached rows only (a full-control row has
-    //     the terminal's compose bar), and only for an agent the recorded
-    //     console-input probe proved (the registry's ``console_input`` flag,
-    //     served by /api/claude-code/agents) — the menu never offers a dead
-    //     end. Delivery is unconfirmed by design: the message is typed into
-    //     the PC console and nothing can watch the agent consume it. Leaves
-    //     the menu in #983, when the chat pane's composer covers it.
     //   · Rename (issue #458) — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
@@ -256,14 +249,6 @@ export function renderSessions() {
         label: 'Open chat', text: 'Chat',
         hidden: !reader,
         onTap: function () { openSession(s, 'chat'); },
-      },
-      // The registry's flag for the row's agent (unknown agent → no item):
-      // the server's, never guessed here.
-      {
-        className: 'session-send-btn', glyph: 'send-horizontal',
-        label: 'Send message', text: 'Send message',
-        hidden: !canSendToDetached(s),
-        onTap: function () { openSessionSend(s); },
       },
       {
         glyph: 'pencil', label: 'Rename session', text: 'Rename',
@@ -419,24 +404,23 @@ export function openSessionRename(s, onDone) {
   if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
 }
 
-// Send a follow-up message to a detached session (issue #967). Posts to
-// the same /input route the Board drawer's reply proxy and the terminal
-// compose bar use; the session-host types it into the console by PID. The
-// verdict is ``delivered: "unconfirmed"`` — the toast says so rather than
-// claiming delivery, because nothing on this side can watch the agent
-// consume the keystrokes.
-//
-// The gear menu's dialog and the transcript overlay's composer (#975) both
-// go through the three helpers below, so the gate, the request, and the
-// outcome wording can't drift between the two surfaces.
-let sendSessionTarget = null;
+// Send from a session's Chat mode (issue #967 → #983). The chat pane's
+// composer posts to the same kind-agnostic /input route the Board drawer's
+// reply proxy uses: a PTY session submits with the host's framing, settle
+// and ingest verification (#611/#760/#763); a detached session is typed into
+// its PC console by PID and can only ever answer ``delivered: "unconfirmed"``.
+// The gear menu's Send message dialog is gone — the composer covers both
+// kinds — so the gate, the request and the outcome wording live here once.
 
-// A detached row whose agent the console-input probe proved (the
-// registry's ``console_input`` flag, served by /api/claude-code/agents).
-export function canSendToDetached(s) {
+// A detached session whose agent the registry says was never probed for
+// console input (``console_input: false`` from /api/agents). Only an explicit
+// false refuses: the boot fallback list carries no flag until that fetch
+// lands, and "not known yet" must not grey Send out for the whole open — the
+// session-host still refuses an unprobed agent with a 502 console_failed.
+export function detachedSendRefused(s) {
   if (!s || s.kind !== 'remote') return false;
-  const known = state.agents.find(function (a) { return a.id === s.agent; });
-  return !!(known && known.console_input === true);
+  const known = (state.agents || []).find(function (a) { return a.id === s.agent; });
+  return !!known && known.console_input === false;
 }
 
 export function sendSessionMessage(sid, text) {
@@ -450,44 +434,37 @@ export function sendSessionMessage(sid, text) {
   );
 }
 
-export function sendOutcomeText(verdict) {
-  const delivered = verdict && verdict.delivered;
-  if (delivered === true) return 'Sent';
-  return 'Sent, not confirmed: typed into the PC console';
-}
-
-export function openSessionSend(s) {
-  sendSessionTarget = s;
-  els.sessionSendHeading.textContent = 'Send message';
-  els.sessionSendInput.value = '';
-  if (els.sessionSendDialog.showModal) els.sessionSendDialog.showModal();
-  els.sessionSendInput.focus();
-}
-
-function wireSessionSendDialog() {
-  els.sessionSendCancel.addEventListener('click', function () {
-    if (els.sessionSendDialog.close) els.sessionSendDialog.close();
-  });
-  els.sessionSendForm.addEventListener('submit', async function (ev) {
-    ev.preventDefault();
-    if (!sendSessionTarget) return;
-    const text = els.sessionSendInput.value.trim();
-    if (!text) return;
-    const submitBtn = els.sessionSendForm.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    try {
-      const verdict = await sendSessionMessage(sendSessionTarget.session_id, text);
-      if (els.sessionSendDialog.close) els.sessionSendDialog.close();
-      toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
-    } catch (exc) {
-      // Dialog stays open with the text intact — an honest failure (a
-      // session-host that predates detached input is a 501 naming the
-      // restart, an unattached console 502) is never reported as sent.
-      apiFailToast('Send failed', exc);
-    } finally {
-      submitBtn.disabled = false;
-    }
-  });
+// The toast for one successful /input answer: `{ text, kind }`. Each verdict
+// gets its own words, because folding them into "sent" is exactly what
+// #760/#763/#929 were filed over. The failures never get here — a payload the
+// terminal never echoed (502 not_ingested), a console that did not take the
+// keystrokes (502 console_failed), an exited session (409) all throw, and
+// the caller toasts them as "Send failed" with the text kept.
+export function sendOutcome(verdict) {
+  const v = verdict || {};
+  // Detached (#967): a console has no output stream, so this is the best a
+  // successful send can ever be — not a failure.
+  if (v.delivered === 'unconfirmed') {
+    return { text: 'Sent, not confirmed: typed into the PC console', kind: '' };
+  }
+  switch (v.submit_state) {
+    case 'confirmed':
+      return { text: 'Sent', kind: 'good' };
+    case 'unconfirmed':
+      // A short payload or a bare submit: Enter went in, nothing checked it.
+      return { text: 'Sent, not confirmed: nothing verified the agent took it', kind: '' };
+    case 'pending':
+      // 202 (#763): in the agent's composer, Enter still with the watcher.
+      return { text: 'Queued: the agent is busy, Enter goes in once it settles', kind: '' };
+    case 'not_submitted':
+      return { text: 'Not submitted: the text reached the agent but Enter was never sent', kind: 'error' };
+    default:
+      break;
+  }
+  // A session-host from before #929 carries no submit_state; only an
+  // explicit `delivered: true` reads as a landing.
+  if (v.delivered === true) return { text: 'Sent', kind: 'good' };
+  return { text: 'Sent, not confirmed', kind: '' };
 }
 
 function wireSessionRenameDialog() {
@@ -570,5 +547,4 @@ export function wireSessions() {
     });
   }
   wireSessionRenameDialog();
-  wireSessionSendDialog();
 }

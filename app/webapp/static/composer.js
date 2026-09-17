@@ -40,7 +40,12 @@
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (paste / drop entry
  * point), `reset()` (leave-surface teardown), `closePopovers()`,
- * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null)`.
+ * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null)`,
+ * `setPlaceholder(text)`, `setSendable(enabled, reason)`.
+ *
+ * `setSendable(false, reason)` gates ➤ Send alone (#983: a detached session
+ * whose agent the console-input probe never proved) — the textarea, mic,
+ * image and OCR stay usable, and the reason is the button's title.
  *
  * Unavailable mic / keys render DISABLED rather than hidden: a grid that
  * collapses to three buttons is a different shape (design.md button-disabled
@@ -84,6 +89,7 @@ const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
 const _TITLE_IMAGE = 'Attach image or file';
 const _TITLE_IMAGE_MENU = 'Attach image or file · Extract text from screenshots';
+const _TITLE_SEND = 'Send (with Enter)';
 const _LABEL_ATTACH = 'Attach image or file';
 const _LABEL_OCR = 'Extract text from screenshots';
 
@@ -111,7 +117,7 @@ function render(host, placeholder) {
         '<button type="button" class="compose-record composer-mic" aria-pressed="false">' + icon('mic') + '</button>' +
         '<button type="button" class="compose-record composer-keys">' + icon('keyboard') + '</button>' +
         '<button type="button" class="compose-record composer-image">' + icon('image') + '</button>' +
-        '<button type="button" class="compose-send composer-send" title="Send (with Enter)" aria-label="Send">' + icon('send-horizontal') + '</button>' +
+        '<button type="button" class="compose-send composer-send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
     // No accept filter on the attach input (#366): iOS then offers Photo
@@ -148,6 +154,11 @@ export function mountComposer(host, opts) {
   // #450: the buffer carries an attached-file path, so the surface's send
   // may hold its submitting CR back for the path→attachment conversion.
   let hasImage = false;
+  // #983: Send's own gate (setSendable) — kept apart from the in-flight
+  // disable an async send holds, so settling a send never re-enables a
+  // button the surface gated off.
+  let sendBlocked = false;
+  let sending = false;
 
   function grow() { growTextarea(el.textarea); }
 
@@ -352,7 +363,12 @@ export function mountComposer(host, opts) {
     el.textarea.focus();
   }
 
+  function syncSend() {
+    el.send.disabled = sendBlocked || sending;
+  }
+
   function submit() {
+    if (sendBlocked || sending) return;
     // #489: a dictation that just stopped is still finalizing until the
     // canonical transcript settles into the textarea. Reading + clearing the
     // buffer mid-window raced that settle — wait it out instead.
@@ -369,13 +385,14 @@ export function mountComposer(host, opts) {
       return;
     }
     if (res && typeof res.then === 'function') {
-      // Async delivery (a detached session's /input route): hold Send and
+      // Async delivery (Chat mode's /input route, #983): hold Send and
       // keep the draft until the surface says it went through.
-      el.send.disabled = true;
+      sending = true;
+      syncSend();
       res.then(function (ok) {
         if (ok !== false && ok !== null && ok !== undefined) finishSend();
       }, function () { /* the surface toasted; the draft stays */ })
-        .finally(function () { el.send.disabled = false; });
+        .finally(function () { sending = false; syncSend(); });
       return;
     }
     // Sync delivery (the PTY WebSocket): clear inside the tap gesture so
@@ -399,6 +416,18 @@ export function mountComposer(host, opts) {
       el.image.setAttribute('aria-haspopup', ocrOn ? 'menu' : 'false');
       if (!ocrOn) imageMenu.close();
     }
+  }
+
+  function setSendable(enabled, reason) {
+    sendBlocked = !enabled;
+    el.send.title = enabled ? _TITLE_SEND : (reason || 'Sending is unavailable');
+    el.send.setAttribute('aria-label', enabled ? 'Send' : el.send.title);
+    syncSend();
+  }
+
+  function setPlaceholder(text) {
+    el.textarea.placeholder = text;
+    el.textarea.setAttribute('aria-label', text);
   }
 
   function setKeys(k) {
@@ -428,6 +457,7 @@ export function mountComposer(host, opts) {
 
   setAvailability({ dictate: voiceDictationAvailable(), ocr: false });
   setKeys(keysOpts);
+  setSendable(true);
 
   return {
     root: host,
@@ -437,5 +467,7 @@ export function mountComposer(host, opts) {
     closePopovers: closePopovers,
     setAvailability: setAvailability,
     setKeys: setKeys,
+    setPlaceholder: setPlaceholder,
+    setSendable: setSendable,
   };
 }

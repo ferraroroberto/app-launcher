@@ -7,10 +7,20 @@
  * the paginated `/api/claude-code/sessions/{sid}/transcript` endpoint
  * (Tailscale + passkey gated, like the Board drawer's /exchange): the
  * newest page loads first, older pages prepend on "Load older" or when the
- * list is scrolled to its top. Read-only for a full-control session — the
- * terminal pane stays its input surface. A detached session whose agent
- * takes console input gets a composer docked under the list (#975), sending
- * through the same helpers as the gear menu's Send dialog (#967).
+ * list is scrolled to its top.
+ *
+ * The shared composer (composer.js, #980) is mounted under the list for
+ * every session kind (#983). ➤ Send always goes through the kind-agnostic
+ * /input route, never the terminal's WebSocket — even for a full-control
+ * session whose terminal is connected: Chat cannot show the PTY, so the
+ * route's verdict (confirmed / unconfirmed / queued, sessions.js
+ * sendOutcome) is the only feedback the phone gets, and the session-host
+ * applies the same framing and settle protocol the terminal composer does
+ * (#611). Attach uploads inline and appends the path, which a detached
+ * session can take too. The ⌨ keys drive a full-control session's live
+ * terminal socket while Chat shows; a detached session has none, so they
+ * render disabled. A detached session whose agent was never probed for
+ * console input keeps the composer but not ➤ Send.
  *
  * Since #982 this is one pane of #terminalOverlay, not its own overlay:
  * session-overlay.js opens/closes it and flips the overlay's data-mode;
@@ -19,11 +29,15 @@
  * loaded here survive a trip through Terminal mode.
  */
 
-import { els } from './state.js';
+import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './life-os.js';
-import { canSendToDetached, sendOutcomeText, sendSessionMessage } from './sessions.js';
+import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
+import { mountComposer } from './composer.js';
+import { uploadSessionFile } from './terminal-compose.js';
+import { stopReading } from './terminal-readaloud.js';
+import { voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // Agents whose native history the server-side reader understands — the
@@ -43,11 +57,14 @@ export function hasTranscriptReader(s) {
 const PAGE_LIMIT = 40;
 
 // After a send, reload the newest page once this long later so the sent
-// turn shows up — the agent appends it to its history file only after the
-// console has consumed the keystrokes, which nothing here can observe.
+// turn shows up — the agent appends it to its history file only after it
+// has consumed the input, which nothing here can observe. Chat has no
+// periodic refresh (#982), so this is the only automatic reload.
 const SENT_REFRESH_MS = 3000;
-// The composer grows with its text up to this many lines, then scrolls.
-const COMPOSE_MAX_ROWS = 5;
+
+// The chat pane's composer handle (composer.js), mounted once by
+// wireChatPane() and re-bound to the open session by openChatPane().
+let chatComposer = null;
 
 // One line per server-side reason, so "nothing there" never reads like
 // "couldn't read it" (and vice versa).
@@ -451,48 +468,85 @@ export function pinChatToKeyboard() {
   }
 }
 
-function growComposeInput() {
-  const ta = els.transcriptComposeInput;
-  ta.style.height = 'auto';
-  const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
-  ta.style.height = Math.min(ta.scrollHeight, COMPOSE_MAX_ROWS * lineHeight + 22) + 'px';
-}
-
-function resetCompose() {
-  els.transcriptComposeInput.value = '';
-  els.transcriptComposeInput.style.height = '';
-  els.transcriptComposeSend.disabled = false;
-}
-
-async function sendFromTranscript(ev) {
-  ev.preventDefault();
-  if (!view || view.sending) return;
-  const text = els.transcriptComposeInput.value.trim();
-  if (!text) return;
+// ➤ Send from Chat (#983): the /input route for either kind. Resolves true to
+// clear the draft; a failed send (502 not ingested / console failed, 409
+// exited, 501 stale host) toasts and resolves false so the text stays to
+// retry. A send that lands after the pane moved to another session toasts
+// but leaves that session's composer and list alone.
+async function sendFromChat(text) {
+  if (!view) return false;
   const target = view;
-  target.sending = true;
-  els.transcriptComposeSend.disabled = true;
   let verdict;
   try {
     verdict = await sendSessionMessage(target.session.session_id, text);
   } catch (exc) {
-    // The text stays in the box to retry — a failed send (501 stale host,
-    // 502 unattached console) is never reported as sent.
     apiFailToast('Send failed', exc);
-    return;
-  } finally {
-    target.sending = false;
-    if (view === target) els.transcriptComposeSend.disabled = false;
+    return false;
   }
-  toast(sendOutcomeText(verdict), '', { icon: 'send-horizontal' });
-  // Closed, or reopened on another session, while the send was in flight:
-  // that view's composer and list aren't ours to touch.
-  if (view !== target) return;
-  resetCompose();
+  const outcome = sendOutcome(verdict);
+  toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
+  if (view !== target) return false;
   window.clearTimeout(target.refreshTimer);
   target.refreshTimer = window.setTimeout(function () {
     if (view === target) loadNewest();
   }, SENT_REFRESH_MS);
+  return true;
+}
+
+function uploadFromChat(file) {
+  return uploadSessionFile(view ? view.session.session_id : null, file);
+}
+
+// The live terminal socket of the session Chat is showing, if one is open.
+// Opening straight into Chat connects nothing (#982), so the keys have no
+// socket until Terminal has been shown once.
+function liveTerminalFor(s) {
+  const t = state.terminal;
+  if (!t || t.sid !== s.session_id || !t.ws || t.ws.readyState !== WebSocket.OPEN) {
+    return null;
+  }
+  return t;
+}
+
+// ⌨ keys for `s`: a full-control session's PTY, even while Chat shows (answer
+// a y/n prompt without switching); null for a detached one, which renders
+// the button disabled with its reason.
+function chatKeys(s) {
+  if (s.kind === 'remote') return null;
+  return {
+    send: function (bytes) {
+      const t = liveTerminalFor(s);
+      if (t) t.ws.send(JSON.stringify({ type: 'input', data: bytes }));
+    },
+    onOpen: function () {
+      if (liveTerminalFor(s)) return;
+      chatComposer.closePopovers();
+      toast('Keys drive the live terminal: show Terminal once to connect it', '', { icon: 'keyboard' });
+    },
+  };
+}
+
+function bindComposer(s) {
+  if (!chatComposer) return;
+  chatComposer.reset();
+  const detached = s.kind === 'remote';
+  chatComposer.setPlaceholder(detached ? 'Message for the agent' : 'Message');
+  chatComposer.setKeys(chatKeys(s));
+  // The console-input gate (agents.py) holds back Send alone: a draft,
+  // dictation and attach still work for an agent never probed.
+  if (detachedSendRefused(s)) {
+    chatComposer.setSendable(false, 'No console input for this agent: sending is off');
+  } else {
+    chatComposer.setSendable(true);
+  }
+  chatComposer.setAvailability({
+    dictate: voiceDictationAvailable(),
+    ocr: !!(state.status && state.status.screenshot_ocr),
+  });
+}
+
+export function closeChatComposerPopovers() {
+  if (chatComposer) chatComposer.closePopovers();
 }
 
 // Load `s` into the chat pane. The overlay shell (visibility, title, body
@@ -502,12 +556,11 @@ async function sendFromTranscript(ev) {
 export function openChatPane(s) {
   if (!els.chatPane) return;
   if (view) window.clearTimeout(view.refreshTimer);
-  view = { session: s, cursor: null, loading: false, seq: 0, sending: false, refreshTimer: null };
+  view = { session: s, cursor: null, loading: false, seq: 0, refreshTimer: null };
   groupsHidden = true;
   syncGroups();
-  resetCompose();
+  bindComposer(s);
   els.chatNote.hidden = s.kind !== 'remote';
-  els.transcriptCompose.hidden = !canSendToDetached(s);
   loadNewest();
 }
 
@@ -519,9 +572,8 @@ export function closeChatPane() {
   view = null;
   if (!els.chatPane) return;
   els.transcriptList.innerHTML = '';
-  els.transcriptCompose.hidden = true;
   els.chatNote.hidden = true;
-  resetCompose();
+  if (chatComposer) chatComposer.reset();
   pinChatToKeyboard();
   hideState();
 }
@@ -530,8 +582,14 @@ export function wireChatPane() {
   if (!els.chatPane) return;
   syncGroups();
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
-  els.transcriptCompose.addEventListener('submit', sendFromTranscript);
-  els.transcriptComposeInput.addEventListener('input', growComposeInput);
+  chatComposer = mountComposer(els.chatComposeBar, {
+    placeholder: 'Message',
+    send: sendFromChat,
+    upload: uploadFromChat,
+    keys: null,
+    // Starting to talk silences any in-flight read-aloud (#190).
+    onDictationStart: stopReading,
+  });
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', pinChatToKeyboard);
     window.visualViewport.addEventListener('scroll', pinChatToKeyboard);
