@@ -10,7 +10,8 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { apiFailToast, authHeaders, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { ensureTerminalToken } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
 // The session overlay's two modes (#982). Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
@@ -405,8 +406,8 @@ export function openSessionRename(s, onDone) {
 }
 
 // Send from a session's Chat mode (issue #967 → #983). The chat pane's
-// composer posts to the same kind-agnostic /input route the Board drawer's
-// reply proxy uses: a PTY session submits with the host's framing, settle
+// composer and the Board drawer's (#984) post to the same kind-agnostic /input
+// route: a PTY session submits with the host's framing, settle
 // and ingest verification (#611/#760/#763); a detached session is typed into
 // its PC console by PID and can only ever answer ``delivered: "unconfirmed"``.
 // The gear menu's Send message dialog is gone — the composer covers both
@@ -423,12 +424,17 @@ export function detachedSendRefused(s) {
   return !!known && known.console_input === false;
 }
 
-export function sendSessionMessage(sid, text) {
+// /input is passkey-gated (middleware `_TERMINAL_GUARD_RULES`), so the
+// request carries the terminal token — without it a phone behind a configured
+// passkey gate gets a 401, which api() turns into the login overlay. Loopback
+// and an unconfigured gate resolve '' and the header is simply left off.
+export async function sendSessionMessage(sid, text) {
+  const tt = await ensureTerminalToken();
   return jsonApi(
     '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify({ data: text, submit: true }),
     }
   );
