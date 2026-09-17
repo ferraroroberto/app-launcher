@@ -66,6 +66,10 @@ _CODEX_FILE_RE = re.compile(
 )
 _CODEX_CWD_RE = re.compile(rb'"cwd"\s*:\s*"((?:\\.|[^"\\])*)"')
 _CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
+_PI_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
+# A Pi session id is a UUID; anything else is refused before it reaches
+# `glob`, where `*`/`?`/`[` would be pattern syntax rather than a literal.
+_PI_SID_RE = re.compile(r"^[0-9a-fA-F][0-9a-fA-F-]{7,63}$")
 
 
 def unavailable(reason: str) -> Dict[str, Any]:
@@ -231,6 +235,31 @@ def _find_codex_transcript(session: Dict[str, Any]) -> Optional[Path]:
     if len(candidates) > 1 and candidates[1][0] - candidates[0][0] < 1.0:
         return None
     return candidates[0][1]
+
+
+def find_pi_transcript(state_sid: str) -> Optional[Path]:
+    """The Pi history file for a state row keyed ``state_sid`` (#1013).
+
+    Pi's fleet ``session_state`` extension keys its row by **Pi's own
+    session uuid** and leaves ``transcript_path`` null, while Pi names the
+    file ``<start ISO ts>_<that same uuid>.jsonl`` under a per-cwd folder.
+    The uuid is therefore an exact key, so — unlike
+    :func:`_find_codex_transcript`, which has only cwd + launch time to go
+    on and must reason about slop windows — this needs no heuristic and no
+    reconstruction of Pi's cwd-to-folder name mangling: one glob across the
+    session folders answers it.
+
+    Fails the same way regardless: anything but exactly one match returns
+    ``None``, so the caller says "no transcript" rather than risking a
+    neighbouring session's text.
+    """
+    if not _PI_SID_RE.match(str(state_sid or "")):
+        return None
+    try:
+        matches = list(_PI_SESSIONS_DIR.glob(f"*/*_{state_sid}.jsonl"))
+    except OSError:
+        return None
+    return matches[0] if len(matches) == 1 else None
 
 
 def _codex_cwd(path: Path) -> str:

@@ -301,12 +301,15 @@ def test_detached_session_opens_in_chat_with_terminal_off(
 def test_reader_less_agent_opens_in_terminal_with_chat_off(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    # The list says this real PTY session belongs to Pi, an agent without a
-    # transcript reader: the deep link opens Terminal, Chat is off.
+    # The list says this real PTY session is an SSH one — an agent with no
+    # harness history at all: the deep link opens Terminal, Chat is off.
+    # (`ssh` on purpose rather than a coding agent: Pi gained a reader in
+    # #1013 and Antigravity/Copilot are next, so any of those would make
+    # this test assert something that is about to stop being true.)
     sid = launched_pty_session
     _mock_git_status(authed_page)
     _mock_sessions_list(authed_page, [
-        _session_row(sid, kind="pty", agent="pi", title="Pi demo"),
+        _session_row(sid, kind="pty", agent="ssh", title="SSH demo"),
     ])
     authed_page.goto(f"{base_url}/?session={sid}", wait_until="domcontentloaded")
     overlay = authed_page.locator("#terminalOverlay")
@@ -316,7 +319,13 @@ def test_reader_less_agent_opens_in_terminal_with_chat_off(
     expect(chat_seg).to_have_attribute("aria-disabled", "true")
     expect(authed_page.locator("#sessionModeTerminal")).not_to_have_attribute("aria-disabled", "true")
     chat_seg.click(force=True)  # see the detached test: a tap on aria-disabled
-    expect(authed_page.locator("#toast")).to_contain_text("No transcript reader for Pi")
+    # The reason, not the agent's display name: `agentLabel` reads
+    # `state.agents`, whose conservative fallback in `state.js` lists only the
+    # coding agents — so an `ssh` row renders "SSH" once `/api/agents` lands
+    # and the raw "ssh" before it. Asserting the label would make this test
+    # race that boot fetch (#510); the subject here is that Chat is off and
+    # says why.
+    expect(authed_page.locator("#toast")).to_contain_text("No transcript reader for")
     expect(overlay).to_have_attribute("data-mode", "terminal")
     # Its gear has Terminal but no Chat.
     authed_page.locator("#terminalBack").click()

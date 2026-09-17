@@ -8,13 +8,13 @@ plus a byte-offset cursor for the next older page. Source resolution is the
 same as the Board drawer's ``/exchange`` (#301): the history file the
 Board's claim walk assigns to this session-host id — Claude Code's hook
 JSONL, or Grok Build's ``updates.jsonl`` (#1012), both carried on the state
-row — else, for a Codex session, the rollout correlated by cwd + launch
-time. A session the claim walk gives no row answers ``no_transcript``
-rather than guessing a neighbour's file, so a harness that keeps one
-session folder per working directory (Grok does, including for directories
-that no longer exist) can never show another session's text. None of them
-read the launcher's PTY capture, so detached rows are served the same way
-(#966).
+row; a Pi session JSONL, named by the claimed row's own *key* (#1013);
+else, for a Codex session, the rollout correlated by cwd + launch time. A
+session the claim walk gives no row answers ``no_transcript`` rather than
+guessing a neighbour's file, so a harness that keeps one session folder per
+working directory (Grok does, including for directories that no longer
+exist) can never show another session's text. None of them read the
+launcher's PTY capture, so detached rows are served the same way (#966).
 Terminal-grade content, so it sits behind the Tailscale + passkey gate like
 ``/exchange`` — and so does its sibling below (``middleware.py``'s
 ``_TERMINAL_GUARD_RULES`` needs its own row per path shape; ``/transcript``'s
@@ -42,7 +42,7 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import APIRouter, Query, Request
 
 from src import board
-from src.board_exchange import _find_codex_transcript
+from src.board_exchange import _find_codex_transcript, find_pi_transcript
 from src.session_transcript import DEFAULT_LIMIT, MAX_LIMIT, entry_full_text, transcript_page
 from src.webapp_config import WebappConfig
 
@@ -56,7 +56,7 @@ router = APIRouter()
 # line grammars in `src.session_transcript.FLAVORS`; the client's own
 # availability list (`session-transcript.js`'s `TRANSCRIPT_AGENTS`) mirrors
 # the keys, so Chat mode is offered for exactly these agents.
-_FLAVOR_BY_AGENT = {"claude": "claude", "codex": "codex", "grok": "grok"}
+_FLAVOR_BY_AGENT = {"claude": "claude", "codex": "codex", "grok": "grok", "pi": "pi"}
 
 
 def _unavailable(sid: str, reason: str) -> Dict[str, Any]:
@@ -67,11 +67,22 @@ def _unavailable(sid: str, reason: str) -> Dict[str, Any]:
 
 
 def _resolve_path(
-    session: Dict[str, Any], row: Optional[Dict[str, Any]], flavor: str
+    session: Dict[str, Any],
+    row: Optional[Dict[str, Any]],
+    state_sid: Optional[str],
+    flavor: str,
 ) -> Optional[Path]:
-    """The history file for this session, or None when none is known."""
+    """The history file for this session, or None when none is known.
+
+    Three shapes, in decreasing directness: the row carries the path
+    (Claude, Grok); the row's own *key* is the harness's session id and
+    names the file (Pi, #1013); or nothing on the row helps and the file
+    has to be correlated by cwd + launch time (Codex).
+    """
     if flavor == "codex":
         return _find_codex_transcript(session)
+    if flavor == "pi":
+        return find_pi_transcript(str(state_sid or ""))
     raw = (row or {}).get("transcript_path")
     return Path(str(raw)) if raw else None
 
@@ -102,7 +113,13 @@ async def _resolve_source(
 
     flavor = _FLAVOR_BY_AGENT[agent]
     row = board.state_row_for_session(live, state["rows"], sid)
-    path = await asyncio.to_thread(_resolve_path, session, row, flavor)
+    # Pi's row identifies its history file by its own key rather than by a
+    # `transcript_path`, so that flavour alone needs the second lookup —
+    # the same in-memory claim walk, resolved to the same row.
+    state_sid = (
+        board.state_sid_for_session(live, state["rows"], sid) if flavor == "pi" else None
+    )
+    path = await asyncio.to_thread(_resolve_path, session, row, state_sid, flavor)
     if path is None or not path.is_file():
         return "no_transcript", None, None, agent
     return None, flavor, path, agent
