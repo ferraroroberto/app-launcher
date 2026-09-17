@@ -70,6 +70,24 @@ _PI_SESSIONS_DIR = Path.home() / ".pi" / "agent" / "sessions"
 # A Pi session id is a UUID; anything else is refused before it reaches
 # `glob`, where `*`/`?`/`[` would be pattern syntax rather than a literal.
 _PI_SID_RE = re.compile(r"^[0-9a-fA-F][0-9a-fA-F-]{7,63}$")
+_COPILOT_STATE_DIR = Path.home() / ".copilot" / "session-state"
+# Copilot's own session folder is created at launch, a little *after* the
+# launcher spawned it: measured at 3.71 s and 3.72 s on two launches here.
+# The window is wide enough to absorb a loaded box (16x the measured delay)
+# and narrow enough that two launches in one folder rarely both fall in it —
+# and when they do, `find_copilot_transcript` refuses rather than guesses.
+_COPILOT_START_SLOP_SECONDS = 60
+# Copilot stamps `created_at` from its own clock, so allow it to read a hair
+# before the launcher's `started_at` without disqualifying the folder.
+_COPILOT_CLOCK_SKEW_SECONDS = 5
+# `workspace.yaml` is ~500 bytes. Read bounded anyway, like every reader here.
+_COPILOT_YAML_CAP_BYTES = 64 * 1024
+# `\r` is matched explicitly on both sides: `re.M`'s `$` stops before a `\n`
+# but leaves a CRLF file's `\r` in the way, which would strand it inside the
+# captured `cwd` and block the `created_at` match outright. The real files
+# here are LF, but nothing about the format promises that.
+_COPILOT_CWD_RE = re.compile(r"^cwd:[ \t]*(.+?)[ \t\r]*$", re.M)
+_COPILOT_CREATED_RE = re.compile(r"^created_at:[ \t]*(\S+?)[ \t\r]*$", re.M)
 _AGY_ROOT = Path.home() / ".gemini" / "antigravity-cli"
 # Antigravity names a conversation directory by UUID; the strict shape keeps
 # a mangled cache key from being joined onto a path.
@@ -370,6 +388,91 @@ def find_antigravity_transcript(
             continue
         return path if written >= started - _AGY_MTIME_SLOP_SECONDS else None
     return None
+
+
+
+def _copilot_workspace(path: Path) -> Tuple[str, Optional[float]]:
+    """``(cwd, created_at epoch)`` from one Copilot ``workspace.yaml``.
+
+    Two flat scalars off the top of a ~500-byte file, read with a regex
+    rather than a YAML parser: the repo has no YAML dependency, and the two
+    keys wanted are unquoted one-line scalars. A file that is missing,
+    unreadable or malformed answers ``("", None)``, which no session matches.
+    """
+    try:
+        with path.open("rb") as fh:
+            raw = fh.read(_COPILOT_YAML_CAP_BYTES)
+    except OSError:
+        return "", None
+    text = raw.decode("utf-8", errors="replace")
+    cwd_match = _COPILOT_CWD_RE.search(text)
+    created_match = _COPILOT_CREATED_RE.search(text)
+    if not cwd_match or not created_match:
+        return "", None
+    try:
+        created = datetime.fromisoformat(
+            created_match.group(1).replace("Z", "+00:00")
+        ).timestamp()
+    except (TypeError, ValueError, OSError):
+        return "", None
+    return _normalize_dir(cwd_match.group(1)), created
+
+
+def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
+    """The Copilot CLI event log for a live session (#1015).
+
+    Copilot writes the launcher nothing: its hooks don't fire in the
+    interactive TUI, so there is no sessions-state row, and a grep of a
+    launcher-spawned session's whole log for the launcher's own session id
+    finds zero hits. What it *does* write, at launch and before any prompt,
+    is a per-session folder holding ``workspace.yaml`` with the two fields
+    this correlates on — ``cwd`` and ``created_at``.
+
+    So this is the launch-window match ``_find_codex_transcript`` makes,
+    against the harness's own sidecar rather than a filename: a folder
+    qualifies when its ``cwd`` is this session's ``project_dir`` and its
+    ``created_at`` falls within :data:`_COPILOT_START_SLOP_SECONDS` after
+    the session's ``started_at`` (measured: 3.71 s and 3.72 s).
+
+    It fails safe the way every flavour here does — **anything other than
+    exactly one qualifying folder returns ``None``**, so the caller answers
+    "no transcript" rather than risking a neighbouring session's text. Two
+    sessions launched in one folder inside the window are ambiguous by
+    construction and both refuse; being *outside* each other's window is
+    what makes the ordinary case unambiguous, not a tie-break.
+
+    A qualifying folder whose ``events.jsonl`` does not exist yet also
+    answers ``None`` — Copilot creates that file at the first prompt, so a
+    session nobody has typed into genuinely has no transcript. Older
+    sessions on this box keep a ``session.db`` instead (28 of 71) and are
+    refused by the same check.
+
+    Cost: one bounded read of every session folder's sidecar — 71 files of
+    ~500 bytes here. Chat mode has no periodic refresh (#982), so this runs
+    on opening the pane and on Reload, not on a timer.
+    """
+    project_dir = _normalize_dir(session.get("project_dir"))
+    started = _started_epoch(session)
+    if not project_dir or started is None:
+        return None
+    try:
+        workspaces = list(_COPILOT_STATE_DIR.glob("*/workspace.yaml"))
+    except OSError:
+        return None
+
+    matches: List[Path] = []
+    for workspace in workspaces:
+        cwd, created = _copilot_workspace(workspace)
+        if created is None or cwd != project_dir:
+            continue
+        delta = created - started
+        if -_COPILOT_CLOCK_SKEW_SECONDS <= delta <= _COPILOT_START_SLOP_SECONDS:
+            matches.append(workspace.parent / "events.jsonl")
+        if len(matches) > 1:
+            return None
+    if len(matches) != 1 or not matches[0].is_file():
+        return None
+    return matches[0]
 
 
 def _codex_cwd(path: Path) -> str:

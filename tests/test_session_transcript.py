@@ -1182,6 +1182,386 @@ def _live(sid: str = "s1", **extra: Any) -> Dict[str, Any]:
     return row
 
 
+
+# ------------------------------------------------------- copilot_entries
+
+COPILOT_CAPTURE = Path(__file__).parent / "fixtures" / "copilot_events.jsonl"
+
+
+def _cop(kind: str, data: Dict[str, Any], ts: str = "2026-09-17T21:58:00.000Z",
+         **extra: Any) -> Dict[str, Any]:
+    row = {"type": kind, "data": data, "id": "e1", "parentId": None, "timestamp": ts}
+    row.update(extra)
+    return row
+
+
+def test_copilot_entries_grammar_from_capture():
+    """The real capture, parsed whole: the grammar and the turn order.
+
+    Pins what the issue could not know without a capture — the tool records
+    are their own ``tool.execution_*`` event pair carrying an exact
+    ``toolCallId``, not the ``toolRequests`` array the issue pointed at, and
+    a tool-calling ``assistant.message`` has no text of its own.
+    """
+    entries = _parse_whole(COPILOT_CAPTURE, st.copilot_entries)
+    assert _kinds(entries) == [
+        "system",                                     # the refused --model flag
+        "user", "tool_call", "assistant",
+        "user", "thinking", "tool_call", "assistant",
+        "user", "thinking", "assistant",
+    ]
+    # The launcher's model flag is rejected at startup (#1017) — folded, not
+    # dropped, so the reason is visible rather than mysterious.
+    assert entries[0]["label"] == "model"
+    assert "is not available" in entries[0]["text"]
+    assert entries[1]["text"].startswith("Run the shell command: git rev-parse")
+    # The call: name and arguments come from `tool.execution_start`, and the
+    # result is paired back by its exact id.
+    assert entries[2]["name"] == "powershell"
+    assert entries[2]["summary"] == "git rev-parse --short HEAD"
+    assert entries[2]["result"].startswith("d9580a3")
+    assert entries[3]["text"] == "d9580a3"
+    # A tool call always precedes the reply that reports it: the call is
+    # written on a later line than the assistant message that requested it,
+    # so no answer is ever hoisted above its own call (#1012's trap). Read
+    # from the raw builder — `_page` strips `offset` off the folded kinds.
+    raw = st.copilot_entries(_lines_of(COPILOT_CAPTURE))
+    call, reply = raw[2], raw[3]
+    assert call["kind"] == "tool_call" and reply["kind"] == "assistant"
+    assert call["offset"] < reply["offset"]
+    # A command that exits 1 is still `success: true` — the tool ran fine
+    # (#1020). The exit-code footer is the only signal there is, so it stays.
+    assert entries[6]["summary"] == "git rev-parse --short NO_SUCH_REF_xyz"
+    assert "exit code 1" in entries[6]["result"]
+    assert entries[7]["text"] == "fatal: Needed a single revision"
+    assert entries[10]["text"].count("\n\n") == 2       # the multi-paragraph reply
+
+
+def test_copilot_plumbing_never_reaches_a_card():
+    """The three families that would wreck the view if a reader guessed.
+
+    Each marker is a real record in the capture, so this fails the moment
+    the parser starts matching loosely rather than on exact event types.
+    """
+    entries = _parse_whole(COPILOT_CAPTURE, st.copilot_entries)
+    blob = json.dumps(entries)
+    # 1. The system prompt: one ~87 KB line in the real log.
+    assert "SYSTEM_PROMPT_MUST_NEVER_RENDER" not in blob
+    # 2. `model.*` bookkeeping re-serialises the whole conversation on every
+    #    model call — rendering it would multiply every turn.
+    assert "DUPLICATE_MUST_NEVER_RENDER" not in blob
+    # 3. `encryptedContent` / `reasoningOpaque` / `reasoningBlocks` are
+    #    provider blobs; a card must never show a screenful of base64.
+    assert "OPAQUE_MUST_NEVER_RENDER" not in blob
+    # Exactly one tool card per call — `toolRequests` on the assistant
+    # message is the same call again and must not double it.
+    assert _kinds(entries).count("tool_call") == 2
+
+
+def test_copilot_user_prompt_is_the_typed_text_not_the_wrapped_one(tmp_path: Path):
+    """``content`` is what the user typed; ``transformedContent`` is the same
+    text wrapped in a ``<current_datetime>`` block for the model."""
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("user.message", {
+            "content": "say hi",
+            "transformedContent": "<current_datetime>2026-09-17T19:24:03+02:00"
+                                  "</current_datetime>\n\nsay hi",
+        }),
+    ])
+    entries = _parse_whole(path, st.copilot_entries)
+    assert [e["text"] for e in entries] == ["say hi"]
+
+
+def test_copilot_tool_results_pair_by_id_and_orphans_stand_alone(tmp_path: Path):
+    """``toolCallId`` is exact, so interleaved calls pair correctly and a
+    result whose call fell off the page stands alone rather than mis-pairing.
+    """
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("tool.execution_start", {"toolCallId": "a", "toolName": "view",
+                                      "arguments": {"path": "one.txt"}}),
+        _cop("tool.execution_start", {"toolCallId": "b", "toolName": "view",
+                                      "arguments": {"path": "two.txt"}}),
+        # Answered out of order: the ids, not the order, decide the pairing.
+        _cop("tool.execution_complete", {"toolCallId": "b", "success": True,
+                                         "result": {"content": "two body"}}),
+        _cop("tool.execution_complete", {"toolCallId": "a", "success": True,
+                                         "result": {"content": "one body"}}),
+        _cop("tool.execution_complete", {"toolCallId": "gone", "success": True,
+                                         "result": {"content": "orphan body"}}),
+    ])
+    entries = _parse_whole(path, st.copilot_entries)
+    assert _kinds(entries) == ["tool_call", "tool_call", "tool_result"]
+    assert entries[0]["summary"] == "one.txt" and entries[0]["result"] == "one body"
+    assert entries[1]["summary"] == "two.txt" and entries[1]["result"] == "two body"
+    assert entries[2]["text"] == "orphan body" and entries[2]["tool_use_id"] == "gone"
+
+
+def test_copilot_result_prefers_content_over_detailed_and_placeholders_binary(
+    tmp_path: Path,
+):
+    """``content`` and ``detailedContent`` are different views, not a
+    short/long pair: on the three completions here where they differ,
+    ``content`` was the tool output the model saw. A non-textual result
+    becomes a placeholder instead of a dump."""
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("tool.execution_start", {"toolCallId": "a", "toolName": "view",
+                                      "arguments": {"path": "f"}}),
+        _cop("tool.execution_complete", {"toolCallId": "a", "success": True,
+                                         "result": {"content": "the file body",
+                                                    "detailedContent": "a diff of it"}}),
+        _cop("tool.execution_start", {"toolCallId": "b", "toolName": "view",
+                                      "arguments": {"path": "g"}}),
+        _cop("tool.execution_complete", {"toolCallId": "b", "success": True,
+                                         "result": {"detailedContent": "only detailed"}}),
+        _cop("tool.execution_start", {"toolCallId": "c", "toolName": "screenshot",
+                                      "arguments": {"path": "h"}}),
+        _cop("tool.execution_complete", {"toolCallId": "c", "success": True,
+                                         "result": {"image": {"bytes": 1}}}),
+    ])
+    entries = _parse_whole(path, st.copilot_entries)
+    assert entries[0]["result"] == "the file body"
+    assert entries[1]["result"] == "only detailed"          # fallback
+    assert entries[2]["result"] == "[non-text result]"      # never a repr dump
+
+
+def test_copilot_readable_thinking_folds_and_opaque_reasoning_does_not(tmp_path: Path):
+    """``reasoningText`` is prose and folds as ``thinking``; the three
+    encrypted neighbours are never read at all."""
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("assistant.message", {
+            "content": "the answer",
+            "reasoningText": "  weighing the options  ",
+            "reasoningOpaque": "AAAABBBBCCCC",
+            "encryptedContent": "DDDDEEEEFFFF",
+            "reasoningBlocks": {"blocks": [{"encrypted_content": "GGGGHHHH"}]},
+            "apiCallId": "IIIIJJJJ",
+        }),
+    ])
+    entries = _parse_whole(path, st.copilot_entries)
+    assert _kinds(entries) == ["thinking", "assistant"]
+    assert entries[0]["text"] == "weighing the options"
+    blob = json.dumps(entries)
+    for opaque in ("AAAABBBB", "DDDDEEEE", "GGGGHHHH", "IIIIJJJJ"):
+        assert opaque not in blob
+
+
+def test_copilot_timestamps_are_the_envelope_iso_string(tmp_path: Path):
+    """ISO-8601 on the event envelope, passed through untouched — the
+    client's ``new Date`` reads it, so no turn renders as 1970 (#1012)."""
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("user.message", {"content": "hi"}, ts="2026-09-17T21:58:01.005Z"),
+    ])
+    entries = _parse_whole(path, st.copilot_entries)
+    assert entries[0]["timestamp"] == "2026-09-17T21:58:01.005Z"
+
+
+def _copilot_conversation(turns: int) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for i in range(turns):
+        rows.append(_cop("user.message", {"content": f"prompt {i} " + "p" * i}))
+        # The real log's dominant weight: bookkeeping between every turn.
+        rows.append(_cop("model.messages_snapshot",
+                         {"messages": [{"role": "user", "content": "noise " * 8}]}))
+        rows.append(_cop("assistant.message",
+                         {"content": "", "toolRequests": [{"toolCallId": f"c{i}"}]}))
+        rows.append(_cop("tool.execution_start", {"toolCallId": f"c{i}",
+                                                  "toolName": "powershell",
+                                                  "arguments": {"command": f"cmd {i}"}}))
+        rows.append(_cop("tool.execution_complete", {"toolCallId": f"c{i}",
+                                                     "success": True,
+                                                     "result": {"content": f"out {i}"}}))
+        rows.append(_cop("assistant.message", {"content": f"answer {i}",
+                                               "phase": "final_answer"}))
+    return rows
+
+
+def test_copilot_pages_concatenate_across_window_boundaries(tmp_path: Path, monkeypatch):
+    """Every page, oldest-first, equals one whole parse — nothing split or
+    duplicated when the window edge lands mid-turn."""
+    monkeypatch.setattr(st, "WINDOW_BYTES", 400)
+    path = _write_jsonl(tmp_path / "cop.jsonl", _copilot_conversation(20))
+    pages = _walk(path, 4, flavor="copilot")
+    assert len(pages) > 1
+    assert [e for page in reversed(pages) for e in page] == _parse_whole(
+        path, st.copilot_entries
+    )
+
+
+def test_copilot_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
+    """A truncated turn reads back whole — what Chat's copy (#985) and
+    read-aloud (#988) call when a page entry came back ``truncated``."""
+    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    long_reply = "paragraph one. " * 40
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("user.message", {"content": "ask"}),
+        _cop("assistant.message", {"content": long_reply, "reasoningText": "brief"}),
+    ])
+    page = st.transcript_page(path, flavor="copilot")
+    reply = [e for e in page["entries"] if e["kind"] == "assistant"][0]
+    assert reply["truncated"] is True and len(reply["text"]) == 40
+    full = st.entry_full_text(path, reply["offset"], "copilot")
+    assert full["text"] == long_reply.strip() and full["truncated"] is False
+    assert st.entry_full_text(path, 3, "copilot") is None       # mid-line
+    assert st.entry_full_text(path, 99_999, "copilot") is None  # past EOF
+
+
+def test_copilot_huge_plumbing_line_does_not_break_paging(tmp_path: Path, monkeypatch):
+    """A single ``system.message`` reached 87 KB in the capture — wider than
+    a window once ``WINDOW_BYTES`` is small. The page widens in place rather
+    than tearing it, and the turns around it still read whole."""
+    monkeypatch.setattr(st, "WINDOW_BYTES", 400)
+    path = _write_jsonl(tmp_path / "cop.jsonl", [
+        _cop("user.message", {"content": "ask"}),
+        _cop("system.message", {"role": "system", "content": "S" * 5_000}),
+        _cop("assistant.message", {"content": "answer", "phase": "final_answer"}),
+    ])
+    page = st.transcript_page(path, flavor="copilot")
+    assert _kinds(page["entries"]) == ["user", "assistant"]
+    assert page["entries"][1]["text"] == "answer"
+
+
+# -------------------------------------------- copilot source correlation
+
+
+def _copilot_session_dir(root: Path, folder: str, cwd: str, created: str,
+                       *, events: bool = True) -> Path:
+    """One Copilot session folder, as the harness lays it out at launch."""
+    session = root / folder
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "workspace.yaml").write_text(
+        "id: {0}\ncwd: {1}\ngit_root: {1}\nclient_name: github/cli\n"
+        "created_at: {2}\nupdated_at: {2}\n".format(folder, cwd, created),
+        encoding="utf-8",
+    )
+    events_path = session / "events.jsonl"
+    if events:
+        events_path.write_text("{}\n", encoding="utf-8")
+    return events_path
+
+
+def _copilot_session(**extra: Any) -> Dict[str, Any]:
+    # 2026-09-17T21:57:30.465Z, the capture's own launch instant.
+    row = {"session_id": "s1", "agent": "copilot", "alive": True,
+           "project_dir": r"E:\work\project", "started_at": 1_789_682_250.465}
+    row.update(extra)
+    return row
+
+
+def test_find_copilot_transcript_matches_cwd_and_launch_window(tmp_path: Path, monkeypatch):
+    """Copilot writes the launcher nothing — no sessions-state row, and its
+    own log never contains the launcher's session id — so the correlation is
+    its ``workspace.yaml`` sidecar: this folder's ``cwd``, created inside the
+    launch window. Measured on two real launches: 3.71 s and 3.72 s after
+    ``started_at`` (#1015 capture)."""
+    from src import board_exchange
+
+    wanted = _copilot_session_dir(
+        tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
+        r"E:\work\project", "2026-09-17T21:57:34.176Z",
+    )
+    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    assert board_exchange.find_copilot_transcript(_copilot_session()) == wanted
+    # Neither the separator nor the case of the harness's own spelling has
+    # to match the session's.
+    assert board_exchange.find_copilot_transcript(
+        _copilot_session(project_dir="e:/work/project/")
+    ) == wanted
+    # A different folder is not this session's conversation.
+    assert board_exchange.find_copilot_transcript(
+        _copilot_session(project_dir=r"E:\work\other")
+    ) is None
+    # A session launched long before this folder existed is not its owner.
+    assert board_exchange.find_copilot_transcript(
+        _copilot_session(started_at=1_789_600_000.0)
+    ) is None
+    # Nor one launched *after* it: the folder is created at launch, so a
+    # later session's folder is a different one.
+    assert board_exchange.find_copilot_transcript(
+        _copilot_session(started_at=1_789_682_400.0)
+    ) is None
+
+
+def test_find_copilot_transcript_refuses_two_candidates_in_one_window(
+    tmp_path: Path, monkeypatch
+):
+    """Two sessions started in one folder inside the window are ambiguous by
+    construction — the sidecar says which folder, never which session — so
+    both refuse rather than risk showing the other's conversation, the rule
+    ``_find_codex_transcript`` follows."""
+    from src import board_exchange
+
+    _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000001",
+                       r"E:\work\project", "2026-09-17T21:57:34.176Z")
+    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    assert board_exchange.find_copilot_transcript(_copilot_session()) is not None
+    # A second launch in the same folder, 20 s later — still inside the
+    # window, so neither folder can be claimed.
+    _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000002",
+                       r"E:\work\project", "2026-09-17T21:57:54.176Z")
+    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    # A same-folder session outside the window does not make the first
+    # ambiguous — which is what keeps the ordinary case answerable.
+    for stale in tmp_path.glob("aaaaaaaa-0000-0000-0000-000000000002/*"):
+        stale.unlink()
+    _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000003",
+                       r"E:\work\project", "2026-09-17T22:05:00.000Z")
+    assert board_exchange.find_copilot_transcript(_copilot_session()) is not None
+
+
+def test_find_copilot_transcript_needs_an_events_file(tmp_path: Path, monkeypatch):
+    """The folder and its sidecar are written at launch, ``events.jsonl``
+    only at the first prompt — so a session nobody has typed into has no
+    transcript, and neither do the 28 of 71 older sessions here that kept a
+    ``session.db`` instead."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    events = _copilot_session_dir(
+        tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
+        r"E:\work\project", "2026-09-17T21:57:34.176Z", events=False,
+    )
+    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    events.write_text("{}\n", encoding="utf-8")
+    assert board_exchange.find_copilot_transcript(_copilot_session()) == events
+
+
+def test_find_copilot_transcript_survives_a_damaged_sidecar(tmp_path: Path, monkeypatch):
+    """A folder whose ``workspace.yaml`` is missing, unparseable or lacks the
+    two keys matches nothing — it must not raise, and must not swallow the
+    real match sitting beside it."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    (tmp_path / "broken").mkdir()
+    (tmp_path / "broken" / "workspace.yaml").write_text(
+        "cwd: E:\\work\\project\ncreated_at: not-a-timestamp\n", encoding="utf-8"
+    )
+    (tmp_path / "keyless").mkdir()
+    (tmp_path / "keyless" / "workspace.yaml").write_text("id: x\n", encoding="utf-8")
+    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    wanted = _copilot_session_dir(
+        tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
+        r"E:\work\project", "2026-09-17T21:57:34.176Z",
+    )
+    assert board_exchange.find_copilot_transcript(_copilot_session()) == wanted
+
+
+def test_find_copilot_transcript_needs_a_dir_and_a_start(tmp_path: Path, monkeypatch):
+    """A session row missing either half of the correlation answers None
+    rather than scanning for a best guess."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    _copilot_session_dir(tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
+                       r"E:\work\project", "2026-09-17T21:57:34.176Z")
+    assert board_exchange.find_copilot_transcript(_copilot_session(project_dir="")) is None
+    assert board_exchange.find_copilot_transcript(_copilot_session(started_at=None)) is None
+    # An ISO `started_at` (a row read back from JSON state) works too.
+    assert board_exchange.find_copilot_transcript(
+        _copilot_session(started_at="2026-09-17T21:57:30.465Z")
+    ) is not None
+
+
 class TestTranscriptEndpoint:
 
     def test_unknown_session(self, webapp_client, _bypass_gate):
@@ -1252,6 +1632,35 @@ class TestTranscriptEndpoint:
         assert body["available"] is False and body["reason"] == "no_transcript"
         assert body["entries"] == []
 
+    def test_copilot_row_reads_its_event_log(
+        self, webapp_client, _bypass_gate, monkeypatch
+    ):
+        """A Copilot session has no state row either — its hooks do not fire
+        in the interactive TUI — so the route correlates its event log from
+        the filesystem and reports its own source name rather than falling
+        through to Codex's."""
+        from app.webapp.routers import session_transcript as router_mod
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live(agent="copilot")]
+        monkeypatch.setattr(
+            router_mod, "find_copilot_transcript", lambda session: COPILOT_CAPTURE,
+        )
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "copilot"
+        assert [e["kind"] for e in body["entries"]][:3] == ["system", "user", "tool_call"]
+        entry = [e for e in body["entries"] if e["kind"] == "assistant"][-1]
+        full = client.get(
+            f"/api/claude-code/sessions/s1/transcript/entry?offset={entry['offset']}"
+        ).json()
+        assert full["available"] is True
+        assert full["text"].startswith("Bounded file reading keeps log viewers")
+        # An ambiguous correlation (two sessions launched in one folder inside
+        # the window) is "no transcript", never a neighbour's conversation.
+        monkeypatch.setattr(router_mod, "find_copilot_transcript", lambda session: None)
+        assert client.get(
+            "/api/claude-code/sessions/s1/transcript"
+        ).json()["reason"] == "no_transcript"
+
     def test_antigravity_row_reads_its_conversation_log(
         self, webapp_client, _bypass_gate, monkeypatch
     ):
@@ -1285,10 +1694,10 @@ class TestTranscriptEndpoint:
         ).json()["reason"] == "no_transcript"
 
     # `ssh` on purpose: it is the one registered agent that is not a coding
-    # harness and so will never have a history file, unlike Copilot (#1015)
-    # which is getting a reader next — that lane would otherwise have to
-    # repoint these two tests again, as #1013 had to when Pi stopped being
-    # unsupported.
+    # harness and so will never have a history file. Every coding agent the
+    # launcher hosts now has a reader (#1015 was the last), so picking one of
+    # them here would mean repointing these two tests again, as #1013 had to
+    # when Pi stopped being unsupported.
     def test_detached_unsupported_agent(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_live(kind="remote", agent="ssh")]
