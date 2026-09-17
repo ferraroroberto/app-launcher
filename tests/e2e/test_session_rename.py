@@ -361,8 +361,9 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     # drawer-actions row overflow past its own column — the empty "Your
     # turn" column (stretched tall by CSS Grid's default row `align-items:
     # stretch` once the drawer expands its sibling) then won by paint order
-    # and swallowed the click. `flex-wrap` on `.board-drawer-actions` keeps
-    # the row inside its own column at every width in this range.
+    # and swallowed the click. The 4-column `minmax(0, 1fr)` grid on
+    # `.board-drawer-actions` (#984) keeps the row inside its own column at
+    # every width in this range.
     captured: dict = {}
     _mock_board(authed_page)
     _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)

@@ -6,7 +6,8 @@ per-column counts (with the Your-turn attention highlight), the ↻ button
 POSTs the gh refresh, and the phone projection lays the columns out as a
 one-column-per-viewport carousel while desktop gets the five-column grid.
 The #302 dispatch bar POSTs {repo, goal, mode} and keeps its goal for rapid
-multi-dispatch, and the dictation mics (dispatch bar + drawer reply box)
+multi-dispatch, and the dictation mics (dispatch bar + the drawer's shared
+composer, #984)
 render when the server reports voice dictation available. Hermetic — the
 board API is route-mocked like the Jobs / Life OS e2e tests.
 
@@ -458,7 +459,8 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     authed_page: Page, base_url: str
 ) -> None:
     """#301: tapping a session card opens the drawer with the last exchange;
-    ➤ posts the reply body {data, submit: true} to the input proxy."""
+    the shared composer's ➤ (#984) posts the reply body {data, submit: true}
+    to the input proxy."""
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
@@ -502,8 +504,8 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
         "drawer must span the card's width"
     )
 
-    authed_page.locator(".board-reply-input").fill("go ahead")
-    authed_page.locator(".board-reply-send").click()
+    drawer.locator(".composer-input").fill("go ahead")
+    drawer.locator(".composer-send").click()
     authed_page.wait_for_timeout(500)
 
     assert captured.get("method") == "POST"
@@ -534,8 +536,8 @@ def test_board_reply_optimistically_moves_card_off_your_turn(
     authed_page.locator(
         '.board-list[data-col="your_turn"] li.board-item'
     ).first.locator("button.board-card").click()
-    authed_page.locator(".board-reply-input").fill("go ahead")
-    authed_page.locator(".board-reply-send").click()
+    authed_page.locator(".board-drawer .composer-input").fill("go ahead")
+    authed_page.locator(".board-drawer .composer-send").click()
 
     # Immediate — no fetchBoard() round trip needed to see this.
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
@@ -1090,8 +1092,8 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
     authed_page: Page, base_url: str
 ) -> None:
     """#302: with the server reporting voice dictation available (and
-    MediaRecorder present), the 🎤 shows on the dispatch bar and inside the
-    drawer's reply row."""
+    MediaRecorder present), the 🎤 shows on the dispatch bar and, enabled,
+    in the drawer's shared composer (#984)."""
     # voiceAvailable() also needs window.MediaRecorder, absent in headless
     # WebKit — a bare stub is enough (presence check only, no recording).
     authed_page.add_init_script(
@@ -1119,17 +1121,18 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
     ).first.locator("button.board-card").click()
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
-    expect(drawer.locator(".board-reply-record")).to_be_visible()
+    expect(drawer.locator(".composer-mic")).to_be_visible()
+    expect(drawer.locator(".composer-mic")).to_be_enabled()
 
 
-def test_board_drawer_rename_first_icon_only_and_stop_kills_session(
+def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
     authed_page: Page, base_url: str
 ) -> None:
-    """#496 item 5 (+ round-2 on-device feedback): the reply box takes a
-    full line of its own; the buttons form one right-aligned row of
-    canonical 44px targets ordered Rename → Stop → Terminal (Terminal
-    last); and the Stop button kills a live PTY session via the unified
-    stop path (#253: POST .../stop {mode: 'quit'}), closing the drawer."""
+    """#984 (mockup screen 8): under the shared composer the drawer lays out
+    one row of four equal buttons — Rename · Stop · Chat · Terminal, each a
+    glyph over its label at the 44px floor, Terminal last (#496 round 2) —
+    and Stop kills the session via the unified stop path (#253: POST
+    .../stop {mode: 'quit'}), closing the drawer."""
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
@@ -1154,76 +1157,159 @@ def test_board_drawer_rename_first_icon_only_and_stop_kills_session(
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
 
+    composer = drawer.locator(".board-drawer-composer")
+    expect(composer.locator(".composer-input")).to_be_visible()
     actions = drawer.locator(".board-drawer-actions")
-    rename = actions.locator(".board-rename-btn")
-    terminal = actions.locator(".board-open-terminal")
-    stop = actions.locator(".board-stop-btn")
-    expect(rename).to_be_visible()
-    expect(terminal).to_be_visible()
-    expect(stop).to_be_visible()
+    buttons = actions.locator(":scope > button")
+    expect(buttons).to_have_count(4)
+    order = ["board-rename-btn", "board-stop-btn", "board-open-chat", "board-open-terminal"]
+    labels = ["Rename", "Stop", "Chat", "Terminal"]
+    for i, (cls, label) in enumerate(zip(order, labels)):
+        expect(buttons.nth(i)).to_have_class(re.compile(r"\b" + cls + r"\b"))
+        expect(buttons.nth(i)).to_have_text(label)
+        # A full-control Claude session can take every action.
+        expect(buttons.nth(i)).not_to_have_attribute("aria-disabled", "true")
+    expect(buttons.nth(0)).to_have_attribute("aria-label", "Rename this session")
 
-    # Rename is icon-only (pencil glyph, no text label) but keeps its
-    # accessible name.
-    assert rename.inner_text().strip() == "", "Rename must be icon-only"
-    expect(rename).to_have_attribute("aria-label", "Rename this session")
-
-    # DOM order (#496 round 2): Rename → Stop → Terminal, Terminal LAST.
-    order = actions.evaluate(
-        "el => Array.from(el.children).map(c => c.className)"
+    # The composer sits above the action row, and the four buttons are equal
+    # columns of one row at the 44px floor. Raw geometry on a Board node goes
+    # through stable_read (#680).
+    box_composer = stable_read(composer.bounding_box)
+    box_actions = stable_read(actions.bounding_box)
+    assert box_composer and box_actions, "drawer not laid out"
+    assert box_actions["y"] >= box_composer["y"] + box_composer["height"] - 2, (
+        "the action row must sit below the composer"
     )
-    idx_rename = next(i for i, c in enumerate(order) if "board-rename-btn" in c)
-    idx_terminal = next(i for i, c in enumerate(order) if "board-open-terminal" in c)
-    idx_stop = next(i for i, c in enumerate(order) if "board-stop-btn" in c)
-    assert idx_rename < idx_stop < idx_terminal, (
-        f"drawer action order wrong (want rename < stop < terminal): {order}"
-    )
-    assert "board-open-terminal" in order[-1], (
-        f"Terminal must be the last button in the row: {order}"
-    )
-
-    # The reply box owns a full line; every button sits BELOW it, and the
-    # row right-aligns (#496 round 2). The send button doubles as the
-    # left-most fixed reference for the 44px sweep below.
-    reply = actions.locator(".board-reply-input")
-    send = actions.locator(".board-reply-send")
-    box_actions = actions.bounding_box()
-    box_reply = reply.bounding_box()
-    assert box_actions and box_reply, "drawer actions not laid out"
-    assert box_reply["width"] >= box_actions["width"] * 0.9, (
-        f"reply box must span its own full line: {box_reply['width']} of "
-        f"{box_actions['width']}"
-    )
-    box_terminal = terminal.bounding_box()
-    assert box_terminal, "terminal button not laid out"
-    assert box_terminal["y"] >= box_reply["y"] + box_reply["height"] - 2, (
-        "buttons must sit on their own row below the reply box"
-    )
-    actions_right = box_actions["x"] + box_actions["width"]
-    terminal_right = box_terminal["x"] + box_terminal["width"]
-    assert actions_right - terminal_right <= 8, (
-        f"button row must right-align: row right {actions_right}, "
-        f"last button right {terminal_right}"
-    )
-
-    # 44px canonical footprint on every drawer button (#496 item 6 +
-    # round 2: the mic was the one visibly smaller straggler). The mic
-    # only renders when voice dictation is available, so probe it softly.
-    sized = [rename, terminal, stop, send]
-    mic = actions.locator(".board-reply-record")
-    if mic.count():
-        sized.append(mic)
-    for btn in sized:
-        box = btn.bounding_box()
-        assert box and box["height"] >= 44 and box["width"] >= 44, (
+    boxes = [stable_read(buttons.nth(i).bounding_box) for i in range(4)]
+    assert all(boxes), f"drawer buttons not laid out: {boxes}"
+    widths = [b["width"] for b in boxes]
+    assert max(widths) - min(widths) <= 1, f"drawer buttons not equal width: {widths}"
+    assert len({round(b["y"]) for b in boxes}) == 1, f"drawer buttons not one row: {boxes}"
+    for box in boxes:
+        assert box["height"] >= 44 and box["width"] >= 44, (
             f"drawer button under the 44px floor: {box}"
         )
+    assert box_actions["x"] + box_actions["width"] >= boxes[3]["x"] + boxes[3]["width"] - 1, (
+        "the action row must stay inside the drawer"
+    )
 
-    stop.click()
+    buttons.nth(1).click()
     authed_page.wait_for_timeout(500)
     assert captured.get("method") == "POST"
     assert captured.get("body") == {"mode": "quit"}
     # The drawer closes (boardExpanded cleared + re-render).
     expect(drawer).to_be_hidden()
+
+
+def _detached_board_payload() -> dict:
+    payload = _board_payload()
+    payload["columns"]["your_turn"] = [{
+        "session_id": "s-remote", "kind": "remote", "agent": "claude",
+        "project_dir": "E:/automation/whatsapp-radar", "name": "whatsapp-radar",
+        "alive": True, "started_at": "2026-07-02T11:30:00Z",
+        "live_title": "detached console", "prompt_title": "",
+        "project": "whatsapp-radar", "status": "awaiting-input", "age_seconds": 660,
+    }]
+    return payload
+
+
+def test_board_drawer_detached_session_sends_through_the_shared_composer(
+    authed_page: Page, base_url: str
+) -> None:
+    """#984: a detached (remote) card gets the same composer as a full-control
+    one — before, the drawer offered no reply at all. ➤ Send posts to the
+    kind-agnostic /input route and the toast keeps the detached "Sent, not
+    confirmed" wording (sessions.js::sendOutcome). ⌨ keys are disabled with
+    the way to get them; Terminal stays in the row, aria-disabled, and a tap
+    toasts why; Stop and Chat stay available."""
+    _mock_board(authed_page, _detached_board_payload())
+    _mock_exchange(authed_page, sid="s-remote")
+
+    captured: dict = {}
+
+    def _capture_input(route):
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "delivered": "unconfirmed"}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-remote/input$"), _capture_input
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+
+    composer = drawer.locator(".board-drawer-composer")
+    keys = composer.locator(".composer-keys")
+    expect(keys).to_be_disabled()
+    expect(keys).to_have_attribute("title", "Open the terminal for keys")
+
+    terminal = drawer.locator(".board-open-terminal")
+    expect(terminal).to_have_attribute("aria-disabled", "true")
+    expect(drawer.locator(".board-stop-btn")).not_to_have_attribute("aria-disabled", "true")
+    expect(drawer.locator(".board-open-chat")).not_to_have_attribute("aria-disabled", "true")
+    # aria-disabled keeps the tap reachable (it toasts the reason), but
+    # Playwright treats it as not enabled, hence force (#982's gotcha).
+    terminal.click(force=True)
+    expect(authed_page.locator("#toast")).to_contain_text("Detached session — no terminal")
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+
+    composer.locator(".composer-input").fill("carry on")
+    composer.locator(".composer-send").click()
+    expect(authed_page.locator("#toast")).to_contain_text(
+        "Sent, not confirmed: typed into the PC console"
+    )
+    assert captured.get("body") == {"data": "carry on", "submit": True}
+    expect(drawer).to_be_hidden()
+
+
+def test_board_drawer_chat_opens_chat_mode_for_the_same_session(
+    authed_page: Page, base_url: str
+) -> None:
+    """#984: the drawer's Chat button opens the session overlay in Chat mode
+    (#982) for the card's own session, closing the drawer."""
+    _mock_board(authed_page)
+    _mock_exchange(authed_page)
+    transcript_calls: list = []
+
+    def _transcript(route):
+        transcript_calls.append(route.request.url)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": True, "source": "native", "reason": None,
+                "session_id": "s-wait", "next_cursor": None,
+                "entries": [
+                    {"kind": "assistant", "timestamp": "2026-07-02T11:59:00Z",
+                     "text": "Merge fixed", "truncated": False, "sidechain": False},
+                ],
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/transcript(\?.*)?$"), _transcript
+    )
+
+    _open_board(authed_page, base_url)
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    drawer.locator(".board-open-chat").click()
+
+    overlay = authed_page.locator("#terminalOverlay")
+    expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
+    expect(authed_page.locator("#transcriptList")).to_contain_text("Merge fixed")
+    assert transcript_calls, "Chat mode never read the session's transcript"
+    assert all("/sessions/s-wait/" in u for u in transcript_calls)
 
 
 def test_backlog_cards_color_coded_from_shared_git_cache(
@@ -1290,6 +1376,10 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     expect(drawer).to_be_visible()
     rename = drawer.locator(".board-rename-btn")
     expect(rename).to_be_visible()
+    # The shared composer (#984) lives inside the kept node: a draft typed
+    # into it must survive the re-render too.
+    draft = drawer.locator(".board-drawer-composer .composer-input")
+    draft.fill("half-typed reply")
 
     # Tag the live DOM node — if renderBoard() rebuilds the drawer, the tag
     # is lost even though the drawer stays open (boardExpanded is preserved
@@ -1309,6 +1399,7 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
 
     expect(drawer).to_be_visible()
     expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
+    expect(draft).to_have_value("half-typed reply")
 
 
 def test_dispatch_model_picker_matches_shared_button_shape(

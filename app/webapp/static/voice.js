@@ -1,7 +1,7 @@
 /* Shared voice dictation (issue #302 — extracted verbatim from terminal.js).
  *
  * One module, many mics: the compose bar (issues #165 / #168), the Board
- * dispatch bar and the Board drawer reply box (#302) each mount a
+ * dispatch bar and the shared composer (#980 — terminal, Chat, Board drawer) each mount a
  * `createDictation` instance on their own button + textarea. The recording
  * pipeline is unchanged from the compose-bar original: preferred flow is
  * *streamed* (create a voice session, POST audio chunks at a 1 s cadence,

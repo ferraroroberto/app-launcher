@@ -528,7 +528,7 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
 
     drawer = authed_page.locator("li.board-item-chief .board-drawer")
     expect(drawer).to_be_visible()
-    reply = drawer.locator(".board-reply-input")
+    reply = drawer.locator(".board-drawer-composer .composer-input")
     reply.fill("half-typed follow-up")
     # Tag the live node: a drawer rebuilt by the poll loses the tag even
     # when it re-opens looking identical.
