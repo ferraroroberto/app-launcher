@@ -1,6 +1,6 @@
 /* The shared composer (#980, Step 1 of #979): the one input surface every
- * session view mounts — the terminal overlay today, Chat mode (#983) and the
- * Board drawer (#984) next. Owns its own markup so a second mount is one
+ * session view mounts — the terminal overlay, Chat mode (#983) and the Board
+ * drawer (#984). Owns its own markup so a second mount is one
  * call, not a second copy of the HTML:
  *
  *   ┌ OCR staging tray (hidden until a screenshot is staged) ┐
@@ -34,13 +34,16 @@
  *     keys:              { send(bytes), onOpen() } to drive a PTY from the
  *                        ⌨ D-pad, or null when the session has none — the
  *                        button then renders disabled with the reason.
+ *     keysOffReason:     optional — the disabled ⌨ button's title when the
+ *                        default ("this session has no PTY") is not the
+ *                        reason (the Board drawer, #984, has no socket).
  *     onDictationStart:  optional — fires when a recording starts (the
  *                        terminal silences an in-flight read-aloud, #190).
  *   }) → handle
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (paste / drop entry
  * point), `reset()` (leave-surface teardown), `closePopovers()`,
- * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null)`,
+ * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`.
  *
  * `setSendable(false, reason)` gates ➤ Send alone (#983: a detached session
@@ -430,9 +433,9 @@ export function mountComposer(host, opts) {
     el.textarea.setAttribute('aria-label', text);
   }
 
-  function setKeys(k) {
+  function setKeys(k, reason) {
     keysOpts = k || null;
-    setButtonState(el.keys, !!keysOpts, _TITLE_KEYS, _TITLE_KEYS_OFF);
+    setButtonState(el.keys, !!keysOpts, _TITLE_KEYS, reason || _TITLE_KEYS_OFF);
     if (!keysOpts) keysPopover.close();
   }
 
@@ -456,7 +459,7 @@ export function mountComposer(host, opts) {
   }
 
   setAvailability({ dictate: voiceDictationAvailable(), ocr: false });
-  setKeys(keysOpts);
+  setKeys(keysOpts, opts.keysOffReason);
   setSendable(true);
 
   return {

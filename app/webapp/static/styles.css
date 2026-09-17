@@ -3787,29 +3787,13 @@ body.terminal-open {
   padding-left: 8px;
 }
 .board-exchange-assistant { white-space: pre-wrap; }
-/* Drawer action layout (#496 round 2, on-device feedback): the reply box
-   takes a full line of its own, and the buttons form one right-aligned
-   row beneath it — canonical 44px footprints, leftover space on the left
-   is fine. flex-wrap keeps the row inside its own column at narrow
-   desktop grid widths too (#473). */
-.board-drawer-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-}
-.board-reply-input {
-  flex: 1 1 100%;
-  min-width: 0;
-  resize: vertical;
-  background: var(--card-off);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 8px 10px;
-  font-size: var(--font-label);
-  font-family: inherit;
+/* The drawer's mount of the shared composer (#984, mockup screen 8): the
+   bar sits inside the drawer's own surface, so it drops the docked bar's
+   padding, hairline and card fill. */
+.board-drawer-composer .compose-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
 }
 /* One-tap issue start (#301) — a compact row under the card button. */
 .board-issue-actions {
@@ -3822,10 +3806,7 @@ body.terminal-open {
    they render as the UA's native white buttons (phone feedback, #301). */
 .board-refresh,
 .board-issue-btn,
-.board-reply-send,
-.board-open-terminal,
-.board-rename-btn,
-.board-stop-btn {
+.board-drawer-action {
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--line);
@@ -3834,30 +3815,50 @@ body.terminal-open {
   font-size: var(--font-caption);
   cursor: pointer;
 }
-.board-reply-send { font-size: var(--font-body); }
 .board-issue-btn:active,
-.board-reply-send:active,
-.board-open-terminal:active,
-.board-rename-btn:active { background: var(--card); }
-/* Drawer action row at the 44px floor (#496 audit) — these sit in an
-   adjacent cluster, so they get real height, not hit-target insets. The
-   icon-only Rename/Stop also need real width around their lone glyph. */
-.board-reply-send,
-.board-open-terminal,
-.board-rename-btn,
-.board-stop-btn {
-  min-height: var(--row-sm);
+.board-drawer-action:active { background: var(--card); }
+/* Drawer actions (#984, mockup screen 8): one row of four equal buttons —
+   Rename · Stop · Chat · Terminal — each a glyph stacked over its label at
+   the 44px floor. minmax(0, 1fr) keeps the columns equal (and inside the
+   drawer) at any width, the narrow desktop grid columns included (#473). */
+.board-drawer-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
-.board-reply-send,
-.board-rename-btn,
-.board-stop-btn { min-width: 44px; }
-/* Stop (#496 item 5): same unified stop path as the Coding tab's row ✕
-   (#253) — muted glyph at rest, danger-red on press. */
-.board-stop-btn { color: var(--muted); }
+.board-drawer-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: var(--row-sm);
+  padding: 9px 6px;
+  font-weight: 600;
+}
+.board-drawer-action-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Stop: the danger action, as the terminal bar's Stop and kill row. */
+.board-stop-btn { color: var(--danger); }
 .board-stop-btn:active {
   background: rgb(from var(--danger) r g b / 0.2);
-  color: var(--danger);
   border-color: var(--danger);
+}
+/* An action the session can't take (Terminal for a detached session, Chat
+   with no transcript reader): design.md button-disabled — flat muted text on
+   the subtle surface, never opacity. aria-disabled, not :disabled, so the
+   tap still toasts the reason. */
+.board-drawer-action[aria-disabled="true"],
+.board-drawer-action[aria-disabled="true"]:active {
+  background: var(--card-off);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: default;
 }
 
 /* Desktop / wide: all five columns side by side; titles come back.

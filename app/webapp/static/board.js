@@ -18,7 +18,8 @@
  *
  * Act-from-the-card loop (#301): tapping a live session card opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
- * is transcript text) and a reply box that writes straight into the PTY;
+ * is transcript text), the shared composer (#984) and Rename · Stop · Chat ·
+ * Terminal;
  * backlog cards of repos present in the projects folder carry ▶ Start /
  * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
  * card with its drawer open. The poll keeps running while a drawer is open
@@ -39,9 +40,19 @@
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
-import { openSessionRename, sessionTitle, stopSession } from './sessions.js';
+import {
+  detachedSendRefused,
+  openSessionRename,
+  sendOutcome,
+  sendSessionMessage,
+  sessionTitle,
+  stopSession,
+} from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
-import { createDictation, voiceDictationAvailable } from './voice.js';
+import { chatAvailable, modeReason, openSessionOverlay, terminalAvailable } from './session-overlay.js';
+import { mountComposer } from './composer.js';
+import { uploadSessionFile } from './terminal-compose.js';
+import { voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, renderQuotaLines } from './dom-utils.js';
@@ -211,15 +222,81 @@ function renderSessionCard(card, openItem) {
 let chiefExchangeTimer = null;
 const CHIEF_EXCHANGE_POLL_MS = 5000;
 
-// The current drawer's reply-box dictation instance (#755), same lifecycle
-// problem as chiefExchangeTimer above: buildDrawer() mounts a fresh
-// per-render `createDictation` instance (in buildDrawer below), but a drawer
-// collapse (state.boardExpanded set to null, then renderBoard() rebuilds
-// the card list) drops that mic's DOM node with no stop()/dispose() call —
-// if a recording (or a still-finalizing one) was in flight, it stayed live
-// and held the app-wide dictation mutex indefinitely. Disposed at the top of
-// renderBoard() under the same rule as chiefExchangeTimer.
-let drawerDictation = null;
+// The open drawer's shared composer (#984 — the same component the session
+// overlay mounts, #980), replacing the private reply box and its per-drawer
+// mic. Same lifecycle problem as chiefExchangeTimer above (#755): a drawer
+// collapse (state.boardExpanded set to null, then renderBoard() rebuilds the
+// card list) drops the composer's DOM node with no teardown, so a recording
+// in flight (or a still-finalizing one) stayed live and held the app-wide
+// dictation mutex indefinitely. reset() — which dispose()s the mic and closes
+// the composer's popovers — runs at the top of renderBoard() under the same
+// rule as chiefExchangeTimer. A kept drawer (#958) keeps this instance, its
+// draft and a live recording included.
+let drawerComposer = null;
+
+const DRAWER_KEYS_OFF = 'Open the terminal for keys';
+
+// What the session overlay needs to decide its modes (#982): kind picks
+// Terminal, agent picks Chat, label marks the chief (#547).
+function overlaySession(card) {
+  return {
+    session_id: card.session_id,
+    name: sessionLabel(card),
+    kind: card.kind,
+    agent: card.agent,
+    label: card.label,
+  };
+}
+
+function composerAvailability() {
+  return {
+    dictate: voiceDictationAvailable(),
+    ocr: !!(state.status && state.status.screenshot_ocr),
+  };
+}
+
+function buildDrawerComposer(card) {
+  const host = document.createElement('div');
+  host.className = 'board-drawer-composer';
+  drawerComposer = mountComposer(host, {
+    placeholder: 'Reply to ' + (card.project || 'session') + '…',
+    send: function (text) { return sendFromDrawer(card, text); },
+    upload: function (file) { return uploadSessionFile(card.session_id, file); },
+    // The Board never opens the PTY's WebSocket, so ⌨ has nothing to drive
+    // for either kind — disabled, with the way to get keys as its reason.
+    keys: null,
+    keysOffReason: DRAWER_KEYS_OFF,
+  });
+  // The console-input gate (agents.py) holds back Send alone, as in Chat.
+  if (detachedSendRefused(card)) {
+    drawerComposer.setSendable(false, 'No console input for this agent: sending is off');
+  }
+  drawerComposer.setAvailability(composerAvailability());
+  return host;
+}
+
+// One of the drawer's four equal actions (mockup screen 8): glyph over label.
+// An action the session can't take stays in the row, aria-disabled so a tap
+// still reaches it and toasts the reason (a phone has no hover) — the same
+// convention as the overlay's mode segments (#982) — so the row never
+// changes shape.
+function drawerAction(cls, glyph, label, title, reason, onTap) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'board-drawer-action ' + cls;
+  btn.innerHTML = icon(glyph) + '<span class="board-drawer-action-label">' + label + '</span>';
+  btn.title = reason || title;
+  btn.setAttribute('aria-label', reason || title);
+  if (reason) btn.setAttribute('aria-disabled', 'true');
+  btn.addEventListener('click', function () {
+    if (reason) {
+      toast(reason, '', { icon: glyph });
+      return;
+    }
+    onTap(btn);
+  });
+  return btn;
+}
 
 function buildDrawer(card) {
   const drawer = document.createElement('div');
@@ -241,90 +318,42 @@ function buildDrawer(card) {
       loadExchange(card, exchange);
     }, CHIEF_EXCHANGE_POLL_MS);
   }
+  // A session that has ended has nothing to reply to or act on.
+  if (!card.alive) return drawer;
 
+  // The shared composer (#984) for both kinds: a detached session is typed
+  // into its PC console through the same /input route (#967).
+  drawer.appendChild(buildDrawerComposer(card));
+
+  // One row of four equal actions — Rename · Stop · Chat · Terminal, with
+  // Terminal deliberately last (#496 round 2).
   const actions = document.createElement('div');
   actions.className = 'board-drawer-actions';
-  // Reply straight into the PTY — only for live launcher-owned sessions;
-  // detached consoles and state-only cards have no reachable stdin.
-  const canReply = card.alive && card.kind === 'pty';
-  if (canReply) {
-    const input = document.createElement('textarea');
-    input.className = 'board-reply-input';
-    input.rows = 2;
-    input.placeholder = 'Reply to ' + (card.project || 'session') + '…';
-    actions.appendChild(input);
-    // Voice-reply (#302): a per-drawer dictation instance — the drawer is
-    // rebuilt on every render, so the mic and its state live and die with
-    // it. Tracked in the module-level `drawerDictation` (#755) so
-    // renderBoard() can dispose() it before the next rebuild drops this
-    // DOM node out from under a still-live recording.
-    if (voiceDictationAvailable()) {
-      const mic = document.createElement('button');
-      mic.type = 'button';
-      mic.className = 'compose-record board-reply-record';
-      mic.innerHTML = icon('mic');
-      mic.title = 'Dictate (voice → text)';
-      mic.setAttribute('aria-pressed', 'false');
-      const dictation = createDictation({
-        button: mic,
-        getTextarea: function () { return input; },
-      });
-      drawerDictation = dictation;
-      mic.addEventListener('click', dictation.toggle);
-      actions.appendChild(mic);
-    }
-    const send = document.createElement('button');
-    send.type = 'button';
-    send.className = 'board-reply-send';
-    send.innerHTML = icon('send-horizontal');
-    send.title = 'Send into the session';
-    send.addEventListener('click', function () {
-      sendReply(card, input, send);
-    });
-    actions.appendChild(send);
-  }
-  // Rename first, icon-only (#496 item 5 — was after Terminal, labelled).
-  // Same launcher-native override as the Coding tab's row rename button,
-  // reachable for detached sessions too (no PTY needed). The drawer stays
-  // open across a rename (unlike Terminal, which navigates away), so the
+  // Rename: the launcher-native override (no PTY needed). The drawer stays
+  // open across a rename (unlike Chat/Terminal, which navigate away), so the
   // completion callback patches the card optimistically rather than waiting
   // for the next poll. A kept drawer (#958) can outlive the payload its
   // `card` came from, so the patch goes to the card in the current payload.
-  if (card.alive) {
-    const rename = document.createElement('button');
-    rename.type = 'button';
-    rename.className = 'board-rename-btn';
-    rename.innerHTML = icon('pencil');
-    rename.title = 'Rename this session';
-    rename.setAttribute('aria-label', 'Rename this session');
-    rename.addEventListener('click', function () {
+  actions.appendChild(drawerAction(
+    'board-rename-btn', 'pencil', 'Rename', 'Rename this session', null,
+    function () {
       openSessionRename(card, function (title) {
         card.manual_title = title;
         const current = boardCard(card.session_id);
         if (current) current.manual_title = title;
         renderBoard();
       });
-    });
-    actions.appendChild(rename);
-  }
-  // Stop (#496 item 5, ordered before Terminal in round 2): kill a live
-  // PTY session straight from the Board — the same unified stop path as
-  // the Coding tab (#253: the agent's own quit, force-fallback
-  // server-side), one tap, no confirm. Detached consoles keep going
-  // through the Coding tab's row button.
-  if (card.alive && card.kind === 'pty') {
-    const stop = document.createElement('button');
-    stop.type = 'button';
-    stop.className = 'board-stop-btn';
-    stop.innerHTML = icon('x');
-    stop.title = 'Stop and kill this session';
-    stop.setAttribute('aria-label', 'Stop and kill this session');
-    stop.addEventListener('click', async function () {
-      // Kill protection (#245): the chief is the one session a mis-tap
-      // shouldn't take down — same confirm() convention as Apps/Jobs kills.
-      // Every other card keeps the deliberate one-tap stop (#253).
+    }
+  ));
+  // Stop: the unified stop path the Coding tab's row menu uses for both
+  // kinds (#253: the agent's own quit, force-fallback server-side), one tap,
+  // no confirm — except the chief (#245), the one session a mis-tap
+  // shouldn't take down.
+  actions.appendChild(drawerAction(
+    'board-stop-btn', 'x', 'Stop', 'Stop and kill this session', null,
+    async function (btn) {
       if (isChiefCard(card) && !confirm(CHIEF_KILL_CONFIRM)) return;
-      stop.disabled = true;
+      btn.disabled = true;
       // Close the drawer first — the session it belongs to is going away.
       state.boardExpanded = null;
       renderBoard();
@@ -332,23 +361,26 @@ function buildDrawer(card) {
       // The host stops gracefully (quit → force) — give it the same beat
       // sessions.js gives fetchSessions before reconciling the board.
       setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
-    });
-    actions.appendChild(stop);
-  }
-  // Terminal is deliberately the LAST button in the row (#496 round 2).
-  if (card.alive && card.kind !== 'remote') {
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'board-open-terminal';
-    open.innerHTML = icon('zap') + ' Terminal';
-    open.title = 'Open the full terminal';
-    open.addEventListener('click', function () {
+    }
+  ));
+  const session = overlaySession(card);
+  actions.appendChild(drawerAction(
+    'board-open-chat', 'messages-square', 'Chat', 'Open the chat view',
+    chatAvailable(session) ? null : modeReason(session, 'chat'),
+    function () {
       state.boardExpanded = null;
-      openTerminal({ session_id: card.session_id, name: sessionLabel(card) });
-    });
-    actions.appendChild(open);
-  }
-  if (actions.childElementCount) drawer.appendChild(actions);
+      openSessionOverlay(session, 'chat');
+    }
+  ));
+  actions.appendChild(drawerAction(
+    'board-open-terminal', 'terminal', 'Terminal', 'Open the full terminal',
+    terminalAvailable(session) ? null : modeReason(session, 'terminal'),
+    function () {
+      state.boardExpanded = null;
+      openTerminal(session);
+    }
+  ));
+  drawer.appendChild(actions);
   return drawer;
 }
 
@@ -392,7 +424,7 @@ async function loadExchange(card, el) {
   }
 }
 
-// Optimistic move for sendReply() (#461): relocate a card from Your turn into
+// Optimistic move for sendFromDrawer() (#461): relocate a card from Your turn into
 // Claude's turn client-side, ahead of the poll that will confirm it. A reply
 // just went into a live PTY sitting at its prompt, so there is no value in
 // making the Board visibly wait out the hook -> state-file -> poll round trip
@@ -410,37 +442,32 @@ function moveCardToClaudeTurn(sessionId) {
   columns.claude_turn = [card].concat(columns.claude_turn || []);
 }
 
-async function sendReply(card, input, btn) {
-  const text = input.value.trim();
-  if (!text) return;
-  btn.disabled = true;
+// ➤ Send from the drawer's composer (#984): the kind-agnostic /input route,
+// worded by the same verdict table as Chat mode (sessions.js::sendOutcome —
+// Sent / Sent, not confirmed / Queued / Not submitted stay distinct). A thrown
+// 502/409/501 toasts and resolves false so the draft stays to retry.
+async function sendFromDrawer(card, text) {
+  let verdict;
   try {
-    const tt = await ensureTerminalToken();
-    await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(card.session_id) + '/input',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify({ data: text, submit: true }),
-      }
-    );
-    toast('Sent to ' + (card.project || 'session'), 'good', { icon: 'send-horizontal' });
-    input.value = '';
-    // Close the drawer and optimistically flip the card to Claude's turn
-    // right away. Deliberately no immediate fetchBoard() here (#461): the
-    // hook that actually flips the server's status hasn't had time to run
-    // yet, so an immediate re-poll almost always still sees the pre-reply
-    // needs-you state and would revert this straight back — worse than the
-    // original lag. The regular 5 s poll (already running) reconciles with
-    // ground truth as always.
-    state.boardExpanded = null;
-    moveCardToClaudeTurn(card.session_id);
-    renderBoard();
+    verdict = await sendSessionMessage(card.session_id, text);
   } catch (exc) {
-    apiFailToast('Reply failed', exc);
-  } finally {
-    btn.disabled = false;
+    apiFailToast('Send failed', exc);
+    return false;
   }
+  const outcome = sendOutcome(verdict);
+  toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
+  // Close the drawer and optimistically flip the card to Claude's turn right
+  // away. Deliberately no immediate fetchBoard() here (#461): the hook that
+  // actually flips the server's status hasn't had time to run yet, so an
+  // immediate re-poll almost always still sees the pre-reply needs-you state
+  // and would revert this straight back — worse than the original lag. The
+  // regular 5 s poll (already running) reconciles with ground truth as
+  // always. A reply whose Enter never went in (not_submitted, the one error
+  // verdict) leaves the agent waiting, so that card stays put.
+  if (state.boardExpanded === card.session_id) state.boardExpanded = null;
+  if (outcome.kind !== 'error') moveCardToClaudeTurn(card.session_id);
+  renderBoard();
+  return true;
 }
 
 // ---------------------------------------------------- one-tap issue start
@@ -780,14 +807,18 @@ export function renderBoard() {
       clearInterval(chiefExchangeTimer);
       chiefExchangeTimer = null;
     }
-    // Same lifecycle rule for the reply-box mic (#755): dispose() before the
-    // rebuild below drops its DOM node, so a live or still-finalizing
-    // recording is force-stopped and the mic mutex released instead of
-    // wedging every other mic in the app.
-    if (drawerDictation) {
-      drawerDictation.dispose();
-      drawerDictation = null;
+    // Same lifecycle rule for the drawer composer's mic (#755): reset()
+    // before the rebuild below drops its DOM node, so a live or
+    // still-finalizing recording is force-stopped and the mic mutex released
+    // instead of wedging every other mic in the app.
+    if (drawerComposer) {
+      drawerComposer.reset();
+      drawerComposer = null;
     }
+  } else if (drawerComposer) {
+    // A kept drawer's composer outlives the render that built it, so its
+    // mic / OCR availability follows an /api/status that lands after it.
+    drawerComposer.setAvailability(composerAvailability());
   }
   if (!body || !els.boardColumns) return;
   const ghLoaded = ghFetched(body);

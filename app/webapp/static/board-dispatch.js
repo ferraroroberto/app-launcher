@@ -17,7 +17,7 @@
  *
  * The bar is static markup `renderBoard()` never touches, so the 5 s poll
  * can't wipe a goal being typed. Dictation mics (shared voice.js) mount on
- * the goal box here; the drawer reply boxes mount theirs in `board.js`.
+ * the goal box here; the drawer's shared composer carries its own (#984).
  *
  * `board.js` and this module import each other (this one calls `renderBoard`
  * and `fetchBoard`; `board.js` calls `wireDispatch`/`syncDispatchBar` and the
