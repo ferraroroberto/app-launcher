@@ -245,6 +245,36 @@ async function copyTurn(e) {
   toast('Full ' + label.toLowerCase() + ' copied', 'good', { icon: 'copy' });
 }
 
+// The newest assistant entry's text for read-aloud in Chat mode / a detached
+// session (#988) — the same reply provider terminal-readaloud.js otherwise
+// reads from the live xterm buffer. Parallels copyTurn()'s upgrade: the
+// loaded page's text first, then the uncapped /transcript/entry fetch when
+// that page capped it, so a long reply is never read out silently shortened.
+// '' when no assistant turn has loaded yet.
+export async function lastAssistantEntryFullText() {
+  if (!view || !view.entries) return '';
+  let e = null;
+  for (let i = view.entries.length - 1; i >= 0; i--) {
+    if (isTurn(view.entries[i]) && view.entries[i].kind === 'assistant') {
+      e = view.entries[i];
+      break;
+    }
+  }
+  if (!e) return '';
+  if (!e.truncated || e.offset == null) return e.text || '';
+  const sid = view.session.session_id;
+  try {
+    const tt = await ensureTerminalToken();
+    const body = await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+        '/transcript/entry?offset=' + encodeURIComponent(e.offset),
+      { headers: authHeaders({ terminalToken: tt }) }
+    );
+    if (body && body.available) return body.text || '';
+  } catch (exc) { /* fall through to the capped text already loaded */ }
+  return e.text || '';
+}
+
 // A turn: a collapsible card, open by default (or per the bar's toggle),
 // whose summary is the meta line plus — only while closed — the first
 // line of the text. The user's own prompt is plain text (pre-wrap); the
@@ -471,6 +501,10 @@ async function loadNewest() {
     return;
   }
   const entries = body.entries || [];
+  // The newest page's entries, kept for lastAssistantEntryFullText() (#988) —
+  // the newest page always holds the most recent assistant turn, so an older
+  // page prepended later never needs to touch this.
+  view.entries = entries;
   if (!entries.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
     return;
@@ -631,7 +665,7 @@ export function closeChatComposerPopovers() {
 export function openChatPane(s) {
   if (!els.chatPane) return;
   if (view) window.clearTimeout(view.refreshTimer);
-  view = { session: s, cursor: null, loading: false, seq: 0, refreshTimer: null };
+  view = { session: s, cursor: null, loading: false, seq: 0, refreshTimer: null, entries: null };
   groupsHidden = true;
   syncGroups();
   bindComposer(s);
