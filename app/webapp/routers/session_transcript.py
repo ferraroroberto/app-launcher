@@ -11,7 +11,9 @@ JSONL, or Grok Build's ``updates.jsonl`` (#1012), both carried on the state
 row; a Pi session JSONL, named by the claimed row's own *key* (#1013);
 else, for a session whose harness writes the launcher nothing at all, a
 file correlated from the filesystem — a Codex rollout by cwd + launch
-time, an Antigravity conversation by its newest-per-folder cache (#1014).
+time, an Antigravity conversation by its newest-per-folder cache (#1014),
+a Copilot event log by cwd + launch time against its own per-session
+``workspace.yaml`` (#1015).
 A session the claim walk gives no row answers ``no_transcript`` rather than
 guessing a neighbour's file, so a harness that keeps one session folder per
 working directory (Grok does, including for directories that no longer
@@ -47,6 +49,7 @@ from src import board
 from src.board_exchange import (
     _find_codex_transcript,
     find_antigravity_transcript,
+    find_copilot_transcript,
     find_pi_transcript,
 )
 from src.session_transcript import DEFAULT_LIMIT, MAX_LIMIT, entry_full_text, transcript_page
@@ -64,7 +67,7 @@ router = APIRouter()
 # the keys, so Chat mode is offered for exactly these agents.
 _FLAVOR_BY_AGENT = {
     "claude": "claude", "codex": "codex", "grok": "grok", "pi": "pi",
-    "antigravity": "antigravity",
+    "antigravity": "antigravity", "copilot": "copilot",
 }
 
 
@@ -84,13 +87,14 @@ def _resolve_path(
 ) -> Optional[Path]:
     """The history file for this session, or None when none is known.
 
-    Four shapes, in decreasing directness: the row carries the path
+    Five shapes, in decreasing directness: the row carries the path
     (Claude, Grok); the row's own *key* is the harness's session id and
     names the file (Pi, #1013); or nothing on the row helps at all and the
     file has to be correlated from the filesystem — by cwd + launch time
-    (Codex), or by the harness's own newest-conversation-per-folder cache,
+    (Codex), by the harness's own newest-conversation-per-folder cache,
     which needs ``live`` to refuse a folder hosting two sessions at once
-    (Antigravity, #1014).
+    (Antigravity, #1014), or by cwd + launch time against the harness's own
+    per-session ``workspace.yaml`` sidecar (Copilot, #1015).
     """
     if flavor == "codex":
         return _find_codex_transcript(session)
@@ -98,6 +102,8 @@ def _resolve_path(
         return find_pi_transcript(str(state_sid or ""))
     if flavor == "antigravity":
         return find_antigravity_transcript(session, live)
+    if flavor == "copilot":
+        return find_copilot_transcript(session)
     raw = (row or {}).get("transcript_path")
     return Path(str(raw)) if raw else None
 

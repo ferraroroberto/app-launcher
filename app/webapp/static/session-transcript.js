@@ -47,7 +47,7 @@ import { icon } from './_vendored/icons/icons.js';
 // pane still shows the server's own reason line if it disagrees. An absent
 // agent field (a ?session= deep link's bare {session_id, name}) defaults
 // to Claude, as the endpoint does.
-const TRANSCRIPT_AGENTS = ['claude', 'codex', 'grok', 'pi', 'antigravity'];
+const TRANSCRIPT_AGENTS = ['claude', 'codex', 'grok', 'pi', 'antigravity', 'copilot'];
 
 export function hasTranscriptReader(s) {
   const agent = String((s && s.agent) || 'claude').toLowerCase();
