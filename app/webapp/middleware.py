@@ -240,6 +240,15 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "a hit can quote anything the terminal ever showed.",
     ),
     (
+        lambda p: p.startswith("/api/ports/") and p.endswith("/kill"),
+        "tailnet",
+        "Listener kill (#1002): force-kills whatever process owns the port, "
+        "including :8446 and every live PTY under it — the same blast radius "
+        "as the rows above, so it carries the same reachability requirement. "
+        "No passkey — /api/ports/probe stays token-only so the Apps tab can "
+        "still render the listeners panel off-tailnet, like /api/tts/health.",
+    ),
+    (
         lambda p: p == "/api/system-map/image",
         "tailnet",
         "Fleet system map (#173): rendered PNG can carry fleet topology. No passkey "

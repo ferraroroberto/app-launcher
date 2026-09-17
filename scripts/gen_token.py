@@ -30,6 +30,13 @@ Usage
     python scripts/gen_token.py            # generate iff none set
     python scripts/gen_token.py --force    # rotate even if one exists
     python scripts/gen_token.py --clear    # disable the gate
+    python scripts/gen_token.py --show     # also echo the value to stdout
+
+The generated value is written to the config file and is **not** echoed to
+stdout unless ``--show`` is passed: the tray bakes it into the URL it copies,
+so nothing in the normal flow needs to read it off the console, and this
+script's documented invocation runs inside a launcher PTY session whose whole
+stdout is captured to a transcript kept for ``session_retention_days``.
 """
 
 from __future__ import annotations
@@ -65,6 +72,16 @@ def main() -> int:
         action="store_true",
         help="clear auth_token (disables the auth gate)",
     )
+    parser.add_argument(
+        "--show",
+        action="store_true",
+        help=(
+            "echo the generated token to stdout (off by default — the value "
+            "is already persisted, and this script's documented invocation "
+            "runs inside a launcher PTY session whose output is captured to a "
+            "transcript retained for session_retention_days)"
+        ),
+    )
     args = parser.parse_args()
 
     cfg = load_webapp_config()
@@ -90,8 +107,11 @@ def main() -> int:
     print("✅ Wrote a new auth_token to:")
     print(f"   {DEFAULT_CONFIG_PATH}")
     print()
-    print("Token (also saved above — no need to copy):")
-    print(f"   {token}")
+    if args.show:
+        print("Token (also saved above — no need to copy):")
+        print(f"   {token}")
+    else:
+        print("The value is in that file — re-run with --show to echo it here.")
     print()
     print("Restart the tray (or `tray.bat`) so uvicorn picks up the new value.")
     return 0
