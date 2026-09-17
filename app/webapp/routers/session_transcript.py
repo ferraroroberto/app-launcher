@@ -5,10 +5,16 @@ one entry's uncapped text (#985).
 entries (``user`` / ``assistant`` / ``tool_call`` / ``tool_result`` /
 ``thinking`` / ``system``) from the session's *native* history, newest-last,
 plus a byte-offset cursor for the next older page. Source resolution is the
-same as the Board drawer's ``/exchange`` (#301): the Claude Code hook JSONL
-the Board's claim walk assigns to this session-host id, else — for a Codex
-session — the rollout correlated by cwd + launch time. Neither reads the
-launcher's PTY capture, so detached rows are served the same way (#966).
+same as the Board drawer's ``/exchange`` (#301): the history file the
+Board's claim walk assigns to this session-host id — Claude Code's hook
+JSONL, or Grok Build's ``updates.jsonl`` (#1012), both carried on the state
+row — else, for a Codex session, the rollout correlated by cwd + launch
+time. A session the claim walk gives no row answers ``no_transcript``
+rather than guessing a neighbour's file, so a harness that keeps one
+session folder per working directory (Grok does, including for directories
+that no longer exist) can never show another session's text. None of them
+read the launcher's PTY capture, so detached rows are served the same way
+(#966).
 Terminal-grade content, so it sits behind the Tailscale + passkey gate like
 ``/exchange`` — and so does its sibling below (``middleware.py``'s
 ``_TERMINAL_GUARD_RULES`` needs its own row per path shape; ``/transcript``'s
@@ -46,8 +52,11 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Agents whose native history this reader understands.
-_FLAVOR_BY_AGENT = {"claude": "claude", "codex": "codex"}
+# Agents whose native history this reader understands. The values are the
+# line grammars in `src.session_transcript.FLAVORS`; the client's own
+# availability list (`session-transcript.js`'s `TRANSCRIPT_AGENTS`) mirrors
+# the keys, so Chat mode is offered for exactly these agents.
+_FLAVOR_BY_AGENT = {"claude": "claude", "codex": "codex", "grok": "grok"}
 
 
 def _unavailable(sid: str, reason: str) -> Dict[str, Any]:
@@ -132,7 +141,9 @@ async def session_transcript(
     )
     return {
         "available": True,
-        "source": "native" if flavor == "claude" else "codex",
+        # Claude's own hook JSONL kept its historical name; every other
+        # flavour reports itself, so a third one isn't mislabelled as Codex.
+        "source": "native" if flavor == "claude" else flavor,
         "reason": None,
         "session_id": sid,
         **page,

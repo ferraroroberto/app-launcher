@@ -1,7 +1,8 @@
 """Paginated, typed transcript pages for one live Coding session (#953).
 
 The Coding tab's transcript overlay reads a session's *native* history —
-Claude Code's hook JSONL or a Codex rollout — as an ordered list of typed
+Claude Code's hook JSONL, a Codex rollout, or Grok Build's ACP-style
+``updates.jsonl`` stream (:data:`FLAVORS`) — as an ordered list of typed
 entries the phone can render chat-style: typed ``user`` prompts and
 ``assistant`` replies expanded, everything else (``tool_call`` +
 paired result, ``thinking``, ``system`` plumbing, sub-agent traffic) folded.
@@ -21,6 +22,7 @@ Deliberately **not** on the session-host import closure (CLAUDE.md
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -191,8 +193,7 @@ def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, 
     file was rotated/truncated since the page was served, or the offset
     was never one to begin with.
     """
-    build = codex_entries if flavor == "codex" else claude_entries
-    line_key = _codex_line_key if flavor == "codex" else _claude_line_key
+    build, line_key = _flavor(flavor)
     eof = path.stat().st_size
     if offset < 0 or offset >= eof:
         return None
@@ -607,6 +608,176 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     return entries
 
 
+# ----------------------------------------------------- Grok updates.jsonl
+
+# ``sessionUpdate`` kinds that carry conversation text, and the entry kind
+# each becomes. Everything else Grok writes (``turn_completed``,
+# ``hook_execution``, and the metadata half of a ``tool_call_update``) is
+# bookkeeping without text.
+_GROK_CHUNK_KINDS = {
+    "user_message_chunk": "user",
+    "agent_message_chunk": "assistant",
+    "agent_thought_chunk": "thinking",
+}
+
+
+def _grok_timestamp(obj: Dict[str, Any], meta: Dict[str, Any]) -> Optional[str]:
+    """Grok's epoch stamp as the ISO-8601 string the other flavours emit.
+
+    Grok writes ``timestamp`` in epoch *seconds* and ``_meta
+    .agentTimestampMs`` in milliseconds; the client renders a turn's stamp
+    with ``new Date(ts)``, which reads a bare number as milliseconds — an
+    epoch-seconds value would render as 1970. Converting here keeps the
+    ``Entry`` contract one shape for every flavour instead of teaching the
+    client a per-agent format.
+    """
+    raw_ms = meta.get("agentTimestampMs")
+    seconds: Optional[float] = None
+    if isinstance(raw_ms, (int, float)) and not isinstance(raw_ms, bool):
+        seconds = float(raw_ms) / 1000.0
+    else:
+        raw_s = obj.get("timestamp")
+        if isinstance(raw_s, (int, float)) and not isinstance(raw_s, bool):
+            seconds = float(raw_s)
+    if seconds is None:
+        return None
+    try:
+        stamp = datetime.fromtimestamp(seconds, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+    return stamp.isoformat().replace("+00:00", "Z")
+
+
+def _grok_result_text(update: Dict[str, Any]) -> str:
+    """The text of a completed ``tool_call_update``.
+
+    Two sources, in order. ACP's own ``content`` blocks
+    (``{"type": "content", "content": {"type": "text", ...}}``) are the
+    portable one, but a measured capture showed them absent for some tools
+    (``ListDir``, ``SchedulerList`` had none; ``ReadFile`` and
+    ``GrepSearch`` had them), so the fallback reaches one level into the
+    tool-specific ``rawOutput`` union for a nested string ``content``
+    (``ListDir``'s ``Content.content``, ``ReadFile``'s
+    ``FileContent.content``). Anything else — notably ``GrepSearch``'s
+    ``stdout``, which is a JSON *array of byte values* — is reported as its
+    output type rather than decoded or dumped, so a textless result reads
+    as itself instead of as an empty one.
+    """
+    blocks = update.get("content")
+    if isinstance(blocks, list):
+        parts = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            inner = block.get("content")
+            if isinstance(inner, dict) and inner.get("type") == "text":
+                text = str(inner.get("text") or "").strip()
+                if text:
+                    parts.append(text)
+        if parts:
+            return "\n\n".join(parts)
+    raw = update.get("rawOutput")
+    if isinstance(raw, dict):
+        for value in raw.values():
+            if isinstance(value, dict):
+                text = value.get("content")
+                if isinstance(text, str) and text.strip():
+                    return text
+        kind = raw.get("type")
+        if kind:
+            return f"({kind}: no text output)"
+    return ""
+
+
+def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
+    """Typed entries from a Grok Build ``updates.jsonl`` stream, in file order.
+
+    Grok appends one ACP-style ``session/update`` record per line.
+    ``user_message_chunk`` / ``agent_message_chunk`` / ``agent_thought_chunk``
+    carry the conversation text (``user`` / ``assistant`` / ``thinking``);
+    ``tool_call`` opens a call and the ``status: "completed"`` half of a
+    ``tool_call_update`` closes it, paired by ``toolCallId``.
+
+    **Each ``*_chunk`` line is already a whole prose segment**, not a
+    stream fragment: Grok folds the stream itself before writing (a
+    measured line carrying a full three-paragraph, 2.6 KB reply reported
+    ``chunkId: 627``). Several ``agent_message_chunk`` lines in one turn are
+    therefore *separate* segments either side of a tool call — a preamble
+    and a final answer — and merging them by turn would hoist the answer
+    above the tool call that produced it. So only *consecutive* same-kind
+    chunks merge (keeping the first one's offset, per the cursor contract),
+    which in every capture taken was a no-op and stays a safety net if Grok
+    ever writes a segment in pieces.
+
+    ``uncapped`` — see :func:`claude_entries`.
+    """
+    assistant_cap = NO_CAP if uncapped else ASSISTANT_TEXT_CAP
+    user_cap = NO_CAP if uncapped else USER_TEXT_CAP
+    caps = {"user": user_cap, "assistant": assistant_cap, "thinking": THINKING_TEXT_CAP}
+    entries: List[Entry] = []
+    open_calls: Dict[str, Entry] = {}
+    # The entry the previous line produced, when it was a chunk — the only
+    # thing a following chunk of the same kind may merge into.
+    last_chunk: Optional[Entry] = None
+    for offset, raw in lines:
+        obj = _loads(raw)
+        if obj is None:
+            continue
+        params = obj.get("params") if isinstance(obj.get("params"), dict) else {}
+        update = params.get("update") if isinstance(params.get("update"), dict) else {}
+        kind = update.get("sessionUpdate")
+        meta = params.get("_meta") if isinstance(params.get("_meta"), dict) else {}
+        ts = _grok_timestamp(obj, meta)
+
+        if kind in _GROK_CHUNK_KINDS:
+            entry_kind = _GROK_CHUNK_KINDS[kind]
+            content = update.get("content")
+            text = ""
+            if isinstance(content, dict) and content.get("type") == "text":
+                text = str(content.get("text") or "")
+            text = text.strip()
+            if not text:
+                continue
+            cap = caps[entry_kind]
+            if last_chunk is not None and last_chunk["kind"] == entry_kind:
+                joined, truncated = _cap(last_chunk["text"] + "\n\n" + text, cap)
+                last_chunk["text"] = joined
+                last_chunk["truncated"] = last_chunk["truncated"] or truncated
+                continue
+            entry = _text_entry(entry_kind, offset, ts, text, cap, sidechain=False)
+            entries.append(entry)
+            last_chunk = entry
+            continue
+
+        last_chunk = None
+
+        if kind == "tool_call":
+            entry = _entry(
+                "tool_call", offset, ts,
+                name=str(update.get("title") or "tool"),
+                summary=_tool_summary(update.get("rawInput")),
+                result=None, result_truncated=False, sidechain=False,
+            )
+            entries.append(entry)
+            if update.get("toolCallId"):
+                open_calls[str(update["toolCallId"])] = entry
+        elif kind == "tool_call_update" and update.get("status") == "completed":
+            # The other half of a `tool_call_update` (no `status`, carrying
+            # `locations`/`kind`) only restates the call, so it is dropped.
+            _attach_result(
+                entries, open_calls, update.get("toolCallId"),
+                _grok_result_text(update), offset, ts, False,
+            )
+        # `turn_completed` and `hook_execution` carry no conversation text.
+    return entries
+
+
+def _grok_line_key(raw: str) -> Optional[str]:
+    """Grok records are self-contained: one line is one whole segment
+    (see :func:`grok_entries`), so no line ever needs another to be read."""
+    return None
+
+
 def _claude_line_key(raw: str) -> Optional[str]:
     """The ``message.id`` of an assistant line — the key that groups one
     message's one-line-per-block records — else None (self-contained line)."""
@@ -621,6 +792,23 @@ def _claude_line_key(raw: str) -> Optional[str]:
 def _codex_line_key(raw: str) -> Optional[str]:
     """Codex rollout records are self-contained: never grouped."""
     return None
+
+
+# The line grammars this reader understands: flavour name → (entry builder,
+# line key). One table so a new harness is one row here plus its parser,
+# rather than a branch in every dispatch site. The names are the endpoint's
+# `_FLAVOR_BY_AGENT` values (app/webapp/routers/session_transcript.py).
+FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey]] = {
+    "claude": (claude_entries, _claude_line_key),
+    "codex": (codex_entries, _codex_line_key),
+    "grok": (grok_entries, _grok_line_key),
+}
+
+
+def _flavor(flavor: str) -> Tuple[EntryBuilder, LineKey]:
+    """The builder + line key for ``flavor``, defaulting to Claude's — the
+    same fallback the endpoint applies to a session with no agent field."""
+    return FLAVORS.get(flavor, FLAVORS["claude"])
 
 
 # ---------------------------------------------------------------- public
@@ -638,11 +826,9 @@ def transcript_page(
     ``before`` is a byte offset (the previous page's ``next_cursor``; ``None``
     = the end of the file); ``limit`` is the maximum number of conversation
     turns (``user`` + ``assistant`` entries — roughly two per exchange).
-    ``flavor`` picks the line grammar: ``"claude"`` (hook JSONL) or
-    ``"codex"`` (rollout JSONL). Raises ``OSError`` when the file can't be
-    read — a distinct condition from "no transcript", which the caller
-    establishes *before* calling.
+    ``flavor`` picks the line grammar — see :data:`FLAVORS`. Raises
+    ``OSError`` when the file can't be read — a distinct condition from "no
+    transcript", which the caller establishes *before* calling.
     """
-    if flavor == "codex":
-        return _page(Path(str(path)), before, limit, codex_entries, _codex_line_key)
-    return _page(Path(str(path)), before, limit, claude_entries, _claude_line_key)
+    build, line_key = _flavor(flavor)
+    return _page(Path(str(path)), before, limit, build, line_key)

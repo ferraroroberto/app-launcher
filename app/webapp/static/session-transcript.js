@@ -42,12 +42,12 @@ import { ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // Agents whose native history the server-side reader understands — the
-// same pair as the endpoint's flavour map (app/webapp/routers/
+// same set as the endpoint's flavour map (app/webapp/routers/
 // session_transcript.py). Decides Chat availability without a probe; the
 // pane still shows the server's own reason line if it disagrees. An absent
 // agent field (a ?session= deep link's bare {session_id, name}) defaults
 // to Claude, as the endpoint does.
-const TRANSCRIPT_AGENTS = ['claude', 'codex'];
+const TRANSCRIPT_AGENTS = ['claude', 'codex', 'grok'];
 
 export function hasTranscriptReader(s) {
   const agent = String((s && s.agent) || 'claude').toLowerCase();
