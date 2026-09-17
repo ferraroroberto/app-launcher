@@ -10,6 +10,13 @@
  * via the hub's claude-haiku-4-5 first, for hands-free / driving listening. The
  * menu only appears when the summarize action is available (hub reachable);
  * otherwise the button keeps its original single-tap "read aloud" behaviour.
+ *
+ * Text provider (#988): Terminal mode reads the live xterm scrollback via
+ * terminal-readback.js's extractLastReply() — keyed on Claude Code's own
+ * bullet colours, so it only ever works for that one agent. Chat mode, and
+ * any session with no PTY (a detached session can only ever show Chat), reads
+ * the newest assistant entry from session-transcript.js's loaded page
+ * instead — harness-agnostic for every agent with a transcript reader.
  */
 
 import { els, state } from './state.js';
@@ -17,6 +24,8 @@ import { apiFailToast, readToken, showLogin, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { readTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { inChatMode } from './session-overlay.js';
+import { lastAssistantEntryFullText } from './session-transcript.js';
 import {
   cancelHub,
   cancelSpeech,
@@ -143,9 +152,29 @@ async function readTextAloud(text, handle, quiet) {
   return true;
 }
 
-// "Read aloud": extract the last reply and speak it verbatim. Must be called
-// directly from the button-click gesture (speakHub arms audio synchronously).
-function readLastReplyAloud() {
+// "Read aloud": extract the last reply and speak it verbatim. Terminal mode
+// (a live PTY) reads the xterm scrollback (issue #190); Chat mode, and any
+// session with no PTY, reads the transcript's newest assistant entry instead
+// (issue #988) — the harness-agnostic source, since the xterm extractor is
+// keyed on Claude Code's own bullet colours. Must be called directly from the
+// button-click gesture (speakHub / prepareHub arm audio synchronously) — the
+// transcript path arms hub audio before its own awaited fetch for the same
+// reason the summarize path below does.
+async function readLastReplyAloud() {
+  if (inChatMode()) {
+    let handle = null;
+    if (isHubAvailable()) {
+      try { handle = prepareHub(); } catch (_) { handle = null; }
+    }
+    const text = await lastAssistantEntryFullText();
+    if (!text) {
+      if (handle) cancelHub();
+      toast('No reply to read yet.', undefined, { icon: 'volume-2' });
+      return;
+    }
+    readTextAloud(text, handle);
+    return;
+  }
   const t = state.terminal;
   if (!t || !t.term) return;
   const text = extractLastReply(t.term);
@@ -154,20 +183,34 @@ function readLastReplyAloud() {
 }
 
 // "Summarize & read": condense the last reply via the hub, then speak the
-// summary. Arms the hub audio context in the gesture tick (before the awaited
-// summary) so iOS lets the synthesized summary sound. Must be called directly
-// from the button-click gesture.
+// summary. Arms the hub audio context in the gesture tick (before any awaited
+// fetch — the text-provider fetch in Chat mode, then the summary) so iOS lets
+// the synthesized summary sound. Must be called directly from the
+// button-click gesture.
 async function summarizeAndReadLastReply() {
-  const t = state.terminal;
-  if (!t || !t.term) return;
-  const text = extractLastReply(t.term);
-  if (!text) { toast('No reply to read yet.', undefined, { icon: 'volume-2' }); return; }
+  const useTranscript = inChatMode();
+  let text = null;
+  if (!useTranscript) {
+    const t = state.terminal;
+    if (!t || !t.term) return;
+    text = extractLastReply(t.term);
+    if (!text) { toast('No reply to read yet.', undefined, { icon: 'volume-2' }); return; }
+  }
   const opts = { token: readToken(), terminalToken: readTerminalToken() };
-  // Arm hub audio now, in the gesture, so the summary can sound after the LLM
-  // round-trip; null when Web Audio is unavailable → Web Speech fallback.
+  // Arm hub audio now, in the gesture, so the summary can sound after the
+  // awaited round-trip(s) below; null when Web Audio is unavailable → Web
+  // Speech fallback.
   let handle = null;
   if (isHubAvailable()) {
     try { handle = prepareHub(); } catch (_) { handle = null; }
+  }
+  if (useTranscript) {
+    text = await lastAssistantEntryFullText();
+    if (!text) {
+      if (handle) cancelHub();
+      toast('No reply to read yet.', undefined, { icon: 'volume-2' });
+      return;
+    }
   }
   toast('Summarizing…', undefined, { icon: 'notebook-text' });
   let summary;
@@ -209,10 +252,11 @@ function wireSpeakMenu() {
 }
 
 // Reveal/hide the 🔊 button + "Summarize" menu action for the session just
-// opened (called from openTerminal). `state.status.tts` is the cheap
-// config-presence flag; the live /api/tts/health probe then refines which
-// path the click takes — summarize only ever appears once the hub is
-// confirmed reachable.
+// opened — called from attachTerminalPane (Terminal mode) and from
+// session-overlay.js's setSessionMode (Chat mode, including a detached
+// session with no PTY, #988). `state.status.tts` is the cheap config-presence
+// flag; the live /api/tts/health probe then refines which path the click
+// takes — summarize only ever appears once the hub is confirmed reachable.
 export function revealReadAloudButton() {
   const ttsConfigured = !!(state.status && state.status.tts);
   els.terminalSpeak.hidden = !(isSpeechSupported() || ttsConfigured);

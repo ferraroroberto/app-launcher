@@ -40,7 +40,7 @@ import {
 } from './session-transcript.js';
 import { applyTermTheme } from './terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal-bar.js';
-import { closeSpeakPopover } from './terminal-readaloud.js';
+import { closeSpeakPopover, revealReadAloudButton } from './terminal-readaloud.js';
 import { terminalComposer } from './terminal-compose.js';
 
 // Last-viewed mode per session id — one JSON map under one key rather than
@@ -167,6 +167,9 @@ export function setSessionMode(mode) {
     }
   } else {
     if (chatPaneSession() !== s.session_id) openChatPane(s);
+    // A detached session never runs attachTerminalPane's reveal (#988) — the
+    // 🔊 button lives in the shared bar, so Chat mode reveals it here too.
+    revealReadAloudButton();
     updateLatestPill();
     pinChatToKeyboard();
   }
