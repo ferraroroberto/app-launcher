@@ -17,6 +17,21 @@ import { escapeHtml } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
 
+// An item property may be a plain value or a function of no arguments,
+// re-evaluated every time the menu opens (#982: the terminal bar's menu
+// shows chat-only rows, and their glyph/label flip with the pane's state).
+function resolve(v) {
+  return typeof v === 'function' ? v() : v;
+}
+
+// Paint (or repaint) one row's glyph, caption and accessible name.
+function paintButton(btn, item) {
+  btn.innerHTML = (resolve(item.html) || icon(resolve(item.glyph))) +
+    '<span class="row-menu-label">' + escapeHtml(resolve(item.text)) + '</span>';
+  btn.title = item.disabled && item.title ? item.title : resolve(item.label);
+  btn.setAttribute('aria-label', btn.title);
+}
+
 // One menu row. `label` is the accessible name (aria-label/title, the stable
 // hook the e2e suite targets); `text` is the short caption next to the
 // glyph. `glyph` is a Lucide sprite name; `html` overrides it with ready
@@ -26,10 +41,7 @@ function menuButton(item, close) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn row-menu-btn ' + (item.className || '');
-  btn.innerHTML = (item.html || icon(item.glyph)) +
-    '<span class="row-menu-label">' + escapeHtml(item.text) + '</span>';
-  btn.title = item.disabled && item.title ? item.title : item.label;
-  btn.setAttribute('aria-label', btn.title);
+  paintButton(btn, item);
   btn.setAttribute('role', 'menuitem');
   if (item.disabled) {
     btn.disabled = true;
@@ -50,6 +62,8 @@ export function createRowMenu(menuClass) {
   let openMenu = null;
   let disposeOutside = null;
   let reopened = false;
+  // menu element → its render function (re-evaluates hidden/text/label).
+  const renderers = new WeakMap();
 
   function onKey(ev) {
     if (ev.key === 'Escape') close();
@@ -70,6 +84,8 @@ export function createRowMenu(menuClass) {
     openKey = key;
     openAnchor = anchor;
     openMenu = menu;
+    const render = renderers.get(menu);
+    if (render) render();
     menu.hidden = false;
     anchor.setAttribute('aria-expanded', 'true');
     if (disposeOutside) disposeOutside();
@@ -86,10 +102,26 @@ export function createRowMenu(menuClass) {
       menu.className = 'row-menu ' + menuClass;
       menu.setAttribute('role', 'menu');
       menu.hidden = true;
-      items.forEach(function (item) {
-        if (item.hidden) return;
-        menu.appendChild(menuButton(item, close));
+      // Every row is built once; a hidden one is *detached* from the menu
+      // (not [hidden]) so a count of the menu's buttons — the e2e suite's
+      // and any caller's — only ever sees what is offered. Re-appending the
+      // visible rows in declaration order keeps the menu's order stable
+      // when a row comes back.
+      const rows = items.map(function (item) {
+        return { item: item, btn: menuButton(item, close) };
       });
+      const render = function () {
+        rows.forEach(function (row) {
+          if (resolve(row.item.hidden)) {
+            if (row.btn.parentNode) row.btn.parentNode.removeChild(row.btn);
+            return;
+          }
+          paintButton(row.btn, row.item);
+          menu.appendChild(row.btn);
+        });
+      };
+      render();
+      renderers.set(menu, render);
       anchor.classList.add('row-menu-anchor');
       anchor.setAttribute('aria-haspopup', 'menu');
       anchor.setAttribute('aria-expanded', 'false');

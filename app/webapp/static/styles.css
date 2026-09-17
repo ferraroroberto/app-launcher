@@ -274,7 +274,6 @@ html, body {
    technique — gentler on iOS fixed-layer repainting across show/hide. */
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
-  body:has(#transcriptOverlay:not([hidden])) .tabs,
   body:has(#lifeOsBrowser:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
   body:has(#systemMapLightbox:not([hidden])) .tabs,
@@ -293,7 +292,6 @@ html, body {
      rule above, plus native <dialog> for completeness (this app has both). */
   @media (display-mode: standalone) {
     body.terminal-open .app,
-    body:has(#transcriptOverlay:not([hidden])) .app,
     body:has(#lifeOsBrowser:not([hidden])) .app,
     body:has(#loginOverlay:not([hidden])) .app,
     body:has(#systemMapLightbox:not([hidden])) .app,
@@ -1998,11 +1996,74 @@ summary + .opt-group { border-top: 0; }
   filter: grayscale(1);
 }
 
-/* ---------- session transcript overlay (#953) ---------- */
-/* Same fixed overlay + bar chrome as the terminal, on the app canvas rather
-   than the terminal's own black — this is a reading surface, not a TTY.
-   The Show-changes overlay (#977) is the same reading surface. */
-.transcript-overlay, .changes-overlay { background: var(--bg); }
+/* ---------- session transcript: the Chat pane (#953, #982) ---------- */
+/* The transcript is the session overlay's Chat mode: the same shell as the
+   terminal, on the app canvas rather than the terminal's own black — a
+   reading surface, not a TTY. The Show-changes overlay (#977) is the same
+   reading surface. Which pane shows is the overlay's data-mode (set by
+   session-overlay.js); the terminal pane's DOM stays mounted underneath so
+   its xterm keeps its frame and socket. */
+#terminalOverlay[data-mode="chat"], .changes-overlay { background: var(--bg); }
+.chat-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+#terminalOverlay:not([data-mode="chat"]) .chat-pane { display: none; }
+#terminalOverlay[data-mode="chat"] .terminal-host,
+#terminalOverlay[data-mode="chat"] #terminalComposeBar,
+#terminalOverlay[data-mode="chat"] #terminalStatus { display: none; }
+/* Why the Terminal segment is off (a detached session) — caption under the
+   list, above the #975 composer. */
+.chat-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
+.chat-note .icon { width: 14px; height: 14px; }
+/* Terminal ⇄ Chat segmented toggle in the bar (#982): the .segmented recipe
+   at the bar's 44px control height, icon-only so the title keeps most of a
+   390px phone (labels were measured to crush it — #979 decision log). The
+   active segment lifts on the card surface in accent; an unavailable one
+   takes the fleet's one disabled recipe (canvas-subtle / hairline / muted,
+   never opacity) and toasts its reason on tap. */
+.session-mode {
+  flex: 0 0 auto;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 3px;
+  gap: 2px;
+}
+.session-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+.session-mode-btn .icon { width: 18px; height: 18px; }
+.session-mode-btn[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(from var(--fg) r g b / 0.12);
+}
+.session-mode-btn[aria-disabled="true"] {
+  background: var(--card-off);
+  border-color: var(--line);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: default;
+}
 /* One 12px gutter everywhere: page edge, between cards, and (below) the
    row padding inside an opened group — nothing else sets a gap here. */
 .transcript-body, .changes-body {
@@ -2424,8 +2485,9 @@ body.terminal-open {
 }
 .terminal-bar-actions::-webkit-scrollbar { display: none; }
 /* The session overlay's bar no longer needs that scroller (#981): with ✕ and
-   ↓ gone its group holds the mode toggle (#982), 🔊 and ⋮, which always fit
-   beside a shrinking title. Only the Life OS bars (#886) still scroll. */
+   ↓ gone its group holds the Terminal⇄Chat toggle (#982), 🔊 and ⋮, which
+   always fit beside a shrinking title (≈274px of a 320px phone, title keeps
+   the rest). Only the Life OS bars (#886) still scroll. */
 #terminalOverlay .terminal-bar-actions { overflow-x: visible; }
 .term-btn {
   background: var(--card-2);

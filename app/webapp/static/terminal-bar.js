@@ -3,36 +3,43 @@
  *
  * The bar used to carry ✕ Kill and ↓ Jump as permanent controls. They
  * left the bar so it fits a 390px phone without scrolling: ‹ Back · title
- * · [mode toggle, #982] · 🔊 · ⋮.
+ * · Terminal⇄Chat toggle (#982, session-overlay.js) · 🔊 · ⋮.
  *
- *   ⋮ menu — Rename · Copy link · Stop and kill. Built once on the shared
- *   row-menu.js component (the same one as the sessions-list gear), and
- *   every item resolves the open session when tapped, so one menu serves
- *   whichever session the overlay shows.
+ *   ⋮ menu — Rename · Copy link · [Show/Hide tool calls · Reload, Chat mode
+ *   only] · Stop and kill. Built once on the shared row-menu.js component
+ *   (the same one as the sessions-list gear); the chat-only rows are
+ *   declared with function-valued `hidden`, so the menu re-evaluates them
+ *   on every open and they are simply absent from the DOM in Terminal
+ *   mode. Every item resolves the open session when tapped, so one menu
+ *   serves whichever session the overlay shows.
  *
  *   Latest pill — shown only while the viewport is more than one screen
- *   above the tail; a tap jumps back down and the pill hides again.
+ *   above the tail; a tap jumps back down and the pill hides again. It is
+ *   a child of #terminalHost, so the Chat pane hides it with the terminal.
  */
 
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import { openSessionRename, stopSession } from './sessions.js';
 import { createRowMenu } from './row-menu.js';
-import { refreshTerminalTitle } from './terminal-mirror.js';
+import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
+import { groupsAreHidden, reloadNewest, toggleGroups } from './session-transcript.js';
+import { inChatMode } from './session-overlay.js';
 
 const terminalMenu = createRowMenu('terminal-menu');
 
 // The open session as the list knows it (it carries kind / agent /
-// manual_title for the chief guard and the rename dialog). Falls back to a
-// bare {session_id, name} when the overlay was opened before the list
-// loaded — a ?session= deep link or a Board drill-down.
+// manual_title for the chief guard and the rename dialog). Falls back to
+// the object the overlay was opened with — a bare {session_id, name} for a
+// ?session= deep link or a Board drill-down opened before the list loaded.
 function currentSession() {
-  const t = state.terminal;
-  if (!t) return null;
+  const v = state.sessionView;
+  if (!v) return null;
+  const sid = v.session.session_id;
   const s = (state.sessions || []).find(function (x) {
-    return x.session_id === t.sid;
+    return x.session_id === sid;
   });
-  return s || { session_id: t.sid, name: els.terminalTitle.textContent || t.sid };
+  return s || v.session;
 }
 
 // The shareable launcher link that drops straight into this session
@@ -45,6 +52,10 @@ function sessionShareUrl(sid) {
 
 export function closeTerminalMenu() {
   terminalMenu.close();
+}
+
+function notInChat() {
+  return !inChatMode();
 }
 
 export function wireTerminalMenu() {
@@ -60,9 +71,15 @@ export function wireTerminalMenu() {
           // name now instead of waiting for the next title poll (which
           // then keeps it in step); an empty title clears the override, as
           // on the server. No list fetch: the list stays unrendered under
-          // the overlay, and hideTerminal() refreshes it on the way out.
+          // the overlay, and closing it refreshes the list on the way out.
+          // A detached session viewed in Chat has no terminal to refresh
+          // through — set the bar title directly.
           s.manual_title = title;
-          if (t && t === state.terminal) refreshTerminalTitle(t, s);
+          if (t && t === state.terminal && t.sid === s.session_id) {
+            refreshTerminalTitle(t, s);
+          } else {
+            setTerminalTitleText(s);
+          }
         });
       },
     },
@@ -79,10 +96,29 @@ export function wireTerminalMenu() {
         );
       },
     },
+    // Chat-only (#982): the transcript bar's 👁 and 🔄 moved here when the
+    // transcript became a pane of this overlay. Absent from the DOM in
+    // Terminal mode (function-valued `hidden`, row-menu.js).
+    {
+      glyph: function () { return groupsAreHidden() ? 'eye' : 'eye-off'; },
+      label: function () {
+        return groupsAreHidden()
+          ? 'Show tool calls and system entries'
+          : 'Hide tool calls and system entries';
+      },
+      text: function () { return groupsAreHidden() ? 'Show tool calls' : 'Hide tool calls'; },
+      hidden: notInChat,
+      onTap: toggleGroups,
+    },
+    {
+      glyph: 'rotate-ccw', label: 'Reload transcript', text: 'Reload',
+      hidden: notInChat,
+      onTap: reloadNewest,
+    },
     {
       className: 'action-stop-close', glyph: 'x',
       label: 'Stop and kill session', text: 'Stop and kill',
-      // stopSession() keeps the chief confirm (#547) and hides the overlay
+      // stopSession() keeps the chief confirm (#547) and closes the overlay
       // once the session it is showing stops.
       onTap: function () {
         const s = currentSession();

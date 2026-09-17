@@ -20,7 +20,7 @@ import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
 import { openTerminal, wireTerminal } from './terminal.js';
-import { wireTranscript } from './session-transcript.js';
+import { wireChatPane } from './session-transcript.js';
 import { wireChanges } from './changes-overlay.js';
 import { markMirrorWindowEarly } from './terminal-mirror.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
@@ -237,9 +237,10 @@ async function boot() {
     fetchApps().catch(function () {});
   }, TUNNEL_POLL_MS);
   setInterval(function () {
-    // Pause the session poll while the terminal is open — it would
-    // re-render the list under the overlay for no reason.
-    if (!state.terminal) fetchSessions().catch(function () {});
+    // Pause the session poll while the session overlay is open (either
+    // mode, #982) — it would re-render the list under the overlay for no
+    // reason. The open terminal keeps its own title poll (terminal.js).
+    if (!state.sessionView) fetchSessions().catch(function () {});
   }, SESSIONS_POLL_MS);
   setInterval(function () {
     fetchRateLimits().catch(function () {});
@@ -286,7 +287,7 @@ wireLifeOs();
 wireBoard();
 wireSystemMap();
 wireTerminal();
-wireTranscript();
+wireChatPane();
 wireChanges();
 wireWebauthn();
 wireSettings();

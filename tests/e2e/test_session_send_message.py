@@ -6,8 +6,8 @@ agents the console-input probe on the issue proved (``console_input`` on
 POSTs ``{"data", "submit": true}`` to the existing ``/input`` route. The
 verdict is ``delivered: "unconfirmed"`` and the toast says so. The menu
 itself becomes a vertical icon + label list. The same send is also offered
-inline, as a composer docked under a detached session's transcript (#975);
-a full-control transcript has none. Boot fetches are stubbed before
+inline, as a composer docked under a detached session's transcript (#975) —
+since #982 the Chat mode of the session overlay; a full-control chat has none. Boot fetches are stubbed before
 ``goto()`` (#510) and every geometry read goes through ``stable_read`` (#680):
 the sessions list re-renders on its poll, so a raw ``bounding_box()`` can
 land across a rebuild.
@@ -157,7 +157,8 @@ def test_full_control_row_has_no_send_message_item(authed_page: Page, base_url: 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _, menu = _open_menu(authed_page)
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    expect(menu.locator("button")).to_have_count(3)
+    # Terminal · Chat · Rename · Stop (#982)
+    expect(menu.locator("button")).to_have_count(4)
 
 
 def test_detached_unprobed_agent_has_no_send_message_item(authed_page: Page, base_url: str) -> None:
@@ -180,7 +181,9 @@ def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url
     expect(buttons).to_have_count(4)
     labels = menu.locator(".row-menu-label")
     expect(labels).to_have_count(4)
-    expect(labels).to_have_text(["Transcript", "Send message", "Rename", "Stop"])
+    # A detached Claude row: Chat (#982, was Transcript) · Send message ·
+    # Rename · Stop — no Terminal, it has no PTY.
+    expect(labels).to_have_text(["Chat", "Send message", "Rename", "Stop"])
     for i in range(4):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
@@ -260,9 +263,13 @@ def _mock_transcript(page: Page, calls: list) -> None:
 
 
 def _open_transcript(page: Page) -> None:
+    # #982: the transcript is the session overlay's Chat mode, opened from
+    # the gear's "Open chat" item; the pane's own ids are unchanged.
     _, menu = _open_menu(page)
-    menu.locator('button[aria-label="Session transcript"]').click()
-    expect(page.locator("#transcriptOverlay")).to_be_visible()
+    menu.locator('button[aria-label="Open chat"]').click()
+    overlay = page.locator("#terminalOverlay")
+    expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
     expect(page.locator("#transcriptList .tr-user").first).to_contain_text("this is a test")
 
 

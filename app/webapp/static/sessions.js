@@ -12,13 +12,14 @@
 import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { renderHomeHead } from './home-head.js';
-import { hideTerminal, openTerminal } from './terminal.js';
+// The session overlay's two modes (#982). Circular with this module by
+// design (session-overlay.js → terminal.js / session-transcript.js → here
+// for sessionTitle and the send helpers); nothing runs at import time.
+import { closeSessionOverlay, openSessionOverlay } from './session-overlay.js';
 import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
-// Same circular-import shape as terminal.js above: session-transcript.js
-// imports sessionTitle from here for its overlay title (#953).
-import { openTranscript } from './session-transcript.js';
+import { hasTranscriptReader } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js in #691; the shared helper landed in #828), exported
 // for this cross-tab use (#547); board.js already imports
@@ -144,12 +145,16 @@ export function renderSessions() {
     main.className = 'app-main';
 
     const remote = s.kind === 'remote';
-    // Full-control rows open the live terminal on tap. Detached rows
-    // can't be streamed, so the row is inert — it's still killable
-    // from the ⏹️ button.
-    const open = document.createElement(remote ? 'div' : 'button');
-    open.className = 'launch-btn session-open' + (remote ? ' inert' : '');
-    if (!remote) open.type = 'button';
+    const reader = hasTranscriptReader(s);
+    // A row tap opens the session overlay in the mode it was last viewed
+    // in (#982): a full-control row has a terminal, a detached row of an
+    // agent with a transcript reader opens in Chat. A detached row of an
+    // agent with no reader has nothing to show, so it stays inert — still
+    // killable from its gear menu.
+    const tappable = !remote || reader;
+    const open = document.createElement(tappable ? 'button' : 'div');
+    open.className = 'launch-btn session-open' + (tappable ? '' : ' inert');
+    if (tappable) open.type = 'button';
 
     // Title on its own full-width line at the top of the card, so a long
     // project title wraps across the whole card instead of being squeezed
@@ -186,7 +191,7 @@ export function renderSessions() {
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
     kindTag.innerHTML = remote ? icon('cloud') + ' detached' : icon('zap') + ' full control';
     head.appendChild(kindTag);
-    if (!remote) {
+    if (tappable) {
       const chev = document.createElement('span');
       chev.className = 'session-chevron';
       chev.textContent = '›';
@@ -199,7 +204,7 @@ export function renderSessions() {
     const ago = fmtAgo(s.started_at);
     meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + s.project_dir;
     open.appendChild(meta);
-    if (!remote) {
+    if (tappable) {
       open.addEventListener('click', function () { openSession(s); });
     }
     main.appendChild(open);
@@ -210,38 +215,47 @@ export function renderSessions() {
 
     // One gear, vertically centred, opens the row's floating action menu
     // (#953) — a vertical icon + label list (#967). The menu holds, in order:
-    //   · Transcript — every full-control row; a detached row only when its
-    //     agent is Claude or Codex (#966) — the reader uses their native
-    //     history, never the PTY capture a detached row lacks.
+    //   · Terminal (#982) — full-control rows only: the session overlay in
+    //     Terminal mode (a desktop browser gets the PC mirror window, as a
+    //     row tap does).
+    //   · Chat (#982) — every row whose agent has a transcript reader
+    //     (Claude and Codex, #966; hasTranscriptReader mirrors the
+    //     endpoint's flavour map): the same overlay in Chat mode. The reader
+    //     uses the agent's native history, never the PTY capture a detached
+    //     row lacks.
     //   · Send message (#967) — detached rows only (a full-control row has
     //     the terminal's compose bar), and only for an agent the recorded
     //     console-input probe proved (the registry's ``console_input`` flag,
     //     served by /api/claude-code/agents) — the menu never offers a dead
     //     end. Delivery is unconfirmed by design: the message is typed into
-    //     the PC console and nothing can watch the agent consume it.
+    //     the PC console and nothing can watch the agent consume it. Leaves
+    //     the menu in #983, when the chat pane's composer covers it.
     //   · Rename (issue #458) — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
     //   · Stop-and-kill (issue #253), both kinds: the session-host quits
     //     gracefully then force-falls-back; the window always closes. Keeps
     //     the `action-stop-close` class (muted by default, danger-red on
-    //     press). Two taps from the list now — the in-terminal ✕ is still
-    //     one — a deliberate trade for the third action fitting the phone.
+    //     press). Two taps from the list now — a deliberate trade for the
+    //     other actions fitting the phone.
     const gear = document.createElement('button');
     gear.type = 'button';
     gear.className = 'icon-btn session-gear';
     gear.innerHTML = icon('settings');
     gear.title = 'Session actions';
     gear.setAttribute('aria-label', 'Session actions');
-    // The row's own agent, defaulted as the endpoint does — not agentId,
-    // whose icon fallback would turn an unknown agent into Claude.
-    const rowAgent = (s.agent || 'claude').toLowerCase();
     const menu = sessionMenu.attach(s.session_id, gear, [
       {
-        className: 'session-transcript-btn', glyph: 'messages-square',
-        label: 'Session transcript', text: 'Transcript',
-        hidden: remote && rowAgent !== 'claude' && rowAgent !== 'codex',
-        onTap: function () { openTranscript(s); },
+        className: 'session-terminal-btn', glyph: 'terminal',
+        label: 'Open terminal', text: 'Terminal',
+        hidden: remote,
+        onTap: function () { openSession(s, 'terminal'); },
+      },
+      {
+        className: 'session-chat-btn', glyph: 'messages-square',
+        label: 'Open chat', text: 'Chat',
+        hidden: !reader,
+        onTap: function () { openSession(s, 'chat'); },
       },
       // The registry's flag for the row's agent (unknown agent → no item):
       // the server's, never guessed here.
@@ -272,15 +286,18 @@ export function renderSessions() {
   sessionMenu.endRender();
 }
 
-// Open a full-control session when its row is tapped. On a desktop browser
-// this opens a dedicated PC Edge --app window (issue #282) — the same window
-// a new-session launch opens — instead of rendering the terminal inside the
-// user's own browser, so it can be closed without fear while the session
-// keeps running headless. A second tap focuses that window rather than
-// spawning a duplicate. The phone (and a desktop with mirroring disabled)
-// streams the terminal in-page as before.
-export async function openSession(s) {
-  if (isDesktopClient()) {
+// Open a session when its row (or its gear's Terminal / Chat item) is
+// tapped. `mode` forces 'terminal' or 'chat'; without it the session opens
+// in the mode it was last viewed in (#982, session-overlay.js), a detached
+// session always in Chat. On a desktop browser a full-control session's
+// terminal is a dedicated PC Edge --app window (issue #282) — the same
+// window a new-session launch opens — instead of rendering the terminal
+// inside the user's own browser, so it can be closed without fear while
+// the session keeps running headless. A second tap focuses that window
+// rather than spawning a duplicate. Chat is in-page everywhere; the phone
+// (and a desktop with mirroring disabled) streams the terminal in-page.
+export async function openSession(s, mode) {
+  if (isDesktopClient() && s.kind !== 'remote' && mode !== 'chat') {
     try {
       const r = await jsonApi(
         '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
@@ -302,7 +319,7 @@ export async function openSession(s) {
       return;
     }
   }
-  openTerminal(s);
+  openSessionOverlay(s, mode);
 }
 
 export async function stopSession(s) {
@@ -328,8 +345,11 @@ export async function stopSession(s) {
       }
     );
     toast('Stopping ' + s.name + '…', 'good', { icon: 'octagon-x' });
-    if (state.terminal && state.terminal.sid === s.session_id) {
-      hideTerminal();
+    // The overlay showing this session closes whichever pane is up (#982) —
+    // a detached session viewed in Chat has no state.terminal to key on.
+    if (state.sessionView &&
+        state.sessionView.session.session_id === s.session_id) {
+      closeSessionOverlay();
     }
     setTimeout(fetchSessions, 1500);
   } catch (exc) {

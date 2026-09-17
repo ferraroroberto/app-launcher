@@ -1,16 +1,21 @@
-"""Issue #953 — Coding-tab session transcript: gear menu + transcript overlay.
+"""Issue #953 — Coding-tab session transcript: gear menu + Chat mode.
 
 Pins the phone-facing contract end to end, with every non-deterministic
 boot fetch stubbed **before** ``goto()`` (#510) so no poll rebuilds the row
-under a click:
+under a click. Since #982 the transcript is the **Chat mode** of the one
+session overlay (``#terminalOverlay[data-mode="chat"]``), opened from the
+gear's "Open chat" item; the pane's own ids (``#transcriptList`` …) are
+unchanged, and the bar's 👁 / 🔄 became the ⋮ menu's chat-only "Show tool
+calls" / "Reload transcript" (the ⇕ collapse-all was dropped — a turn still
+collapses on its own summary):
 
-  * the row's single gear opens a floating menu of three actions
-    (transcript · rename · stop) and any tap outside closes it; a detached
-    Claude/Codex row offers the transcript too (#966), a detached row of any
-    other agent does not;
-  * the transcript overlay shows prompts and replies expanded, folds a run
-    of tool calls / thinking into one closed disclosure, and expanding it
-    (then one item) reveals the tool result;
+  * the row's single gear opens a floating menu (Terminal · Chat · Rename ·
+    Stop for a full-control row) and any tap outside closes it; a detached
+    Claude/Codex row offers Chat too (#966), a detached row of any other
+    agent does not;
+  * Chat mode shows prompts and replies expanded, folds a run of tool calls /
+    thinking into one closed disclosure, and expanding it (then one item)
+    reveals the tool result;
   * "Load older" prepends the next page and hides itself once the cursor is
     exhausted;
   * an unavailable source shows its own reason line — "no transcript" and
@@ -102,7 +107,22 @@ def _row(page: Page):
     return page.locator(f'#sessionsList li[data-session-id="{_SID}"]')
 
 
-def test_gear_menu_holds_three_actions_and_closes_on_outside_tap(
+def _open_chat(page: Page, row) -> None:
+    row.locator(".session-gear").click()
+    row.locator('button[aria-label="Open chat"]').click()
+    overlay = page.locator("#terminalOverlay")
+    expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
+
+
+def _menu_item(page: Page, name: str):
+    page.locator("#terminalMenu").click()
+    menu = page.locator("#terminalOverlay .terminal-menu")
+    expect(menu).to_be_visible()
+    return menu.get_by_role("menuitem", name=name)
+
+
+def test_gear_menu_holds_four_actions_and_closes_on_outside_tap(
     authed_page: Page, base_url: str
 ) -> None:
     _mock_sessions_list(authed_page)
@@ -117,17 +137,20 @@ def test_gear_menu_holds_three_actions_and_closes_on_outside_tap(
     gear.click()
     expect(menu).to_be_visible()
     expect(gear).to_have_attribute("aria-expanded", "true")
-    expect(menu.locator('button[aria-label="Session transcript"]')).to_be_visible()
+    # Terminal · Chat · Rename · Stop (#982), in that order.
+    expect(menu.locator(".row-menu-label")).to_have_text(["Terminal", "Chat", "Rename", "Stop"])
+    expect(menu.locator('button[aria-label="Open terminal"]')).to_be_visible()
+    expect(menu.locator('button[aria-label="Open chat"]')).to_be_visible()
     expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
     expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
-    assert menu.locator("button").count() == 3
+    assert menu.locator("button").count() == 4
 
     # A tap anywhere else closes it.
     authed_page.locator("#tabApps").click()
     expect(menu).to_be_hidden()
 
 
-def test_detached_claude_row_opens_transcript(authed_page: Page, base_url: str) -> None:
+def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> None:
     # #966: a detached Claude row reads the same native history a PTY row does.
     calls: list = []
     _mock_sessions_list(authed_page, kind="remote")
@@ -137,23 +160,30 @@ def test_detached_claude_row_opens_transcript(authed_page: Page, base_url: str) 
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    # Transcript · Send message (#967) · Rename · Stop
+    # Chat · Send message (#967) · Rename · Stop — no Terminal for a detached row
     expect(menu.locator("button")).to_have_count(4)
-    menu.locator('button[aria-label="Session transcript"]').click()
-    expect(authed_page.locator("#transcriptOverlay")).to_be_visible()
+    expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
+    menu.locator('button[aria-label="Open chat"]').click()
+    overlay = authed_page.locator("#terminalOverlay")
+    expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
     expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("older prompt")
 
 
-def test_detached_unsupported_agent_menu_has_no_transcript(authed_page: Page, base_url: str) -> None:
+def test_detached_unsupported_agent_menu_has_no_chat(authed_page: Page, base_url: str) -> None:
     _mock_sessions_list(authed_page, kind="remote", agent="pi")
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
+    # Nothing to open: neither a terminal nor a readable history — the row
+    # itself is inert (#982), not just menu-less.
+    expect(row.locator(".session-open.inert")).to_have_count(1)
     row.locator(".session-gear").click()
     menu = row.locator(".session-menu")
     expect(menu).to_be_visible()
-    # Send message (#967, pi is probe-proven) · Rename · Stop — no Transcript
+    # Send message (#967, pi is probe-proven) · Rename · Stop — no Chat, no Terminal
     expect(menu.locator("button")).to_have_count(3)
-    expect(menu.locator('button[aria-label="Session transcript"]')).to_have_count(0)
+    expect(menu.locator('button[aria-label="Open chat"]')).to_have_count(0)
+    expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
 
 
 def test_transcript_shows_turns_folds_tools_and_loads_older(
@@ -165,14 +195,21 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)
-    row.locator(".session-gear").click()
-    row.locator('button[aria-label="Session transcript"]').click()
+    _open_chat(authed_page, row)
 
-    overlay = authed_page.locator("#transcriptOverlay")
-    expect(overlay).to_be_visible()
-    expect(authed_page.locator("#transcriptTitle")).to_have_text("Transcript demo")
+    overlay = authed_page.locator("#terminalOverlay")
+    expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
     # The list-row menu closed behind the overlay.
     expect(row.locator(".session-menu")).to_be_hidden()
+    # The shared bar: Terminal / Chat segments first in the actions group,
+    # 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only bar buttons.
+    bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
+        "els => els.map(e => e.id)"
+    )
+    assert bar_ids == ["sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu"], bar_ids
+    expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
+    # A full-control session has no detached note.
+    expect(authed_page.locator("#chatNote")).to_be_hidden()
 
     turns_user = authed_page.locator("#transcriptList .tr-user")
     turns_agent = authed_page.locator("#transcriptList .tr-assistant")
@@ -187,39 +224,33 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(link).to_have_attribute("href", "https://tower.example.ts.net:8953/?token=abc")
     expect(link).to_have_attribute("target", "_blank")
 
-    # Turns are collapsible cards, open by default; the bar's toggle closes
-    # every turn (and reopens them) while the tool group stays closed.
+    # Turns are collapsible cards, open by default; a single turn collapses
+    # on its own summary while the tool group stays closed.
     expect(turns_user.first).to_have_js_property("open", True)
     expect(turns_agent.first).to_have_js_property("open", True)
-    toggle = authed_page.locator("#transcriptToggleAll")
-    expect(toggle).to_have_attribute("aria-label", "Collapse all turns")
-    toggle.click()
-    expect(turns_user.first).to_have_js_property("open", False)
-    expect(turns_agent.first).to_have_js_property("open", False)
-    expect(authed_page.locator("#transcriptList .tr-group")).to_have_js_property("open", False)
-    expect(toggle).to_have_attribute("aria-label", "Expand all turns")
-    toggle.click()
-    expect(turns_agent.first).to_have_js_property("open", True)
-    # A single turn collapses on its own summary.
     turns_user.first.locator("summary").click()
     expect(turns_user.first).to_have_js_property("open", False)
+    expect(authed_page.locator("#transcriptList .tr-group")).to_have_js_property("open", False)
     turns_user.first.locator("summary").click()
     expect(turns_user.first).to_have_js_property("open", True)
 
     # The four non-conversation entries fold into one closed group — hidden
-    # by default (the eye toggle, between reload and collapse-all, shows it).
+    # by default; the ⋮ menu's chat-only "Show tool calls" shows it, and the
+    # item's label flips once they show.
     group = authed_page.locator("#transcriptList .tr-group")
     expect(group).to_have_count(1)
     expect(group).to_be_hidden()
-    eye = authed_page.locator("#transcriptToggleGroups")
-    expect(eye).to_have_attribute("aria-label", "Show tool calls and system entries")
-    bar_ids = authed_page.locator("#transcriptOverlay .terminal-bar-actions button").evaluate_all(
-        "els => els.map(e => e.id)"
+    menu = authed_page.locator("#terminalOverlay .terminal-menu")
+    eye = _menu_item(authed_page, "Show tool calls and system entries")
+    expect(menu.locator(".row-menu-label")).to_have_text(
+        ["Rename", "Copy link", "Show tool calls", "Reload", "Stop and kill"]
     )
-    assert bar_ids == ["transcriptRefresh", "transcriptToggleGroups", "transcriptToggleAll", "transcriptClose"], bar_ids
     eye.click()
+    expect(menu).to_be_hidden()
     expect(group).to_be_visible()
-    expect(eye).to_have_attribute("aria-label", "Hide tool calls and system entries")
+    expect(_menu_item(authed_page, "Hide tool calls and system entries")).to_be_visible()
+    authed_page.locator("#terminalMenu").click()  # close it again
+    expect(menu).to_be_hidden()
     expect(group.locator(".collapse-title")).to_have_text("2 tool calls · 1 thinking · 1 system")
     items = group.locator(".tr-item")
     expect(items).to_have_count(4)
@@ -253,10 +284,8 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(older).to_be_hidden()
     assert any("before=4096" in url for url in calls), calls
 
-    # ✕ (always the rightmost bar control) returns to the list, overlay gone.
-    bar_buttons = authed_page.locator("#transcriptOverlay .terminal-bar-actions button")
-    expect(bar_buttons.last).to_have_attribute("id", "transcriptClose")
-    authed_page.locator("#transcriptClose").click()
+    # ‹ Back returns to the list, overlay gone.
+    authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
 
 
@@ -269,14 +298,14 @@ def test_unavailable_reasons_are_distinct_sentences(authed_page: Page, base_url:
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)
-    row.locator(".session-gear").click()
-    row.locator('button[aria-label="Session transcript"]').click()
+    _open_chat(authed_page, row)
     state = authed_page.locator("#transcriptState")
     expect(state).to_be_visible()
     expect(state).to_have_text("No transcript found for this session")
     expect(authed_page.locator("#transcriptOlder")).to_be_hidden()
 
-    # Same overlay, a read failure: a different sentence, never "nothing".
+    # Same pane, a read failure after ⋮ → Reload: a different sentence, never
+    # "nothing".
     unavailable["reason"] = "read_failed"
-    authed_page.locator("#transcriptRefresh").click()
+    _menu_item(authed_page, "Reload transcript").click()
     expect(state).to_have_text("Couldn’t read the transcript")
