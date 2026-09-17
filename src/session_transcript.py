@@ -44,6 +44,10 @@ TOOL_SUMMARY_CAP = 200
 TOOL_RESULT_CAP = 1_500
 SYSTEM_TEXT_CAP = 1_500
 
+# Effectively "no cap" for `entry_full_text` (#985): a turn's raw text never
+# approaches this, so `_cap` never reports it truncated.
+NO_CAP = 1 << 30
+
 # Codex user-role messages that are harness plumbing, not a typed prompt —
 # the Codex counterpart of `board_transcript._SKIP_USER_PREFIXES`.
 _CODEX_SKIP_USER_PREFIXES = (
@@ -136,6 +140,104 @@ def _drop_partial_leading_message(lines: List[Line], line_key: LineKey) -> List[
     return lines[i:]
 
 
+def _read_lines_from(path: Path, start: int, span: int, eof: int) -> Tuple[List[Line], int]:
+    """Complete lines of ``path`` starting exactly at ``start`` — a known
+    line boundary, unlike :func:`_read_lines_before`'s arbitrary window edge
+    — for up to ``span`` bytes.
+
+    Returns ``(lines, end)``: ``end`` is the byte position just past the
+    last complete line kept. A line torn at the window's far edge is
+    dropped (``end`` stops before it) unless the window reached ``eof``, in
+    which case the file has nothing more to complete it with, so it counts
+    as whole. ``(``[]``, start)`` means nothing complete fit — the caller
+    widens ``span`` and reads the same ``start`` again.
+    """
+    with path.open("rb") as fh:
+        fh.seek(start)
+        raw = fh.read(span)
+    end = start + len(raw)
+    if end < eof:
+        cut = raw.rfind(b"\n")
+        if cut < 0:
+            return [], start
+        raw = raw[:cut]
+        end = start + cut + 1
+    lines: List[Line] = []
+    pos = start
+    for chunk in raw.split(b"\n"):
+        offset = pos
+        pos += len(chunk) + 1
+        if chunk.strip():
+            lines.append((offset, chunk.decode("utf-8", errors="replace")))
+    return lines, end
+
+
+def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, Any]]:
+    """The uncapped text of the turn entry beginning at byte ``offset``.
+
+    The counterpart of a capped, ``truncated: true`` entry from
+    :func:`transcript_page` — the copy-full-text route (#985) calls this
+    when the phone wants the whole thing. A ``user`` entry is always one
+    line; a Claude ``assistant`` entry can span several (one line per
+    content block, same ``message.id``), so this reads forward from
+    ``offset`` — mirroring :func:`_drop_partial_leading_message`'s span
+    logic in the opposite direction — until a read line past the last one
+    keyed to that message confirms nothing more will merge into it, or the
+    read hits :data:`REQUEST_BYTE_CAP` (a message that huge is already a
+    pathological case; the result then stays best-effort and reports
+    itself ``truncated`` rather than blocking on an unbounded read).
+
+    Returns ``None`` when ``offset`` no longer starts a turn there — the
+    file was rotated/truncated since the page was served, or the offset
+    was never one to begin with.
+    """
+    build = codex_entries if flavor == "codex" else claude_entries
+    line_key = _codex_line_key if flavor == "codex" else _claude_line_key
+    eof = path.stat().st_size
+    if offset < 0 or offset >= eof:
+        return None
+    lines: List[Line] = []
+    pos = offset
+    target_key: Optional[str] = None
+    bytes_read = 0
+    hit_cap = False
+    span = WINDOW_BYTES
+    while True:
+        more, new_pos = _read_lines_from(path, pos, span, eof)
+        if not more and new_pos == pos:
+            span *= 2
+            if bytes_read + span > REQUEST_BYTE_CAP:
+                hit_cap = True
+                break
+            continue
+        bytes_read += new_pos - pos
+        pos = new_pos
+        if not lines and more:
+            target_key = line_key(more[0][1])
+        lines.extend(more)
+        if target_key is None:
+            break  # a single-line entry (user, or any non-assistant kind)
+        last_match = max(
+            (i for i, (_, raw) in enumerate(lines) if line_key(raw) == target_key),
+            default=-1,
+        )
+        if last_match < len(lines) - 1:
+            break  # a later, differently-keyed line confirms the span closed
+        if pos >= eof:
+            break
+        if bytes_read >= REQUEST_BYTE_CAP:
+            hit_cap = True
+            break
+        span = WINDOW_BYTES
+    if not lines or lines[0][0] != offset:
+        return None
+    entries = build(lines, uncapped=True)
+    for e in entries:
+        if e.get("offset") == offset and _is_turn(e):
+            return {"text": e["text"], "truncated": bool(e.get("truncated")) or hit_cap}
+    return None
+
+
 def _page(
     path: Path, before: Optional[int], limit: int, build: EntryBuilder, line_key: LineKey
 ) -> Dict[str, Any]:
@@ -209,8 +311,12 @@ def _page(
     next_cursor: Optional[int] = collected[0][0] if collected else None
     if next_cursor == 0:
         next_cursor = None
+    # A turn keeps its offset — the copy-full-text route (#985) needs it to
+    # ask for the uncapped entry; the folded kinds have no such use and stay
+    # unexposed, same as before.
     for e in entries:
-        e.pop("offset", None)
+        if not _is_turn(e):
+            e.pop("offset", None)
     return {"entries": entries, "next_cursor": next_cursor}
 
 
@@ -316,7 +422,7 @@ def _harness_label(text: str) -> str:
 # ------------------------------------------------------------ Claude JSONL
 
 
-def claude_entries(lines: List[Line]) -> List[Entry]:
+def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     """Typed entries from Claude Code hook-JSONL lines, in file order.
 
     One transcript line is one content block; assistant ``text`` blocks of
@@ -330,7 +436,13 @@ def claude_entries(lines: List[Line]) -> List[Entry]:
     ``sidechain: True`` so the client folds them and pagination doesn't count
     them as turns. Metadata rows (``mode``, ``ai-title``, ``attachment``, …)
     carry no conversation text and are dropped.
+
+    ``uncapped`` (#985) drops the ``assistant``/``user`` display caps for
+    :func:`entry_full_text` — the folded kinds keep their normal caps either
+    way, since only a turn's own text is ever read back from an uncapped call.
     """
+    assistant_cap = NO_CAP if uncapped else ASSISTANT_TEXT_CAP
+    user_cap = NO_CAP if uncapped else USER_TEXT_CAP
     entries: List[Entry] = []
     open_calls: Dict[str, Entry] = {}
     assistant_by_mid: Dict[str, Entry] = {}
@@ -358,11 +470,11 @@ def claude_entries(lines: List[Line]) -> List[Entry]:
                         continue
                     prev = assistant_by_mid.get(mid) if mid else None
                     if prev is not None:
-                        joined, truncated = _cap(prev["text"] + "\n\n" + text, ASSISTANT_TEXT_CAP)
+                        joined, truncated = _cap(prev["text"] + "\n\n" + text, assistant_cap)
                         prev["text"] = joined
                         prev["truncated"] = prev["truncated"] or truncated
                         continue
-                    e = _text_entry("assistant", offset, ts, text, ASSISTANT_TEXT_CAP, sidechain=sidechain)
+                    e = _text_entry("assistant", offset, ts, text, assistant_cap, sidechain=sidechain)
                     entries.append(e)
                     if mid:
                         assistant_by_mid[mid] = e
@@ -410,7 +522,7 @@ def claude_entries(lines: List[Line]) -> List[Entry]:
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                            label=_harness_label(stripped), sidechain=sidechain))
             else:
-                entries.append(_text_entry("user", offset, ts, stripped, USER_TEXT_CAP, sidechain=sidechain))
+                entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=sidechain))
             continue
 
         if kind == "system":
@@ -426,7 +538,7 @@ def claude_entries(lines: List[Line]) -> List[Entry]:
 # ------------------------------------------------------------- Codex JSONL
 
 
-def codex_entries(lines: List[Line]) -> List[Entry]:
+def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     """Typed entries from a Codex rollout's ``response_item`` lines.
 
     ``message`` payloads carry ``input_text`` (user/developer) or
@@ -436,7 +548,11 @@ def codex_entries(lines: List[Line]) -> List[Entry]:
     become ``thinking``; ``agent_message`` (sub-agent mailbox traffic) is a
     sidechain ``system`` entry. Everything else (token usage, events, world
     state) is dropped.
+
+    ``uncapped`` — see :func:`claude_entries`.
     """
+    assistant_cap = NO_CAP if uncapped else ASSISTANT_TEXT_CAP
+    user_cap = NO_CAP if uncapped else USER_TEXT_CAP
     entries: List[Entry] = []
     open_calls: Dict[str, Entry] = {}
     for offset, raw in lines:
@@ -453,7 +569,7 @@ def codex_entries(lines: List[Line]) -> List[Entry]:
             if role == "assistant":
                 text = _blocks_text(payload.get("content"), types=("output_text",))
                 if text.strip():
-                    entries.append(_text_entry("assistant", offset, ts, text, ASSISTANT_TEXT_CAP, sidechain=False))
+                    entries.append(_text_entry("assistant", offset, ts, text, assistant_cap, sidechain=False))
             elif role in ("user", "developer"):
                 text = _blocks_text(payload.get("content"), types=("input_text",))
                 stripped = text.strip()
@@ -464,7 +580,7 @@ def codex_entries(lines: List[Line]) -> List[Entry]:
                                                label="developer" if role == "developer" else "system",
                                                sidechain=False))
                 else:
-                    entries.append(_text_entry("user", offset, ts, stripped, USER_TEXT_CAP, sidechain=False))
+                    entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=False))
         elif pt in ("function_call", "custom_tool_call"):
             e = _entry(
                 "tool_call", offset, ts,

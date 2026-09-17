@@ -171,6 +171,13 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Coding-tab transcript view (#953): the whole conversation, terminal-grade content.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/entry"),
+        "passkey",
+        "Coding-tab transcript copy (#985): one turn's uncapped text — the same "
+        "sensitivity as /transcript above, and a distinct row because it does not "
+        "end with '/transcript' so the rule above does not already cover it.",
+    ),
+    (
         lambda p: p == "/api/board/issues/start",
         "passkey",
         "Board drill-down (#301): issue-start spawns a coding session.",

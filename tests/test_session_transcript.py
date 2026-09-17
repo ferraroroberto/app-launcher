@@ -60,7 +60,9 @@ def _tool_result(tid: str, content: Any) -> Dict[str, Any]:
 
 
 def _parse_whole(path: Path, build=st.claude_entries) -> List[Dict[str, Any]]:
-    """Reference: one parse of the whole file, offsets stripped."""
+    """Reference: one parse of the whole file — offset stripped from the
+    folded kinds, kept on turns, matching :func:`session_transcript._page`
+    (#985)."""
     raw = path.read_bytes()
     lines, pos = [], 0
     for chunk in raw.split(b"\n"):
@@ -69,7 +71,8 @@ def _parse_whole(path: Path, build=st.claude_entries) -> List[Dict[str, Any]]:
         pos += len(chunk) + 1
     entries = build(lines)
     for e in entries:
-        e.pop("offset", None)
+        if not st._is_turn(e):
+            e.pop("offset", None)
     return entries
 
 
@@ -272,6 +275,72 @@ def test_empty_file_is_an_empty_page(tmp_path: Path):
     assert st.transcript_page(path) == {"entries": [], "next_cursor": None}
 
 
+def test_page_exposes_offset_on_turns_only(tmp_path: Path):
+    """#985: a turn keeps its byte offset (the copy-full-text route's
+    lookup key) — the folded kinds still have it stripped, unchanged."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _user("hi"),
+        _assistant([{"type": "thinking", "thinking": "hmm"}], "m1"),
+        _assistant([{"type": "text", "text": "hello"}], "m1"),
+    ])
+    page = st.transcript_page(path)
+    by_kind = {e["kind"]: e for e in page["entries"]}
+    assert isinstance(by_kind["user"]["offset"], int)
+    assert isinstance(by_kind["assistant"]["offset"], int)
+    assert "offset" not in by_kind["thinking"]
+
+
+# ---------------------------------------------------------- entry_full_text
+
+
+def test_entry_full_text_user_is_uncapped(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(st, "USER_TEXT_CAP", 5)
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("a long prompt that would be capped")])
+    page = st.transcript_page(path)
+    entry = page["entries"][0]
+    assert entry["truncated"] is True
+    full = st.entry_full_text(path, entry["offset"], "claude")
+    assert full == {"text": "a long prompt that would be capped", "truncated": False}
+
+
+def test_entry_full_text_merges_assistant_blocks_across_lines(tmp_path: Path, monkeypatch):
+    """The page-serving reader caps an assistant reply at 20 chars here; the
+    full-text route reconstructs both merged text blocks — with a tool call
+    and its result (different lines, different kinds) sitting between them,
+    same shape :func:`_drop_partial_leading_message` documents."""
+    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 20)
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _assistant([{"type": "text", "text": "x" * 15}], "m1"),
+        _assistant([_tool_use("Bash", {"command": "ls"}, "t1")], "m1"),
+        _user([_tool_result("t1", "listing")]),
+        _assistant([{"type": "text", "text": "y" * 15}], "m1"),
+    ])
+    page = st.transcript_page(path)
+    entry = next(e for e in page["entries"] if e["kind"] == "assistant")
+    assert entry["truncated"] is True and len(entry["text"]) == 20
+    full = st.entry_full_text(path, entry["offset"], "claude")
+    assert full == {"text": "x" * 15 + "\n\n" + "y" * 15, "truncated": False}
+
+
+def test_entry_full_text_codex_assistant(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 5)
+    path = _write_jsonl(tmp_path / "rollout.jsonl", [
+        _codex({"type": "message", "role": "assistant",
+               "content": [{"type": "output_text", "text": "a whole answer"}]}),
+    ])
+    page = st.transcript_page(path, flavor="codex")
+    entry = page["entries"][0]
+    assert entry["truncated"] is True
+    full = st.entry_full_text(path, entry["offset"], "codex")
+    assert full == {"text": "a whole answer", "truncated": False}
+
+
+def test_entry_full_text_unknown_offset_is_none(tmp_path: Path):
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("hi")])
+    assert st.entry_full_text(path, 3, "claude") is None       # mid-line, no turn starts there
+    assert st.entry_full_text(path, 9_999, "claude") is None   # past EOF
+
+
 # --------------------------------------------------------- codex_entries
 
 
@@ -463,3 +532,80 @@ class TestTranscriptEndpoint:
         assert client.get("/api/claude-code/sessions/s1/transcript?limit=0").status_code == 422
         assert client.get("/api/claude-code/sessions/s1/transcript?limit=101").status_code == 422
         assert client.get("/api/claude-code/sessions/s1/transcript?before=-1").status_code == 422
+
+
+def test_transcript_entry_path_classified_passkey():
+    """#985: a distinct guard-table row — '.../transcript/entry' does not
+    end with '/transcript', so the sibling route's rule does not cover it
+    for free (the exact omission class #997 found on the send route)."""
+    from app.webapp.middleware import _terminal_guard_level
+    assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript/entry") == "passkey"
+    assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript") == "passkey"
+
+
+def test_transcript_entry_refused_off_tailnet(webapp_client):
+    client, _, _ = webapp_client
+    assert client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").status_code == 403
+
+
+class TestTranscriptEntryEndpoint:
+
+    def test_offset_is_required(self, webapp_client, _bypass_gate):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live()]
+        assert client.get("/api/claude-code/sessions/s1/transcript/entry").status_code == 422
+        assert client.get("/api/claude-code/sessions/s1/transcript/entry?offset=-1").status_code == 422
+
+    def test_unknown_session_shares_the_page_routes_reasons(self, webapp_client, _bypass_gate):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = []
+        body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").json()
+        assert body["available"] is False and body["reason"] == "session_not_found"
+
+    def test_happy_path_returns_uncapped_text_and_never_logs_body(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
+    ):
+        monkeypatch.setattr(st, "USER_TEXT_CAP", 5)
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live()]
+        path = _write_jsonl(tmp_path / "t.jsonl", [_user("a much longer prompt than the cap")])
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
+        page = client.get("/api/claude-code/sessions/s1/transcript").json()
+        entry = page["entries"][0]
+        assert entry["truncated"] is True
+
+        with caplog.at_level(logging.INFO):
+            body = client.get(
+                f"/api/claude-code/sessions/s1/transcript/entry?offset={entry['offset']}"
+            ).json()
+        assert body == {
+            "available": True, "reason": None, "session_id": "s1",
+            "text": "a much longer prompt than the cap", "truncated": False,
+        }
+        joined = "\n".join(r.getMessage() for r in caplog.records)
+        assert "a much longer prompt" not in joined
+        assert "transcript entry s1" in joined
+
+    def test_stale_offset_is_entry_not_found(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live()]
+        path = _write_jsonl(tmp_path / "t.jsonl", [_user("hi")])
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
+        body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=9999").json()
+        assert body["available"] is False and body["reason"] == "entry_not_found"
+
+    def test_read_failure_is_distinct_from_entry_not_found(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        from app.webapp.routers import session_transcript as router_mod
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live()]
+        path = _write_jsonl(tmp_path / "t.jsonl", [_user("hi")])
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
+
+        def boom(*args, **kwargs):
+            raise PermissionError("locked")
+
+        monkeypatch.setattr(router_mod, "entry_full_text", boom)
+        body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").json()
+        assert body["available"] is False and body["reason"] == "read_failed"
