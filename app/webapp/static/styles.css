@@ -2134,6 +2134,24 @@ summary + .opt-group { border-top: 0; }
   text-overflow: ellipsis;
 }
 .tr-turn[open] .tr-turn-hint { visibility: hidden; }
+/* Ghost icon button (design.md button-ghost): transparent fill, muted glyph.
+   .hit-target (co-applied) supplies the invisible 44px hit-area expansion —
+   see "Invisible hit-area expansion" above for the same idiom on .dialog-close. */
+.tr-turn-copy {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tr-turn-copy .icon { width: 16px; height: 16px; }
+.tr-turn-copy:active { color: var(--accent); background: var(--card-off); }
 .tr-turn-chevron {
   margin-left: auto;
   color: var(--muted);

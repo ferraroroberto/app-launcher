@@ -30,7 +30,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, toast } from './api.js';
+import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './life-os.js';
 import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
@@ -38,6 +38,7 @@ import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
 import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
+import { ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // Agents whose native history the server-side reader understands — the
@@ -185,11 +186,74 @@ function firstLine(text, max) {
   return line.length > max ? line.slice(0, max) + '…' : line;
 }
 
+function copyLabel(kind) {
+  return kind === 'user' ? 'Prompt' : 'Reply';
+}
+
+// Tap the copy glyph on a user/assistant card: writes the clipboard
+// synchronously inside the tap gesture — iOS requires this, an `await`
+// ahead of the first write loses the gesture and the copy silently fails on
+// the one device this feature is for — with whatever text the card already
+// has. A capped entry then fetches the uncapped one (#985's ``/transcript/
+// entry`` route) and *visibly* upgrades the clipboard with a second toast:
+// never a silent rewrite, since a paste in the gap between the two would
+// hand back truncated text with no reason to suspect it, and the clipboard
+// changing again afterwards would be worse.
+async function copyTurn(e) {
+  const label = copyLabel(e.kind);
+  try {
+    await navigator.clipboard.writeText(e.text || '');
+  } catch (exc) {
+    toast('Clipboard unavailable — copy manually', 'error');
+    return;
+  }
+  if (!e.truncated) {
+    toast(label + ' copied', 'good', { icon: 'copy' });
+    return;
+  }
+  toast(label + ' copied — loading the full text…', '', { icon: 'copy' });
+  const sid = view ? view.session.session_id : null;
+  const fail = function () {
+    toast(label + ' copy is truncated — the full text didn’t load', 'bad', { icon: 'copy' });
+  };
+  if (!sid || e.offset == null) {
+    fail();
+    return;
+  }
+  let body;
+  try {
+    const tt = await ensureTerminalToken();
+    body = await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+        '/transcript/entry?offset=' + encodeURIComponent(e.offset),
+      { headers: authHeaders({ terminalToken: tt }) }
+    );
+  } catch (exc) {
+    fail();
+    return;
+  }
+  if (!body || !body.available) {
+    fail();
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(body.text);
+  } catch (exc) {
+    fail();
+    return;
+  }
+  toast('Full ' + label.toLowerCase() + ' copied', 'good', { icon: 'copy' });
+}
+
 // A turn: a collapsible card, open by default (or per the bar's toggle),
 // whose summary is the meta line plus — only while closed — the first
 // line of the text. The user's own prompt is plain text (pre-wrap); the
 // agent's reply goes through the same escape-first markdown renderer the
-// Life OS doc browser uses — never raw HTML from a transcript.
+// Life OS doc browser uses — never raw HTML from a transcript. The copy
+// glyph sits before the chevron and stops the tap from reaching the
+// <summary> (which would otherwise toggle the card on any click inside it,
+// same guard as every other interactive control living in one — dom-utils.js,
+// jobs.js, …).
 function renderTurn(e) {
   const li = document.createElement('li');
   li.className = 'tr-turn-item';
@@ -203,6 +267,17 @@ function renderTurn(e) {
   hint.className = 'tr-turn-hint';
   hint.textContent = firstLine(e.text, 80);
   s.appendChild(hint);
+  const copyBtn = document.createElement('button');
+  copyBtn.type = 'button';
+  copyBtn.className = 'tr-turn-copy hit-target';
+  copyBtn.setAttribute('aria-label', 'Copy ' + copyLabel(e.kind).toLowerCase());
+  copyBtn.innerHTML = icon('copy');
+  copyBtn.addEventListener('click', function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    copyTurn(e);
+  });
+  s.appendChild(copyBtn);
   const chev = document.createElement('span');
   chev.className = 'tr-turn-chevron';
   chev.setAttribute('aria-hidden', 'true');

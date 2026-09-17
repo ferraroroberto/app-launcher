@@ -310,3 +310,107 @@ def test_unavailable_reasons_are_distinct_sentences(authed_page: Page, base_url:
     unavailable["reason"] = "read_failed"
     _menu_item(authed_page, "Reload transcript").click()
     expect(state).to_have_text("Couldn’t read the transcript")
+
+
+# Capture writeText payloads on window.__copied, same mock as
+# test_jobs_log_copy.py (#97): headless WebKit clipboard permissions are not
+# reliable, and this mock is what makes the copy check meaningful in *both*
+# projections instead of skipping the one closest to the phone (#985). Also
+# records every toast shown on window.__toasts via a MutationObserver — the
+# truncated path shows two toasts in a row fast enough (both mocked calls
+# resolve within a tick or two) that reading the live `.toast` element would
+# race whichever one is current at assertion time; the recorded history
+# doesn't.
+_CLIPBOARD_AND_TOAST_MOCK = """
+(() => {
+  window.__copied = [];
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async (t) => { window.__copied.push(t); },
+      readText: async () => '',
+    },
+  });
+  window.__toasts = [];
+  const watch = () => {
+    const el = document.getElementById('toast');
+    if (!el) { requestAnimationFrame(watch); return; }
+    new MutationObserver(() => {
+      if (!el.hidden) window.__toasts.push(el.textContent.trim());
+    }).observe(el, { attributes: true, childList: true, characterData: true, subtree: true });
+  };
+  watch();
+})()
+"""
+
+
+def test_copy_button_copies_turn_text_and_upgrades_a_truncated_reply(
+    authed_page: Page, base_url: str
+) -> None:
+    """#985: the copy glyph on a user card copies its text outright; on an
+    assistant card whose entry came back ``truncated: true`` it writes the
+    capped text immediately (the iOS-safe synchronous write), then fetches
+    ``/transcript/entry`` and *visibly* upgrades the clipboard — a second
+    toast, never a silent rewrite."""
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    full_reply = "R" * 20_000
+    capped_reply = full_reply[:12_000]
+    page_body = {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None,
+        "entries": [
+            {"kind": "user", "timestamp": "2026-09-14T10:01:00Z", "offset": 0,
+             "text": "short prompt", "truncated": False, "sidechain": False},
+            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 4096,
+             "text": capped_reply, "truncated": True, "sidechain": False},
+        ],
+    }
+    _mock_transcript(authed_page, {None: page_body}, calls)
+
+    def _entry_handler(route):
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": True, "reason": None, "session_id": _SID,
+                "text": full_reply, "truncated": False,
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript/entry(\?.*)?$"),
+        _entry_handler,
+    )
+    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = _row(authed_page)
+    _open_chat(authed_page, row)
+
+    # The user card: a plain, un-truncated copy — one write, one toast, and
+    # the card stays open (the tap must not also toggle the <details>).
+    user_turn = authed_page.locator("#transcriptList .tr-user").first
+    expect(user_turn).to_have_js_property("open", True)
+    user_turn.locator(".tr-turn-copy").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
+    )
+    assert authed_page.evaluate("() => window.__copied[0]") == "short prompt"
+    expect(authed_page.locator(".toast")).to_contain_text("Prompt copied")
+    expect(user_turn).to_have_js_property("open", True)
+
+    # The assistant card: truncated, so the capped text lands first, then the
+    # full entry fetch upgrades it — both writes, and both toasts along the
+    # way, read back from the recorded history rather than the live DOM.
+    assistant_turn = authed_page.locator("#transcriptList .tr-assistant").first
+    assistant_turn.locator(".tr-turn-copy").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 2", timeout=3_000,
+    )
+    assert authed_page.evaluate("() => window.__copied[1]") == capped_reply
+    assert authed_page.evaluate("() => window.__copied[2]") == full_reply
+    toasts = authed_page.evaluate("() => window.__toasts")
+    assert any("loading the full text" in t for t in toasts), toasts
+    assert any("Full reply copied" in t for t in toasts), toasts
+    assert toasts.index(next(t for t in toasts if "loading the full text" in t)) < \
+        toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
