@@ -2619,13 +2619,15 @@ body.terminal-open {
 .summary-foot { text-align: center; }
 /* On-screen keys popover (issue #36): D-pad floating ABOVE the composer
    (#980 — it used to hang under the terminal bar), right-aligned over the
-   ⌨ button in the composer grid so the thumb reaches it. */
+   ⌨ button in the composer grid so the thumb reaches it. Since #986 it is a
+   4-col grid — Esc/↑/Tab/Ctrl, ←/↵/→/C, ⇧/↓/U/X — to fit the sticky Ctrl
+   toggle and its C/U/X letters. */
 .keys-popover {
   position: absolute;
   bottom: calc(100% + 6px);
   right: 8px;
   display: grid;
-  grid-template-columns: repeat(3, 56px);
+  grid-template-columns: repeat(4, 56px);
   gap: 8px;
   padding: 10px;
   background: var(--card-2);
@@ -2634,7 +2636,7 @@ body.terminal-open {
   z-index: 30;
   box-shadow: var(--shadow);
 }
-/* Not migrated to the button tiers (issue #477 audit): this is a fixed 3-col
+/* Not migrated to the button tiers (issue #477 audit): this is a fixed 4-col
    D-pad grid keyboard popover, not a standalone action button. */
 .key-btn {
   min-height: 52px;
@@ -2646,15 +2648,22 @@ body.terminal-open {
   cursor: pointer;
 }
 .key-btn:active { background: var(--card-2); }
-/* Sticky-Shift engaged (issue #137): ⇧ stays lit until tapped off so the
-   user can see Shift is being held for the next key. */
+/* Sticky-Shift / sticky-Ctrl engaged (issue #137, #986): the toggle stays
+   lit until tapped off so the user can see the modifier is held for the
+   next key. */
 .key-btn.active {
   background: var(--accent-soft);
   color: var(--accent);
   border-color: var(--accent);
 }
-/* Empty grid cell to the right of ⇧ keeps the down-arrow centered in row 3. */
-.key-spacer { display: block; }
+/* C/U/X (issue #986): disabled whenever Ctrl isn't held, so a stray tap
+   can't type a letter into the prompt — the fleet's one shared disabled
+   recipe (design.md button-disabled), never opacity on a solid fill. */
+.key-btn:disabled {
+  color: var(--muted);
+  background: var(--card-2);
+  cursor: default;
+}
 .terminal-host {
   position: relative;
   flex: 1;
