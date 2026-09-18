@@ -27,15 +27,19 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import yaml
 
 logger = logging.getLogger("run_named_tunnel")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
-from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP  # noqa: E402
+from src._tunnel_config import read_tunnel_hostname  # noqa: E402
+from src.subprocess_flags import NO_WINDOW_NEW_GROUP  # noqa: E402
+from app.webapp.manager import (  # noqa: E402
+    WebappManager,
+    WebappManagerConfig,
+    check_tailscale_cert,
+)
 
 DEFAULT_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 SAMPLE_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.sample.yml"
@@ -49,55 +53,27 @@ def _have_listener(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def _find_python() -> Path:
-    venv_py = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
-    if venv_py.exists():
-        return venv_py
-    venv_py = PROJECT_ROOT / ".venv" / "bin" / "python"
-    if venv_py.exists():
-        return venv_py
-    return Path(sys.executable)
-
-
 def _spawn_uvicorn(port: int) -> subprocess.Popen:
-    # Auto-renew a Tailscale cert expiring within 30 days before uvicorn
-    # binds (project-scaffolding#89); no-op on self-signed, never blocks.
-    check_script = PROJECT_ROOT / "scripts" / "gen_tailscale_cert.py"
-    if check_script.exists():
-        try:
-            subprocess.run(
-                [str(_find_python()), str(check_script), "--check"],
-                capture_output=True,
-                timeout=90,
-                cwd=str(PROJECT_ROOT),
-                creationflags=NO_WINDOW,
-            )
-        except Exception as exc:
-            logger.warning(f"⚠️  tailscale cert check failed (ignored): {exc}")
-    cert = PROJECT_ROOT / "webapp" / "certificates" / "cert.pem"
-    key = PROJECT_ROOT / "webapp" / "certificates" / "key.pem"
-    cmd = [
-        str(_find_python()),
-        "-m",
-        "uvicorn",
-        "app.webapp.server:app",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        str(port),
-        # Same selector-loop shim every other spawn site passes (issue #388,
-        # #1007): on the default Windows proactor loop a single aborted
-        # client (WinError 64) closes the listening socket and wedges the
-        # webapp until a restart. Keep this pointed at the same dotted path
-        # as app/webapp/manager.py, app/cli/commands/webapp_cmd.py,
-        # tests/e2e/conftest.py and webapp.bat.
-        "--loop",
-        LOOP_FACTORY,
-        "--log-level",
-        "warning",
-    ]
-    if cert.exists() and key.exists():
-        cmd.extend(["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)])
+    """Start uvicorn with the *same* argv the app builds everywhere else.
+
+    This script used to compose its own uvicorn command line (#1003), and
+    it had already drifted: the ``--loop`` selector shim every other spawn
+    site passes went missing here, so the documented no-tray path booted on
+    the Windows proactor loop whose accept path closes the listening socket
+    on one aborted client (#388, fixed in #1007). Building the argv through
+    :meth:`WebappManager._build_command` means the next uvicorn flag lands
+    in both places at once instead of only in the app.
+
+    The spawn itself stays here: this script owns the process, streams its
+    output and forwards signals, so it keeps its own ``Popen`` rather than
+    handing lifecycle to the manager.
+    """
+    # Same Tailscale cert auto-renew the app runs before binding
+    # (project-scaffolding#89) — shared rather than re-spawned by hand.
+    check_tailscale_cert()
+    cmd = WebappManager(
+        WebappManagerConfig(host="127.0.0.1", port=port)
+    )._build_command()
     logger.info(f"🚀 Starting uvicorn: {' '.join(cmd)}")
     return subprocess.Popen(
         cmd,
@@ -135,19 +111,6 @@ def _spawn_cloudflared(config_path: Path) -> subprocess.Popen:
         bufsize=1,
         creationflags=NO_WINDOW_NEW_GROUP,
     )
-
-
-def _read_hostname(config_path: Path) -> Optional[str]:
-    try:
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        logger.warning(f"⚠️  Could not parse {config_path}: {exc}")
-        return None
-    ingress = data.get("ingress") or []
-    for entry in ingress:
-        if isinstance(entry, dict) and entry.get("hostname"):
-            return str(entry["hostname"]).strip()
-    return None
 
 
 def _read_auth_token() -> str:
@@ -202,7 +165,7 @@ def main() -> int:
         )
         return 1
 
-    hostname = _read_hostname(config_path)
+    hostname = read_tunnel_hostname(config_path)
     if hostname:
         logger.info(f"🌍 Public hostname: https://{hostname}")
     else:
