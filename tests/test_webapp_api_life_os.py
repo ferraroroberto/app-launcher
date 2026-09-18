@@ -216,6 +216,99 @@ class TestLaunchSkill:
         assert "--model sonnet" in captured["flags"]
         assert "--remote-control" in captured["flags"]
 
+    # ---- the launch audit+mirror tail (#1003) -------------------------
+    #
+    # Nothing pinned these three behaviours before, so routing Life OS
+    # through the shared _helpers tail could have changed any of them and
+    # the suite would still have been green. They are the whole difference
+    # between the old private copy and the shared helper, so they are what
+    # the parameters (`kind`, `resume_sid`) have to carry.
+
+    def _spawn_and_capture_tail(self, monkeypatch, body):
+        """POST a Life OS launch, returning (audit_mock, mirror_consulted)."""
+        from unittest.mock import MagicMock
+
+        from app.webapp.routers import _helpers, life_os_spawn
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            return {"session_id": "s1", "kind": kind}
+
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
+        audit_mock = MagicMock()
+        monkeypatch.setattr(life_os_spawn, "audit", audit_mock)
+        # `kind == "pty" and should_mirror_to_pc(...)` short-circuits, so
+        # whether this is consulted at all *is* the kind guard — and it is
+        # deterministic, unlike the mirror's own fire-and-forget task.
+        consulted = []
+
+        def _probe(*args, **kwargs):
+            consulted.append(True)
+            return False
+
+        # Patch it wherever it is *looked up* from, so this pins the
+        # behaviour and not the module the call currently lives in — that is
+        # what lets the same test run against both the pre- and post-#1003
+        # implementations and prove they agree.
+        for mod in (_helpers, life_os_spawn):
+            if hasattr(mod, "should_mirror_to_pc"):
+                monkeypatch.setattr(mod, "should_mirror_to_pc", _probe)
+        return audit_mock, consulted
+
+    def _audit_event_call(self, audit_mock):
+        for call in audit_mock.audit_event.call_args_list:
+            if call.args and call.args[0] in ("session_start", "remote_launch"):
+                return call
+        raise AssertionError(
+            f"no launch audit event recorded: {audit_mock.audit_event.call_args_list}"
+        )
+
+    def test_pty_launch_audits_session_start_and_checks_the_mirror(
+        self, life_os_client, monkeypatch
+    ):
+        client, _, _ = life_os_client
+        audit_mock, consulted = self._spawn_and_capture_tail(monkeypatch, None)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch", json={"mode": "pty"},
+        )
+        assert resp.status_code == 200, resp.text
+        call = self._audit_event_call(audit_mock)
+        assert call.args[0] == "session_start", call
+        assert consulted, "a PTY launch must consult should_mirror_to_pc"
+
+    def test_remote_launch_audits_remote_launch_and_never_mirrors(
+        self, life_os_client, monkeypatch
+    ):
+        """A detached session has no window to mirror, and its audit line is
+        ``remote_launch``, not ``session_start``."""
+        client, _, _ = life_os_client
+        audit_mock, consulted = self._spawn_and_capture_tail(monkeypatch, None)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch", json={"mode": "remote"},
+        )
+        assert resp.status_code == 200, resp.text
+        call = self._audit_event_call(audit_mock)
+        assert call.args[0] == "remote_launch", call
+        assert not consulted, (
+            "a remote launch must not reach should_mirror_to_pc — the "
+            "`kind == \"pty\"` guard short-circuits before it"
+        )
+
+    def test_launch_audit_line_carries_resume_sid(
+        self, life_os_client, monkeypatch
+    ):
+        """``resume_sid`` (#727) records which conversation was reattached;
+        it is the second field the shared tail had to grow to absorb this
+        call site."""
+        client, _, _ = life_os_client
+        audit_mock, _ = self._spawn_and_capture_tail(monkeypatch, None)
+        resp = client.post(
+            "/api/life-os/skills/journal-daily/launch", json={"mode": "pty"},
+        )
+        assert resp.status_code == 200, resp.text
+        call = self._audit_event_call(audit_mock)
+        assert "resume_sid" in call.kwargs, call
+
     def test_launch_threads_phone_terminal_size(
         self, life_os_client, monkeypatch
     ):

@@ -289,16 +289,26 @@ async def audit_session_start_and_maybe_mirror(
     mirror_fn: Callable[[str, str], Any],
     resume: Optional[bool] = None,
     skill: Optional[str] = None,
+    kind: str = "pty",
+    resume_sid: Optional[str] = None,
 ) -> None:
     """Audit a freshly spawned PTY session, then mirror it to a PC terminal
     window if appropriate (issue #241) — the shared tail every PTY-launch
     call site (Coding tab ``apps.py``, Board issue-start/dispatch
     ``board.py``) needs right after ``spawn_claude_session`` (issue #334).
 
-    Life OS (``routers/life_os_spawn.py``) already has its own
-    ``_spawn_skill_session`` covering this same tail plus the "remote" kind
-    and response-shaping, so it isn't routed through here — this helper only
-    dedupes the three PTY call sites that don't have an equivalent.
+    Life OS (``routers/life_os_spawn.py``) used to carry a second, parallel
+    copy of this tail so it could cover the ``remote`` kind and its own
+    ``resume_sid`` field; since #1003 it routes through here too, passing
+    those two differences as ``kind`` / ``resume_sid``. Two copies of one
+    audit+mirror workflow had to be kept in step by hand on every change.
+
+    The three parameters that carry the difference all default to the PTY
+    behaviour the other call sites already had: ``kind="pty"`` (the mirror
+    is PTY-only — a detached session has no window to mirror),
+    ``resume_sid=None`` (dropped by ``_fmt_fields``, so an audit line that
+    never carried the field still doesn't) and the ``session_start`` event
+    name, which a remote launch overrides with ``remote_launch``.
 
     ``audit_mod`` / ``mirror_fn`` must be the *caller's own* module-level
     ``audit`` / ``open_local_terminal_window`` references (not this module's)
@@ -313,13 +323,17 @@ async def audit_session_start_and_maybe_mirror(
     # a slow audit write here freezes the single-worker loop on every launch.
     await audit_off_loop(
         audit_mod.audit_event,
-        "session_start",
+        "remote_launch" if kind == "remote" else "session_start",
         session=sid,
         agent=agent,
         skill=skill,
         name=name,
         project=project,
         resume=resume,
+        # Which conversation was reattached (#727) — "" for a fresh launch
+        # or the native picker, where no id was chosen up front. None for a
+        # caller that has no such concept, and dropped from the line.
+        resume_sid=resume_sid,
         client=client_ip(request),
     )
     await audit_off_loop(
@@ -331,7 +345,9 @@ async def audit_session_start_and_maybe_mirror(
     # an explicit in-page loopback browser skips it (see should_mirror_to_pc).
     # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
     # credentials, keyed on the active cert (#356).
-    if should_mirror_to_pc(cfg.claude_show_local_window, request, body):
+    if kind == "pty" and should_mirror_to_pc(
+        cfg.claude_show_local_window, request, body
+    ):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &
         # Close to dismiss it later (issue #20).
         asyncio.create_task(
