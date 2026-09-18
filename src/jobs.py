@@ -74,14 +74,12 @@ from src.jobs_coverage import (
 )
 from src.jobs_reap import reap_stranded_runs
 from src.jobs_schtasks import (
-    FREQUENT_SCHEDULE_TYPES,
     TASK_FOLDER_PREFIX,
     TASK_NAMESPACE,
     _run_schtasks,  # noqa: F401 -- re-exported for tests that monkeypatch it here
     delete_schtasks,
     invalidate_next_run_cache,
     list_known_tasks,
-    next_fire,
     query_next_run,
     registered_task_principals,
     registration_script,
@@ -91,6 +89,10 @@ from src.jobs_schtasks import (
     sync_schtasks,
     task_names_for,
     task_run_command,
+)
+from src.jobs_next_fire import (
+    FREQUENT_SCHEDULE_TYPES,
+    next_fire,
     upcoming_fires,
 )
 from src.jobs_stats import (

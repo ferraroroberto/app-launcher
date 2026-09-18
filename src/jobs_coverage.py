@@ -30,7 +30,7 @@ normal week"), all enforced in :func:`behavioural_coverage` /
 
 * Paused jobs and ``schedule: none`` jobs are **exempt** — no state at all.
 * ``minutes``/``hourly`` jobs skip the behavioural half: their cadence is too
-  dense to enumerate (:data:`~src.jobs_schtasks.FREQUENT_SCHEDULE_TYPES`,
+  dense to enumerate (:data:`~src.jobs_next_fire.FREQUENT_SCHEDULE_TYPES`,
   same reason the agenda summarises them). The structural half still covers
   them, which is what actually detects a deleted entry.
 * A slot only counts as missed once it is ``MISSED_FIRE_GRACE_SECONDS`` past
@@ -89,12 +89,11 @@ from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 from src import jobs_history
 from src._json_io import atomic_write_json
 from src.jobs_config import Job, load_jobs
+from src.jobs_next_fire import FREQUENT_SCHEDULE_TYPES, upcoming_fires
 from src.jobs_schtasks import (
-    FREQUENT_SCHEDULE_TYPES,
     registered_task_principals,
     registered_task_states,
     task_names_for,
-    upcoming_fires,
 )
 
 logger = logging.getLogger(__name__)
@@ -317,7 +316,7 @@ def behavioural_coverage(
     job (issue #737; see the module docstring's never-flag rules).
 
     Missed slots are oldest first. Both lists are empty for the dense
-    :data:`~src.jobs_schtasks.FREQUENT_SCHEDULE_TYPES`, for a schedule with
+    :data:`~src.jobs_next_fire.FREQUENT_SCHEDULE_TYPES`, for a schedule with
     no computable fires, and whenever the usable window collapses — the
     window is clamped by ``added_at`` and by the oldest retained run once
     history is at its :data:`~src.jobs_history.MAX_RUNS_PER_JOB` cap. Those
