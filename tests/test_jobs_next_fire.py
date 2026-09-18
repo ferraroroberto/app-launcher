@@ -88,3 +88,49 @@ def test_paused_job_active_schedule_is_none():
     # A paused job's active schedule is parked as none → no next fire,
     # even though paused_schedule still carries the real weekly shape.
     assert next_fire(Schedule(type="none"), now=NOW) is None
+
+
+class TestTheArithmeticStaysPure:
+    """The property that made the split real, pinned so it stays real (#1006).
+
+    ``next_fire`` moved out of ``src/jobs_schtasks.py`` because nothing in it
+    touches Task Scheduler - it is derived entirely from the ``Schedule``
+    shape. A single import back into the schtasks client would rebuild the
+    seam silently, so it is asserted rather than trusted to a docstring.
+    """
+
+    def test_the_module_imports_nothing_from_the_schtasks_client(self):
+        import ast
+        import pathlib
+
+        module = pathlib.Path(__file__).resolve().parents[1] / "src" / "jobs_next_fire.py"
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        sources = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                sources.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                sources.add(node.module)
+        forbidden = sorted(
+            s for s in sources
+            if "schtasks" in s or s in {"subprocess", "os"} or s.startswith("win")
+        )
+        assert not forbidden, (
+            "the schedule arithmetic must stay derivable without Windows or a "
+            f"Task Scheduler; these imports put the seam back: {forbidden}"
+        )
+
+    def test_it_answers_with_no_task_scheduler_module_importable(self, monkeypatch):
+        """Same answer with the schtasks client evicted from sys.modules."""
+        import importlib
+        import sys
+
+        expected = next_fire(Schedule(type="daily", at="12:00"), now=NOW)
+        for name in [n for n in list(sys.modules) if "jobs_schtasks" in n]:
+            monkeypatch.delitem(sys.modules, name, raising=False)
+        module = importlib.import_module("src.jobs_next_fire")
+        importlib.reload(module)
+        assert module.next_fire(Schedule(type="daily", at="12:00"), now=NOW) == expected
+        assert not any("jobs_schtasks" in n for n in sys.modules), (
+            "importing the schedule arithmetic pulled in the schtasks client"
+        )
