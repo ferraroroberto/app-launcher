@@ -1842,9 +1842,26 @@ summary + .opt-group { border-top: 0; }
 }
 
 /* ---------- running sessions (tap to open the terminal) ---------- */
+/* The row is one button laid out as text column + a right-pinned chevron,
+   both centred against the row's full height (#1025 — the chevron used to
+   trail the badge line inside .session-head, centred against that line only,
+   while the actions gear beside it was centred against the whole row, so the
+   pair never lined up). The gear is gone; the chevron inherits its slot. */
 .session-item .session-open {
   width: 100%;
   text-align: left;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  /* The rail the gear used to occupy was flush to the row's right edge. */
+  padding-right: 0;
+}
+.session-item .session-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 /* Single declaration for `.session-head` (issue #690 — it used to be declared
    twice, non-adjacently, and the two halves both mattered: the earlier copy
@@ -1872,7 +1889,12 @@ summary + .opt-group { border-top: 0; }
   text-overflow: ellipsis;
 }
 .session-chevron {
-  margin-left: auto;
+  flex: 0 0 auto;
+  width: 52px;
+  min-height: var(--row-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
@@ -1887,29 +1909,19 @@ summary + .opt-group { border-top: 0; }
 }
 .session-kind.pty { background: rgb(from var(--success) r g b / 0.16); color: var(--success); }
 .session-kind.remote { background: rgb(from var(--fg) r g b / 0.08); color: var(--muted); }
-/* detached rows aren't tappable — they have no streamable terminal */
-.session-item .session-open.inert {
-  cursor: default;
-  display: block;
-}
-
-/* ---------- row action menus: session gear (#953) + project ⋯ (#977) ---------- */
+/* ---------- row action menus: project ⋯ (#977) ---------- */
 /* One anchor in the rail opens a floating vertical list — one icon + label
    row per action — on the same raised-chrome recipe as the git-status
-   summary popover (row-menu.js). Two placements: the session menu floats
-   left of the rail, top-aligned so a four-row menu grows downward over the
-   rows below it (z-index) rather than climbing off the top of the list; the
-   project menu drops below its rail, right-aligned, so it works both beside
-   the name (desktop) and on the stacked phone row. */
+   summary popover (row-menu.js). The project menu drops below its rail,
+   right-aligned, so it works both beside the name (desktop) and on the
+   stacked phone row. (The session rows' own gear menu was the other user of
+   this recipe until #1025 removed it; `.session-actions` itself stays —
+   apps.js and jobs-row.js both render their action rail with that class.) */
 .app-item .row-actions.session-actions {
   position: relative;
   justify-content: center;
 }
 .app-item .row-actions.agent-actions { position: relative; }
-.app-item .row-actions.session-actions .session-gear {
-  flex: 0 0 auto;
-  min-height: var(--row-sm);
-}
 .app-item .row-actions .row-menu-anchor[aria-expanded="true"],
 .terminal-bar .row-menu-anchor[aria-expanded="true"] {
   color: var(--accent);
@@ -1927,7 +1939,6 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
 }
-.session-menu { top: 0; right: calc(100% - 4px); }
 .project-menu { top: calc(100% + 2px); right: 4px; }
 /* The terminal bar's ⋮ menu (#981) drops below the bar, right-aligned under
    its anchor — the bar itself is the positioned box, as for .speak-popover. */

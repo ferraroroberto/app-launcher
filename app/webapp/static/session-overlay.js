@@ -19,7 +19,9 @@
  * and a tap on it toasts the reason. A detached session opens in Chat; a
  * PTY session of an agent with no reader opens in Terminal; otherwise the
  * mode the session was last viewed in wins (remembered per session id in
- * localStorage), defaulting to Terminal.
+ * localStorage), defaulting to Terminal. A session that can offer *neither*
+ * (detached, no reader) still opens, in Chat, on the reader's reason line
+ * — the overlay is the only place its Rename and Stop live (#1025).
  */
 
 import { els, state } from './state.js';
@@ -182,7 +184,11 @@ export function openSessionOverlay(session, wantMode) {
   if (!session || !session.session_id) return;
   const termOK = terminalAvailable(session);
   const chatOK = chatAvailable(session);
-  if (!termOK && !chatOK) return;
+  // A session that can offer neither pane still opens (#1025): both segments
+  // render aria-disabled and the chat pane shows the reader's own reason
+  // line, which beats an unexplained dead row. That shape — detached, agent
+  // with no reader — is the only way Rename and Stop stay reachable for it
+  // now that the row gear is gone, and they live in the bar's ⋮ menu.
   let mode = wantMode || lastMode(session.session_id) ||
     (termOK ? 'terminal' : 'chat');
   if (mode === 'chat' && !chatOK) mode = 'terminal';

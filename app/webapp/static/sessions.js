@@ -1,7 +1,14 @@
 /* Running Claude Code sessions panel: list, stop, refresh.
  *
- * One 🛑 "Stop and kill" button per row (issue #253), same for both kinds.
- * The session-host types the agent's own quit command (Claude's /quit,
+ * A row is one tap into the session overlay and carries no controls of its
+ * own: since #1025 the actions gear is gone, and Rename / Stop / the mode
+ * toggle all live on the overlay the tap opens (#981/#982). What is left on
+ * the row is the disclosure chevron, pinned right and centred against the
+ * row like every other list row's.
+ *
+ * stopSession() below is still the one "Stop and kill" path (issue #253),
+ * same for both kinds, called from the overlay's ⋮ menu and the Board
+ * drawer. The session-host types the agent's own quit command (Claude's /quit,
  * Copilot's /exit, …), waits briefly for a clean exit so shutdown hooks
  * run, then force-terminates as a fallback — and the window always closes.
  * Detached (remote) rows have no PTY to type into, so the host force-kills
@@ -18,9 +25,7 @@ import { renderHomeHead } from './home-head.js';
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay } from './session-overlay.js';
 import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
-import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
-import { hasTranscriptReader } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js in #691; the shared helper landed in #828), exported
 // for this cross-tab use (#547); board.js already imports
@@ -111,19 +116,6 @@ function renderCodingChiefStatus() {
   els.codingChiefStatusText.textContent = alive ? 'chief: running' : 'chief: not running';
 }
 
-// ------------------------------------------------- row action menu (#953)
-//
-// One gear per row opens a floating menu of the row's actions (transcript ·
-// rename · stop) — the rail had no room for a third icon on the phone
-// without crowding the title. The menu machinery (open/close, outside tap,
-// Escape, surviving the poll re-render) is the shared row-menu.js helper
-// since #977, when the Coding tile grew the same shape.
-const sessionMenu = createRowMenu('session-menu');
-
-export function closeSessionMenu() {
-  sessionMenu.close();
-}
-
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
@@ -146,16 +138,20 @@ export function renderSessions() {
     main.className = 'app-main';
 
     const remote = s.kind === 'remote';
-    const reader = hasTranscriptReader(s);
-    // A row tap opens the session overlay in the mode it was last viewed
-    // in (#982): a full-control row has a terminal, a detached row of an
-    // agent with a transcript reader opens in Chat. A detached row of an
-    // agent with no reader has nothing to show, so it stays inert — still
-    // killable from its gear menu.
-    const tappable = !remote || reader;
-    const open = document.createElement(tappable ? 'button' : 'div');
-    open.className = 'launch-btn session-open' + (tappable ? '' : ' inert');
-    if (tappable) open.type = 'button';
+    // Every row opens the session overlay in the mode it was last viewed in
+    // (#982): a full-control row has a terminal, a detached row of an agent
+    // with a transcript reader opens in Chat. Since #1025 a detached row of
+    // an agent with *no* reader is tappable too — it opens Chat showing the
+    // reader's own reason line, which is where Rename and Stop live now that
+    // the row's gear is gone. No row shape is inert, so none is stranded.
+    const open = document.createElement('button');
+    open.className = 'launch-btn session-open';
+    open.type = 'button';
+    // The text column: every line the row shows, so the chevron can sit
+    // beside it as the row's own right-pinned, vertically centred glyph
+    // rather than trailing the badge line (#1025).
+    const body = document.createElement('div');
+    body.className = 'session-body';
 
     // Title on its own full-width line at the top of the card, so a long
     // project title wraps across the whole card instead of being squeezed
@@ -169,7 +165,7 @@ export function renderSessions() {
       name.appendChild(crown);
     }
     name.appendChild(document.createTextNode(sessionTitle(s)));
-    open.appendChild(name);
+    body.appendChild(name);
 
     const head = document.createElement('div');
     head.className = 'session-head';
@@ -192,88 +188,34 @@ export function renderSessions() {
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
     kindTag.innerHTML = remote ? icon('cloud') + ' detached' : icon('zap') + ' full control';
     head.appendChild(kindTag);
-    if (tappable) {
-      const chev = document.createElement('span');
-      chev.className = 'session-chevron';
-      chev.textContent = '›';
-      head.appendChild(chev);
-    }
-    open.appendChild(head);
+    body.appendChild(head);
 
     const meta = document.createElement('span');
     meta.className = 'meta';
     const ago = fmtAgo(s.started_at);
     meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + s.project_dir;
-    open.appendChild(meta);
-    if (tappable) {
-      open.addEventListener('click', function () { openSession(s); });
-    }
+    body.appendChild(meta);
+    open.appendChild(body);
+
+    // One disclosure chevron, pinned right and centred against the whole
+    // row — the slot the actions gear used to occupy (#1025). It lives
+    // inside the row button, so the tap target is the full 60px row, not
+    // the glyph.
+    const chev = document.createElement('span');
+    chev.className = 'session-chevron';
+    chev.textContent = '›';
+    open.appendChild(chev);
+
+    open.addEventListener('click', function () { openSession(s); });
     main.appendChild(open);
     li.appendChild(main);
 
-    const actions = document.createElement('div');
-    actions.className = 'row-actions session-actions';
-
-    // One gear, vertically centred, opens the row's floating action menu
-    // (#953) — a vertical icon + label list (#967). The menu holds, in order:
-    //   · Terminal (#982) — full-control rows only: the session overlay in
-    //     Terminal mode (a desktop browser gets the PC mirror window, as a
-    //     row tap does).
-    //   · Chat (#982) — every row whose agent has a transcript reader
-    //     (Claude and Codex, #966; hasTranscriptReader mirrors the
-    //     endpoint's flavour map): the same overlay in Chat mode. The reader
-    //     uses the agent's native history, never the PTY capture a detached
-    //     row lacks.
-    //   · Rename (issue #458) — a launcher-native override that always wins
-    //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
-    //     title clears it, reverting to the automatic precedence.
-    //   · Stop-and-kill (issue #253), both kinds: the session-host quits
-    //     gracefully then force-falls-back; the window always closes. Keeps
-    //     the `action-stop-close` class (muted by default, danger-red on
-    //     press). Two taps from the list now — a deliberate trade for the
-    //     other actions fitting the phone.
-    const gear = document.createElement('button');
-    gear.type = 'button';
-    gear.className = 'icon-btn session-gear';
-    gear.innerHTML = icon('settings');
-    gear.title = 'Session actions';
-    gear.setAttribute('aria-label', 'Session actions');
-    const menu = sessionMenu.attach(s.session_id, gear, [
-      {
-        className: 'session-terminal-btn', glyph: 'terminal',
-        label: 'Open terminal', text: 'Terminal',
-        hidden: remote,
-        onTap: function () { openSession(s, 'terminal'); },
-      },
-      {
-        className: 'session-chat-btn', glyph: 'messages-square',
-        label: 'Open chat', text: 'Chat',
-        hidden: !reader,
-        onTap: function () { openSession(s, 'chat'); },
-      },
-      {
-        glyph: 'pencil', label: 'Rename session', text: 'Rename',
-        onTap: function () { openSessionRename(s); },
-      },
-      {
-        className: 'action-stop-close', glyph: 'x',
-        label: 'Stop and kill session', text: 'Stop',
-        onTap: function () { stopSession(s); },
-      },
-    ]);
-    actions.appendChild(gear);
-    actions.appendChild(menu);
-
-    li.appendChild(actions);
-
     host.appendChild(li);
   });
-  // The open menu's row is gone (session ended) — drop the stale state.
-  sessionMenu.endRender();
 }
 
-// Open a session when its row (or its gear's Terminal / Chat item) is
-// tapped. `mode` forces 'terminal' or 'chat'; without it the session opens
+// Open a session when its row is tapped (or the Board drawer's Chat /
+// Terminal button, which calls this too). `mode` forces 'terminal' or 'chat'; without it the session opens
 // in the mode it was last viewed in (#982, session-overlay.js), a detached
 // session always in Chat. On a desktop browser a full-control session's
 // terminal is a dedicated PC Edge --app window (issue #282) — the same
@@ -410,8 +352,9 @@ export function openSessionRename(s, onDone) {
 // route: a PTY session submits with the host's framing, settle
 // and ingest verification (#611/#760/#763); a detached session is typed into
 // its PC console by PID and can only ever answer ``delivered: "unconfirmed"``.
-// The gear menu's Send message dialog is gone — the composer covers both
-// kinds — so the gate, the request and the outcome wording live here once.
+// The row's old Send message dialog is gone (#983), and since #1025 so is
+// the row gear that opened it — the composer covers both kinds — so the
+// gate, the request and the outcome wording live here once.
 
 // A detached session whose agent the registry says was never probed for
 // console input (``console_input: false`` from /api/agents). Only an explicit

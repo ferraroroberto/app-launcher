@@ -25,6 +25,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_session_row, stub_session_mirror
+
 pytestmark = pytest.mark.smoke
 
 _SID = "sid-chat-readaloud-988"
@@ -165,11 +167,14 @@ def _row(page: Page):
 
 
 def _open_chat(page: Page, row) -> None:
-    row.locator(".session-gear").click()
-    row.locator('button[aria-label="Open chat"]').click()
-    overlay = page.locator("#terminalOverlay")
-    expect(overlay).to_be_visible()
-    expect(overlay).to_have_attribute("data-mode", "chat")
+    # #1025: the row's gear (which opened Chat in one tap) is gone, so Chat is
+    # reached the way a finger reaches it — tap the row, then the bar's Chat
+    # segment. A detached row already lands in Chat; a full-control row opens
+    # in Terminal, and on the Chromium projection its tap would mirror to a PC
+    # window (#282) without the stub.
+    stub_session_mirror(page)
+    open_session_row(page, row, mode="chat")
+    expect(page.locator("#terminalOverlay")).to_be_visible()
 
 
 def _click_speak_and_capture_text(page: Page) -> str:

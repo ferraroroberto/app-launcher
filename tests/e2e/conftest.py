@@ -32,6 +32,7 @@ import functools
 import json
 import logging
 import os
+import re
 import shutil
 import signal
 import socket
@@ -44,7 +45,7 @@ from typing import Callable, IO, Iterator, List, Optional, Tuple
 
 import pytest
 import requests
-from playwright.sync_api import BrowserContext, Page
+from playwright.sync_api import BrowserContext, Page, expect
 
 from src.git_utils import run_git
 from src.scanner import dir_ignored, slugify
@@ -801,6 +802,65 @@ _DEFAULT_TIMEOUT_MS = int(os.environ.get("E2E_DEFAULT_TIMEOUT_MS", "15000"))
 # things (a ConPTY keystroke round-trip, the host's 5 s grace-then-force stop
 # window, a real Claude cold boot), not this one.
 OVERLAY_OPEN_MS = int(os.environ.get("E2E_OVERLAY_OPEN_MS", "30000"))
+
+
+# --------------------------------------------------- opening a session row
+#
+# #1025 removed the running-sessions row's actions gear, which used to be the
+# one-tap way into a specific mode (its menu held Terminal / Chat / Rename /
+# Stop). The row is now a single tappable button, so a test that wants a mode
+# or a session action goes in through the overlay the tap opens. These two
+# helpers are that path, shared so the ~7 files that used the gear don't each
+# grow their own version.
+
+
+def stub_session_mirror(page: Page) -> None:
+    """Answer the PC-mirror POST with ``mirrored: false``.
+
+    On a **desktop** browser (``pointer: fine`` — the Chromium projection,
+    never the iPhone one) a tap on a *full-control* row opens a dedicated PC
+    Edge window instead of the in-page overlay (#282). ``mirrored: false`` is
+    the server's own "mirroring is disabled" answer and ``openSession``'s
+    supported fall-through to the in-page overlay, so stubbing it is what lets
+    one row-tap test run on both projections rather than skipping Chromium.
+
+    A test whose subject *is* the mirror must not use this — see
+    ``test_desktop_session_mirror.py``.
+    """
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/[^/]+/mirror$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"mirrored": false}'
+        ),
+    )
+
+
+def open_session_row(page: Page, row, mode: str | None = None) -> None:
+    """Tap a running-sessions row and leave the overlay open in ``mode``.
+
+    ``mode`` (``"terminal"`` / ``"chat"``) taps the bar's segmented toggle
+    after the overlay opens; ``None`` accepts whatever mode the row opened in
+    (a full-control row's last-viewed, a detached one's Chat). Call
+    ``stub_session_mirror`` first when the row is full-control and the test
+    runs on the Chromium projection.
+
+    Uses the pool-wide ``OVERLAY_OPEN_MS`` budget (#887), never a literal.
+    """
+    row.locator(".session-open").click()
+    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    if mode is not None:
+        seg = "#sessionModeChat" if mode == "chat" else "#sessionModeTerminal"
+        page.locator(seg).click()
+        expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", mode)
+
+
+def session_menu_item(page: Page, name: str):
+    """Open the overlay bar's ⋮ menu and return the item with ``aria-label``
+    ``name`` (``Rename session`` / ``Copy session link`` /
+    ``Stop and kill session``). The overlay must already be open."""
+    page.locator("#terminalMenu").click()
+    expect(page.locator("#terminalOverlay .terminal-menu")).to_be_visible()
+    return page.get_by_role("menuitem", name=name)
 
 
 @pytest.fixture(autouse=True)

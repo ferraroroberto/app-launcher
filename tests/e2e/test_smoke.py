@@ -126,9 +126,9 @@ def test_pty_session_renders_with_both_stop_buttons(
     before the test and force-kills the session in teardown — so this test
     no longer depends on the user having something running.
 
-    Other session rows (if any) are also checked: detached → only ⏏️,
-    full-control → both ⏹ and ⏏️. The launched session must be among
-    the full-control rows.
+    Every session row (if any) is checked for the same shape: no action rail,
+    no gear, no stop button, a visible › chevron and a tappable row button
+    (#1025). The launched session must be among the full-control rows.
     """
     _navigate_collecting_errors(authed_page, base_url)
     # The session was launched before navigation, so boot()'s initial
@@ -146,19 +146,26 @@ def test_pty_session_renders_with_both_stop_buttons(
     for i in range(count):
         row = rows.nth(i)
         kind = row.locator(".session-kind").inner_text().strip().lower()
-        # Issue #253: exactly one 🛑 Stop-and-kill button per row, both
-        # kinds — the old ⏹ "leave window open" button is gone.
-        stop = row.locator(".action-stop:not(.action-stop-close)")
-        stop_kill = row.locator(".action-stop-close")
-        assert stop.count() == 0, f"row {i} ({kind}): stray legacy Stop button"
-        assert stop_kill.count() == 1, f"row {i} ({kind}): expected one 🛑 button"
-        # #953: the rail is one gear; the stop button lives in its menu.
-        gear = row.locator(".session-gear")
-        expect(gear).to_be_visible()
-        gear.click()
-        expect(stop_kill.first).to_be_visible()
-        gear.click()
-        expect(stop_kill.first).to_be_hidden()
+        # #1025: the row carries no controls at all — no actions rail, no
+        # gear, no menu, no stop button. Everything it used to hold is one
+        # tap away in the session overlay (Rename/Stop in its ⋮ menu,
+        # Terminal/Chat on its toggle), which the › chevron advertises.
+        # The stop path itself is pinned by test_stop_unify_and_terminal_kill
+        # and test_coding_chief; this is the row's shape.
+        assert row.locator(".row-actions").count() == 0, (
+            f"row {i} ({kind}): a session row must carry no action rail"
+        )
+        assert row.locator(".session-gear").count() == 0, (
+            f"row {i} ({kind}): stray actions gear"
+        )
+        assert row.locator(".action-stop-close, .action-stop").count() == 0, (
+            f"row {i} ({kind}): stray Stop button on the row"
+        )
+        expect(row.locator(".session-chevron")).to_be_visible()
+        # Every row is a real button since #1025 — including a detached row
+        # of an agent with no transcript reader, which used to render inert
+        # and was reachable only through the gear that is now gone.
+        expect(row.locator("button.session-open")).to_have_count(1)
         if "detached" in kind:
             pass
         elif "full control" in kind:
