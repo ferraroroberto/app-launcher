@@ -59,24 +59,57 @@ Write-Host "Restarting the tray (also spawns a fresh session-host since none is 
 
 # Bounded poll of the same /api/version freshness check #615 added, so this
 # script proves the restart actually worked instead of trusting silence.
+#
+# Gate on stale_relevant, NOT raw stale (issue #1007). docs/restart-and-
+# liveness.md is explicit that `stale` is true after any merge anywhere in
+# the repo, so a correct restart used to print a false "STILL STALE"
+# failure here. `stale_relevant` scopes it to whether a declared
+# session-host path was actually touched -- which is the only thing this
+# script can claim to have fixed.
+#
+# Both fields read null (never a confident false) when a SHA or the diff
+# itself cannot be resolved, so null is reported as its own "unknown"
+# outcome and is NOT treated as success.
+function Format-Tri($value) {
+    if ($value -eq $true) { return "true" }
+    if ($value -eq $false) { return "false" }
+    return "unknown"
+}
+
 $deadline = (Get-Date).AddSeconds(30)
-$reported = $false
+$confirmed = $false
+$lastSeen = ""
 while ((Get-Date) -lt $deadline) {
     try {
         $body = Invoke-RestMethod -Uri "https://127.0.0.1:8445/api/version" -SkipCertificateCheck -TimeoutSec 3
         $host_ = $body.session_host
         if ($host_.reachable -eq $true) {
-            $staleText = if ($host_.stale -eq $false) { "fresh" } elseif ($host_.stale -eq $true) { "STILL STALE" } else { "unknown" }
-            Write-Host "session-host: git_sha=$($host_.git_sha) started_at=$($host_.started_at) ($staleText)" -ForegroundColor Green
-            $reported = $true
-            break
+            $lastSeen = ("git_sha=$($host_.git_sha) started_at=$($host_.started_at) " +
+                         "stale=$(Format-Tri $host_.stale) " +
+                         "stale_relevant=$(Format-Tri $host_.stale_relevant)")
+            if ($host_.stale_relevant -eq $false) {
+                Write-Host "session-host: $lastSeen (live)" -ForegroundColor Green
+                $confirmed = $true
+                break
+            }
+            # true  -> the fresh host still loads code older than a declared
+            #          session-host path change; keep polling, it may still
+            #          be coming up.
+            # null  -> freshness could not be resolved at all; also not a pass.
         }
     } catch {
         # webapp or session-host not up yet -- keep polling until the deadline.
     }
     Start-Sleep -Seconds 1
 }
-if (-not $reported) {
-    Write-Host "Could not confirm the session-host is back up within 30s -- check it by hand." -ForegroundColor Red
+if (-not $confirmed) {
+    if ($lastSeen) {
+        Write-Host "session-host: $lastSeen" -ForegroundColor Yellow
+        Write-Host ("Restart NOT confirmed within 30s: stale_relevant never reached false. " +
+                    "The session-host is reachable but is not provably running the merged " +
+                    "session-host code -- check it by hand.") -ForegroundColor Red
+    } else {
+        Write-Host "Could not reach the session-host within 30s -- check it by hand." -ForegroundColor Red
+    }
     exit 1
 }

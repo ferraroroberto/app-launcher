@@ -10,6 +10,7 @@ resilience the shim buys.
 from __future__ import annotations
 
 import asyncio
+import importlib.util
 import socket
 import sys
 import threading
@@ -92,6 +93,33 @@ def test_webapp_bat_wires_loop_factory():
     src = (_REPO_ROOT / "webapp.bat").read_text(encoding="utf-8")
     assert "app.webapp.event_loop:selector_loop_factory" in src
     assert "--loop" in src
+
+
+def test_named_tunnel_script_wires_loop_factory(monkeypatch):
+    """The documented no-tray path (``webapp_tunnel_named.bat``) was the one
+    spawn site that never passed ``--loop`` (#1007), so it booted on the
+    proactor loop the shim exists to avoid. Unlike conftest.py this script
+    imports cleanly, so pin the real argv rather than its source text."""
+    spec = importlib.util.spec_from_file_location(
+        "_rnt_under_test", _REPO_ROOT / "scripts" / "run_named_tunnel.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    captured = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return object()
+
+    # Keep the cert-renewal probe and the spawn itself off the real system.
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    module._spawn_uvicorn(18445)
+
+    cmd = captured["cmd"]
+    assert "--loop" in cmd, "named-tunnel uvicorn spawn is missing --loop (#388/#1007)"
+    assert cmd[cmd.index("--loop") + 1] == LOOP_FACTORY
 
 
 async def _noop_handler(reader, writer):

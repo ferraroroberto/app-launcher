@@ -31,9 +31,12 @@ from __future__ import annotations
 import json as _json
 import re
 
+import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
+
+pytestmark = pytest.mark.smoke
 
 _SID = "sid-transcript-953"
 

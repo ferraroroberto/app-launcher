@@ -34,6 +34,7 @@ logger = logging.getLogger("run_named_tunnel")
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP  # noqa: E402
 
 DEFAULT_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.yml"
@@ -84,6 +85,14 @@ def _spawn_uvicorn(port: int) -> subprocess.Popen:
         "127.0.0.1",
         "--port",
         str(port),
+        # Same selector-loop shim every other spawn site passes (issue #388,
+        # #1007): on the default Windows proactor loop a single aborted
+        # client (WinError 64) closes the listening socket and wedges the
+        # webapp until a restart. Keep this pointed at the same dotted path
+        # as app/webapp/manager.py, app/cli/commands/webapp_cmd.py,
+        # tests/e2e/conftest.py and webapp.bat.
+        "--loop",
+        LOOP_FACTORY,
         "--log-level",
         "warning",
     ]
