@@ -69,6 +69,23 @@ from app.webapp.routers._helpers import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Launch-flag dispatch for the agents that carry NO model flag: they choose
+# their model in-TUI with `/model`, so each builder takes `cfg` alone.
+#
+# Claude and Codex are deliberately ABSENT. They are model-carrying and are
+# called directly with `model_override`, so an entry here would advertise a
+# dispatch path that cannot be reached - the table was carrying two such
+# entries (#1006). Module level so the coverage contract below it is a fact a
+# test can check rather than a comment: `tests/test_apps_launch_dispatch.py`
+# fails when a newly added agent has no builder, which is otherwise a
+# KeyError on the first launch from the phone.
+_NO_MODEL_FLAG_BUILDERS = {
+    "antigravity": build_antigravity_flags,
+    "copilot": build_copilot_flags,
+    "pi": build_pi_flags,
+    "grok": build_grok_flags,
+}
+
 # The per-launch model values each agent's flag builder actually honours
 # (#1007). Only Claude and Codex take a model_override; the other agents'
 # builders have no model flag at all (it is chosen in-TUI with /model), so
@@ -246,19 +263,6 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail=f"{agents.AGENTS[agent].label} is not installed",
             )
-        # Each agent has its own flag set: Claude's model / effort /
-        # always-on remote-control switches; Antigravity's two opt-in
-        # launch toggles; Copilot's single allow-all toggle. The
-        # non-Claude agents have no model/effort flags — that's chosen
-        # in-TUI with `/model`.
-        flag_builders = {
-            "claude": build_claude_flags,
-            "codex": build_codex_flags,
-            "antigravity": build_antigravity_flags,
-            "copilot": build_copilot_flags,
-            "pi": build_pi_flags,
-            "grok": build_grok_flags,
-        }
         if requested_model:
             provider, separator, model_value = requested_model.partition(":")
             if not separator or provider != agent:
@@ -297,7 +301,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             elif agent == "codex":
                 flags = build_codex_flags(cfg, model_override=model_value or None)
             else:
-                flags = flag_builders[agent](cfg)
+                flags = _NO_MODEL_FLAG_BUILDERS[agent](cfg)
 
         if mode == "remote":
             session = await spawn_session_or_400(
