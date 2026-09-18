@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers.life_os import _recap_staleness
-from app.webapp.routers.life_os_conversations import _search_cli
+from app.webapp.routers.life_os_files import search_cli
 from app.webapp.routers.life_os_files import resolve_within
 
 # A canonical session id — the only shape the launch route accepts, because
@@ -731,7 +731,7 @@ class TestContentBrowser:
         ``subprocess`` binding so patching ``.run`` can't leak into the real
         module (mirrors ``TestConversationSearch.stub_cli``)."""
         from app.webapp.routers import life_os_files
-        monkeypatch.setattr(life_os_files, "_search_cli", lambda cfg: list(argv))
+        monkeypatch.setattr(life_os_files, "search_cli", lambda cfg: list(argv))
         monkeypatch.setattr(life_os_files, "subprocess", SimpleNamespace(**vars(subprocess)))
         return life_os_files
 
@@ -892,46 +892,6 @@ class TestContentBrowser:
         )
         assert resp.status_code == 200, resp.text
 
-
-class TestFilesSearchCliResolution:
-    """``life_os_files._search_cli`` — same resolution as
-    ``life_os_conversations._search_cli`` (``TestSearchCliResolution``),
-    duplicated because ``life_os_files`` is a deliberate import leaf."""
-
-    def _tree(self, root: Path, *, script: bool, venv: bool) -> Path:
-        if script:
-            (root / "hooks").mkdir(parents=True, exist_ok=True)
-            (root / "hooks" / "conversation_search.py").write_text(
-                "", encoding="utf-8"
-            )
-        if venv:
-            win = root / ".venv" / "Scripts"
-            win.mkdir(parents=True, exist_ok=True)
-            (win / "python.exe").write_text("", encoding="utf-8")
-        return root
-
-    def _cfg(self, root: Path):
-        class _Cfg:
-            claude_config_dir = str(root)
-        return _Cfg()
-
-    def test_resolves_when_both_present(self, tmp_path):
-        from app.webapp.routers.life_os_files import _search_cli
-        root = self._tree(tmp_path / "fleet-config", script=True, venv=True)
-        cli = _search_cli(self._cfg(root))
-        assert cli is not None
-        assert cli[0].endswith("python.exe")
-        assert cli[1].endswith("conversation_search.py")
-
-    def test_none_without_script(self, tmp_path):
-        from app.webapp.routers.life_os_files import _search_cli
-        root = self._tree(tmp_path / "fleet-config", script=False, venv=True)
-        assert _search_cli(self._cfg(root)) is None
-
-    def test_none_without_interpreter(self, tmp_path):
-        from app.webapp.routers.life_os_files import _search_cli
-        root = self._tree(tmp_path / "fleet-config", script=True, venv=False)
-        assert _search_cli(self._cfg(root)) is None
 
 
 # ------------------------------------------------------- recap-status endpoint
@@ -1244,7 +1204,7 @@ class TestConversationSearch:
         covered by TestSearchCliResolution)."""
         from app.webapp.routers import life_os_conversations
         monkeypatch.setattr(
-            life_os_conversations, "_search_cli", lambda cfg: ["py", "search.py"]
+            life_os_conversations, "search_cli", lambda cfg: ["py", "search.py"]
         )
         monkeypatch.setattr(life_os_conversations, "subprocess", SimpleNamespace(**vars(subprocess)))
         return life_os_conversations
@@ -1400,7 +1360,13 @@ class TestConversationSearch:
 
 
 class TestSearchCliResolution:
-    """``_search_cli`` finds fleet-config's interpreter + script, or says no."""
+    """``search_cli`` finds fleet-config's interpreter + script, or says no.
+
+    One class for one function since #1003. There used to be a second,
+    byte-identical ``TestFilesSearchCliResolution`` covering
+    ``life_os_files``'s own copy — two tests agreeing with each other about
+    duplicated code. Both routers now call this single resolver.
+    """
 
     def _tree(self, root: Path, *, script: bool, venv: bool) -> Path:
         if script:
@@ -1421,18 +1387,30 @@ class TestSearchCliResolution:
 
     def test_resolves_when_both_present(self, tmp_path):
         root = self._tree(tmp_path / "fleet-config", script=True, venv=True)
-        cli = _search_cli(self._cfg(root))
+        cli = search_cli(self._cfg(root))
         assert cli is not None
         assert cli[0].endswith("python.exe")
         assert cli[1].endswith("conversation_search.py")
 
     def test_none_without_script(self, tmp_path):
         root = self._tree(tmp_path / "fleet-config", script=False, venv=True)
-        assert _search_cli(self._cfg(root)) is None
+        assert search_cli(self._cfg(root)) is None
 
     def test_none_without_interpreter(self, tmp_path):
         root = self._tree(tmp_path / "fleet-config", script=True, venv=False)
-        assert _search_cli(self._cfg(root)) is None
+        assert search_cli(self._cfg(root)) is None
+
+    def test_both_routers_share_one_resolver(self):
+        """#1003 — the conversations router must *import* this resolver, not
+        carry its own copy. A re-added local definition would rebind the name
+        and fail here, which is the only cheap way to stop the duplicate
+        coming back (the two copies previously had two identical test
+        classes agreeing with each other)."""
+        from app.webapp.routers import life_os_conversations, life_os_files
+
+        assert life_os_conversations.search_cli is life_os_files.search_cli
+        assert not hasattr(life_os_conversations, "_search_cli")
+        assert not hasattr(life_os_conversations, "_SEARCH_SCRIPT_REL")
 
 
 class TestTargetedResume:

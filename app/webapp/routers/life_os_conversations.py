@@ -48,7 +48,7 @@ from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
-from app.webapp.routers.life_os_files import resolve_within
+from app.webapp.routers.life_os_files import resolve_within, search_cli
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
     _resolve_skill,
@@ -64,11 +64,6 @@ router = APIRouter()
 # conversation, newest-first, carrying the full resumable session id.
 _CONVERSATIONS_DIR = "conversations"
 _CONVERSATIONS_INDEX = "index.json"
-# The cross-skill ranked search CLI lives in the fleet-config checkout
-# (`claude_config_dir`) — the same repo the Board already shells into for
-# `chief_managed.py`. Resolved per request so a Settings change takes effect
-# without a restart.
-_SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
 _SEARCH_TIMEOUT_S = 15
 # A query long enough to be a paste accident rather than a search; the CLI is
 # invoked with an argv list (never a shell), so this is a sanity cap, not the
@@ -355,24 +350,6 @@ def _search_unavailable(reason: str) -> Dict[str, Any]:
     return {"available": False, "reason": reason, "results": []}
 
 
-def _search_cli(cfg: WebappConfig) -> Optional[List[str]]:
-    """``[python, script]`` for fleet-config's search CLI, or ``None``.
-
-    Resolved per request from ``claude_config_dir`` (the fleet-config
-    checkout the Board already shells into) so pointing Settings at a
-    different checkout takes effect without a restart. ``None`` when either
-    half is missing — a machine without fleet-config still gets a working
-    Life OS tab, minus search.
-    """
-    root = Path(cfg.claude_config_dir)
-    script = root.joinpath(*_SEARCH_SCRIPT_REL)
-    if not script.is_file():
-        return None
-    for rel in ((".venv", "Scripts", "python.exe"), (".venv", "bin", "python")):
-        python = root.joinpath(*rel)
-        if python.is_file():
-            return [str(python), str(script)]
-    return None
 
 
 def _search_limit(raw: Optional[str]) -> int:
@@ -413,7 +390,7 @@ async def search_conversations(request: Request) -> Dict[str, Any]:
     if len(query) > _MAX_QUERY_CHARS:
         raise HTTPException(status_code=400, detail="query too long")
 
-    cli = _search_cli(cfg)
+    cli = search_cli(cfg)
     if cli is None:
         return _search_unavailable("conversation search is not installed")
 
