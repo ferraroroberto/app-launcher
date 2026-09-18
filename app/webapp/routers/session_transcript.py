@@ -14,7 +14,13 @@ file correlated from the filesystem — a Codex rollout by cwd + launch
 time, an Antigravity conversation by its newest-per-folder cache (#1014),
 a Copilot event log by cwd + launch time against its own per-session
 ``workspace.yaml`` (#1015).
-A session the claim walk gives no row answers ``no_transcript`` rather than
+Claude has a filesystem fallback too (#1023): the hook deletes its row on
+``/resume`` and ``/clear`` and only the next prompt writes it back, so a
+live session can be rowless for as long as the user is reading rather than
+typing — the newest conversation in that cwd's own project folder covers
+it, refused when a second live Claude session shares the folder or when
+nothing was written there since this session started.
+A session no source can name answers ``no_transcript`` rather than
 guessing a neighbour's file, so a harness that keeps one session folder per
 working directory (Grok does, including for directories that no longer
 exist) can never show another session's text. None of them read the
@@ -49,6 +55,7 @@ from src import board
 from src.board_exchange import (
     _find_codex_transcript,
     find_antigravity_transcript,
+    find_claude_transcript,
     find_copilot_transcript,
     find_pi_transcript,
 )
@@ -87,14 +94,21 @@ def _resolve_path(
 ) -> Optional[Path]:
     """The history file for this session, or None when none is known.
 
-    Five shapes, in decreasing directness: the row carries the path
+    Six shapes, in decreasing directness: the row carries the path
     (Claude, Grok); the row's own *key* is the harness's session id and
     names the file (Pi, #1013); or nothing on the row helps at all and the
     file has to be correlated from the filesystem — by cwd + launch time
     (Codex), by the harness's own newest-conversation-per-folder cache,
     which needs ``live`` to refuse a folder hosting two sessions at once
-    (Antigravity, #1014), or by cwd + launch time against the harness's own
-    per-session ``workspace.yaml`` sidecar (Copilot, #1015).
+    (Antigravity, #1014), by cwd + launch time against the harness's own
+    per-session ``workspace.yaml`` sidecar (Copilot, #1015), or by newest
+    conversation in the cwd's own project folder (Claude, #1023).
+
+    Claude is the one flavour with two: the row is exact and stays first,
+    and the filesystem fallback covers the window where the hook has
+    deleted the row out from under a still-live session — ``SessionEnd``
+    fires on ``/resume`` and ``/clear``, not just on exit, and only the
+    next prompt writes the row back.
     """
     if flavor == "codex":
         return _find_codex_transcript(session)
@@ -105,7 +119,9 @@ def _resolve_path(
     if flavor == "copilot":
         return find_copilot_transcript(session)
     raw = (row or {}).get("transcript_path")
-    return Path(str(raw)) if raw else None
+    if raw:
+        return Path(str(raw))
+    return find_claude_transcript(session, live) if flavor == "claude" else None
 
 
 async def _resolve_source(

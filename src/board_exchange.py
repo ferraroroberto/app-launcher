@@ -100,6 +100,15 @@ _AGY_CACHE_CAP_BYTES = 1024 * 1024
 # `started_at` when it spawns the PTY, the harness writes a moment later, and
 # clock granularity between the two is not worth a false negative.
 _AGY_MTIME_SLOP_SECONDS = 60
+_CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+# Claude Code names a project folder after its cwd with every non-alphanumeric
+# character replaced by `-`. Measured across the 107 folders on this box whose
+# own JSONL records a `cwd`: 103 match that transform exactly and 4 older ones
+# are additionally lowercased, so the folder is matched case-insensitively
+# rather than by building one name.
+_CLAUDE_SLUG_RE = re.compile(r"[^A-Za-z0-9]")
+# Same meaning as `_AGY_MTIME_SLOP_SECONDS`, for the same reason.
+_CLAUDE_MTIME_SLOP_SECONDS = 60
 
 
 def unavailable(reason: str) -> Dict[str, Any]:
@@ -473,6 +482,100 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     if len(matches) != 1 or not matches[0].is_file():
         return None
     return matches[0]
+
+
+def find_claude_transcript(
+    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
+) -> Optional[Path]:
+    """The Claude Code conversation log for a live session, from the
+    filesystem alone (#1023) — the fallback for when no state row names one.
+
+    Claude's history normally arrives the direct way, on the hook state row's
+    ``transcript_path``. That row is written by ``fleet-config``'s
+    ``session_state`` hook, and its ``SessionEnd`` event **deletes** it, then
+    tombstones the conversation for 24 h so only a later ``UserPromptSubmit``
+    can bring it back. Claude Code fires ``SessionEnd`` on ``/resume`` and
+    ``/clear`` as well as on exit — the process lives on under a different
+    conversation — so between a ``/resume`` and the user's next prompt a
+    perfectly live session has no row at all, and Chat mode said "no
+    transcript" over a conversation sitting readable on disk. A session whose
+    hook never ran, and one whose row aged out of the 24 h prune, land in the
+    same place.
+
+    Nothing in the JSONL names the launcher (a conversation opens with
+    ``mode`` / ``permission-mode`` rows; the rest carry ``sessionId`` and
+    ``cwd``), and Claude Code's own live per-process registry
+    (``~/.claude/sessions/<pid>.json``), which does map a pid to a
+    conversation, goes stale on ``/resume`` — measured here still naming the
+    pre-resume conversation eleven hours and two conversations later. So the
+    correlation is the folder: Claude files a conversation under
+    ``~/.claude/projects/<cwd with every non-alphanumeric replaced by ->``,
+    and the newest ``*.jsonl`` in the session's own folder is its own — the
+    sixth correlation mechanism in this reader, and again not portable from
+    any of the five before it.
+
+    "Newest in this folder" is a weaker claim than an id, so two guards make
+    the difference fail safe, the same shape as
+    :func:`find_antigravity_transcript`:
+
+    * **One live session per folder.** If the launcher hosts another alive
+      Claude session with the same ``project_dir``, nothing here can say
+      which of them the newest file belongs to — refuse, rather than show
+      one session's conversation under the other's name (#537).
+    * **Written since this session started.** The file's mtime must be at or
+      after ``started_at`` (less :data:`_CLAUDE_MTIME_SLOP_SECONDS`). A
+      session that has not written yet would otherwise inherit whatever ran
+      in that directory before it, and "no transcript yet" is the truthful
+      answer there.
+
+    Both refusals answer ``None``, which the caller reports as
+    ``no_transcript`` — never an ``available: true`` over a file that may not
+    be this session's.
+    """
+    project_dir = str(session.get("project_dir") or "")
+    started = _started_epoch(session)
+    if not project_dir or started is None:
+        return None
+    normalized = _normalize_dir(project_dir)
+    sid = str(session.get("session_id") or "")
+    for other in live or ():
+        if (
+            str(other.get("session_id") or "") != sid
+            and str(other.get("agent") or "claude").strip().lower() == "claude"
+            and other.get("alive")
+            and _normalize_dir(other.get("project_dir")) == normalized
+        ):
+            return None
+
+    # Built from the *normalized* directory so the session's own spelling —
+    # separator flavour, trailing slash, drive-letter case — cannot change
+    # the folder it looks for.
+    slug = _CLAUDE_SLUG_RE.sub("-", normalized)
+    newest: Optional[Path] = None
+    newest_at = 0.0
+    try:
+        folders = [
+            child
+            for child in _CLAUDE_PROJECTS_DIR.iterdir()
+            if child.name.lower() == slug and child.is_dir()
+        ]
+    except OSError:
+        return None
+    for folder in folders:
+        try:
+            candidates = list(folder.glob("*.jsonl"))
+        except OSError:
+            continue
+        for path in candidates:
+            try:
+                written = path.stat().st_mtime
+            except OSError:
+                continue
+            if newest is None or written > newest_at:
+                newest, newest_at = path, written
+    if newest is None:
+        return None
+    return newest if newest_at >= started - _CLAUDE_MTIME_SLOP_SECONDS else None
 
 
 def _codex_cwd(path: Path) -> str:
