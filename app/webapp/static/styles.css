@@ -1939,6 +1939,13 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-md);
   box-shadow: var(--shadow);
 }
+/* A menu that opted into viewport placement (#996, row-menu.js
+   `placeAgainst`): only `position` changes — row-menu.js writes the top/left
+   its own CSS placement resolved to (and neutralises that rule's bottom/right
+   inline), so the menu lands where the rules below put it while no scrolling
+   ancestor can clip it. `fixed` is what buys that: its containing block is
+   the viewport, not the scroller. */
+.row-menu--fixed { position: fixed; }
 .project-menu { top: calc(100% + 2px); right: 4px; }
 /* The terminal bar's ⋮ menu (#981) drops below the bar, right-aligned under
    its anchor — the bar itself is the positioned box, as for .speak-popover. */
@@ -2767,7 +2774,10 @@ body.terminal-open {
 }
 /* The image button's options menu (Attach image or file / Extract text from
    screenshots): the row-menu recipe, floating above the composer at its
-   right edge — mockup screen 3. */
+   right edge — mockup screen 3. These two offsets stay the one source of the
+   placement: row-menu.js measures where they put the menu and re-applies it
+   in viewport coordinates while the menu is open, so the Board drawer's
+   scrolling ancestor cannot clip it (#996, `.row-menu--fixed` above). */
 .composer-menu {
   bottom: calc(100% + 6px);
   right: 10px;
