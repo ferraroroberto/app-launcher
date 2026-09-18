@@ -8,18 +8,17 @@ the browser payload.
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import subprocess
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 from types import ModuleType
 from typing import Any, Callable, Dict, Optional
 
+from src._fleet_contract import load_fleet_contract
 from src.model_catalog import PI_MODEL_SPECS
 from src.subprocess_flags import NO_WINDOW
 
@@ -56,15 +55,8 @@ def resolve_quota_route(selection: str, *, pi_model: Optional[str] = None) -> Qu
     return QuotaRoute(harness or "unknown", "unknown", "Quota")
 
 
-@lru_cache(maxsize=4)
 def _load_contract(path_text: str) -> ModuleType:
-    path = Path(path_text)
-    spec = importlib.util.spec_from_file_location("launcher_quota_snapshot", path)
-    if spec is None or spec.loader is None:
-        raise ImportError("quota contract loader unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_fleet_contract(path_text, "launcher_quota_snapshot", "quota")
 
 
 def _read_snapshot(fleet_config_dir: Path, state_dir: Path) -> Dict[str, Any]:

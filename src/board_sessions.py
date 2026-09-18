@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional
 
+from src._log_once import log_once
 from src.active_issue_claims import CLAIM_DEAD
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
 from src.board_transcript import (
@@ -432,14 +433,11 @@ def merge_sessions(
             live_launcher_session_ids=live_launcher_session_ids,
         )
         if not externally_live:
-            if sid not in _LOGGED_SUPPRESSED_ROWS:
-                if len(_LOGGED_SUPPRESSED_ROWS) >= _SUPPRESSED_LOG_CAP:
-                    _LOGGED_SUPPRESSED_ROWS.clear()
-                _LOGGED_SUPPRESSED_ROWS.add(sid)
-                logger.info(
-                    "ℹ️ Board suppressed unverifiable state row %s (%s, %s): %s",
-                    sid[:8], project, status, reason,
-                )
+            log_once(
+                _LOGGED_SUPPRESSED_ROWS, sid, _SUPPRESSED_LOG_CAP, logger.info,
+                "ℹ️ Board suppressed unverifiable state row %s (%s, %s): %s",
+                sid[:8], project, status, reason,
+            )
             continue
         cards.append({
             "session_id": None,
