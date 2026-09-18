@@ -146,25 +146,25 @@ def test_pty_session_renders_with_both_stop_buttons(
     for i in range(count):
         row = rows.nth(i)
         kind = row.locator(".session-kind").inner_text().strip().lower()
-        # #1025: the row carries no controls at all — no actions rail, no
-        # gear, no menu, no stop button. Everything it used to hold is one
-        # tap away in the session overlay (Rename/Stop in its ⋮ menu,
-        # Terminal/Chat on its toggle), which the › chevron advertises.
-        # The stop path itself is pinned by test_stop_unify_and_terminal_kill
-        # and test_coding_chief; this is the row's shape.
-        assert row.locator(".row-actions").count() == 0, (
-            f"row {i} ({kind}): a session row must carry no action rail"
+        # #1025: the row's one control is the kebab, which opens its action
+        # menu. No gear glyph, no chevron, and no Stop button loose on the
+        # row itself — Stop lives inside the menu. The stop path itself is
+        # pinned by test_stop_unify_and_terminal_kill and test_coding_chief;
+        # this is the row's shape.
+        assert row.locator(".session-kebab").count() == 1, (
+            f"row {i} ({kind}): a session row must carry its kebab"
         )
         assert row.locator(".session-gear").count() == 0, (
             f"row {i} ({kind}): stray actions gear"
         )
-        assert row.locator(".action-stop-close, .action-stop").count() == 0, (
-            f"row {i} ({kind}): stray Stop button on the row"
+        assert row.locator(".session-chevron").count() == 0, (
+            f"row {i} ({kind}): stray chevron"
         )
-        expect(row.locator(".session-chevron")).to_be_visible()
+        assert row.locator(".row-actions > .action-stop-close").count() == 0, (
+            f"row {i} ({kind}): stray Stop button loose on the row"
+        )
         # Every row is a real button since #1025 — including a detached row
-        # of an agent with no transcript reader, which used to render inert
-        # and was reachable only through the gear that is now gone.
+        # of an agent with no transcript reader, which used to render inert.
         expect(row.locator("button.session-open")).to_have_count(1)
         if "detached" in kind:
             pass
