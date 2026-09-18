@@ -16,6 +16,10 @@ collapses on its own summary):
   * Chat mode shows prompts and replies expanded, folds a run of tool calls /
     thinking into one closed disclosure, and expanding it (then one item)
     reveals the tool result;
+  * a failed tool call is marked — a red glyph and a "failed" chip on the
+    row, a "1 failed" chip on the *closed* group — while a harness that
+    cannot report failures says so in the expanded card instead of letting
+    silence read as success (#1020);
   * "Load older" prepends the next page and hides itself once the cursor is
     exhausted;
   * an unavailable source shows its own reason line — "no transcript" and
@@ -452,3 +456,164 @@ def test_copy_button_copies_turn_text_and_upgrades_a_truncated_reply(
     assert any("Full reply copied" in t for t in toasts), toasts
     assert toasts.index(next(t for t in toasts if "loading the full text" in t)) < \
         toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
+
+
+# ------------------------------------------------------- #1020 tool errors
+
+def _outcome_page(*, tool_errors: str, failed: bool) -> dict:
+    """One page holding a working call and, optionally, a failed one."""
+    entries = [
+        {"kind": "user", "timestamp": "2026-09-14T10:01:00Z",
+         "text": "read both files", "truncated": False, "sidechain": False},
+        {"kind": "tool_call", "timestamp": "2026-09-14T10:01:02Z", "name": "Read",
+         "summary": "docs/board.md", "result": "# Board",
+         "result_truncated": False, "sidechain": False},
+    ]
+    if failed:
+        entries.append(
+            {"kind": "tool_call", "timestamp": "2026-09-14T10:01:03Z", "name": "Read",
+             "summary": "docs/gone.md", "result": "File does not exist.",
+             "result_truncated": False, "sidechain": False, "error": True},
+        )
+    entries.append(
+        {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z",
+         "text": "done", "truncated": False, "sidechain": False},
+    )
+    return {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None, "tool_errors": tool_errors, "entries": entries,
+    }
+
+
+def _open_tool_group(page: Page):
+    """Chat open, tool calls revealed, the group still closed."""
+    row = _row(page)
+    _open_chat(page, row)
+    expect(page.locator("#transcriptList .tr-turn")).not_to_have_count(0)
+    _menu_item(page, "Show tool calls and system entries").click()
+    group = page.locator("#transcriptList .tr-group")
+    expect(group).to_be_visible()
+    return group
+
+
+def test_failed_tool_call_is_marked_in_both_themes(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1020 — a failed call read exactly like a working one.
+
+    The marker has to survive the two things that made the old behaviour
+    invisible: the group is *closed* by default (so the count rides on the
+    closed header), and the row's hint ellipses at phone width (so the chip
+    is its own non-shrinking element, not more hint text). Asserted in both
+    themes because ``--danger`` is redefined for dark.
+    """
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(
+        authed_page,
+        {None: _outcome_page(tool_errors="reported", failed=True)},
+        calls,
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    group = _open_tool_group(authed_page)
+
+    # Legible while still folded: the count rides on the closed header.
+    expect(group).to_have_js_property("open", False)
+    expect(group.locator(".tr-fail-count")).to_have_text("1 failed")
+
+    group.locator("summary.collapse-summary").click()
+    expect(group).to_have_js_property("open", True)
+    items = group.locator(".tr-item")
+    expect(items).to_have_count(2)
+
+    # The working call carries no marker of any kind — a success is not
+    # decorated, only a failure is.
+    ok, bad = items.nth(0), items.nth(1)
+    expect(ok).not_to_have_class(re.compile(r"tr-item-failed"))
+    expect(ok.locator(".tr-fail-chip")).to_have_count(0)
+    expect(bad).to_have_class(re.compile(r"tr-item-failed"))
+    expect(bad.locator(".tr-fail-chip")).to_have_text("failed")
+
+    # A row-level mark, not a banner: the turn cards around it are untouched.
+    expect(authed_page.locator("#transcriptList .tr-turn.tr-item-failed")).to_have_count(0)
+
+    # Both themes resolve --danger to a real colour, and the two differ —
+    # `to_have_css` re-resolves the locator, so a re-render can't yield the
+    # '' WebKit returns from a raw getComputedStyle read (#680).
+    seen = {}
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        chip = bad.locator(".tr-fail-chip")
+        expect(chip).not_to_have_css("color", "rgba(0, 0, 0, 0)")
+        seen[theme] = chip.evaluate("el => getComputedStyle(el).color")
+    assert seen["light"] and seen["dark"], seen
+    assert seen["light"] != seen["dark"], seen
+
+    # Folded calls stay folded: marking one never opens it.
+    expect(bad).to_have_js_property("open", False)
+
+
+def test_unreported_outcome_says_so_instead_of_reading_as_success(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1020's harder half — Codex records no outcome at all.
+
+    Nothing may be marked (there is nothing to mark), but the silence must
+    not pass for success either: the expanded card says the outcome was
+    never recorded. The note is in the *body*, so a folded group stays as
+    quiet as it was before.
+    """
+    calls: list = []
+    _mock_sessions_list(authed_page, agent="codex")
+    _mock_transcript(
+        authed_page,
+        {None: _outcome_page(tool_errors="none", failed=False)},
+        calls,
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    group = _open_tool_group(authed_page)
+
+    # Nothing claimed, nothing decorated, nothing counted.
+    expect(group.locator(".tr-fail-count")).to_have_count(0)
+    expect(group.locator(".tr-item-failed")).to_have_count(0)
+    # …and the closed header is unchanged from a `reported` flavour.
+    expect(group.locator(".collapse-title")).to_have_text("1 tool call")
+
+    group.locator("summary.collapse-summary").click()
+    item = group.locator(".tr-item").first
+    item.locator("summary").click()
+    expect(item).to_have_js_property("open", True)
+    note = item.locator(".tr-outcome-unknown")
+    expect(note).to_be_visible()
+    expect(note).to_contain_text("doesn\u2019t record whether a tool call failed")
+    # Muted, not a status colour — "nobody can tell" is not a failure, and
+    # dressing it as one would be the same lie in reverse. Compared against
+    # the row hint, the other --muted text on the same card, so this needs
+    # no colour arithmetic to hold in both themes.
+    hint_color = item.locator(".tr-item-hint").evaluate(
+        "el => getComputedStyle(el).color"
+    )
+    expect(note).to_have_css("color", hint_color)
+
+
+def test_reported_harness_adds_no_note_to_a_clean_call(
+    authed_page: Page, base_url: str
+) -> None:
+    """The third state exists only where it is true: a harness that reports
+    every failure leaves an unmarked call to mean "it worked", with no
+    caveat line cluttering every card."""
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(
+        authed_page,
+        {None: _outcome_page(tool_errors="reported", failed=False)},
+        calls,
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    group = _open_tool_group(authed_page)
+    group.locator("summary.collapse-summary").click()
+    item = group.locator(".tr-item").first
+    item.locator("summary").click()
+    expect(item).to_have_js_property("open", True)
+    expect(item.locator(".tr-pre")).not_to_have_count(0)
+    expect(item.locator(".tr-outcome-unknown")).to_have_count(0)

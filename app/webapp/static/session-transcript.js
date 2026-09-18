@@ -76,6 +76,25 @@ const REASON_COPY = {
   read_failed: 'Couldn’t read the transcript',
 };
 
+// How far the open session's harness can be trusted to mark a failed tool
+// call — the server's per-flavour `tool_errors` (#1020). Only a `reported`
+// harness lets an unmarked call be read as "it worked"; for the other two
+// values an unmarked call is "nobody recorded the outcome", which the
+// expanded card says in as many words rather than leaving silence to pass
+// for success. `reported` is the fallback for a page that predates the
+// field only because that is also what Claude — the default flavour —
+// reports.
+const TOOL_ERRORS_NOTE = {
+  partial: 'This agent doesn’t record every tool failure — an unmarked call may still have failed.',
+  none: 'This agent doesn’t record whether a tool call failed.',
+};
+
+function toolOutcomeNote(e, toolErrors) {
+  if (e.error === true) return '';
+  if (e.kind !== 'tool_call' && e.kind !== 'tool_result') return '';
+  return TOOL_ERRORS_NOTE[toolErrors] || '';
+}
+
 const KIND_ICON = {
   tool_call: 'terminal',
   tool_result: 'terminal',
@@ -356,9 +375,13 @@ export function reloadNewest() {
 
 // One folded item inside a run group — its own <details>, so a single
 // tool call can be opened without expanding its siblings.
-function renderItem(e) {
+function renderItem(e, toolErrors) {
   const d = document.createElement('details');
   d.className = 'tr-item tr-item-' + e.kind;
+  // A failed call is marked on the row itself, so it reads as failed while
+  // the group is still folded open at one item — never as a banner over the
+  // whole turn (#1020).
+  if (e.error === true) d.classList.add('tr-item-failed');
   const s = document.createElement('summary');
   s.innerHTML = icon(KIND_ICON[e.kind] || 'plug');
   const name = document.createElement('span');
@@ -382,6 +405,12 @@ function renderItem(e) {
     hint.textContent = firstLine(e.text, 80);
   }
   s.appendChild(name);
+  if (e.error === true) {
+    const chip = document.createElement('span');
+    chip.className = 'tr-fail-chip';
+    chip.textContent = 'failed';
+    s.appendChild(chip);
+  }
   s.appendChild(hint);
   d.appendChild(s);
   const body = document.createElement('div');
@@ -398,6 +427,17 @@ function renderItem(e) {
     }
   } else {
     body.appendChild(pre(e.text, e.truncated));
+  }
+  // The honest third state: this harness cannot say whether the call
+  // failed. Said here, in the body, rather than as a marker on every row —
+  // it is the answer to "did this work?", and that question is asked at the
+  // moment the card is opened, not while it is folded.
+  const note = toolOutcomeNote(e, toolErrors);
+  if (note) {
+    const unknown = document.createElement('div');
+    unknown.className = 'tr-outcome-unknown';
+    unknown.textContent = note;
+    body.appendChild(unknown);
   }
   d.appendChild(body);
   return d;
@@ -417,9 +457,13 @@ function runLabel(run) {
   return parts.join(' · ');
 }
 
+function failedCount(run) {
+  return run.reduce(function (n, e) { return n + (e.error === true ? 1 : 0); }, 0);
+}
+
 // A run of consecutive folded entries → one vendored disclosure card
 // (closed), so an autonomous stretch collapses to a single line.
-function renderRun(run) {
+function renderRun(run, toolErrors) {
   const li = document.createElement('li');
   li.className = 'tr-run';
   const d = document.createElement('details');
@@ -434,18 +478,28 @@ function renderRun(run) {
     '</summary>' +
     '<div class="collapse-body tr-group-body"></div>';
   d.querySelector('.collapse-title').textContent = runLabel(run);
+  // A failed call has to be visible while the group is still closed, and the
+  // title ellipses at phone width — so the count is its own non-shrinking
+  // element between title and item count rather than more title text.
+  const failed = failedCount(run);
+  if (failed) {
+    const chip = document.createElement('span');
+    chip.className = 'tr-fail-count';
+    chip.textContent = failed + ' failed';
+    d.querySelector('.collapse-main').insertBefore(chip, d.querySelector('.collapse-count'));
+  }
   d.querySelector('.collapse-count').textContent = run.length + (run.length === 1 ? ' item' : ' items');
   const body = d.querySelector('.tr-group-body');
-  run.forEach(function (e) { body.appendChild(renderItem(e)); });
+  run.forEach(function (e) { body.appendChild(renderItem(e, toolErrors)); });
   li.appendChild(d);
   return li;
 }
 
-function renderEntries(entries) {
+function renderEntries(entries, toolErrors) {
   const frag = document.createDocumentFragment();
   let run = [];
   function flush() {
-    if (run.length) frag.appendChild(renderRun(run));
+    if (run.length) frag.appendChild(renderRun(run, toolErrors));
     run = [];
   }
   entries.forEach(function (e) {
@@ -510,7 +564,11 @@ async function loadNewest() {
     return;
   }
   hideState();
-  els.transcriptList.appendChild(renderEntries(entries));
+  // A property of the harness, so it is the same on every page of one
+  // session — read from the newest page and reused when older pages are
+  // prepended.
+  view.toolErrors = body.tool_errors || 'reported';
+  els.transcriptList.appendChild(renderEntries(entries, view.toolErrors));
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
@@ -543,7 +601,10 @@ async function loadOlder() {
     els.transcriptOlder.hidden = true;
     return;
   }
-  els.transcriptList.insertBefore(renderEntries(body.entries || []), els.transcriptList.firstChild);
+  els.transcriptList.insertBefore(
+    renderEntries(body.entries || [], body.tool_errors || view.toolErrors || 'reported'),
+    els.transcriptList.firstChild,
+  );
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   // Keep what was on screen where it was: grow scrollTop by exactly the
@@ -665,7 +726,10 @@ export function closeChatComposerPopovers() {
 export function openChatPane(s) {
   if (!els.chatPane) return;
   if (view) window.clearTimeout(view.refreshTimer);
-  view = { session: s, cursor: null, loading: false, seq: 0, refreshTimer: null, entries: null };
+  view = {
+    session: s, cursor: null, loading: false, seq: 0, refreshTimer: null,
+    entries: null, toolErrors: 'reported',
+  };
   groupsHidden = true;
   syncGroups();
   bindComposer(s);

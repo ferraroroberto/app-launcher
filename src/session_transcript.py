@@ -196,7 +196,7 @@ def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, 
     file was rotated/truncated since the page was served, or the offset
     was never one to begin with.
     """
-    build, line_key = _flavor(flavor)
+    build, line_key, _ = _flavor(flavor)
     eof = path.stat().st_size
     if offset < 0 or offset >= eof:
         return None
@@ -397,18 +397,35 @@ def _text_entry(kind: str, offset: int, timestamp: Any, text: str, cap: int, **f
 
 
 def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
-                   text: str, offset: int, timestamp: Any, sidechain: bool) -> None:
+                   text: str, offset: int, timestamp: Any, sidechain: bool,
+                   error: bool = False) -> None:
+    """Pair one tool result with its call (#1020 adds ``error``).
+
+    ``error`` is written onto the entry **only when true** — the single
+    place every flavour funnels through, so a harness that records a
+    failure keeps it this far. Its absence deliberately means "not
+    reported as failed", *not* "succeeded": three of six harnesses cannot
+    tell a failed call from a working one at all for some or all of their
+    tools, and folding that gap into the success state is the defect this
+    fixes rather than a shortcut it may take. Which harness can say what is
+    declared once, per flavour, in :data:`FLAVORS`' ``tool_errors`` — the
+    client reads that to decide whether an unmarked call means "fine" or
+    "nobody can tell".
+    """
     body, truncated = _cap(text.strip(), TOOL_RESULT_CAP)
     call = calls.pop(str(call_id), None) if call_id else None
     if call is not None and call.get("result") is None:
         call["result"] = body
         call["result_truncated"] = truncated
+        if error:
+            call["error"] = True
         return
     # A result whose call fell off this page (or an unknown id): stands alone
     # so it is neither lost nor mis-paired.
+    fields: Dict[str, Any] = {"error": True} if error else {}
     entries.append(_entry(
         "tool_result", offset, timestamp, text=body, truncated=truncated,
-        tool_use_id=str(call_id or ""), sidechain=sidechain,
+        tool_use_id=str(call_id or ""), sidechain=sidechain, **fields,
     ))
 
 
@@ -506,6 +523,11 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         _attach_result(
                             entries, open_calls, block.get("tool_use_id"),
                             _blocks_text(block.get("content")), offset, ts, sidechain,
+                            # Claude states it outright: across the 40 newest
+                            # transcripts on the dev box a `tool_result` block
+                            # came in exactly two key-sets, one of them carrying
+                            # `is_error` beside the error text (#1020).
+                            error=bool(block.get("is_error")),
                         )
                     continue
                 text = _blocks_text(content)
@@ -596,6 +618,17 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             if payload.get("call_id"):
                 open_calls[str(payload["call_id"])] = e
         elif pt in ("function_call_output", "custom_tool_call_output"):
+            # No `error=` here, deliberately (#1020): Codex records **no**
+            # success/error field at any level. A failed call and a working
+            # one are structurally identical — measured over the 30 newest
+            # rollouts (one key-set, `call_id,id,
+            # internal_chat_message_metadata_passthrough,output,type`) and
+            # re-confirmed by probe, where a failing tool wrote "Script
+            # failed" and a working one "Script completed" in the same
+            # `output` text and nothing else differed. Telling them apart
+            # would mean reading that prose; this flavour is declared
+            # `none` in `FLAVORS` instead, so the client says "can't tell"
+            # rather than showing a failure as a success.
             output = payload.get("output")
             text = output if isinstance(output, str) else _blocks_text(output, types=("input_text", "output_text", "text"))
             _attach_result(entries, open_calls, payload.get("call_id"), text, offset, ts, False)
@@ -651,8 +684,25 @@ def _grok_timestamp(obj: Dict[str, Any], meta: Dict[str, Any]) -> Optional[str]:
     return stamp.isoformat().replace("+00:00", "Z")
 
 
+# The `tool_call_update` statuses that carry a *result* (#1020). `failed`
+# was not in the on-disk corpus when the Grok reader was written — 19
+# records, every one `completed` — so it was excluded and a failed call's
+# result was dropped entirely, rendering as "no result on this page" rather
+# than as a failure. A probe settled it: `grok -p` reading a missing path
+# writes `status: "failed"` with the same key-set as a completed one
+# (`content,rawOutput,sessionUpdate,status,toolCallId`), the error text in
+# both. ACP's other two statuses (`pending`, `in_progress`) are progress,
+# not results, and stay excluded — attaching one would occupy the call's
+# single result slot and lock the real one out.
+_GROK_RESULT_STATUSES = frozenset({"completed", "failed"})
+
+
 def _grok_result_text(update: Dict[str, Any]) -> str:
-    """The text of a completed ``tool_call_update``.
+    """The text of a result-carrying ``tool_call_update``.
+
+    Same for a ``completed`` and a ``failed`` one: the probe on #1020
+    showed a failure carrying its message in the very same ``content``
+    blocks, so nothing here branches on the status.
 
     Two sources, in order. ACP's own ``content`` blocks
     (``{"type": "content", "content": {"type": "text", ...}}``) are the
@@ -764,12 +814,13 @@ def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             entries.append(entry)
             if update.get("toolCallId"):
                 open_calls[str(update["toolCallId"])] = entry
-        elif kind == "tool_call_update" and update.get("status") == "completed":
+        elif kind == "tool_call_update" and update.get("status") in _GROK_RESULT_STATUSES:
             # The other half of a `tool_call_update` (no `status`, carrying
             # `locations`/`kind`) only restates the call, so it is dropped.
             _attach_result(
                 entries, open_calls, update.get("toolCallId"),
                 _grok_result_text(update), offset, ts, False,
+                error=update.get("status") == "failed",
             )
         # `turn_completed` and `hook_execution` carry no conversation text.
     return entries
@@ -939,8 +990,10 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             text, images = _pi_blocks(content)
             if images:
                 text = (text + "\n\n" if text else "") + " ".join(["[image]"] * images)
+            # Pi writes `isError` on every `toolResult`, both polarities
+            # (`tests/fixtures/pi_session.jsonl` carries one of each) — #1020.
             _attach_result(entries, open_calls, msg.get("toolCallId"), text,
-                           offset, ts, False)
+                           offset, ts, False, error=bool(msg.get("isError")))
             continue
 
         if role == "user":
@@ -1135,9 +1188,16 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
             continue
 
         # Every remaining MODEL step is a tool result, for the oldest call
-        # still waiting on one.
+        # still waiting on one. `status: "ERROR"` is Antigravity's only
+        # structured failure signal and it covers *some* failures, not all
+        # (#1020): a `view_file` on a missing path writes it (measured), a
+        # shell command exiting 1 writes `status: "DONE"` with the failure
+        # only in English prose ("The command exited with code 1."). So the
+        # flag is set from the status and the flavour stays `partial` —
+        # rather than reading the prose, which no reader here does.
         _attach_result(entries, open_calls, unanswered.pop(0) if unanswered else None,
-                       _AGY_RESULT_HEADER_RE.sub("", content), offset, ts, False)
+                       _AGY_RESULT_HEADER_RE.sub("", content), offset, ts, False,
+                       error=str(obj.get("status") or "") == "ERROR")
     return entries
 
 
@@ -1185,6 +1245,46 @@ def _copilot_result_text(result: Any) -> str:
     if result is None:
         return ""
     return "[non-text result]"
+
+
+def _copilot_outcome(data: Dict[str, Any]) -> Tuple[str, bool]:
+    """A ``tool.execution_complete``'s card text and whether it failed (#1020).
+
+    Copilot has **two** outcome fields, at two different levels, and only
+    both together cover a failure:
+
+    * ``success`` is about the *tool*. Measured: a ``view`` of a missing
+      path writes ``success: false`` with an ``error`` object
+      (``{"message": "Path does not exist", "code": "failure"}``) and
+      **no** ``result`` key at all — so the reader has to take its card
+      text from ``error.message``, or the failed call renders blank.
+    * ``shellExecution.exitCode`` is about the *command*. A shell call whose
+      command exits non-zero still reports ``success: true`` (measured:
+      ``git rev-parse --short NO_SUCH_REF_xyz`` → ``success: true``,
+      ``shellExecution: {"exitCode": 1}``), so the tool-level flag alone
+      would read that as a clean run.
+
+    The gap that keeps this flavour ``partial`` rather than ``reported``:
+    only 2 of 27 completions in the on-disk corpus carry ``shellExecution``
+    at all, so a shell call without it leaves its command's exit
+    **unrecorded** — the harness's own trailing
+    ``<shellId: N completed with exit code 1>`` footer is the only trace,
+    and reading an outcome out of result prose is a rule no reader here
+    makes (see :data:`FLAVORS`).
+    """
+    error = data.get("error")
+    if data.get("success") is False:
+        message = ""
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+        elif isinstance(error, str):
+            message = error.strip()
+        return (message or _copilot_result_text(data.get("result"))
+                or "[tool failed, no message]"), True
+    shell = data.get("shellExecution")
+    code = shell.get("exitCode") if isinstance(shell, dict) else None
+    failed = isinstance(code, int) and not isinstance(code, bool) and code != 0
+    return _copilot_result_text(data.get("result")), failed
 
 
 def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
@@ -1295,9 +1395,10 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
             continue
 
         if kind == "tool.execution_complete":
+            text, failed = _copilot_outcome(data)
             _attach_result(
                 entries, open_calls, data.get("toolCallId"),
-                _copilot_result_text(data.get("result")), offset, ts, False,
+                text, offset, ts, False, error=failed,
             )
             continue
 
@@ -1332,23 +1433,52 @@ def _codex_line_key(raw: str) -> Optional[str]:
     return None
 
 
+# How far a harness's own history can be trusted to mark a failed tool call
+# (#1020). Third element of every :data:`FLAVORS` row so it cannot drift
+# from the parser that produces the flag:
+#
+# ``reported``  every failed call is recorded structurally, so an unmarked
+#               call did succeed.
+# ``partial``   some failures are recorded and some are not, so an unmarked
+#               call is "not known to have failed", not "fine".
+# ``none``      nothing distinguishes a failed call from a working one.
+#
+# The client renders the difference: it marks what is known failed and says
+# "outcome not recorded" for the rest of a `partial`/`none` flavour, rather
+# than letting silence read as success. Each value below is a measurement,
+# recorded on #1020 — not a guess from the harness's documentation.
+TOOL_ERRORS_REPORTED = "reported"
+TOOL_ERRORS_PARTIAL = "partial"
+TOOL_ERRORS_NONE = "none"
+
 # The line grammars this reader understands: flavour name → (entry builder,
-# line key). One table so a new harness is one row here plus its parser,
-# rather than a branch in every dispatch site. The names are the endpoint's
-# `_FLAVOR_BY_AGENT` values (app/webapp/routers/session_transcript.py).
-FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey]] = {
-    "claude": (claude_entries, _claude_line_key),
-    "codex": (codex_entries, _codex_line_key),
-    "grok": (grok_entries, _grok_line_key),
-    "pi": (pi_entries, _pi_line_key),
-    "antigravity": (antigravity_entries, _antigravity_line_key),
-    "copilot": (copilot_entries, _copilot_line_key),
+# line key, tool-error fidelity). One table so a new harness is one row here
+# plus its parser, rather than a branch in every dispatch site. The names are
+# the endpoint's `_FLAVOR_BY_AGENT` values
+# (app/webapp/routers/session_transcript.py).
+FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey, str]] = {
+    # `is_error` on every `tool_result` block.
+    "claude": (claude_entries, _claude_line_key, TOOL_ERRORS_REPORTED),
+    # No success/error field at any level — see the reader's own comment.
+    "codex": (codex_entries, _codex_line_key, TOOL_ERRORS_NONE),
+    # `status: "failed"` on the `tool_call_update` that carries the result.
+    "grok": (grok_entries, _grok_line_key, TOOL_ERRORS_REPORTED),
+    # `isError` on every `toolResult` message.
+    "pi": (pi_entries, _pi_line_key, TOOL_ERRORS_REPORTED),
+    # `status: "ERROR"` catches a tool that could not run; a shell command
+    # exiting non-zero is still `DONE`, with the code only in prose.
+    "antigravity": (antigravity_entries, _antigravity_line_key, TOOL_ERRORS_PARTIAL),
+    # `success: false` catches a tool-level failure and
+    # `shellExecution.exitCode` a command-level one — but the latter key is
+    # absent from most completions on disk, leaving those exits unrecorded.
+    "copilot": (copilot_entries, _copilot_line_key, TOOL_ERRORS_PARTIAL),
 }
 
 
-def _flavor(flavor: str) -> Tuple[EntryBuilder, LineKey]:
-    """The builder + line key for ``flavor``, defaulting to Claude's — the
-    same fallback the endpoint applies to a session with no agent field."""
+def _flavor(flavor: str) -> Tuple[EntryBuilder, LineKey, str]:
+    """The builder + line key + tool-error fidelity for ``flavor``,
+    defaulting to Claude's — the same fallback the endpoint applies to a
+    session with no agent field."""
     return FLAVORS.get(flavor, FLAVORS["claude"])
 
 
@@ -1371,5 +1501,10 @@ def transcript_page(
     ``OSError`` when the file can't be read — a distinct condition from "no
     transcript", which the caller establishes *before* calling.
     """
-    build, line_key = _flavor(flavor)
-    return _page(Path(str(path)), before, limit, build, line_key)
+    build, line_key, tool_errors = _flavor(flavor)
+    page = _page(Path(str(path)), before, limit, build, line_key)
+    # A property of the harness, not of the page — but it travels with the
+    # page because that is what the client has in hand when it decides
+    # whether an unmarked tool call means "succeeded" or "nobody can tell".
+    page["tool_errors"] = tool_errors
+    return page
