@@ -48,7 +48,8 @@ from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
-from app.webapp.routers.life_os_files import resolve_within, search_cli
+from src.life_os_index import search_cli
+from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
     _resolve_skill,

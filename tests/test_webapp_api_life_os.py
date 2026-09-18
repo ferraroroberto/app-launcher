@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers.life_os import _recap_staleness
-from app.webapp.routers.life_os_files import search_cli
+from src.life_os_index import search_cli
 from app.webapp.routers.life_os_files import resolve_within
 
 # A canonical session id — the only shape the launch route accepts, because
@@ -823,10 +823,10 @@ class TestContentBrowser:
         """Pretend fleet-config's search CLI is installed, on an isolated
         ``subprocess`` binding so patching ``.run`` can't leak into the real
         module (mirrors ``TestConversationSearch.stub_cli``)."""
-        from app.webapp.routers import life_os_files
-        monkeypatch.setattr(life_os_files, "search_cli", lambda cfg: list(argv))
-        monkeypatch.setattr(life_os_files, "subprocess", SimpleNamespace(**vars(subprocess)))
-        return life_os_files
+        from src import life_os_index
+        monkeypatch.setattr(life_os_index, "search_cli", lambda cfg: list(argv))
+        monkeypatch.setattr(life_os_index, "subprocess", SimpleNamespace(**vars(subprocess)))
+        return life_os_index
 
     def test_rename_updates_index_md(self, life_os_client):
         # #971: index.json's own source of truth (fleet-config's index.md)
@@ -905,10 +905,10 @@ class TestContentBrowser:
     def test_rename_triggers_search_resync(self, life_os_client, monkeypatch):
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
-        life_os_files = self._stub_search_cli(monkeypatch)
+        life_os_index = self._stub_search_cli(monkeypatch)
         calls = []
         monkeypatch.setattr(
-            life_os_files.subprocess, "run",
+            life_os_index.subprocess, "run",
             lambda argv, **kwargs: calls.append(argv) or _completed(),
         )
         rel = self._conv_path(life_os)
@@ -926,10 +926,10 @@ class TestContentBrowser:
     def test_delete_triggers_search_resync(self, life_os_client, monkeypatch):
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
-        life_os_files = self._stub_search_cli(monkeypatch)
+        life_os_index = self._stub_search_cli(monkeypatch)
         calls = []
         monkeypatch.setattr(
-            life_os_files.subprocess, "run",
+            life_os_index.subprocess, "run",
             lambda argv, **kwargs: calls.append(argv) or _completed(),
         )
         rel = self._conv_path(life_os)
@@ -944,9 +944,9 @@ class TestContentBrowser:
         # only logged, per search_conversations's own returncode convention.
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
-        life_os_files = self._stub_search_cli(monkeypatch)
+        life_os_index = self._stub_search_cli(monkeypatch)
         monkeypatch.setattr(
-            life_os_files.subprocess, "run",
+            life_os_index.subprocess, "run",
             lambda *a, **k: _completed("", 1, "project not found"),
         )
         rel = self._conv_path(life_os)
@@ -962,10 +962,10 @@ class TestContentBrowser:
         # pipeline's health.
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
-        life_os_files = self._stub_search_cli(monkeypatch)
+        life_os_index = self._stub_search_cli(monkeypatch)
         def raising_run(*a, **k):
             raise subprocess.TimeoutExpired(cmd="conversation_search.py", timeout=30)
-        monkeypatch.setattr(life_os_files.subprocess, "run", raising_run)
+        monkeypatch.setattr(life_os_index.subprocess, "run", raising_run)
         rel = self._conv_path(life_os)
         resp = client.post(
             "/api/life-os/file/rename",
@@ -1494,16 +1494,26 @@ class TestSearchCliResolution:
         assert search_cli(self._cfg(root)) is None
 
     def test_both_routers_share_one_resolver(self):
-        """#1003 — the conversations router must *import* this resolver, not
-        carry its own copy. A re-added local definition would rebind the name
-        and fail here, which is the only cheap way to stop the duplicate
-        coming back (the two copies previously had two identical test
-        classes agreeing with each other)."""
+        """#1003 — neither router may carry its own copy of this resolver.
+        A re-added local definition would rebind the name and fail here,
+        which is the only cheap way to stop the duplicate coming back (the
+        two copies previously had two identical test classes agreeing with
+        each other).
+
+        #1006 moved the single copy from the files router to ``src`` — it
+        was never router-shaped work, and one router importing it from
+        another was the shape that made a second copy tempting. The pin is
+        unchanged in intent: one definition, and it lives in the leaf."""
+        from src import life_os_index
         from app.webapp.routers import life_os_conversations, life_os_files
 
-        assert life_os_conversations.search_cli is life_os_files.search_cli
-        assert not hasattr(life_os_conversations, "_search_cli")
-        assert not hasattr(life_os_conversations, "_SEARCH_SCRIPT_REL")
+        assert life_os_conversations.search_cli is life_os_index.search_cli
+        for module in (life_os_conversations, life_os_files):
+            assert "search_cli" not in vars(module) or (
+                vars(module)["search_cli"] is life_os_index.search_cli
+            ), f"{module.__name__} must not define its own resolver"
+            assert not hasattr(module, "_search_cli")
+            assert not hasattr(module, "_SEARCH_SCRIPT_REL")
 
 
 class TestTargetedResume:
