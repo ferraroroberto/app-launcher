@@ -13,10 +13,11 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+import { renderMarkdown } from './markdown.js';
 
 // The Skills-summary launch-model dropdown controller ({setValue, getValue}),
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
@@ -871,69 +872,6 @@ async function resumeConversation(r, action) {
   } catch (exc) {
     apiFailToast(action === 'handoff' ? 'New conversation failed' : 'Resume failed', exc);
   }
-}
-
-// ------------------------------------------------ minimal markdown render
-// Escape-first, then apply a small, safe subset (headings, bold, italic,
-// inline code, fenced code, links, unordered lists, paragraphs). Content
-// comes from the user's own private files over a passkey-gated tailnet
-// link, but we still escape every byte before formatting so a stray
-// `<script>` in a note can never execute.
-function inlineMd(s) {
-  return s
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
-      '<a href="$2" target="_blank" rel="noopener">$1</a>');
-}
-
-export function renderMarkdown(text) {
-  const lines = escapeHtml(text).split('\n');
-  const out = [];
-  let inCode = false;
-  let inList = false;
-  let para = [];
-
-  function flushPara() {
-    if (para.length) {
-      out.push('<p>' + inlineMd(para.join(' ')) + '</p>');
-      para = [];
-    }
-  }
-  function flushList() {
-    if (inList) { out.push('</ul>'); inList = false; }
-  }
-
-  lines.forEach(function (line) {
-    if (line.trim().startsWith('```')) {
-      flushPara(); flushList();
-      if (inCode) { out.push('</code></pre>'); inCode = false; }
-      else { out.push('<pre class="md-code"><code>'); inCode = true; }
-      return;
-    }
-    if (inCode) { out.push(line); return; }
-
-    const h = line.match(/^(#{1,6})\s+(.*)$/);
-    if (h) {
-      flushPara(); flushList();
-      const level = h[1].length;
-      out.push('<h' + level + '>' + inlineMd(h[2]) + '</h' + level + '>');
-      return;
-    }
-    const li = line.match(/^\s*[-*]\s+(.*)$/);
-    if (li) {
-      flushPara();
-      if (!inList) { out.push('<ul>'); inList = true; }
-      out.push('<li>' + inlineMd(li[1]) + '</li>');
-      return;
-    }
-    if (!line.trim()) { flushPara(); flushList(); return; }
-    para.push(line.trim());
-  });
-  if (inCode) out.push('</code></pre>');
-  flushPara(); flushList();
-  return out.join('\n');
 }
 
 // --------------------------------------------------------------- wire

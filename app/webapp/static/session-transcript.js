@@ -31,7 +31,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
-import { renderMarkdown } from './life-os.js';
+import { renderMarkdown } from './markdown.js';
 import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
 import { mountComposer } from './composer.js';
