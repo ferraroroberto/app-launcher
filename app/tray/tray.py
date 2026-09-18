@@ -35,9 +35,9 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
-import yaml
 
 from src import AppConfig
+from src._tunnel_config import read_tunnel_hostname
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 from src.webapp_config import append_auth_token, load_webapp_config
 
@@ -85,25 +85,6 @@ def _session_host_port() -> int:
     change to the ``session_host_port`` setting takes effect on the tray's
     very next start/stop of the process (issue #796)."""
     return load_webapp_config().session_host_port
-
-
-def _read_tunnel_hostname(config_path: Path) -> Optional[str]:
-    """Pull the first ingress[].hostname out of the cloudflared config.
-
-    Returns None when the file is missing or unparseable — the tray
-    treats either case as "no tunnel" and skips spawning cloudflared.
-    """
-    if not config_path.exists():
-        return None
-    try:
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        logger.warning(f"⚠️  Could not parse {config_path}: {exc}")
-        return None
-    for entry in data.get("ingress") or []:
-        if isinstance(entry, dict) and entry.get("hostname"):
-            return str(entry["hostname"]).strip()
-    return None
 
 
 def _build_icon():
@@ -190,7 +171,7 @@ class TrayApp:
         self.app_config = app_config
         self.instance = instance
         self.manager = WebappManager(load_config(app_config.webapp))
-        self.tunnel_hostname = _read_tunnel_hostname(TUNNEL_CONFIG_PATH)
+        self.tunnel_hostname = read_tunnel_hostname(TUNNEL_CONFIG_PATH)
         self.tunnel_proc: Optional[subprocess.Popen] = None
         self.starter_exc: Optional[Exception] = None
 

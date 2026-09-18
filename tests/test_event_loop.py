@@ -113,13 +113,23 @@ def test_named_tunnel_script_wires_loop_factory(monkeypatch):
         return object()
 
     # Keep the cert-renewal probe and the spawn itself off the real system.
-    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(module, "check_tailscale_cert", lambda: None)
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
     module._spawn_uvicorn(18445)
 
     cmd = captured["cmd"]
     assert "--loop" in cmd, "named-tunnel uvicorn spawn is missing --loop (#388/#1007)"
     assert cmd[cmd.index("--loop") + 1] == LOOP_FACTORY
+    # Stronger than "contains --loop": since #1003 the script builds its argv
+    # through the app's own builder, so it cannot drift from it again in any
+    # flag — which is how --loop went missing here in the first place.
+    expected = WebappManager(
+        WebappManagerConfig(host="127.0.0.1", port=18445)
+    )._build_command()
+    assert cmd == expected, (
+        "named-tunnel argv diverged from WebappManager._build_command() "
+        f"(#1003):\n  script: {cmd}\n  app:    {expected}"
+    )
 
 
 async def _noop_handler(reader, writer):
