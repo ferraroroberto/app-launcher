@@ -62,6 +62,7 @@ from app.webapp.routers._helpers import (
     client_ip,
     maybe_json,
     safe_int,
+    spawn_launcher_session,
     spawn_session_or_400,
 )
 
@@ -327,19 +328,11 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 "session": session,
             }
 
-        session = await spawn_session_or_400(
-            spawn_claude_session,
-            Path(entry.project_dir),
-            entry.name,
-            flags,
-            cfg.session_host_port,
-            "pty",
-            agent,
-            rows,
-            cols,
-            history_lines=cfg.terminal_history_lines,
+        session, sid = await spawn_launcher_session(
+            spawn_claude_session, cfg,
+            project_dir=Path(entry.project_dir), name=entry.name,
+            flags=flags, agent=agent, rows=rows, cols=cols,
         )
-        sid = str(session.get("session_id") or "")
         await audit_session_start_and_maybe_mirror(
             cfg, request, body,
             sid=sid, agent=agent, name=entry.name, project=entry.project_dir,

@@ -80,7 +80,7 @@ from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     maybe_json,
     safe_int,
-    spawn_session_or_400,
+    spawn_launcher_session,
 )
 from app.webapp.routers.board_spawn import (
     _agent_and_flags,
@@ -404,20 +404,11 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     flags = " ".join(
         part for part in (base_flags, native_name_flags, f'"{prompt}"') if part
     )
-    session = await spawn_session_or_400(
-        spawn_claude_session,
-        Path(entry.project_dir),
-        entry.name,
-        flags,
-        cfg.session_host_port,
-        "pty",
-        agent,
-        rows,
-        cols,
-        history_lines=cfg.terminal_history_lines,
+    session, sid = await spawn_launcher_session(
+        spawn_claude_session, cfg,
+        project_dir=Path(entry.project_dir), name=entry.name,
+        flags=flags, agent=agent, rows=rows, cols=cols,
     )
-
-    sid = str(session.get("session_id") or "")
     await board_chief._mark_chief_managed(cfg, request, sid, entry.name, number)
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
@@ -486,20 +477,11 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
 
     entry = _resolve_repo_entry(cfg, repo)
 
-    session = await spawn_session_or_400(
-        spawn_claude_session,
-        Path(entry.project_dir),
-        entry.name,
-        flags,
-        cfg.session_host_port,
-        "pty",
-        agent,
-        rows,
-        cols,
-        history_lines=cfg.terminal_history_lines,
+    session, sid = await spawn_launcher_session(
+        spawn_claude_session, cfg,
+        project_dir=Path(entry.project_dir), name=entry.name,
+        flags=flags, agent=agent, rows=rows, cols=cols,
     )
-
-    sid = str(session.get("session_id") or "")
     command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
     await _type_into_session(cfg.session_host_port, sid, command)
     await board_chief._mark_chief_managed(cfg, request, sid, entry.name, 0)

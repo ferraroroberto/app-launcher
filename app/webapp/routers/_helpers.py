@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, WebSocket
@@ -274,6 +274,65 @@ async def spawn_session_or_400(
         raise HTTPException(status_code=exc.status, detail=str(exc))
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+async def spawn_launcher_session(
+    spawn_fn: Callable[..., Dict[str, Any]],
+    cfg: WebappConfig,
+    *,
+    project_dir: Path,
+    name: str,
+    flags: str,
+    agent: str,
+    rows: int,
+    cols: int,
+    kind: str = "pty",
+    label: str = "",
+) -> Tuple[Dict[str, Any], str]:
+    """Spawn one launcher-owned session and return ``(session, sid)``.
+
+    Owns the two ``cfg``-derived arguments every launch route was repeating
+    — ``cfg.session_host_port`` and ``history_lines=cfg.terminal_history_lines``
+    — plus the ``sid = str(session.get("session_id") or "")`` line that
+    followed each one (#1003). Five call sites across four routers built the
+    same call by hand: ``apps.py``'s Coding-tab PTY launch, ``board.py``'s
+    issue-start and dispatch, ``board_chief.py``'s chief-ensure and
+    ``life_os_spawn.py``'s skill launch. Threading one more spawn argument
+    (as ``history_lines`` itself once was) meant editing all five.
+
+    This is deliberately **not** a ``spawn_and_audit`` that also runs
+    :func:`audit_session_start_and_maybe_mirror`, which is what #1003's
+    finding proposed: only ``apps.py`` runs the two back to back. The other
+    sites do mandatory, order-dependent work in between — ``_mark_chief_managed``,
+    ``_type_into_session``, and in ``board_chief`` a ready-wait, a rename and
+    the ``/chief`` send whose ordering is load-bearing ("rename FIRST, then
+    /chief", #245). Collapsing the two halves would force that into callbacks.
+
+    ``apps.py``'s **remote** branch is not a caller: it passes no
+    ``rows``/``cols``/``history_lines`` at all, and widening it to send them
+    would change the request it makes for no gain (the session-host's
+    ``create_remote`` takes none of the three).
+
+    ``spawn_fn`` is passed in rather than imported here for the same reason
+    as :func:`spawn_session_or_400` — so ``tests/conftest.py``'s per-router
+    ``spawn_claude_session`` monkeypatches still bite.
+    """
+    extra: Dict[str, Any] = {"history_lines": cfg.terminal_history_lines}
+    if label:
+        extra["label"] = label
+    session = await spawn_session_or_400(
+        spawn_fn,
+        project_dir,
+        name,
+        flags,
+        cfg.session_host_port,
+        kind,
+        agent,
+        rows,
+        cols,
+        **extra,
+    )
+    return session, str(session.get("session_id") or "")
 
 
 async def audit_session_start_and_maybe_mirror(
