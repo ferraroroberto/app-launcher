@@ -343,6 +343,176 @@ def test_codex_ambiguous_native_match_degrades_to_exact_launcher_capture(
     assert result["assistant"]["text"] == "Exact session reply."
 
 
+# ------------------------------- rowless Claude scan fallback (#1027)
+#
+# Claude Code fires ``SessionEnd`` on ``/resume`` and ``/clear``, which
+# deletes the hook state row out from under a still-live session, so the
+# drawer resolves with no ``transcript_path`` until the next typed prompt.
+# Before #1027 that dropped every such session to the PTY capture — and a
+# detached one, which has no capture, to ``no_exchange`` outright.
+
+
+def _claude_projects(tmp_path: Path, monkeypatch, project_dir: str) -> Path:
+    """The ``~/.claude/projects`` folder Claude would file ``project_dir``
+    under, redirected into ``tmp_path``. Mirrors the real naming: every
+    non-alphanumeric of the normalized cwd replaced by ``-``."""
+    root = tmp_path / "claude-projects"
+    slug = board_exchange._CLAUDE_SLUG_RE.sub(
+        "-", project_dir.replace("\\", "/").rstrip("/").lower()
+    )
+    folder = root / slug
+    folder.mkdir(parents=True)
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", root)
+    return folder
+
+
+def _claude_session(sid: str = "s1", project_dir: str = "E:/proj/app", **over) -> dict:
+    session = {
+        "session_id": sid, "agent": "claude", "alive": True,
+        "project_dir": project_dir, "started_at": NOW.timestamp(),
+        "prompt_title": "earlier prompt",
+    }
+    session.update(over)
+    return session
+
+
+def _conversation(folder: Path, name: str, user: str, assistant: str) -> Path:
+    path = folder / name
+    _write_jsonl(path, [
+        _user_line(user),
+        _assistant_line([{"type": "text", "text": assistant}]),
+    ])
+    return path
+
+
+def test_rowless_claude_session_prefers_scanned_history_over_capture(
+    tmp_path: Path, monkeypatch,
+):
+    """#1027 criterion 1 + the ordering decision this issue was filed to
+    settle: with no state row, the correlated JSONL outranks the capture.
+
+    The capture here is perfectly parseable — this asserts a *ranking*,
+    not a gap-fill. Structured chat data beats replayed terminal output.
+    """
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/app")
+    _conversation(folder, "conv.jsonl", "what is left?", "Two items remain.")
+    capture = tmp_path / "exact.transcript"
+    capture.write_text("● Rougher capture rendering.\r\n", encoding="utf-8")
+
+    session = _claude_session()
+    result = board_exchange.resolve_exchange(session, None, capture, live=[session])
+
+    assert result["source"] == "native_scan"
+    assert result["assistant"]["text"] == "Two items remain."
+    assert result["user"]["text"] == "what is left?"
+
+
+def test_rowless_detached_claude_session_gets_an_exchange_not_no_exchange(
+    tmp_path: Path, monkeypatch,
+):
+    """#1027 criterion 2. A ``RemoteSession`` has no launcher PTY capture,
+    so before the scan a rowless detached session answered ``no_exchange``
+    and the drawer's preview was simply empty."""
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/detached")
+    _conversation(folder, "conv.jsonl", "status?", "Detached and answering.")
+
+    session = _claude_session(project_dir="E:/proj/detached", kind="remote")
+    result = board_exchange.resolve_exchange(
+        session, None, tmp_path / "absent.transcript", live=[session]
+    )
+
+    assert result["source"] == "native_scan"
+    assert result["assistant"]["text"] == "Detached and answering."
+
+
+def test_two_live_claude_sessions_in_one_dir_keep_the_rougher_capture(
+    tmp_path: Path, monkeypatch,
+):
+    """#1027 criterion 3. Nothing in the folder says which of two live
+    sessions owns the newest conversation, so the scan refuses and the
+    honest-but-rougher capture stands — never the neighbour's text."""
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/shared")
+    _conversation(folder, "conv.jsonl", "whose?", "Ambiguous conversation.")
+    capture = tmp_path / "exact.transcript"
+    capture.write_text("● My own capture.\r\n", encoding="utf-8")
+
+    mine = _claude_session("mine", project_dir="E:/proj/shared")
+    sibling = _claude_session("sibling", project_dir="E:/proj/shared")
+    result = board_exchange.resolve_exchange(
+        mine, None, capture, live=[mine, sibling]
+    )
+
+    assert result["source"] == "launcher"
+    assert result["assistant"]["text"] == "My own capture."
+    assert "Ambiguous" not in json.dumps(result)
+
+
+def test_declared_transcript_still_wins_and_is_never_relabelled(
+    tmp_path: Path, monkeypatch,
+):
+    """#1027 criterion 4. The ordinary path is untouched: a session whose
+    row names a transcript resolves through it and still reports the exact
+    ``native``, with the scan never consulted."""
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/app")
+    _conversation(folder, "newer.jsonl", "scanned?", "Scanned conversation.")
+    declared = tmp_path / "declared.jsonl"
+    _write_jsonl(declared, [
+        _user_line("declared?"),
+        _assistant_line([{"type": "text", "text": "Declared conversation."}]),
+    ])
+
+    session = _claude_session()
+    result = board_exchange.resolve_exchange(
+        session, str(declared), tmp_path / "absent.transcript", live=[session]
+    )
+
+    assert result["source"] == "native"
+    assert result["assistant"]["text"] == "Declared conversation."
+
+
+def test_resume_window_disagreement_resolves_to_structured_history(
+    tmp_path: Path, monkeypatch,
+):
+    """#1027's open question, pinned as a decision rather than left implicit.
+
+    In the seconds after a ``/resume`` the newest file in the folder is the
+    conversation the session just *left*, while the capture shows the one it
+    resumed *into*. The two genuinely disagree and nothing on disk separates
+    them, so this pins the accepted trade: the structured answer wins, and
+    it is labelled ``native_scan`` so the API never passes an inferred
+    correlation off as the exact ``native``. Change the ranking and this
+    test is the one that should fail.
+    """
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/resumed")
+    _conversation(folder, "left.jsonl", "old question", "Conversation just left.")
+    capture = tmp_path / "exact.transcript"
+    capture.write_text("● Conversation resumed into.\r\n", encoding="utf-8")
+
+    session = _claude_session(project_dir="E:/proj/resumed")
+    result = board_exchange.resolve_exchange(session, None, capture, live=[session])
+
+    assert result["source"] == "native_scan"
+    assert result["source"] != "native"
+    assert result["assistant"]["text"] == "Conversation just left."
+
+
+def test_scan_is_claude_only_and_leaves_other_agents_alone(
+    tmp_path: Path, monkeypatch,
+):
+    """The scan is keyed on Claude's own project-folder layout, so another
+    agent sitting in the same cwd must never be handed a Claude JSONL."""
+    folder = _claude_projects(tmp_path, monkeypatch, "E:/proj/app")
+    _conversation(folder, "conv.jsonl", "q", "Claude's conversation.")
+    capture = tmp_path / "exact.transcript"
+    capture.write_text("● Grok capture.\r\n", encoding="utf-8")
+
+    session = _claude_session(agent="grok")
+    result = board_exchange.resolve_exchange(session, None, capture, live=[session])
+
+    assert result["source"] == "launcher"
+    assert result["assistant"]["text"] == "Grok capture."
+
+
 # --------------------------------------------------- state_row_for_session
 
 

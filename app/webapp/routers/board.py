@@ -301,10 +301,15 @@ async def refresh_github(request: Request) -> Dict[str, Any]:
 async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     """Last user↔assistant exchange for a live session (Tailscale + passkey).
 
-    Structured Claude/Codex history wins when it correlates safely. A missing
-    hook JSONL or unsupported agent falls back to the launcher's exact-id PTY
-    capture + input audit, parsed on demand (never on the Board poll). Distinct
-    unavailable reasons let the client separate true-empty from source error.
+    Structured Claude/Codex history wins when it correlates safely. A Claude
+    session whose state row names no transcript — the rowless window a
+    ``/resume`` or ``/clear`` opens (#1023/#1027) — has its conversation
+    correlated from the filesystem instead, reported as ``native_scan``
+    because that match is inferred rather than exact. An unsupported agent,
+    or a scan that refuses, falls back to the launcher's exact-id PTY
+    capture + input audit, parsed on demand (never on the Board poll).
+    Distinct unavailable reasons let the client separate true-empty from
+    source error.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     live, state = await asyncio.gather(
@@ -324,8 +329,18 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
         transcript,
         audit.transcript_path(sid),
         audit.session_log_path(sid),
+        live,
     )
-    if result.get("source") == "launcher":
+    if result.get("source") == "native_scan":
+        # The row named no transcript and the conversation was correlated
+        # from the filesystem instead (#1027) — an inferred match, so it
+        # leaves its own breadcrumb rather than passing for an exact one.
+        logger.info(
+            "ℹ️ Board exchange %s (%s) used a scanned native transcript; "
+            "no state row named one",
+            sid[:8], session.get("agent") or "claude",
+        )
+    elif result.get("source") == "launcher":
         logger.info(
             "ℹ️ Board exchange %s (%s) used exact-id launcher capture; "
             "native transcript unavailable",
