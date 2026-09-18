@@ -71,8 +71,14 @@ jobs:
 
       - name: Upload e2e diagnostic logs
         # Runs even when the gate fails — the autoboot webapp/session-host
-        # output and the per-session input logs make any future e2e failure
-        # diagnosable from the run page without a local repro (issue #58).
+        # output and the progress log make any future e2e failure diagnosable
+        # from the run page without a local repro (issue #58).
+        #
+        # No per-session logs here: #913 points both disposable processes at a
+        # per-run temp LAUNCHER_AUDIT_DIR precisely so a gate run never writes
+        # into the checkout's webapp/sessions, and tests/e2e/conftest.py fails
+        # the run if any harness session file lands there. Collecting that path
+        # uploaded nothing while promising otherwise (#1004).
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -81,6 +87,5 @@ jobs:
             webapp/e2e-autoboot-webapp.log
             webapp/e2e-autoboot-session-host.log
             webapp/verify-progress.log
-            webapp/sessions/
           if-no-files-found: warn
           retention-days: 7
