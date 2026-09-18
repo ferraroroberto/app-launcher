@@ -34,6 +34,10 @@
     correlation: the harness's newest-conversation-per-folder cache, refused
     when a second live session shares the folder or nothing was written
     since this session started.
+  * ``board_exchange.find_claude_transcript`` — the Claude fallback for a
+    live session the hook left no row for (#1023): the newest conversation
+    in the cwd's own project folder, matched case-insensitively, refused on
+    the same two guards.
   * ``GET /api/claude-code/sessions/{sid}/transcript`` — passkey-gated,
     distinct unavailable reasons, no transcript bodies in the log.
 """
@@ -42,8 +46,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 import pytest
 
@@ -1562,6 +1567,122 @@ def test_find_copilot_transcript_needs_a_dir_and_a_start(tmp_path: Path, monkeyp
     ) is not None
 
 
+# -------------------------------------------- claude source correlation
+
+
+def _claude_folder(root: Path, name: str, *files: Tuple[str, float]) -> Path:
+    """One ``~/.claude/projects`` folder with conversations at fixed mtimes."""
+    folder = root / name
+    folder.mkdir(parents=True, exist_ok=True)
+    for stem, written in files:
+        path = folder / (stem + ".jsonl")
+        path.write_text("{}\n", encoding="utf-8")
+        os.utime(path, (written, written))
+    return folder
+
+
+def _claude_session(**extra: Any) -> Dict[str, Any]:
+    row = {"session_id": "s1", "agent": "claude", "alive": True,
+           "project_dir": r"E:\work\project", "started_at": 1_000_000.0}
+    row.update(extra)
+    return row
+
+
+def test_find_claude_transcript_takes_the_newest_in_the_cwd_folder(
+    tmp_path: Path, monkeypatch
+):
+    """The fallback for a live session the hook left no row for (#1023):
+    Claude files a conversation under the cwd with every non-alphanumeric
+    character replaced by `-`, and the newest one there is this session's."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    folder = _claude_folder(
+        tmp_path, "E--work-project", ("old", 1_000_100.0), ("new", 1_000_200.0)
+    )
+    session = _claude_session()
+    assert board_exchange.find_claude_transcript(session, [session]) == folder / "new.jsonl"
+    # The session's own spelling of the directory need not match the folder's.
+    assert board_exchange.find_claude_transcript(
+        _claude_session(project_dir="e:/work/project/"), []
+    ) == folder / "new.jsonl"
+    # A different working directory is a different session's conversation.
+    assert board_exchange.find_claude_transcript(
+        _claude_session(project_dir=r"E:\work\other"), []
+    ) is None
+
+
+def test_find_claude_transcript_matches_a_lowercased_legacy_folder(
+    tmp_path: Path, monkeypatch
+):
+    """Older Claude Code versions lowercased the folder name as well as
+    replacing the separators — 4 of the 107 folders on this box that record
+    their own cwd are spelled that way, so the lookup is case-insensitive
+    rather than one constructed name."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    folder = _claude_folder(tmp_path, "e--work-project", ("conv", 1_000_100.0))
+    assert board_exchange.find_claude_transcript(
+        _claude_session(), []
+    ) == folder / "conv.jsonl"
+
+
+def test_find_claude_transcript_fails_safe_on_ambiguity_and_staleness(
+    tmp_path: Path, monkeypatch
+):
+    """Two guards, both answering None rather than a confident wrong file:
+    a second live Claude session in the same folder makes "newest here"
+    meaningless (#537), and a folder untouched since this session started
+    holds only what ran there before it."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
+    sibling = _claude_session(session_id="s2")
+    assert board_exchange.find_claude_transcript(_claude_session(), [sibling]) is None
+    # A dead sibling, one in another folder, or another agent's, all leave
+    # exactly one live claimant here.
+    for other in (
+        _claude_session(session_id="s2", alive=False),
+        _claude_session(session_id="s2", project_dir=r"E:\work\other"),
+        _claude_session(session_id="s2", agent="codex"),
+    ):
+        assert board_exchange.find_claude_transcript(_claude_session(), [other]) is not None
+    # Nothing written since this session started: refuse, and "no transcript
+    # yet" is also the honest answer.
+    assert board_exchange.find_claude_transcript(
+        _claude_session(started_at=1_000_200.0), []
+    ) is None
+    # ...but only outside the slop that covers spawn-to-first-write.
+    assert board_exchange.find_claude_transcript(
+        _claude_session(started_at=1_000_140.0), []
+    ) is not None
+
+
+def test_find_claude_transcript_needs_a_dir_a_start_and_a_folder(
+    tmp_path: Path, monkeypatch
+):
+    """Half a correlation, an empty folder or no projects directory at all
+    answer None rather than scanning for a best guess."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
+    assert board_exchange.find_claude_transcript(_claude_session(project_dir=""), []) is None
+    assert board_exchange.find_claude_transcript(_claude_session(started_at=None), []) is None
+    # An ISO `started_at` (a row read back from JSON state) works too.
+    assert board_exchange.find_claude_transcript(
+        _claude_session(started_at="1970-01-12T13:46:40Z"), []
+    ) is not None
+    _claude_folder(tmp_path, "E--work-empty")
+    assert board_exchange.find_claude_transcript(
+        _claude_session(project_dir=r"E:\work\empty"), []
+    ) is None
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path / "gone")
+    assert board_exchange.find_claude_transcript(_claude_session(), []) is None
+
+
 class TestTranscriptEndpoint:
 
     def test_unknown_session(self, webapp_client, _bypass_gate):
@@ -1582,6 +1703,38 @@ class TestTranscriptEndpoint:
         body = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert body["available"] is True and body["source"] == "native"
         assert "prompt 1 p" in [e["text"] for e in body["entries"] if e["kind"] == "user"]
+
+    def test_live_claude_session_with_no_state_row_still_reads_its_history(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        """#1023 regression: the hook deletes a session's row on `/resume`
+        and `/clear` and only the next prompt writes it back, so a live
+        session is rowless for as long as its user reads rather than types.
+        Before the filesystem fallback that answered `no_transcript` over a
+        conversation sitting readable on disk, while Terminal mode showed
+        it. The row stays first when there is one."""
+        from src import board_exchange
+
+        client, _, overrides = webapp_client
+        session = _live(project_dir=r"E:\work\project", started_at=1_000_000.0)
+        overrides["session"].list_sessions.return_value = [session]
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
+        monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+        folder = tmp_path / "E--work-project"
+        folder.mkdir()
+        path = _write_jsonl(folder / "conv.jsonl", _conversation(2))
+        os.utime(path, (1_000_100.0, 1_000_100.0))
+
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "native"
+        assert "prompt 1 p" in [e["text"] for e in body["entries"] if e["kind"] == "user"]
+        # A second live session in the same folder makes "newest here"
+        # meaningless — refuse rather than show the wrong conversation.
+        overrides["session"].list_sessions.return_value = [
+            session, _live(sid="s2", project_dir=r"E:\work\project"),
+        ]
+        refused = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert refused["available"] is False and refused["reason"] == "no_transcript"
 
     def test_detached_codex_row_reads_its_rollout(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
         from app.webapp.routers import session_transcript as router_mod
