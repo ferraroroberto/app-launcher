@@ -15,12 +15,12 @@ that raises all read ``unknown``.
 
 from __future__ import annotations
 
-import importlib.util
 import logging
-from functools import lru_cache
-from pathlib import Path
 from types import ModuleType
 from typing import AbstractSet, Any, Dict, Optional
+
+from src._fleet_contract import load_fleet_contract
+from src._log_once import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -31,25 +31,25 @@ _CLAIM_STATES = frozenset({CLAIM_LIVE, CLAIM_DEAD, CLAIM_UNKNOWN})
 
 # One warning per distinct contract failure per process: GET /api/board polls
 # every five seconds, and a missing fleet-config checkout is a steady state.
+# Bounded since #1003 — this was the one of the three log-once sites with no
+# cap at all, so a process seeing many distinct failure strings grew it
+# without limit. 64 matches the glyph bucket: the key is a failure reason,
+# a small and slow-growing set.
 _logged_failures: set[str] = set()
+_FAILURE_LOG_CAP = 64
 
 
-@lru_cache(maxsize=4)
 def _load_contract(path_text: str) -> ModuleType:
-    path = Path(path_text)
-    spec = importlib.util.spec_from_file_location("launcher_active_issue", path)
-    if spec is None or spec.loader is None:
-        raise ImportError("active-issue contract loader unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_fleet_contract(
+        path_text, "launcher_active_issue", "active-issue"
+    )
 
 
 def _warn_once(reason: str) -> None:
-    if reason in _logged_failures:
-        return
-    _logged_failures.add(reason)
-    logger.warning("⚠️ board: active-issue claims unverified: %s", reason)
+    log_once(
+        _logged_failures, reason, _FAILURE_LOG_CAP, logger.warning,
+        "⚠️ board: active-issue claims unverified: %s", reason,
+    )
 
 
 def classify_claims(

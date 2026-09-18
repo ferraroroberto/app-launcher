@@ -31,6 +31,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AbstractSet, Any, Dict, List, Optional, Tuple
 
+from src._log_once import log_once
 from src.board_state import _now, _parse_iso
 
 logger = logging.getLogger(__name__)
@@ -145,12 +146,9 @@ def _note_unrecognized_title_glyph(title: str) -> None:
     lead = title[:1]
     if not lead or lead.isascii() or lead == _IDLE_LIVE_TITLE_GLYPH:
         return
-    if lead in _LOGGED_UNKNOWN_TITLE_GLYPHS:
-        return
-    if len(_LOGGED_UNKNOWN_TITLE_GLYPHS) >= _UNKNOWN_TITLE_GLYPH_LOG_CAP:
-        _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
-    _LOGGED_UNKNOWN_TITLE_GLYPHS.add(lead)
-    logger.info(
+    log_once(
+        _LOGGED_UNKNOWN_TITLE_GLYPHS, lead, _UNKNOWN_TITLE_GLYPH_LOG_CAP,
+        logger.info,
         "ℹ️ board: live_title leads with unrecognized glyph U+%04X (%s) — "
         "not treated as busy. If the CLI changed its spinner again, widen "
         "_BUSY_LIVE_TITLE_RE (#815).",
