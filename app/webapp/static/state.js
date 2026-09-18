@@ -306,7 +306,6 @@ export const els = {
   antigravitySkipPerms: document.getElementById('antigravitySkipPerms'),
   antigravitySandbox: document.getElementById('antigravitySandbox'),
   antigravityFlagsPreview: document.getElementById('antigravityFlagsPreview'),
-  copilotModel: document.getElementById('copilotModel'),
   copilotSkipPerms: document.getElementById('copilotSkipPerms'),
   copilotFlagsPreview: document.getElementById('copilotFlagsPreview'),
   piModel: document.getElementById('piModel'),

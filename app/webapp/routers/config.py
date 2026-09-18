@@ -30,7 +30,6 @@ from src.webapp_config import (
     MAX_TERMINAL_HISTORY_LINES,
     MIN_TERMINAL_HISTORY_LINES,
     VALID_CODEX_PERMISSION_MODES,
-    VALID_COPILOT_MODELS,
     VALID_GROK_EFFORTS,
     VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
@@ -84,10 +83,11 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "sandbox": cfg.antigravity_sandbox,
             "computed_flags": build_antigravity_flags(cfg),
         },
+        # No model/models_available: Copilot's model is not a launcher
+        # setting (issue #1017) — the CLI resolves it per launch against
+        # the account, so only `/model` can report it truthfully.
         "copilot": {
             "skip_permissions": cfg.copilot_skip_permissions,
-            "model": cfg.copilot_model,
-            "models_available": list(VALID_COPILOT_MODELS),
             "computed_flags": build_copilot_flags(cfg),
         },
         "pi": {
@@ -150,7 +150,6 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "codex_effort",
         "codex_permission_mode",
         "copilot_skip_permissions",
-        "copilot_model",
         "pi_model",
         "pi_effort",
         "pi_trust_mode",

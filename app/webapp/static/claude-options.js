@@ -22,7 +22,6 @@ import { setSwitch } from './_vendored/switch/switch.js';
 let codingModelCombo = null;
 let claudeModelCombo = null;
 let codexModelCombo = null;
-let copilotModelCombo = null;
 let piModelCombo = null;
 let codingModelSelectionSequence = 0;
 let codingModelSaveQueue = Promise.resolve();
@@ -222,14 +221,10 @@ function renderAntigravitySubsection() {
 function renderCopilotSubsection() {
   const c = state.config && state.config.copilot;
   if (!c) return;
-  // Copilot offers a long catalog; the portaled shared menu stays viewport
-  // constrained. Empty-value Default still omits --model at launch.
-  if (copilotModelCombo) {
-    copilotModelCombo.setOptions(
-      [{ value: '', label: 'Default' }].concat(modelOptions(c.models_available))
-    );
-    copilotModelCombo.setValue(c.model || '');
-  }
+  // No model picker (issue #1017): Copilot resolves --model against the
+  // account at launch and silently falls back, so a launcher-side choice
+  // could only ever assert a model the session might not be running.
+  // `/model` in-session owns it, as it does for the Antigravity CLI.
   setSwitch(els.copilotSkipPerms, !!c.skip_permissions);
   els.copilotFlagsPreview.textContent =
     'copilot' + (c.computed_flags ? ' ' + c.computed_flags : '');
@@ -350,9 +345,6 @@ export function wireClaudeOptions() {
   });
   codexModelCombo = wireModelCombo(els.codexModel, function (model) {
     selectCodingModel({ codex_model: model, coding_model_choice: 'codex:' + model });
-  });
-  copilotModelCombo = wireModelCombo(els.copilotModel, function (model) {
-    patchConfig({ copilot_model: model });
   });
   piModelCombo = wireModelCombo(els.piModel, function (model) {
     patchConfig({ pi_model: model });

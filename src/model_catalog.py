@@ -69,15 +69,12 @@ PI_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-COPILOT_MODELS: Tuple[str, ...] = (
-    "claude-sonnet-5", "claude-sonnet-4.6", "claude-sonnet-4.5",
-    "claude-haiku-4.5", "claude-fable-5", "claude-opus-5",
-    "claude-opus-4.8", "claude-opus-4.8-fast", "claude-opus-4.7",
-    "claude-opus-4.6", "claude-opus-4.5", "gpt-5.6-sol",
-    "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4",
-    "gpt-5.3-codex", "gpt-5.4-mini", "gpt-5-mini",
-    "gemini-3.1-pro-preview", "gemini-3.5-flash", "kimi-k2.7-code",
-)
+# GitHub Copilot has no entry here on purpose (issue #1017). Its model
+# list was removed rather than refreshed: `copilot help config` reports
+# what the CLI accepts, while what a *launch* gets is decided by the
+# account's entitlement, so a catalogue here could only ever produce a
+# claim the launcher cannot keep. Copilot's `/model` picker is the live,
+# accurate list; the launcher sends no `--model` for it.
 
 
 def available_values(specs: Dict[str, Dict[str, Any]]) -> Tuple[str, ...]:
