@@ -300,12 +300,13 @@ def test_detached_session_opens_in_chat_with_terminal_off(
     term_seg.click(force=True)
     expect(authed_page.locator("#toast")).to_contain_text("Detached session — no terminal")
     expect(overlay).to_have_attribute("data-mode", "chat")
-    # The row itself offers nothing beyond the tap: no gear, no menu (#1025).
+    # The row keeps its own action menu behind the kebab, and shows no
+    # chevron and no gear (#1025).
     authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
     expect(row.locator(".session-gear")).to_have_count(0)
-    expect(row.locator(".session-menu")).to_have_count(0)
-    expect(row.locator(".session-chevron")).to_be_visible()
+    expect(row.locator(".session-chevron")).to_have_count(0)
+    expect(row.locator(".session-kebab")).to_be_visible()
 
 
 def test_reader_less_agent_opens_in_terminal_with_chat_off(
@@ -337,10 +338,11 @@ def test_reader_less_agent_opens_in_terminal_with_chat_off(
     # says why.
     expect(authed_page.locator("#toast")).to_contain_text("No transcript reader for")
     expect(overlay).to_have_attribute("data-mode", "terminal")
-    # The row itself offers nothing beyond the tap: no gear, no menu (#1025).
+    # The row keeps its own action menu behind the kebab, and shows no
+    # chevron and no gear (#1025).
     authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
     row = _row(authed_page, sid)
     expect(row.locator(".session-gear")).to_have_count(0)
-    expect(row.locator(".session-menu")).to_have_count(0)
-    expect(row.locator(".session-chevron")).to_be_visible()
+    expect(row.locator(".session-chevron")).to_have_count(0)
+    expect(row.locator(".session-kebab")).to_be_visible()

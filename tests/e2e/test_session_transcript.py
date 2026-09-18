@@ -34,7 +34,12 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
+from tests.e2e.conftest import (
+    OVERLAY_OPEN_MS,
+    open_session_row,
+    stable_read,
+    stub_session_mirror,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -131,42 +136,109 @@ def _menu_item(page: Page, name: str):
     return menu.get_by_role("menuitem", name=name)
 
 
-def test_row_carries_no_gear_and_a_centred_chevron(
+# The row's own action menu (#1025). `name` is the item's accessible name,
+# which row-menu.js sets from each item's `label`.
+def _row_menu_item(page: Page, row, name: str):
+    row.locator(".session-kebab").click()
+    menu = row.locator(".session-menu")
+    expect(menu).to_be_visible()
+    return menu.get_by_role("menuitem", name=name)
+
+
+def test_row_carries_a_centred_kebab_and_no_chevron(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1025 — the row's actions gear is gone and the chevron is the row's
-    only trailing element, centred against the row rather than against the
-    badge line it used to trail."""
+    """#1025 — the row's anchor is a kebab in the slot the gear held,
+    centred against the whole row, and no chevron is rendered.
+
+    The first attempt at this issue shipped the inverse (gear removed,
+    chevron kept), which took the row's entire action set with it. This pins
+    the corrected shape so neither half can regress alone."""
     _mock_sessions_list(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
     expect(row.locator(".name")).to_have_text("Transcript demo")
 
-    # Nothing of the gear survives: no anchor, no menu, no actions rail.
+    # Neither the old gear glyph nor the chevron survives.
     expect(row.locator(".session-gear")).to_have_count(0)
-    expect(row.locator(".session-menu")).to_have_count(0)
-    expect(row.locator(".row-actions")).to_have_count(0)
+    expect(row.locator(".session-chevron")).to_have_count(0)
 
-    chev = row.locator(".session-chevron")
-    expect(chev).to_be_visible()
-    # Centred against the whole row, which is what the gear beside it used to
-    # be and the chevron was not (the misalignment #1025 reports). Both boxes
-    # are read through `stable_read` because the Coding rows are rebuilt by
-    # the git-status poll (#680), and compared with a 1px tolerance for
-    # sub-pixel row heights.
+    kebab = row.locator(".session-kebab")
+    expect(kebab).to_be_visible()
+    # Centred against the whole row — the alignment half of #1025, and the
+    # one part the first attempt got right. Both boxes are read through
+    # `stable_read` because the Coding rows are rebuilt by the git-status
+    # poll (#680), and compared with a 1px tolerance for sub-pixel heights.
     row_box = stable_read(row.bounding_box)
-    chev_box = stable_read(chev.bounding_box)
+    keb_box = stable_read(kebab.bounding_box)
     row_mid = row_box["y"] + row_box["height"] / 2
-    chev_mid = chev_box["y"] + chev_box["height"] / 2
-    assert abs(row_mid - chev_mid) <= 1, (
-        f"chevron centre {chev_mid} is not the row centre {row_mid}"
+    keb_mid = keb_box["y"] + keb_box["height"] / 2
+    assert abs(row_mid - keb_mid) <= 1, (
+        f"kebab centre {keb_mid} is not the row centre {row_mid}"
     )
-    # Pinned to the row's right edge, where the gear rail was.
-    right_gap = (row_box["x"] + row_box["width"]) - (chev_box["x"] + chev_box["width"])
-    assert 0 <= right_gap <= 1, f"chevron is not flush right (gap {right_gap})"
-    # A lone chevron still needs a real tap target: the row button is it.
+    # Pinned to the row's right edge, in the rail the gear occupied.
+    right_gap = (row_box["x"] + row_box["width"]) - (keb_box["x"] + keb_box["width"])
+    assert 0 <= right_gap <= 1, f"kebab is not flush right (gap {right_gap})"
+    # The row's own tap target stays a full-size row.
     open_box = stable_read(row.locator(".session-open").bounding_box)
     assert open_box["height"] >= 44, open_box["height"]
+
+
+def test_row_menu_holds_the_full_option_set_in_order(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1025 — the kebab's menu carries exactly the options the gear did.
+
+    The regression this pins is the menu silently emptying: the first attempt
+    deleted every one of these and nothing failed, because no test asserted
+    the row's own menu contents. Order and accessible names are both part of
+    the contract."""
+    _mock_sessions_list(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = _row(authed_page)
+    row.locator(".session-kebab").click()
+    menu = row.locator(".session-menu")
+    expect(menu).to_be_visible()
+
+    # A full-control Claude row offers all four, top to bottom.
+    items = menu.get_by_role("menuitem")
+    expect(items).to_have_count(4)
+    assert [
+        (items.nth(i).get_attribute("aria-label") or "").strip()
+        for i in range(4)
+    ] == [
+        "Open terminal",
+        "Open chat",
+        "Rename session",
+        "Stop and kill session",
+    ]
+    # Stop keeps the class that paints it danger-red on press.
+    expect(menu.locator(".action-stop-close")).to_have_count(1)
+
+
+def test_row_tap_opens_the_session_and_kebab_tap_does_not(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1025 — the kebab lives outside the row button, so it opens the menu
+    and never the session; the row itself still opens the session."""
+    _mock_sessions_list(authed_page)
+    stub_session_mirror(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    row = _row(authed_page)
+    overlay = authed_page.locator("#terminalOverlay")
+
+    # Kebab: menu opens, overlay stays shut.
+    row.locator(".session-kebab").click()
+    expect(row.locator(".session-menu")).to_be_visible()
+    expect(overlay).to_be_hidden()
+
+    # Close the menu (tap the anchor again), then tap the row itself.
+    row.locator(".session-kebab").click()
+    expect(row.locator(".session-menu")).to_be_hidden()
+    row.locator(".session-open").click()
+    authed_page.wait_for_selector(
+        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
+    )
 
 
 def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> None:
@@ -245,8 +317,9 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
 
     overlay = authed_page.locator("#terminalOverlay")
     expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
-    # The row behind the overlay carries no menu of its own any more (#1025).
-    expect(row.locator(".session-menu")).to_have_count(0)
+    # The row's own menu exists (#1025) but stays closed behind the overlay:
+    # opening a session is not what opens it.
+    expect(row.locator(".session-menu")).to_be_hidden()
     # The shared bar: Terminal / Chat segments first in the actions group,
     # 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only bar buttons.
     bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
