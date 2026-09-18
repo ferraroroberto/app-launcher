@@ -101,6 +101,7 @@ life-os.js, voice.js"]
     JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
     JOBSOUTCOME["jobs_outcome.py\nexit code → success / failed / unconfirmed (#916)"]
     JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
+    JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
     JOBSTRIGGER["jobs_trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
@@ -148,6 +149,8 @@ life-os.js, voice.js"]
   JOBSINDEX --> JOBSHISTORY
   JOBSFACADE --> JOBSSTATS
   JOBSFACADE --> JOBSCOVERAGE
+  JOBSFACADE --> JOBSNEXTFIRE
+  JOBSCOVERAGE --> JOBSNEXTFIRE
   JOBSCOVERAGE --> JOBSSCHTASKS
   JOBSCOVERAGE --> JOBSHISTORY
   JOBSCOVERAGE --> NOTIFY
@@ -231,4 +234,5 @@ life-os.js, voice.js"]
   SCRIPTS -.->|setup for| tray
 
   R_LIFEOS --> LIFEHISTORY["src/life_os_history.py\nshared capture metadata + bounded private handoff"]
+  R_LIFEOS --> LIFEINDEX["src/life_os_index.py\nbest-effort index.json / index.md / search-db\nreconciliation after a delete or rename (#1006)"]
   LIFEHISTORY --> FLEETCFG

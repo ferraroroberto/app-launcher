@@ -76,18 +76,16 @@ This is the single most important lesson about CI: **a green check that skipped 
 
 The fix was one workflow step: seed the three config files from their committed `*.sample.json` templates before running the gate (loopback access bypasses the bearer-token middleware, so the sample tokens are sufficient — see `tests/e2e/conftest.py`). After the fix:
 
-```
-30 passed, 24 skipped in 43.35s
-```
+The suite genuinely ran. Counts and timings are deliberately not quoted here — they move with every closed bite that adds a regression pin, and a frozen number in a second document is how this section went stale in the first place (#1008). **`CLAUDE.md`'s CI block is the canonical home** for what a typical green looks like and when to investigate.
 
-The suite genuinely runs now. The 24 remaining skips are *expected and documented*: the terminal-regression tests launch a real `claude` PTY, and `claude` is not on a GitHub runner's `PATH`, so the `launched_pty_session` fixture skips them cleanly. That is an honest skip — we know exactly why, and it is written down — not a silent collapse.
+What matters is *which* skips are honest ones. Since #534 the terminal-regression tests no longer need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python, so it **runs on CI**. The one fixture that still skips there is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a GitHub runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
 
 ### The takeaway
 
 | | Your machine | GitHub runner |
 |---|---|---|
 | Gitignored config files | Present (you made them) | **Absent** — seed from samples |
-| `claude` on PATH | Yes | No — terminal tests skip (expected) |
+| `claude` on PATH | Yes | No — only `launched_claude_pty_session` tests skip; the rest run against the stub child (#534) |
 | Pre-existing tray / session-host | Maybe | Never — gate boots its own |
 | Good for | Fast dev loop | Proving it works from *nothing* |
 
