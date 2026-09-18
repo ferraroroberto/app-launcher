@@ -303,10 +303,6 @@ class WebAuthnGate:
                 return False
             return True
 
-    def revoke_terminal_tokens(self) -> None:
-        with self._lock:
-            self._terminal_tokens.clear()
-
 
 def _credential_id_of(credential: Any) -> str:
     """Pull the base64url credential id out of a browser assertion payload."""

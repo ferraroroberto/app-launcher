@@ -82,6 +82,39 @@ def _ready_session(webapp_client):
     return overrides
 
 
+class TestBoardModelResolution:
+    """``_agent_and_flags`` validates a Board per-launch model (#500/#505)."""
+
+    def _cfg(self, webapp_client):
+        _, app, _ = webapp_client
+        return app.state.webapp_config
+
+    def test_rejects_the_legacy_gpt5_6_alias(self, webapp_client):
+        """#1004 — ``gpt5.6`` used to be silently rewritten to
+        ``gpt-5.6-sol`` here, while both sibling resolvers rejected the
+        identical string with a 400. No client, no catalog entry
+        (``src/model_catalog.py`` carries only ``gpt-5.6-sol``) and no doc
+        referenced it, so the rewrite only made this one route disagree
+        with the other two. It now takes the normal unknown-model 400.
+        """
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as excinfo:
+            board_spawn._agent_and_flags(self._cfg(webapp_client), "gpt5.6")
+        assert excinfo.value.status_code == 400
+        assert "gpt5.6" in str(excinfo.value.detail)
+
+    def test_still_accepts_the_real_catalog_value(self, webapp_client, monkeypatch):
+        """The guard rail: removing the alias must not break the model it
+        used to rewrite *to*."""
+        monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: True)
+        agent, flags = board_spawn._agent_and_flags(
+            self._cfg(webapp_client), "codex:gpt-5.6-sol"
+        )
+        assert agent == "codex"
+        assert "gpt-5.6-sol" in flags
+
+
 class TestDispatchGate:
 
     def test_dispatch_classified_passkey(self):
