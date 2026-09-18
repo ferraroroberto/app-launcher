@@ -222,9 +222,20 @@ def test_create_defaults_and_clamps_dimensions(tmp_path, monkeypatch):
     mgr.create(str(tmp_path), "proj", "")
     assert captured["dimensions"] == (40, 120)
 
-    # Out-of-range values clamp to the same 1..1000 bounds as resize().
+    # Out-of-range values clamp to the same bounds as resize() — which means
+    # PTY_MIN_ROWS/PTY_MIN_COLS at the bottom, not 1 (#1007). This test used
+    # to assert (1000, 1), pinning the very gap the docstring denied: the
+    # HTTP surface forwards a request's rows unfloored, so `POST /sessions`
+    # with `rows: 1` spawned a 1-row ConPTY whose first real resize fires the
+    # full-viewport repaint the floor exists to prevent (#930).
     mgr.create(str(tmp_path), "proj", "", rows=99999, cols=0)
-    assert captured["dimensions"] == (1000, 1)
+    assert captured["dimensions"] == (1000, session_host.PTY_MIN_COLS)
+
+    mgr.create(str(tmp_path), "proj", "", rows=1, cols=3)
+    assert captured["dimensions"] == (
+        session_host.PTY_MIN_ROWS,
+        session_host.PTY_MIN_COLS,
+    )
 
 
 def test_create_attaches_vt_snapshot_for_fullscreen_agent(tmp_path, monkeypatch):

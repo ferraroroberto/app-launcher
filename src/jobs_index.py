@@ -15,12 +15,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_history
-from src.jobs_outcome import run_outcome
+from src.jobs_outcome import LAUNCHER_TERMINATED_FIELDS, run_outcome
 from src.runtime_data import runtime_data_dir
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
 INDEX_FILENAME = "_index.sqlite"
 _INDEX_LOCK = threading.RLock()
 
@@ -88,6 +89,13 @@ def _create_schema(conn: sqlite3.Connection) -> None:
             pinned INTEGER NOT NULL DEFAULT 0,
             output_size INTEGER NOT NULL DEFAULT 0,
             has_artifacts INTEGER NOT NULL DEFAULT 0,
+            -- The launcher-terminated flags (#1007). run_outcome()'s override
+            -- reads these three off the record; without them a search hit is
+            -- classified blind and a watchdog-killed run renders a different
+            -- icon in search than in the history list.
+            killed INTEGER NOT NULL DEFAULT 0,
+            watchdog INTEGER NOT NULL DEFAULT 0,
+            reaped INTEGER NOT NULL DEFAULT 0,
             UNIQUE(job_id, run_id)
         );
         CREATE INDEX runs_job_started_idx ON runs(job_id, started_at DESC);
@@ -133,8 +141,9 @@ def _sync_run_conn(
         """
         INSERT INTO runs (
             job_id, run_id, status, started_at, finished_at, duration_seconds,
-            exit_code, trigger, pinned, output_size, has_artifacts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            exit_code, trigger, pinned, output_size, has_artifacts,
+            killed, watchdog, reaped
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(job_id, run_id) DO UPDATE SET
             status=excluded.status,
             started_at=excluded.started_at,
@@ -144,7 +153,10 @@ def _sync_run_conn(
             trigger=excluded.trigger,
             pinned=excluded.pinned,
             output_size=excluded.output_size,
-            has_artifacts=excluded.has_artifacts
+            has_artifacts=excluded.has_artifacts,
+            killed=excluded.killed,
+            watchdog=excluded.watchdog,
+            reaped=excluded.reaped
         """,
         (
             job_id,
@@ -158,6 +170,9 @@ def _sync_run_conn(
             int(bool(record.get("pinned"))),
             output_size,
             int(_artifact_present(run_dir)),
+            int(bool(record.get("killed"))),
+            int(bool(record.get("watchdog"))),
+            int(bool(record.get("reaped"))),
         ),
     )
     row = conn.execute(
@@ -272,6 +287,16 @@ def search_runs(
     a search hit's icon agrees with the same run's icon in the history list. The
     ``status`` filter argument still matches the persisted column: filtering is
     a query against what is stored, rendering is a question about what it meant.
+
+    That agreement needs the launcher-terminated flags too (issue #1007):
+    :func:`~src.jobs_outcome.run_outcome` keeps a ``failed`` verdict as
+    ``failed`` when ``killed`` / ``watchdog`` / ``reaped`` is set, instead of
+    softening it to "not confirmed". They were not in the schema, so that
+    override could never fire on a search hit and a watchdog-killed run whose
+    exit code is one of the unconfirmed codes rendered ❓ in search while the
+    history list and the stats rendered it ❌. They are selected here purely to
+    classify and are dropped from the hit afterwards, so the response shape is
+    unchanged.
     """
     tokens = re.findall(r"[\w-]+", query, flags=re.UNICODE)
     if not tokens:
@@ -293,6 +318,7 @@ def search_runs(
     sql = f"""
         SELECT runs.job_id, runs.run_id, runs.status, runs.exit_code,
                runs.started_at,
+               runs.killed, runs.watchdog, runs.reaped,
                snippet(output_fts, 0, '', '', ' … ', 18) AS snippet
         FROM output_fts
         JOIN runs ON runs.rowid = output_fts.rowid
@@ -304,4 +330,6 @@ def search_runs(
         hits = [dict(row) for row in conn.execute(sql, params).fetchall()]
     for hit in hits:
         hit["outcome"], hit["outcome_reason"] = run_outcome(hit)
+        for flag in LAUNCHER_TERMINATED_FIELDS:
+            hit.pop(flag, None)
     return hits

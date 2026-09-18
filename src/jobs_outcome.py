@@ -108,7 +108,12 @@ _EXIT_CODES: Dict[int, Tuple[str, str]] = {
 # record carries was produced by a torn-down process, not by the adapter's
 # verdict chain, so it can never be read as "not confirmed" — we know exactly
 # what happened to it, and it is not success.
-_LAUNCHER_TERMINATED_FIELDS = ("killed", "watchdog", "reaped")
+# The record fields that mean "the launcher stopped this run", not "the
+# adapter failed". Public because src.jobs_index persists exactly these
+# as index columns so a search hit classifies the same way (#1007) —
+# one source of truth rather than two tuples that can drift apart.
+LAUNCHER_TERMINATED_FIELDS = ("killed", "watchdog", "reaped")
+_LAUNCHER_TERMINATED_FIELDS = LAUNCHER_TERMINATED_FIELDS
 
 
 def classify_exit_code(exit_code: Optional[int]) -> Optional[Tuple[str, str]]:
