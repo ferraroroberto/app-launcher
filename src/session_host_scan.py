@@ -75,24 +75,26 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
             remaining = tail if len(tail) <= _OSC_TITLE_CARRY_MAX else ""
             break
 
-        try:
-            # Extract the full sequence
-            seq = remaining[start_idx : end_idx + term_len]
-            # Parse: ESC ] <code> ; <text> <term>
-            # Find the code (0 or 2)
-            code_end = remaining.find(";", start_idx)
-            if code_end != -1 and code_end < end_idx:
-                code_part = remaining[start_idx + 2 : code_end].strip()
-                if code_part in ("0", "2"):
-                    text = remaining[code_end + 1 : end_idx]
-                    # Strip ANSI/control chars
-                    clean = "".join(c for c in text if ord(c) >= 32 or c in "\t")
-                    clean = clean.strip()
-                    if clean:
-                        # Cap at 80 chars
-                        extracted = clean[:80]
-        except Exception:
-            pass
+        # Parse: ESC ] <code> ; <text> <term>. Deliberately unguarded
+        # (#1009): every operation below is `str.find`, slicing, `ord` on a
+        # one-character string, `join` and `strip`, none of which raise on
+        # any input - slicing out of range yields an empty string rather
+        # than an IndexError. The `except Exception: pass` that used to wrap
+        # it could therefore never fire, and a swallow over code that cannot
+        # raise is worse than no guard: it is where the next real defect in
+        # this scanner would have disappeared silently. A malformed sequence
+        # is already handled by falling through with `extracted` unset.
+        code_end = remaining.find(";", start_idx)
+        if code_end != -1 and code_end < end_idx:
+            code_part = remaining[start_idx + 2 : code_end].strip()
+            if code_part in ("0", "2"):
+                text = remaining[code_end + 1 : end_idx]
+                # Strip ANSI/control chars
+                clean = "".join(c for c in text if ord(c) >= 32 or c in "\t")
+                clean = clean.strip()
+                if clean:
+                    # Cap at 80 chars
+                    extracted = clean[:80]
 
         # Remove the processed sequence and continue
         remaining = remaining[: start_idx] + remaining[end_idx + term_len :]
