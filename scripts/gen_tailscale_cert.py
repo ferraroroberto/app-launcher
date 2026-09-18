@@ -31,6 +31,21 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# Two print() calls below carry an em-dash, and this script is run with
+# capture_output=True by app/webapp/manager.py::check_tailscale_cert (and so
+# by every uvicorn spawn site that calls it). A captured stdout on Windows
+# defaults to cp1252, which cannot encode it: without this the renewal check
+# raises UnicodeEncodeError and the caller logs "tailscale cert check failed
+# (ignored)" — blaming the check rather than an encoding bug, while the cert
+# silently does not get renewed. Same guard as gen_token.py / set_password.py
+# / session_retention.py (#1005; global CLAUDE.md, "Windows Python: UTF-8
+# stdout under capture").
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
