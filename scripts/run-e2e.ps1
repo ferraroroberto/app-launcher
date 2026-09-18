@@ -19,7 +19,20 @@ if (-not (Test-Path $python)) {
 # Explicit live-tray opt-in (issue #386): this script IS the deliberate
 # dev-loop entry point for e2e-against-the-live-tray, so it sets the flag a
 # bare `pytest tests/e2e` refuses to run without.
-$env:LAUNCHER_E2E_LIVE = "1"
-
-& $python -m pytest -m smoke -v tests/e2e @args
-exit $LASTEXITCODE
+#
+# Scoped to this one run (issue #1007). $env: writes go to the *calling*
+# console's process environment, so leaving the flag set meant every later
+# bare `pytest tests/e2e` in that same window silently drove the live :8445
+# tray the phone is using -- precisely the accident #386's guard exists to
+# stop. Same set-then-finally shape as verify-before-ship.ps1 uses for
+# LAUNCHER_E2E_AUTOBOOT.
+$exitCode = 1
+try {
+    $env:LAUNCHER_E2E_LIVE = "1"
+    & $python -m pytest -m smoke -v tests/e2e @args
+    $exitCode = $LASTEXITCODE
+}
+finally {
+    Remove-Item Env:\LAUNCHER_E2E_LIVE -ErrorAction SilentlyContinue
+}
+exit $exitCode

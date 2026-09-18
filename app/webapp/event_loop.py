@@ -21,7 +21,8 @@ selector loop's lack of subprocess support is a non-issue here.
 Wired into every place that spawns ``app.webapp.server:app`` under
 uvicorn -- ``--loop app.webapp.event_loop:selector_loop_factory`` for CLI
 invocations (``WebappManager._build_command``, ``webapp.bat``, the e2e
-autoboot spawn in ``tests/e2e/conftest.py``) or
+autoboot spawn in ``tests/e2e/conftest.py``, and the named-tunnel boot in
+``scripts/run_named_tunnel.py``) or
 ``loop="app.webapp.event_loop:selector_loop_factory"`` for the
 programmatic ``uvicorn.run()`` call in ``app/cli/commands/webapp_cmd.py``.
 Keep all of them pointed at the same dotted path below.
