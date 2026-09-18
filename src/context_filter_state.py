@@ -197,23 +197,16 @@ def write_mode(path: Path, mode: str, *, updated_by: str = DEFAULT_UPDATED_BY) -
 
     Raises ``ValueError`` for an invalid ``mode`` — callers (the API router)
     map that onto a 4xx, never a 500. The write is a temp-file-then-
-    ``os.replace`` swap (:func:`src._json_io.atomic_write_json`); the
-    sibling ``.tmp`` is removed in a ``finally`` so a write that fails
-    mid-flight never leaves an orphaned temp file behind.
+    ``os.replace`` swap (:func:`src._json_io.atomic_write_json`), which
+    cleans up its own sibling ``.tmp`` if the swap fails (#1003 — this
+    function used to do that itself, by re-deriving the helper's private
+    temp-file name, and was the only one of eleven call sites that did).
     """
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"mode": mode, "updated_at": _iso_z(_now()), "updated_by": updated_by}
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    try:
-        atomic_write_json(path, payload)
-    finally:
-        if tmp.exists():
-            try:
-                tmp.unlink()
-            except OSError:
-                pass
+    atomic_write_json(path, payload)
     return read_mode(path)
 
 
