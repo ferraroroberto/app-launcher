@@ -206,6 +206,18 @@ function setRunBtnState(button, job) {
 
 export function renderJobRow(job, options) {
   const handlers = options || {};
+  // Every action handler below reads the job through this holder rather than
+  // closing over the `job` parameter (#1007). The 4s poll replaces every job
+  // object (`jobs.js`: `state.jobs = body.jobs || []`) and then reuses the
+  // existing <li> whenever sort order is unchanged, patching only the status
+  // dot, meta line, run-button state and chips -- the buttons and their
+  // listeners are never rebuilt. A handler closed over the render-time object
+  // therefore acts on a stale copy while the row *renders* the fresh one: a
+  // job newly flagged "Require confirmation" elsewhere would run with no
+  // dialog, and Edit would reopen with the stale schedule/params so Save
+  // silently clobbered the concurrent change. `patchRowNodes` refreshes this
+  // one holder, so a single assignment re-points all six handlers at once.
+  const ref = { job: job };
   const li = document.createElement('li');
   li.className = 'app-item job-item';
   li.dataset.id = job.id;
@@ -328,7 +340,7 @@ export function renderJobRow(job, options) {
   info.title = 'View run history for ' + job.name;
   info.setAttribute('aria-label', 'View run history for ' + job.name);
   info.addEventListener('click', function () {
-    if (handlers.onToggle) handlers.onToggle(job);
+    if (handlers.onToggle) handlers.onToggle(ref.job);
   });
   main.appendChild(info);
   li.appendChild(main);
@@ -344,7 +356,7 @@ export function renderJobRow(job, options) {
     setRunBtnState(run, job);
     run.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (handlers.onRun) handlers.onRun(job);
+      if (handlers.onRun) handlers.onRun(ref.job);
     });
     actions.appendChild(run);
   }
@@ -363,7 +375,7 @@ export function renderJobRow(job, options) {
     pause.setAttribute('aria-label', job.paused ? 'Resume' : 'Pause');
     pause.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (handlers.onPause) handlers.onPause(job);
+      if (handlers.onPause) handlers.onPause(ref.job);
     });
     actions.appendChild(pause);
   }
@@ -378,7 +390,7 @@ export function renderJobRow(job, options) {
     dryRun.addEventListener('click', function (event) {
       event.stopPropagation();
       if (handlers.onRun) {
-        handlers.onRun(job, { dryRun: 'check', skipDialog: true });
+        handlers.onRun(ref.job, { dryRun: 'check', skipDialog: true });
       }
     });
     actions.appendChild(dryRun);
@@ -391,7 +403,7 @@ export function renderJobRow(job, options) {
     edit.setAttribute('aria-label', 'Edit');
     edit.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (handlers.onEdit) handlers.onEdit(job);
+      if (handlers.onEdit) handlers.onEdit(ref.job);
     });
     actions.appendChild(edit);
 
@@ -403,7 +415,7 @@ export function renderJobRow(job, options) {
     remove.setAttribute('aria-label', 'Remove');
     remove.addEventListener('click', function (event) {
       event.stopPropagation();
-      if (handlers.onRemove) handlers.onRemove(job);
+      if (handlers.onRemove) handlers.onRemove(ref.job);
     });
     actions.appendChild(remove);
   }
@@ -411,6 +423,7 @@ export function renderJobRow(job, options) {
 
   const nodes = {
     li: li,
+    ref: ref,
     dotEl: dot,
     nameEl: name,
     pillsEl: pills,
@@ -441,6 +454,10 @@ function swapChip(container, oldElement, freshElement, anchor) {
 }
 
 export function patchRowNodes(nodes, job) {
+  // First, before any rendering: re-point the row's action handlers at the
+  // fresh job (#1007). The poll reuses this <li>, so without this the
+  // buttons keep acting on the object captured at row-creation time.
+  if (nodes.ref) nodes.ref.job = job;
   applyStatusDot(nodes.dotEl, job);
   nodes.metaEl.innerHTML = describeLastRun(job);
   if (nodes.runBtnEl) setRunBtnState(nodes.runBtnEl, job);

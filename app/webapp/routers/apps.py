@@ -50,7 +50,11 @@ from src.registry import (
     set_autostart_by_id,
 )
 from src.scanner import KIND_CLAUDE_CODE, KIND_TRAY, KIND_TUNNEL
-from src.webapp_config import WebappConfig
+from src.webapp_config import (
+    VALID_CLAUDE_MODELS,
+    VALID_CODEX_MODELS,
+    WebappConfig,
+)
 
 from app.webapp.routers._helpers import (
     audit_off_loop,
@@ -63,6 +67,15 @@ from app.webapp.routers._helpers import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# The per-launch model values each agent's flag builder actually honours
+# (#1007). Only Claude and Codex take a model_override; the other agents'
+# builders have no model flag at all (it is chosen in-TUI with /model), so
+# they have no catalog here and their launches are unaffected.
+_LAUNCH_MODEL_CATALOG = {
+    "claude": VALID_CLAUDE_MODELS,
+    "codex": VALID_CODEX_MODELS,
+}
 
 
 def _claude_code_entries(cfg: WebappConfig) -> List[AppEntry]:
@@ -251,6 +264,22 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 raise HTTPException(
                     status_code=400,
                     detail=f"model {requested_model!r} does not belong to {agent}",
+                )
+            # The prefix matching is not enough: an out-of-catalog *value*
+            # used to launch silently on the CLI's own default (#1007).
+            # build_claude_flags / build_codex_flags emit no --model at all
+            # for a value they don't recognise *and* discard the persisted
+            # model (model_override is not None), so a phone holding a
+            # pre-rename cached bundle got a 200 and a session on the wrong
+            # model with nothing said. Reject it instead, as the Life OS
+            # (#540) and Board (#505) launch routes already do. The
+            # accepted set is exactly what the builder would honour, so a
+            # legacy-but-still-supported alias keeps working.
+            catalog = _LAUNCH_MODEL_CATALOG.get(agent)
+            if catalog is not None and model_value not in catalog:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"unsupported model for {agent}: {model_value!r}",
                 )
         else:
             model_value = ""

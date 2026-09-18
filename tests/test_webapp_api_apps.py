@@ -470,6 +470,57 @@ class TestClaudeCodeDiscovery:
         )
         assert bad.status_code == 400
 
+    def test_launch_rejects_out_of_catalog_model(self, webapp_client, monkeypatch):
+        """#1007 — a model whose provider prefix matches but whose value is
+        not in the catalog is a 400, not a silent fallback.
+
+        ``build_claude_flags`` emits no ``--model`` at all for a value it does
+        not recognise *and* discards the persisted model (because
+        ``model_override is not None``), so this used to return 200 and launch
+        the session on the CLI's own default — exactly what a phone holding a
+        pre-rename cached bundle would send. The Life OS (#540) and Board
+        (#505) launch routes already 400 here.
+        """
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120, history_lines=None,
+        ):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "claude", "model": "claude:retired-alias"},
+        )
+        assert resp.status_code == 400, resp.text
+        assert "retired-alias" in resp.json()["detail"]
+        # The launch was refused outright, not run on a fallback model.
+        assert "flags" not in captured, captured
+
+        # Codex is guarded by the same catalog.
+        bad_codex = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "codex", "model": "codex:gpt-4-legacy"},
+        )
+        assert bad_codex.status_code == 400, bad_codex.text
+
+        # A real catalog value still launches, with its --model intact.
+        ok = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "claude", "model": "claude:sonnet"},
+        )
+        assert ok.status_code == 200, ok.text
+        assert "--model sonnet" in captured["flags"]
+
     def test_launch_resume_antigravity_continues_most_recent(
         self, webapp_client, monkeypatch
     ):
