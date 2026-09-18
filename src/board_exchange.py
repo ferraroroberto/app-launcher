@@ -1,10 +1,11 @@
 """Agent-aware conversation previews for the Board drawer (issue #457).
 
 The hook row's Claude JSONL remains the best source when it exists because it
-is structured chat data.  Launcher-owned PTYs also have an exact-id capture,
-however, and that is the common fallback for remote-control Claude sessions
-whose declared JSONL is absent and for agents such as Codex that publish no
-hook transcript at all.
+is structured chat data.  When no row names one, a Claude conversation is
+correlated from the filesystem instead (#1027, reported as ``native_scan``
+because the match is inferred rather than exact).  Launcher-owned PTYs also
+have an exact-id capture, however, and that is the fallback for a scan that
+refuses and for agents such as Codex that publish no hook transcript at all.
 
 The capture is terminal output, not prose.  A bounded tail is replayed through
 ``pyte`` and reply blocks are selected by the same leading-bullet colour
@@ -127,13 +128,60 @@ def resolve_exchange(
     native_path: Any,
     launcher_capture_path: Path,
     launcher_input_path: Optional[Path] = None,
+    live: Optional[Iterable[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
-    """Resolve one live session's exchange through the source hierarchy."""
+    """Resolve one live session's exchange through the source hierarchy.
+
+    The row-declared ``native_path`` is exact and always wins. When no row
+    names one and the agent is Claude, :func:`find_claude_transcript`
+    (#1023, shared verbatim with the ``/transcript`` route) correlates the
+    conversation from the filesystem — the fallback for the window where
+    the hook has deleted the row out from under a still-live session.
+
+    **Ordering (#1027).** Unlike ``/transcript``, this route already had a
+    working fallback, so adding a second one is a ranking decision rather
+    than a gap-fill. The scanned JSONL is placed **above** the launcher's
+    exact-id PTY capture, for two reasons: it is structured chat data
+    rather than replayed terminal output, and a *detached* session has no
+    capture at all, so for a ``RemoteSession`` it is the difference between
+    an exchange and ``no_exchange``. The capture is kept for when the scan
+    refuses — either of :func:`find_claude_transcript`'s two guards — so an
+    ambiguous folder still degrades to the rougher-but-honest answer rather
+    than to a neighbour's text.
+
+    **What the ranking costs, stated rather than hidden.** Claude Code
+    fires ``SessionEnd`` on ``/resume`` too, so the rowless window opens the
+    moment a session resumes a *different* conversation. Until the resumed
+    conversation is itself written, the newest file in the folder is the one
+    the session just left, and the scan answers with it while the capture
+    shows what is on screen now. Nothing on the filesystem separates the
+    two — both are written by the same process seconds apart — so no
+    tightening of the mtime guard closes this window, and a tighter guard
+    was deliberately *not* added rather than ship a knob that only looks
+    like a fix. The window is bounded (it closes on the resumed
+    conversation's first write, and the next typed prompt restores the row
+    and with it the exact path) and what it shows is this same session's
+    immediately preceding conversation, never another session's — so the
+    fail-safe rule holds even inside it.
+
+    Because that correlation is *inferred* and not established, it reports
+    itself as its own source, ``native_scan``, rather than folding into the
+    exact ``native``: a check that cannot establish a fact must not be
+    scored as the passing state. ``/transcript`` keeps reporting ``native``
+    for both, deliberately — there it has no competing source to outrank,
+    so it has nothing to be honest about.
+    """
     native = last_exchange(native_path)
     if native.get("available"):
         return {**native, "source": "native", "reason": None}
 
-    if str(session.get("agent") or "claude").lower() == "codex":
+    agent = str(session.get("agent") or "claude").lower()
+    if not native_path and agent == "claude":
+        scanned = last_exchange(find_claude_transcript(session, live or ()))
+        if scanned.get("available"):
+            return {**scanned, "source": "native_scan", "reason": None}
+
+    if agent == "codex":
         codex_path = _find_codex_transcript(session)
         codex = codex_last_exchange(codex_path)
         if codex.get("available"):
