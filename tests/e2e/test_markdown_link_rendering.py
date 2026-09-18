@@ -1,6 +1,6 @@
 """Regression pin: the shared text escaper must cover the attribute position.
 
-``life-os.js``'s ``renderMarkdown`` is escape-first-then-format: it runs the
+``markdown.js``'s ``renderMarkdown`` is escape-first-then-format: it runs the
 whole document through ``api.js``'s ``escapeHtml`` once, then ``inlineMd``
 applies the small markdown subset — and one of those rules, the link rule,
 interpolates a captured value into an ``href="…"`` **attribute** rather than
@@ -22,7 +22,7 @@ from playwright.sync_api import Page
 
 pytestmark = pytest.mark.smoke
 
-# The SPA loads its modules cache-busted (`life-os.js?v=<asset_hash>`). Resolve
+# The SPA loads its modules cache-busted (`markdown.js?v=<asset_hash>`). Resolve
 # the page's real module URL from the resource timeline so the import shares
 # the live instance instead of evaluating a parallel one.
 _LIVE_MODULE = """
@@ -43,7 +43,7 @@ _PROBE = (
     r"""
 async () => {
   const live = (""" + _LIVE_MODULE + r""");
-  const { renderMarkdown } = await import(live('life-os.js'));
+  const { renderMarkdown } = await import(live('markdown.js'));
   const { escapeHtml } = await import(live('api.js'));
 
   const host = document.createElement('div');
