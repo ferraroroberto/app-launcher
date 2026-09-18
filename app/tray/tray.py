@@ -45,6 +45,7 @@ from app.tray import registered_trays, tailscale
 from app.tray.single_instance import SingleInstance
 from app.tray.watchdog import HealthWatchdog
 from app.webapp.manager import (
+    HEALTH_BOUND_NOT_ANSWERING,
     WebappManager,
     cert_paths,
     load_config,
@@ -497,6 +498,12 @@ class TrayApp:
 
     def show_status(self, icon, item) -> None:  # noqa: ARG002
         s = self.manager.status()
+        # The one state that must not read as a quieter kind of "up" (#1005):
+        # a wedged uvicorn still holds the port, so the Status item says so in
+        # its own title rather than letting `detail` scroll past as normal.
+        if s.health == HEALTH_BOUND_NOT_ANSWERING:
+            _notify("Launcher status — NOT answering", f"{s.detail} · {s.base_url}")
+            return
         _notify("Launcher status", f"{s.detail} · {s.base_url}")
 
     def quit_app(self, icon, item) -> None:  # noqa: ARG002
