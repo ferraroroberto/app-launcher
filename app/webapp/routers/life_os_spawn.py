@@ -14,7 +14,6 @@ launches through this tail) never import each other — the role
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any, Dict
 
@@ -31,11 +30,8 @@ from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import (
-    audit_off_loop,
-    client_ip,
-    mirror_url,
+    audit_session_start_and_maybe_mirror,
     safe_int,
-    should_mirror_to_pc,
     spawn_session_or_400,
 )
 
@@ -130,39 +126,17 @@ async def _spawn_skill_session(
     )
 
     sid = str(session.get("session_id") or "")
-    event = "remote_launch" if kind == "remote" else "session_start"
-    await audit_off_loop(
-        audit.audit_event,
-        event,
-        session=sid,
-        agent=agent,
-        skill=audit_skill,
-        name=name,
-        project=str(life_os_dir),
-        resume=resume,
-        # Which conversation was reattached (#727) — "" for a fresh launch or
-        # the native picker, where no id was chosen up front.
-        resume_sid=resume_sid,
-        client=client_ip(request),
+    # The shared audit+mirror tail (#1003). This used to be a second,
+    # parallel copy of _helpers.audit_session_start_and_maybe_mirror,
+    # differing only in the remote-kind event name, the resume_sid field and
+    # the PTY-only mirror guard — all three are parameters now, so one
+    # workflow is maintained in one place.
+    await audit_session_start_and_maybe_mirror(
+        cfg, request, body,
+        sid=sid, agent=agent, name=name, project=str(life_os_dir),
+        skill=audit_skill, resume=resume, kind=kind, resume_sid=resume_sid,
+        audit_mod=audit, mirror_fn=open_local_terminal_window,
     )
-    await audit_off_loop(
-        audit.session_log,
-        sid, "start", agent=agent, skill=audit_skill, name=name,
-        project=str(life_os_dir),
-    )
-
-    # Mirror full-control sessions into a dedicated PC terminal window —
-    # identical to the Coding tab (issue #241, widened by #609): the default
-    # for every caller, unless the launcher explicitly says it's rendering
-    # in-page itself (see should_mirror_to_pc).
-    if kind == "pty" and should_mirror_to_pc(
-        cfg.claude_show_local_window, request, body
-    ):
-        asyncio.create_task(
-            asyncio.to_thread(
-                open_local_terminal_window, mirror_url(request, cfg, sid), sid
-            )
-        )
 
     return {
         "name": name,
