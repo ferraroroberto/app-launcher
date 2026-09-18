@@ -470,6 +470,51 @@ class TestClaudeCodeDiscovery:
         )
         assert bad.status_code == 400
 
+    def test_pty_launch_forwards_the_config_derived_spawn_arguments(
+        self, webapp_client, monkeypatch
+    ):
+        """#1003 — the two ``cfg``-derived spawn arguments reach the spawn.
+
+        ``spawn_launcher_session`` now owns ``cfg.session_host_port`` and
+        ``history_lines=cfg.terminal_history_lines`` on behalf of all five
+        launch call sites. Nothing asserted either one before: several tests
+        *capture* ``history_lines`` and none checks it, so dropping it (or
+        passing the wrong port) left the suite green. This pins both, and it
+        passes against the pre-helper code too — which is the point, since
+        the extraction is meant to change nothing.
+        """
+        client, app, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
+        cfg = app.state.webapp_config
+        cfg.terminal_history_lines = 7321
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120, history_lines=None, label="",
+        ):
+            captured.update(
+                port=port, kind=kind, history_lines=history_lines,
+                rows=rows, cols=cols, label=label,
+            )
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+        resp = client.post(
+            "/api/apps/live-proj/launch",
+            json={"agent": "claude", "mode": "pty", "rows": 51, "cols": 99},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured["kind"] == "pty"
+        assert captured["port"] == cfg.session_host_port
+        assert captured["history_lines"] == 7321
+        assert (captured["rows"], captured["cols"]) == (51, 99)
+        # A normal session carries no role label; only the chief does.
+        assert captured["label"] == ""
+
     def test_launch_rejects_out_of_catalog_model(self, webapp_client, monkeypatch):
         """#1007 — a model whose provider prefix matches but whose value is
         not in the catalog is a 400, not a silent fallback.

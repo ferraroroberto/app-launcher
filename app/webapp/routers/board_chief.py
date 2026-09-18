@@ -62,7 +62,7 @@ from app.webapp.routers._helpers import (
     client_ip,
     maybe_json,
     safe_int,
-    spawn_session_or_400,
+    spawn_launcher_session,
 )
 from app.webapp.routers.board_spawn import (
     _agent_and_flags,
@@ -703,21 +703,12 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             )
         else:
             agent, flags = _agent_and_flags(cfg, cfg.chief_model)
-        session = await spawn_session_or_400(
-            spawn_claude_session,
-            Path(entry.project_dir),
-            _CHIEF_LABEL,
-            flags,
-            cfg.session_host_port,
-            "pty",
-            agent,
-            rows,
-            cols,
-            history_lines=cfg.terminal_history_lines,
+        session, sid = await spawn_launcher_session(
+            spawn_claude_session, cfg,
+            project_dir=Path(entry.project_dir), name=_CHIEF_LABEL,
+            flags=flags, agent=agent, rows=rows, cols=cols,
             label=_CHIEF_LABEL,
         )
-
-        sid = str(session.get("session_id") or "")
         if resumed_session_id:
             await asyncio.to_thread(
                 _refresh_chief_pointer_after_resume,

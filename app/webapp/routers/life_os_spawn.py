@@ -32,7 +32,7 @@ from src.webapp_config import WebappConfig
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     safe_int,
-    spawn_session_or_400,
+    spawn_launcher_session,
 )
 
 # The launch choice comes from the same provider-qualified catalog used by
@@ -112,20 +112,11 @@ async def _spawn_skill_session(
     # Coding-tab launch route (issue #126); ignored for kind="remote".
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
-    session = await spawn_session_or_400(
-        spawn_claude_session,
-        life_os_dir,
-        name,
-        flags,
-        cfg.session_host_port,
-        kind,
-        agent,
-        rows,
-        cols,
-        history_lines=cfg.terminal_history_lines,
+    session, sid = await spawn_launcher_session(
+        spawn_claude_session, cfg,
+        project_dir=life_os_dir, name=name, flags=flags, agent=agent,
+        rows=rows, cols=cols, kind=kind,
     )
-
-    sid = str(session.get("session_id") or "")
     # The shared audit+mirror tail (#1003). This used to be a second,
     # parallel copy of _helpers.audit_session_start_and_maybe_mirror,
     # differing only in the remote-kind event name, the resume_sid field and
