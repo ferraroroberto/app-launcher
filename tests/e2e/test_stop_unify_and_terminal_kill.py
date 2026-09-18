@@ -70,12 +70,13 @@ def test_terminal_view_has_back_arrow_and_session_menu(
     )
     expect(pty_row).to_be_visible(timeout=8_000)
 
-    # The row itself carries no stop control at all since #1025, which took
-    # the whole actions rail with the gear: the unified 🛑 (issue #253) is
-    # reached in the ⋮ menu asserted below, and is the only stop anywhere.
-    expect(pty_row.locator(".action-stop-close")).to_have_count(0)
+    # The row's stop is the one inside its kebab menu (#1025) — the unified
+    # 🛑 (issue #253). It is never a control loose on the row itself, and
+    # the menu stays closed until the kebab is tapped.
+    expect(pty_row.locator(".session-menu .action-stop-close")).to_have_count(1)
+    expect(pty_row.locator(".session-menu")).to_be_hidden()
     expect(pty_row.locator(".action-stop:not(.action-stop-close)")).to_have_count(0)
-    expect(pty_row.locator(".row-actions")).to_have_count(0)
+    expect(pty_row.locator(".row-actions > .action-stop-close")).to_have_count(0)
 
     pty_row.locator(".session-open").click()
     authed_page.wait_for_selector(
@@ -96,7 +97,8 @@ def test_terminal_view_has_back_arrow_and_session_menu(
     expect(menu.locator(".row-menu-label")).to_have_text(
         ["Rename", "Copy link", "Stop and kill"]
     )
-    # The unified stop (#253) lives here and nowhere else.
+    # The overlay's own copy of the unified stop (#253) — the same path the
+    # row menu's Stop calls, reached from inside the session view.
     expect(menu.locator(".action-stop-close")).to_have_count(1)
     expect(authed_page.locator("#terminalMenu")).to_have_attribute(
         "aria-expanded", "true"
