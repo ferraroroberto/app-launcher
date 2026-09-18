@@ -186,6 +186,70 @@ def test_claude_entries_caps_long_bodies(tmp_path: Path, monkeypatch):
     assert entries[1]["result"] == "01234" and entries[1]["result_truncated"] is True
 
 
+def test_claude_error_result_is_marked_and_a_clean_one_is_not(tmp_path: Path):
+    """Claude states the outcome outright, so both polarities are pinned
+    (#1020). The flag is written **only** when true: its absence has to keep
+    meaning "not reported as failed" for the flavours that cannot tell, so a
+    reader must never emit ``error: False`` as a success claim."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _assistant([_tool_use("Read", {"file_path": "a.md"}, "t1")], msg_id="m1"),
+        _user([dict(_tool_result("t1", "file body"))]),
+        _assistant([_tool_use("Read", {"file_path": "gone.md"}, "t2")], msg_id="m2"),
+        _user([dict(_tool_result("t2", "File does not exist."), is_error=True)]),
+    ])
+    entries = _parse_whole(path)
+    assert _kinds(entries) == ["tool_call", "tool_call"]
+    assert "error" not in entries[0]
+    assert entries[1]["error"] is True and entries[1]["result"] == "File does not exist."
+
+
+def test_orphan_error_result_keeps_its_flag(tmp_path: Path):
+    """A failed result whose call fell off the page stands alone — and is
+    still marked, or the page would show the failure as ordinary output."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _user([dict(_tool_result("ghost", "boom"), is_error=True)]),
+    ])
+    entries = _parse_whole(path)
+    assert _kinds(entries) == ["tool_result"]
+    assert entries[0]["error"] is True
+
+
+def test_codex_failure_is_left_unmarked_not_guessed(tmp_path: Path):
+    """Codex records no outcome field, so the reader marks nothing (#1020).
+
+    A failing call and a working one differ only in the English word inside
+    ``output`` — "Script failed" vs "Script completed" — and reading that
+    would be the first content-sniffing rule in any reader here. The flavour
+    declares ``none`` instead, which is what makes the client say "can't
+    tell" rather than letting silence read as success.
+    """
+    path = _write_jsonl(tmp_path / "rollout.jsonl", [
+        _codex({"type": "function_call", "name": "shell",
+                "arguments": '{"command": "grep -r x ."}', "call_id": "c1"}),
+        _codex({"type": "function_call_output", "call_id": "c1",
+                "output": "Script failed\nOutput:\nrg: regex parse error"}),
+    ])
+    entries = _parse_whole(path, st.codex_entries)
+    assert _kinds(entries) == ["tool_call"]
+    assert "error" not in entries[0]
+    assert "regex parse error" in entries[0]["result"]
+    assert st.FLAVORS["codex"][2] == st.TOOL_ERRORS_NONE
+
+
+def test_every_flavour_declares_its_tool_error_fidelity():
+    """The declaration rides in the ``FLAVORS`` row rather than in a table
+    beside it, so a new harness cannot be added without answering "can this
+    one tell a failed call from a working one?" — and cannot silently
+    default to the answer that hides failures."""
+    allowed = {st.TOOL_ERRORS_REPORTED, st.TOOL_ERRORS_PARTIAL, st.TOOL_ERRORS_NONE}
+    for name, row in st.FLAVORS.items():
+        assert len(row) == 3, name
+        assert row[2] in allowed, (name, row[2])
+    # Every agent the endpoint offers Chat mode for is covered.
+    from app.webapp.routers.session_transcript import _FLAVOR_BY_AGENT
+    assert set(_FLAVOR_BY_AGENT.values()) == set(st.FLAVORS)
+
+
 def test_unknown_tool_result_stands_alone(tmp_path: Path):
     path = _write_jsonl(tmp_path / "t.jsonl", [
         _user([_tool_result("ghost", "orphan output")]),
@@ -306,7 +370,9 @@ def test_missing_file_raises_oserror(tmp_path: Path):
 def test_empty_file_is_an_empty_page(tmp_path: Path):
     path = tmp_path / "empty.jsonl"
     path.write_bytes(b"")
-    assert st.transcript_page(path) == {"entries": [], "next_cursor": None}
+    assert st.transcript_page(path) == {
+        "entries": [], "next_cursor": None, "tool_errors": "reported",
+    }
 
 
 def test_page_exposes_offset_on_turns_only(tmp_path: Path):
@@ -454,7 +520,8 @@ def test_grok_entries_grammar_from_capture():
     """The real capture, parsed whole: the grammar and the turn order."""
     entries = _parse_whole(GROK_CAPTURE, st.grok_entries)
     assert _kinds(entries) == [
-        "user", "thinking", "assistant", "tool_call", "thinking", "assistant"
+        "user", "thinking", "assistant", "tool_call", "thinking", "assistant",
+        "user", "tool_call", "assistant",          # the failing read (#1020)
     ]
     assert entries[0]["text"].startswith("Use exactly one read-only tool call")
     # The tool call: name from `title`, summary from `rawInput`, and the
@@ -463,7 +530,7 @@ def test_grok_entries_grammar_from_capture():
     assert entries[3]["summary"].endswith("docs")
     assert "architecture.mmd" in entries[3]["result"]
     # `hook_execution` and `turn_completed` carry no text and are dropped.
-    assert len(entries) == 6
+    assert len(entries) == 9
 
 
 def test_grok_message_runs_either_side_of_a_tool_stay_separate():
@@ -475,12 +542,15 @@ def test_grok_message_runs_either_side_of_a_tool_stay_separate():
     consecutive chunks merge — these two must stay two entries, in order.
     """
     entries = _parse_whole(GROK_CAPTURE, st.grok_entries)
-    assistants = [e for e in entries if e["kind"] == "assistant"]
+    # The first turn only — the capture gained a second exchange with #1020's
+    # failing read, whose own reply would otherwise be counted here.
+    first_turn = entries[:6]
+    assistants = [e for e in first_turn if e["kind"] == "assistant"]
     assert len(assistants) == 2
     assert assistants[0]["text"].startswith("I'll list the `docs` folder")
     assert assistants[1]["text"].startswith("The `docs` folder")
     # …and the tool call sits between them, not after both.
-    assert _kinds(entries).index("tool_call") == 3
+    assert _kinds(first_turn).index("tool_call") == 3
 
 
 def test_grok_long_reply_arrives_as_one_chunk():
@@ -493,7 +563,9 @@ def test_grok_long_reply_arrives_as_one_chunk():
     rows = [json.loads(line) for line in GROK_CAPTURE.read_text(encoding="utf-8").splitlines() if line.strip()]
     replies = [r for r in rows
                if r["params"]["update"].get("sessionUpdate") == "agent_message_chunk"]
-    answer = replies[-1]
+    # The long reply is the first turn's answer; the capture's later
+    # exchange (#1020's failing read) ends in a one-line reply.
+    answer = replies[1]
     text = answer["params"]["update"]["content"]["text"]
     assert text.count("\n\n") >= 2 and len(text) > 2_000   # three paragraphs, one line
     assert answer["params"]["_meta"]["chunkId"] > 100      # …folded from many stream chunks
@@ -560,6 +632,47 @@ def test_grok_tool_result_sources_and_textless_completion(tmp_path: Path):
     assert entries[0]["result"] == "file body"
     assert entries[1]["result"] == "- a.md\n- b.md"
     assert entries[2]["result"] == "(SchedulerList: no text output)"
+
+
+def test_grok_failed_call_keeps_its_result_and_is_marked(tmp_path: Path):
+    """The regression this fixes twice over (#1020).
+
+    Grok reports a failed tool call as ``status: "failed"`` — a value the
+    reader had never seen, because the 19 ``tool_call_update`` records on
+    disk when it was written were all ``completed``. It therefore attached a
+    result only on ``completed``, so a *failed* call's result was dropped
+    entirely and rendered "no result on this page": the error text the user
+    most needed was the one thing the page could not show.
+    """
+    entries = _parse_whole(GROK_CAPTURE, st.grok_entries)
+    failed = entries[7]
+    assert failed["kind"] == "tool_call" and failed["name"] == "read_file"
+    assert failed["result"].startswith("Error: ")
+    assert failed["error"] is True
+    # The working call in the same capture stays unmarked.
+    assert "error" not in entries[3]
+
+
+def test_grok_in_flight_status_never_occupies_the_result_slot(tmp_path: Path):
+    """``pending``/``in_progress`` are progress, not results. Attaching one
+    would fill the call's single result slot and lock the real result out —
+    the reason the status set is an explicit pair rather than "anything but
+    the status-less half"."""
+    path = _write_jsonl(tmp_path / "updates.jsonl", [
+        _grok({"sessionUpdate": "tool_call", "toolCallId": "t1",
+               "title": "read_file", "rawInput": {"target_file": "~/x.md"}}),
+        _grok({"sessionUpdate": "tool_call_update", "toolCallId": "t1",
+               "status": "in_progress",
+               "content": [{"type": "content",
+                            "content": {"type": "text", "text": "reading…"}}]}),
+        _grok({"sessionUpdate": "tool_call_update", "toolCallId": "t1",
+               "status": "failed",
+               "content": [{"type": "content",
+                            "content": {"type": "text", "text": "boom"}}]}),
+    ])
+    entries = _parse_whole(path, st.grok_entries)
+    assert len(entries) == 1
+    assert entries[0]["result"] == "boom" and entries[0]["error"] is True
 
 
 def test_grok_status_less_tool_update_is_not_a_result(tmp_path: Path):
@@ -687,14 +800,17 @@ def test_pi_one_line_carries_a_whole_message():
     assert sum(1 for e in at_offset if st._is_turn(e)) == 1
 
 
-def test_pi_failed_tool_result_still_pairs_with_its_call():
-    """A failed call (``isError: true``) attaches like any other — the
-    ``Entry`` contract has no error field, so the failure reads as the
-    tool's own message rather than being dropped."""
+def test_pi_failed_tool_result_pairs_and_is_marked():
+    """A failed call (``isError: true``) attaches like any other *and*
+    carries the flag (#1020). The capture holds both polarities — the
+    ``bash`` call succeeded with ``isError: false`` — so this pins that the
+    flag follows the record rather than being set for every result."""
     entries = _parse_whole(PI_CAPTURE, st.pi_entries)
     failed = entries[8]
     assert failed["kind"] == "tool_call" and failed["name"] == "read"
     assert failed["result"].startswith("ENOENT: no such file or directory")
+    assert failed["error"] is True
+    assert "error" not in entries[2]           # `isError: false`, same capture
 
 
 def test_pi_thinking_signature_never_reaches_an_entry():
@@ -862,6 +978,7 @@ def test_antigravity_entries_grammar_from_capture():
         "user", "thinking", "tool_call", "thinking", "assistant",
         "user", "thinking", "tool_call", "assistant",
         "user", "thinking", "assistant",          # the leaked Stop turn (#1016)
+        "user", "thinking", "tool_call", "assistant",   # the ERROR step (#1020)
     ]
     assert entries[0]["text"].startswith("List the files in the current folder")
     # The tool call: name from the step's `tool_calls`, summary from its
@@ -873,10 +990,17 @@ def test_antigravity_entries_grammar_from_capture():
     # The harness's own timing header never reaches the card.
     assert "Created At:" not in entries[2]["result"]
     assert entries[4]["text"].count("\n\n") >= 2          # the multi-paragraph reply
-    # A failed tool call is not distinguishable from a successful one
-    # (#1020): same `status: "DONE"`, the failure only in English prose.
+    # Antigravity's two failure shapes, the reason this flavour is
+    # `partial` (#1020). A shell command exiting non-zero is `status:
+    # "DONE"` — indistinguishable from a working call except in English
+    # prose, so it is deliberately left unmarked...
     assert entries[7]["name"] == "run_command"
     assert "exited with code 1" in entries[7]["result"]
+    assert "error" not in entries[7]
+    # ...while a tool that could not run at all is `status: "ERROR"`, which
+    # is structural and is marked.
+    assert entries[14]["name"] == "view_file"
+    assert entries[14]["error"] is True
     assert entries[9]["text"] == "quit"
 
 
@@ -1214,6 +1338,7 @@ def test_copilot_entries_grammar_from_capture():
         "user", "tool_call", "assistant",
         "user", "thinking", "tool_call", "assistant",
         "user", "thinking", "assistant",
+        "user", "tool_call", "assistant",         # the failing view (#1020)
     ]
     # The launcher's model flag is rejected at startup (#1017) — folded, not
     # dropped, so the reason is visible rather than mysterious.
@@ -1234,12 +1359,22 @@ def test_copilot_entries_grammar_from_capture():
     call, reply = raw[2], raw[3]
     assert call["kind"] == "tool_call" and reply["kind"] == "assistant"
     assert call["offset"] < reply["offset"]
-    # A command that exits 1 is still `success: true` — the tool ran fine
-    # (#1020). The exit-code footer is the only signal there is, so it stays.
+    # Copilot's two outcome fields, at two levels — both needed (#1020).
+    # A command that exits 1 is still `success: true` (the *tool* ran fine),
+    # so the failure is read from `shellExecution.exitCode`. The exit-code
+    # footer stays in the card text too.
     assert entries[6]["summary"] == "git rev-parse --short NO_SUCH_REF_xyz"
     assert "exit code 1" in entries[6]["result"]
+    assert entries[6]["error"] is True
+    assert "error" not in entries[2]           # exitCode 0, same capture
     assert entries[7]["text"] == "fatal: Needed a single revision"
     assert entries[10]["text"].count("\n\n") == 2       # the multi-paragraph reply
+    # A *tool*-level failure is the other shape: `success: false` with an
+    # `error` object and **no `result` key at all** — so the card's text has
+    # to come from `error.message`, or a failed call renders blank.
+    assert entries[12]["name"] == "view"
+    assert entries[12]["error"] is True
+    assert entries[12]["result"] == "Path does not exist"
 
 
 def test_copilot_plumbing_never_reaches_a_card():
@@ -1260,7 +1395,7 @@ def test_copilot_plumbing_never_reaches_a_card():
     assert "OPAQUE_MUST_NEVER_RENDER" not in blob
     # Exactly one tool card per call — `toolRequests` on the assistant
     # message is the same call again and must not double it.
-    assert _kinds(entries).count("tool_call") == 2
+    assert _kinds(entries).count("tool_call") == 3
 
 
 def test_copilot_user_prompt_is_the_typed_text_not_the_wrapped_one(tmp_path: Path):
@@ -1761,8 +1896,11 @@ class TestTranscriptEndpoint:
         )
         body = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert body["available"] is True and body["source"] == "grok"
+        assert body["tool_errors"] == "reported"
         assert [e["kind"] for e in body["entries"]][:3] == ["user", "thinking", "assistant"]
-        entry = [e for e in body["entries"] if e["kind"] == "assistant"][-1]
+        # The first exchange's answer — the capture's last assistant belongs
+        # to #1020's failing-read exchange, which is one short line.
+        entry = [e for e in body["entries"] if e["kind"] == "assistant"][1]
         full = client.get(
             f"/api/claude-code/sessions/s1/transcript/entry?offset={entry['offset']}"
         ).json()
@@ -1800,8 +1938,12 @@ class TestTranscriptEndpoint:
         )
         body = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert body["available"] is True and body["source"] == "copilot"
+        # Copilot cannot mark every failure, and the page says so (#1020).
+        assert body["tool_errors"] == "partial"
         assert [e["kind"] for e in body["entries"]][:3] == ["system", "user", "tool_call"]
-        entry = [e for e in body["entries"] if e["kind"] == "assistant"][-1]
+        # The no-tools reply — the capture's last assistant belongs to
+        # #1020's failing-view exchange, which is one short line.
+        entry = [e for e in body["entries"] if e["kind"] == "assistant"][2]
         full = client.get(
             f"/api/claude-code/sessions/s1/transcript/entry?offset={entry['offset']}"
         ).json()

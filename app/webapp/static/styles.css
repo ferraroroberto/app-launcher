@@ -2237,6 +2237,34 @@ summary + .opt-group { border-top: 0; }
   text-overflow: ellipsis;
 }
 .tr-item-body { padding-bottom: 12px; }
+/* A failed tool call (#1020). --danger is a state color, and a call that
+   errored is state — but it stays a row-level mark, never a banner: the
+   glyph turns red and one small tinted chip sits beside the name, which is
+   flex:none so it survives the hint's ellipsis at 390px. */
+.tr-item-failed > summary .icon { color: var(--danger); }
+.tr-fail-chip,
+.tr-fail-count {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgb(from var(--danger) r g b / 0.12);
+  color: var(--danger);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  line-height: 1.5;
+}
+/* Same chip on the closed group header, so a failure is legible without
+   unfolding — the vendored .collapse-main lays its children out on the
+   title's baseline. */
+.tr-fail-count { align-self: center; }
+/* The third state: the harness never recorded this call's outcome. Muted
+   body text, deliberately not a status color — "nobody can tell" is not a
+   failure, and dressing it as one would be the same lie in reverse. */
+.tr-outcome-unknown {
+  color: var(--muted);
+  font-size: var(--font-caption);
+  line-height: 1.4;
+}
 .tr-pre {
   margin: 0 0 8px;
   padding: 8px 10px;
