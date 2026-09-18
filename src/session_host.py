@@ -144,6 +144,34 @@ STOP_KILL = "kill"            # force-terminate the ConPTY
 # stays under the session-client stop timeout.
 _STOP_GRACE_SECONDS = 5.0
 
+# Beat between the three keystrokes STOP_QUIT types (issue #1016). The quit
+# command is ESC, then "/quit", then the submitting CR — three separate
+# writes with this pause between them, never one burst. Two distinct races
+# make the burst wrong, and both were measured through the real launcher
+# path against all six agents, reading each harness's own composer *before*
+# any CR (so no model turn was spent):
+#
+#   1. ESC immediately followed by "/" is ambiguous at the terminal layer:
+#      a TUI that binds Alt-keys reads "ESC <char>" arriving together as one
+#      meta-key press, and swallows the slash. Pi 0.84.4, Antigravity 1.2.5
+#      and Copilot 1.0.86 all do; the harness then sees a bare "quit" and
+#      answers it as a prompt (Pi's threshold measured here: eaten at 25 ms,
+#      intact at 50 ms). Claude and Grok happen not to — which is why this
+#      looked like a two-harness quirk rather than the protocol-level
+#      ambiguity it is.
+#   2. The command and its CR in one write race the slash-command popup:
+#      Codex 0.154.0 leaves "/quit" sitting in an open popup and never acts
+#      on the CR, so *every* Codex stop fell through to the force-terminate
+#      below. This is the same lesson submit_input learned in #611/#760 —
+#      the submitting CR is always its own write.
+#
+# A fixed pause, not submit_input's quiet-window settle: ESC produces little
+# or no output, so waiting for quiet would return before the harness's
+# escape-timeout expired and fix nothing. 250 ms clears every threshold
+# measured (and the ~100 ms xterm/crossterm/bubbletea defaults) with room to
+# spare, and the two beats together cost 0.5 s of the 5 s grace window.
+_STOP_KEY_SETTLE_SECONDS = 0.25
+
 # Session kinds. "pty" is a launcher-owned ConPTY streamed to the phone;
 # "remote" is a detached console window the launcher only tracks (no PTY,
 # no scrollback, no WebSocket — the Claude cloud app drives it).
@@ -560,7 +588,10 @@ class PtySession(InputProtocol):
         return self._vt.render()
 
     def stop(
-        self, mode: str = STOP_QUIT, grace_seconds: float = _STOP_GRACE_SECONDS
+        self,
+        mode: str = STOP_QUIT,
+        grace_seconds: float = _STOP_GRACE_SECONDS,
+        key_settle_seconds: float = _STOP_KEY_SETTLE_SECONDS,
     ) -> None:
         """Stop the session: graceful agent-own quit, then force-fallback.
 
@@ -568,7 +599,11 @@ class PtySession(InputProtocol):
         types the agent's *own* quit command — Claude's ``/quit``,
         Copilot's ``/exit``, … (see :func:`quit_command_for`) — after an
         ESC that clears any partial prompt, then waits up to
-        ``grace_seconds`` for the agent to exit on its own. The clean exit
+        ``grace_seconds`` for the agent to exit on its own. Those are three
+        keystrokes, not one burst: ESC, the command, the submitting CR, with
+        ``key_settle_seconds`` between them so neither the ESC nor the
+        command runs into what follows it (see
+        ``_STOP_KEY_SETTLE_SECONDS``, issue #1016). The clean exit
         lets the agent run its shutdown path (Claude Code SessionEnd hooks,
         transcript finalisation, …) deterministically, rather than relying
         on the abnormal console-close path a bare force-terminate triggers.
@@ -597,10 +632,19 @@ class PtySession(InputProtocol):
             if mode == STOP_KILL:
                 self._pty.terminate(force=True)
             else:  # STOP_QUIT — graceful, agent-appropriate, with fallback.
-                # ESC clears any partial input so the quit command lands on
-                # an empty prompt.
+                # Three keystrokes, each its own write, with a beat between
+                # (issue #1016): ESC clears any partial input so the quit
+                # command lands on an empty prompt; the beat after it stops
+                # the leading "/" being read as part of a meta-key sequence;
+                # the beat before the CR lets the harness's slash-command
+                # popup open so the CR submits the command instead of being
+                # swallowed. Bytes and order are unchanged — only the gaps
+                # are new.
                 self._pty.write("\x1b")
-                self._pty.write(quit_command_for(self.agent) + "\r")
+                time.sleep(key_settle_seconds)
+                self._pty.write(quit_command_for(self.agent))
+                time.sleep(key_settle_seconds)
+                self._pty.write("\r")
                 deadline = time.monotonic() + max(0.0, grace_seconds)
                 while time.monotonic() < deadline:
                     if not self.alive:
