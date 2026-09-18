@@ -342,7 +342,12 @@ export function mountComposer(host, opts) {
     ev.stopImmediatePropagation();
     el.attachInput.click();
   });
-  const imageMenu = createRowMenu('composer-menu');
+  // Floated against the composer while open (#996): the Board drawer mounts
+  // this composer inside the column carousel, and an absolutely-positioned
+  // menu rising above the *top* card's drawer was clipped by that scroller.
+  const imageMenu = createRowMenu('composer-menu', {
+    placeAgainst: function () { return host; },
+  });
   const menu = imageMenu.attach('image', el.image, [
     {
       glyph: 'image', label: _LABEL_ATTACH, text: _LABEL_ATTACH,

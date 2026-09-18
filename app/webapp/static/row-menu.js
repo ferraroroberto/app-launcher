@@ -14,11 +14,28 @@
  * anchor's positioned box (`.project-menu` drops below the row's
  * `.row-actions` rail, `.terminal-menu` below the overlay bar — see
  * styles.css).
+ *
+ * `createRowMenu(cls, { placeAgainst })` opts a menu out of that clipping
+ * (#996). An absolutely-positioned menu is clipped by any scrolling
+ * ancestor, and the shared composer is mounted inside the Board drawer,
+ * which lives in the column carousel — whose `overflow-x: auto` forces
+ * `overflow-y: auto`, so the image menu rising above the *top* card's
+ * drawer lost its top edge to that box. `placeAgainst()` returns the
+ * element the menu floats against (the composer); while open the menu
+ * switches to `position: fixed`, whose containing block is the viewport, so
+ * no ancestor's overflow can clip it — the same escape the model combo's
+ * portal uses (dom-utils.js), minus the move to <body>, so the menu stays
+ * inside its mount and mount-scoped selectors keep working. The CSS stays
+ * the one source of the geometry: the offset from that element is measured
+ * once per open, from where the CSS put the menu.
  */
 
 import { escapeHtml } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
+
+// Keep a viewport-placed menu this far inside the screen edges.
+const _EDGE = 8;
 
 // An item property may be a plain value or a function of no arguments,
 // re-evaluated every time the menu opens (#982: the terminal bar's menu
@@ -59,12 +76,20 @@ function menuButton(item, close) {
 
 // `menuClass` names the placement variant (`project-menu` / `terminal-menu`)
 // and is the class the caller's CSS and tests key on.
-export function createRowMenu(menuClass) {
+export function createRowMenu(menuClass, opts) {
+  // () → the element an unclipped menu floats against, or null for the
+  // default absolute placement (see the header).
+  const placeAgainst = (opts && opts.placeAgainst) || null;
   let openKey = null;
   let openAnchor = null;
   let openMenu = null;
   let disposeOutside = null;
   let reopened = false;
+  // While a menu is viewport-placed: the element it floats against and the
+  // offset from that element's top-left the CSS asked for.
+  let floatBox = null;
+  let floatOffset = null;
+  let floatFrame = null;
   // menu element → its render function (re-evaluates hidden/text/label).
   const renderers = new WeakMap();
 
@@ -72,11 +97,89 @@ export function createRowMenu(menuClass) {
     if (ev.key === 'Escape') close();
   }
 
+  // Re-apply the CSS-derived offset in viewport coordinates. A fixed menu no
+  // longer travels with its anchor, so this runs again whenever anything
+  // moves the box underneath it.
+  function place() {
+    floatFrame = null;
+    if (!floatBox || !openMenu || openMenu.hidden) return;
+    const box = floatBox.getBoundingClientRect();
+    const menuRect = openMenu.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    // Clamp rather than flip: the offset already encodes the side the CSS
+    // chose, and a two-row menu only ever needs nudging back on screen.
+    const top = Math.min(
+      Math.max(_EDGE, box.top + floatOffset.dy),
+      Math.max(_EDGE, vh - _EDGE - menuRect.height)
+    );
+    const left = Math.min(
+      Math.max(_EDGE, box.left + floatOffset.dx),
+      Math.max(_EDGE, vw - _EDGE - menuRect.width)
+    );
+    openMenu.style.top = Math.round(top) + 'px';
+    openMenu.style.left = Math.round(left) + 'px';
+  }
+
+  function schedulePlace() {
+    if (floatFrame != null) return;
+    floatFrame = requestAnimationFrame(place);
+  }
+
+  function bindPlacement(bind) {
+    const on = bind ? 'addEventListener' : 'removeEventListener';
+    window[on]('resize', schedulePlace);
+    // Capture: the page, the column carousel and the transcript list are all
+    // scrollers that move the box without bubbling a scroll event.
+    document[on]('scroll', schedulePlace, true);
+    if (window.visualViewport) {
+      window.visualViewport[on]('resize', schedulePlace);
+      window.visualViewport[on]('scroll', schedulePlace);
+    }
+  }
+
+  // Lift the just-shown menu out of every ancestor's overflow, keeping it
+  // exactly where its own CSS put it.
+  function floatMenu(menu) {
+    const box = placeAgainst && placeAgainst();
+    if (!box) return;
+    const boxRect = box.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    floatBox = box;
+    floatOffset = { dx: menuRect.left - boxRect.left, dy: menuRect.top - boxRect.top };
+    menu.classList.add('row-menu--fixed');
+    // Inline, not in that class: a caller's placement CSS sets `bottom` /
+    // `right` (`.composer-menu`), and leaving either alongside the `top` /
+    // `left` written below over-constrains the box — an auto-sized element
+    // given both edges stretches to span them instead of keeping its own
+    // size. Inline wins over the caller's rule wherever that rule sits.
+    menu.style.bottom = 'auto';
+    menu.style.right = 'auto';
+    place();
+    bindPlacement(true);
+  }
+
+  function unfloatMenu(menu) {
+    if (!floatBox) return;
+    floatBox = null;
+    floatOffset = null;
+    if (floatFrame != null) { cancelAnimationFrame(floatFrame); floatFrame = null; }
+    bindPlacement(false);
+    menu.classList.remove('row-menu--fixed');
+    menu.style.top = '';
+    menu.style.left = '';
+    menu.style.bottom = '';
+    menu.style.right = '';
+  }
+
   function close() {
     openKey = null;
     if (disposeOutside) { disposeOutside(); disposeOutside = null; }
     document.removeEventListener('keydown', onKey);
-    if (openMenu) openMenu.hidden = true;
+    if (openMenu) {
+      openMenu.hidden = true;
+      unfloatMenu(openMenu);
+    }
     if (openAnchor) openAnchor.setAttribute('aria-expanded', 'false');
     openMenu = null;
     openAnchor = null;
@@ -90,6 +193,9 @@ export function createRowMenu(menuClass) {
     const render = renderers.get(menu);
     if (render) render();
     menu.hidden = false;
+    // Synchronous, before the browser paints the unhidden menu, so the
+    // absolute placement it is measured from is never seen.
+    floatMenu(menu);
     anchor.setAttribute('aria-expanded', 'true');
     if (disposeOutside) disposeOutside();
     disposeOutside = bindOutsideClickToClose(menu, anchor, close);

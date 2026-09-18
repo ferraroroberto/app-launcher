@@ -1555,3 +1555,103 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
                 f"desktop {name} should share the filter's line: "
                 f"{name} y={box['y']}, filter y={filter_box['y']}"
             )
+
+
+# The shortest drawer a live session can produce: the reader found one side of
+# the exchange only (a session prompted but not yet answered, or one whose user
+# turn it could not recover). The `.board-exchange` block is then a single line
+# instead of two, which is what lifts the composer — and the image menu above
+# it — highest against the top of the column carousel.
+_ONE_SIDED_EXCHANGE = {
+    "available": True,
+    "source": "native",
+    "reason": None,
+    "user": {"text": "fix the merge", "timestamp": "2026-07-02T11:50:00Z"},
+    "assistant": None,
+}
+
+
+def _status_with_ocr(route) -> None:
+    """photo-ocr configured, so the image button opens its two-row menu
+    instead of going straight to the file picker (#980)."""
+    resp = route.fetch()
+    body = resp.json()
+    body["screenshot_ocr"] = True
+    route.fulfill(response=resp, json=body)
+
+
+def test_drawer_image_menu_is_not_clipped_above_a_top_of_column_card(
+    authed_page: Page, base_url: str
+) -> None:
+    """#996: the shared composer's image menu floats *above* the composer
+    (`.composer-menu`), and #984 mounted that composer inside the Board
+    drawer — which lives in the column carousel, whose `overflow-x: auto`
+    forces `overflow-y: auto` on the same box. For the **top** card of a
+    column the carousel's top edge is the card's own top edge, so with the
+    shortest drawer the menu's upper edge landed 2-3px above it and was
+    painted away (measured on the iPhone projection; the desktop grid drops
+    the horizontal overflow, so it never clipped there).
+
+    The fix floats the menu in viewport coordinates while it is open, which
+    no ancestor's overflow clips. Asserted the way the user sees it — the
+    menu's own top edge is painted — and paired with the placement it must
+    keep, so the desktop projection pins that the fix moved nothing.
+    """
+    authed_page.route(re.compile(r".*/api/status$"), _status_with_ocr)
+    _mock_board(authed_page)
+    _mock_exchange(authed_page, payload=_ONE_SIDED_EXCHANGE)
+    _open_board(authed_page, base_url)
+
+    authed_page.locator(
+        '.board-list[data-col="your_turn"] li.board-item'
+    ).first.locator("button.board-card").click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    # The OCR option (and so the menu) appears only once /api/status lands,
+    # which it may do after the drawer is built.
+    authed_page.wait_for_function(
+        "() => { const b = document.querySelector('.board-drawer .composer-image');"
+        " return !!b && b.classList.contains('has-options'); }",
+        timeout=15_000,
+    )
+    drawer.locator(".composer-image").click()
+    menu = drawer.locator(".composer-menu")
+    expect(menu).to_be_visible()
+
+    measured = stable_read(lambda: authed_page.evaluate(
+        """() => {
+          const menu = document.querySelector('.board-drawer .composer-menu');
+          const composer = document.querySelector('.board-drawer .composer');
+          if (!menu || !composer) return null;
+          const m = menu.getBoundingClientRect();
+          const c = composer.getBoundingClientRect();
+          // Hit-test the menu's own top edge: a clipped menu is not painted
+          // there, and elementFromPoint answers with whatever is behind it.
+          const hit = document.elementFromPoint(m.left + m.width / 2, m.top + 1);
+          return {
+            paintedAtOwnTop: !!hit && menu.contains(hit),
+            behind: hit ? (hit.className || hit.tagName) : null,
+            topInViewport: m.top >= 0,
+            // Placement the CSS asks for: sitting just above the composer,
+            // right-aligned inside it.
+            sitsAboveComposer: m.bottom <= c.top,
+            gapAboveComposer: c.top - m.bottom,
+            rightInset: c.right - m.right,
+          };
+        }"""
+    ))
+    assert measured, "drawer composer menu not laid out"
+    assert measured["paintedAtOwnTop"], (
+        "the image menu's top edge is clipped by the column carousel "
+        f"(painted there instead: {measured['behind']})"
+    )
+    assert measured["topInViewport"], "the image menu runs off the top of the screen"
+    assert measured["sitsAboveComposer"], (
+        f"the image menu must stay above the composer: {measured}"
+    )
+    assert 0 <= measured["gapAboveComposer"] <= 12, (
+        f"the image menu drifted away from the composer: {measured}"
+    )
+    assert 0 <= measured["rightInset"] <= 20, (
+        f"the image menu is no longer right-aligned in the composer: {measured}"
+    )
