@@ -136,8 +136,6 @@ def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
     Coding tab's already-disabled button.
     """
     provider, separator, model_value = model.partition(":")
-    if model == "gpt5.6":
-        provider, model_value, separator = "codex", "gpt-5.6-sol", ":"
     if not separator:
         # Preserve old Claude callers while the explicit provider values roll out.
         provider, model_value = "claude", model

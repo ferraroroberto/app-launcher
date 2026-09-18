@@ -63,10 +63,19 @@ def _source(
 
 
 def _read(monkeypatch, snapshot: dict, selection: str, legacy=None) -> dict:
+    """Build one view from ``snapshot``, through the code the app runs.
+
+    This used to go via ``read_quota_view``, which had no production caller
+    (#1004) — eight of this module's tests were exercising a wrapper nothing
+    reached. They cover ``_view_from_snapshot``, which the live entry point
+    ``read_quota_lines`` *does* reach, so the coverage is real and worth
+    keeping; only the dead wrapper in front of it is gone. Calling the core
+    directly keeps every assertion below pointed at code that runs.
+    """
     monkeypatch.setattr(quota_usage, "_read_snapshot", lambda *_args: snapshot)
-    return quota_usage.read_quota_view(
-        Path("fleet"), Path("state"), selection,
-        legacy_reader=(lambda: legacy) if legacy is not None else None,
+    route = quota_usage.resolve_quota_route(selection)
+    return quota_usage._view_from_snapshot(
+        snapshot, route, (lambda: legacy) if legacy is not None else None
     )
 
 
@@ -170,12 +179,17 @@ def test_canonical_reader_failure_never_falls_back_to_legacy(monkeypatch):
         "five_hour": {"used_percentage": 12, "resets_at": 1788976800},
         "seven_day": None,
     }
-    view = quota_usage.read_quota_view(
-        Path("fleet"), Path("state"), "claude:opus", legacy_reader=lambda: legacy
+    # Through the live entry point since #1004 removed the unreachable
+    # ``read_quota_view`` wrapper this used to call. Asserting on the lines
+    # is stronger: ``read_quota_lines`` promises a failed contract read
+    # degrades *both* rows the same way, never silently one.
+    lines = quota_usage.read_quota_lines(
+        Path("fleet"), Path("state"), legacy_reader=lambda: legacy
     )
-    assert view["state"] == "error"
-    assert view["reason"] == "consumer_contract_unavailable"
-    assert view["observations"] == []
+    assert lines, "a contract failure must still yield one row per harness"
+    for line in lines:
+        assert line["state"] == "error", line
+        assert line["reason"] == "consumer_contract_unavailable", line
 
 
 def test_stale_reset_passed_evidence_stays_historical(monkeypatch):

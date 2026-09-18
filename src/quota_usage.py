@@ -203,26 +203,6 @@ def _legacy_view(
     return view
 
 
-def read_quota_view(
-    fleet_config_dir: Path,
-    state_dir: Path,
-    selection: str,
-    *,
-    pi_model: Optional[str] = None,
-    legacy_reader: Optional[Callable[[], Dict[str, Any]]] = None,
-) -> Dict[str, Any]:
-    """Return the exact selected source; another provider never substitutes."""
-    route = resolve_quota_route(selection, pi_model=pi_model)
-    if route.provider == "unknown":
-        return _empty_view(route, "unknown", "route_unverified")
-    try:
-        snapshot = _read_snapshot(fleet_config_dir, state_dir)
-    except (ImportError, OSError, AttributeError, TypeError, ValueError):
-        logger.info("Quota contract read unavailable")
-        return _empty_view(route, "error", "consumer_contract_unavailable")
-    return _view_from_snapshot(snapshot, route, legacy_reader)
-
-
 def _view_from_snapshot(
     snapshot: Dict[str, Any],
     route: QuotaRoute,
