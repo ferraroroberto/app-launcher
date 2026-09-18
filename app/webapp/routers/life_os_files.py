@@ -62,7 +62,7 @@ _CONVERSATIONS_INDEX = "index.json"
 # means the external pipeline's next run can silently overwrite or orphan
 # the index.json patch below.
 _CONVERSATIONS_INDEX_MD = "index.md"
-# Mirrors life_os_conversations._SEARCH_SCRIPT_REL — fleet-config's
+# fleet-config's
 # cross-skill search CLI, resolved per call so a Settings change to
 # claude_config_dir takes effect without a restart (#971).
 _SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
@@ -246,12 +246,19 @@ def _prune_index_md(resolved: Path) -> None:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
 
 
-def _search_cli(cfg: WebappConfig) -> Optional[List[str]]:
+def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
     """``[python, script]`` for fleet-config's search CLI, or ``None`` (#971).
 
-    Duplicated in shape from ``life_os_conversations._search_cli`` rather
-    than imported — this module is a deliberate leaf (see module docstring)
-    and the resolution is three lines.
+    Resolved per request from ``claude_config_dir`` (the fleet-config
+    checkout the Board already shells into) so pointing Settings at a
+    different checkout takes effect without a restart. ``None`` when either
+    half is missing — a machine without fleet-config still gets a working
+    Life OS tab, minus search.
+
+    The single copy (#1003). ``life_os_conversations`` used to carry a
+    byte-identical body and its own ``_SEARCH_SCRIPT_REL``; it already
+    imports :func:`resolve_within` from here, so the import edge ran in the
+    right direction and this module stays the leaf its docstring describes.
     """
     root = Path(cfg.claude_config_dir)
     script = root.joinpath(*_SEARCH_SCRIPT_REL)
@@ -278,7 +285,7 @@ def _resync_search_index(cfg: WebappConfig) -> None:
     every failure mode here (no checkout, locked db, slow machine) is logged
     and swallowed rather than failing the rename/delete that triggered it.
     """
-    cli = _search_cli(cfg)
+    cli = search_cli(cfg)
     if cli is None:
         return
     try:
