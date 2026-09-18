@@ -1256,3 +1256,21 @@ def wait_for_session_log() -> Callable[..., bool]:
         return _hit()
 
     return _wait
+
+
+@pytest.fixture
+def session_log_path() -> Callable[[str], Path]:
+    """Return ``sid -> <sessions dir>/<sid>.log``.
+
+    Same directory resolution as ``wait_for_session_log`` — autoboot temp dir
+    when the gate redirected it (issue #913), else the checkout's own
+    ``webapp/sessions`` — exposed for the assertions that must *count* logged
+    chunks rather than wait for one to appear (issue #1024: one Ctrl+C tap
+    delivers exactly one ``\\x03``, never two).
+    """
+
+    def _path(sid: str) -> Path:
+        sessions_dir = _AUTOBOOT_STATE.get("sessions_dir", _SESSIONS_DIR)
+        return sessions_dir / f"{sid}.log"
+
+    return _path
