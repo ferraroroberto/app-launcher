@@ -40,7 +40,6 @@ from src.webapp_config import (
     VALID_CLAUDE_MODELS,
     VALID_CODEX_EFFORTS,
     VALID_CODEX_MODELS,
-    VALID_COPILOT_MODELS,
     VALID_GROK_EFFORTS,
     VALID_PI_EFFORTS,
     VALID_PI_MODELS,
@@ -125,16 +124,39 @@ def build_codex_flags(
 def build_copilot_flags(cfg: WebappConfig) -> str:
     """Compose the `copilot` CLI flags from the persisted Copilot toggle.
 
-    The Copilot CLI chooses its model in-session, so the only
+    The Copilot CLI chooses its model **in-session**, so the only
     launch-relevant switch is ``--allow-all`` (enable every tool
     permission without prompting). An all-default config yields an empty
     string — the CLI is launched bare.
+
+    **No ``--model`` is sent, deliberately (issue #1017).** The launcher
+    used to append one from a hand-maintained catalogue, and the phone
+    then displayed a model the session was not running: Copilot resolves
+    the flag against the account's *entitlement* at launch and silently
+    falls back, printing one line that scrolls away — ``✗ Model "<id>"
+    from --model flag is not available. Using "auto" instead.``
+    Measured through the launcher's own launch route on Copilot 1.0.86,
+    five ids drawn from the CLI's own ``copilot help config`` list were
+    refused five times out of five (``gpt-5.6-luna``, ``gpt-5.6-sol``,
+    ``claude-sonnet-5``, ``claude-haiku-4.5``, ``gpt-5-mini``); the bare
+    launch was the only clean one — and the refusal is not about any
+    particular id: Copilot's own ``/model`` picker warns that *"the
+    --model argument will be overridden"*, names the plan as the reason,
+    and at the time of measuring listed every catalogue entry under its
+    **Unavailable models** heading.
+
+    So the flag's success is decided per launch by the account's plan,
+    which no list in this repo can predict and which changes without
+    anything here changing; asserting a model is the launcher claiming a
+    setting it never achieved. Copilot already owns this
+    choice properly: ``/model`` for the session and ``/config model``
+    for the default, both of which show live what the plan actually
+    allows. The launcher stays out of it, exactly as it does for the
+    Antigravity CLI.
     """
     parts: list[str] = []
     if cfg.copilot_skip_permissions:
         parts.append("--allow-all")
-    if cfg.copilot_model in VALID_COPILOT_MODELS:
-        parts.extend(["--model", cfg.copilot_model])
     return " ".join(parts)
 
 

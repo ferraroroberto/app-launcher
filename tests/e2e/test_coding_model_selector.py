@@ -74,12 +74,18 @@ def _config(model: str, choice: str) -> dict:
             "permission_modes_available": ["auto", "skip"],
             "computed_flags": "--model gpt-5.6-luna",
         },
+        # Copilot's payload carries no model/models_available since #1017 —
+        # the launcher sends no --model for it, so there is nothing to pick.
         "copilot": {
-            "model": "",
-            "models_available": [f"copilot-model-{index:02d}" for index in range(14)],
             "skip_permissions": False,
             "computed_flags": "",
         },
+        # Pi's list is padded with synthetic entries so one picker in the
+        # panel is still long enough to prove the shared portaled menu stays
+        # viewport-constrained. That check used to ride on Copilot's 22-entry
+        # catalogue, which #1017 removed; the constraint belongs to the
+        # shared model-combo controller, not to any one agent, so it moved
+        # here rather than leaving with the catalogue.
         "pi": {
             "model": "anthropic/sonnet",
             "models_available": [
@@ -87,6 +93,10 @@ def _config(model: str, choice: str) -> dict:
                 {"value": "openai/sol", "label": "Sol", "available": True},
                 {"value": "openai/astra", "label": "Astra", "available": False,
                  "unavailable_reason": "Not rolled out"},
+            ] + [
+                {"value": f"filler/model-{index:02d}",
+                 "label": f"Filler {index:02d}", "available": True}
+                for index in range(12)
             ],
             "effort": "medium",
             "efforts_available": ["low", "medium", "high"],
@@ -102,7 +112,7 @@ def _mock_config(page: Page) -> dict:
     Returns the mutable state dict so a test can read the last-persisted model."""
     state = {
         "model": "sonnet", "choice": "claude:sonnet",
-        "codex_model": "gpt-5.6-luna", "copilot_model": "",
+        "codex_model": "gpt-5.6-luna",
         "pi_model": "anthropic/sonnet", "patches": [],
     }
 
@@ -117,7 +127,7 @@ def _mock_config(page: Page) -> dict:
                 state["choice"] = body["coding_model_choice"]
                 if state["choice"].startswith("claude:"):
                     state["model"] = state["choice"].split(":", 1)[1]
-            for key in ("codex_model", "copilot_model", "pi_model"):
+            for key in ("codex_model", "pi_model"):
                 if key in body:
                     state[key] = body[key]
             route.fulfill(status=200, content_type="application/json", body="{}")
@@ -129,7 +139,6 @@ def _mock_config(page: Page) -> dict:
                     effort="high", efforts_available=["low", "high"],
                     computed_flags="--model gpt-5.6-sol",
                 )
-            body["copilot"]["model"] = state["copilot_model"]
             body["pi"]["model"] = state["pi_model"]
             body["pi"]["computed_flags"] = "--model " + state["pi_model"]
             route.fulfill(
@@ -214,14 +223,11 @@ def test_coding_model_combo_syncs_with_settings_control(
         re.compile(r"\bactive\b"), timeout=5_000
     )
 
-    authed_page.locator("#copilotModel .model-combo-trigger").click()
-    copilot_menu = authed_page.locator("#copilotModelMenu")
-    expect(copilot_menu.locator("[role='option']")).to_have_count(15)
-    menu_sizes = copilot_menu.evaluate("el => [el.clientHeight, el.scrollHeight]")
-    assert menu_sizes[1] > menu_sizes[0], "long Copilot menu is not viewport constrained"
-    copilot_menu.locator("[data-value='copilot-model-13']").click()
-
     authed_page.locator("#piModel .model-combo-trigger").click()
+    pi_menu = authed_page.locator("#piModelMenu")
+    expect(pi_menu.locator("[role='option']")).to_have_count(15)
+    menu_sizes = pi_menu.evaluate("el => [el.clientHeight, el.scrollHeight]")
+    assert menu_sizes[1] > menu_sizes[0], "long model menu is not viewport constrained"
     expect(authed_page.locator("#piModelMenu [data-value='openai/astra']")).to_be_disabled()
     authed_page.locator("#piModelMenu [data-value='openai/sol']").click()
     expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
@@ -269,9 +275,6 @@ def test_coding_model_combo_syncs_with_settings_control(
     expect(authed_page.locator("#codexModel")).to_have_attribute(
         "data-value", "gpt-5.6-luna"
     )
-    expect(authed_page.locator("#copilotModel")).to_have_attribute(
-        "data-value", "copilot-model-13"
-    )
     expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
     assert len(state["patches"]) == persisted_patch_count
 
@@ -296,11 +299,11 @@ def test_server_catalog_populates_shared_model_selectors(
     ).to_be_enabled()
 
     shared = (
-        "#codingModelCombo, #claudeModel, #codexModel, #copilotModel, #piModel, "
+        "#codingModelCombo, #claudeModel, #codexModel, #piModel, "
         "#lifeOsModelCombo, #lifeOsConvosModelCombo, #boardDispatchModel, "
         "#chiefModelSelect"
     )
-    expect(authed_page.locator(shared)).to_have_count(9)
+    expect(authed_page.locator(shared)).to_have_count(8)
     for selector in shared.split(", "):
         root = authed_page.locator(selector)
         expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))
@@ -320,7 +323,7 @@ def test_server_catalog_populates_shared_model_selectors(
         )
         signatures = authed_page.locator(
             "#claudeModel .model-combo-trigger, #codexModel .model-combo-trigger, "
-            "#copilotModel .model-combo-trigger, #piModel .model-combo-trigger"
+            "#piModel .model-combo-trigger"
         ).evaluate_all(
             """nodes => nodes.map(node => {
               const style = getComputedStyle(node);

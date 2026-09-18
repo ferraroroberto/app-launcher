@@ -134,13 +134,12 @@ class TestGetConfig:
         client, _, _ = webapp_client
         body = client.get("/api/config").json()
         cp = body["copilot"]
-        assert set(cp) == {
-            "skip_permissions", "model", "models_available", "computed_flags"
-        }
+        # No model/models_available (issue #1017): the launcher sends no
+        # --model for Copilot, so the block carries only the allow-all
+        # toggle and the flags it composes.
+        assert set(cp) == {"skip_permissions", "computed_flags"}
         assert isinstance(cp["skip_permissions"], bool)
-        assert isinstance(cp["models_available"], list) and cp["models_available"]
-        # Default config → no model pinned, the CLI is launched bare.
-        assert cp["model"] == ""
+        # Default config → the CLI is launched bare.
         assert cp["computed_flags"] == ""
 
     def test_pi_block_shape(self, webapp_client):
@@ -450,20 +449,42 @@ class TestPatchConfig:
         assert cp["skip_permissions"] is True
         assert "--allow-all" in cp["computed_flags"]
 
-    def test_copilot_model_round_trips(self, webapp_client):
-        """A valid Copilot model patches through and surfaces as a
-        `--model` flag; an invalid one is rejected with 400."""
+    def test_copilot_launch_never_sends_a_model_flag(self, webapp_client):
+        """Copilot is launched with no `--model`, and the API offers no
+        model setting to send one with (issue #1017).
+
+        The launcher cannot know before a launch whether Copilot will
+        honour a model id — entitlement is resolved per launch against
+        the account, and a refusal only prints one line that scrolls
+        away — so displaying a chosen model was asserting a setting the
+        session might not be running. The honest shape is to send
+        nothing and let `/model` own it, which is what this pins: no
+        model in the payload, no catalogue to drift, no `--model` in the
+        composed flags however the toggle is set, and the removed key
+        silently ignored rather than quietly persisted.
+        """
         client, app, _ = webapp_client
-        model = client.get("/api/config").json()["copilot"]["models_available"][0]
-        resp = client.post("/api/config", json={"copilot_model": model})
-        assert resp.status_code == 200
-        assert app.state.webapp_config.copilot_model == model
         cp = client.get("/api/config").json()["copilot"]
-        assert cp["model"] == model
-        assert f"--model {model}" in cp["computed_flags"]
-        # An unknown model is rejected, not silently launched.
-        bad = client.post("/api/config", json={"copilot_model": "gpt-not-real"})
-        assert bad.status_code == 400
+        assert "model" not in cp
+        assert "models_available" not in cp
+        assert "--model" not in cp["computed_flags"]
+
+        # The allow-all toggle is the only Copilot launch switch, and
+        # turning it on still brings no model flag with it.
+        assert client.post(
+            "/api/config", json={"copilot_skip_permissions": True}
+        ).status_code == 200
+        cp = client.get("/api/config").json()["copilot"]
+        assert cp["computed_flags"] == "--allow-all"
+
+        # The retired key is not in the allow-list: it neither 400s nor
+        # lands on the config, so a stale client cannot resurrect it.
+        resp = client.post("/api/config", json={"copilot_model": "gpt-5.6-luna"})
+        assert resp.status_code == 200
+        assert not hasattr(app.state.webapp_config, "copilot_model")
+        assert "--model" not in client.get("/api/config").json()["copilot"][
+            "computed_flags"
+        ]
 
     def test_pi_model_round_trips(self, webapp_client):
         """A valid Pi model patches through and surfaces in the forced

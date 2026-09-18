@@ -37,7 +37,6 @@ from urllib.parse import urlencode, urlparse, urlunparse
 from src.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
-    COPILOT_MODELS,
     PI_MODEL_SPECS,
     available_values,
 )
@@ -160,12 +159,14 @@ DEFAULT_CODING_MODEL_CHOICE = f"claude:{DEFAULT_CLAUDE_MODEL}"
 VALID_CODEX_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_CODEX_PERMISSION_MODE = "auto"
 
-# Models the GitHub Copilot CLI accepts for the `--model` flag (and the
-# in-session `/model` command). Source: `copilot help config`. An empty
-# `copilot_model` means "don't pass --model" — the CLI then uses its own
-# configured default. This list will drift as GitHub adds models; refresh
-# it from `copilot help config` when that happens.
-VALID_COPILOT_MODELS = COPILOT_MODELS
+# GitHub Copilot deliberately has no model catalogue here (issue #1017).
+# The launcher used to mirror `copilot help config`'s list and send the
+# chosen id as `--model`, but that list says what the *CLI* accepts, not
+# what the *account* is entitled to — Copilot resolves entitlement per
+# launch and silently falls back to "auto" when it refuses, so any id the
+# launcher displayed was an unverifiable claim. `build_copilot_flags`
+# sends no model flag; `/model` and `/config model` own the choice and
+# show live what the plan allows.
 
 # Pi coding-agent launch models (issues #273, #288). The Coding tab shows a
 # deliberately small, segmented model control — three options spanning two
@@ -352,11 +353,14 @@ class WebappConfig:
         default_factory=lambda: dict(DEFAULT_CODEX_MODEL_EFFORTS)
     )
     codex_permission_mode: str = DEFAULT_CODEX_PERMISSION_MODE
-    # GitHub Copilot CLI launch settings (issue #48). `copilot_model` is
-    # the `--model` value (empty = let the CLI use its own default);
-    # `copilot_skip_permissions` is the opt-in allow-all switch.
+    # GitHub Copilot CLI launch settings (issue #48).
+    # `copilot_skip_permissions` is the opt-in allow-all switch, and the
+    # only one: there is deliberately no model setting, because Copilot
+    # resolves `--model` against the account at launch and silently
+    # substitutes when it refuses (issue #1017 — see
+    # `launch_flags.build_copilot_flags`). Model choice belongs to the
+    # CLI's own `/model` and `/config model`.
     copilot_skip_permissions: bool = False
-    copilot_model: str = ""
     # Grok Build launch settings (issue #667). `grok_effort` is the
     # reasoning tier (low/medium/high); `grok_permission_mode` mirrors
     # Claude's and Codex's auto/skip. No model picker — see VALID_GROK_*.
@@ -778,8 +782,9 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 #: enum field is one row here instead of a hand-written ``not in`` check, the
 #: same declarative-table shape ``_CUSTOM_LOADERS`` above and
 #: ``middleware._TERMINAL_GUARD_RULES`` already use. ``allow_empty=True``
-#: covers the one field (``copilot_model``) whose empty string is a valid
-#: "unset" sentinel rather than an invalid choice.
+#: is for a field whose empty string is a valid "unset" sentinel rather
+#: than an invalid choice; no field needs it today (``copilot_model`` was
+#: its last user, removed in issue #1017).
 _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
     ("coding_model_choice", VALID_CODING_MODEL_CHOICES, False),
     ("claude_model", VALID_CLAUDE_MODELS, False),
@@ -790,7 +795,6 @@ _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
     ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES, False),
     ("grok_effort", VALID_GROK_EFFORTS, False),
     ("grok_permission_mode", VALID_GROK_PERMISSION_MODES, False),
-    ("copilot_model", VALID_COPILOT_MODELS, True),
     ("pi_model", VALID_PI_MODELS, False),
     ("pi_effort", VALID_PI_EFFORTS, False),
     ("pi_trust_mode", VALID_PI_TRUST_MODES, False),

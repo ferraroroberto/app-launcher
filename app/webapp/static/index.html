@@ -661,19 +661,10 @@
 
         <div class="opt-group">
           <h3 class="opt-group-title">GitHub Copilot</h3>
-          <div class="opt-row">
-            <span class="opt-name">Model</span>
-            <span id="copilotModel" class="model-combo model-combo--settings" data-value="">
-              <button type="button" class="model-combo-trigger" aria-label="Copilot model" aria-haspopup="listbox"
-                      aria-expanded="false" aria-controls="copilotModelMenu">Default</button>
-              <span id="copilotModelMenu" class="model-combo-menu" role="listbox"
-                    aria-label="Copilot model" hidden></span>
-            </span>
-          </div>
           <div class="toggles">
             <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
-          <p class="opt-hint">Sign in with <code>/login</code> inside the session. <strong>Default</strong> leaves the model to the Copilot CLI's own setting.</p>
+          <p class="opt-hint">Sign in with <code>/login</code> inside the session. Model is chosen with <code>/model</code> in-session (<code>/config model</code> sets the default) — the launcher sends no model flag, because Copilot decides per launch what your account may use and quietly falls back when it refuses.</p>
           <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
         </div>
 
