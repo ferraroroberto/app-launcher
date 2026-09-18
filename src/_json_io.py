@@ -31,10 +31,29 @@ def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:
     it over ``target`` — the swap is all-or-nothing, so a crash mid-write or
     a concurrent reader never observes a partially-written file. Caller is
     responsible for ensuring ``target.parent`` exists.
+
+    A write that fails *after* the temp file lands — the ``os.replace`` is
+    refused, the disk fills mid-write — used to leave that ``.tmp`` behind
+    (#1003). Only one of the eleven call sites cleaned it up, and it did so
+    by re-deriving this function's own private temp-file name, so every
+    other site leaked. The cleanup belongs here, where the name is known:
+    the ``finally`` removes the temp file if it still exists, which after a
+    successful ``os.replace`` it never does (the swap consumes it).
+
+    A *serialization* failure leaks nothing either way — ``json.dumps`` runs
+    before ``write_text`` opens the file — so the leak this closes is
+    specifically the post-write one.
     """
     tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
-    os.replace(tmp, target)
+    try:
+        tmp.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
+        os.replace(tmp, target)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            # Best effort: a stray temp file must never mask the real error.
+            pass
 
 
 @contextmanager
