@@ -1292,3 +1292,65 @@ class TestRunHistory:
                 jobs_index_mod.SCHEMA_VERSION
             )
         assert len(jobs_index_mod.search_runs("marker", status="failed")) == 2
+
+    def test_search_hit_outcome_matches_the_history_list_for_a_killed_run(
+        self, tmp_path, monkeypatch
+    ):
+        """#1007 — a launcher-terminated run must classify the same in search
+        as in the history list.
+
+        ``run_outcome`` keeps a ``failed`` verdict as ``failed`` when
+        ``killed``/``watchdog``/``reaped`` is set, instead of softening it to
+        "not confirmed". Those flags were absent from the index schema and the
+        search SELECT, so the override could never fire on a search hit: the
+        same run rendered ❓ in search and ❌ in the history list, contradicting
+        ``search_runs``' own docstring.
+        """
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        stamp = "20260210T060000"
+        rd = jobs_mod.new_run_dir("demo", stamp)
+        (rd / "output.log").write_text("watchdog marker\n", encoding="utf-8")
+        # 121 is an "unconfirmed" code, so the flag is what decides the
+        # verdict — without it this run classifies as unconfirmed.
+        jobs_mod.write_run_json(
+            rd,
+            job_id="demo",
+            run_id=stamp,
+            status="failed",
+            started_at=stamp,
+            exit_code=121,
+            watchdog=True,
+        )
+
+        from_history = jobs_history_mod.read_run(rd)
+        assert from_history["outcome"] == "failed", from_history
+
+        hits = jobs_index_mod.search_runs("watchdog")
+        assert len(hits) == 1, hits
+        assert hits[0]["outcome"] == from_history["outcome"], (
+            f"search says {hits[0]['outcome']!r}, history says "
+            f"{from_history['outcome']!r} for the same run"
+        )
+
+    def test_search_hit_does_not_leak_the_launcher_terminated_columns(
+        self, tmp_path, monkeypatch
+    ):
+        """The three flags are selected only to classify (#1007); the hit's
+        response shape stays what it was."""
+        monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+        stamp = "20260211T060000"
+        rd = jobs_mod.new_run_dir("demo", stamp)
+        (rd / "output.log").write_text("shapecheck marker\n", encoding="utf-8")
+        jobs_mod.write_run_json(
+            rd,
+            job_id="demo",
+            run_id=stamp,
+            status="failed",
+            started_at=stamp,
+            exit_code=121,
+            reaped=True,
+        )
+        hit = jobs_index_mod.search_runs("shapecheck")[0]
+        assert hit["outcome"] == "failed"
+        for flag in ("killed", "watchdog", "reaped"):
+            assert flag not in hit, f"{flag} leaked into the search response"

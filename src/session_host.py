@@ -1110,8 +1110,14 @@ class SessionManager:
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
 
-        rows = max(1, min(int(rows), 1000))
-        cols = max(1, min(int(cols), 1000))
+        # The same floors :meth:`PtySession.resize` applies, as the docstring
+        # above promises (#1007). `POST /sessions` forwards the request's rows
+        # unfloored (`int(body.get("rows") or 40)` only catches a falsy value,
+        # so a literal 1 survives), and a 1-row ConPTY's first real resize
+        # fires exactly the full-viewport repaint PTY_MIN_ROWS exists to
+        # prevent (#930).
+        rows = max(PTY_MIN_ROWS, min(int(rows), 1000))
+        cols = max(PTY_MIN_COLS, min(int(cols), 1000))
         session_id = uuid.uuid4().hex
         # `cmd /c` resolves the agent command (e.g. claude.cmd / agy.cmd)
         # off PATH the way a normal shell would; when the agent exits, cmd
