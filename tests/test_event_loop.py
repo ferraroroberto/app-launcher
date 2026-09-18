@@ -95,6 +95,28 @@ def test_webapp_bat_wires_loop_factory():
     assert "--loop" in src
 
 
+def test_documented_uvicorn_commands_pass_the_loop_flag():
+    """A command a reader copies is a spawn site too (#1008).
+
+    Every *code* spawn site is pinned above, but README's Verify snippet
+    booted `app.webapp.server:app` with no `--loop` - on the Windows proactor
+    loop, whose accept path closes the listening socket on a single aborted
+    client (WinError 64, #388) - 400 lines after the same README states that
+    every invocation now runs on the selector loop. The file contradicted
+    itself and the copy-pasteable half was the wrong one.
+    """
+    docs = [_REPO_ROOT / "README.md", *sorted((_REPO_ROOT / "docs").glob("*.md"))]
+    offenders = []
+    for doc in docs:
+        for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
+            if "uvicorn app.webapp.server:app" in line and "--loop" not in line:
+                offenders.append(f"{doc.name}:{lineno}")
+    assert not offenders, (
+        "these documented uvicorn commands would boot on the proactor loop: "
+        f"{offenders}"
+    )
+
+
 def test_named_tunnel_script_wires_loop_factory(monkeypatch):
     """The documented no-tray path (``webapp_tunnel_named.bat``) was the one
     spawn site that never passed ``--loop`` (#1007), so it booted on the
