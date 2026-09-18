@@ -2,15 +2,18 @@
  * vertical list of icon + label actions.
  *
  * Extracted from the session gear menu (#953/#967) when the Coding tile
- * grew the same shape (#977: the ⋯ project menu). Both lists re-render on a
- * poll, which would tear an open menu down: the open row's key is remembered
- * here and `attach()` reopens the menu on the rebuilt row; `endRender()`
- * drops the state when the row is gone. Closes on a tap outside, on Escape,
- * and on a second tap of the anchor.
+ * grew the same shape (#977: the ⋯ project menu); that original caller is
+ * gone since #1025, and the users now are the Coding tile's ⋯ menu and the
+ * session overlay's bar menu (#981). A list that re-renders on a poll would
+ * tear an open menu down: the open row's key is remembered here and
+ * `attach()` reopens the menu on the rebuilt row; `endRender()` drops the
+ * state when the row is gone. Closes on a tap outside, on Escape, and on a
+ * second tap of the anchor.
  *
- * Placement is the caller's CSS: the menu is `position: absolute` inside the
- * row's `.row-actions` rail (`.session-menu` floats left of the rail,
- * `.project-menu` drops below it — see styles.css).
+ * Placement is the caller's CSS: the menu is `position: absolute` inside its
+ * anchor's positioned box (`.project-menu` drops below the row's
+ * `.row-actions` rail, `.terminal-menu` below the overlay bar — see
+ * styles.css).
  */
 
 import { escapeHtml } from './api.js';
@@ -54,7 +57,7 @@ function menuButton(item, close) {
   return btn;
 }
 
-// `menuClass` names the placement variant (`session-menu` / `project-menu`)
+// `menuClass` names the placement variant (`project-menu` / `terminal-menu`)
 // and is the class the caller's CSS and tests key on.
 export function createRowMenu(menuClass) {
   let openKey = null;

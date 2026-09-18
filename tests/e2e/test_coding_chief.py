@@ -22,7 +22,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS
+from tests.e2e.conftest import OVERLAY_OPEN_MS, open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -128,6 +128,9 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     authed_page.route(
         re.compile(r".*/api/claude-code/sessions/[^/]+/stop$"), _capture_stop
     )
+    # Both rows are full-control, so a desktop-projection tap would open a PC
+    # mirror window instead of the overlay (#282).
+    stub_session_mirror(authed_page)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
@@ -139,27 +142,39 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     )
 
     dialogs: list[str] = []
+    overlay = authed_page.locator("#terminalOverlay")
 
-    # 1. Chief + dismiss -> stop never fires.
+    def _menu_stop() -> None:
+        """Tap Stop in the open overlay's ⋮ menu — since #1025 the row has no
+        gear of its own, so this is where a session's stop is reached from
+        the Coding tab (the Board drawer's own button is the other path)."""
+        authed_page.locator("#terminalMenu").click()
+        menu = authed_page.locator("#terminalOverlay .terminal-menu")
+        expect(menu).to_be_visible()
+        menu.locator(".action-stop-close").click()
+
+    # 1. Chief + dismiss -> stop never fires. The overlay stays open, so
+    # step 2 reuses it rather than reopening.
+    open_session_row(authed_page, chief_row)
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
-    chief_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    chief_row.locator(".action-stop-close").click()
+    _menu_stop()
     authed_page.wait_for_timeout(400)
     assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
     assert stops == [], "dismissing the confirm must not stop the chief"
+    expect(overlay).to_be_visible()
 
-    # 2. Chief + accept -> stop fires.
+    # 2. Chief + accept -> stop fires, and the overlay showing it closes.
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
-    chief_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    chief_row.locator(".action-stop-close").click()
+    _menu_stop()
     authed_page.wait_for_timeout(600)
     assert len(dialogs) == 2
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
+    expect(overlay).to_be_hidden()
 
     # 3. Worker row -> one-tap stop, no dialog. (An unexpected confirm would
     # be auto-dismissed by Playwright and show up as a missing stop call.)
-    worker_row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    worker_row.locator(".action-stop-close").click()
+    open_session_row(authed_page, worker_row)
+    _menu_stop()
     authed_page.wait_for_timeout(600)
     assert len(dialogs) == 2, "worker row must not raise a confirm dialog"
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]

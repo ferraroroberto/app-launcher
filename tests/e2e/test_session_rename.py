@@ -17,6 +17,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_session_row, stub_session_mirror
+
 pytestmark = pytest.mark.smoke
 
 _CODING_SID = "s-rename-coding"
@@ -137,6 +139,22 @@ def _mock_board(page: Page) -> None:
     )
 
 
+def _open_rename(page: Page, row) -> None:
+    """Open Rename for a running-sessions row.
+
+    #1025 removed the row's actions gear, so Rename is reached through the
+    session overlay the row tap opens: its ⋮ menu holds Rename (#981). The
+    mirror stub keeps a full-control row's tap in-page on the Chromium
+    projection (#282); a detached row never mirrors and ignores it.
+    """
+    stub_session_mirror(page)
+    open_session_row(page, row)
+    page.locator("#terminalMenu").click()
+    menu = page.locator("#terminalOverlay .terminal-menu")
+    expect(menu).to_be_visible()
+    menu.locator('button[aria-label="Rename session"]').click()
+
+
 def test_coding_tab_rename_wins_over_launch_name(
     authed_page: Page, base_url: str
 ) -> None:
@@ -149,8 +167,7 @@ def test_coding_tab_rename_wins_over_launch_name(
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
     expect(row.locator(".name")).to_have_text("renameproj", timeout=10_000)
 
-    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    row.locator('button[aria-label="Rename session"]').click()
+    _open_rename(authed_page, row)
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
     expect(authed_page.locator("#sessionRenameInput")).to_have_value("renameproj")
@@ -164,6 +181,13 @@ def test_coding_tab_rename_wins_over_launch_name(
     )
     assert captured.get("method") == "POST"
     assert captured.get("body") == {"title": "My custom title"}
+    # The sessions poll is paused while the overlay is open (`main.js`:
+    # `if (!state.sessionView) fetchSessions()`), and closing it refreshes the
+    # list on the way out — so the row's new name is read after Back, not
+    # under the overlay. Before #1025 this assertion ran with the list still
+    # in front, because Rename came from the row's own gear.
+    authed_page.locator("#terminalBack").click()
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
     expect(row.locator(".name")).to_have_text("My custom title", timeout=10_000)
 
 
@@ -176,8 +200,7 @@ def test_full_control_rename_dialog_copies_session_link(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
-    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    row.locator('button[aria-label="Rename session"]').click()
+    _open_rename(authed_page, row)
 
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
@@ -234,8 +257,7 @@ def test_codex_rename_dialog_reports_web_link_unavailable(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
-    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    row.locator('button[aria-label="Rename session"]').click()
+    _open_rename(authed_page, row)
 
     expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename / link")
     expect(authed_page.locator("#sessionLinkInput")).to_have_value("Not available yet")
@@ -250,8 +272,7 @@ def test_detached_rename_dialog_does_not_offer_terminal_link(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
-    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    row.locator('button[aria-label="Rename session"]').click()
+    _open_rename(authed_page, row)
 
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
     expect(authed_page.locator("#sessionRenameHeading")).to_have_text("Rename session")
@@ -315,8 +336,7 @@ def test_rename_dialog_adopts_modal_contract(
     row = authed_page.locator(f'#sessionsList li[data-session-id="{_CODING_SID}"]')
     expect(row.locator(".name")).to_have_text("renameproj", timeout=10_000)
 
-    row.locator(".session-gear").click()  # #953: rail actions live in the gear menu
-    row.locator('button[aria-label="Rename session"]').click()
+    _open_rename(authed_page, row)
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
 
     # Header × close: this dialog deliberately promotes the compact modal

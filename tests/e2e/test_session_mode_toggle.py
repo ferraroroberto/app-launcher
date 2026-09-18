@@ -4,8 +4,10 @@
 The terminal overlay and the transcript overlay used to be two full-screen
 views of the same session with no way between them. #982 makes them two
 panes of ``#terminalOverlay`` (``data-mode="terminal" | "chat"``) behind an
-icon-only segmented toggle in the bar, with the row's gear offering Terminal
-· Chat · Rename · Stop and a row tap reopening the last-viewed mode.
+icon-only segmented toggle in the bar, and a row tap reopening the
+last-viewed mode. (The row gear that also offered Terminal · Chat · Rename
+· Stop was removed in #1025; the toggle and the bar's ⋮ menu are the only
+ways in now.)
 
 The one behaviour that must not regress is #444's shape: **switching to Chat
 and back must not reconnect the PTY or touch its scrollback.** Every PTY
@@ -27,7 +29,9 @@ Boot fetches that could rebuild the row under a click are stubbed before
 Row taps of a full-control row run under the iPhone projection only — the
 Chromium desktop projection mirrors them to a PC window (#282), which
 ``test_desktop_session_mirror.py`` pins; the reader-less case opens through
-the ``?session=`` deep link instead, so it runs on both projections.
+the ``?session=`` deep link instead, so it runs on both projections. (A test
+that needs a full-control row tap on *both* projections stubs the mirror
+route instead — ``conftest.stub_session_mirror``.)
 """
 
 from __future__ import annotations
@@ -253,10 +257,17 @@ def test_row_tap_reopens_last_mode(
     authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
 
-    # The gear's Terminal item forces the mode regardless of the memory.
-    row.locator(".session-gear").click()
-    row.locator('button[aria-label="Open terminal"]').click()
+    # The bar's Terminal segment forces the mode regardless of the memory,
+    # and the memory follows: the gear item that used to do this went with
+    # the gear (#1025), so the toggle is the only forcing path left.
+    row.locator(".session-open").click()
     expect(overlay).to_be_visible()
+    expect(overlay).to_have_attribute("data-mode", "chat")
+    authed_page.locator("#sessionModeTerminal").click()
+    expect(overlay).to_have_attribute("data-mode", "terminal")
+    authed_page.locator("#terminalBack").click()
+    expect(overlay).to_be_hidden()
+    row.locator(".session-open").click()
     expect(overlay).to_have_attribute("data-mode", "terminal")
 
 
@@ -289,13 +300,12 @@ def test_detached_session_opens_in_chat_with_terminal_off(
     term_seg.click(force=True)
     expect(authed_page.locator("#toast")).to_contain_text("Detached session — no terminal")
     expect(overlay).to_have_attribute("data-mode", "chat")
-    # Its gear has Chat but no Terminal.
+    # The row itself offers nothing beyond the tap: no gear, no menu (#1025).
     authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
-    row.locator(".session-gear").click()
-    menu = row.locator(".session-menu")
-    expect(menu.locator('button[aria-label="Open chat"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
+    expect(row.locator(".session-gear")).to_have_count(0)
+    expect(row.locator(".session-menu")).to_have_count(0)
+    expect(row.locator(".session-chevron")).to_be_visible()
 
 
 def test_reader_less_agent_opens_in_terminal_with_chat_off(
@@ -327,11 +337,10 @@ def test_reader_less_agent_opens_in_terminal_with_chat_off(
     # says why.
     expect(authed_page.locator("#toast")).to_contain_text("No transcript reader for")
     expect(overlay).to_have_attribute("data-mode", "terminal")
-    # Its gear has Terminal but no Chat.
+    # The row itself offers nothing beyond the tap: no gear, no menu (#1025).
     authed_page.locator("#terminalBack").click()
     expect(overlay).to_be_hidden()
     row = _row(authed_page, sid)
-    row.locator(".session-gear").click()
-    menu = row.locator(".session-menu")
-    expect(menu.locator('button[aria-label="Open terminal"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Open chat"]')).to_have_count(0)
+    expect(row.locator(".session-gear")).to_have_count(0)
+    expect(row.locator(".session-menu")).to_have_count(0)
+    expect(row.locator(".session-chevron")).to_be_visible()

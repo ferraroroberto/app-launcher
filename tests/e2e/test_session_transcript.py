@@ -29,6 +29,8 @@ import re
 
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
+
 _SID = "sid-transcript-953"
 
 
@@ -108,11 +110,11 @@ def _row(page: Page):
 
 
 def _open_chat(page: Page, row) -> None:
-    row.locator(".session-gear").click()
-    row.locator('button[aria-label="Open chat"]').click()
-    overlay = page.locator("#terminalOverlay")
-    expect(overlay).to_be_visible()
-    expect(overlay).to_have_attribute("data-mode", "chat")
+    # #1025: the row's gear is gone; Chat is the row tap plus the bar's Chat
+    # segment. The mirror stub keeps a full-control row's tap in-page on the
+    # Chromium projection (#282).
+    stub_session_mirror(page)
+    open_session_row(page, row, mode="chat")
 
 
 def _menu_item(page: Page, name: str):
@@ -122,32 +124,42 @@ def _menu_item(page: Page, name: str):
     return menu.get_by_role("menuitem", name=name)
 
 
-def test_gear_menu_holds_four_actions_and_closes_on_outside_tap(
+def test_row_carries_no_gear_and_a_centred_chevron(
     authed_page: Page, base_url: str
 ) -> None:
+    """#1025 — the row's actions gear is gone and the chevron is the row's
+    only trailing element, centred against the row rather than against the
+    badge line it used to trail."""
     _mock_sessions_list(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
     expect(row.locator(".name")).to_have_text("Transcript demo")
 
-    menu = row.locator(".session-menu")
-    expect(menu).to_be_hidden()
-    gear = row.locator(".session-gear")
-    expect(gear).to_be_visible()
-    gear.click()
-    expect(menu).to_be_visible()
-    expect(gear).to_have_attribute("aria-expanded", "true")
-    # Terminal · Chat · Rename · Stop (#982), in that order.
-    expect(menu.locator(".row-menu-label")).to_have_text(["Terminal", "Chat", "Rename", "Stop"])
-    expect(menu.locator('button[aria-label="Open terminal"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Open chat"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
-    expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
-    assert menu.locator("button").count() == 4
+    # Nothing of the gear survives: no anchor, no menu, no actions rail.
+    expect(row.locator(".session-gear")).to_have_count(0)
+    expect(row.locator(".session-menu")).to_have_count(0)
+    expect(row.locator(".row-actions")).to_have_count(0)
 
-    # A tap anywhere else closes it.
-    authed_page.locator("#tabApps").click()
-    expect(menu).to_be_hidden()
+    chev = row.locator(".session-chevron")
+    expect(chev).to_be_visible()
+    # Centred against the whole row, which is what the gear beside it used to
+    # be and the chevron was not (the misalignment #1025 reports). Both boxes
+    # are read through `stable_read` because the Coding rows are rebuilt by
+    # the git-status poll (#680), and compared with a 1px tolerance for
+    # sub-pixel row heights.
+    row_box = stable_read(row.bounding_box)
+    chev_box = stable_read(chev.bounding_box)
+    row_mid = row_box["y"] + row_box["height"] / 2
+    chev_mid = chev_box["y"] + chev_box["height"] / 2
+    assert abs(row_mid - chev_mid) <= 1, (
+        f"chevron centre {chev_mid} is not the row centre {row_mid}"
+    )
+    # Pinned to the row's right edge, where the gear rail was.
+    right_gap = (row_box["x"] + row_box["width"]) - (chev_box["x"] + chev_box["width"])
+    assert 0 <= right_gap <= 1, f"chevron is not flush right (gap {right_gap})"
+    # A lone chevron still needs a real tap target: the row button is it.
+    open_box = stable_read(row.locator(".session-open").bounding_box)
+    assert open_box["height"] >= 44, open_box["height"]
 
 
 def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> None:
@@ -157,37 +169,60 @@ def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> Non
     _mock_transcript(authed_page, {None: _OLDER}, calls)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
-    row.locator(".session-gear").click()
-    menu = row.locator(".session-menu")
-    expect(menu).to_be_visible()
-    # Chat · Rename · Stop — no Terminal for a detached row, and no Send
-    # message since #983 (the chat composer sends)
-    expect(menu.locator("button")).to_have_count(3)
-    expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
-    menu.locator('button[aria-label="Open chat"]').click()
+    # A detached row has no terminal, so its tap lands straight in Chat — no
+    # mirror stub needed, and since #1025 no gear to go through.
+    open_session_row(authed_page, row)
     overlay = authed_page.locator("#terminalOverlay")
-    expect(overlay).to_be_visible()
     expect(overlay).to_have_attribute("data-mode", "chat")
+    expect(authed_page.locator("#sessionModeTerminal")).to_have_attribute("aria-disabled", "true")
     expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("older prompt")
 
 
-def test_detached_unsupported_agent_menu_has_no_chat(authed_page: Page, base_url: str) -> None:
-    # `ssh`, not a coding agent: it is the one registered agent that will
-    # never have a harness history, so this stays true as the remaining
-    # readers land (Pi #1013, Antigravity #1014, Copilot #1015).
+def test_detached_reader_less_row_still_reaches_rename_and_stop(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1025's condition, pinned: the one row shape that can offer *neither*
+    pane must still be renameable and stoppable.
+
+    `ssh` is the example on purpose — it is the one registered agent that
+    will never have a harness history (`SESSION_HOST_AGENTS`, #558), so this
+    stays true however many coding agents gain readers. Detached + no reader
+    used to render the row **inert**, with its gear as the only way to Rename
+    or Stop it; #1025 removed the gear, so instead of stranding the row the
+    inert shape went too. The row now opens the overlay on the reader's own
+    reason line, and Rename / Stop live in the bar's ⋮ menu.
+    """
+    calls: list = []
     _mock_sessions_list(authed_page, kind="remote", agent="ssh")
+    _mock_transcript(authed_page, {None: {
+        "available": False, "source": None, "reason": "unsupported_agent",
+        "entries": [], "next_cursor": None, "session_id": _SID,
+    }}, calls)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
-    # Nothing to open: neither a terminal nor a readable history — the row
-    # itself is inert (#982), not just menu-less.
-    expect(row.locator(".session-open.inert")).to_have_count(1)
-    row.locator(".session-gear").click()
-    menu = row.locator(".session-menu")
+
+    # No inert shape left, and no gear to be the only way in.
+    expect(row.locator(".session-open.inert")).to_have_count(0)
+    expect(row.locator(".session-gear")).to_have_count(0)
+
+    open_session_row(authed_page, row)
+    overlay = authed_page.locator("#terminalOverlay")
+    # Neither pane is on offer, and the view says why rather than sitting blank.
+    expect(overlay).to_have_attribute("data-mode", "chat")
+    expect(authed_page.locator("#sessionModeTerminal")).to_have_attribute("aria-disabled", "true")
+    expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-disabled", "true")
+    expect(authed_page.locator("#transcriptState")).to_contain_text(
+        "Transcript not supported for this agent yet"
+    )
+
+    # Both actions the gear used to hold are reachable here. One open of the
+    # ⋮ menu, two reads — `_menu_item` toggles the anchor, so calling it
+    # twice would close the menu again.
+    authed_page.locator("#terminalMenu").click()
+    menu = authed_page.locator("#terminalOverlay .terminal-menu")
     expect(menu).to_be_visible()
-    # Rename · Stop — no Chat, no Terminal (and no Send message since #983)
-    expect(menu.locator("button")).to_have_count(2)
-    expect(menu.locator('button[aria-label="Open chat"]')).to_have_count(0)
-    expect(menu.locator('button[aria-label="Open terminal"]')).to_have_count(0)
+    expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
+    expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
 
 
 def test_transcript_shows_turns_folds_tools_and_loads_older(
@@ -203,8 +238,8 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
 
     overlay = authed_page.locator("#terminalOverlay")
     expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
-    # The list-row menu closed behind the overlay.
-    expect(row.locator(".session-menu")).to_be_hidden()
+    # The row behind the overlay carries no menu of its own any more (#1025).
+    expect(row.locator(".session-menu")).to_have_count(0)
     # The shared bar: Terminal / Chat segments first in the actions group,
     # 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only bar buttons.
     bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(

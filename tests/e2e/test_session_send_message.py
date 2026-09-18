@@ -26,7 +26,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -127,21 +127,29 @@ def _mock_input(page: Page, captured: dict, responses: list, *, sid: str = _SID)
     page.route(re.compile(r".*/api/claude-code/sessions/" + sid + r"/input$"), _handler)
 
 
-def _open_menu(page: Page, sid: str = _SID):
+def _open_row(page: Page, sid: str = _SID):
     row = page.locator(f'#sessionsList li[data-session-id="{sid}"]')
     expect(row.locator(".name")).to_have_text("Send demo", timeout=10_000)
-    row.locator(".session-gear").click()
-    menu = row.locator(".session-menu")
+    return row
+
+
+def _open_session_menu(page: Page, sid: str = _SID, mode: str | None = None):
+    """Open the session overlay's ⋮ menu — since #1025 the only per-session
+    menu there is (the row's own gear menu is gone; its items live here and,
+    for Chat/Terminal, in the bar's segmented toggle)."""
+    stub_session_mirror(page)
+    open_session_row(page, _open_row(page, sid), mode=mode)
+    page.locator("#terminalMenu").click()
+    menu = page.locator("#terminalOverlay .terminal-menu")
     expect(menu).to_be_visible()
     return menu
 
 
 def _open_chat(page: Page, sid: str = _SID) -> None:
-    # #982: Chat mode of the session overlay, from the gear's "Open chat".
-    _open_menu(page, sid).locator('button[aria-label="Open chat"]').click()
-    overlay = page.locator("#terminalOverlay")
-    expect(overlay).to_be_visible()
-    expect(overlay).to_have_attribute("data-mode", "chat")
+    # #982 Chat mode, reached the way a finger reaches it since #1025: tap the
+    # row, then the bar's Chat segment.
+    stub_session_mirror(page)
+    open_session_row(page, _open_row(page, sid), mode="chat")
     expect(page.locator("#transcriptList .tr-user").first).to_contain_text("this is a test")
 
 
@@ -154,32 +162,42 @@ def _wait_for_calls(page: Page, calls: list, n: int) -> None:
 
 
 @pytest.mark.parametrize("kind", ["pty", "remote"])
-def test_gear_menu_has_no_send_message_item(authed_page: Page, base_url: str, kind: str) -> None:
-    # #983: the chat composer covers both kinds, so the menu never offers Send.
+def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str, kind: str) -> None:
+    # #983: the chat composer covers both kinds, so no menu offers Send. Since
+    # #1025 the row has no menu at all, so the surface to check is the
+    # overlay's ⋮ — the only per-session menu left.
     _mock_sessions_list(authed_page, kind=kind)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    menu = _open_menu(authed_page)
+    menu = _open_session_menu(authed_page, mode="chat")
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    expected = ["Terminal", "Chat", "Rename", "Stop"] if kind == "pty" else ["Chat", "Rename", "Stop"]
-    expect(menu.locator(".row-menu-label")).to_have_text(expected)
+    # Chat mode's full set (#982): the two chat-only rows sit between Copy
+    # link and Stop, and nothing named Send appears for either kind.
+    expect(menu.locator(".row-menu-label")).to_have_text(
+        ["Rename", "Copy link", "Show tool calls", "Reload", "Stop and kill"]
+    )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 
 
-def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
+def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
+    # #967's shape contract for the shared row-menu component. Pinned on the
+    # overlay's ⋮ menu since #1025 retired the row gear that first grew it —
+    # same component (row-menu.js), so the contract is unchanged.
     _mock_sessions_list(authed_page, kind="pty")
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    menu = _open_menu(authed_page)
+    menu = _open_session_menu(authed_page, mode="terminal")
 
+    # Terminal mode: Rename · Copy link · Stop and kill (the chat-only rows
+    # are detached from the DOM, not hidden — #982).
     buttons = menu.locator("button")
-    expect(buttons).to_have_count(4)
+    expect(buttons).to_have_count(3)
     labels = menu.locator(".row-menu-label")
-    expect(labels).to_have_count(4)
-    for i in range(4):
+    expect(labels).to_have_count(3)
+    for i in range(3):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
 
     def _boxes():
-        bs = [buttons.nth(i).bounding_box() for i in range(4)]
+        bs = [buttons.nth(i).bounding_box() for i in range(3)]
         return bs if all(bs) else None
 
     boxes = stable_read(_boxes)
@@ -187,11 +205,11 @@ def test_gear_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url
     xs = {round(b["x"]) for b in boxes}
     assert len(xs) == 1, f"menu rows are not stacked in one column: {boxes}"
     ys = [b["y"] for b in boxes]
-    assert ys == sorted(ys) and len(set(round(y) for y in ys)) == 4, f"rows are not vertical: {ys}"
+    assert ys == sorted(ys) and len(set(round(y) for y in ys)) == 3, f"rows are not vertical: {ys}"
     for b in boxes:
         assert b["height"] >= 44 - 1, f"row under the 44px hit-target floor: {b}"
         assert b["width"] >= 150, f"row too narrow for icon + label: {b}"
-    # Existing hooks the #953 sites and the smoke test rely on survive.
+    # Existing hooks the smoke test relies on survive.
     expect(menu.locator(".action-stop-close")).to_have_count(1)
     expect(menu.locator('button[aria-label="Stop and kill session"]')).to_have_class(
         re.compile(r"\baction-stop-close\b")
