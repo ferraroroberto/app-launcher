@@ -307,6 +307,11 @@ class WebappConfig:
     coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
+    # Skill ids the user starred on the Life OS tab (issue #1070), the same
+    # shape and the same treatment `coding_favorites` gives Coding projects
+    # (#250): starred skills sort to the top of the list. A plain string
+    # list in this same config — no new file, no new store.
+    life_os_favorites: list = field(default_factory=list)
     # Root of the life-os checkout the Life OS tab surfaces (issue #102).
     # Skills live at `<life_os_dir>/.claude/skills`, identity at
     # `<life_os_dir>/identity`. When the skills dir doesn't exist the tab

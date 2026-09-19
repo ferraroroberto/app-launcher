@@ -1114,3 +1114,78 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     assert payload["model"] == target and payload["mode"] == "remote"
     assert payload["capture"] == {key: row[key] for key in ("path", "revision", "agent", "sid")}
     assert "resume_sid" not in payload
+
+
+def test_life_os_skill_can_be_starred_and_sorts_to_the_top(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1070 — the Coding tab's favorites treatment (#250), on the skills list.
+
+    A skill row carries a star; starred skills sort above the rest; the
+    partition is stable, so both groups stay in the scanner's alphabetical
+    order rather than reshuffling around a star. The state is server-side —
+    `life_os_favorites` in the webapp config — so it survives a re-render
+    and a reload, which is what makes it worth a round trip at all.
+
+    The skills list is route-mocked (the dev box's real life-os checkout is
+    not a fixture), so the mock is what flips: this asserts the ordering and
+    the POST the star sends, and the *persistence* half is pinned in the
+    non-browser suite against the real endpoint (tests/test_webapp_api_life_os_favorites.py).
+    """
+    posted: list = []
+
+    def _favorites(route):
+        posted.append(route.request.post_data_json)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "life_os_favorites": ["sparring-work"]}),
+        )
+
+    # After the POST, the list comes back with sparring-work starred — what
+    # the real endpoint would produce. Keyed on the POST having happened,
+    # not on a call count: the tab fetches the skills list more than once
+    # (tab open plus its own refresh), so a "second call" switch flips
+    # before the star is ever tapped and the pre-tap ordering assertion
+    # below reads the post-tap payload.
+    starred = _json.loads(_json.dumps(_FAKE_SKILLS))
+    for sk in starred["skills"]:
+        sk["is_favorite"] = sk["id"] == "sparring-work"
+
+    def _skills(route):
+        body = starred if posted else _FAKE_SKILLS
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body)
+        )
+
+    authed_page.route(re.compile(r".*/api/life-os/skills(\?.*)?$"), _skills)
+    authed_page.route(re.compile(r".*/api/life-os/favorites$"), _favorites)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+
+    rows = authed_page.locator("#lifeOsList li.lifeos-item")
+    expect(rows.first).to_be_visible(timeout=5_000)
+    # Alphabetical to start, nothing starred.
+    assert _skill_order(authed_page) == ["journal-daily", "sparring-work"]
+    star = authed_page.locator(
+        "#lifeOsList li[data-id='sparring-work'] .star-btn"
+    )
+    expect(star).to_have_count(1)
+    expect(star).to_have_attribute("aria-pressed", "false")
+
+    star.click()
+    # Sorted to the top, and painted as starred, from the re-fetched payload.
+    expect(
+        authed_page.locator("#lifeOsList li.lifeos-item").first
+    ).to_have_attribute("data-id", "sparring-work", timeout=5_000)
+    assert _skill_order(authed_page) == ["sparring-work", "journal-daily"]
+    expect(
+        authed_page.locator("#lifeOsList li[data-id='sparring-work'] .star-btn")
+    ).to_have_attribute("aria-pressed", "true")
+
+    assert posted == [{"id": "sparring-work", "favorite": True}], posted
+
+
+def _skill_order(page: Page) -> list:
+    return page.locator("#lifeOsList li.lifeos-item").evaluate_all(
+        "els => els.map(e => e.getAttribute('data-id'))"
+    )
