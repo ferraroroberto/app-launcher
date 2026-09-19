@@ -354,9 +354,11 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  // Label in its own span so narrow phones can drop it to icon-only (#496:
-  // the Projects summary now also carries the Detached/Resume toggles).
-  btn.innerHTML = icon('star') + '<span class="fav-filter-label"> Favorites</span>';
+  // Icon-only at every width (#1070). The caption used to drop below 520px
+  // only, which left a wide labelled pill next to three icon-sized controls
+  // on a desktop header. The star alone is unambiguous; the text name lives
+  // on aria-label/title, which is where a screen reader reads it anyway.
+  btn.innerHTML = icon('star');
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
