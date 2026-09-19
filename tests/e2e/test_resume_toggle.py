@@ -138,3 +138,63 @@ def test_resume_with_detached_launches_remote_console(
     assert payload.get("resume") is True
     assert payload.get("mode") == "remote"
     assert payload.get("agent") == "claude"
+
+
+def test_checked_toggle_carries_no_accent_border_or_tint(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1070 — the on-state is an opacity + glyph-colour step, not a box.
+
+    Detached/Resume used to flip `border-color` to `var(--accent)` and paint
+    an accent-tinted background when checked, which made them the only
+    accent-boxed controls in the Projects header — next to a borderless
+    model combo and a `.button-ghost` favourites filter. design.md reserves
+    the accent for interactive emphasis and names success as the on-state
+    for a `role="switch"`, so the box goes and the glyph turns green.
+
+    Pinned as "the border does not change and the fill stays transparent"
+    rather than against a literal colour, so the assertion holds in both
+    themes and survives a token revalue. Auto-retrying `to_have_css`
+    throughout (#680) — the expected border value is read once from the
+    *off* state, which is the control's own resting truth.
+    """
+    _install_mocks(authed_page)
+    # `.detached-toggle` animates border-color and background over 0.15s.
+    # An assertion made right after the click can sample a mid-transition
+    # value that still equals the resting one and pass for the wrong
+    # reason — measured: against pre-fix CSS the border assertion below
+    # passed on its first poll while the fill was still interpolating.
+    # Killing transitions makes both reads the settled truth.
+    authed_page.add_init_script(
+        "document.addEventListener('DOMContentLoaded', () => {"
+        "  const st = document.createElement('style');"
+        "  st.textContent = '*, *::before, *::after "
+        "{ transition: none !important; animation: none !important; }';"
+        "  document.head.appendChild(st);"
+        "});"
+    )
+    _open_coding(authed_page, base_url)
+
+    toggle = authed_page.locator("#claudeDetached")
+    expect(toggle).not_to_be_checked()
+    resting_border = toggle.evaluate(
+        "el => getComputedStyle(el).borderTopColor"
+    )
+    # The Projects header is static markup, not a polled re-render, so this
+    # one read cannot straddle a rebuild; every assertion below still uses
+    # the auto-retrying form.
+    assert resting_border, "could not read the toggle's resting border colour"
+
+    toggle.click()
+    expect(toggle).to_be_checked()
+    # The box is unchanged by the flip …
+    expect(toggle).to_have_css("border-top-color", resting_border)
+    expect(toggle).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    # … and it matches the ghost button sitting beside it in the header.
+    fav_border = authed_page.locator("#favFilterBtn").evaluate(
+        "el => getComputedStyle(el).borderTopColor"
+    )
+    assert resting_border == fav_border, (
+        "the Detached toggle's border no longer matches the favourites "
+        f"filter beside it: {resting_border} vs {fav_border}"
+    )

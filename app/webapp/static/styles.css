@@ -311,9 +311,16 @@ html, body {
    adds only the inter-card gutter. */
 .card { margin: 0 0 var(--gap); }
 /* Detached toggle — modelled on voice-transcriber's `.incognito-btn`: a
-   real button, role="switch" + aria-checked (issue #355). Opacity + accent
-   border flip on `[aria-checked="true"]` so it reads as on/off instead of
-   a tick that everyone misses on a phone. */
+   real button, role="switch" + aria-checked (issue #355). Opacity + glyph
+   colour flip on `[aria-checked="true"]` so it reads as on/off instead of
+   a tick that everyone misses on a phone.
+   #1070 dropped the accent border + accent-tinted fill the on-state used
+   to carry: an accent-boxed control next to three borderless-or-ghost
+   siblings read as the only emphasised thing in the Projects header, and
+   design.md reserves the accent for interactive emphasis while naming
+   success as the universal on-state for a `role="switch"`. The border now
+   stays `--line` in both states, matching the `.button-ghost` favourites
+   filter beside it; on/off is the opacity step plus a green glyph. */
 .detached-toggle {
   display: inline-flex;
   align-items: center;
@@ -323,24 +330,29 @@ html, body {
   white-space: nowrap;
   padding: 6px 10px;
   min-height: var(--control-h);
-  border: 1px solid var(--line-muted);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  /* Explicit, not inherited: the base rule never set a background, and the
+     accent tint on the checked state was the only thing overriding the UA
+     default button grey (#f0f0f0 in Chromium). Removing that tint exposed
+     it — a ghost control has a transparent fill (design.md button-ghost),
+     so say so here rather than relying on a state rule to hide it. */
+  background: transparent;
   cursor: pointer;
   user-select: none;
   opacity: 0.55;
-  transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
 }
 .detached-toggle:active { background: var(--card-2); }
 .detached-toggle[aria-checked="true"] {
   opacity: 1;
-  border-color: var(--accent);
-  background: rgb(from var(--accent) r g b / 0.18);
+  color: var(--success);
 }
 /* #540: Detached/Resume are icon-only now (the Coding + Life OS launch rows
    gained a model combo and needed the room). Render the glyph at the app's
    standard --icon-title size in a square-ish tap target — matching the other
-   icon buttons — while keeping the pill's opacity + accent-border on/off
-   shading that marks them as toggles rather than one-shot actions. */
+   icon buttons — while keeping the pill's opacity-based on/off shading
+   that marks them as toggles rather than one-shot actions. */
 .detached-toggle .icon { font-size: var(--icon-title); }
 .detached-toggle { padding: 6px; min-width: var(--control-h); }
 .settings-actions { flex-wrap: wrap; gap: 8px; }
