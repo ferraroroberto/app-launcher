@@ -26,7 +26,10 @@ PTY.
 
 Empirical facts this encodes (probe on the issue, 2026-09-14, Windows
 Terminal host — the box's default — with Claude Code, Codex, Pi, Copilot and
-Antigravity; classic conhost and Grok not probed):
+Antigravity. Grok was re-probed the same way on 2026-09-19 once it was
+signed in on the box — issue #1069, 4/4, same settle and same soft-newline
+behaviour — so every Coding-tab agent is now proven; classic conhost is
+still not probed):
 
 - ``FreeConsole()`` **before** ``AttachConsole`` even under
   ``CREATE_NO_WINDOW`` — a NO_WINDOW child still owns a (hidden) console.

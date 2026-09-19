@@ -48,7 +48,12 @@
  *
  * `setSendable(false, reason)` gates ➤ Send alone (#983: a detached session
  * whose agent the console-input probe never proved) — the textarea, mic,
- * image and OCR stay usable, and the reason is the button's title.
+ * image and OCR stay usable. The gate is `aria-disabled`, never `disabled`:
+ * a genuinely disabled button fires no tap event on iOS, so the reason could
+ * only ever surface through a `title` hover a phone does not have, leaving a
+ * dead button and no explanation (#1069). A tap still lands and toasts the
+ * reason — the same convention as the Board drawer's actions and the
+ * overlay's mode segments (#982).
  *
  * Unavailable mic / keys render DISABLED rather than hidden: a grid that
  * collapses to three buttons is a different shape (design.md button-disabled
@@ -161,6 +166,7 @@ export function mountComposer(host, opts) {
   // disable an async send holds, so settling a send never re-enables a
   // button the surface gated off.
   let sendBlocked = false;
+  let sendReason = '';
   let sending = false;
 
   function grow() { growTextarea(el.textarea); }
@@ -371,12 +377,21 @@ export function mountComposer(host, opts) {
     el.textarea.focus();
   }
 
+  // The surface's gate is aria-disabled (see the module header, #1069) so a
+  // phone tap still reaches the button and can say why. The in-flight hold
+  // stays a real `disabled`: it lasts one request and has no reason to state.
   function syncSend() {
-    el.send.disabled = sendBlocked || sending;
+    el.send.disabled = sending;
+    if (sendBlocked) el.send.setAttribute('aria-disabled', 'true');
+    else el.send.removeAttribute('aria-disabled');
   }
 
   function submit() {
-    if (sendBlocked || sending) return;
+    if (sendBlocked) {
+      toast(sendReason, '', { icon: 'send-horizontal' });
+      return;
+    }
+    if (sending) return;
     // #489: a dictation that just stopped is still finalizing until the
     // canonical transcript settles into the textarea. Reading + clearing the
     // buffer mid-window raced that settle — wait it out instead.
@@ -428,8 +443,9 @@ export function mountComposer(host, opts) {
 
   function setSendable(enabled, reason) {
     sendBlocked = !enabled;
-    el.send.title = enabled ? _TITLE_SEND : (reason || 'Sending is unavailable');
-    el.send.setAttribute('aria-label', enabled ? 'Send' : el.send.title);
+    sendReason = enabled ? '' : (reason || 'Sending is unavailable');
+    el.send.title = enabled ? _TITLE_SEND : sendReason;
+    el.send.setAttribute('aria-label', enabled ? 'Send' : sendReason);
     syncSend();
   }
 

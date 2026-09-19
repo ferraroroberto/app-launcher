@@ -141,9 +141,12 @@ def test_breadcrumb_logs_unit_count_never_the_text(monkeypatch, caplog):
 
 
 def test_unprobed_agent_is_refused_without_spawning(monkeypatch):
+    # The subject used to be grok, which #1069's probe has since proven and
+    # flipped. `ssh` is the standing one: a service integration, never a
+    # Coding-tab row (#558), deliberately never probed for console input.
     calls: list = []
     _capture_run(monkeypatch, _Completed(stdout='{"ok": true}'), calls)
-    session = _remote(agent="grok", monkeypatch=monkeypatch)
+    session = _remote(agent="ssh", monkeypatch=monkeypatch)
 
     outcome = session.submit_input("hello", submit=True)
 

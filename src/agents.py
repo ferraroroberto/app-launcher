@@ -134,12 +134,19 @@ AGENTS: Dict[str, Agent] = {
     # session title), so no spawn-time name flag is needed — and none
     # exists (`--session-id` takes only a UUID, not a label).
     # Bare `--resume` resumes the cwd's most recent session (Antigravity's
-    # `--continue` shape, not a Claude-style picker). console_input stays
-    # False: the #967 probe could not sign Grok in on the dev box, so it is
-    # *not probed* — flip it only after a recorded probe, never by analogy.
+    # `--continue` shape, not a Claude-style picker). console_input=True is
+    # the #967 probe finally run for the one agent that matrix left at 0
+    # tries — it was blocked on a device-code login screen, never on a
+    # failure, and the sign-in has since happened (#1069). Re-run on grok
+    # 1.0.34 under Windows Terminal, 4/4: the text reached the composer, the
+    # settled Enter submitted it, and the agent answered — including a
+    # two-line message (the embedded newline arrived as a soft break, not a
+    # premature submit) and a 509-unit payload. Each try spawned and killed
+    # its own throwaway console; no live session was attached to.
     "grok": Agent(
         id="grok", label="Grok Build", command="grok",
         quit_command="/quit", fullscreen=True, resume_token="--resume",
+        console_input=True,
     ),
 }
 
