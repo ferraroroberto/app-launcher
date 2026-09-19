@@ -31,6 +31,14 @@ Terminal-grade content, so it sits behind the Tailscale + passkey gate like
 rule matches on a ``.../transcript`` suffix, which a ``/transcript/entry``
 request does not, so it is a separate row, not covered for free).
 
+The same path also reads *forwards* (#1050): ``?after=<offset>&size=<n>``
+returns only what the file has grown by since that offset, which is what the
+Chat pane's live refresh ticks on, and answers from one ``stat`` when
+``size`` says the file has not grown at all. One path rather than a second
+route on purpose — a new path shape needs its own ``_TERMINAL_GUARD_RULES``
+row, and this is the same resource, the same caller and the same gate, read
+from the other end of the file.
+
 ``GET /api/claude-code/sessions/{sid}/transcript/entry?offset=<n>`` re-reads
 one ``user``/``assistant`` turn from the same source, uncapped — the Chat
 pane's copy button (#985) calls it only when the page's own copy of that
@@ -49,7 +57,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from src import board
 from src.board_exchange import (
@@ -59,7 +67,13 @@ from src.board_exchange import (
     find_copilot_transcript,
     find_pi_transcript,
 )
-from src.session_transcript import DEFAULT_LIMIT, MAX_LIMIT, entry_full_text, transcript_page
+from src.session_transcript import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    entry_full_text,
+    transcript_page,
+    transcript_tail,
+)
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers.board_spawn import _safe_list_sessions
@@ -167,19 +181,40 @@ async def session_transcript(
     sid: str,
     request: Request,
     before: Optional[int] = Query(default=None, ge=0),
+    after: Optional[int] = Query(default=None, ge=0),
+    size: Optional[int] = Query(default=None, ge=0),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
 ) -> Dict[str, Any]:
     """One page of a live session's transcript (Tailscale + passkey).
 
     ``before`` is the previous page's ``next_cursor`` (a byte offset; omit
     for the newest page); ``limit`` caps the conversation turns per page.
+
+    ``after`` switches the cursor's direction (#1050): it asks for only what
+    has been appended since that offset, which is what the Chat pane's live
+    refresh ticks on. ``size`` is the file size the caller last saw, so an
+    unchanged file answers from a single ``stat``. The two directions are
+    mutually exclusive — one request reads older or newer, never both.
+
+    Deliberately the **same path** as the backwards page rather than a new
+    route. A new path would need its own ``_TERMINAL_GUARD_RULES`` row
+    (#985's ``/transcript/entry`` is the precedent, and #1035 now fails any
+    session-scoped route with no explicit level) — real work for no gain,
+    since this serves the same resource to the same caller under the same
+    gate, only from the other end of the file.
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    if before is not None and after is not None:
+        raise HTTPException(
+            status_code=400, detail="pass either before or after, not both"
+        )
     reason, flavor, path, agent = await _resolve_source(sid, cfg)
     if reason is not None:
         if reason != "session_not_found":
             logger.info("ℹ️ transcript %s (%s) unavailable: %s", sid[:8], agent, reason)
         return _unavailable(sid, reason)
+    if after is not None:
+        return await _tail_response(sid, agent, flavor, path, after, size)
     try:
         page = await asyncio.to_thread(
             transcript_page, path, before=before, limit=limit, flavor=flavor
@@ -201,6 +236,45 @@ async def session_transcript(
         "reason": None,
         "session_id": sid,
         **page,
+    }
+
+
+async def _tail_response(
+    sid: str,
+    agent: str,
+    flavor: str,
+    path: Path,
+    after: int,
+    size: Optional[int],
+) -> Dict[str, Any]:
+    """The forward-cursor half of the route above (#1050).
+
+    Logs nothing on an ordinary tick, on purpose: this runs every few
+    seconds for as long as someone is reading a chat, and an info line per
+    tick would bury the breadcrumbs that matter under its own traffic. A
+    failed read and a reset cursor are rare and diagnostic, so those do log.
+    """
+    try:
+        tail = await asyncio.to_thread(
+            transcript_tail, path, after=after, size=size, flavor=flavor
+        )
+    except OSError as exc:
+        logger.warning(
+            "⚠️ transcript tail %s (%s) read failed: %s",
+            sid[:8], agent, exc.__class__.__name__,
+        )
+        return _unavailable(sid, "read_failed")
+    if tail["reset"]:
+        logger.info(
+            "ℹ️ transcript tail %s (%s): cursor reset at %d (size %d)",
+            sid[:8], agent, after, tail["size"],
+        )
+    return {
+        "available": True,
+        "source": "native" if flavor == "claude" else flavor,
+        "reason": None,
+        "session_id": sid,
+        **tail,
     }
 
 

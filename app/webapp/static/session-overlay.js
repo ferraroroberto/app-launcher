@@ -39,6 +39,7 @@ import {
   hasTranscriptReader,
   openChatPane,
   pinChatToKeyboard,
+  syncLiveRefresh,
 } from './session-transcript.js';
 import { applyTermTheme } from './terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal-bar.js';
@@ -157,6 +158,11 @@ export function setSessionMode(mode) {
     terminalComposer.closePopovers();
     closeChatComposerPopovers();
   }
+  // The chat pane's live refresh follows the mode (#1050): showing Terminal
+  // stops it, showing Chat starts it. Called for both so a window sitting on
+  // Terminal never fetches chat for the session it is showing — the "10
+  // windows, only one being read" constraint the feature exists for.
+  syncLiveRefresh();
   if (mode === 'terminal') {
     const t = state.terminal;
     if (t && t.sid === s.session_id) {

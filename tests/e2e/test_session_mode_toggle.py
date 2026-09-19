@@ -225,7 +225,11 @@ def test_toggle_keeps_terminal_scrollback_and_socket(
     assert authed_page.evaluate(_COUNT_LINES, needle) == 1, (
         "terminal scrollback changed across a Chat round trip"
     )
-    assert len(calls) == 1, f"the transcript was reloaded by a mode switch: {calls}"
+    # Still exactly one *page* load across the round trip. Since #1050 the
+    # chat pane also ticks a forward cursor (`after=`) while it is the
+    # visible pane, so the count to pin is page loads, not every request.
+    pages = [u for u in calls if "after=" not in u]
+    assert len(pages) == 1, f"the transcript was reloaded by a mode switch: {calls}"
 
 
 def test_row_tap_reopens_last_mode(

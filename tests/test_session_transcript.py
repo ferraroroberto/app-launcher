@@ -99,15 +99,29 @@ def _lines_of(path: Path) -> List[Any]:
     return lines
 
 
-def _parse_whole(path: Path, build=st.claude_entries) -> List[Dict[str, Any]]:
+def _parse_whole(
+    path: Path, build=st.claude_entries, *, tail: int = -1
+) -> List[Dict[str, Any]]:
     """Reference: one parse of the whole file — offset stripped from the
     folded kinds, kept on turns, matching :func:`session_transcript._page`
-    (#985)."""
+    (#985).
+
+    ``tail`` is the live-tail offset of the page(s) being compared (#1050):
+    from there on a folded entry keeps its offset too, because that region
+    is what a live view re-renders and it needs a key per card. Default -1
+    means "no page ended at EOF", i.e. strip them all.
+    """
     entries = build(_lines_of(path))
     for e in entries:
-        if not st._is_turn(e):
+        if not st._is_turn(e) and not (tail >= 0 and e.get("offset", -1) >= tail):
             e.pop("offset", None)
     return entries
+
+
+def _tail_of(path: Path, limit: int, flavor: str = "claude") -> int:
+    """The newest page's live-tail offset (#1050) — where its provisional
+    region begins, and so which entries keep a folded offset."""
+    return st.transcript_page(path, limit=limit, flavor=flavor)["tail"]
 
 
 def _walk(path: Path, limit: int, flavor: str = "claude") -> List[List[Dict[str, Any]]]:
@@ -288,7 +302,7 @@ def test_pages_concatenate_to_one_full_parse(tmp_path: Path, monkeypatch, limit:
     for page in pages:
         assert sum(1 for e in page if e["kind"] in ("user", "assistant")) <= limit
     joined = [e for page in reversed(pages) for e in page]
-    assert joined == _parse_whole(path)
+    assert joined == _parse_whole(path, tail=_tail_of(path, limit))
 
 
 def test_first_page_is_the_newest_turns_and_cursor_advances(tmp_path: Path):
@@ -308,7 +322,7 @@ def test_whole_file_in_one_page_has_no_cursor(tmp_path: Path):
     path = _write_jsonl(tmp_path / "t.jsonl", _conversation(3))
     page = st.transcript_page(path, limit=40)
     assert page["next_cursor"] is None
-    assert page["entries"] == _parse_whole(path)
+    assert page["entries"] == _parse_whole(path, tail=page["tail"])
 
 
 def test_record_wider_than_the_window_is_read_whole(tmp_path: Path, monkeypatch):
@@ -341,7 +355,9 @@ def test_byte_cap_yields_a_short_page_with_a_cursor(tmp_path: Path, monkeypatch)
     assert page["next_cursor"] is not None
     # …and the walk still completes losslessly.
     pages = _walk(path, 100)
-    assert [e for page in reversed(pages) for e in page] == _parse_whole(path)
+    assert [e for page in reversed(pages) for e in page] == _parse_whole(
+        path, tail=_tail_of(path, 100)
+    )
 
 
 def test_pair_split_across_a_page_boundary_keeps_the_result(tmp_path: Path):
@@ -372,22 +388,46 @@ def test_empty_file_is_an_empty_page(tmp_path: Path):
     path.write_bytes(b"")
     assert st.transcript_page(path) == {
         "entries": [], "next_cursor": None, "tool_errors": "reported",
+        # An empty file still hands back a cursor a live view can resume
+        # from, so the first turn of a just-started session appears (#1050).
+        "tail": 0, "size": 0,
     }
 
 
 def test_page_exposes_offset_on_turns_only(tmp_path: Path):
     """#985: a turn keeps its byte offset (the copy-full-text route's
-    lookup key) — the folded kinds still have it stripped, unchanged."""
+    lookup key) — the folded kinds have it stripped.
+
+    #1050 carved one exception, pinned below it: from the live-tail offset
+    on, every kind keeps an offset, because a live view re-renders exactly
+    that region and needs a stable key per card.
+    """
     path = _write_jsonl(tmp_path / "t.jsonl", [
         _user("hi"),
         _assistant([{"type": "thinking", "thinking": "hmm"}], "m1"),
         _assistant([{"type": "text", "text": "hello"}], "m1"),
+        # A second message, so the first one is behind the live tail and
+        # keeps the pre-#1050 shape.
+        _user("more"),
+        _assistant([{"type": "thinking", "thinking": "later"}], "m2"),
+        _assistant([{"type": "text", "text": "done"}], "m2"),
     ])
     page = st.transcript_page(path)
-    by_kind = {e["kind"]: e for e in page["entries"]}
-    assert isinstance(by_kind["user"]["offset"], int)
-    assert isinstance(by_kind["assistant"]["offset"], int)
-    assert "offset" not in by_kind["thinking"]
+    entries = page["entries"]
+    tail = page["tail"]
+    # Split where the client does: the first entry carrying an offset at or
+    # past the tail opens the live region, and everything after it is in it.
+    cut = next(i for i, e in enumerate(entries) if e.get("offset", -1) >= tail)
+    settled, live = entries[:cut], entries[cut:]
+    assert [e["kind"] for e in settled] == ["user", "thinking", "assistant", "user"]
+    for e in settled:
+        if e["kind"] in ("user", "assistant"):
+            assert isinstance(e["offset"], int)
+        else:
+            assert "offset" not in e, "a settled folded entry keeps no offset"
+    assert [e["kind"] for e in live] == ["thinking", "assistant"]
+    for e in live:
+        assert isinstance(e["offset"], int), "the live tail keys every kind"
 
 
 # ---------------------------------------------------------- entry_full_text
@@ -2144,3 +2184,290 @@ class TestTranscriptEntryEndpoint:
         monkeypatch.setattr(router_mod, "entry_full_text", boom)
         body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").json()
         assert body["available"] is False and body["reason"] == "read_failed"
+
+
+# ------------------------------------------------- transcript_tail (#1050)
+#
+# The forward cursor a live chat view ticks on. Two failure modes are what
+# these exist for, and both are invisible in a single-shot read: a message
+# split across a tick boundary rendering as two cards, and a turn dropped at
+# a seam. `test_live_replay_matches_one_whole_read` is the one that pins
+# them, by replaying a conversation a few lines at a time and demanding the
+# result be identical to reading the finished file once.
+
+
+def _append_jsonl(path: Path, lines: List[Dict[str, Any]]) -> None:
+    with path.open("a", encoding="utf-8", newline="") as fh:
+        for line in lines:
+            fh.write(json.dumps(line) + "\n")
+
+
+def _turn_texts(entries: List[Dict[str, Any]]) -> List[Tuple[str, str]]:
+    return [(e["kind"], e.get("text", "")) for e in entries if st._is_turn(e)]
+
+
+def _live_view(path: Path, flavor: str = "claude"):
+    """Open a chat view: the newest page plus its live cursor."""
+    page = st.transcript_page(path, limit=100, flavor=flavor)
+    return list(page["entries"]), page["tail"], page["size"]
+
+
+def test_tail_of_an_unchanged_file_reads_nothing(tmp_path: Path, monkeypatch):
+    """The pre-check that makes an idle chat view nearly free: same size, no
+    open, no parse — the claim the whole polling design rests on."""
+    path = _write_jsonl(tmp_path / "t.jsonl", _conversation(3))
+    _, tail, size = _live_view(path)
+    opened: List[str] = []
+    real_open = Path.open
+
+    def spy(self, *a, **k):
+        opened.append(str(self))
+        return real_open(self, *a, **k)
+
+    monkeypatch.setattr(Path, "open", spy)
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert out["changed"] is False and out["reset"] is False
+    assert out["entries"] == [] and out["pending"] == []
+    assert opened == [], "an unchanged file must not be opened at all"
+
+
+def test_tail_returns_only_what_was_appended(tmp_path: Path):
+    path = _write_jsonl(tmp_path / "t.jsonl", _conversation(2))
+    _, tail, size = _live_view(path)
+    _append_jsonl(path, [_user("brand new prompt")])
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert out["changed"] is True and out["reset"] is False
+    texts = [e.get("text") for e in out["entries"] + out["pending"]]
+    assert "brand new prompt" in texts
+    assert "prompt 0 " not in texts, "nothing already seen is resent"
+
+
+def test_tail_holds_back_a_message_that_is_still_growing(tmp_path: Path):
+    """A Claude message is one line per content block under one id. Settling
+    the first line would render the reply, then render it *again* as a second
+    card when its trailing text arrives — so the whole span stays pending
+    until a differently-keyed line follows it."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("go")])
+    _, tail, size = _live_view(path)
+    _append_jsonl(path, [_assistant([{"type": "text", "text": "first half"}], "m9")])
+    out = st.transcript_tail(path, after=tail, size=size)
+    # The prompt settles (it is complete and something now follows it); the
+    # message that just started does not.
+    assert [e["kind"] for e in out["entries"]] == ["user"]
+    assert [e["kind"] for e in out["pending"]] == ["assistant"]
+
+    # The rest of the same message lands; it is still one card, not two.
+    _append_jsonl(path, [
+        _assistant([_tool_use("Bash", {"command": "ls"}, "t9")], "m9"),
+        _assistant([{"type": "text", "text": " and second half"}], "m9"),
+    ])
+    out = st.transcript_tail(path, after=out["tail"], size=out["size"])
+    replies = [e for e in out["entries"] + out["pending"] if e["kind"] == "assistant"]
+    assert len(replies) == 1, "one message must never become two cards"
+    # Both blocks are in that one card (joined the way the builder joins
+    # blocks), so nothing was dropped to achieve the single card either.
+    assert "first half" in replies[0]["text"]
+    assert "and second half" in replies[0]["text"]
+
+
+def test_tail_settles_a_message_once_the_next_one_starts(tmp_path: Path):
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("go")])
+    _, tail, size = _live_view(path)
+    _append_jsonl(path, [_assistant([{"type": "text", "text": "done"}], "m1")])
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert [e["kind"] for e in out["pending"]] == ["assistant"]
+    _append_jsonl(path, [_assistant([{"type": "text", "text": "next"}], "m2")])
+    out = st.transcript_tail(path, after=out["tail"], size=out["size"])
+    # The finished message is now settled — appended once and never touched
+    # again — and only the new one is provisional.
+    assert [e["text"] for e in out["entries"]] == ["done"]
+    assert [e["text"] for e in out["pending"]] == ["next"]
+
+
+def test_tail_keys_every_entry_so_a_rebuild_can_restore_open_cards(tmp_path: Path):
+    """The live region is re-rendered whenever it changes, so each card needs
+    a stable identity — including the folded kinds, which a page strips."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("go")])
+    _, tail, size = _live_view(path)
+    _append_jsonl(path, [
+        _assistant([{"type": "thinking", "thinking": "hmm"}], "m1"),
+        _assistant([_tool_use("Bash", {"command": "ls"}, "t1")], "m1"),
+        _user([_tool_result("t1", "out")]),
+        _assistant([{"type": "text", "text": "done"}], "m2"),
+    ])
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert out["entries"], "the finished message should have settled"
+    for e in out["entries"] + out["pending"]:
+        assert isinstance(e.get("offset"), int), f"{e['kind']} carries no render key"
+
+
+def test_tail_resets_when_the_file_is_rewritten_under_the_cursor(tmp_path: Path):
+    path = _write_jsonl(tmp_path / "t.jsonl", _conversation(4))
+    _, tail, size = _live_view(path)
+    _write_jsonl(path, [_user("a whole new conversation")])  # rotated/compacted
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert out["reset"] is True, "a cursor past EOF must ask for a reload"
+    assert out["entries"] == [] and out["pending"] == []
+
+
+def test_tail_resets_rather_than_replaying_a_huge_backlog(tmp_path: Path, monkeypatch):
+    """A phone that was locked for an hour wants the newest turns, not a
+    multi-MB replay of everything it missed."""
+    monkeypatch.setattr(st, "REQUEST_BYTE_CAP", 2_000)
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("go")])
+    _, tail, size = _live_view(path)
+    _append_jsonl(path, _conversation(30))
+    out = st.transcript_tail(path, after=tail, size=size)
+    assert out["reset"] is True
+
+
+def test_tail_of_a_half_written_line_waits_for_the_rest(tmp_path: Path):
+    """A half-written line is not a turn. It must not parse as one, and the
+    cursor must not step over it — the next tick reads it whole."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [_user("go")])
+    _, tail, size = _live_view(path)
+    head = '{"type": "assistant", "message": {"id": "m1", "role'
+    rest = '": "assistant", "content": [{"type": "text", "text": "hi"}]}}\n'
+    with path.open("a", encoding="utf-8", newline="") as fh:
+        fh.write(head)
+    out = st.transcript_tail(path, after=tail, size=size)
+    # Nothing of the torn line is shown, and the cursor has not stepped over
+    # it: the offset it hands back still points at where that line begins.
+    assert [e for e in out["entries"] + out["pending"] if e["kind"] == "assistant"] == []
+    assert out["tail"] <= len(path.read_bytes()) - len(head)
+    with path.open("a", encoding="utf-8", newline="") as fh:
+        fh.write(rest)
+    out = st.transcript_tail(path, after=out["tail"], size=None)
+    assert [e["text"] for e in out["pending"] if e["kind"] == "assistant"] == ["hi"]
+
+
+@pytest.mark.parametrize("chunk", [1, 3, 7])
+def test_live_replay_matches_one_whole_read(tmp_path: Path, monkeypatch, chunk: int):
+    """The design's core claim: following a conversation tick by tick lands
+    in exactly the same place as opening it once at the end.
+
+    Replays a whole conversation ``chunk`` lines at a time — seams land
+    mid-message at chunk sizes that do not divide a message's block count —
+    and compares the accumulated entries against a single read of the
+    finished file. A message split across a seam shows up as a duplicated
+    reply; a dropped seam shows up as a missing one. The same check against
+    a real 19 MB session on the dev box replayed 43 ticks with no drift.
+    """
+    monkeypatch.setattr(st, "WINDOW_BYTES", 400)
+    rows = _conversation(12)
+    path = tmp_path / "t.jsonl"
+    path.write_bytes(b"")
+    settled, tail, size = _live_view(path)
+    pending: List[Dict[str, Any]] = []
+    for i in range(0, len(rows), chunk):
+        _append_jsonl(path, rows[i:i + chunk])
+        out = st.transcript_tail(path, after=tail, size=size)
+        assert out["reset"] is False
+        if out["changed"]:
+            settled = settled + out["entries"]
+            pending = out["pending"]
+            tail, size = out["tail"], out["size"]
+    reference = st.transcript_page(path, limit=1000)["entries"]
+    assert _turn_texts(settled + pending) == _turn_texts(reference)
+    assert _kinds(settled + pending) == _kinds(reference)
+
+
+class TestTranscriptTailEndpoint:
+    """The forward cursor over the wire (#1050). Deliberately the *same*
+    route as the backwards page — a new path shape would need its own
+    ``_TERMINAL_GUARD_RULES`` row, and this is the same resource, caller and
+    gate, read from the other end of the file."""
+
+    def _served(self, overrides, monkeypatch, tmp_path, rows):
+        overrides["session"].list_sessions.return_value = [_live()]
+        path = _write_jsonl(tmp_path / "t.jsonl", rows)
+        monkeypatch.setattr(
+            board, "state_row_for_session",
+            lambda live, rows_, sid: {"transcript_path": str(path)},
+        )
+        return path
+
+    def test_page_hands_back_a_cursor_the_tail_resumes_from(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        client, _, overrides = webapp_client
+        path = self._served(overrides, monkeypatch, tmp_path, _conversation(2))
+        page = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert isinstance(page["tail"], int) and isinstance(page["size"], int)
+
+        _append_jsonl(path, [_user("something new")])
+        body = client.get(
+            f"/api/claude-code/sessions/s1/transcript"
+            f"?after={page['tail']}&size={page['size']}"
+        ).json()
+        assert body["available"] is True and body["changed"] is True
+        texts = [e.get("text") for e in body["entries"] + body["pending"]]
+        assert "something new" in texts
+
+    def test_unchanged_file_answers_changed_false(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        client, _, overrides = webapp_client
+        self._served(overrides, monkeypatch, tmp_path, _conversation(2))
+        page = client.get("/api/claude-code/sessions/s1/transcript").json()
+        body = client.get(
+            f"/api/claude-code/sessions/s1/transcript"
+            f"?after={page['tail']}&size={page['size']}"
+        ).json()
+        assert body["changed"] is False
+        assert body["entries"] == [] and body["pending"] == []
+
+    def test_before_and_after_together_are_refused(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        client, _, overrides = webapp_client
+        self._served(overrides, monkeypatch, tmp_path, _conversation(2))
+        res = client.get("/api/claude-code/sessions/s1/transcript?before=10&after=10")
+        assert res.status_code == 400
+
+    def test_a_dead_session_is_told_so_rather_than_polled_forever(
+        self, webapp_client, _bypass_gate
+    ):
+        """What stops the client's timer: the same `session_not_found` the
+        page uses, so a session that exits ends the refresh instead of
+        leaving it ticking against nothing."""
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = []
+        body = client.get(
+            "/api/claude-code/sessions/s1/transcript?after=0&size=0"
+        ).json()
+        assert body["available"] is False and body["reason"] == "session_not_found"
+
+    def test_read_failure_is_reported_not_swallowed(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        from app.webapp.routers import session_transcript as router_mod
+
+        client, _, overrides = webapp_client
+        self._served(overrides, monkeypatch, tmp_path, _conversation(2))
+
+        def boom(*args, **kwargs):
+            raise PermissionError("locked")
+
+        monkeypatch.setattr(router_mod, "transcript_tail", boom)
+        body = client.get(
+            "/api/claude-code/sessions/s1/transcript?after=0&size=0"
+        ).json()
+        assert body["available"] is False and body["reason"] == "read_failed"
+
+    def test_an_idle_tick_never_logs(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
+    ):
+        """A tick runs every few seconds for as long as someone is reading.
+        An info line per tick would bury the breadcrumbs that matter under
+        its own traffic, so the quiet path stays quiet."""
+        client, _, overrides = webapp_client
+        self._served(overrides, monkeypatch, tmp_path, _conversation(2))
+        page = client.get("/api/claude-code/sessions/s1/transcript").json()
+        with caplog.at_level(logging.INFO, logger="app.webapp.routers.session_transcript"):
+            for _ in range(5):
+                client.get(
+                    f"/api/claude-code/sessions/s1/transcript"
+                    f"?after={page['tail']}&size={page['size']}"
+                )
+        assert caplog.records == []
