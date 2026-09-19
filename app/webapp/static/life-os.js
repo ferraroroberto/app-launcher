@@ -55,7 +55,14 @@ export function renderSkills() {
   const skills = state.lifeOsSkills;
   els.lifeOsEmpty.hidden = skills.length !== 0;
 
-  skills.forEach(function (s) {
+  // Starred skills pinned to the top (#1070), the Coding tab's treatment
+  // (#250) replicated here. `skills` arrives alphabetical from the scanner,
+  // so a stable partition keeps both groups A–Z rather than reshuffling the
+  // rest of the list around a star.
+  const favs = skills.filter(function (s) { return s.is_favorite; });
+  const rest = skills.filter(function (s) { return !s.is_favorite; });
+
+  favs.concat(rest).forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item coding-item lifeos-item';
     li.dataset.id = s.id;
@@ -102,9 +109,41 @@ export function renderSkills() {
     launchBtn.addEventListener('click', function () { launchSkill(s); });
     actions.appendChild(launchBtn);
 
+    // Favorite star — rightmost, same glyph, same classes and the same
+    // filled-gold `.is-fav` treatment the Coding row's star uses (#250), so
+    // both tabs read identically.
+    const starBtn = document.createElement('button');
+    starBtn.type = 'button';
+    starBtn.className = 'icon-btn agent-btn star-btn' + (s.is_favorite ? ' is-fav' : '');
+    starBtn.innerHTML = icon('star');
+    starBtn.title = s.is_favorite
+      ? 'Unstar (remove from favorites)'
+      : 'Star (add to favorites)';
+    starBtn.setAttribute('aria-label', starBtn.title);
+    starBtn.setAttribute('aria-pressed', s.is_favorite ? 'true' : 'false');
+    starBtn.addEventListener('click', function () { toggleSkillFavorite(s); });
+    actions.appendChild(starBtn);
+
     li.appendChild(actions);
     host.appendChild(li);
   });
+}
+
+// Star / unstar a Life OS skill (#1070). Persists server-side, then
+// re-fetches the skills list so the star and the favorites-first ordering
+// update from the authoritative payload — no optimistic local mutation to
+// drift, exactly like the Coding tab's toggleFavorite (#250).
+async function toggleSkillFavorite(s) {
+  try {
+    await jsonApi('/api/life-os/favorites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: s.id, favorite: !s.is_favorite }),
+    });
+    await fetchSkills();
+  } catch (exc) {
+    apiFailToast('Could not update favorite', exc);
+  }
 }
 
 // ------------------------------------------------- weekly recap (issue #167)

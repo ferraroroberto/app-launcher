@@ -88,6 +88,16 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "Skill list — folder ids and public SKILL.md titles. The private "
         "subtrees behind them (/files, /conversations) are passkey-gated."
     ),
+    "/api/life-os/favorites": (
+        "Stars a skill (#1070): writes a list of skill *ids* to the webapp "
+        "config and echoes it back. Strictly less sensitive than the "
+        "/api/life-os/skills list it reorders, which is itself deliberately "
+        "token-only above - no private subtree is read, nothing is spawned, "
+        "and no PTY is touched. Its Coding twin POST "
+        "/api/claude-code/favorites sits outside every terminal prefix and "
+        "is token-only for the same reason. Worst case for a bearer-token "
+        "holder is reordering a list they can already read in full."
+    ),
     "/api/life-os/recap-status": (
         "One stat() of the recap ledger — staleness state for the tab tile, "
         "no ledger content."

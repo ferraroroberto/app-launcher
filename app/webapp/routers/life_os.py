@@ -44,7 +44,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import WebappConfig
+from src.webapp_config import WebappConfig, update_webapp_config
 
 from app.webapp.routers import life_os_conversations, life_os_files
 from app.webapp.routers._helpers import maybe_json
@@ -110,7 +110,9 @@ def _recap_staleness(age_days: Optional[float]) -> str:
 # --------------------------------------------------------------- helpers
 
 
-def _skill_to_api(skill: Skill, life_os_root: Path) -> Dict[str, Any]:
+def _skill_to_api(
+    skill: Skill, life_os_root: Path, favorites: frozenset = frozenset()
+) -> Dict[str, Any]:
     """API shape for one skill tile."""
     skill_md = skill.skill_dir / "SKILL.md"
     skill_md_rel = None
@@ -125,6 +127,9 @@ def _skill_to_api(skill: Skill, life_os_root: Path) -> Dict[str, Any]:
         "command": skill.command,
         "description": skill.description,
         "skill_md": skill_md_rel,
+        # Starred by the user (#1070) — the Coding tab's `is_favorite`
+        # contract (#250), replicated here.
+        "is_favorite": skill.id in favorites,
     }
 
 
@@ -146,14 +151,47 @@ async def list_skills(request: Request) -> Dict[str, Any]:
         life_os_root = life_os_dir.resolve()
     except (OSError, ValueError):
         life_os_root = life_os_dir
+    favorites = frozenset(cfg.life_os_favorites)
     skills = [
-        _skill_to_api(s, life_os_root) for s in scan_skills(life_os_dir)
+        _skill_to_api(s, life_os_root, favorites) for s in scan_skills(life_os_dir)
     ] if available else []
     return {
         "skills": skills,
         "life_os_dir": cfg.life_os_dir,
         "available": available,
     }
+
+
+@router.post("/api/life-os/favorites")
+async def toggle_skill_favorite(request: Request) -> Dict[str, Any]:
+    """Star/unstar a Life OS skill (issue #1070).
+
+    Body: ``{"id": "<skill-id>", "favorite": true|false}``. Deliberately the
+    same shape, the same idempotence and the same persistence path as the
+    Coding tab's ``POST /api/claude-code/favorites`` (#250) — starring an
+    already-starred (or unstarring an absent) id is a no-op that still
+    returns 200, so a double-tap from the phone cannot corrupt the list.
+
+    The id is not validated against the scanner: a skill can be renamed or
+    removed on disk between a star and the next scan, and a stale entry is
+    harmless — it simply matches nothing when the list is rendered. Refusing
+    it would mean a disk read on every tap for no gain.
+    """
+    body = await maybe_json(request)
+    skill_id = str(body.get("id") or "").strip()
+    if not skill_id:
+        raise HTTPException(status_code=400, detail="missing skill id")
+    favorite = bool(body.get("favorite"))
+
+    cfg: WebappConfig = request.app.state.webapp_config
+    # Preserve order, drop dupes — the list is the user's, kept tidy.
+    favorites = [f for f in cfg.life_os_favorites if f != skill_id]
+    if favorite:
+        favorites.append(skill_id)
+
+    new_cfg = update_webapp_config(life_os_favorites=favorites)
+    request.app.state.webapp_config = new_cfg
+    return {"ok": True, "life_os_favorites": new_cfg.life_os_favorites}
 
 
 @router.get("/api/life-os/recap-status")
