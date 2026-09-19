@@ -459,9 +459,16 @@ function closeBrowser() {
 // reattaches to one exact session instead of opening Claude's native picker.
 // Opened scoped from a tile's 🕘, or unscoped from the Skills header's 🔎.
 //
-// { skill: <id|null>, name: <label>, allSkills: bool, scoped: bool, rows: [] }
+// { skill: <id|null>, name: <label>, allSkills: bool, scoped: bool,
+//   searching: bool, sourceRows: [], rows: [] }
 let convoView = null;
 let convoQueryTimer = null;
+
+// The ordering applied to *search* results — 'relevance' (the server's rank
+// order) until the user taps the toggle, and reset to it whenever the query
+// box is cleared or the view is reopened. Deliberately not persisted: the
+// browse list keeps its own remembered date sort in state.lifeOsConvoSort.
+let convoSearchSort = 'relevance';
 
 function convoScope() {
   // The skill filter actually sent to the server: null once the view has been
@@ -480,8 +487,15 @@ export function openConvos(skill) {
     // Whether the rows on screen came from a single-skill list — set by
     // renderConvoRows, so a sort toggle can re-render without a refetch.
     scoped: !!skill,
+    // Whether those rows are search hits (server-ranked) rather than a
+    // browse index — the two lists do not want the same default order.
+    searching: false,
+    // The rows exactly as the server sent them, so a date re-sort of search
+    // results is reversible back to relevance without a refetch.
+    sourceRows: [],
     rows: [],
   };
+  convoSearchSort = 'relevance';
   els.lifeOsConvosTitle.textContent = convoView.name;
   els.lifeOsConvoQuery.value = '';
   // The scope toggle only means something for a view that started scoped.
@@ -553,7 +567,7 @@ async function loadConvos() {
       showConvoState('empty', 'No conversation index yet for this skill.');
       return;
     }
-    renderConvoRows(body.conversations || [], { scoped: true });
+    renderConvoRows(body.conversations || [], { scoped: true, search: false });
   } catch (exc) {
     showConvoState('error', convoFailure(exc), loadConvos);
   }
@@ -579,7 +593,7 @@ async function runConvoSearch(query) {
       showConvoState('empty', 'Nothing matched “' + query + '”.');
       return;
     }
-    renderConvoRows(rows, { scoped: !!scope });
+    renderConvoRows(rows, { scoped: !!scope, search: true });
   } catch (exc) {
     showConvoState('error', convoFailure(exc), function () { runConvoSearch(query); });
   }
@@ -600,23 +614,48 @@ function onConvoQuery() {
   const query = els.lifeOsConvoQuery.value.trim();
   convoQueryTimer = window.setTimeout(function () {
     if (query) { runConvoSearch(query); return; }
-    // Cleared box: back to whatever the view shows with no query.
+    // Cleared box: drop the transient search ordering (the browse list keeps
+    // its own remembered date sort) and go back to the no-query view.
+    convoSearchSort = 'relevance';
+    if (convoView) convoView.searching = false;
+    syncConvoSortBtn();
     if (convoScope()) loadConvos();
     else showConvoState('empty', 'Search every skill’s conversations.');
   }, 250);
 }
 
-// ------------------------------------------------------------- sort (#886)
+// ------------------------------------------------- sort (#886, #1074)
 //
-// Two orderings over rows already on the client — the browse list and the
-// search results both land here, so one client-side re-sort covers both and
-// a toggle costs no round trip. 'interaction' is the default and the point
-// of the feature: `last_interaction` is the capture file's mtime, which
-// life-os moves forward whenever a resumed session appends turns, so the
-// conversation you were last in floats to the top. 'created' is the
-// date-stamped filename order the index is written in.
+// Orderings over rows already on the client, so a toggle costs no round
+// trip. The browse list and the search results land here with *different*
+// defaults (#1074): browsing defaults to a date sort, while a search
+// defaults to 'relevance' — the server's FTS5 rank order, which the client's
+// only job is not to destroy.
+//
+// 'interaction' is the browse default and the point of #886:
+// `last_interaction` is the capture file's mtime, which life-os moves
+// forward whenever a resumed session appends turns, so the conversation you
+// were last in floats to the top. 'created' is the date-stamped filename
+// order the index is written in.
+
+// The ordering in force for whatever is on screen right now.
+function activeConvoSort() {
+  if (convoView && convoView.searching) return convoSearchSort;
+  return state.lifeOsConvoSort;
+}
+
+// Which date leads each row. In relevance order neither date drives the
+// list, so the remembered browse preference still decides the display.
+function convoDateSort() {
+  const mode = activeConvoSort();
+  return mode === 'relevance' ? state.lifeOsConvoSort : mode;
+}
+
 function sortedConvoRows(rows) {
-  const key = state.lifeOsConvoSort === 'created' ? 'date' : 'last_interaction';
+  const mode = activeConvoSort();
+  // Relevance is the server's own order — pass it through untouched.
+  if (mode === 'relevance') return rows.slice();
+  const key = mode === 'created' ? 'date' : 'last_interaction';
   return rows.slice().sort(function (a, b) {
     // A server too old to send `last_interaction` (or a row whose capture
     // could not be stat'd) degrades to the creation date rather than sorting
@@ -633,9 +672,19 @@ function sortedConvoRows(rows) {
 function syncConvoSortBtn() {
   const btn = els.lifeOsConvosSort;
   if (!btn) return;
-  if (state.lifeOsConvoSort === 'created') {
+  const mode = activeConvoSort();
+  // While searching the cycle has a third state, so the "tap to…" half of
+  // each hint names that cycle's own next stop, never the browse one.
+  const searching = !!(convoView && convoView.searching);
+  if (mode === 'relevance') {
+    // `search`, not `star` — a star already means "favorite" on the Coding
+    // tab, and this state is "ordered by how well the hit matches".
+    btn.innerHTML = icon('search') + ' Relevance';
+    btn.title = 'Best match first — tap to sort by last interaction';
+  } else if (mode === 'created') {
     btn.innerHTML = icon('calendar-days') + ' Created';
-    btn.title = 'Sorted by creation date — tap to sort by last interaction';
+    btn.title = 'Sorted by creation date — tap to sort by ' +
+      (searching ? 'best match' : 'last interaction');
   } else {
     btn.innerHTML = icon('timer') + ' Recent';
     btn.title = 'Sorted by last interaction — tap to sort by creation date';
@@ -643,13 +692,28 @@ function syncConvoSortBtn() {
 }
 
 function toggleConvoSort() {
-  state.lifeOsConvoSort =
-    state.lifeOsConvoSort === 'created' ? 'interaction' : 'created';
-  localStorage.setItem('launcher.lifeOsConvoSort', state.lifeOsConvoSort);
-  syncConvoSortBtn();
+  if (convoView && convoView.searching) {
+    // Search results cycle relevance → recent → created → relevance, so the
+    // server's ranking stays reachable and a date ordering of the hits is
+    // still available. The choice is transient — clearing the box restores
+    // the browse default (#1074).
+    convoSearchSort =
+      convoSearchSort === 'relevance' ? 'interaction' :
+      convoSearchSort === 'interaction' ? 'created' : 'relevance';
+  } else {
+    state.lifeOsConvoSort =
+      state.lifeOsConvoSort === 'created' ? 'interaction' : 'created';
+    localStorage.setItem('launcher.lifeOsConvoSort', state.lifeOsConvoSort);
+  }
   // Re-order what is already on screen; a refetch would return the same rows.
-  if (convoView && convoView.rows.length) {
-    renderConvoRows(convoView.rows, { scoped: convoView.scoped });
+  // Re-sorting from the *server's* order, not the rendered one, is what makes
+  // relevance reachable again after a date sort.
+  if (convoView && convoView.sourceRows.length) {
+    renderConvoRows(convoView.sourceRows, {
+      scoped: convoView.scoped, search: convoView.searching,
+    });
+  } else {
+    syncConvoSortBtn();
   }
 }
 
@@ -658,9 +722,15 @@ function renderConvoRows(rows, opts) {
   hideConvoState();
   host.innerHTML = '';
   convoView.scoped = !!(opts && opts.scoped);
+  // Set before sorting: sortedConvoRows() reads it to pick the ordering.
+  convoView.searching = !!(opts && opts.search);
+  convoView.sourceRows = rows.slice();
   // Store the sorted order: refreshConvoActions() pairs DOM nodes with
   // convoView.rows by index, so the two must not drift apart.
   convoView.rows = sortedConvoRows(rows);
+  // The label depends on which list is on screen, so it is re-synced on
+  // every render, not only on a tap.
+  syncConvoSortBtn();
   if (!convoView.rows.length) {
     showConvoState('empty', 'No conversations yet.');
     return;
@@ -719,7 +789,7 @@ function convoRow(r, scoped) {
 function appendConvoDates(host, r) {
   const created = r.date || '';
   const touched = r.last_interaction || created;
-  const byCreated = state.lifeOsConvoSort === 'created';
+  const byCreated = convoDateSort() === 'created';
   const primary = byCreated ? created : touched;
   const secondary = byCreated ? touched : created;
   const top = document.createElement('span');

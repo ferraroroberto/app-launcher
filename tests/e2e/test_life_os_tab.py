@@ -933,6 +933,93 @@ def test_life_os_header_search_spans_every_skill(
     expect(rows.nth(1).locator(".lifeos-convo-tag")).to_have_text("sparring-work")
 
 
+def test_life_os_search_results_keep_server_relevance_order(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1074: the client used to push search hits through the #886 date sort,
+    so the best match sank below rows that merely mention the word.
+
+    The fixture makes the top-ranked hit the *oldest* row on both date axes,
+    so a list that re-sorted by either date would render it last — and the
+    three orderings disagree pairwise, so each state of the toggle is
+    distinguishable from the other two.
+    """
+    _mock_skills(authed_page)
+
+    def _row(topic, date, touched):
+        return dict(
+            _FAKE_CONVERSATIONS["conversations"][0],
+            file=date + "-1200-" + topic.replace(" ", "-") + ".md",
+            path=".claude/skills/journal-daily/conversations/"
+                 + date + "-1200-" + topic.replace(" ", "-") + ".md",
+            topic=topic, date=date, last_interaction=touched,
+        )
+
+    #                             created       last interaction
+    best = _row("the ferry deep dive", "2026-06-01", "2026-06-02")   # oldest both
+    mention = _row("a ferry mention", "2026-08-01", "2026-08-02")    # newest created
+    passing = _row("ferry in passing", "2026-07-01", "2026-09-05")   # newest touched
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/conversations/search.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": True, "query": "ferry", "skill": "",
+                "results": [best, mention, passing],   # server's rank order
+            }),
+        ),
+    )
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    authed_page.locator("#lifeOsConvoSearch").click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+
+    sort = authed_page.locator("#lifeOsConvosSort")
+    # Browsing starts on the remembered date sort; a query switches the
+    # control to relevance rather than leaving a dead toggle behind.
+    expect(sort).to_contain_text("Recent")
+
+    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(3, timeout=5_000)
+    topics = rows.locator(".lifeos-convo-topic")
+    expect(topics).to_have_text(
+        ["the ferry deep dive", "a ferry mention", "ferry in passing"]
+    )
+    expect(sort).to_contain_text("Relevance")
+
+    # A date ordering of the hits is still reachable — the toggle is not a
+    # one-way trip into relevance.
+    sort.click()
+    expect(sort).to_contain_text("Recent")
+    expect(topics).to_have_text(
+        ["ferry in passing", "a ferry mention", "the ferry deep dive"]
+    )
+    sort.click()
+    expect(sort).to_contain_text("Created")
+    expect(topics).to_have_text(
+        ["a ferry mention", "ferry in passing", "the ferry deep dive"]
+    )
+
+    # …and relevance survives the round trip, because the re-sort runs off
+    # the server's array rather than the rendered one.
+    sort.click()
+    expect(sort).to_contain_text("Relevance")
+    expect(topics).to_have_text(
+        ["the ferry deep dive", "a ferry mention", "ferry in passing"]
+    )
+
+    # Clearing the box drops the transient ordering: browsing keeps its own
+    # date default (#886/#890), and no "Relevance" label is left stranded.
+    authed_page.locator("#lifeOsConvoQuery").fill("")
+    expect(sort).to_contain_text("Recent", timeout=5_000)
+
+
 def test_life_os_search_unavailable_is_not_an_error(
     authed_page: Page, base_url: str
 ) -> None:
