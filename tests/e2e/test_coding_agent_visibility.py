@@ -74,7 +74,7 @@ def _codex_btn(page: Page):
 
 def _github_btn(page: Page):
     return page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=page.locator('img[alt="GitHub"]')
+        has=page.locator('use[href="#b-github"]')
     )
 
 
@@ -182,4 +182,62 @@ def test_agent_visibility_switch_identity_survives_successful_save(
     assert survived, (
         "renderAgentVisibility() rebuilt the switch DOM on a successful "
         "save — the exact window issue #732's click race lands in"
+    )
+
+
+def test_brand_marks_are_sprite_symbols_with_no_chip(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1070 — no brand mark renders on a grey chip, in either theme.
+
+    #361 painted a theme-aware `--card-2` tile behind every mark for a
+    mechanical reason: a brand `<img>` is a separate document, so its glyph
+    fill cannot reach page CSS vars. Monochrome marks were therefore baked
+    to a fixed mid-tone (`#6e7781`) and needed a known surface to clear.
+    The marks are inline sprite symbols now, so a monochrome one inherits
+    `currentColor` from its button and the chip has nothing left to do.
+
+    Asserts the mechanism (a sprite `<use>`, no `<img>` left on the row) and
+    the result (a transparent background), in *both* themes — the dark leg
+    is the one the baked mid-tone was chosen for, so it is the leg that
+    matters. The theme-adaptation assertion is the load-bearing one: it is
+    what distinguishes "the chip is gone" from "the chip is gone and the
+    mark is still legible without it".
+
+    Auto-retrying `to_have_css` throughout (#680): the Coding rows are
+    rebuilt by the git-status poll.
+    """
+    _install_routes(authed_page)
+    _reset_visibility(authed_page, base_url)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_surfaces(authed_page)
+
+    row = authed_page.locator('.coding-item[data-id="alpha"]')
+    mark = row.locator('.agent-btn[data-agent="claude"] .agent-icon')
+    expect(mark).to_have_count(1, timeout=5_000)
+    expect(mark.locator('use[href="#b-claude"]')).to_have_count(1)
+    # Nothing on the row is an <img> any more.
+    expect(row.locator("img")).to_have_count(0)
+
+    # A monochrome mark paints with currentColor, so its resolved colour has
+    # to actually differ between the themes — that, not the mid-tone the
+    # chip used to guarantee, is what keeps it legible on a bare card.
+    mono = row.locator('.agent-btn[data-agent="codex"] .agent-icon')
+    expect(mono).to_have_count(1)
+    seen = {}
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "t => document.documentElement.setAttribute('data-theme', t)", theme
+        )
+        expect(mark).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        expect(mono).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        expect(_github_btn(authed_page).locator(".agent-icon")).to_have_css(
+            "background-color", "rgba(0, 0, 0, 0)"
+        )
+        seen[theme] = mono.evaluate("el => getComputedStyle(el).color")
+
+    assert seen["light"] and seen["dark"], seen
+    assert seen["light"] != seen["dark"], (
+        "a currentColor brand mark resolved to the same colour in both "
+        f"themes ({seen['light']}) — it is not theme-adaptive after all"
     )

@@ -30,7 +30,7 @@ import { renderHomeHead } from './home-head.js';
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, isChiefSession, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, isChiefSession, renderQuotaLines } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
@@ -193,11 +193,9 @@ export function renderSessions() {
     // Claude Code for an unrecognised id.
     const known = state.agents.find(function (a) { return a.id === s.agent; });
     const agentId = known ? known.id : 'claude';
-    const agentIcon = document.createElement('img');
-    agentIcon.className = 'session-agent-icon';
-    agentIcon.src = iconUrl(agentId);
-    agentIcon.alt = known ? known.label : 'Claude Code';
-    agentIcon.title = agentIcon.alt;
+    const agentIcon = brandIconEl(
+      agentId, 'session-agent-icon', known ? known.label : 'Claude Code'
+    );
     head.appendChild(agentIcon);
     const kindTag = document.createElement('span');
     kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');

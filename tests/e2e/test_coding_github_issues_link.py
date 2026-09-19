@@ -63,7 +63,7 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
     gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=authed_page.locator('img[alt="GitHub"]')
+        has=authed_page.locator('use[href="#b-github"]')
     )
     expect(gh_btn).to_be_enabled(timeout=5_000)
     gh_btn.click()
@@ -83,6 +83,6 @@ def test_github_icon_disabled_without_repo_url(authed_page: Page, base_url: str)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
     gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=authed_page.locator('img[alt="GitHub"]')
+        has=authed_page.locator('use[href="#b-github"]')
     )
     expect(gh_btn).to_be_disabled()

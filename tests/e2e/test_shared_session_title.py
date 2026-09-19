@@ -135,4 +135,6 @@ def test_board_and_coding_tab_show_identical_shared_title(
         authed_page.locator(
             '.board-list[data-col="claude_turn"] .board-agent-icon'
         ).first
-    ).to_have_attribute("alt", "Claude Code")
+        # #1070 — the brand mark is a sprite <svg>, not an <img>, so its
+        # accessible name is aria-label rather than alt.
+    ).to_have_attribute("aria-label", "Claude Code")

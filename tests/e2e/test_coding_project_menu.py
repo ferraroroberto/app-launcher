@@ -133,7 +133,7 @@ def _menu(page: Page, app_id: str = "alpha"):
 
 def _github_btn(page: Page):
     return page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=page.locator('img[alt="GitHub"]')
+        has=page.locator('use[href="#b-github"]')
     )
 
 
