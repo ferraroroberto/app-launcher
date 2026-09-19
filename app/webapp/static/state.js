@@ -288,6 +288,7 @@ export const els = {
   jobRunCancel: document.getElementById('jobRunCancel'),
 
   agentVisibility: document.getElementById('agentVisibility'),
+  codingFavoriteAgent: document.getElementById('codingFavoriteAgent'),
   claudeModel: document.getElementById('claudeModel'),
   claudeEffort: document.getElementById('claudeEffort'),
   claudePermission: document.getElementById('claudePermission'),

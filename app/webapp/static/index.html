@@ -681,8 +681,18 @@
         </summary>
 
         <div class="opt-group">
+          <h3 class="opt-group-title">Favorite agent</h3>
+          <p class="opt-hint">The one agent that keeps its own launch button on every project row. Every other visible agent moves into the row&rsquo;s &#8942; menu, one tap deeper.</p>
+          <div class="opt-row">
+            <span class="opt-name">Agent</span>
+            <select id="codingFavoriteAgent" class="select-native"
+                    aria-label="Favorite agent"></select>
+          </div>
+        </div>
+
+        <div class="opt-group">
           <h3 class="opt-group-title">Visible agents</h3>
-          <p class="opt-hint">Which launch buttons each project row paints. Hiding one only trims the row — a running session still shows its agent in the sessions list and on the Board.</p>
+          <p class="opt-hint">Which agents are offered in each project row&rsquo;s &#8942; menu. Hiding one only trims that menu — a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
           <div id="agentVisibility" class="toggles"></div>
         </div>
 

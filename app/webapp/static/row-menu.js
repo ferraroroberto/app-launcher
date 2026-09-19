@@ -55,12 +55,20 @@ function paintButton(btn, item) {
 // One menu row. `label` is the accessible name (aria-label/title, the stable
 // hook the e2e suite targets); `text` is the short caption next to the
 // glyph. `glyph` is a Lucide sprite name; `html` overrides it with ready
-// markup (a brand <img>). A `disabled` item stays visible with `title` as
-// its hover hint, like a greyed-out rail button.
+// markup (a brand mark). A `disabled` item stays visible with `title` as
+// its hover hint, like a greyed-out rail button. `dataset` sets data-*
+// attributes — the Coding menu's launch rows carry `data-agent` (#1070),
+// the same hook the row button they replaced had, so a caller (or a test)
+// can name one agent's row without matching on its label text.
 function menuButton(item, close) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'icon-btn row-menu-btn ' + (item.className || '');
+  if (item.dataset) {
+    Object.keys(item.dataset).forEach(function (k) {
+      btn.dataset[k] = item.dataset[k];
+    });
+  }
   paintButton(btn, item);
   btn.setAttribute('role', 'menuitem');
   if (item.disabled) {

@@ -1,10 +1,13 @@
-"""Regression pin for issue #297 (Coding tab GitHub icon → open-issues link).
+"""Regression pin for issue #297 (Coding tab GitHub entry → open-issues link).
 
-The feature: the Coding tab's GitHub icon used to open the bare repo root
-(`a.repo_url`). It now opens that repo's open-issues list sorted by last
-updated instead, since that's the page actually worth a tap from the
+The feature: the Coding tab's GitHub affordance used to open the bare repo
+root (`a.repo_url`). It now opens that repo's open-issues list sorted by
+last updated instead, since that's the page actually worth a tap from the
 launcher. Issue #341 added `-label:audit-meta` to the query so codebase-audit
 ledger/metadata issues (not actionable work) don't head the list.
+
+#1070 moved it off the row and into the row's ⋯ menu — the URL contract and
+the no-remote disabled state are unchanged, only where you tap to reach it.
 """
 
 from __future__ import annotations
@@ -48,6 +51,16 @@ def _open_projects(page: Page) -> None:
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
 
 
+def _github_item(page: Page):
+    """GitHub's row in the ⋯ menu, with the menu opened (#1070)."""
+    anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
+    expect(anchor).to_be_enabled(timeout=5_000)
+    anchor.click()
+    menu = page.locator('.coding-item[data-id="alpha"] .project-menu')
+    expect(menu).to_be_visible()
+    return menu.locator(".project-github-btn")
+
+
 def test_github_icon_opens_open_issues_sorted_by_updated(
     authed_page: Page, base_url: str
 ) -> None:
@@ -62,10 +75,8 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
     _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
-    gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=authed_page.locator('use[href="#b-github"]')
-    )
-    expect(gh_btn).to_be_enabled(timeout=5_000)
+    gh_btn = _github_item(authed_page)
+    expect(gh_btn).to_be_enabled()
     gh_btn.click()
 
     opened = authed_page.evaluate("window.__opened")
@@ -82,7 +93,4 @@ def test_github_icon_disabled_without_repo_url(authed_page: Page, base_url: str)
     _open_projects(authed_page)
 
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
-    gh_btn = authed_page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=authed_page.locator('use[href="#b-github"]')
-    )
-    expect(gh_btn).to_be_disabled()
+    expect(_github_item(authed_page)).to_be_disabled()

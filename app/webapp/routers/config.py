@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import boot_autostart
+from src.agents import AGENTS, DEFAULT_AGENT
 from src.launch_flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -60,6 +61,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Coding-row buttons the user hid (issue #666) — agent ids plus the
         # pseudo-id `github`. The SPA filters the row strip on this.
         "coding_hidden_agents": cfg.coding_hidden_agents,
+        # The agent whose launch button stays on a project row (#1070);
+        # every other visible one is a row in that row's ⋯ menu.
+        "coding_favorite_agent": cfg.coding_favorite_agent,
         "coding_model_choice": cfg.coding_model_choice,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
@@ -134,6 +138,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "projects_dir",
         "projects_ignore",
         "coding_hidden_agents",
+        "coding_favorite_agent",
         "coding_model_choice",
         "apps_scan_root",
         "life_os_dir",
@@ -171,6 +176,15 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
+    # The favourite agent (#1070) must name a registered agent. An unknown
+    # id — a typo, a stale client, an agent dropped from the registry — is
+    # coerced to DEFAULT_AGENT rather than stored, because the row renders
+    # exactly one launch button and a dangling id would leave it with none.
+    if "coding_favorite_agent" in patch:
+        wanted = str(patch["coding_favorite_agent"] or "").strip()
+        patch["coding_favorite_agent"] = (
+            wanted if wanted in AGENTS else DEFAULT_AGENT
+        )
     # Keep the compact Coding choice and the provider-specific defaults in
     # lockstep. Effort changes are remembered against the selected Codex model.
     choice = str(patch.get("coding_model_choice") or "")
