@@ -10,7 +10,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
-import { bindOutsideClickToClose, iconUrl } from './dom-utils.js';
+import { bindOutsideClickToClose, brandIcon, brandIconEl } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
 import { createRowMenu } from './row-menu.js';
@@ -181,11 +181,7 @@ export function renderCodingList(host, items) {
       btn.type = 'button';
       btn.className = 'icon-btn agent-btn';
       btn.dataset.agent = agent.id;
-      const icon = document.createElement('img');
-      icon.className = 'agent-icon';
-      icon.src = iconUrl(agent.id);
-      icon.alt = agent.label;
-      btn.appendChild(icon);
+      btn.appendChild(brandIconEl(agent.id));
       if (agent.available) {
         btn.title = 'Launch ' + agent.label;
         btn.setAttribute('aria-label', 'Launch ' + agent.label);
@@ -225,7 +221,7 @@ export function renderCodingList(host, items) {
       menuEl = projectMenu.attach(a.id, anchor, [
         {
           className: 'project-vscode-btn',
-          html: '<img class="agent-icon row-menu-brand" src="' + iconUrl('vscode') + '" alt="">',
+          html: brandIcon('vscode', 'row-menu-brand'),
           label: 'Open in ' + VSCODE_BUTTON_LABEL, text: 'Open in VS Code',
           disabled: !state.vscodeAvailable,
           title: VSCODE_BUTTON_LABEL + ' is not installed',
@@ -255,11 +251,7 @@ export function renderCodingList(host, items) {
       const ghBtn = document.createElement('button');
       ghBtn.type = 'button';
       ghBtn.className = 'icon-btn agent-btn';
-      const ghIcon = document.createElement('img');
-      ghIcon.className = 'agent-icon';
-      ghIcon.src = iconUrl('github');
-      ghIcon.alt = 'GitHub';
-      ghBtn.appendChild(ghIcon);
+      ghBtn.appendChild(brandIconEl('github'));
       if (a.repo_url) {
         ghBtn.title = 'Open GitHub issues';
         ghBtn.setAttribute('aria-label', 'Open GitHub issues');

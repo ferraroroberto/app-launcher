@@ -55,7 +55,7 @@ import { uploadSessionFile } from './terminal-compose.js';
 import { voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, fmtDuration, iconUrl, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, renderQuotaLines } from './dom-utils.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -175,11 +175,9 @@ function renderSessionCard(card, openItem) {
   // an unknown/degraded status never hides which terminal the card belongs to.
   const known = state.agents.find(function (a) { return a.id === card.agent; });
   const agentId = String(card.agent || 'claude');
-  const agentIcon = document.createElement('img');
-  agentIcon.className = 'session-agent-icon board-agent-icon';
-  agentIcon.src = iconUrl(agentId);
-  agentIcon.alt = known ? known.label : agentId;
-  agentIcon.title = agentIcon.alt;
+  const agentIcon = brandIconEl(
+    agentId, 'session-agent-icon board-agent-icon', known ? known.label : agentId
+  );
   const top = shell.btn.querySelector('.board-card-top');
   top.insertBefore(agentIcon, top.firstChild);
   if (card.session_id) {

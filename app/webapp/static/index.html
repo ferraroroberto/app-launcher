@@ -408,6 +408,91 @@
     <path d="m6 6 12 12" />
   </symbol>
 </svg>
+
+<!-- Brand sprite (#1070). Same in-document <use> mechanism as the Lucide
+     sprite above, and for the same iOS Safari reason — but a separate block
+     because these are brand marks, not the icon set: each symbol carries its
+     own viewBox and its own paint, and none of them inherits `.icon`'s stroke
+     styling. Monochrome marks paint with currentColor so they recolor per
+     theme; #361's grey CSS chip existed only because a brand <img> is a
+     separate document whose fill cannot reach page CSS vars, and with the
+     marks inline that constraint is gone. Which marks are official and which
+     are still hand-drawn approximations is recorded per symbol. -->
+<svg width="0" height="0" aria-hidden="true" focusable="false"
+     style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">
+  <!-- Claude Code — the hand-drawn starburst in Anthropic's brand orange,
+       unchanged from #361 apart from the <use> fan being expanded inline. -->
+  <symbol id="b-claude" viewBox="0 0 64 64">
+    <g fill="#d97757">
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(30 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(60 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(90 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(120 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(150 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(180 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(210 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(240 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(270 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(300 32 32)"/>
+      <path d="M32 12 L29.4 32 L32 36 L34.6 32 Z" transform="rotate(330 32 32)"/>
+    </g>
+  </symbol>
+  <!-- Codex CLI — OpenAI's official mark, the path this repo already
+       carried (#361), now inheriting currentColor instead of a baked
+       mid-tone chosen to clear the chip. -->
+  <symbol id="b-codex" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.1419.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.1419.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997z"/>
+  </symbol>
+  <!-- GitHub Copilot CLI — the official mark, vendored from simple-icons
+       16.31.0 (CC0-1.0), replacing the hand-drawn approximation. -->
+  <symbol id="b-copilot" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/>
+  </symbol>
+  <!-- GitHub — the official Octocat, re-vendored from simple-icons 16.31.0
+       (CC0-1.0) at its native 24x24 instead of the scaled 16x16 copy. -->
+  <symbol id="b-github" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+  </symbol>
+  <!-- Visual Studio Code — the official mark in its own brand blue, which
+       clears both canvases unaided, so it does not take currentColor. -->
+  <symbol id="b-vscode" viewBox="0 0 24 24">
+    <path fill="#007acc" d="M23.15 2.587 18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261a1 1 0 0 0-.001 1.479L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 20.06V3.939a1.5 1.5 0 0 0-.85-1.352zm-5.146 14.861L10.826 12l7.178-5.448v10.896z"/>
+  </symbol>
+  <!-- Antigravity CLI — NOT an official mark. No CC0/official SVG source
+       was found (#1070), so this stays the hand-drawn lift glyph and keeps
+       its own blue/violet gradient rather than currentColor. -->
+  <symbol id="b-antigravity" viewBox="0 0 64 64">
+    <defs>
+    <linearGradient id="agLift" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#4285f4"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#agLift)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18,44 32,32 46,44"/>
+    <polyline points="20,32 32,22 44,32" opacity="0.7"/>
+    <polyline points="23,21 32,14 41,21" opacity="0.4"/>
+  </g>
+  </symbol>
+  <!-- Pi — NOT an official mark. No CC0/official SVG source was found
+       (#1070), so this stays the hand-drawn glyph, now on currentColor. -->
+  <symbol id="b-pi" viewBox="0 0 64 64">
+    <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M16 24 h32"/>
+    <path d="M26 24 v16"/>
+    <path d="M42 24 v12 q0 4 4 4"/>
+  </g>
+  </symbol>
+  <!-- Grok Build — NOT an official mark. No CC0/official SVG source was found
+       (#1070), so this stays the hand-drawn glyph, now on currentColor. -->
+  <symbol id="b-grok" viewBox="0 0 64 64">
+    <g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round">
+    <path d="M46 14 L22 50"/>
+    <path d="M18 24 a18 18 0 1 0 28 0" stroke-linejoin="round"/>
+  </g>
+  </symbol>
+</svg>
   <!-- Body-level nav, sibling of <main class="app"> — never nested inside it
        (issue #355, _vendored/nav/README.md "Pinning the bar (iOS)"). An
        installed iOS PWA can capture a fixed nav nested inside a momentum/

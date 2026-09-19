@@ -1,13 +1,48 @@
 /* Small, dependency-free DOM helpers shared across modules. */
 
-// Cache-busted URL for a brand-icon SVG (issue #372). The serve-time JS
-// import rewrite stamps ?v=<fleet hash> onto every module URL, so our own
-// import.meta.url already carries the hash — reuse it on the icon src so
-// an icon edit changes the cache key (iOS Safari held the pre-#361 icons
-// past the deploy). Falls back to the bare URL when served unstamped.
-const _ASSET_V = new URL(import.meta.url).searchParams.get('v');
-export function iconUrl(name) {
-  return '/static/icons/' + name + '.svg' + (_ASSET_V ? '?v=' + _ASSET_V : '');
+// Brand marks (#1070). These used to be <img src="/static/icons/NAME.svg">,
+// which is a separate document: its glyph fill cannot reach page CSS vars,
+// so #361 painted a theme-aware grey chip *behind* every mark to keep the
+// baked mid-tone legible on both canvases. The marks are inline <symbol>s
+// in index.html's brand sprite now (same in-document <use> mechanism as the
+// Lucide sprite, same iOS Safari reason), so a monochrome mark simply
+// inherits currentColor and the chip is gone. That also means the marks
+// share the button's own colour, disabled and :active treatment for free,
+// and the ?v= cache-busting iconUrl() existed for (issue #372) is moot —
+// the sprite ships in the version-stamped page itself.
+//
+// `name` is the brand id without the `b-` prefix (an agent id, or `github`
+// / `vscode`). Returns markup; brandIconEl() returns a node for the DOM-
+// building call sites.
+export function brandIcon(name, extraClass) {
+  const cls = 'agent-icon' + (extraClass ? ' ' + extraClass : '');
+  return '<svg class="' + cls + '" aria-hidden="true"><use href="#b-' + name + '"></use></svg>';
+}
+
+// `label` names the mark for assistive tech and as a hover tooltip. An SVG
+// has no `alt`, so the accessible name is `aria-label` and the tooltip is a
+// child <title> — the SVG equivalents of what the old <img> got from `alt`
+// and `title`. Omit `label` for a mark that sits inside an already-labelled
+// button (the Coding row's launch buttons), where a second name would just
+// be read twice.
+export function brandIconEl(name, extraClass, label) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  el.setAttribute('class', 'agent-icon' + (extraClass ? ' ' + extraClass : ''));
+  if (label) {
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', label);
+    const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    t.textContent = label;
+    el.appendChild(t);
+  } else {
+    el.setAttribute('aria-hidden', 'true');
+  }
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  // setAttribute (not the xlink: form): every browser the PWA targets
+  // resolves the plain `href` on <use>, and the sprite is same-document.
+  use.setAttribute('href', '#b-' + name);
+  el.appendChild(use);
+  return el;
 }
 
 // Flip an aria-checked toggle switch (button or input) and return the new

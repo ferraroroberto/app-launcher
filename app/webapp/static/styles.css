@@ -933,14 +933,19 @@ summary + .opt-group { border-top: 0; }
   width: 24px;                    /* icons.size feature step (issue #355) */
   height: 24px;
   display: block;
-  pointer-events: none;   /* clicks land on the button, not the img */
-  /* Brand-logo SVGs ship glyph-only (no baked tile, issue #361) — the chip
-     is CSS so it can be theme-aware; the internal glyph fill can't reach
-     page CSS vars (separate <img> document), so glyphs needing recolor use
-     a fixed mid-tone (#6e7781) that clears both --card-2 surfaces. */
-  background: var(--card-2);
-  border-radius: 22%;             /* matches the SVGs' original rx14/64 ratio */
+  pointer-events: none;   /* clicks land on the button, not the glyph */
+  /* No chip (#1070). #361 painted a theme-aware grey tile behind every mark
+     because a brand <img> is a separate document: its glyph fill could not
+     reach page CSS vars, so monochrome marks were baked to a fixed mid-tone
+     and needed a known surface to clear. The marks are inline sprite
+     symbols now (index.html's brand sprite), so a monochrome one inherits
+     currentColor from the button and is legible on the bare card in both
+     themes by construction — the chip has nothing left to do. */
+  flex-shrink: 0;
 }
+/* Disabled: the one shared recipe. A currentColor mark follows the button's
+   own muted colour, so grayscale only has to flatten the marks that carry
+   their own paint (Claude, VS Code, Antigravity). */
 .app-item .row-actions.agent-actions .icon-btn:disabled .agent-icon {
   filter: grayscale(1);
 }
@@ -990,9 +995,8 @@ summary + .opt-group { border-top: 0; }
 .session-agent-icon {
   width: 18px;
   height: 18px;
-  border-radius: var(--radius-sm);
   flex-shrink: 0;
-  background: var(--card-2);      /* theme-aware brand chip, issue #361 */
+  /* Chip removed with the rest (#1070) — see .agent-icon above. */
 }
 
 /* ---------- running sessions ---------- */
@@ -1997,12 +2001,12 @@ summary + .opt-group { border-top: 0; }
   cursor: default;
 }
 .row-menu .row-menu-label { line-height: 1.2; }
-/* A brand <img> as a menu glyph sits at the Lucide inline step, no chip. */
+/* A brand mark as a menu glyph sits at the Lucide inline step. This rule
+   was the one place already doing the right thing before #1070; the chip
+   overrides it used to cancel are gone from .agent-icon now. */
 .row-menu .row-menu-brand {
   width: 18px;
   height: 18px;
-  background: transparent;
-  border-radius: 0;
 }
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand {
   filter: grayscale(1);
