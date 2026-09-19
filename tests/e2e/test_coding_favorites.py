@@ -18,6 +18,7 @@ confirms the phone surface too).
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -160,3 +161,55 @@ def test_star_toggle_reorders_and_persists(authed_page: Page, base_url: str) -> 
         authed_page.locator("#claudeList .coding-item").first
     ).to_have_attribute("data-id", "delta")
     assert _order(authed_page) == ["delta", "alpha", "bravo", "charlie"]
+
+
+def test_favorites_filter_is_icon_only_and_keeps_its_name(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1070 — the header toggle is the star glyph alone at every width.
+
+    The caption used to be hidden only below 520px, so a desktop header
+    showed a wide labelled pill beside three icon-sized controls. It is gone
+    at every width now, the box matches the Detached/Resume toggles next to
+    it, and the text name moved to aria-label/title so nothing is lost to a
+    screen reader.
+
+    Runs in both projections, so the width assertion is the point on the
+    390px iPhone leg and the *desktop* leg is the one that would have
+    failed before this change.
+    """
+    _install_routes(authed_page)
+    authed_page.add_init_script(
+        "window.localStorage.setItem('launcher.codingFavFilter', '0');"
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
+
+    btn = authed_page.locator("#favFilterBtn")
+    expect(btn).to_be_visible()
+    # No caption node, and no stray text beside the glyph, at any width.
+    expect(btn.locator(".fav-filter-label")).to_have_count(0)
+    expect(btn).to_have_text("")
+    # The accessible name still carries the word the caption used to show.
+    expect(btn).to_have_attribute("aria-label", "Show only favorites")
+    expect(btn).to_have_attribute("title", "Show only favorites")
+
+    # Same box as the toggles beside it — the "reads as one set" half of the
+    # ask. Compared with a 1px tolerance for sub-pixel heights; the Projects
+    # header is static markup, so neither read straddles a re-render.
+    fav_box = btn.bounding_box()
+    tog_box = authed_page.locator("#claudeDetached").bounding_box()
+    assert fav_box and tog_box, "header controls did not lay out"
+    assert abs(fav_box["height"] - tog_box["height"]) <= 1, (
+        f"favourites filter {fav_box['height']}px vs Detached "
+        f"{tog_box['height']}px — the header controls no longer match"
+    )
+    assert abs(fav_box["width"] - tog_box["width"]) <= 1, (
+        f"favourites filter {fav_box['width']}px wide vs Detached "
+        f"{tog_box['width']}px — still a labelled pill?"
+    )
+
+    # Still a working toggle, and still gold when on.
+    btn.click()
+    expect(btn).to_have_attribute("aria-pressed", "true")
+    expect(btn).to_have_class(re.compile(r"\bactive\b"))
