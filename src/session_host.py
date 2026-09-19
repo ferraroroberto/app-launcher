@@ -336,11 +336,18 @@ class PtySession(InputProtocol):
     # call. Raw keystrokes from the WebSocket pump deliberately do *not* bump
     # it — a PC mirror typing anywhere would otherwise cancel every steer, and
     # the pre-fire re-check already handles a composer the human has changed.
+    # That re-check is what carries the weight now the watcher's window is long
+    # enough to outlast a gate run (#1075), so it identifies *which* payload is
+    # sitting there rather than merely that one is — see
+    # ``session_host_input._chip_visible``.
     _defer_seq: int = 0
     # Set by _submit_input_locked when it hands a submit to the watcher, read
     # (and cleared) by submit_input once the ``deferred`` verdict is recorded,
     # so the watcher can never record its own outcome first.
-    _defer_args: Optional[Tuple[int, int, List[str]]] = None
+    # ``(seq, mark, needles, chip_id)`` — chip_id is the paste-chip number
+    # pinned at ingest (#1075), or None when the composer echoed the payload
+    # verbatim instead of collapsing it into a chip.
+    _defer_args: Optional[Tuple[int, int, List[str], Optional[str]]] = None
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:

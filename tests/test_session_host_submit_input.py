@@ -445,6 +445,171 @@ def test_deferred_watcher_is_bounded_and_gives_up_without_firing(clock):
     assert outcome.waited_ms >= _DEFER_CAP_MS
 
 
+# ------------------------------------- a window that outlasts a gate (#1075)
+
+# CLAUDE.md's re-baselined full-tier runtime for
+# ``scripts/verify-before-ship.ps1`` on this box. A lane running it sits inside
+# a single tool call for that whole time, repainting its spinner throughout.
+_GATE_RUNTIME_MS = 19 * 60 * 1000
+
+
+def test_the_deferred_window_outlasts_a_full_tier_gate_run():
+    """The budget has to be sized against the thing being waited on (#1075).
+
+    The old 120 s could not reach the end of a turn that spends ~19 min inside
+    one tool call, so a steer to a lane mid-gate stranded essentially every
+    time. This pins the *intent* against a future casual edit of the constant:
+    whatever the number is, it must outlast a gate run.
+    """
+    assert _DEFER_CAP_MS > _GATE_RUNTIME_MS
+
+
+def test_a_steer_lands_on_a_target_that_stays_busy_for_a_whole_gate_run(clock):
+    """#1075's headline case, and the one that stranded three briefs on
+    2026-09-19 (sids 1967cb0f / ca58061c / 76fc29b8).
+
+    The target is running the gate: it repaints continuously for ~19 minutes
+    inside one tool call, then finishes and goes quiet with the steer still
+    sitting unsent in its composer. The watcher has to still be there to press
+    Enter — under the old 120 s cap it had given up seventeen minutes earlier
+    and reported ``defer_timeout``.
+    """
+    payload = "CHIEF - when the gate is green, open the PR as a draft. " * 10
+    session = _make_session()
+    needles = session_host_input._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    session._last_output_at = clock.now
+
+    busy_until = clock.now + _GATE_RUNTIME_MS / 1000
+    repainted = {"done": False}
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if c.now < busy_until:
+            # A working agent's spinner: output never stops, so the stream
+            # never goes quiet and the watcher can only wait.
+            _echo(session, ".")
+            session._last_output_at = c.now
+        elif not repainted["done"]:
+            # The tool call returns. The composer repaints one last time with
+            # the steer still in it, and then the terminal falls silent.
+            repainted["done"] = True
+            _echo(session, payload)
+            session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_OK
+    assert outcome.submitted is True
+    assert outcome.submit_confirmed is True
+    assert outcome.delivered is True
+    assert outcome.submit_state == "confirmed"
+    # Exactly one bare CR — never a resend of the text (#760's constraint).
+    session._pty.write.assert_called_once_with("\r")
+    assert outcome.waited_ms >= _GATE_RUNTIME_MS
+
+
+def test_watcher_declines_a_paste_chip_that_is_not_ours(clock):
+    """The one hazard that genuinely scales with a longer window (#1075).
+
+    Raw keystrokes deliberately do not supersede the watcher
+    (``PtySession._defer_seq``'s note), so while it waits, the human on the
+    phone can paste into the same composer. Before #1075 the pre-fire check
+    matched on the bare ``[Pasted text #`` marker, so *their* chip read as
+    proof *our* payload was still pending — and the watcher would press Enter
+    on their half-composed message. Ours has scrolled out of the lookback
+    window by then; theirs is all that is showing.
+    """
+    payload = "CHIEF - land the branch and report back on the gate. " * 10
+    session = _make_session()
+    needles = session_host_input._echo_needles(payload)
+    mark = session._output_total
+    _echo(session, payload)
+    session._last_output_at = clock.now
+
+    polls = {"n": 0}
+
+    def _on_sleep(c: _FakeClock) -> None:
+        polls["n"] += 1
+        if polls["n"] <= 40:
+            # Keep it busy long enough that our own echo ages out of the
+            # rolling ~_DEFER_FRAME_LOOKBACK_MS window.
+            _echo(session, ".")
+            session._last_output_at = c.now
+        elif polls["n"] == 41:
+            # The human's own paste is what the composer now shows.
+            _echo(session, "\x1b[2m> [Pasted text #9 +2 lines]\x1b[0m")
+            session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session._await_deferred_submit(session._defer_seq, mark, needles)
+
+    assert outcome is not None
+    assert outcome.reason == INPUT_DEFER_VANISHED
+    assert outcome.submitted is False
+    assert outcome.submit_confirmed is False
+    assert outcome.delivered is False
+    # The decisive assertion: no CR was pressed on somebody else's paste.
+    session._pty.write.assert_not_called()
+
+
+def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(clock, monkeypatch):
+    """The other half of #1075: pinning must not cost the chip-only case.
+
+    A bulk paste Claude Code collapses is never echoed verbatim, so its chip
+    is the only evidence there is. ``_submit_input_locked`` pins that chip's
+    *number* while the window still unambiguously belongs to our own write,
+    and the watcher accepts it minutes later because the number matches.
+    """
+    session = _make_session()
+    payload = "CHIEF - a long steer the composer collapses into a chip. " * 20
+    armed: list = []
+    monkeypatch.setattr(
+        PtySession, "_arm_deferred_submit", lambda self, *a, **kw: armed.append(a)
+    )
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if not session._ring:
+            _echo(session, "\x1b[2m> [Pasted text #7 +30 lines]\x1b[0m")
+        session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_DEFERRED
+    seq, mark, needles, chip_id = armed[0]
+    assert chip_id == "7"
+
+    # The agent finishes; the composer still shows our chip, and goes quiet.
+    clock.on_sleep(lambda c: None)
+    session._last_output_at = clock.now
+    session._pty.write.reset_mock()
+
+    settled = session._await_deferred_submit(seq, mark, needles, chip_id)
+
+    assert settled is not None
+    assert settled.reason == INPUT_OK
+    assert settled.submitted is True
+    assert settled.delivered is True
+    session._pty.write.assert_called_once_with("\r")
+
+
+def test_a_pinned_chip_number_is_not_matched_by_a_longer_one(clock):
+    """``#1`` must not match ``#12`` — without a trailing boundary the pin
+    degrades back into the any-chip-will-do check it replaces."""
+    normalized = session_host_input._normalize_echo(
+        "\x1b[2m> [Pasted text #12 +4 lines]\x1b[0m"
+    )
+
+    assert session_host_input._chip_visible(normalized, "12") is True
+    assert session_host_input._chip_visible(normalized, "1") is False
+
+
 @pytest.mark.parametrize(
     "outcome, submit_state, delivered",
     [
@@ -543,7 +708,9 @@ def test_deferred_verdict_is_recorded_on_the_session(clock):
     _echo(session, payload)
     session._last_output_at = clock.now
 
-    session._run_deferred_submit(session._defer_seq, mark, needles, len(payload))
+    session._run_deferred_submit(
+        session._defer_seq, mark, needles, None, len(payload)
+    )
 
     last_input = session.to_api()["last_input"]
     assert last_input["reason"] == INPUT_OK
