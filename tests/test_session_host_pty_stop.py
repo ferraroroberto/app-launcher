@@ -147,16 +147,42 @@ async def test_stop_quit_beats_between_keystrokes():
     Splitting the writes is not enough on its own: the ESC→slash race was
     reproduced with two back-to-back writes, and only a real pause fixed
     it. Lower bound only, so a loaded box can't make this flaky.
+
+    Timed per gap with ``perf_counter`` — see the assertion comment (#1087).
     """
     loop = asyncio.get_running_loop()
     session = _make_session(loop)
     session._pty.isalive.return_value = False
 
-    started = time.monotonic()
-    session.stop(mode=STOP_QUIT, key_settle_seconds=0.05)
-    elapsed = time.monotonic() - started
+    # Stamp each keystroke as it reaches the PTY, so the two *gaps* are
+    # measured directly rather than inferred from a single total.
+    stamps: list[float] = []
+    session._pty.write.side_effect = lambda _payload: stamps.append(
+        time.perf_counter()
+    )
 
-    assert elapsed >= 0.1  # two beats, one after ESC and one before the CR
+    settle = 0.05
+    session.stop(mode=STOP_QUIT, key_settle_seconds=settle)
+
+    assert len(stamps) == 3  # ESC, the command, the CR
+    gaps = [later - earlier for earlier, later in zip(stamps, stamps[1:])]
+
+    # ``perf_counter``, not ``monotonic``: on Windows CPython <= 3.12
+    # time.monotonic() is GetTickCount64, granular to ~15.6 ms, so it
+    # reports two real 50 ms beats as 93-94 ms. That clock — not an early
+    # sleep — is what failed the old ``elapsed >= 0.1`` on every CI run
+    # (#1087): the runner is on 3.12 and this box on 3.14, which switched
+    # monotonic to QueryPerformanceCounter. perf_counter is QPC on both.
+    #
+    # The floor is per gap and deliberately under the nominal settle: the
+    # property pinned is "two real pauses, not two back-to-back writes",
+    # so it only has to separate a slept beat (>= 50 ms) from a missing
+    # one (microseconds). One beat, or neither, still fails it widely.
+    # The slack is for scheduler jitter — do not buy margin instead by
+    # raising ``settle``, which would only make the test slower.
+    assert min(gaps) >= 0.8 * settle, (
+        f"keystroke gaps {gaps} — both beats must be real pauses"
+    )
     # Measured floor: Pi ate the slash at 25 ms and kept it at 50 ms, so the
     # shipped default must not be trimmed below the threshold it clears.
     assert _STOP_KEY_SETTLE_SECONDS >= 0.05
