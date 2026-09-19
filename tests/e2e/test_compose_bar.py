@@ -332,3 +332,26 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     assert abs(attach_after["y"] - attach_before["y"]) < 1, (
         f"Attach button moved during autogrow: {attach_before} -> {attach_after}"
     )
+
+
+def test_terminal_composer_has_no_mod_enter_send(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """#1072: Ctrl/Cmd+Enter sends in Chat mode only.
+
+    The binding is opt-in per mount (``sendOnModEnter``) precisely so the
+    terminal, which has its own input path, keeps today's behaviour. What this
+    pins is that the opt-in stayed opt-in: the shortcut does not deliver here
+    (a terminal send is synchronous and clears the box, so an unchanged draft
+    is the tell), and the Send title does not advertise a shortcut this mount
+    hasn't got — the exact class of lie the old 'Send (with Enter)' title was.
+    """
+    _open_terminal(authed_page, base_url, launched_pty_session)
+    _show_composer(authed_page)
+    field = authed_page.locator(INPUT)
+    field.fill("not a send here")
+    field.press("Control+Enter")
+    # Tolerate a browser-default newline from the unhandled chord; the point
+    # is that the draft was not delivered and cleared.
+    expect(field).to_have_value(re.compile(r"^not a send here\n?$"))
+    expect(authed_page.locator(SEND)).to_have_attribute("title", "Send")

@@ -39,6 +39,9 @@
  *                        reason (the Board drawer, #984, has no socket).
  *     onDictationStart:  optional — fires when a recording starts (the
  *                        terminal silences an in-flight read-aloud, #190).
+ *     sendOnModEnter:    optional — bind Ctrl+Enter / Cmd+Enter in the
+ *                        textarea to Send (#1072). Off by default; only
+ *                        Chat mode asks for it.
  *   }) → handle
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (paste / drop entry
@@ -97,12 +100,19 @@ const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
 const _TITLE_IMAGE = 'Attach image or file';
 const _TITLE_IMAGE_MENU = 'Attach image or file · Extract text from screenshots';
-const _TITLE_SEND = 'Send (with Enter)';
+// The button's own title. The plain one is the honest default: on a phone,
+// and on the surfaces that don't opt into `sendOnModEnter`, ➤ is the only way
+// to deliver. The shortcut variant names the binding that actually exists
+// (#1072) — it replaced 'Send (with Enter)', which promised a shortcut no
+// code implemented and described the opposite of what the return key does.
+const _TITLE_SEND = 'Send';
+const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
 const _LABEL_ATTACH = 'Attach image or file';
 const _LABEL_OCR = 'Extract text from screenshots';
 
-// Auto-grow a composer textarea up to _COMPOSE_MAX_ROWS; the phone's return
-// key adds newlines, only ➤ Send delivers the text.
+// Auto-grow a composer textarea up to _COMPOSE_MAX_ROWS; the return key adds
+// newlines on every surface, and ➤ Send delivers the text — plus Ctrl/Cmd+Enter
+// on a surface that opted into `sendOnModEnter` (#1072).
 export function growTextarea(ta) {
   ta.style.height = 'auto';
   const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
@@ -159,6 +169,9 @@ export function mountComposer(host, opts) {
   const el = render(host, opts.placeholder || 'Message for the agent');
   let keysOpts = opts.keys || null;
   let ocrOn = false;
+  // Fixed for the life of the mount: the surface opts into the shortcut at
+  // mount time, so the title can't drift from the binding (#1072).
+  const titleSend = opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND;
   // #450: the buffer carries an attached-file path, so the surface's send
   // may hold its submitting CR back for the path→attachment conversion.
   let hasImage = false;
@@ -425,6 +438,30 @@ export function mountComposer(host, opts) {
   el.send.addEventListener('click', submit);
   el.textarea.addEventListener('input', grow);
 
+  // Ctrl+Enter / Cmd+Enter sends (#1072) — opt-in per surface, because only
+  // Chat asked for it: the terminal overlay has its own input path and the
+  // Board drawer keeps today's shape. Three things this deliberately is:
+  //
+  //  - Plain Enter is untouched and still inserts a newline. Multi-line
+  //    prompts are the normal case here, so Enter-sends was never wanted.
+  //  - Inert on a phone with no device sniff. An on-screen keyboard has no
+  //    Ctrl and no Cmd key, so its return key arrives with both modifiers
+  //    false and cannot match the guard — the soft keyboard's behaviour is
+  //    unchanged by construction, not by a touch check.
+  //  - Routed through submit(), never a second send path. The refusal toast
+  //    for a gated Send, the in-flight hold and the still-finalizing
+  //    dictation wait all apply to the shortcut exactly as they do to a tap.
+  //
+  // preventDefault() so the gesture doesn't also leave a stray newline behind
+  // — including on the refusal paths, where the keystroke was still a send.
+  if (opts.sendOnModEnter) {
+    el.textarea.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' || !(ev.ctrlKey || ev.metaKey)) return;
+      ev.preventDefault();
+      submit();
+    });
+  }
+
   // ---- availability --------------------------------------------------------
   function setAvailability(a) {
     if (a && 'dictate' in a) {
@@ -444,7 +481,7 @@ export function mountComposer(host, opts) {
   function setSendable(enabled, reason) {
     sendBlocked = !enabled;
     sendReason = enabled ? '' : (reason || 'Sending is unavailable');
-    el.send.title = enabled ? _TITLE_SEND : sendReason;
+    el.send.title = enabled ? titleSend : sendReason;
     el.send.setAttribute('aria-label', enabled ? 'Send' : sendReason);
     syncSend();
   }

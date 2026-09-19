@@ -1112,6 +1112,10 @@ export function wireChatPane() {
     keys: null,
     // Starting to talk silences any in-flight read-aloud (#190).
     onDictationStart: stopReading,
+    // Chat is the surface a desktop keyboard actually types into, so it is
+    // the one that takes the Ctrl/Cmd+Enter send (#1072). Plain Enter stays
+    // a newline for everyone, phone included.
+    sendOnModEnter: true,
   });
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', pinChatToKeyboard);
