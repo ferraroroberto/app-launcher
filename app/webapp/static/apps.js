@@ -17,7 +17,10 @@ import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { switchEl } from './_vendored/switch/switch.js';
-import { renderAgentVisibility, renderCodingList, wireCoding } from './apps-coding.js';
+import {
+  renderAgentVisibility, renderCodingList, renderFavoriteAgent, wireCoding,
+  wireFavoriteAgent,
+} from './apps-coding.js';
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
 
 // ----------------------------------------------------------- apps list
@@ -345,11 +348,12 @@ export async function fetchAgents() {
   } catch (exc) {
     logPollFailure('agents fetch failed', exc);
   }
-  // The visibility list is keyed off the registry, so it renders once the
-  // agents are known (boot order: fetchConfig → fetchAgents). Rendering from
-  // the conservative fallback on a failed fetch is fine — same ids, same
-  // labels.
+  // The visibility list and the favourite-agent picker are both keyed off
+  // the registry, so they render once the agents are known (boot order:
+  // fetchConfig → fetchAgents). Rendering from the conservative fallback on
+  // a failed fetch is fine — same ids, same labels.
   renderAgentVisibility();
+  renderFavoriteAgent();
 }
 
 // -------------------------------------------------- running apps panel
@@ -476,6 +480,7 @@ export function wireApps() {
     fetchRunningApps().catch(function () {});
   });
   wireCoding();
+  wireFavoriteAgent();
   wireRenameDialog();
   wireScanDialog();
 }

@@ -1,11 +1,20 @@
-"""Regression pin for issue #666 (Coding row per-agent visibility toggles).
+"""Regression pin for issue #666 (Coding per-agent visibility toggles),
+retargeted onto the ⋯ menu by #1070.
 
 The feature: the ⚙️ Coding options card carries a "Visible agents" list —
 one vendored switch per registry agent plus the GitHub issues button —
 generated from /api/agents, never hand-written per agent. Toggling one off
-drops that button from every project row immediately and persists as
-`coding_hidden_agents` in the webapp config, so it stays hidden across a
-reload.
+drops that entry immediately and persists as `coding_hidden_agents` in the
+webapp config, so it stays hidden across a reload.
+
+What #1070 changed: the entries those switches govern are rows in a project
+row's ⋯ menu, not buttons on the row itself. The row carries exactly three
+controls now — the favourite agent's launch button, the ⋯ anchor, the star —
+so a non-favourite agent is only ever findable inside the menu. The switches
+themselves, their ids, their persistence and their generated-from-the-
+registry contract are all unchanged. The `vscode` pseudo-id's switch is gone
+(the menu is now the only route to every non-favourite launch, so it cannot
+be hideable); a stored `vscode` value is inert rather than migrated.
 
 Approach: /api/apps and /api/agents are mocked for a deterministic row and
 agent set, but the config write is **real** — the e2e conftest points the
@@ -68,14 +77,30 @@ def _open_surfaces(page: Page) -> None:
     page.locator("#codingOptions").evaluate("el => { el.open = true; }")
 
 
+def _menu(page: Page):
+    """The row's ⋯ menu. Opened once; row-menu.js reopens it on the rebuilt
+    row after a re-render, so the handle stays usable across a save."""
+    return page.locator('.coding-item[data-id="alpha"] .project-menu')
+
+
+def _open_menu(page: Page):
+    menu = _menu(page)
+    if not menu.is_visible():
+        page.locator('.coding-item[data-id="alpha"] .project-menu-anchor').click()
+    expect(menu).to_be_visible()
+    return menu
+
+
 def _codex_btn(page: Page):
-    return page.locator('.coding-item[data-id="alpha"] .agent-btn[data-agent="codex"]')
+    """Codex's launch row inside the ⋯ menu (#1070 moved it off the rail).
+
+    A hidden row is *detached* from the menu by row-menu.js rather than
+    marked [hidden], so a count of 0 means genuinely not offered."""
+    return _menu(page).locator('.project-launch-btn[data-agent="codex"]')
 
 
 def _github_btn(page: Page):
-    return page.locator('.coding-item[data-id="alpha"] .agent-btn').filter(
-        has=page.locator('use[href="#b-github"]')
-    )
+    return _menu(page).locator(".project-github-btn")
 
 
 def _reset_visibility(page: Page, base_url: str) -> None:
@@ -102,24 +127,31 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     _open_surfaces(authed_page)
 
     # The list is generated from the registry: one row per agent + GitHub.
+    # `vscode` is deliberately not among them any more (#1070).
     codex_toggle = authed_page.locator('[data-visibility-toggle="codex"]')
     github_toggle = authed_page.locator('[data-visibility-toggle="github"]')
     expect(codex_toggle).to_have_attribute("aria-checked", "true", timeout=5_000)
     expect(authed_page.locator('[data-visibility-toggle="claude"]')).to_have_count(1)
+    expect(authed_page.locator('[data-visibility-toggle="vscode"]')).to_have_count(0)
     expect(_codex_btn(authed_page)).to_have_count(1)
     expect(_github_btn(authed_page)).to_have_count(1)
 
-    # Toggling off drops the button from the row with no reload.
+    # Toggling off drops the row from the ⋯ menu with no reload.
     codex_toggle.click()
     expect(_codex_btn(authed_page)).to_have_count(0)
     github_toggle.click()
     expect(_github_btn(authed_page)).to_have_count(0)
-    # Claude stays — hiding is per button, not all-or-nothing.
+    # The favourite's launch button stays on the row — it is the row's one
+    # launch affordance, so it is not the visibility list's to hide (#1070).
     expect(
         authed_page.locator('.coding-item[data-id="alpha"] .agent-btn[data-agent="claude"]')
     ).to_have_count(1)
     # The favorite star is never hideable.
     expect(authed_page.locator('.coding-item[data-id="alpha"] .star-btn')).to_have_count(1)
+    # Nor is the ⋯ anchor: it is the only route to the rows above.
+    expect(
+        authed_page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
+    ).to_have_count(1)
 
     # Persisted server-side: a reload keeps them hidden and the switches off.
     authed_page.reload(wait_until="domcontentloaded")
@@ -130,7 +162,7 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(_codex_btn(authed_page)).to_have_count(0)
     expect(_github_btn(authed_page)).to_have_count(0)
 
-    # Toggling back on restores both buttons.
+    # Toggling back on restores both menu rows.
     authed_page.locator('[data-visibility-toggle="codex"]').click()
     authed_page.locator('[data-visibility-toggle="github"]').click()
     expect(_codex_btn(authed_page)).to_have_count(1)
@@ -190,21 +222,17 @@ def test_brand_marks_are_sprite_symbols_with_no_chip(
 ) -> None:
     """#1070 — no brand mark renders on a grey chip, in either theme.
 
-    #361 painted a theme-aware `--card-2` tile behind every mark for a
-    mechanical reason: a brand `<img>` is a separate document, so its glyph
-    fill cannot reach page CSS vars. Monochrome marks were therefore baked
-    to a fixed mid-tone (`#6e7781`) and needed a known surface to clear.
-    The marks are inline sprite symbols now, so a monochrome one inherits
-    `currentColor` from its button and the chip has nothing left to do.
+    #361 painted a theme-aware `--card-2` tile behind every mark because a
+    brand `<img>` is a separate document whose glyph fill cannot reach page
+    CSS vars, so monochrome marks were baked to a fixed mid-tone and needed
+    a known surface to clear. The marks are inline sprite symbols now, so a
+    monochrome one inherits `currentColor` from its button and the chip has
+    nothing left to do.
 
-    Asserts the mechanism (a sprite `<use>`, no `<img>` left on the row) and
-    the result (a transparent background), in *both* themes — the dark leg
-    is the one the baked mid-tone was chosen for, so it is the leg that
-    matters. The theme-adaptation assertion is the load-bearing one: it is
-    what distinguishes "the chip is gone" from "the chip is gone and the
-    mark is still legible without it".
-
-    Auto-retrying `to_have_css` throughout (#680): the Coding rows are
+    Asserts the mechanism (a sprite `<use>`, not an `<img>`) and the result
+    (a transparent background) rather than a literal colour, and does it in
+    both themes — the dark leg is the one the old baked mid-tone was chosen
+    for. Auto-retrying `to_have_css` throughout (#680): the Coding rows are
     rebuilt by the git-status poll.
     """
     _install_routes(authed_page)
@@ -215,25 +243,28 @@ def test_brand_marks_are_sprite_symbols_with_no_chip(
     row = authed_page.locator('.coding-item[data-id="alpha"]')
     mark = row.locator('.agent-btn[data-agent="claude"] .agent-icon')
     expect(mark).to_have_count(1, timeout=5_000)
+    # The mechanism: an inline sprite reference, and no <img> left on the row.
     expect(mark.locator('use[href="#b-claude"]')).to_have_count(1)
-    # Nothing on the row is an <img> any more.
     expect(row.locator("img")).to_have_count(0)
 
     # A monochrome mark paints with currentColor, so its resolved colour has
-    # to actually differ between the themes — that, not the mid-tone the
-    # chip used to guarantee, is what keeps it legible on a bare card.
-    mono = row.locator('.agent-btn[data-agent="codex"] .agent-icon')
+    # to actually differ between the themes — that, not the mid-tone the chip
+    # used to guarantee, is what keeps it legible on a bare card.
+    mono = _menu(authed_page).locator(
+        '.project-launch-btn[data-agent="codex"] .agent-icon'
+    )
     expect(mono).to_have_count(1)
     seen = {}
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
         )
+        # The chip is gone in both themes — this is the acceptance criterion.
         expect(mark).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        expect(mono).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        expect(_github_btn(authed_page).locator(".agent-icon")).to_have_css(
-            "background-color", "rgba(0, 0, 0, 0)"
-        )
+        # …including the marks inside the ⋯ menu, which is where every
+        # non-favourite mark lives since #1070.
+        gh = _open_menu(authed_page).locator(".project-github-btn .agent-icon")
+        expect(gh).to_have_css("background-color", "rgba(0, 0, 0, 0)")
         seen[theme] = mono.evaluate("el => getComputedStyle(el).color")
 
     assert seen["light"] and seen["dark"], seen

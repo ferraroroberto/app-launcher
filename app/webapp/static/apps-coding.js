@@ -36,7 +36,18 @@ const GITHUB_BUTTON_ID = 'github';
 const GITHUB_BUTTON_LABEL = 'GitHub issues';
 const VSCODE_BUTTON_ID = 'vscode';
 const VSCODE_BUTTON_LABEL = 'Visual Studio Code';
-const PROJECT_MENU_LABEL = 'Project menu (VS Code · changes · folder)';
+
+// The favourite agent — the one whose launch button stays on the row
+// (#1070). Roberto picks it explicitly in the options card; it is never
+// derived from usage, because a button that moves on its own is worse than
+// one in the wrong place. `coding_favorite_agent` is validated server-side
+// against the registry, so an id that reaches here always names a real
+// agent; the `|| 'claude'` is only for the window before the first
+// /api/config lands.
+function favoriteAgentId() {
+  const cfg = state.config || {};
+  return String(cfg.coding_favorite_agent || 'claude');
+}
 
 // The ⋯ menu shared by every Coding row; drops below the rail (see
 // `.project-menu` in styles.css) and survives the ~4 s apps re-render.
@@ -80,9 +91,12 @@ export function renderAgentVisibility() {
   const rows = (state.agents || []).map(function (agent) {
     return { id: agent.id, label: agent.label };
   });
-  // Same order as the row strip itself, so the toggle list reads as a map
-  // of the buttons it controls.
-  rows.push({ id: VSCODE_BUTTON_ID, label: PROJECT_MENU_LABEL });
+  // Same order as the ⋯ menu itself, so the toggle list reads as a map of
+  // the rows it controls. The `vscode` pseudo-id is deliberately absent
+  // (#1070): it used to hide the whole ⋯ menu, but that menu is now the
+  // only route to every non-favourite launch, so hiding it would strand
+  // them. An existing stored `vscode` value is left alone and simply has
+  // no effect — see the read in renderCodingList.
   rows.push({ id: GITHUB_BUTTON_ID, label: GITHUB_BUTTON_LABEL });
 
   rows.forEach(function (row) {
@@ -92,7 +106,7 @@ export function renderAgentVisibility() {
     name.textContent = row.label;
     wrap.appendChild(name);
     const sw = switchEl(!hidden.has(row.id), {
-      label: 'Show the ' + row.label + ' button on project rows',
+      label: 'Offer ' + row.label + ' in a project row’s menu',
       onToggle: function (next) {
         // Optimistic flip, then persist the whole list. The payload is
         // composed from the switches (including this flip), not from
@@ -125,14 +139,94 @@ export function renderAgentVisibility() {
   });
 }
 
+// The favourite-agent picker, generated from the same live registry the
+// visibility switches are (#666's contract, #1070's control): adding an
+// agent to src/agents.py puts it in this list with no further code change.
+//
+// The write joins `visibilityWrite` rather than starting its own chain.
+// Both settings live in one config object, and each patch is composed from
+// the DOM rather than from `state.config` — so serializing them together is
+// what stops a favourite change landing between a hidden-list patch and its
+// GET round-trip and silently reinstating the button that patch just hid.
+export function renderFavoriteAgent() {
+  const sel = els.codingFavoriteAgent;
+  if (!sel) return;
+  const current = favoriteAgentId();
+  const agents = state.agents || [];
+  // Rebuild only when the registry itself changed — the select is a live
+  // control, and tearing it down under an open native picker on the phone
+  // would drop the tap, the same failure mode #732 fixed for the switches.
+  const wanted = agents.map(function (a) { return a.id; }).join(',');
+  if (sel.dataset.agentSet !== wanted) {
+    sel.innerHTML = '';
+    agents.forEach(function (agent) {
+      const opt = document.createElement('option');
+      opt.value = agent.id;
+      opt.textContent = agent.label;
+      sel.appendChild(opt);
+    });
+    sel.dataset.agentSet = wanted;
+  }
+  // An id with no matching option (registry still loading, or an agent
+  // dropped) would leave the select showing the first entry while the rows
+  // render something else — show nothing rather than lie about it.
+  sel.value = current;
+}
+
+export function wireFavoriteAgent() {
+  const sel = els.codingFavoriteAgent;
+  if (!sel) return;
+  sel.addEventListener('change', function () {
+    const wanted = sel.value;
+    visibilityWrite = visibilityWrite.then(function () {
+      return patchConfig({ coding_favorite_agent: wanted }).then(
+        function (ok) {
+          // renderApps() repaints every row so the button moves and the ⋯
+          // menu gains the old favourite, with no reload. On a failed save
+          // the select is re-synced from server truth, the same
+          // self-correct-only rule the visibility switches follow (#732).
+          renderApps();
+          if (!ok) renderFavoriteAgent();
+        }
+      );
+    });
+  });
+}
+
 // ------------------------------------------------------ Coding tab tiles
-// A Coding tile shows only the bare on-disk folder name plus one icon
-// button per coding agent (the /api/agents registry drives the set), then
-// the two non-agent buttons — the ⋯ project menu (#977: VS Code #802 ·
-// Show changes · Open folder) and GitHub issues — and the favorite star
-// last. An agent's button is disabled with a hover hint when its CLI isn't
+// A Coding tile shows the bare on-disk folder name plus exactly three
+// controls (#1070): the favourite agent's launch button, the ⋯ project
+// menu, and the favorite star. The row used to carry one button per
+// registered agent plus GitHub plus ⋯ plus the star — nine controls, which
+// wrapped to a second line on the phone and paid permanent rail width for
+// five buttons that get tapped about once a month each. Everything that
+// left the row is a row in the ⋯ menu, so nothing became unreachable; it
+// just moved one tap deeper, which is where a monthly action belongs.
+// An agent's button is disabled with a hover hint when its CLI isn't
 // installed. Coding rows are disk-scanned, so they carry no rename/remove
 // controls — Settings → Edit mode does not apply here.
+// One agent's launch button for a project row. Extracted when the row
+// dropped to a single agent button (#1070) so the row and the ⋯ menu's
+// launch rows derive their label, their disabled state and their hint from
+// exactly one place.
+function agentLaunchButton(project, agent) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-btn agent-btn';
+  btn.dataset.agent = agent.id;
+  btn.appendChild(brandIconEl(agent.id));
+  if (agent.available) {
+    btn.title = 'Launch ' + agent.label;
+    btn.setAttribute('aria-label', 'Launch ' + agent.label);
+    btn.addEventListener('click', function () { launchApp(project, agent.id); });
+  } else {
+    btn.disabled = true;
+    btn.title = agent.label + ' is not installed';
+    btn.setAttribute('aria-label', agent.label + ' is not installed');
+  }
+  return btn;
+}
+
 export function renderCodingList(host, items) {
   host.innerHTML = '';
   // Favorites pinned to the top (issue #250). `items` arrives alphabetical
@@ -170,33 +264,32 @@ export function renderCodingList(host, items) {
     const actions = document.createElement('div');
     actions.className = 'row-actions agent-actions';
 
-    // Buttons the user hid in the options card (issue #666). Re-derived on
-    // every render (like syncFavFilterBtn) so the ~4 s poll can't resurrect
-    // a hidden button.
+    // Agents the user hid in the options card (issue #666) — since #1070
+    // that governs the ⋯ menu's launch rows, not the row strip. Re-derived
+    // on every render (like syncFavFilterBtn) so the ~4 s poll can't
+    // resurrect a hidden entry.
     const hidden = hiddenButtons();
+    const favoriteId = favoriteAgentId();
+    const agents = state.agents || [];
+    const favorite = agents.find(function (x) { return x.id === favoriteId; });
 
-    state.agents.forEach(function (agent) {
-      if (hidden.has(agent.id)) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'icon-btn agent-btn';
-      btn.dataset.agent = agent.id;
-      btn.appendChild(brandIconEl(agent.id));
-      if (agent.available) {
-        btn.title = 'Launch ' + agent.label;
-        btn.setAttribute('aria-label', 'Launch ' + agent.label);
-        btn.addEventListener('click', function () { launchApp(a, agent.id); });
-      } else {
-        btn.disabled = true;
-        btn.title = agent.label + ' is not installed';
-        btn.setAttribute('aria-label', agent.label + ' is not installed');
-      }
-      actions.appendChild(btn);
-    });
+    // The favourite's launch button — the row's only agent button, shown
+    // whatever the hidden list says (it is the row's one launch affordance;
+    // hiding it would leave the row with none) and never repeated in the
+    // menu below.
+    if (favorite) {
+      actions.appendChild(agentLaunchButton(a, favorite));
+    }
 
-    // ⋯ project menu (#977) — the three things a project row wants that are
-    // neither an agent launch nor GitHub, in one anchor so the strip stays
-    // one row on the phone:
+    // ⋯ project menu (#977, widened by #1070) — everything a project row
+    // offers that isn't the favourite launch or the star, in one anchor so
+    // the strip stays one line on the phone:
+    //   · Launch <agent> — one row per visible non-favourite agent (#1070),
+    //     same label/disabled/hint as the row button it replaced.
+    //   · GitHub issues — the repo's open-issues list (sorted by last
+    //     updated, excluding audit-meta ledger issues — #341) in a new tab.
+    //     Spawns no process, creates no session. Greyed with a hint when
+    //     the project has no GitHub remote.
     //   · Open in VS Code (#802) — the project's sibling `.code-workspace`,
     //     created server-side first if missing; no PTY, no session. Greyed
     //     with the same hint an uninstalled agent gets when the `code` CLI
@@ -206,19 +299,54 @@ export function renderCodingList(host, items) {
     //   · Open folder — the project directory in Explorer on the PC.
     // The menu is appended after the star so the rail's `.icon-btn +
     // .icon-btn` divider rules still see adjacent buttons; it floats, so
-    // DOM order doesn't show. Hideable as a whole under the `vscode`
-    // pseudo-id (#666).
-    let menuEl = null;
-    if (!hidden.has(VSCODE_BUTTON_ID)) {
-      const anchor = document.createElement('button');
-      anchor.type = 'button';
-      anchor.className = 'icon-btn agent-btn project-menu-anchor';
-      anchor.dataset.agent = VSCODE_BUTTON_ID;
-      anchor.innerHTML = icon('ellipsis-vertical');
-      anchor.title = 'Project actions';
-      anchor.setAttribute('aria-label', 'Project actions');
-      const gs = state.gitStatus && state.gitStatus[a.id];
-      menuEl = projectMenu.attach(a.id, anchor, [
+    // DOM order doesn't show. No longer hideable (#1070): it is the only
+    // route to every non-favourite launch, so hiding it would strand them.
+    // A stored `vscode` value from #666 is simply inert now.
+    const anchor = document.createElement('button');
+    anchor.type = 'button';
+    anchor.className = 'icon-btn agent-btn project-menu-anchor';
+    anchor.dataset.agent = VSCODE_BUTTON_ID;
+    anchor.innerHTML = icon('ellipsis-vertical');
+    anchor.title = 'Project actions';
+    anchor.setAttribute('aria-label', 'Project actions');
+    const gs = state.gitStatus && state.gitStatus[a.id];
+    // One launch row per *visible non-favourite* agent, above the GitHub
+    // row and the three project actions. Declared in the item list rather
+    // than appended conditionally: row-menu.js detaches a hidden row from
+    // the menu instead of marking it [hidden], so a count of the menu's
+    // buttons only ever sees what is actually offered.
+    const menuItems = agents
+      .filter(function (agent) { return agent.id !== favoriteId; })
+      .map(function (agent) {
+        return {
+          className: 'project-launch-btn',
+          dataset: { agent: agent.id },
+          html: brandIcon(agent.id, 'row-menu-brand'),
+          label: agent.available
+            ? 'Launch ' + agent.label
+            : agent.label + ' is not installed',
+          text: agent.label,
+          hidden: hidden.has(agent.id),
+          disabled: !agent.available,
+          title: agent.label + ' is not installed',
+          onTap: function () { launchApp(a, agent.id); },
+        };
+      });
+    menuItems.push({
+      className: 'project-github-btn',
+      html: brandIcon('github', 'row-menu-brand'),
+      label: a.repo_url ? 'Open GitHub issues' : 'No GitHub remote',
+      text: GITHUB_BUTTON_LABEL,
+      hidden: hidden.has(GITHUB_BUTTON_ID),
+      disabled: !a.repo_url,
+      title: 'No GitHub remote',
+      onTap: function () {
+        const issuesUrl = a.repo_url +
+          '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
+        window.open(issuesUrl, '_blank', 'noopener,noreferrer');
+      },
+    });
+    const menuEl = projectMenu.attach(a.id, anchor, menuItems.concat([
         {
           className: 'project-vscode-btn',
           html: brandIcon('vscode', 'row-menu-brand'),
@@ -238,34 +366,8 @@ export function renderCodingList(host, items) {
           label: 'Open folder', text: 'Open folder',
           onTap: function () { openFolder(a); },
         },
-      ]);
-      actions.appendChild(anchor);
-    }
-
-    // GitHub repo icon — opens the repo's open-issues list (sorted by last
-    // updated, excluding audit-meta ledger/metadata issues — #341) in a new
-    // browser tab. Spawns no process and creates no session. Disabled with a
-    // hover hint when the project has no GitHub remote (a.repo_url is unset).
-    // Hideable under the same pseudo-id as the agents (issue #666).
-    if (!hidden.has(GITHUB_BUTTON_ID)) {
-      const ghBtn = document.createElement('button');
-      ghBtn.type = 'button';
-      ghBtn.className = 'icon-btn agent-btn';
-      ghBtn.appendChild(brandIconEl('github'));
-      if (a.repo_url) {
-        ghBtn.title = 'Open GitHub issues';
-        ghBtn.setAttribute('aria-label', 'Open GitHub issues');
-        ghBtn.addEventListener('click', function () {
-          const issuesUrl = a.repo_url + '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
-          window.open(issuesUrl, '_blank', 'noopener,noreferrer');
-        });
-      } else {
-        ghBtn.disabled = true;
-        ghBtn.title = 'No GitHub remote';
-        ghBtn.setAttribute('aria-label', 'No GitHub remote');
-      }
-      actions.appendChild(ghBtn);
-    }
+    ]));
+    actions.appendChild(anchor);
 
     // Favorite star — rightmost in the action strip, a toggle distinct from
     // the agent-launch buttons. Filled when starred, outline otherwise
@@ -279,7 +381,7 @@ export function renderCodingList(host, items) {
     starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
     starBtn.addEventListener('click', function () { toggleFavorite(a); });
     actions.appendChild(starBtn);
-    if (menuEl) actions.appendChild(menuEl);
+    actions.appendChild(menuEl);
 
     li.appendChild(actions);
     host.appendChild(li);

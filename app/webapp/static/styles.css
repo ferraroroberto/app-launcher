@@ -903,32 +903,15 @@ summary + .opt-group { border-top: 0; }
   border-top: 0;
   border-left: 1px solid var(--line);
 }
-@media (max-width: 520px) {
-  /* Stack: folder name on its own full-width line, agent icons on a
-     row beneath it. flex-wrap lets the icons spill to a second line on
-     the very narrowest phones rather than clipping. */
-  .coding-item { flex-direction: column; align-items: stretch; }
-  .coding-item .row-actions.agent-actions {
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    border-left: 0;
-    border-top: 1px solid var(--line);
-  }
-  .coding-item .row-actions.agent-actions .icon-btn + .icon-btn {
-    border-left: 1px solid var(--line);
-  }
-  /* Life OS tiles share the .coding-item class but only ever carry two
-     actions (📖 + 🚀), which fit beside the name even on the narrowest
-     phone. Opt them back out of the stack-on-narrow rule above (issue
-     #124): the higher-specificity .coding-item.lifeos-item selectors win
-     over the bare .coding-item ones, restoring the default inline row +
-     side border. The Code tab's agent-icon stack is untouched. */
-  .coding-item.lifeos-item { flex-direction: row; align-items: stretch; }
-  .coding-item.lifeos-item .row-actions.agent-actions {
-    border-left: 1px solid var(--line);
-    border-top: 0;
-  }
-}
+/* The stack-on-narrow rule that used to live here is gone (#1070). A
+   Coding row carried up to nine controls — one per registered agent plus
+   GitHub plus ⋯ plus the star — which could not fit a 390px phone beside
+   the folder name, so the strip dropped onto its own line below it and
+   `flex-wrap` caught the overflow. The row is three controls wide now
+   (favourite launch · ⋯ · star, ~156px), which fits beside even a long
+   folder name on the narrowest phone, so the row stays one line at every
+   width — as does the Life OS tile, which needed an explicit opt-out
+   (issue #124) only for as long as the bare `.coding-item` rule existed. */
 .agent-icon {
   width: 24px;                    /* icons.size feature step (issue #355) */
   height: 24px;

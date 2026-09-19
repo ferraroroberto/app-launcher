@@ -295,6 +295,41 @@ class TestPatchConfig:
         client.post("/api/config", json={"coding_hidden_agents": []})
         assert client.get("/api/config").json()["coding_hidden_agents"] == []
 
+    def test_coding_favorite_agent_round_trips_and_rejects_unknown_ids(
+        self, webapp_client
+    ):
+        """coding_favorite_agent (#1070) names the one agent whose launch
+        button stays on a Coding project row.
+
+        Unlike the list fields beside it this one is *validated*, not just
+        coerced to a clean string: the row renders exactly one launch button
+        from it, so an id that names no registered agent would leave the row
+        with no way to launch anything. An unknown id — a typo, a stale
+        client, an agent dropped from the registry — falls back to
+        DEFAULT_AGENT rather than being stored.
+        """
+        from src.agents import DEFAULT_AGENT
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        # Defaults to the registry's own default agent, so a fresh config
+        # already renders a working row.
+        assert client.get("/api/config").json()["coding_favorite_agent"] == DEFAULT_AGENT
+
+        resp = client.post("/api/config", json={"coding_favorite_agent": "codex"})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.coding_favorite_agent == "codex"
+        assert client.get("/api/config").json()["coding_favorite_agent"] == "codex"
+        # Reaches disk — the favourite must survive a webapp restart.
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).coding_favorite_agent == "codex"
+
+        # An unknown id is refused into the default, never stored.
+        for junk in ("not-an-agent", "", "   ", None):
+            resp = client.post("/api/config", json={"coding_favorite_agent": junk})
+            assert resp.status_code == 200, junk
+            assert app.state.webapp_config.coding_favorite_agent == DEFAULT_AGENT, junk
+
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is
         in the allow-list — it patches through, surfaces on the next GET,

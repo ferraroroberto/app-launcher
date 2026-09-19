@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src.agents import DEFAULT_AGENT
 from src.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
@@ -293,6 +294,14 @@ class WebappConfig:
     # by default and needs no config migration. Stored like
     # `coding_favorites` — a plain string list in this same config.
     coding_hidden_agents: list = field(default_factory=list)
+    # The one agent whose launch button stays on a Coding project row
+    # (issue #1070). Every other visible agent — and the GitHub-issues
+    # button — moved into the row's ⋯ menu, so the row is three controls
+    # wide on the phone instead of nine. Stored as a plain agent id;
+    # `src.agents.DEFAULT_AGENT` is the default and also the fallback the
+    # config router coerces an unknown id to, so a removed agent can never
+    # leave a row with no launch button at all.
+    coding_favorite_agent: str = DEFAULT_AGENT
     # Provider-qualified value shown in the Coding header's compact picker.
     # The provider's own model field remains the launch source of truth.
     coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
