@@ -29,6 +29,8 @@ from __future__ import annotations
 import re
 from typing import Dict, Set
 
+import pytest
+
 
 # Prefixes whose neighbourhood is terminal-grade: each already contains at
 # least one row in ``_TERMINAL_GUARD_RULES``, so a *new* sibling under one of
@@ -152,13 +154,92 @@ def _concrete(path: str) -> str:
     return _PARAM.sub(_SAMPLE_SEGMENT, path)
 
 
+def _all_route_paths(app) -> Set[str]:
+    """Every route path template this app serves, however deeply nested.
+
+    ``app.routes`` used to hold every endpoint directly: ``include_router``
+    copied the sub-router's routes into the parent's list, so a one-level walk
+    saw all of them. FastAPI 0.141 / Starlette 1.6 changed that — each
+    ``include_router`` call now appends a single lazy ``_IncludedRouter``
+    wrapper and the endpoints live *inside* it, so the same one-level walk
+    returns only ``/openapi.json``, ``/docs``, ``/docs/oauth2-redirect``,
+    ``/redoc`` and the ``/static`` mount.
+
+    That is #1041: this dev box had 0.136 and CI had 0.141 (``fastapi>=0.110``
+    is a lower bound, so the two installs drifted), and on CI this file
+    reported that the app "no longer registers" ``/api/board`` — a route the
+    phone uses every day and that 2441 other tests hit successfully in the
+    same run.
+
+    ``fastapi.routing.iter_route_contexts`` is the accessor FastAPI's own
+    OpenAPI generation uses on the new shape, and it yields plain routes
+    unchanged, so it is correct on both. Fall back to the flat walk on a
+    FastAPI too old to have it.
+    """
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:  # FastAPI < 0.141 — app.routes is already flat.
+        return {
+            path
+            for route in app.routes
+            if (path := getattr(route, "path", ""))
+        }
+
+    paths: Set[str] = set()
+    for context in iter_route_contexts(app.routes):
+        # ``context.path`` carries any ``include_router(prefix=...)``, which a
+        # route's own ``.path`` does not. It comes back empty for WebSocket
+        # routes on 0.141.1, and the PTY stream is one — so fall back rather
+        # than lose ``/api/claude-code/sessions/{sid}/ws``.
+        path = getattr(context, "path", "") or getattr(
+            getattr(context, "route", None), "path", ""
+        )
+        if path:
+            paths.add(path)
+    return paths
+
+
 def _terminal_route_paths(app) -> Set[str]:
     """Route path templates registered under a terminal-grade prefix."""
-    return {
-        path
-        for route in app.routes
-        if (path := getattr(route, "path", "")) and _under_terminal_prefix(path)
-    }
+    return {path for path in _all_route_paths(app) if _under_terminal_prefix(path)}
+
+
+def _visible_terminal_routes(app) -> Set[str]:
+    """``_terminal_route_paths``, but an empty result is an error, not a pass.
+
+    Everything in this file is an argument of the form "walk the routes, and
+    require each one to be classified". If the walk itself returns nothing,
+    every one of those arguments becomes vacuous: the classification test
+    passes having checked nothing, and the two rot-detectors report the
+    opposite of the truth — that correct allowlist rows are stale and should
+    be deleted. That is exactly what CI did for two days (#1041).
+
+    A route table this file cannot see is an **unknown**, never a pass and
+    never "the routes were removed". Say so in its own words, and name the
+    two readings so the next person does not start by deleting good rows.
+    """
+    paths = _terminal_route_paths(app)
+    if paths:
+        return paths
+
+    import fastapi
+    import starlette
+
+    # ASCII only, like the other messages here: read off a Windows console.
+    raise AssertionError(
+        "Terminal-guard coverage could not be established: walking this app "
+        "found no route at all under any prefix in TERMINAL_PREFIXES, out of "
+        f"{len(_all_route_paths(app))} route path(s) seen in total.\n\n"
+        "This file proves nothing in that state, so it fails rather than "
+        "passing. Two readings, in likelihood order:\n"
+        "  1. The route walk in _all_route_paths no longer matches how this "
+        "FastAPI version exposes routes registered via include_router - that "
+        "was #1041. Installed here: "
+        f"fastapi {fastapi.__version__}, starlette {starlette.__version__}.\n"
+        "  2. Every terminal-grade route really was removed or renamed, in "
+        "which case TERMINAL_PREFIXES is what needs updating.\n\n"
+        "Check 1 before touching TERMINAL_PREFIXES or DELIBERATELY_TOKEN_ONLY."
+    )
 
 
 def test_every_terminal_prefixed_route_has_an_explicit_guard_level(webapp_client):
@@ -168,7 +249,7 @@ def test_every_terminal_prefixed_route_has_an_explicit_guard_level(webapp_client
 
     unclassified = sorted(
         path
-        for path in _terminal_route_paths(app)
+        for path in _visible_terminal_routes(app)
         if _terminal_guard_level(_concrete(path)) is None
         and path not in DELIBERATELY_TOKEN_ONLY
     )
@@ -195,7 +276,7 @@ def test_token_only_allowlist_has_no_stale_rows(webapp_client):
     _client, app, _overrides = webapp_client
     from app.webapp.middleware import _terminal_guard_level
 
-    registered = _terminal_route_paths(app)
+    registered = _visible_terminal_routes(app)
 
     vanished = sorted(set(DELIBERATELY_TOKEN_ONLY) - registered)
     assert not vanished, (
@@ -222,7 +303,7 @@ def test_guard_rules_still_classify_their_own_prefixes(webapp_client):
     _client, app, _overrides = webapp_client
     from app.webapp.middleware import _terminal_guard_level
 
-    paths = _terminal_route_paths(app)
+    paths = _visible_terminal_routes(app)
     barren = sorted(
         prefix
         for prefix in TERMINAL_PREFIXES
@@ -238,3 +319,68 @@ def test_guard_rules_still_classify_their_own_prefixes(webapp_client):
         "routes moved (update the prefix) or the gating was lost: "
         f"{barren}"
     )
+
+
+def test_route_walk_sees_routes_registered_via_include_router():
+    """The walk must survive how FastAPI exposes nested routers (#1041).
+
+    Pinned against a hand-built app rather than the real one so the failure
+    names the mechanism instead of the symptom. The nesting is the real
+    shape: ``server.create_app`` includes ``sessions.router``, which itself
+    included ``voice_ocr_tts.router`` at import time - two levels, plus a
+    WebSocket route, which is the one ``iter_route_contexts`` reports with an
+    empty ``context.path`` on 0.141.1.
+
+    Status by installed version, measured: on fastapi 0.141.1 / starlette
+    1.6.0 (what CI installs) this FAILS on the pre-fix walk and passes on the
+    current one; on 0.136.1 / 1.0.0 (this dev box today) it passes either way,
+    so here it is a guard rather than proof. ``fastapi>=0.110`` is a lower
+    bound and both are in range - which is why the guard matters.
+    """
+    from fastapi import APIRouter, FastAPI
+
+    inner = APIRouter()
+
+    @inner.get("/api/tts/health")
+    def _health() -> Dict[str, str]:
+        return {}
+
+    outer = APIRouter()
+
+    @outer.get("/api/claude-code/sessions")
+    def _sessions() -> Dict[str, str]:
+        return {}
+
+    @outer.websocket("/api/claude-code/sessions/{sid}/ws")
+    async def _ws(websocket) -> None:  # pragma: no cover - never connected
+        pass
+
+    outer.include_router(inner)
+    app = FastAPI()
+    app.include_router(outer)
+
+    assert _terminal_route_paths(app) == {
+        "/api/tts/health",
+        "/api/claude-code/sessions",
+        "/api/claude-code/sessions/{sid}/ws",
+    }
+
+
+def test_an_invisible_route_table_fails_as_unknown():
+    """No routes visible must read as "could not establish", not "stale rows".
+
+    The #1041 wording told a reader to delete fifteen correct allowlist rows.
+    An unknown that is phrased as a finding is worse than a plain red: it
+    hands you a confident, wrong next action.
+    """
+    import types
+
+    empty = types.SimpleNamespace(routes=[])
+
+    with pytest.raises(AssertionError) as excinfo:
+        _visible_terminal_routes(empty)
+
+    message = str(excinfo.value)
+    assert "could not be established" in message
+    assert "no longer registers" not in message
+    assert "drop the rows" not in message

@@ -74,7 +74,8 @@ try {
     # suite. The path->tier rules and surfaces live in .fleet.toml [e2e];
     # scripts/classify_e2e.py is the scaffold's mechanism, and
     # scripts/e2e-gate-route.ps1 turns its verdict into pytest arguments. On CI
-    # the full suite always runs -- the local gate is where routing is proven.
+    # the browser suite is skipped entirely (#1041) -- that job runs the
+    # clean-machine half, and this gate, here, is the contract for the rest.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
     $classifyOut = @()
     if ($env:CI -ne "true") {
@@ -87,7 +88,7 @@ try {
     $e2eBrowsers = @($route.Browsers) -join ","
 
     if ($tier -eq "skip") {
-        Phase "e2e routing: SKIP browser suite (backend/docs-only diff)"
+        Phase "e2e routing: SKIP browser suite"
         Write-Host "    reason: $routeReason" -ForegroundColor DarkGray
         Log-Progress "e2e routing: tier=skip reason=$routeReason"
     } else {

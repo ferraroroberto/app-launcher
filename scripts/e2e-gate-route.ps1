@@ -29,8 +29,29 @@ function Get-E2ERoute {
         }
     }
 
+    # CI runs the clean-machine half of this gate and nothing else (#1041).
+    # The browser suite there was a second run of a gate that had already
+    # passed locally before the PR was opened -- the same script, the same
+    # tests -- and it needed three separate timeout widenings
+    # (E2E_LOG_POLL_DEADLINE_MS, E2E_STOP_OVERLAY_HIDE_MS,
+    # E2E_REAL_AGENT_ECHO_MS) purely to survive the hosted runner, which is
+    # the suite fighting the environment rather than testing the code. What
+    # only CI can do -- a fresh .venv from requirements.txt on a machine that
+    # has never seen this repo, run against committed files alone -- lives
+    # entirely in byte-compile plus the non-e2e suite, and that is what it
+    # now runs. The local gate stays the contract for the browser suite.
+    #
+    # Deliberately decided here, not in the workflow: this is a routing
+    # decision, it is the only place that already knows it is on CI, and
+    # tests/test_verify_gate_route.py pins it.
     if ($IsCI) {
-        return & $failSafe "CI always runs the full dual-projection suite"
+        return [pscustomobject]@{
+            Tier      = "skip"
+            Targets   = @()
+            Browsers  = @()
+            Reason    = "CI runs the clean-machine half only -- browser suite is the local gate's job (#1041)"
+            Serialize = $false
+        }
     }
 
     $kv = @{}
