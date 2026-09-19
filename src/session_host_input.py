@@ -81,6 +81,12 @@ _ECHO_SAMPLES = 4
 # Claude Code's collapsed-paste chip, normalized (see _normalize_echo) —
 # positive ingest evidence for a payload that is never echoed verbatim.
 _PASTE_CHIP_MARKER = "[pastedtext#"
+# The chip's *number*, which is what makes a chip ours rather than any chip
+# (#1075). Claude Code renders "[Pasted text #2 +53 lines]", which normalizes
+# to "[pastedtext#2+53lines]" — _normalize_echo strips whitespace and
+# box-drawing but keeps brackets, "#" and digits, so the number is free to
+# read. Pastes are numbered monotonically within a session.
+_PASTE_CHIP_ID_RE = re.compile(re.escape(_PASTE_CHIP_MARKER) + r"(\d+)")
 
 # Deferred submit (issue #763, closing #760's third acceptance point: "if the
 # terminal can take input, so can the API"). A *working* agent repaints its
@@ -102,9 +108,31 @@ _PASTE_CHIP_MARKER = "[pastedtext#"
 # gaps of a working agent and actually mean "the turn is over".
 _DEFER_QUIET_MS = 1500
 # Bounded: past this the steer stays stranded and honestly reported, which is
-# the pre-#763 behaviour. An unbounded watcher would keep a CR primed against
-# a terminal whose state drifted arbitrarily far from the one it verified.
-_DEFER_CAP_MS = 120_000
+# the pre-#763 behaviour.
+#
+# Sized (#1075) against the thing actually being waited on rather than against
+# a guess at "a while". A lane running scripts/verify-before-ship.ps1 sits
+# inside *one* tool call for the gate's whole ~19 min (CLAUDE.md's re-baselined
+# full-tier runtime), repainting its spinner throughout, so the original
+# 120_000 could never reach the end of that turn: a steer sent to a lane
+# mid-gate stranded essentially every time (three on 2026-09-19 alone,
+# `reason=defer_timeout` each time, each unstuck by a human POSTing a bare CR).
+# 30 min covers a gate run plus the agent's own wrap-up before it goes quiet.
+#
+# Lengthening the window is only safe because the pre-fire re-check identifies
+# *this* payload rather than merely some payload — see _chip_visible and
+# InputProtocol._payload_still_visible. Every other guard the watcher applies
+# (supersession, the quiet window, the dialog scan) is evaluated at fire time,
+# so none of them cares how long the wait was. The one hazard that genuinely
+# scaled with the window was _PASTE_CHIP_MARKER matching on the marker alone,
+# which let a chip somebody else put in the composer stand in for ours — and a
+# human typing into the session deliberately does not supersede the watcher
+# (see PtySession._defer_seq). It no longer does.
+#
+# What remains is a liveness bound, not a safety one: a watcher that never
+# gives up is worse than one that does, so the give-up path stays reachable
+# and keeps reporting INPUT_DEFER_TIMEOUT honestly.
+_DEFER_CAP_MS = 1_800_000
 _DEFER_POLL_S = 0.25
 # How far back the pre-fire re-check looks for the payload. The composer is
 # repainted on essentially every frame, so a payload still sitting unsent
@@ -286,6 +314,34 @@ def _echo_needles(data: str) -> List[str]:
     ][:_ECHO_SAMPLES]
 
 
+def _chip_id_in(normalized: str) -> Optional[str]:
+    """The newest paste-chip number in ``normalized`` terminal output (#1075).
+
+    Highest rather than last-in-paint-order: a composer holding several chips
+    repaints them in ascending order, and Claude Code numbers pastes
+    monotonically, so within a window that begins at our *own* write the
+    largest number is the chip our write created.
+
+    ``None`` when the output shows no chip at all — the ordinary case for a
+    bulk payload small enough that the composer echoes it verbatim instead of
+    collapsing it. The caller then falls back to the payload's own echo, which
+    is the only evidence there is.
+    """
+    ids = _PASTE_CHIP_ID_RE.findall(normalized)
+    return max(ids, key=int) if ids else None
+
+
+def _chip_visible(normalized: str, chip_id: str) -> bool:
+    """Is *this* chip number showing in ``normalized`` terminal output?
+
+    The trailing boundary is the whole point: without it ``#1`` also matches
+    ``#12``, which hands back exactly the any-chip-will-do answer this exists
+    to avoid.
+    """
+    pattern = re.escape(_PASTE_CHIP_MARKER + chip_id) + r"(?!\d)"
+    return re.search(pattern, normalized) is not None
+
+
 class InputProtocol:
     """Mixin: ``PtySession``'s server-initiated input-delivery protocol.
 
@@ -321,6 +377,33 @@ class InputProtocol:
         collapsed-paste chip, which replaces the echo for a bulk paste.
         """
         if _PASTE_CHIP_MARKER in normalized:
+            return True
+        return any(needle in normalized for needle in needles)
+
+    @staticmethod
+    def _payload_still_visible(
+        normalized: str, needles: List[str], chip_id: Optional[str]
+    ) -> bool:
+        """Is *our* payload the thing the composer is showing right now?
+
+        The deferred watcher's pre-fire check (#1075), and deliberately
+        stricter than :meth:`_payload_visible`. At ingest time any chip is
+        fair evidence: the window opens at our own write, it closes within
+        ``_INGEST_CAP_MS``, and the question is only "did anything land".
+        The watcher asks a different question minutes later — "is the thing
+        in the composer still mine" — and over a window long enough to
+        outlast a gate run somebody else's paste can easily be the chip
+        sitting there. A human typing into the session does not supersede the
+        watcher (that is decided — see ``PtySession._defer_seq``), so this
+        identity check is the only thing between a long wait and a CR pressed
+        on their half-composed message.
+
+        ``chip_id`` is ``None`` when no chip existed at ingest, in which case
+        the payload's own echo is the only evidence that counts. An unpinned
+        chip is not evidence, and the watcher declining costs nothing worse
+        than a steer that stays stranded and honestly reported.
+        """
+        if chip_id is not None and _chip_visible(normalized, chip_id):
             return True
         return any(needle in normalized for needle in needles)
 
@@ -532,7 +615,18 @@ class InputProtocol:
             # stranded on 2026-08-14. Now nothing is written: the submit is
             # handed to a watcher that presses Enter when the agent actually
             # settles, the way a human at the keyboard would.
-            self._defer_args = (self._defer_seq, mark, needles)
+            #
+            # Pin the chip *here* rather than at fire time (#1075): this
+            # window opens at our own write, so the newest chip in it is
+            # unambiguously the one our paste created. Minutes later, when
+            # the watcher looks again, a chip in the composer could be
+            # anyone's.
+            self._defer_args = (
+                self._defer_seq,
+                mark,
+                needles,
+                _chip_id_in(self._normalized_since(mark)),
+            )
             return InputOutcome(
                 reason=INPUT_DEFERRED,
                 ingested=True,
@@ -553,7 +647,12 @@ class InputProtocol:
 
     # ------------------------------------------------- deferred submit (#763)
     def _arm_deferred_submit(
-        self, seq: int, mark: int, needles: List[str], nbytes: int
+        self,
+        seq: int,
+        mark: int,
+        needles: List[str],
+        chip_id: Optional[str],
+        nbytes: int,
     ) -> None:
         """Hand a still-unsubmitted payload to a background watcher thread.
 
@@ -562,17 +661,22 @@ class InputProtocol:
         """
         threading.Thread(
             target=self._run_deferred_submit,
-            args=(seq, mark, needles, nbytes),
+            args=(seq, mark, needles, chip_id, nbytes),
             name=f"defer-submit-{self.session_id[:8]}",
             daemon=True,
         ).start()
 
     def _run_deferred_submit(
-        self, seq: int, mark: int, needles: List[str], nbytes: int
+        self,
+        seq: int,
+        mark: int,
+        needles: List[str],
+        chip_id: Optional[str],
+        nbytes: int,
     ) -> None:
         """Thread body: run the watcher, then record whatever it concluded."""
         try:
-            outcome = self._await_deferred_submit(seq, mark, needles)
+            outcome = self._await_deferred_submit(seq, mark, needles, chip_id)
         except Exception as exc:  # noqa: BLE001 — a watcher must never crash the host
             logger.debug(
                 f"PTY {self.session_id[:8]} deferred submit watcher failed: {exc}"
@@ -583,7 +687,11 @@ class InputProtocol:
         self._record_input(outcome, nbytes, True)
 
     def _await_deferred_submit(
-        self, seq: int, mark: int, needles: List[str]
+        self,
+        seq: int,
+        mark: int,
+        needles: List[str],
+        chip_id: Optional[str] = None,
     ) -> Optional["InputOutcome"]:
         """Wait for a genuine quiet window, then press Enter — or don't.
 
@@ -599,13 +707,15 @@ class InputProtocol:
         1. **A real quiet window** (``_DEFER_QUIET_MS``), inside
            ``_DEFER_CAP_MS``. A working agent repaints far more often than
            that, so quiet means its turn is genuinely over.
-        2. **The payload is still visible in the terminal's recent output.**
-           The composer is repainted on essentially every frame, so a payload
-           still sitting unsent keeps reappearing; one that was submitted, or
-           scrolled behind something else, stops being repainted. Scanning
-           only from the oldest sample in the rolling ``frames`` window
-           (~``_DEFER_FRAME_LOOKBACK_MS``) is what makes this "it is there
-           now" rather than "it was there once".
+        2. **The payload — *ours* — is still visible in the terminal's recent
+           output.** The composer is repainted on essentially every frame, so
+           a payload still sitting unsent keeps reappearing; one that was
+           submitted, or scrolled behind something else, stops being
+           repainted. Scanning only from the oldest sample in the rolling
+           ``frames`` window (~``_DEFER_FRAME_LOOKBACK_MS``) is what makes
+           this "it is there now" rather than "it was there once", and
+           ``chip_id`` (#1075) is what makes it "it is *mine*" rather than
+           "some paste is there" — see :meth:`_payload_still_visible`.
         3. **No dialog in that same window** (``_DEFER_DIALOG_MARKERS``) —
            a bare CR into a permission or AskUserQuestion modal picks an
            option instead of submitting.
@@ -662,7 +772,7 @@ class InputProtocol:
                     waited_ms=waited_ms,
                 )
             normalized = self._normalized_since(frames[0])
-            if not self._payload_visible(normalized, needles):
+            if not self._payload_still_visible(normalized, needles, chip_id):
                 return InputOutcome(
                     reason=INPUT_DEFER_VANISHED,
                     ingested=True,
