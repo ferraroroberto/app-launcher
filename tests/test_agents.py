@@ -173,20 +173,24 @@ class TestDetectAgents:
         assert by_id["pi"] is True  # differential TUI, forced-repaint path (#291)
         assert "ssh" not in by_id  # service integration, not a Coding-tab button
 
-    def test_console_input_flags_match_the_967_probe(self, monkeypatch):
+    def test_console_input_flags_match_the_recorded_probes(self, monkeypatch):
         # Issue #967 (#983): the Coding tab enables a detached session's
-        # Chat-mode Send only for agents the recorded probe proved take console input
-        # (the comment on the issue). Grok was *not probed* (not signed in
-        # on the dev box) — False means unprobed, and it must stay False
-        # until a probe says otherwise, never be flipped by analogy.
+        # Chat-mode Send only for agents a recorded probe proved take console
+        # input. Grok was the one entry #967 left unprobed — blocked on a
+        # device-code login, not on a failure — and #1069 re-ran the probe on
+        # grok 1.0.34, 4/4, so it joins the others. The exact-dict assertion
+        # is the guard that matters: a new agent added with the flag set but
+        # no probe behind it fails here rather than reaching a phone.
         monkeypatch.setattr(agents.shutil, "which", lambda cmd, path=None: None)
         by_id = {d["id"]: d["console_input"] for d in agents.detect_agents()}
         assert by_id == {
             "claude": True, "codex": True, "antigravity": True,
-            "copilot": True, "pi": True, "grok": False,
+            "copilot": True, "pi": True, "grok": True,
         }
         assert agents.supports_console_input("claude") is True
-        assert agents.supports_console_input("grok") is False
+        assert agents.supports_console_input("grok") is True
+        # ssh is a service integration, never a Coding-tab row (#558), and is
+        # deliberately never probed: the refusal path still has a subject.
         assert agents.supports_console_input("ssh") is False
         assert agents.supports_console_input("no-such-agent") is False
 

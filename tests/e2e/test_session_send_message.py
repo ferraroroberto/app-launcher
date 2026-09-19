@@ -363,13 +363,78 @@ def test_chat_send_gate_follows_the_console_input_flag(
     send = authed_page.locator(SEND)
     field = authed_page.locator(INPUT)
     if registry == "refused":
-        expect(send).to_be_disabled()
+        # aria-disabled, never the `disabled` attribute (#1069): the tap has
+        # to keep landing so the reason can be toasted — pinned by
+        # test_a_refused_send_answers_a_tap_instead_of_going_dead below.
+        expect(send).to_have_attribute("aria-disabled", "true")
+        expect(send).not_to_have_attribute("disabled", re.compile(r".*"))
         expect(send).to_have_attribute("title", re.compile(r"No console input"))
     else:
         expect(send).to_be_enabled()
     expect(field).to_be_editable()
     field.fill("draft survives")
     expect(field).to_have_value("draft survives")
+
+
+def test_a_refused_send_answers_a_tap_instead_of_going_dead(
+    authed_page: Page, base_url: str
+) -> None:
+    # #1069: the refusal used to be a real `disabled` attribute. On iOS a
+    # disabled button fires no tap event at all, so the reason could only
+    # ever surface through `title` — a hover a phone does not have — and
+    # Send read as simply broken: nothing sent, nothing said. It is
+    # aria-disabled now — the convention the Board drawer's own actions
+    # already state for an action a session can't take — so the tap lands
+    # and says why. What this pins: the toast carries the reason, the draft
+    # survives the tap, and nothing is POSTed to /input.
+    def _agents(route):
+        resp = route.fetch()
+        data = resp.json()
+        for a in data.get("agents", []):
+            if a.get("id") == "claude":
+                a["console_input"] = False
+        route.fulfill(response=resp, json=data)
+
+    authed_page.route(re.compile(r".*/api/agents$"), _agents)
+    posts: list = []
+    authed_page.on(
+        "request",
+        lambda req: posts.append(req.url)
+        if req.method == "POST" and "/input" in req.url
+        else None,
+    )
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(authed_page, calls)
+    # Open only once the registry answered, so the gate reads the flag.
+    with authed_page.expect_response(re.compile(r".*/api/agents$")):
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page)
+
+    send = authed_page.locator(SEND)
+    field = authed_page.locator(INPUT)
+    field.fill("why will you not send this")
+    # force=True: Playwright's own actionability treats aria-disabled as not
+    # enabled, but a finger has no actionability check — the same pattern
+    # test_session_mode_toggle.py uses for the bar's disabled segments. On
+    # pre-fix code the forced tap still delivers nothing, because a genuinely
+    # `disabled` button suppresses activation in the browser itself: which is
+    # the defect, not a quirk of the harness.
+    send.click(force=True)
+
+    expect(authed_page.locator("#toast")).to_have_text(re.compile(r"No console input"))
+    expect(field).to_have_value("why will you not send this")
+    assert posts == [], f"a refused Send still posted to /input: {posts}"
+
+    # And it drops its accent fill for the shared button-disabled recipe — it
+    # used to render identical to a working Send. Asserted against the ⌨ key,
+    # disabled in the same grid for the same reason, so it holds either theme.
+    expect(send).to_have_css(
+        "background-color",
+        stable_read(lambda: authed_page.locator(KEYS).evaluate(
+            "el => getComputedStyle(el).backgroundColor"
+        )),
+    )
 
 
 def test_detached_chat_attach_uploads_inline_and_sends_the_path(

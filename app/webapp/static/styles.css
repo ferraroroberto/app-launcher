@@ -2838,6 +2838,17 @@ body.terminal-open {
   color: var(--muted);
   background: var(--card-2);
 }
+/* A refused ➤ Send takes that same recipe — without it the button kept its
+   full accent fill and read as perfectly usable (#1069). On aria-disabled,
+   not :disabled, so the tap still lands and toasts the reason. */
+.compose-tools .compose-send[aria-disabled="true"],
+.compose-tools .compose-send[aria-disabled="true"]:active {
+  opacity: 1;
+  color: var(--muted);
+  background: var(--card-2);
+  border-color: var(--line);
+  cursor: default;
+}
 .compose-input {
   flex: 1;
   min-width: 0;
