@@ -1,12 +1,29 @@
-# Pre-ship gate on CI (issue #38, deferred from #33 scope D).
+# Clean-machine half of the pre-ship gate (issue #38, narrowed by #1041).
 #
-# Runs the exact same gate as the local `scripts/verify-before-ship.ps1` so the
-# checks run without relying on the developer remembering. The local gate stays
-# the contract — this workflow is supplementary.
+# This job runs `scripts/verify-before-ship.ps1` -- the same gate every lane
+# runs locally before opening a PR -- on a runner that has never seen this
+# repo: a fresh `.venv` installed from `requirements.txt`, against committed
+# files only, at the commit rather than somebody's working tree. That is the
+# half of the gate a local run structurally cannot do, and it catches the
+# things it is here for: a file a lane forgot to commit, a dependency that
+# only exists on the dev box, a test that passes only because of local state,
+# and drift in an unpinned dependency (which is what #1041 turned out to be --
+# `fastapi>=0.110` resolved to 0.136 locally and 0.141 here, and only the
+# newer one broke the terminal-guard route walk).
 #
-# windows-2025 is mandatory: pywinpty is Windows-only and the e2e suite spawns
-# real PTYs. `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`,
-# so the workflow creates `.venv` and installs into it — the script is untouched.
+# It deliberately does NOT run the Playwright browser suite. `e2e-gate-route.ps1`
+# routes CI to tier "skip", so the gate stops after byte-compile + the non-e2e
+# pytest suite. That leg was a second run of a gate that had already passed
+# locally, and it needed three timeout widenings just to survive the hosted
+# runner. The local gate is the contract for it -- see CLAUDE.md, "Verification".
+#
+# The workflow keeps its name (`e2e`) so the existing branch/PR checks and
+# links keep resolving.
+#
+# windows-2025 is mandatory: pywinpty is Windows-only, and the non-e2e suite
+# includes real-ConPTY tests. `verify-before-ship.ps1` hard-requires the venv
+# interpreter under `.venv/Scripts/`, so the workflow creates `.venv` and
+# installs into it -- the script is untouched.
 name: e2e
 
 on:
@@ -22,12 +39,11 @@ concurrency:
 jobs:
   verify-before-ship:
     runs-on: windows-2025
-    # Typical green is ~8 min since #534 unskipped the UI-terminal e2e tests
-    # (stub-backed, no Claude CLI needed); the suite has wedged on a slow
-    # runner with no cap (issue #184). Bound it so a wedge fails fast (red)
+    # Typical green is ~4 min without the browser leg (deps ~1 min, the
+    # ~2450-test non-e2e suite ~3 min). Bound it so a wedge fails fast (red)
     # instead of running to GitHub's 6 h ceiling, with headroom over the
-    # new typical so a merely-loaded runner isn't a false red.
-    timeout-minutes: 20
+    # typical so a merely-loaded runner isn't a false red.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -36,56 +52,36 @@ jobs:
           python-version: '3.12'
 
       - name: Create .venv and install deps
+        # The install itself is part of what this job checks: requirements.txt
+        # must produce a working environment on a machine with nothing on it.
         run: |
           python -m venv .venv
           .\.venv\Scripts\python.exe -m pip install --upgrade pip
           .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: .\.venv\Scripts\python.exe -m playwright install chromium webkit
-
       - name: Seed config files from committed samples
-        # config.json / webapp_config.json / apps.json are gitignored — only the
+        # config.json / webapp_config.json / apps.json are gitignored -- only the
         # *.sample.json templates are checked in, and they carry no credential.
-        # The e2e autoboot derives its disposable config from webapp_config.json
-        # (credentials dropped, per-run token substituted — issue #907), and
-        # loopback bypasses the bearer middleware, so no real token is needed.
+        # Kept after #1041 narrowed this job: the non-e2e suite has not been
+        # proven independent of these files, and establishing that is its own
+        # change rather than a second variable in this one.
         run: |
           Copy-Item config/config.sample.json config/config.json
           Copy-Item config/webapp_config.sample.json config/webapp_config.json
           Copy-Item config/apps.sample.json config/apps.json
 
       - name: Run pre-ship gate
-        # Give the input-delivery polls headroom on the slow hosted runner
-        # (issue #184): 20 s on CI vs the 5 s local default in conftest.py.
-        # Likewise widen the stop/kill overlay-hide budget (#286) so the
-        # graceful-then-force stop window doesn't time the WebKit test out.
-        # And widen the real-agent echo budget (#678) so a slow hosted-runner
-        # cold boot of the real Claude Code process doesn't time the
-        # reconnect-replay test out on the WebKit projection.
-        env:
-          E2E_LOG_POLL_DEADLINE_MS: '20000'
-          E2E_STOP_OVERLAY_HIDE_MS: '30000'
-          E2E_REAL_AGENT_ECHO_MS: '90000'
         run: pwsh -File scripts/verify-before-ship.ps1
 
-      - name: Upload e2e diagnostic logs
-        # Runs even when the gate fails — the autoboot webapp/session-host
-        # output and the progress log make any future e2e failure diagnosable
-        # from the run page without a local repro (issue #58).
-        #
-        # No per-session logs here: #913 points both disposable processes at a
-        # per-run temp LAUNCHER_AUDIT_DIR precisely so a gate run never writes
-        # into the checkout's webapp/sessions, and tests/e2e/conftest.py fails
-        # the run if any harness session file lands there. Collecting that path
-        # uploaded nothing while promising otherwise (#1004).
+      - name: Upload gate progress log
+        # Runs even when the gate fails: per-test START/DONE lines and the
+        # slowest-test summary make a red diagnosable from the run page. The
+        # e2e autoboot logs that used to be collected here no longer exist --
+        # this job boots no webapp and no session-host.
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: e2e-logs
-          path: |
-            webapp/e2e-autoboot-webapp.log
-            webapp/e2e-autoboot-session-host.log
-            webapp/verify-progress.log
+          name: gate-progress-log
+          path: webapp/verify-progress.log
           if-no-files-found: warn
           retention-days: 7

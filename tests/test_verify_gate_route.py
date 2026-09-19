@@ -42,7 +42,9 @@ _CASES: dict[str, dict] = {
     "static": {"lines": ["E2E_TIER=static", "E2E_BROWSERS=chromium",
                          "E2E_PYTEST_TARGET=tests/e2e/test_smoke.py", "E2E_REASON=static-asset: x.png"]},
     "skip": {"lines": ["E2E_TIER=skip", "E2E_BROWSERS=", "E2E_PYTEST_TARGET=", "E2E_REASON=docs: README.md"]},
-    "ci": {"lines": ["E2E_TIER=skip", "E2E_PYTEST_TARGET="], "ci": True},
+    # A full verdict, on CI: the CI branch must override it downward (#1041).
+    "ci": {"lines": ["E2E_TIER=full", "E2E_BROWSERS=", "E2E_PYTEST_TARGET=tests/e2e",
+                     "E2E_REASON=webapp: x"], "ci": True},
     # Unusable classifier output -> whole suite.
     "no-output": {"lines": []},
     "no-verdict": {"lines": ["Traceback (most recent call last):", "tomllib.TOMLDecodeError"]},
@@ -119,8 +121,15 @@ def test_skip_tier_runs_nothing(routes: dict) -> None:
     assert _shape(routes["skip"]) == ("skip", [], [], False)
 
 
-def test_ci_always_runs_the_whole_suite(routes: dict) -> None:
-    assert _shape(routes["ci"]) == _FULL
+def test_ci_skips_the_browser_suite_whatever_the_diff_says(routes: dict) -> None:
+    """CI runs the clean-machine half only (#1041).
+
+    Driven with a *full* classifier verdict, so this pins the override: on CI
+    the browser suite is skipped however loudly the diff asks for it. The
+    local gate is the contract for that suite.
+    """
+    assert _shape(routes["ci"]) == ("skip", [], [], False)
+    assert "clean-machine" in routes["ci"]["Reason"]
 
 
 @pytest.mark.parametrize("case", ["no-output", "no-verdict", "unknown-tier", "no-target", "repeated-key"])

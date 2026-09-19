@@ -20,23 +20,32 @@ This project already had a **local pre-ship gate**: `scripts/verify-before-ship.
 
 That gate is the **contract**: `CLAUDE.md` says it must pass before any change to the webapp/launcher/session-host is declared done.
 
-Issue #38 added a CI workflow that runs *that exact same gate* on GitHub, automatically, on:
+Issue #38 added a CI workflow that runs *that same gate* on GitHub, automatically, on:
 
 - every **push to `main`**, and
 - every **pull request into `main`**.
 
-Nothing about the gate itself changed. CI just runs it for you, somewhere else, without you having to remember.
+Nothing about the gate script itself changed. CI just runs it for you, somewhere else, without you having to remember.
+
+### What CI runs, and what it deliberately does not (#1041)
+
+CI runs steps 1 and 2 above and stops. It does **not** run step 3, the Playwright browser suite. That is a decision, not an accident: `scripts/e2e-gate-route.ps1` routes any run that sets `CI=true` to tier `skip`, and `tests/test_verify_gate_route.py` pins it.
+
+The reasoning is the whole of §4 below, read backwards. CI's unique value is the *clean machine* — a fresh `.venv`, committed files only, at the commit rather than somebody's working tree. That value is fully delivered by the install and the non-browser suite, in the first few minutes. The browser leg, by contrast, was a **second** run of a suite that had already passed locally on the same script before the PR was opened, and it needed three separate timeout widenings (`E2E_LOG_POLL_DEADLINE_MS`, `E2E_STOP_OVERLAY_HIDE_MS`, `E2E_REAL_AGENT_ECHO_MS`) purely to survive the hosted runner. A test that needs its clock loosened to survive the environment is testing the environment.
+
+**What this costs, plainly.** Every browser-visible regression is now proven only by the local gate. If a lane forgets it, or routes it narrow and is wrong, nothing downstream catches it. Two smaller losses go with it: the e2e suite's own health on a clean machine (the §4 bug below — a hollow green from mass-skipping — would not be caught a second time by CI), and Playwright browser-install drift.
+
+**What it keeps, and what that is worth.** #1041 is the argument for the half that stayed. Two guard-coverage tests failed on CI and passed locally for two days, because `fastapi>=0.110` is a lower bound: this box had resolved it to 0.136 and the runner installed 0.141, and 0.141 changed how `include_router` exposes routes. No browser was involved. Only a machine that installs the dependencies from scratch could have surfaced it.
 
 ### The workflow steps (`.github/workflows/e2e.yml`)
 
 | Step | Why it exists |
 |---|---|
-| `runs-on: windows-2025` | `pywinpty` is Windows-only and the e2e suite spawns real PTYs — a Linux runner physically cannot run this project. |
+| `runs-on: windows-2025` | `pywinpty` is Windows-only and the suite includes real-ConPTY tests — a Linux runner physically cannot run this project. |
 | Checkout + set up Python 3.12 | A fresh machine starts with *nothing* — not even the code. |
-| Create `.venv`, install `requirements.txt` | `verify-before-ship.ps1` hard-requires `.venv\Scripts\python.exe`. We build the venv so the script runs unmodified — the script stays the contract. |
-| `playwright install chromium webkit` | The browser engines the e2e suite drives. They are large binaries, not Python packages, so they need a separate install. |
+| Create `.venv`, install `requirements.txt` | `verify-before-ship.ps1` hard-requires the venv interpreter. We build the venv so the script runs unmodified — the script stays the contract. **The install is itself part of what this job checks.** |
 | **Seed config files from samples** | `config/{config,webapp_config,apps}.json` are gitignored — only the `*.sample.json` templates are committed. A fresh runner has only the samples. (See §4 — this step was the bug fix.) |
-| Run `verify-before-ship.ps1` | The actual gate. |
+| Run `verify-before-ship.ps1` | The actual gate — byte-compile + the non-browser suite; the browser phase routes to `skip` on CI (see above). |
 
 ## 3. Why this is important
 
@@ -46,7 +55,7 @@ Nothing about the gate itself changed. CI just runs it for you, somewhere else, 
 
 **It documents the truth.** A green check on a pull request is a shared, visible fact: "this branch passed the gate on a clean machine." A reviewer no longer has to take "I tested it" on faith.
 
-**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule (carried since issue #22): *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. This workflow has been established for months now; `CLAUDE.md`'s "CI expectations" block owns the current advisory-not-required status plus the named flaky legs.
+**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule (carried since issue #22): *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. This workflow has been established for months now; `CLAUDE.md`'s "CI expectations" block owns the current scope and advisory-not-required status; the named flaky legs moved with the browser suite to its "E2E browser suite — local gate only" block.
 
 ## 4. Local vs. GitHub — the difference that actually bites
 
@@ -78,15 +87,19 @@ The fix was one workflow step: seed the three config files from their committed 
 
 The suite genuinely ran. Counts and timings are deliberately not quoted here — they move with every closed bite that adds a regression pin, and a frozen number in a second document is how this section went stale in the first place (#1008). **`CLAUDE.md`'s CI block is the canonical home** for what a typical green looks like and when to investigate.
 
-What matters is *which* skips are honest ones. Since #534 the terminal-regression tests no longer need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python, so it **runs on CI**. The one fixture that still skips there is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a GitHub runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
+What matters is *which* skips are honest ones. Since #534 the terminal-regression tests no longer need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python. The one fixture that still skips on a bare machine is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a fresh runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
+
+Since #1041 those fixtures are local-gate concerns — CI runs no browser suite, so it can no longer hollow out in this particular way. Read the story as the lesson it is, not as a description of what CI does today: **the shape of the bug outlived the workflow step that caused it.** A check that cannot establish its fact must say so, instead of folding the unknown into the passing state. That is exactly what #1041 itself was — two guard-coverage tests that could not see the route table, one of which passed anyway because there was nothing left to check.
 
 ### The takeaway
 
 | | Your machine | GitHub runner |
 |---|---|---|
-| Gitignored config files | Present (you made them) | **Absent** — seed from samples |
-| `claude` on PATH | Yes | No — only `launched_claude_pty_session` tests skip; the rest run against the stub child (#534) |
-| Pre-existing tray / session-host | Maybe | Never — gate boots its own |
+| Gitignored config files | Present (you made them) | **Absent** — seeded from samples by the workflow |
+| `claude` on PATH | Yes | No — matters only to the browser suite, which CI no longer runs (#1041) |
+| Pre-existing tray / session-host | Maybe | Never — and since #1041 CI boots neither |
+| Browser suite | **Runs — and is the contract** | Not run (#1041) |
+| Dependency versions | Whatever you installed, whenever | Resolved fresh from `requirements.txt` every run |
 | Good for | Fast dev loop | Proving it works from *nothing* |
 
-Use the **local gate** for the fast inner loop while developing. Trust **CI** as the impartial second opinion that has none of your machine's conveniences — which is exactly why it is worth having.
+Use the **local gate** for the fast inner loop while developing, and as the contract for anything a browser can see. Trust **CI** for the one thing it alone can say: that this works starting from nothing.
