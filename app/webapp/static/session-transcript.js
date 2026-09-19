@@ -27,6 +27,44 @@
  * the bar's ⋮ menu (terminal-bar.js) carries the pane's Show-tool-calls and
  * Reload actions. Switching panes never reloads: the pages and fold state
  * loaded here survive a trip through Terminal mode.
+ *
+ * ## Live refresh (#1050)
+ *
+ * A chat view that is *being looked at* keeps itself current, and nothing
+ * else does. The gate is deliberately narrow, because the cost of getting
+ * it wrong is the thing the feature was asked to avoid — several session
+ * windows open on a PC, each streaming a conversation nobody is reading:
+ *
+ *   - the overlay is open on THIS session, in chat mode (`data-mode`), and
+ *   - `document.visibilityState === 'visible'` (a backgrounded tab or a
+ *     locked phone stops entirely), and
+ *   - the session is still alive.
+ *
+ * Fail any of those and the timer is cleared, not merely skipped, so a
+ * window sitting on Terminal or an overlay that was closed fetches nothing
+ * at all. Each page instance (a PC mirror window is its own, #282) polls
+ * only the one conversation its own overlay is showing. This is the one
+ * place the terminal's design is deliberately NOT copied: terminal.js keeps
+ * its socket warm after the overlay closes (:235) because an idle PTY costs
+ * the server nothing and re-opening is instant — but a chat tick is a poll,
+ * so a warm one is pure waste.
+ *
+ * Refresh is *incremental*, never a reload. The transcript route grew a
+ * forward cursor (`?after=&size=`) that returns only what the agent has
+ * appended, split into two halves:
+ *
+ *   - `entries` — settled. Appended to the list and never touched again, so
+ *     scroll position, open disclosures and read-aloud are undisturbed. A
+ *     run of folded entries merges into the trailing run card rather than
+ *     starting a new one, or an autonomous stretch would fragment into a
+ *     card per tick.
+ *   - `pending` — the newest message, which may still be growing (a harness
+ *     writes one message as several lines). Re-rendered wholesale each time
+ *     it changes, with open disclosures carried across by entry offset.
+ *
+ * Rebuilding only that tail is what keeps this clear of the Board's lesson
+ * (#680/#958): a poll that rebuilds the DOM breaks whatever the reader is
+ * interacting with.
  */
 
 import { els, state } from './state.js';
@@ -57,10 +95,29 @@ export function hasTranscriptReader(s) {
 // Conversation turns (user + assistant entries) per page — ~20 exchanges.
 const PAGE_LIMIT = 40;
 
-// After a send, reload the newest page once this long later so the sent
-// turn shows up — the agent appends it to its history file only after it
-// has consumed the input, which nothing here can observe. Chat has no
-// periodic refresh (#982), so this is the only automatic reload.
+// Live refresh (#1050). How often a chat view that is actually being looked
+// at asks for what the agent has appended. 3s reads as "live" for a
+// conversation without being a busy-loop; the tick itself is cheap by
+// design — an unchanged file answers from one `stat` server-side (0.02ms
+// measured against 18-45ms to re-read the newest page of a multi-MB
+// session), so an idle session costs ~20 round-trips a minute and no read.
+const LIVE_POLL_MS = 3000;
+
+// A failing tick backs off instead of hammering: a dropped tunnel or a
+// sleeping session-host would otherwise get 20 requests a minute from every
+// open chat. Doubles to the cap, resets on the first success.
+const LIVE_BACKOFF_MAX_MS = 30000;
+
+// How close to the bottom still counts as "following the conversation", in
+// px. Inside this, new turns scroll into view; outside it the reader has
+// deliberately scrolled up into history and is left exactly where they are.
+const STICK_PX = 120;
+
+// After a send, tick once this long later so the sent turn shows up without
+// waiting for the next scheduled one — the agent appends it to its history
+// file only after it has consumed the input, which nothing here can observe.
+// Before #1050 this was a full `loadNewest()`, which rebuilt the whole pane
+// (losing scroll position and every open disclosure) after every message.
 const SENT_REFRESH_MS = 3000;
 
 // The chat pane's composer handle (composer.js), mounted once by
@@ -309,6 +366,7 @@ function renderTurn(e) {
   const d = document.createElement('details');
   d.className = 'tr-turn tr-' + e.kind;
   d.open = true;
+  tagKey(d, e);
   const s = document.createElement('summary');
   s.className = 'tr-turn-summary';
   s.appendChild(meta(e.kind === 'user' ? 'You' : 'Agent', e.timestamp));
@@ -367,8 +425,16 @@ export function toggleGroups() {
   syncGroups();
 }
 
-// ⋮ menu — "Reload transcript": the newest page again (the only refresh
-// path besides the post-send one; a mode switch deliberately never reloads).
+// ⋮ menu — "Reload transcript": the newest page again, from scratch.
+//
+// Kept after #1050 made refresh automatic, deliberately. Live refresh is a
+// best-effort background tick that can stop for reasons the reader cannot
+// see: it backs off on repeated fetch failures, and it latches off entirely
+// when the session ends. This is the one control that restarts it, and it is
+// also the way back from the rare cosmetic drift a forward cursor can leave
+// (a harness that rewrites its history rather than appending to it). It is
+// no longer the *only* way to see new turns, which is what it used to be —
+// so it earns its slot as the escape hatch, not as the refresh button.
 export function reloadNewest() {
   if (view) loadNewest();
 }
@@ -378,6 +444,7 @@ export function reloadNewest() {
 function renderItem(e, toolErrors) {
   const d = document.createElement('details');
   d.className = 'tr-item tr-item-' + e.kind;
+  tagKey(d, e);
   // A failed call is marked on the row itself, so it reads as failed while
   // the group is still folded open at one item — never as a banner over the
   // whole turn (#1020).
@@ -466,8 +533,12 @@ function failedCount(run) {
 function renderRun(run, toolErrors) {
   const li = document.createElement('li');
   li.className = 'tr-run';
+  // The entries this card holds, kept on the node so a later tick can merge
+  // more into it and recompute the summary (#1050).
+  li._trRun = run.slice();
   const d = document.createElement('details');
   d.className = 'card card--collapsible tr-group';
+  tagKey(d, run[0]);
   d.innerHTML =
     '<summary class="collapse-summary">' +
       '<span class="collapse-main">' + icon('terminal') +
@@ -493,6 +564,121 @@ function renderRun(run, toolErrors) {
   run.forEach(function (e) { body.appendChild(renderItem(e, toolErrors)); });
   li.appendChild(d);
   return li;
+}
+
+// --- live refresh rendering (#1050) ---------------------------------------
+//
+// Every disclosure in a live region is tagged with the byte offset of the
+// entry it renders, so an open card can be found again after the region is
+// rebuilt. Offsets are stable identities: an entry keeps the offset of the
+// line it started at for as long as that file is not rewritten.
+
+function tagKey(el, entry) {
+  if (entry && entry.offset != null) el.dataset.trKey = String(entry.offset);
+}
+
+// Open/closed state of every keyed disclosure inside `nodes`, so a rebuild
+// can put it back. Keyed, not positional: between two ticks a card can move
+// from the pending region into the settled list, and a run of folded entries
+// can merge into an existing card rather than becoming a new one.
+function harvestOpen(nodes) {
+  const open = {};
+  nodes.forEach(function (li) {
+    li.querySelectorAll('[data-tr-key]').forEach(function (d) {
+      open[d.dataset.trKey] = d.open;
+    });
+  });
+  return open;
+}
+
+function restoreOpen(root, open) {
+  if (!open) return;
+  root.querySelectorAll('[data-tr-key]').forEach(function (d) {
+    const was = open[d.dataset.trKey];
+    if (was !== undefined) d.open = was;
+  });
+}
+
+// The summary line of a run card, recomputed from the entries it now holds —
+// called on every merge, so a group that grew keeps an honest count.
+function syncRunSummary(li) {
+  const run = li._trRun || [];
+  const d = li.querySelector('.tr-group');
+  d.querySelector('.collapse-title').textContent = runLabel(run);
+  d.querySelector('.collapse-count').textContent =
+    run.length + (run.length === 1 ? ' item' : ' items');
+  const failed = failedCount(run);
+  let chip = d.querySelector('.tr-fail-count');
+  if (failed && !chip) {
+    chip = document.createElement('span');
+    chip.className = 'tr-fail-count';
+    d.querySelector('.collapse-main').insertBefore(chip, d.querySelector('.collapse-count'));
+  }
+  if (chip) {
+    if (failed) chip.textContent = failed + ' failed';
+    else chip.remove();
+  }
+}
+
+// Append settled entries to the end of the list. Consecutive folded entries
+// merge into the trailing run card when there is one: without this an
+// autonomous stretch would fragment into one "1 tool call" card per tick
+// instead of the single foldable group the pane is built around.
+function appendSettled(entries, toolErrors) {
+  entries.forEach(function (e) {
+    const last = els.transcriptList.lastElementChild;
+    if (!isTurn(e) && last && last.classList.contains('tr-run')) {
+      const item = renderItem(e, toolErrors);
+      tagKey(item, e);
+      last.querySelector('.tr-group-body').appendChild(item);
+      last._trRun.push(e);
+      syncRunSummary(last);
+      return;
+    }
+    els.transcriptList.appendChild(renderEntries([e], toolErrors));
+  });
+}
+
+// Replace the provisional tail. `open` carries the disclosure state of
+// whatever was there before, including cards that have since settled.
+function renderPending(entries, toolErrors, open) {
+  const frag = renderEntries(entries, toolErrors);
+  const nodes = Array.prototype.slice.call(frag.children);
+  nodes.forEach(function (li) { li.dataset.trPending = '1'; });
+  restoreOpen(frag, open);
+  els.transcriptList.appendChild(frag);
+  return nodes;
+}
+
+// Drop the provisional tail, handing back what was open inside it.
+function clearPending() {
+  const nodes = (view && view.pendingNodes) || [];
+  const open = harvestOpen(nodes);
+  nodes.forEach(function (li) { li.remove(); });
+  if (view) view.pendingNodes = [];
+  return open;
+}
+
+function atBottom() {
+  const box = els.transcriptBody;
+  return box.scrollHeight - box.scrollTop - box.clientHeight <= STICK_PX;
+}
+
+// Apply one tick's worth of new content. The reader's position is the point:
+// following the conversation keeps following it, and having scrolled up into
+// history stays exactly put.
+function applyLive(settled, pending, toolErrors) {
+  const stick = atBottom();
+  const open = clearPending();
+  if (settled.length) {
+    appendSettled(settled, toolErrors);
+    restoreOpen(els.transcriptList, open);
+    view.settled = view.settled.concat(settled);
+  }
+  view.pending = pending;
+  view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
+  view.entries = view.settled.concat(view.pending);
+  if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
 function renderEntries(entries, toolErrors) {
@@ -524,6 +710,129 @@ function hideState() {
   if (els.transcriptState) els.transcriptState.hidden = true;
 }
 
+// --- the live tick (#1050) -------------------------------------------------
+
+// Is this view allowed to fetch right now? Every condition is re-checked on
+// every tick rather than trusted from when the timer was set, because all
+// three can change without this module being told (the overlay closes, the
+// phone locks, the session exits).
+function liveAllowed() {
+  return !!view &&
+    !view.ended &&
+    !!els.terminalOverlay &&
+    els.terminalOverlay.dataset.mode === 'chat' &&
+    document.visibilityState === 'visible';
+}
+
+function stopLiveTimer() {
+  if (view && view.liveTimer) {
+    window.clearTimeout(view.liveTimer);
+    view.liveTimer = null;
+  }
+}
+
+function scheduleLive(delay) {
+  if (!view) return;
+  stopLiveTimer();
+  if (!liveAllowed()) return;
+  // Self-scheduling rather than setInterval: a tab that was hidden for an
+  // hour resumes with one catch-up fetch instead of a backlog of missed
+  // ticks, which is the acceptance criterion for a locked phone.
+  view.liveTimer = window.setTimeout(liveTick, delay);
+}
+
+// Called whenever the answer to `liveAllowed()` may have changed.
+export function syncLiveRefresh() {
+  if (!view) return;
+  if (!liveAllowed()) {
+    stopLiveTimer();
+    return;
+  }
+  // `ticking` as well as the timer: a tick clears its own timer before
+  // awaiting, so without this a visibilitychange (or the post-send nudge)
+  // landing mid-request would start a second one alongside it.
+  if (!view.liveTimer && !view.ticking) liveTick();
+}
+
+// The source went unavailable. Say which, and stop only for the one reason
+// that is actually terminal.
+//
+// `session_not_found` means the session exited: latch off, because nothing
+// will bring it back and polling a dead session forever is the thing the
+// acceptance criterion forbids. Every other reason is a condition that can
+// clear on its own — most sharply `no_transcript`, which a *live* Claude
+// session reports for as long as its hook row is deleted and the filesystem
+// fallback can't name the file (#1023) — so those keep ticking, backed off,
+// and recover without the reader having to tap Reload. Treating a transient
+// unknown as an ending would be the same mistake in reverse as treating an
+// unresolved check as a pass.
+function liveUnavailable(reason) {
+  showState(REASON_COPY[reason] || 'Transcript unavailable');
+  view.reasonShown = true;
+  if (reason === 'session_not_found') {
+    view.ended = true;   // the list stays on screen: what was read is still worth reading
+    stopLiveTimer();
+    return;
+  }
+  view.backoff = Math.min(LIVE_BACKOFF_MAX_MS, (view.backoff || LIVE_POLL_MS) * 2);
+  scheduleLive(view.backoff);
+}
+
+async function liveTick() {
+  if (!view || !liveAllowed()) return;
+  const target = view;
+  const seq = view.seq;
+  target.liveTimer = null;
+  target.ticking = true;
+  const q = new URLSearchParams({ after: String(target.tail) });
+  if (target.size != null) q.set('size', String(target.size));
+  let body;
+  try {
+    body = await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) +
+        '/transcript?' + q.toString()
+    );
+  } catch (exc) {
+    target.ticking = false;
+    if (view !== target || view.seq !== seq) return;
+    // Quietly, and slower each time: a tick is background work the reader
+    // did not ask for, so a failing one must not toast over the pane the way
+    // a tapped Reload does.
+    target.backoff = Math.min(
+      LIVE_BACKOFF_MAX_MS, (target.backoff || LIVE_POLL_MS) * 2
+    );
+    scheduleLive(target.backoff);
+    return;
+  }
+  target.ticking = false;
+  if (view !== target || view.seq !== seq) return;
+  target.backoff = 0;
+  if (!body.available) {
+    liveUnavailable(body.reason);
+    return;
+  }
+  if (body.reset) {
+    // The file was rotated, or this view fell further behind than one
+    // request may read. Either way the newest turns are what it wants.
+    loadNewest();
+    return;
+  }
+  // A tick that got an answer clears any reason line an earlier failed one
+  // left on screen, so a condition that cleared by itself looks like it.
+  if (target.reasonShown) {
+    target.reasonShown = false;
+    if (view.entries && view.entries.length) hideState();
+  }
+  if (body.changed) {
+    target.tail = body.tail;
+    target.size = body.size;
+    applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors);
+  } else if (body.size != null) {
+    target.size = body.size;
+  }
+  scheduleLive(LIVE_POLL_MS);
+}
+
 function fetchPage(before) {
   const q = new URLSearchParams({ limit: String(PAGE_LIMIT) });
   if (before != null) q.set('before', String(before));
@@ -536,9 +845,14 @@ function fetchPage(before) {
 async function loadNewest() {
   if (!view) return;
   const seq = ++view.seq;
+  stopLiveTimer();
   els.transcriptList.innerHTML = '';
   els.transcriptOlder.hidden = true;
   view.cursor = null;
+  view.pendingNodes = [];
+  view.ended = false;
+  view.backoff = 0;
+  view.reasonShown = false;
   showState('Loading…');
   let body;
   try {
@@ -552,15 +866,32 @@ async function loadNewest() {
   if (!view || view.seq !== seq) return;
   if (!body.available) {
     showState(REASON_COPY[body.reason] || 'Transcript unavailable');
+    view.ended = true;
     return;
   }
-  const entries = body.entries || [];
-  // The newest page's entries, kept for lastAssistantEntryFullText() (#988) —
-  // the newest page always holds the most recent assistant turn, so an older
-  // page prepended later never needs to touch this.
-  view.entries = entries;
-  if (!entries.length && body.next_cursor == null) {
+  // The page is one complete list, as it has always been. #1050 adds `tail`
+  // — the offset where its newest, still-growing message begins — and keys
+  // every entry from there on, so the live region can be told apart locally
+  // and re-rendered later without disturbing anything above it.
+  const all = body.entries || [];
+  const cut = all.findIndex(function (e) {
+    return e.offset != null && body.tail != null && e.offset >= body.tail;
+  });
+  const entries = cut < 0 ? all : all.slice(0, cut);
+  const pending = cut < 0 ? [] : all.slice(cut);
+  // Everything currently shown, kept for lastAssistantEntryFullText() (#988).
+  // The live tick maintains it too, so read-aloud follows the conversation
+  // instead of reading whatever was newest when the pane opened.
+  view.settled = entries;
+  view.pending = pending;
+  view.entries = entries.concat(pending);
+  view.tail = body.tail != null ? body.tail : 0;
+  view.size = body.size;
+  if (!view.entries.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
+    // Still live: an empty transcript is the normal state of a session that
+    // has just started, and its first turn should appear on its own.
+    scheduleLive(LIVE_POLL_MS);
     return;
   }
   hideState();
@@ -569,9 +900,13 @@ async function loadNewest() {
   // prepended.
   view.toolErrors = body.tool_errors || 'reported';
   els.transcriptList.appendChild(renderEntries(entries, view.toolErrors));
+  view.pendingNodes = pending.length
+    ? renderPending(pending, view.toolErrors, null)
+    : [];
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
+  scheduleLive(LIVE_POLL_MS);
 }
 
 async function loadOlder() {
@@ -658,7 +993,12 @@ async function sendFromChat(text) {
   if (view !== target) return false;
   window.clearTimeout(target.refreshTimer);
   target.refreshTimer = window.setTimeout(function () {
-    if (view === target) loadNewest();
+    // One extra tick, not a reload: the sent turn arrives as an append like
+    // any other, so the pane keeps its scroll position and open cards
+    // (#1050). Brought forward rather than waiting out the current interval,
+    // and still subject to the same gate — a send followed by a switch to
+    // Terminal fetches nothing.
+    if (view === target) scheduleLive(0);
   }, SENT_REFRESH_MS);
   return true;
 }
@@ -725,10 +1065,19 @@ export function closeChatComposerPopovers() {
 // the disabled Terminal segment (mockup screen 6).
 export function openChatPane(s) {
   if (!els.chatPane) return;
-  if (view) window.clearTimeout(view.refreshTimer);
+  if (view) {
+    window.clearTimeout(view.refreshTimer);
+    stopLiveTimer();
+  }
   view = {
     session: s, cursor: null, loading: false, seq: 0, refreshTimer: null,
     entries: null, toolErrors: 'reported',
+    // Live refresh (#1050): `tail`/`size` are the forward cursor, `pending*`
+    // the provisional tail currently rendered, `ended` latches when the
+    // session is gone so no timer is ever rescheduled for it.
+    tail: 0, size: null, liveTimer: null, ticking: false, backoff: 0,
+    ended: false, reasonShown: false,
+    settled: [], pending: [], pendingNodes: [],
   };
   groupsHidden = true;
   syncGroups();
@@ -741,6 +1090,7 @@ export function closeChatPane() {
   if (view) {
     view.seq += 1;  // any in-flight page lands nowhere
     window.clearTimeout(view.refreshTimer);
+    stopLiveTimer();  // a closed overlay fetches nothing (#1050)
   }
   view = null;
   if (!els.chatPane) return;
@@ -767,6 +1117,10 @@ export function wireChatPane() {
     window.visualViewport.addEventListener('resize', pinChatToKeyboard);
     window.visualViewport.addEventListener('scroll', pinChatToKeyboard);
   }
+  // A backgrounded tab or a locked phone stops refreshing entirely; coming
+  // back does one catch-up fetch, not a replay of every tick it missed
+  // (#1050). One listener for the page, not one per opened session.
+  document.addEventListener('visibilitychange', syncLiveRefresh);
   // Scrolling to the very top pulls the next older page in without a tap.
   els.transcriptBody.addEventListener('scroll', function () {
     if (view && view.cursor != null && !view.loading && els.transcriptBody.scrollTop <= 0) {

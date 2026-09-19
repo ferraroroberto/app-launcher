@@ -267,7 +267,14 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     expect(toast).to_contain_text("Sent, not confirmed")
     expect(toast).not_to_have_class(re.compile(r"\berror\b"))
     _wait_for_calls(authed_page, calls, 2)
-    assert len(calls) == 2, f"transcript not reloaded once after the send: {calls}"
+    # #1050: the sent turn arrives through live refresh — a forward-cursor
+    # tick — rather than the full page reload this used to do, so the pane
+    # keeps its scroll position and open cards. Pinned as "exactly one page
+    # load, and at least one tick after it" rather than a call count, which
+    # a live view no longer has a fixed one of.
+    pages = [u for u in calls if "after=" not in u]
+    assert len(pages) == 1, f"the send reloaded the whole transcript: {calls}"
+    assert any("after=" in u for u in calls), f"no live tick after the send: {calls}"
     expect(authed_page.locator("#transcriptList .tr-user")).to_have_count(1)
 
 
@@ -311,7 +318,14 @@ def test_chat_composer_sends_to_full_control_session_with_honest_wording(
     else:
         expect(toast).not_to_have_class(re.compile(r"\berror\b"))
     _wait_for_calls(authed_page, calls, 2)
-    assert len(calls) == 2, f"transcript not reloaded once after the send: {calls}"
+    # #1050: the sent turn arrives through live refresh — a forward-cursor
+    # tick — rather than the full page reload this used to do, so the pane
+    # keeps its scroll position and open cards. Pinned as "exactly one page
+    # load, and at least one tick after it" rather than a call count, which
+    # a live view no longer has a fixed one of.
+    pages = [u for u in calls if "after=" not in u]
+    assert len(pages) == 1, f"the send reloaded the whole transcript: {calls}"
+    assert any("after=" in u for u in calls), f"no live tick after the send: {calls}"
 
 
 @pytest.mark.parametrize("registry", ["refused", "unknown"])

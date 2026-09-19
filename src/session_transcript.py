@@ -16,6 +16,15 @@ cursor until enough conversation turns are in hand, and never more than
 offset of the oldest line the page kept, so the next (older) page reads
 strictly before it — no turn is duplicated or dropped across pages.
 
+Since #1050 the cursor also runs *forwards*: :func:`transcript_tail` reads
+only what has been appended since a given offset, so a chat view that is
+being looked at can stay live without re-reading the newest page on a timer
+(measured on this box: 0.05–0.10 ms for a tick's worth of appends against
+18–45 ms to rebuild the newest page of a multi-MB session, and 0.02 ms for
+the ``stat`` that skips the read entirely while the file is unchanged). The
+same bounds apply: a forward read never exceeds :data:`REQUEST_BYTE_CAP`,
+and a gap wider than that asks the caller to reload rather than replay.
+
 Deliberately **not** on the session-host import closure (CLAUDE.md
 "session-host"): this is a webapp-only reader, so a change here is never a
 ``:8446`` restart concern.
@@ -256,7 +265,8 @@ def _page(
     inside a multi-line message, and a cut never splits one.
     """
     size = path.stat().st_size
-    end = size if before is None or before > size else max(0, before)
+    at_eof = before is None or before > size
+    end = size if at_eof else max(0, before)
     limit = max(1, min(int(limit), MAX_LIMIT))
     collected: List[Line] = []
     bytes_read = 0
@@ -315,13 +325,160 @@ def _page(
     next_cursor: Optional[int] = collected[0][0] if collected else None
     if next_cursor == 0:
         next_cursor = None
+    # Where this page's provisional region begins (#1050) — the newest
+    # message, which the agent may still be appending to. No lines at all (an
+    # empty file, or one holding only blanks) still needs a cursor a live
+    # read can resume from, and that is the end of the file.
+    idx = _pending_from(collected, line_key) if collected else None
+    tail = collected[idx][0] if idx is not None else size
     # A turn keeps its offset — the copy-full-text route (#985) needs it to
     # ask for the uncapped entry; the folded kinds have no such use and stay
-    # unexposed, same as before.
+    # unexposed, same as before. The exception is the live tail (#1050): every
+    # entry from `tail` on carries one, folded kinds included, because that is
+    # the region a live view re-renders and it needs a stable key per card to
+    # carry an open disclosure across the rebuild. `entries` itself stays one
+    # complete list — the page contract every other caller reads is unchanged.
     for e in entries:
-        if not _is_turn(e):
+        if not _is_turn(e) and not (at_eof and e.get("offset", -1) >= tail):
             e.pop("offset", None)
-    return {"entries": entries, "next_cursor": next_cursor}
+    return {
+        "entries": entries,
+        "next_cursor": next_cursor,
+        # Only a page that ends at EOF has a live tail to resume from: an
+        # older page ends mid-file, where nothing is provisional.
+        "tail": tail if at_eof else None,
+        "size": size,
+    }
+
+
+# --------------------------------------------------------------- live tail
+
+
+def _pending_from(lines: List[Line], line_key: LineKey) -> int:
+    """Index of the first line of the trailing *provisional* region.
+
+    Everything from there on may still grow. A harness can write one message
+    as several lines — Claude writes one per content block under one
+    ``message.id`` — so a read that ends at EOF can be holding half a
+    message; and the very last line of a file being appended to may be a
+    partial write with no newline yet. Both cases are the same answer: the
+    newest keyed span (found by taking the key of the last keyed line and
+    scanning back to that span's first line), or, when no line is keyed, the
+    last line on its own.
+
+    Never empty for a non-empty read, deliberately: the tail of a live file
+    is provisional by definition, and re-reading one line per tick costs
+    nothing — :func:`_tail`'s size pre-check skips even that while the file
+    is unchanged. Holding the region back instead of settling it is what
+    keeps an assistant message from rendering as two cards when its trailing
+    text arrives a tick after its tool call.
+
+    The mirror of :func:`_drop_partial_leading_message`, which does this job
+    at a backwards window's leading edge.
+    """
+    if not lines:
+        return 0
+    keys = [line_key(raw) for _, raw in lines]
+    last_keyed = next(
+        (i for i in range(len(lines) - 1, -1, -1) if keys[i] is not None), None
+    )
+    if last_keyed is None:
+        return len(lines) - 1
+    key = keys[last_keyed]
+    return next(i for i, k in enumerate(keys) if k == key)
+
+
+def _split_pending(
+    lines: List[Line], build: EntryBuilder, line_key: LineKey
+) -> Tuple[List[Entry], List[Entry], Optional[int]]:
+    """``(settled, pending, tail)`` for a read that ends at EOF.
+
+    ``settled`` entries are final — the client appends them and never touches
+    them again. ``pending`` is the provisional tail (:func:`_pending_from`),
+    which the client re-renders wholesale each time it changes. ``tail`` is
+    the byte offset the next live read starts from, i.e. where ``pending``
+    begins; ``None`` when there was nothing to read at all.
+
+    The two halves are built separately, which is exactly why the split has
+    to fall on a message boundary: a builder run over half a message would
+    report half its text as a whole entry.
+
+    **Offsets as render keys.** Both halves keep an offset on every kind,
+    folded ones included — unlike a page's ``entries``, which keep the #985
+    contract of turns only, since a turn is the one kind the copy-full-text
+    route can re-read. Everything a live read returns is content the client
+    may have to re-render, so each card needs a stable identity to carry an
+    open disclosure across a rebuild. Nothing re-reads a folded entry by its
+    offset; here it is an identity, not a cursor.
+    """
+    if not lines:
+        return [], [], None
+    idx = _pending_from(lines, line_key)
+    settled = build(lines[:idx]) if idx else []
+    pending = build(lines[idx:])
+    return settled, pending, lines[idx][0]
+
+
+def _tail(
+    path: Path,
+    after: int,
+    size_seen: Optional[int],
+    build: EntryBuilder,
+    line_key: LineKey,
+) -> Dict[str, Any]:
+    """Everything appended to ``path`` since byte offset ``after``.
+
+    The forward counterpart of :func:`_page` — the transcript cursor paged
+    only backwards before #1050, so a live view had no way to ask for "just
+    what is new" and had to refetch the newest page whole.
+
+    ``after`` is a previous read's ``tail``, so it is always a line boundary
+    *and* always outside a message span. ``size_seen`` is the file size that
+    read observed: when the file has not grown since, this answers from a
+    single ``stat`` without opening the file, which is what keeps an idle
+    chat view's cost at roughly nothing per tick.
+
+    ``reset`` asks the caller to reload the newest page instead of appending:
+    the file was rotated or truncated under the cursor, or the gap is wider
+    than :data:`REQUEST_BYTE_CAP` — a view that was hidden long enough to
+    fall that far behind wants the newest turns, not a 2 MB replay of what it
+    missed.
+    """
+    eof = path.stat().st_size
+    unchanged = {
+        "changed": False, "reset": False, "entries": [], "pending": [],
+        "tail": after, "size": eof,
+    }
+    if after > eof or eof - after > REQUEST_BYTE_CAP:
+        return {**unchanged, "changed": True, "reset": True}
+    if size_seen is not None and size_seen == eof:
+        return unchanged
+    lines: List[Line] = []
+    pos = after
+    span = WINDOW_BYTES
+    while pos < eof:
+        more, new_pos = _read_lines_from(path, pos, span, eof)
+        if not more and new_pos == pos:
+            # A single record wider than the window — widen in place, as
+            # `_page` does, rather than stepping over its tail.
+            span *= 2
+            if span > REQUEST_BYTE_CAP:
+                break
+            continue
+        lines.extend(more)
+        pos = new_pos
+        span = WINDOW_BYTES
+    settled, pending, tail = _split_pending(lines, build, line_key)
+    if tail is None:
+        # Nothing complete yet: the file grew by a partial line. Report the
+        # size so the next tick's pre-check stays cheap — the line completes
+        # (and the size grows again) or it never does, in which case there is
+        # genuinely nothing to show.
+        return unchanged
+    return {
+        "changed": True, "reset": False,
+        "entries": settled, "pending": pending, "tail": tail, "size": eof,
+    }
 
 
 def _is_turn(entry: Entry) -> bool:
@@ -1508,3 +1665,29 @@ def transcript_page(
     # whether an unmarked tool call means "succeeded" or "nobody can tell".
     page["tool_errors"] = tool_errors
     return page
+
+
+def transcript_tail(
+    path: Any,
+    *,
+    after: int,
+    size: Optional[int] = None,
+    flavor: str = "claude",
+) -> Dict[str, Any]:
+    """Entries appended since byte offset ``after`` (#1050).
+
+    ``after`` is the ``tail`` of the caller's last read — of the newest page
+    from :func:`transcript_page`, or of the previous call to this. ``size``
+    is the file size that read reported; passing it lets an unchanged file
+    answer from one ``stat``, with no open and no parse.
+
+    Returns ``changed`` (was there anything new), ``reset`` (the cursor no
+    longer applies — reload the newest page), ``entries`` (settled, append
+    them), ``pending`` (the provisional tail, re-render it wholesale), and
+    the ``tail``/``size`` to pass to the next call. Raises ``OSError`` when
+    the file can't be read, exactly as :func:`transcript_page` does.
+    """
+    build, line_key, tool_errors = _flavor(flavor)
+    out = _tail(Path(str(path)), int(after), size, build, line_key)
+    out["tool_errors"] = tool_errors
+    return out
