@@ -1,7 +1,14 @@
 """Loop-logic proof for the hands-free voice-loop spike (#246).
 
-THROWAWAY by design, but RETAINED FOR NOW (#258) as the live reference until the
-kanban/board view and the orchestrator (#245) voice mode land.
+THROWAWAY by design, but RETAINED: the spike-voice-loop.* set is deleted once a
+hands-free conversation mode exists OUTSIDE that set -- re-arm (narration end
+returns to listening with no user tap), barge-in (sustained user speech cuts
+playback) and a conversation-mode entry point, all living in shipped app code.
+The condition names the artifact, not a ticket: an issue closing never satisfies
+it, and neither does dictation (voice.js) or read-aloud (terminal-readaloud.js),
+which are one-way and already shipped. The decision lives in ONE place --
+issue #1054 -- and the PR that closes it is the PR that deletes this file with
+the rest of the set.
 
 This pins the *wiring* of the continuous voice loop — the turn sequence, the
 barge-in escape, the forced-gesture escape, and the per-turn latency
@@ -17,8 +24,8 @@ machine sequences turns correctly", not "iOS allows it".
 The loop's state machine (spike-voice-loop-fsm.js) is pure — no audio, no
 network, no timers — and is exposed on ``window.__voiceloop`` by the prototype
 page. The test drives it through that seam with synthetic events + injected
-timestamps. Delete with the rest of the spike-voice-loop.* set once #245 + the
-board view have shipped (see docs/voice-loop-spike.md for the retention decision).
+timestamps. Delete with the rest of the spike-voice-loop.* set when #1054's
+condition is met (see docs/voice-loop-spike.md for the spike's findings).
 """
 
 from __future__ import annotations
