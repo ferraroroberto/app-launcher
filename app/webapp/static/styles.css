@@ -2196,13 +2196,30 @@ summary + .opt-group { border-top: 0; }
 .tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
 .tr-md { white-space: normal; }
 .tr-md p { margin: 0 0 8px; }
-.tr-md p:last-child, .tr-md ul:last-child { margin-bottom: 0; }
+.tr-md p:last-child, .tr-md ul:last-child, .tr-md pre:last-child { margin-bottom: 0; }
 .tr-md ul { margin: 0 0 8px; padding-left: 20px; }
 .tr-md h1, .tr-md h2, .tr-md h3, .tr-md h4, .tr-md h5, .tr-md h6 {
   margin: 8px 0 4px;
   font-size: var(--font-label);
 }
-.tr-md pre { overflow-x: auto; }
+/* A fenced block in a chat turn (#1100) had exactly one rule --
+   `overflow-x: auto` -- and was UA default for everything else: no surface,
+   no padding, the UA's 1em margin against `.tr-md p`'s 8px, and
+   `white-space: pre` (`.tr-text`'s `overflow-wrap: anywhere` does not reach a
+   `pre`). So a long line became a bare unwrapped strip that panned sideways
+   and stayed panned, silently clipping its leading characters. It now shares
+   `.tr-pre`'s rule below -- see the note there for why wrap, not scroll.
+   Inline code is the other half of the same gap: `.tr-md` had no `code` rule
+   at all, so a backtick span was undifferentiated body text. */
+.tr-md code {
+  padding: 1px 5px;
+  background: var(--card-off);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+}
+/* ...and the fence's own `<code>` child must not paint the chip a second
+   time, which would draw a pill around the whole listing. */
+.tr-md pre code { padding: 0; background: none; font-size: inherit; }
 .tr-trunc { font-size: var(--font-caption); color: var(--muted); }
 /* A run of folded entries is one vendored disclosure card; the items inside
    are flat list rows on a hairline, each its own <details>. */
@@ -2279,11 +2296,29 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-caption);
   line-height: 1.4;
 }
-.tr-pre {
+/* The transcript's one preformatted surface, shared by a tool result
+   (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
+   #1100) rather than declared twice -- they had become the same ten
+   declarations, and two copies drift.
+   Wrap, not scroll, and deliberately: at `--font-caption` on a 390px phone
+   about 40 monospace characters fit, so almost every real code line would be
+   pannable, and a pan here persists -- `applyLive` appends settled turns
+   instead of rebuilding them, so nothing resets `scrollLeft` for the life of
+   the open overlay. That is the reported bug, and a bounded scroll container
+   would only make it visible, not absent. The cost is that column alignment
+   can break mid-line; that is the right trade in Chat, whose job is reading,
+   because Terminal mode is one tap away and keeps full fidelity. It is also
+   what `.tr-pre` already chose for raw tool output, which is far more
+   column-shaped than a fence.
+   NOT merged with `.lifeos-file-content pre.md-code`, which renders the same
+   `markdown.js` fence: that one sits on `--bg` and needs `--card` to read as
+   a surface, where on a turn card the contrast has to invert to `--card-off`.
+   Of its five declarations only the radius would survive, so a shared rule
+   would owe both sides an override and say less than it hid. */
+.tr-pre,
+.tr-md pre {
   margin: 0 0 8px;
   padding: 8px 10px;
-  max-height: 40vh;
-  overflow-y: auto;
   background: var(--card-off);
   border-radius: var(--radius-sm);
   font-size: var(--font-caption);
@@ -2291,6 +2326,10 @@ summary + .opt-group { border-top: 0; }
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* A tool result can be enormous, so it caps its height and scrolls
+   vertically. A chat fence does not: the whole turn is already collapsible,
+   and a nested scroller inside a scrolling transcript is a phone trap. */
+.tr-pre { max-height: 40vh; overflow-y: auto; }
 
 /* ---------- Show changes overlay (#977) ---------- */
 /* GitHub "Files changed" on the phone: a summary line, then flat list-row
