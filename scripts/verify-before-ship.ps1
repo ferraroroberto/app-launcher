@@ -9,12 +9,60 @@
 #   pwsh -File scripts/verify-before-ship.ps1
 #   powershell -File scripts\verify-before-ship.ps1   # Windows PowerShell 5.1 works too
 #
-# A tray on :8445 may be running or not — autoboot always picks a free port
+# A tray on :8445 may be running or not -- autoboot always picks a free port
 # for its own webapp and spawns its own disposable session-host on a free
 # port, never adopting the tray's live :8446 (issue #260). Exits non-zero on
 # the first failure with the offending output left visible.
+#
+# Never pipe this script when its exit code matters (issue #1086) -- a
+# pipeline's status is its last command's, so `... | tail -40` reports 0 for a
+# failed gate. Redirect and read the file:
+#   pwsh -File scripts/verify-before-ship.ps1 > gate.log 2>&1; echo "exit=$?"
+# A caller that cannot avoid a pipe asserts on the final `GATE-RESULT: PASS`
+# / `GATE-RESULT: FAIL` line, which a pipe cannot rewrite.
 
 $ErrorActionPreference = "Stop"
+
+# Machine-greppable verdict, emitted as the last line of every path this
+# script can still run code on (issue #1086). A pipeline's status is its
+# *last* command's status, so `verify-before-ship.ps1 | tail -40` hands the
+# caller tail's 0 and the genuine failure disappears -- a verification gate
+# reporting green on a red run. A caller that cannot avoid a pipe asserts on
+# this line instead of `$?`.
+#
+# Defined first, and paired with the trap below, because the paths that most
+# need it are the early ones: a terminating error under the "Stop" preference
+# above (a read-only progress-log directory, a missing helper, an unusable
+# interpreter path) printed its error to *stderr* and exited 1, so a caller
+# piping stdout saw an empty, entirely silent, apparently-successful run --
+# zero lines and $? of 0, worse than the failure this issue was filed for.
+#
+# Its absence still means something, for what is left: the script was killed,
+# an outer timeout fired, or PowerShell could not parse the file at all. None
+# of those is a pass either.
+function Write-GateResult($verdict) {
+    Write-Host "GATE-RESULT: $verdict"
+}
+
+# Any terminating error anywhere below lands here: report it on *stdout* where
+# a piped caller can see it, then emit the verdict and keep the exit code the
+# script already had (a terminating error under -File exits 1). Deliberately
+# defensive -- it runs before $progressLog and the logging helpers exist, so
+# the progress-log write is best-effort and never masks the original error.
+trap {
+    Write-Host ""
+    Write-Host "[X] the gate aborted on an unhandled error:" -ForegroundColor Red
+    Write-Host ("    {0}" -f $_.Exception.Message) -ForegroundColor Red
+    if ($_.InvocationInfo) {
+        Write-Host ("    at {0}:{1}" -f $_.InvocationInfo.ScriptName,
+                                        $_.InvocationInfo.ScriptLineNumber) -ForegroundColor Red
+    }
+    try { Log-Progress ("ABORTED: {0}" -f $_.Exception.Message) } catch { }
+    try { Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue } catch { }
+    Write-GateResult "FAIL"
+    exit 1
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -48,6 +96,7 @@ function Fail($message) {
     Write-Host ("Failed after {0:n1}s." -f $sw.Elapsed.TotalSeconds) -ForegroundColor Red
     Log-Progress ("FAILED: {0} (after {1:n1}s)" -f $message, $sw.Elapsed.TotalSeconds)
     Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue
+    Write-GateResult "FAIL"
     exit 1
 }
 
@@ -183,4 +232,5 @@ if ($routeReason -match "session-host") {
     Write-Host "    one -- #635; null in either field means unknown, never a confident false.)" -ForegroundColor Yellow
     Write-Host "    See CLAUDE.md's session-host block for the one supported way to restart :8446." -ForegroundColor Yellow
 }
+Write-GateResult "PASS"
 exit 0
