@@ -257,8 +257,7 @@ export function stashActiveTerminal() {
   if (t.term && t.term.element) t.term.element.style.display = 'none';
   updateLatestPill();
   // Release any keyboard-driven override (issue #135) so the next open
-  // starts from the CSS-driven full-screen geometry: `inset: 0` in a browser
-  // tab, or the top-anchored 100lvh box the installed PWA needs (#1099).
+  // starts from the CSS-driven full height and inset:0 origin.
   if (els.terminalOverlay) {
     els.terminalOverlay.style.height = '';
     els.terminalOverlay.style.bottom = '';
@@ -745,8 +744,7 @@ export function closeTerminal() {
   if (!t) return;
   disposeTerminal(t);
   // Release any keyboard-driven override (issue #135) so the next open
-  // starts from the CSS-driven full-screen geometry: `inset: 0` in a browser
-  // tab, or the top-anchored 100lvh box the installed PWA needs (#1099).
+  // starts from the CSS-driven full height and inset:0 origin.
   if (els.terminalOverlay) {
     els.terminalOverlay.style.height = '';
     els.terminalOverlay.style.bottom = '';
