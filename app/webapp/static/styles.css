@@ -2104,12 +2104,30 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
-/* Chat mode's mount of the shared composer (#983). The overlay has no
-   bottom padding (the terminal runs edge to edge), so under Chat the bar
-   clears the home indicator itself, as the #975 composer it replaced did. */
-#chatComposeBar .compose-bar {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-}
+/* Chat mode's mount of the shared composer (#983) deliberately carries NO
+   bottom-padding override of its own (#1099).
+
+   It used to add `calc(env(safe-area-inset-bottom, 0px) + 8px)`, inherited
+   verbatim from the #975 detached-session composer it replaced — back when
+   that really was the only composer in the transcript view and did have to
+   clear the home indicator by itself. The terminal mount of the same
+   component never had it and has always sat 8px off the overlay's bottom
+   edge, so on any device with a non-zero bottom inset the two modes left
+   different amounts of empty space under an identical button grid: one whole
+   `env(safe-area-inset-bottom)` (~34 CSS px on a 1290x2796 iPhone) more
+   under Chat than under Terminal. Terminal is the spacing the owner calls
+   correct, so Chat is matched to Terminal rather than the other way round.
+
+   It was drift, not a double application: the inset entered exactly once,
+   here, and nowhere else in either mount. The two mounts render byte-
+   identical markup (composer.js `mountComposer`), so this rule was the only
+   thing that told them apart.
+
+   If a row of bottom UI ever does need to clear the home indicator, it goes
+   on `.terminal-overlay`'s own `padding-bottom` — see the comment in that
+   rule, which already names itself as the place for it — so both modes and
+   all three overlays sharing the class move together. Never on one mount of
+   a shared component. */
 .transcript-list {
   list-style: none;
   margin: 0;

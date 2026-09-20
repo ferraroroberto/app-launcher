@@ -145,7 +145,33 @@ full_pytest_target    = "tests/e2e"
 # asserts `<strong>` and links in one fixed-viewport behavioural test and
 # measures no geometry, and `test_markdown_link_rendering.py` is a
 # pure-function `renderMarkdown` probe that never paints.
-test_budget = 642
+# 2026-09-20 (#1099): 642 -> 644. One test function,
+# `test_composer_bottom_parity.py::test_composer_mounts_share_one_bottom_padding_recipe`,
+# x2 projections = the 2 nodes, no new parametrize cases. It is the standing
+# pin for a third reported iPhone bite in the same pane (Chat leaving a whole
+# `env(safe-area-inset-bottom)` more empty space under its button grid than
+# Terminal does under the identical grid) and it was run red on both
+# projections against pre-fix CSS first, naming the offending declaration
+# `#chatComposeBar .compose-bar { padding-bottom: calc(env(...) + 8px) }`.
+#
+# Unlike the #1098 and #1100 entries above it has NO geometry leg, and that is
+# a deliberate limitation rather than an omission: `env(safe-area-inset-bottom)`
+# resolves to 0px in headless Chromium and in the WebKit/iPhone projection
+# alike, so both mounts already computed to the same 8px bottom padding on
+# these engines before the fix -- measured, at 390 and 320 CSS px wide, with
+# the textarea empty (92px) and grown (176px), in both modes: 8.0px of gap
+# between the control grid and the overlay's bottom edge in every one of the
+# 16 combinations, before AND after. No rendered read on any available engine
+# can discriminate, so a geometry leg here would assert something that was
+# already true and prove nothing. The magnitude is a device reading.
+#
+# This is the same blind spot that let e8c07f0 (reverted in #1104) pass a full
+# green gate while being materially broken on the actual phone, so it is
+# written down rather than papered over: a green run of this node means "the
+# mount-scoped declaration did not come back", never "the spacing is right".
+# Nothing was available to extend instead -- no existing test reads padding or
+# geometry on either composer mount.
+test_budget = 644
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
