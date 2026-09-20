@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from src.session_host import PtyProcess, PtySession
+from tests._pty_wait import DELIVERY_CEILING_S, READY_CEILING_S, await_until
 
 pytestmark = pytest.mark.skipif(
     PtyProcess is None, reason="pywinpty (Windows ConPTY) is required"
@@ -67,22 +68,46 @@ async def _readback(size: int, tmp_path: Path) -> tuple[str, str]:
     )
     session.start_reader()
     try:
-        # Wait until the child has switched stdin to raw mode.
-        for _ in range(100):
-            if ready.exists():
-                break
-            await asyncio.sleep(0.05)
-        assert ready.exists(), "child never signalled raw-mode readiness"
+        # Wait until the child has switched stdin to raw mode. A polled
+        # condition with a backstop, never a fixed budget (#1108): a cold
+        # interpreter inside a fresh ConPTY costs 3.1 s here even on an idle
+        # box, so any hand-picked tick count is a flake waiting for load.
+        await await_until(
+            ready.exists,
+            ceiling_s=READY_CEILING_S,
+            what="the child never signalled raw-mode readiness",
+            env_var="PTY_READY_CEILING_S",
+        )
 
         # Distinct, newline-free characters so any dropped span shows up as
         # a length delta and a mid-stream divergence, not a benign reflow.
         payload = "".join(chr(0x41 + (i % 26)) for i in range(size))
         session.write(payload + _SENTINEL)
 
-        for _ in range(200):
-            await asyncio.sleep(0.05)
+        def delivered() -> bool:
+            """True once there is nothing further to wait for.
+
+            Two ways that happens, and conflating them is what made a slow
+            child look like byte loss. Either the file is complete, or the
+            child has exited — and a child that exited having written a
+            *short* file is precisely the loss this test exists to catch, so
+            stop waiting and let the assertions below report the delta
+            instead of burning the ceiling on a defect already proven.
+            """
             if result.exists() and result.stat().st_size >= len(payload):
-                break
+                return True
+            return not pty.isalive()
+
+        await await_until(
+            delivered,
+            ceiling_s=DELIVERY_CEILING_S,
+            what="the child never finished writing the readback file",
+            env_var="PTY_DELIVERY_CEILING_S",
+            detail=lambda: (
+                f"{result.stat().st_size if result.exists() else 0} "
+                f"of {len(payload)} bytes had landed, child still alive"
+            ),
+        )
     finally:
         try:
             pty.close(force=True)

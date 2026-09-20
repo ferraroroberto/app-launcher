@@ -12,15 +12,17 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
 from src.subprocess_flags import NO_WINDOW
+from tests._pty_wait import DELIVERY_CEILING_S, READY_CEILING_S, wait_until
 
 _CHILD = Path(__file__).parent / "_pty_readback_child.py"
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+# What the child should read back off the PTY and write to its destination.
+_EXPECTED_PAYLOAD = b"PAYLOAD"
 
 
 def _run_child(dest: str | None, extra_argv: list[str] | None = None):
@@ -119,17 +121,38 @@ def test_env_destination_survives_pywinpty_tokenising(tmp_path: Path, dest_dir: 
     env = {**os.environ, "PTY_READBACK_RESULT": str(result)}
     pty = winpty.PtyProcess.spawn(cmd, cwd=str(_CHILD.parent), dimensions=(40, 120), env=env)
     try:
-        for _ in range(200):
-            if ready.exists():
-                break
-            time.sleep(0.05)
-        assert ready.exists(), f"child never signalled readiness for {result}"
+        # Polled conditions with a backstop, never a fixed tick count (#1108)
+        # — the same cold-ConPTY-boot cost that made the sibling readback test
+        # flake under full-suite load lives here too.
+        wait_until(
+            ready.exists,
+            ceiling_s=READY_CEILING_S,
+            what=f"the child never signalled readiness for {result}",
+            env_var="PTY_READY_CEILING_S",
+        )
 
-        pty.write("PAYLOAD<<<EOP>>>")
-        for _ in range(200):
-            if result.exists():
-                break
-            time.sleep(0.05)
+        pty.write(_EXPECTED_PAYLOAD.decode() + "<<<EOP>>>")
+
+        def written() -> bool:
+            """True once the file is complete, or the child has given up.
+
+            Waits for the *content*, not merely for the path to appear: the
+            child creates the file and then writes into it, so a bare
+            ``exists()`` can hand the assertion below an empty file. Harmless
+            at the old 50 ms tick, a live race at this helper's 5 ms one. A
+            child that exited without writing is a real refusal rather than a
+            slow boot, so break on that too and let the assertion name it.
+            """
+            if result.exists() and result.stat().st_size >= len(_EXPECTED_PAYLOAD):
+                return True
+            return not pty.isalive()
+
+        wait_until(
+            written,
+            ceiling_s=DELIVERY_CEILING_S,
+            what=f"the child never wrote {result}",
+            env_var="PTY_DELIVERY_CEILING_S",
+        )
     finally:
         try:
             pty.close(force=True)
@@ -137,6 +160,6 @@ def test_env_destination_survives_pywinpty_tokenising(tmp_path: Path, dest_dir: 
             pass
 
     assert result.exists(), f"child did not write to the intended path {result}"
-    assert result.read_bytes() == b"PAYLOAD"
+    assert result.read_bytes() == _EXPECTED_PAYLOAD
     # Nothing landed at a truncated prefix of the path.
     assert not (tmp_path / "with").exists()
