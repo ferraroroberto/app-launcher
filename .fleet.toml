@@ -121,7 +121,17 @@ full_pytest_target    = "tests/e2e"
 #
 # Expect this to fire again within days at the current pace. That is the
 # signal working; it is deliberately not padded with headroom to postpone it.
-test_budget = 638
+#
+# 2026-09-20 (#1098): 638 -> 640. One test function,
+# `test_chat_note_spacing.py::test_chat_note_keeps_its_own_air_above_the_transcript`,
+# x2 projections = the 2 nodes, no new parametrize cases. It is the standing
+# pin for a reported iPhone collision (the detached-session footnote drawn
+# against the last line of the transcript) and it is proof, not a guard: both
+# of its legs were run red against pre-fix CSS first -- the padding leg, and
+# the geometry leg reading 0.0px (Chromium) / 0.7px (WebKit) of separation
+# where it now reads 12.0 / 12.7. No existing test measured spacing in the
+# chat pane, so nothing was available to extend instead.
+test_budget = 640
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

@@ -2014,15 +2014,28 @@ summary + .opt-group { border-top: 0; }
 #terminalOverlay[data-mode="chat"] #terminalComposeBar,
 #terminalOverlay[data-mode="chat"] #terminalStatus { display: none; }
 /* Why the Terminal segment is off (a detached session) — caption under the
-   list, above the composer. */
+   list, above the composer. Padded on the one 12px gutter on every side
+   (#1098). It used to be `0 12px 8px`, and the only air above it was the
+   scroller's own 12px inner padding — which is *inside* the scroll box, so
+   it only shows when the transcript is scrolled to its end. At any other
+   scroll position a line is clipped flush with the scroller's bottom edge
+   and the note's text began 0.0px (Chromium) / 0.7px (WebKit) below it,
+   measured at 390 and 320 CSS px: text against text, which on the phone
+   reads as the note drawn over the last line. 12px of its own puts the band
+   on the same rhythm as the scroller's padding at every scroll position.
+   flex-shrink:0 matches .composer's declaration so this is stated intent
+   rather than the default. It is a guard, not the fix: a flex item's
+   min-height:auto already floors the note at its min-content height, and a
+   sweep down to a 140px viewport never compressed it. */
 .chat-note {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 12px 8px;
+  padding: var(--gap);
   font-size: var(--font-caption);
   color: var(--muted);
+  flex-shrink: 0;
 }
 .chat-note .icon { width: 14px; height: 14px; }
 /* Terminal ⇄ Chat segmented toggle in the bar (#982): the .segmented recipe
