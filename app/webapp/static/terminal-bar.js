@@ -6,7 +6,10 @@
  * · Terminal⇄Chat toggle (#982, session-overlay.js) · 🔊 · ⋮.
  *
  *   ⋮ menu — Rename · Copy link · [Show/Hide tool calls · Reload, Chat mode
- *   only] · Stop and kill. Built once on the shared row-menu.js component
+ *   only] · Stop and kill. Copy link prefers the session's provider-native
+ *   URL and falls back to this launcher's tailnet-only ?session= link, the
+ *   same resolution the Rename / link dialog uses (#1096 — see
+ *   sessionCopyLink below). Built once on the shared row-menu.js component
  *   (the same one as the sessions-list gear); the chat-only rows are
  *   declared with function-valued `hidden`, so the menu re-evaluates them
  *   on every open and they are simply absent from the DOM in Terminal
@@ -20,7 +23,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
-import { openSessionRename, stopSession } from './sessions.js';
+import { openSessionRename, providerWebUrl, stopSession } from './sessions.js';
 import { createRowMenu } from './row-menu.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
 import { groupsAreHidden, reloadNewest, toggleGroups } from './session-transcript.js';
@@ -48,6 +51,29 @@ function currentSession() {
 function sessionShareUrl(sid) {
   return window.location.origin + window.location.pathname +
     '?session=' + encodeURIComponent(sid);
+}
+
+// What ⋮ Copy link writes, and how to describe it (#1096). The launcher's own
+// ?session= URL is tailnet-gated by design — the terminal endpoints refuse
+// anything that did not arrive from 100.64.0.0/10 — so it is dead outside the
+// tailnet and is the *fallback*, not the answer. When the session has a
+// provider-native link (Claude's, resolved by sessions.js::providerWebUrl
+// from the same `web_url` the Rename / link dialog shows) copy that instead:
+// it is authenticated by the Anthropic account and opens anywhere. The toast
+// names which one went to the clipboard rather than folding the two — a
+// silent fallback is how #981 re-introduced the tailnet link for two weeks
+// without anyone noticing (#879 had already removed it).
+//
+// `s` may be the bare {session_id, name} a ?session= deep link opens with,
+// which carries no agent or web_url at all — providerWebUrl('' agent) is ''
+// and that path lands on the fallback, never on `undefined`.
+function sessionCopyLink(s) {
+  const web = providerWebUrl(s);
+  if (web) return { url: web, message: 'Claude web link copied' };
+  return {
+    url: sessionShareUrl(s.session_id),
+    message: 'Launcher link copied (tailnet only)',
+  };
 }
 
 export function closeTerminalMenu() {
@@ -88,10 +114,11 @@ export function wireTerminalMenu() {
       onTap: function () {
         const s = currentSession();
         if (!s) return;
+        const link = sessionCopyLink(s);
         // iOS only allows a clipboard write inside the tap gesture:
         // writeText is called synchronously from the click handler.
-        navigator.clipboard.writeText(sessionShareUrl(s.session_id)).then(
-          function () { toast('Session link copied', 'good', { icon: 'link' }); },
+        navigator.clipboard.writeText(link.url).then(
+          function () { toast(link.message, 'good', { icon: 'link' }); },
           function (exc) { apiFailToast('Copy link failed', exc); }
         );
       },

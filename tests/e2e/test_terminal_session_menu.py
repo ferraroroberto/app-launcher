@@ -8,8 +8,12 @@ pill over the terminal that only appears while scrolled up.
 
 These pin:
 
-* Copy link writes the launcher's own ``?session=<sid>`` deep link (the link
-  main.js boots straight into the session) and closes the menu.
+* Copy link writes the session's **provider-native** link when it has one —
+  Claude's ``claude.ai/code/session_…`` remote-control URL, the same string
+  the Rename / link dialog shows — and falls back to this launcher's own
+  ``?session=<sid>`` deep link otherwise, with a toast that names which
+  (#1096; #981 had copied the launcher link unconditionally, re-introducing
+  what #879 removed — a tailnet-only URL that is dead on any other network).
 * Rename from the menu updates the bar title at once, not on the next poll.
 * The Latest pill is hidden at the tail and within a screen of it, visible
   once scrolled further up, and a tap returns to the tail and hides it.
@@ -21,12 +25,21 @@ which, so ``?session=`` runs the same in-page overlay on both projections.
 
 from __future__ import annotations
 
+import json as _json
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
+
+# What the server would hand back as `web_url` once Claude's remote-control
+# card has been printed into the PTY and scanned (routers/_helpers.py). The
+# token is synthetic — the shape is all this test needs, and it never goes
+# near the server-side regex, which only ever parses a real transcript.
+_CLAUDE_WEB_URL = "https://claude.ai/code/session_E2E1096FALLBACKPROVIDER1"
 
 _CLIPBOARD_MOCK = """
 (() => {
@@ -79,6 +92,54 @@ _TWO_FRAMES = (
     "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
 )
 
+# Expose the page's live `state` (same cache-busted-module resolution as
+# _LIVE_STATE_SETUP) so a test can empty `state.sessions` mid-overlay — the
+# bare ?session= deep-link shape, where currentSession() resolves to the
+# overlay's own {session_id, name} and there is no web_url to prefer.
+_LIVE_STATE_HANDLE = """
+async () => {
+  const hit = performance.getEntriesByType('resource')
+    .map((r) => r.name)
+    .find((n) => n.includes('/static/state.js?v='));
+  const { state } = await import(hit || '/static/state.js');
+  window.__state = state;
+}
+"""
+
+
+def _inject_web_url(page: Page, sid: str, web_url: str) -> None:
+    """Pass /api/claude-code/sessions through, stamping one row's web_url.
+
+    A static payload would fight the overlay's own 5s title poll, which reads
+    the same endpoint (terminal.js) — the rename below would be reverted by
+    it. Patching the real response keeps every other field (manual_title
+    included) exactly as the server computed it; only the field the stub
+    child can never produce — Claude prints no remote-control card — is
+    supplied, and `agent` is pinned to claude so the row is the shape this
+    branch is about.
+    """
+
+    def _handler(route):
+        response = route.fetch()
+        body = response.json()
+        for session in body.get("sessions", []):
+            if session.get("session_id") == sid:
+                session["agent"] = "claude"
+                session["web_url"] = web_url
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body)
+        )
+
+    page.route(re.compile(r".*/api/claude-code/sessions$"), _handler)
+
+
+def _copy_link(page: Page) -> None:
+    menu = page.locator("#terminalOverlay .terminal-menu")
+    page.locator("#terminalMenu").click()
+    expect(menu).to_be_visible()
+    page.get_by_role("menuitem", name="Copy session link").click()
+    expect(menu).to_be_hidden()
+
 
 def _open_overlay(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?session={sid}", wait_until="domcontentloaded")
@@ -90,19 +151,20 @@ def test_menu_copy_link_and_rename_update_the_bar(
 ) -> None:
     sid = launched_pty_session
     authed_page.add_init_script(_CLIPBOARD_MOCK)
+    _inject_web_url(authed_page, sid, _CLAUDE_WEB_URL)
     _open_overlay(authed_page, base_url, sid)
-    menu = authed_page.locator("#terminalOverlay .terminal-menu")
 
-    authed_page.locator("#terminalMenu").click()
-    expect(menu).to_be_visible()
-    authed_page.get_by_role("menuitem", name="Copy session link").click()
-    expect(menu).to_be_hidden()
+    # A Claude full-control session with its card captured: the provider link
+    # wins, and the toast says so rather than folding the two outcomes.
+    _copy_link(authed_page)
     authed_page.wait_for_function("() => window.__copied.length === 1", timeout=5_000)
     copied = authed_page.evaluate("() => window.__copied[0]")
-    expected = authed_page.evaluate(
-        "(sid) => location.origin + location.pathname + '?session=' + sid", sid
+    assert copied == _CLAUDE_WEB_URL, (
+        f"copied {copied!r}, expected the Claude web link {_CLAUDE_WEB_URL!r}"
     )
-    assert copied == expected, f"copied {copied!r}, expected the ?session= link {expected!r}"
+    expect(authed_page.locator("#toast")).to_have_text(
+        re.compile("Claude web link copied")
+    )
 
     authed_page.locator("#terminalMenu").click()
     authed_page.get_by_role("menuitem", name="Rename session").click()
@@ -114,6 +176,41 @@ def test_menu_copy_link_and_rename_update_the_bar(
     # rename callback updated the bar, not a later sessions fetch.
     expect(authed_page.locator("#terminalTitle")).to_have_text(
         "Menu rename 981", timeout=2_000
+    )
+
+    # Last, because it mutates the page's own state: the bare ?session=
+    # deep-link shape, where the sessions list does not carry the row and
+    # main.js opens the overlay with a bare {session_id, name} instead
+    # (`openTerminal(found || {...})`). currentSession() then resolves to
+    # that object, which has no agent and no web_url — it must land on the
+    # launcher link, never on `undefined`, and the toast must flag it
+    # tailnet-only rather than staying silent about the downgrade.
+    #
+    # Both halves are set: emptying state.sessions alone is not that shape,
+    # because state.sessionView.session is the *same object* the boot lookup
+    # found and would still carry web_url.
+    authed_page.evaluate(_LIVE_STATE_HANDLE)
+    authed_page.evaluate(
+        "(sid) => { window.__state.sessions = [];"
+        " window.__state.sessionView.session = {session_id: sid, name: sid}; }",
+        sid,
+    )
+    _copy_link(authed_page)
+    authed_page.wait_for_function("() => window.__copied.length === 2", timeout=5_000)
+    fallback = authed_page.evaluate("() => window.__copied[1]")
+    expected = authed_page.evaluate(
+        "(sid) => location.origin + location.pathname + '?session=' + sid", sid
+    )
+    # GUARD, not proof: pre-fix code copied sessionShareUrl unconditionally,
+    # so this assertion was green before the fix too (measured). It is here to
+    # stop a future change breaking the fallback, not to demonstrate #1096.
+    assert fallback == expected, (
+        f"copied {fallback!r}, expected the ?session= link {expected!r}"
+    )
+    # PROOF: pre-fix this toast read "Session link copied" for both outcomes —
+    # the silent fold that let the wrong link ship unnoticed for two weeks.
+    expect(authed_page.locator("#toast")).to_have_text(
+        re.compile(r"Launcher link copied \(tailnet only\)")
     )
 
 

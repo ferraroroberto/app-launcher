@@ -392,12 +392,23 @@ let renameSessionTarget = null;
 let renameSessionOnDone = null;
 let sessionLinkFeedbackTimer = null;
 
+// The provider-native session URL (Claude's `claude.ai/code/session_…`
+// remote-control link, captured from the PTY by the server as `web_url`) —
+// '' when this session has none: a non-Claude agent, or a Claude session
+// whose remote-control card has not been printed/scanned yet. It is the one
+// link that opens from any browser on any network, so both copy affordances
+// — this dialog and the session bar's ⋮ Copy link — resolve through here so
+// they can never hand back two different strings for one session (#1096).
+export function providerWebUrl(s) {
+  return s && s.agent === 'claude' ? String(s.web_url || '') : '';
+}
+
 export function openSessionRename(s, onDone) {
   renameSessionTarget = s;
   renameSessionOnDone = onDone || null;
   els.sessionRenameInput.value = sessionTitle(s);
   const supportsLinkRow = s.kind !== 'remote' && (s.agent === 'claude' || s.agent === 'codex');
-  const webUrl = s.agent === 'claude' ? String(s.web_url || '') : '';
+  const webUrl = providerWebUrl(s);
   els.sessionRenameHeading.textContent = supportsLinkRow ? 'Rename / link' : 'Rename session';
   els.sessionLinkRow.hidden = !supportsLinkRow;
   els.sessionLinkInput.value = webUrl || 'Not available yet';

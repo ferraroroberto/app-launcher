@@ -77,6 +77,7 @@ from src.webapp_config import WebappConfig
 
 from app.webapp.routers import board_chief
 from app.webapp.routers._helpers import (
+    attach_provider_web_urls,
     audit_session_start_and_maybe_mirror,
     maybe_json,
     safe_int,
@@ -238,6 +239,12 @@ async def get_board(request: Request) -> Dict[str, Any]:
         live, state["rows"],
         active_issue_repos=board.active_issue_repos(active_issues["rows"], claim_states),
     )
+    # The drawer's Rename opens the same Rename / link dialog as the Coding
+    # tab, which reads ``web_url`` — without this it said "Not available yet"
+    # for a live Claude PTY session the Coding tab linked fine (#1096). Same
+    # bounded transcript scan, off the loop and memoized in _helpers, so the
+    # Board poll re-uses whatever the (identically-paced) sessions poll found.
+    await asyncio.to_thread(attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
     _refresh_codex_for_lines(cfg, quota_lines)
