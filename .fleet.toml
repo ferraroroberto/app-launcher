@@ -145,7 +145,30 @@ full_pytest_target    = "tests/e2e"
 # asserts `<strong>` and links in one fixed-viewport behavioural test and
 # measures no geometry, and `test_markdown_link_rendering.py` is a
 # pure-function `renderMarkdown` probe that never paints.
-test_budget = 642
+# 2026-09-20 (#1099): 642 -> 644. One test function,
+# `test_session_overlay_standalone_geometry.py::test_overlay_has_standalone_top_anchored_lvh_geometry`,
+# x2 projections = the 2 nodes, no new parametrize cases. It is the standing pin
+# for the third reported iPhone bite of the day (a ~150-200px dead band between
+# the composer and the physical bottom of the screen in the installed PWA,
+# because the full-screen session overlay was bottom-anchored `inset: 0` with no
+# `display-mode: standalone` variant) and it was run red on BOTH projections
+# against pre-fix CSS first, with the final version of its CSSOM walk.
+#
+# It carries a WebKit leg rather than taking `chromium_projection_only` because
+# its load-bearing assertion IS engine-dependent: the rule ships
+# `height: 100vh` then `height: 100lvh`, so reading `100lvh` back out of the
+# parsed rule is what proves this engine accepted the large viewport unit
+# instead of silently falling back to the plain-`vh` behaviour the vendored nav
+# contract replaced. WebKit is the iPhone projection, so that is precisely the
+# engine whose acceptance matters.
+#
+# Nothing was available to extend instead: no test in the suite asserts any
+# `display-mode: standalone` geometry (`test_bottom_tab_bar.py` mentions
+# standalone only to say it is out of its scope), and no test could reach this
+# one by measurement -- with the overlay rendered, `bottom: auto` beside
+# `height: 100lvh` resolves to the same used values as `bottom: 0` on a desktop
+# engine, which is why this change is invisible to the other 642 nodes.
+test_budget = 644
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
