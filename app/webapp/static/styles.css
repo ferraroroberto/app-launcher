@@ -2522,44 +2522,6 @@ body.terminal-open {
   -webkit-overflow-scrolling: touch;
   overflow-anchor: none;
 }
-/* Installed-PWA geometry for the full-screen overlays (#1099). The bare
-   `inset: 0` above is the shape the vendored nav contract explicitly names
-   as the one that strands: iOS standalone keeps the layout (and
-   fixed-positioning) viewport expanded to the full physical screen ONLY
-   WHILE THE DOCUMENT IS SCROLLABLE, and opening this overlay destroys that
-   twice over - `body.terminal-open { overflow: hidden }` propagates to the
-   viewport, and terminal.js's lockBodyScroll() sets `position: fixed` on
-   body, taking it and nav-tabs.css's inert `body::after` 1px spacer out of
-   flow. The viewport then contracts from the bottom and a bottom-anchored
-   box stops short of the physical bottom, leaving a dead band below the
-   composer.
-
-   Fix the geometry rather than the scroll lock: anchor from the STABLE top
-   edge and size with the LARGE viewport unit, exactly as
-   _vendored/nav/nav-tabs.css already does for `.app` and `.tabs` - `lvh`
-   reports the final expanded height regardless of the live contraction (and
-   from the first frame of the ~2s cold-launch expansion animation), so the
-   box has its full-screen geometry whether or not the document is
-   scrollable. That makes the overlay independent of the 1px spacer instead
-   of restoring it, so the #7 rubber-band lock is left exactly as it was.
-   `left`/`right` still come from `inset: 0` above; `height` is what replaces
-   the bottom edge, so applySize()/pinChatToKeyboard()'s inline
-   height+top+`bottom: auto` keyboard pin (#135) keeps overriding this rule
-   and releases back onto it. Plain `vh` first as the no-lvh fallback; on
-   desktop all three units equal the viewport, so this is a no-op there.
-
-   Deliberately not gated on pointer/width like the nav's own standalone
-   block: the quirk is a property of the installed shell, so an installed
-   tablet PWA past 520px gets it too, and the geometry is identical
-   everywhere else. */
-@media (display-mode: standalone) {
-  .terminal-overlay {
-    top: 0;
-    bottom: auto;
-    height: 100vh;
-    height: 100lvh;
-  }
-}
 .terminal-bar {
   position: relative;
   display: flex;
