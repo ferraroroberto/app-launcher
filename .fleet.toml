@@ -40,11 +40,67 @@ classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546
 static_pytest_target = "tests/e2e/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
-# Ratchet at the measured size (app-launcher#972): this repo's dual-projection
-# suite spans six tabs, so the scaffold's 15-test target doesn't apply here.
-# Lower this as the suite trims; /e2e-audit re-fires when the real count
-# exceeds it again.
-test_budget = 528
+# Ratchet at the measured size (app-launcher#972, re-audited #1064): this
+# repo's dual-projection suite spans six tabs, so the scaffold's 15-test
+# target doesn't apply here. Lower this as the suite trims; /e2e-audit
+# re-fires when the real count exceeds it again.
+#
+# This number moves ONLY with an attribution like the one below. A ratchet
+# whose number is bumped each time it fires is not a ratchet, it is a log of
+# the times we ignored it -- so a raise has to say what the extra nodes are
+# FOR, node for node, or the answer was supposed to be a trim.
+#
+# 2026-09-20 (#1064): fired at 528, re-audited, raised to the measured 638.
+# The audit found nothing to trim and the arithmetic closes exactly:
+#
+#            test fns   x2 projections   + parametrize   = nodes
+#   #972          255              510              18       528
+#   today         304              608              30       638
+#
+# +74 test functions added and -25 removed since #972 (net +49, x2 = +98,
+# plus 12 new parametrize cases = +110; 638 - 528 = 110). Every new node is
+# a new test function times the two browser projections, or a new parametrize
+# case. None is unexplained, and none is a duplicate of an existing one.
+#
+# The -25 is the load-bearing half: each of those was deleted by the very
+# commit that removed the feature it covered -- the VS Code button losing 3
+# tests as the project menu gained 7 (#977), the send dialog losing 7 as the
+# chat composer gained 5 (#993), the session-row gear losing 4 as the kebab
+# gained 3 (#1028/#1040). The suite churns with the product rather than
+# accreting, which is what makes the +74 legible.
+#
+# What the +74 bought, all of it surface that did not exist at #972: Chat
+# mode inside the session overlay and sending from it (#992, #993), the chat
+# transcript staying live (#1068), the Board drawer on the shared composer
+# (#994), the project menu and changes viewer (#977), the docked composer
+# and keys popover (#990, #1000), Ctrl+Enter send (#1073), Life OS search,
+# relevance order and starring (#1077, #1084), the favourite-agent row
+# (#1083), and sprite brand marks (#1082).
+#
+# The redundancy was already harvested, one week before this firing. #956
+# (2026-09-13) acted on the #954 audit: it deleted three requests-only
+# cache/version copies whose unit twins pinned the same contract, created the
+# `chromium_projection_only` fixture, moved readback tests off spawning a PTY,
+# and parametrized the board and chief twin pairs -- net -7 test functions.
+# #972 then set 528 at that post-trim size. So 528 was already a floor, not a
+# comfortable number, and a second sweep seven days later finds nothing
+# because the first one took it.
+#
+# Why it was not trimmed instead. The deterministic scan
+# (`e2e_test_audit.py scan`) reports 0 name clusters, 0 parametrize-matrix
+# clusters and 0 coverage gaps; the two largest modules were read by hand and
+# every test maps to a distinct behaviour. The one real trim available is
+# extending the #954 `chromium_projection_only` fixture to the ~3 remaining
+# modules with no engine-dependent signal -- about 3 nodes, well under the
+# audit's own materiality bar, and not worth the diff. Halving the suite by
+# dropping the WebKit projection is NOT available: WebKit is the iPhone
+# projection this repo exists for, and a hand-kept single-engine subset is
+# the drift-prone under-testing risk the CSS routing note above already
+# rejected.
+#
+# Expect this to fire again within days at the current pace. That is the
+# signal working; it is deliberately not padded with headroom to postpone it.
+test_budget = 638
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
