@@ -38,13 +38,16 @@ _CLIPBOARD_MOCK = """
 """
 
 
+# The `web_url` default below carries a synthetic 24-char session token,
+# never a captured one — same convention as test_terminal_session_menu.py
+# (#1106).
 def _mock_sessions_list(
     page: Page,
     state: dict,
     *,
     kind: str = "pty",
     agent: str = "claude",
-    web_url: str = "https://claude.ai/code/session_011QSPhSiZdi9GB8skTjx16P",
+    web_url: str = "https://claude.ai/code/session_SYNTHETICRENAMEFIXTURE01",
 ) -> None:
     def _handler(route):
         route.fulfill(
@@ -208,7 +211,7 @@ def test_full_control_rename_dialog_copies_session_link(
     link = authed_page.locator("#sessionLinkInput")
     expect(link).to_be_visible()
     expect(link).to_have_attribute("readonly", "")
-    expected = "https://claude.ai/code/session_011QSPhSiZdi9GB8skTjx16P"
+    expected = "https://claude.ai/code/session_SYNTHETICRENAMEFIXTURE01"
     expect(link).to_have_value(expected)
 
     input_box = link.bounding_box()

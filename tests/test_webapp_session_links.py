@@ -11,11 +11,14 @@ import pytest
 from app.webapp.routers import _helpers
 from app.webapp.routers._helpers import attach_provider_web_urls, provider_web_url
 
+# Synthetic session token, never a captured one: `_CLAUDE_WEB_URL_RE`
+# only needs 24 alphanumerics, so a patterned body drives the same parse
+# while reading as fake at a glance (#1106).
 _WRAPPED_CARD = (
     "before\x1b[1Bhttps://claude.ai/code/session_\r\n"
-    "\x1b[3G011QSPhSiZdi9GB8skTjx16P\x1b[K after"
+    "\x1b[3GSYNTHETICLINKFIXTURE0879\x1b[K after"
 )
-_LINK = "https://claude.ai/code/session_011QSPhSiZdi9GB8skTjx16P"
+_LINK = "https://claude.ai/code/session_SYNTHETICLINKFIXTURE0879"
 
 
 @pytest.fixture(autouse=True)
