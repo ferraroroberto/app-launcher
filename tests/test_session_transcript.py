@@ -1835,6 +1835,43 @@ def test_find_claude_transcript_fails_safe_on_ambiguity_and_staleness(
     ) is not None
 
 
+def test_find_claude_transcript_keeps_its_two_guard_shape_for_transcript(
+    tmp_path: Path, monkeypatch
+):
+    """#1034 criterion 4. The disproof is opt-in, and ``/transcript`` does
+    not opt in.
+
+    ``find_claude_transcript`` is shared verbatim by the Board drawer and
+    ``/transcript`` (#1023), so #1034 parameterised it rather than forking
+    it. This pins the un-opted-in shape: a PTY title that flatly disagrees
+    with the conversation's declared name still resolves, because on that
+    route the scan has no competing source to outrank — refusing would
+    turn a rough answer into no answer at all, and its ``source``
+    vocabulary would have to grow a case it never had.
+    """
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    folder = _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
+    (folder / "conv.jsonl").write_text(
+        json.dumps({"type": "ai-title", "aiTitle": "A totally different name"})
+        + "\n",
+        encoding="utf-8",
+    )
+    session = _claude_session(live_title="◐ Issue 1034")
+
+    assert board_exchange.find_claude_transcript(
+        session, [session]
+    ) == folder / "conv.jsonl"
+
+    # The same inputs through the drawer's opted-in view do refuse.
+    path, verdict = board_exchange._scan_claude_transcript(
+        session, [session], disprove=True
+    )
+    assert path is None
+    assert verdict == "disproved"
+
+
 def test_find_claude_transcript_needs_a_dir_a_start_and_a_folder(
     tmp_path: Path, monkeypatch
 ):

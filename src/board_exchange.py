@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -24,7 +25,15 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pyte
 
-from src.board_transcript import _read_tail_bytes, _tail_lines, last_exchange
+from src._log_once import log_once
+from src.board_transcript import (
+    _read_tail_bytes,
+    _tail_lines,
+    last_exchange,
+    strip_status_glyph,
+)
+
+logger = logging.getLogger(__name__)
 
 _CAPTURE_TAIL_BYTES = 512 * 1024
 # The launcher input log (``webapp/sessions/<sid>.log``) is appended one
@@ -39,6 +48,38 @@ _CAPTURE_TAIL_BYTES = 512 * 1024
 _INPUT_TAIL_BYTES = 256 * 1024
 _CAPTURE_HISTORY_LINES = 2500
 _CODEX_TAIL_BYTES = 4 * 1024 * 1024
+# How far back to look for the naming records a scanned Claude conversation
+# declares about itself (#1034), read with the same bounded-tail discipline as
+# every other reader here. Claude Code re-emits `ai-title`/`custom-title`
+# periodically rather than once, so the newest one sits near the end of the
+# file — measured across the 8 newest conversations in three project folders
+# on this box, the last naming record sat at most 22.7 KB from EOF, including
+# in a 67.8 MB chief conversation. 256 KB is a ~11x margin on that worst case
+# and the same window `board_transcript._EXCHANGE_TAIL_BYTES` already uses for
+# this file. `_ACTIVITY_TAIL_BYTES` (8 KB) is deliberately *not* reused: it
+# would have missed the record in 6 of those 8 files.
+_TITLE_TAIL_BYTES = 256 * 1024
+
+# Outcomes of the live-title disproof below, reported as `title_check` on the
+# drawer response. Four states, kept distinct on purpose: a check that cannot
+# establish a fact reports that as its own state rather than folding into
+# either answer.
+#   corroborated - PTY title and the file's own declared name agree
+#   disproved    - both present and genuinely conflicting; the scan is refused
+#   unknown      - one side absent, so the question was asked and not settled
+#   not_checked  - the question was never reached (route opted out, or the
+#                  scan had already refused on one of its own two guards)
+_TITLE_CHECK_CORROBORATED = "corroborated"
+_TITLE_CHECK_DISPROVED = "disproved"
+_TITLE_CHECK_UNKNOWN = "unknown"
+_TITLE_CHECK_NOT_CHECKED = "not_checked"
+
+# One info line per session whose scan the title disproved. The drawer
+# re-polls every 5s while open and a title is stable for a session's life, so
+# an unkeyed log would bury the line that matters — same shape as
+# board_transcript.py's glyph breadcrumb.
+_LOGGED_DISPROVED_SCANS: "set[str]" = set()
+_DISPROVED_SCAN_LOG_CAP = 64
 _CODEX_START_SLOP_SECONDS = 120
 _ASSISTANT_TEXT_CAP = 6000
 _USER_TEXT_CAP = 1500
@@ -149,20 +190,24 @@ def resolve_exchange(
     ambiguous folder still degrades to the rougher-but-honest answer rather
     than to a neighbour's text.
 
-    **What the ranking costs, stated rather than hidden.** Claude Code
-    fires ``SessionEnd`` on ``/resume`` too, so the rowless window opens the
-    moment a session resumes a *different* conversation. Until the resumed
-    conversation is itself written, the newest file in the folder is the one
-    the session just left, and the scan answers with it while the capture
-    shows what is on screen now. Nothing on the filesystem separates the
-    two — both are written by the same process seconds apart — so no
-    tightening of the mtime guard closes this window, and a tighter guard
-    was deliberately *not* added rather than ship a knob that only looks
-    like a fix. The window is bounded (it closes on the resumed
-    conversation's first write, and the next typed prompt restores the row
-    and with it the exact path) and what it shows is this same session's
-    immediately preceding conversation, never another session's — so the
-    fail-safe rule holds even inside it.
+    **The ranking's one cost, and how it is now bounded (#1034).** Claude
+    Code fires ``SessionEnd`` on ``/resume`` too, so the rowless window
+    opens the moment a session resumes a *different* conversation. Until
+    the resumed conversation is itself written, the newest file in the
+    folder is the one the session just left, and the scan answered with it
+    while the capture showed what is on screen now. Nothing on the
+    filesystem separates the two — both are written by the same process
+    seconds apart — so no tightening of the mtime guard closes this
+    window, and none was added rather than ship a knob that only looks
+    like a fix. What does close it is a signal from *outside* the
+    filesystem: the PTY's own window title, which Claude Code repaints
+    with the resumed conversation's name before any hook fires. When it
+    and the scanned file's own declared name are both present and
+    genuinely conflict, the scan is refused and the capture answers
+    instead (:func:`_disprove_by_live_title`). It disproves only, never
+    confirms, so it can make this resolver more conservative and never
+    less — and when it cannot settle the question it says so as its own
+    ``title_check`` state rather than passing for agreement.
 
     Because that correlation is *inferred* and not established, it reports
     itself as its own source, ``native_scan``, rather than folding into the
@@ -170,16 +215,32 @@ def resolve_exchange(
     scored as the passing state. ``/transcript`` keeps reporting ``native``
     for both, deliberately — there it has no competing source to outrank,
     so it has nothing to be honest about.
+
+    Every response whose resolution went through that scan also carries
+    ``title_check`` — ``corroborated``, ``disproved``, ``unknown`` or
+    ``not_checked`` — so the drawer and the logs can tell "the title
+    agreed" from "there was no title to ask". A check that cannot
+    establish a fact reports that as its own state instead of folding
+    into the answer it was meant to qualify.
     """
     native = last_exchange(native_path)
     if native.get("available"):
         return {**native, "source": "native", "reason": None}
 
     agent = str(session.get("agent") or "claude").lower()
+    title_check: Optional[str] = None
     if not native_path and agent == "claude":
-        scanned = last_exchange(find_claude_transcript(session, live or ()))
+        scanned_path, title_check = _scan_claude_transcript(
+            session, live or (), disprove=True
+        )
+        scanned = last_exchange(scanned_path)
         if scanned.get("available"):
-            return {**scanned, "source": "native_scan", "reason": None}
+            return {
+                **scanned,
+                "source": "native_scan",
+                "reason": None,
+                "title_check": title_check,
+            }
 
     if agent == "codex":
         codex_path = _find_codex_transcript(session)
@@ -195,7 +256,7 @@ def resolve_exchange(
         cols=int(session.get("cols") or 120),
     )
     if fallback.get("available"):
-        return fallback
+        return _with_title_check(fallback, title_check)
 
     native_declared = bool(native_path)
     capture_exists = _nonempty_file(launcher_capture_path)
@@ -205,7 +266,26 @@ def resolve_exchange(
         reason = "native_unavailable"
     else:
         reason = "no_exchange"
-    return unavailable(reason)
+    return _with_title_check(unavailable(reason), title_check)
+
+
+def _with_title_check(
+    result: Dict[str, Any], title_check: Optional[str]
+) -> Dict[str, Any]:
+    """Attach the scan's ``title_check`` verdict to a non-scan answer.
+
+    Only when the Claude scan actually ran (``title_check`` is ``None`` for
+    an exact row, a non-Claude agent, or any route that never reached the
+    scan), so the field's presence means "the scan was consulted" and its
+    value says what the title settled. The ``disproved`` case is the one
+    that matters most here: it is the only reason a launcher capture can be
+    answering while a readable scanned conversation sat right there, and
+    without the field that would be indistinguishable from the scan simply
+    finding nothing.
+    """
+    if title_check is None:
+        return result
+    return {**result, "title_check": title_check}
 
 
 def codex_last_exchange(path: Optional[Path]) -> Dict[str, Any]:
@@ -532,9 +612,11 @@ def find_copilot_transcript(session: Dict[str, Any]) -> Optional[Path]:
     return matches[0]
 
 
-def find_claude_transcript(
-    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
-) -> Optional[Path]:
+def _scan_claude_transcript(
+    session: Dict[str, Any],
+    live: Iterable[Dict[str, Any]],
+    disprove: bool = False,
+) -> Tuple[Optional[Path], str]:
     """The Claude Code conversation log for a live session, from the
     filesystem alone (#1023) — the fallback for when no state row names one.
 
@@ -579,11 +661,22 @@ def find_claude_transcript(
     Both refusals answer ``None``, which the caller reports as
     ``no_transcript`` — never an ``available: true`` over a file that may not
     be this session's.
+
+    **The third guard, opt-in (#1034):** with ``disprove`` set, a chosen
+    file is additionally checked against the PTY's own window title and
+    *refused* when the two genuinely conflict — see
+    :func:`_disprove_by_live_title`. It is opt-in because it is a ranking
+    refinement the Board drawer wants and ``/transcript`` does not: there
+    the scan has no competing source to outrank, so refusing would turn a
+    rough answer into no answer at all. The verdict is returned alongside
+    the path so the caller can report it;
+    :func:`find_claude_transcript` is the unchanged two-state view for
+    every caller that does not want the third guard.
     """
     project_dir = str(session.get("project_dir") or "")
     started = _started_epoch(session)
     if not project_dir or started is None:
-        return None
+        return None, _TITLE_CHECK_NOT_CHECKED
     normalized = _normalize_dir(project_dir)
     sid = str(session.get("session_id") or "")
     for other in live or ():
@@ -593,7 +686,7 @@ def find_claude_transcript(
             and other.get("alive")
             and _normalize_dir(other.get("project_dir")) == normalized
         ):
-            return None
+            return None, _TITLE_CHECK_NOT_CHECKED
 
     # Built from the *normalized* directory so the session's own spelling —
     # separator flavour, trailing slash, drive-letter case — cannot change
@@ -608,7 +701,7 @@ def find_claude_transcript(
             if child.name.lower() == slug and child.is_dir()
         ]
     except OSError:
-        return None
+        return None, _TITLE_CHECK_NOT_CHECKED
     for folder in folders:
         try:
             candidates = list(folder.glob("*.jsonl"))
@@ -621,9 +714,127 @@ def find_claude_transcript(
                 continue
             if newest is None or written > newest_at:
                 newest, newest_at = path, written
-    if newest is None:
-        return None
-    return newest if newest_at >= started - _CLAUDE_MTIME_SLOP_SECONDS else None
+    if newest is None or newest_at < started - _CLAUDE_MTIME_SLOP_SECONDS:
+        return None, _TITLE_CHECK_NOT_CHECKED
+    if not disprove:
+        return newest, _TITLE_CHECK_NOT_CHECKED
+    verdict = _disprove_by_live_title(newest, session)
+    if verdict == _TITLE_CHECK_DISPROVED:
+        return None, verdict
+    return newest, verdict
+
+
+def find_claude_transcript(
+    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
+) -> Optional[Path]:
+    """:func:`_scan_claude_transcript` without the opt-in third guard.
+
+    The shape every caller had before #1034, and the one ``/transcript``
+    still uses (#1023): the two original guards only, answering a path or
+    ``None``. Parameterised rather than forked — a second copy of this
+    correlation drifting from the first is exactly what the six-flavour
+    reader in ``session_transcript.py`` has avoided so far.
+    """
+    return _scan_claude_transcript(session, live)[0]
+
+
+def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
+    """The newest ``custom-title`` and ``ai-title`` a conversation declares.
+
+    Claude Code names a conversation in two independent records and both are
+    in play: ``{"type": "ai-title", "aiTitle": ...}`` is the name it infers
+    for itself, and ``{"type": "custom-title", "customTitle": ...}`` is an
+    explicit one that overrides it in the window title. They are not
+    interchangeable and they do drift apart — the standing fleet chief on
+    this box carries ``customTitle: "chief"`` and
+    ``aiTitle: "Investigate and fix failed jobs"`` in the *same* file, the
+    ai-title frozen at what it inferred early (one distinct value across all
+    38,094 lines) while the PTY paints the custom one. Reading only
+    ``ai-title``, as #1034 first proposed, would have made the chief's own
+    drawer disagree with itself permanently.
+
+    Both are returned rather than resolved to one here, so the caller can
+    accept a match against *either* — the fail-safe direction, since it can
+    only ever refuse fewer answers.
+    """
+    custom: Optional[str] = None
+    ai: Optional[str] = None
+    for line in _read_tail(path, _TITLE_TAIL_BYTES).splitlines():
+        # Cheap reject first: these records are a few per thousand lines and
+        # the window is 256 KB of mostly message text.
+        if '-title"' not in line:
+            continue
+        try:
+            obj = json.loads(line)
+        except (TypeError, ValueError):
+            continue  # a torn first line from the tail cut, or not a record
+        if not isinstance(obj, dict):
+            continue
+        kind = obj.get("type")
+        if kind == "custom-title":
+            value = str(obj.get("customTitle") or "").strip()
+            if value:
+                custom = value
+        elif kind == "ai-title":
+            value = str(obj.get("aiTitle") or "").strip()
+            if value:
+                ai = value
+    return custom, ai
+
+
+def _disprove_by_live_title(path: Path, session: Dict[str, Any]) -> str:
+    """Use the PTY window title to *rule out* a scanned conversation (#1034).
+
+    The gap this closes is the ``/resume`` window #1027 documented and left
+    open: ``SessionEnd`` fires on ``/resume`` too, so a session that resumes
+    a *different* conversation has no state row, and until the resumed
+    conversation is itself written the newest file in the folder is the one
+    it just **left**. Nothing about the two files separates them — the same
+    process writes both, seconds apart — so no mtime guard can close it. The
+    window title can, because Claude Code re-emits the resumed
+    conversation's established title immediately, before any hook fires (the
+    same property ``board_chief._reconcile_chief_label`` relies on): the
+    title names what is on screen while the file names what was.
+
+    **Disproof only, never confirmation.** A conflict refuses; nothing else
+    changes anything. That direction is the whole safety argument — it can
+    only make the resolver more conservative, so it cannot introduce a new
+    way to show the wrong conversation. Used the other way round it would
+    gate a working answer behind a signal that is absent in exactly the
+    cases that need it most: a detached ``RemoteSession`` has no PTY and so
+    no title at all, and those are the sessions that had no fallback
+    whatsoever before #1027.
+
+    Hence three outcomes rather than two, with ``unknown`` folded into
+    neither: either side missing leaves the answer exactly as #1027 ranked
+    it, and says so rather than implying the title agreed. Requiring *both*
+    sides present and genuinely conflicting is also what keeps a title
+    frozen by a wedged PTY (#636) from refusing a good answer by itself.
+    """
+    title = strip_status_glyph(session.get("live_title"))
+    if not title:
+        # No PTY, or none painted yet. A detached session lives here.
+        return _TITLE_CHECK_UNKNOWN
+    custom, ai = _claude_declared_titles(path)
+    declared = [name for name in (custom, ai) if name]
+    if not declared:
+        # Claude Code names a conversation only once it has enough content to
+        # name one, so a fresh or bootstrap-only conversation has neither
+        # record — and silence is not disagreement.
+        return _TITLE_CHECK_UNKNOWN
+    if any(title.casefold() == name.casefold() for name in declared):
+        return _TITLE_CHECK_CORROBORATED
+    log_once(
+        _LOGGED_DISPROVED_SCANS,
+        str(session.get("session_id") or "") + "|" + title,
+        _DISPROVED_SCAN_LOG_CAP,
+        logger.info,
+        "ℹ️ board: scanned transcript %s refused for session %s: "
+        "PTY title %r matches neither declared name (custom=%r ai=%r); "
+        "falling back to the launcher capture (#1034)",
+        path.name, str(session.get("session_id") or "")[:8], title, custom, ai,
+    )
+    return _TITLE_CHECK_DISPROVED
 
 
 def _codex_cwd(path: Path) -> str:
