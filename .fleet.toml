@@ -131,7 +131,21 @@ full_pytest_target    = "tests/e2e"
 # the geometry leg reading 0.0px (Chromium) / 0.7px (WebKit) of separation
 # where it now reads 12.0 / 12.7. No existing test measured spacing in the
 # chat pane, so nothing was available to extend instead.
-test_budget = 640
+# 2026-09-20 (#1100): 640 -> 642. One test function,
+# `test_chat_code_block.py::test_chat_fenced_block_is_a_bounded_surface_that_wraps`,
+# x2 projections = the 2 nodes, no new parametrize cases. It is the standing
+# pin for a second reported iPhone bite in the same pane (a fenced code block
+# in a Chat turn rendering as a bare unwrapped strip that panned sideways and
+# hid its leading characters) and it is proof, not a guard: both legs were run
+# red against pre-fix CSS first -- the surface leg reading `white-space: pre`
+# with a transparent background and 0px padding, and the geometry leg reading
+# 941px of content in a 321px box (Chromium) / 1027px in 336px (WebKit) where
+# it now reads equal. Nothing was available to extend instead: the fenced
+# block had no coverage at all, `test_session_transcript.py`'s markdown leg
+# asserts `<strong>` and links in one fixed-viewport behavioural test and
+# measures no geometry, and `test_markdown_link_rendering.py` is a
+# pure-function `renderMarkdown` probe that never paints.
+test_budget = 642
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]
