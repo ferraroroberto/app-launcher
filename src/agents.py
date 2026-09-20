@@ -66,6 +66,18 @@ class Agent:
     the launcher must never type into a running agent TUI (#555). Empty means
     the agent exposes no verified non-PTY naming mechanism.
 
+    ``per_launch_model`` records whether a **per-launch** model override
+    reaches this agent's CLI. It is deliberately not "does the agent have a
+    ``--model`` flag": Pi is launched with one, but it is composed from the
+    persisted ``pi_model`` setting and no caller can vary it per launch, so
+    Pi sits with Antigravity, Copilot and Grok on the ``False`` side. ``True``
+    means a launch route may pass a ``model_override`` and the agent will
+    actually run on it; ``False`` means the launcher cannot honour a
+    per-launch model at all, and a route handed one must say so rather than
+    drop it (issue #1044). Adding a seventh agent sets this, and the launch
+    route's model catalog and cfg-only builder table are both checked against
+    it by ``tests/test_apps_launch_dispatch.py``.
+
     ``console_input`` records whether a *detached* session of this agent
     was empirically shown to take a follow-up message typed into its
     console from outside (``AttachConsole`` + ``WriteConsoleInputW`` key
@@ -83,6 +95,7 @@ class Agent:
     fullscreen: bool = False
     resume_token: str = ""
     native_name_flag: str = ""
+    per_launch_model: bool = False
     console_input: bool = False
 
 
@@ -92,12 +105,12 @@ AGENTS: Dict[str, Agent] = {
     "claude": Agent(
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
-        native_name_flag="--name", console_input=True,
+        native_name_flag="--name", per_launch_model=True, console_input=True,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
         quit_command="/quit", fullscreen=True, resume_token="resume",
-        console_input=True,
+        per_launch_model=True, console_input=True,
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",

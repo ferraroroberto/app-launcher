@@ -566,6 +566,80 @@ class TestClaudeCodeDiscovery:
         assert ok.status_code == 200, ok.text
         assert "--model sonnet" in captured["flags"]
 
+    def test_launch_rejects_a_model_the_agent_cannot_apply(
+        self, webapp_client, monkeypatch
+    ):
+        """#1044 — a model for an agent with no per-launch model flag is a
+        400, not an accepted-and-dropped 200.
+
+        Antigravity, Copilot, Pi and Grok never receive a per-launch
+        ``--model``: three send none at all and Pi's comes from the persisted
+        ``pi_model`` alone. The route used to validate only the provider
+        *prefix*, so ``copilot:<anything>`` passed, fell through to the
+        cfg-only builder and launched a session on whatever the CLI picked —
+        a 200 indistinguishable from the caller getting what it asked for.
+
+        Which agents those are is read off the registry
+        (``Agent.per_launch_model``), so a seventh agent inherits the guard
+        without anyone remembering to extend a list here.
+        """
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+        from src import agents as agents_mod
+
+        (overrides["tmp_projects_dir"] / "live-proj").mkdir()
+        monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
+        captured: dict = {}
+
+        def fake_spawn(
+            project_dir, name, flags, port, kind="pty", agent="claude",
+            rows=40, cols=120, history_lines=None,
+        ):
+            captured["flags"] = flags
+            return {"session_id": "s1", "kind": kind, "agent": agent}
+
+        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+
+        cannot_apply = sorted(
+            a for a, spec in agents_mod.AGENTS.items()
+            if not spec.per_launch_model
+        )
+        assert cannot_apply, "registry says every agent takes a per-launch model"
+
+        for agent in cannot_apply:
+            captured.clear()
+            resp = client.post(
+                "/api/apps/live-proj/launch",
+                json={"agent": agent, "model": f"{agent}:some-model"},
+            )
+            assert resp.status_code == 400, f"{agent}: {resp.text}"
+            detail = resp.json()["detail"]
+            assert "some-model" in detail, f"{agent}: {detail}"
+            # Refused outright — never launched on a model nobody asked for.
+            assert "flags" not in captured, f"{agent}: {captured}"
+
+            # Resume takes the same path, and used to drop it just as quietly.
+            captured.clear()
+            resumed = client.post(
+                "/api/apps/live-proj/launch",
+                json={
+                    "agent": agent, "resume": True,
+                    "model": f"{agent}:some-model",
+                },
+            )
+            assert resumed.status_code == 400, f"{agent} resume: {resumed.text}"
+            assert "flags" not in captured, f"{agent} resume: {captured}"
+
+            # Control: the same launch without a model is untouched. No
+            # first-party bundle has ever sent one for these agents, so this
+            # is the only shape the phone actually posts.
+            captured.clear()
+            ok = client.post(
+                "/api/apps/live-proj/launch", json={"agent": agent},
+            )
+            assert ok.status_code == 200, f"{agent}: {ok.text}"
+            assert "flags" in captured, f"{agent}: launch did not spawn"
+
     def test_launch_resume_antigravity_continues_most_recent(
         self, webapp_client, monkeypatch
     ):

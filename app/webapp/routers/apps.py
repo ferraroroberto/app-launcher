@@ -69,8 +69,10 @@ from app.webapp.routers._helpers import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Launch-flag dispatch for the agents that carry NO model flag: they choose
-# their model in-TUI with `/model`, so each builder takes `cfg` alone.
+# Launch-flag dispatch for the agents that take NO per-launch model: their
+# model is fixed before the launch line is built - chosen in-TUI with
+# `/model` for Antigravity, Copilot and Grok, or read off the persisted
+# `pi_model` setting for Pi - so each builder takes `cfg` alone.
 #
 # Claude and Codex are deliberately ABSENT. They are model-carrying and are
 # called directly with `model_override`, so an entry here would advertise a
@@ -87,9 +89,12 @@ _NO_MODEL_FLAG_BUILDERS = {
 }
 
 # The per-launch model values each agent's flag builder actually honours
-# (#1007). Only Claude and Codex take a model_override; the other agents'
-# builders have no model flag at all (it is chosen in-TUI with /model), so
-# they have no catalog here and their launches are unaffected.
+# (#1007). Which agents belong here is NOT a judgement made at this line: it
+# is `Agent.per_launch_model` in `src/agents.py`, the registry that already
+# owns every other per-agent capability, and `tests/test_apps_launch_dispatch`
+# fails when this table and that flag disagree in either direction (#1044).
+# So both keyed lookups below are direct indexing, not `.get()` - a drift is
+# caught by the test, never smuggled past the route as a skipped check.
 _LAUNCH_MODEL_CATALOG = {
     "claude": VALID_CLAUDE_MODELS,
     "codex": VALID_CODEX_MODELS,
@@ -270,8 +275,33 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                     status_code=400,
                     detail=f"model {requested_model!r} does not belong to {agent}",
                 )
-            # The prefix matching is not enough: an out-of-catalog *value*
-            # used to launch silently on the CLI's own default (#1007).
+            # The prefix match is not enough on its own, in two ways.
+            #
+            # First: four of the six agents take no per-launch model at all.
+            # Antigravity, Copilot and Grok send no `--model`, and Pi's comes
+            # from the persisted `pi_model` setting - so a request naming one
+            # fell straight through to the cfg-only builder and returned 200
+            # on a session running whatever the agent picked for itself,
+            # which a caller cannot tell apart from having got what it asked
+            # for (#1044). Which agents those are is read off the registry
+            # (`Agent.per_launch_model`), not re-listed here, so a seventh
+            # agent inherits the guard. Refusing is safe: no first-party
+            # bundle has ever sent one - the `startsWith(agent + ':')` guard
+            # shipped in the very commit that introduced `payload.model`, and
+            # the model combo has only ever offered `claude:`/`codex:`
+            # values - so the cached-client risk the issue flagged does not
+            # exist, and a non-browser caller learns from the 400.
+            if not agents.AGENTS[agent].per_launch_model:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"{agents.AGENTS[agent].label} takes no per-launch "
+                        f"model, so {requested_model!r} cannot be applied - "
+                        "launch without one and choose the model in the agent"
+                    ),
+                )
+            # Second: for the two that do, an out-of-catalog *value* used to
+            # launch silently on the CLI's own default (#1007).
             # build_claude_flags / build_codex_flags emit no --model at all
             # for a value they don't recognise *and* discard the persisted
             # model (model_override is not None), so a phone holding a
@@ -280,8 +310,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             # (#540) and Board (#505) launch routes already do. The
             # accepted set is exactly what the builder would honour, so a
             # legacy-but-still-supported alias keeps working.
-            catalog = _LAUNCH_MODEL_CATALOG.get(agent)
-            if catalog is not None and model_value not in catalog:
+            if model_value not in _LAUNCH_MODEL_CATALOG[agent]:
                 raise HTTPException(
                     status_code=400,
                     detail=f"unsupported model for {agent}: {model_value!r}",
