@@ -171,6 +171,38 @@ def _live_title_is_busy(live_title: Optional[str]) -> bool:
     _note_unrecognized_title_glyph(title)
     return False
 
+
+def strip_status_glyph(live_title: Optional[str]) -> str:
+    """``live_title`` with Claude Code's leading status glyph removed.
+
+    The PTY window title is the conversation's own name behind one status
+    glyph: the animated spinner while a turn runs
+    (:data:`_BUSY_LIVE_TITLE_RE`) or :data:`_IDLE_LIVE_TITLE_GLYPH` once
+    control is back at the prompt. Both are stripped, because both are
+    chrome rather than name — measured for #1034 against the live sessions
+    on this box, 2 of the 3 PTYs were sitting on the *idle* glyph, so a
+    reader that knew only the busy one would read
+    ``✳ Wooden floor repair investigation`` as differing from the
+    conversation named ``Wooden floor repair investigation`` and act on a
+    difference that is pure chrome.
+
+    Deliberately *not* :func:`_live_title_is_busy`, which is a verdict
+    carrying #815's drift breadcrumb as a side effect: this is a pure
+    string normalisation used on the 5s-polled drawer path, and it reuses
+    that function's own two patterns rather than spelling the glyphs a
+    third time.
+
+    An unrecognized future glyph is left in place. That can only make two
+    titles compare as *different*, which is the conservative direction for
+    the one caller — :func:`board_exchange.find_claude_transcript`'s
+    disproof, where a difference refuses an inferred answer rather than
+    accepting one.
+    """
+    title = (live_title or "").strip()
+    if _BUSY_LIVE_TITLE_RE.match(title) or title[:1] == _IDLE_LIVE_TITLE_GLYPH:
+        title = title[1:].strip()
+    return title
+
 _ACTIVITY_TAIL_BYTES = 8 * 1024
 
 # Only the transcript's tail is read for either an exchange or a pending
