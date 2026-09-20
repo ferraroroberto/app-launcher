@@ -19,14 +19,16 @@ import os
 
 from src.session_host import agent_child_env
 
-# The full block captured off the polluted live session-host.
+# The full block captured off the polluted live session-host, with the two
+# session identifiers replaced by synthetic values — the scrub is keyed on
+# the names, so the bodies are decoration (#1106).
 _POLLUTED = {
     "AI_AGENT": "claude-code_2-1-220_agent",
     "CLAUDECODE": "1",
-    "CLAUDE_CODE_BRIDGE_SESSION_ID": "session_01YE4xgL2CkzZFRnALUFVSE3",
+    "CLAUDE_CODE_BRIDGE_SESSION_ID": "session_SYNTHETICCHILDENVFIXTURE",
     "CLAUDE_CODE_CHILD_SESSION": "1",
     "CLAUDE_CODE_ENTRYPOINT": "cli",
-    "CLAUDE_CODE_SESSION_ID": "3a771101-3663-419c-a3d8-be781adb8c8f",
+    "CLAUDE_CODE_SESSION_ID": "00000000-0000-4000-8000-000000000000",
     "CLAUDE_PID": "33568",
     "NO_COLOR": "1",
 }
