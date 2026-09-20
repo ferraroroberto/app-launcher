@@ -66,14 +66,17 @@ async def spike_voice_loop(request: Request) -> HTMLResponse:
     builds). Bearer-gated like every page (``?token=`` accepted); the page
     bootstraps the passkey terminal token itself.
 
-    Throwaway by design, but **retained for now** (issue #258): the viability
-    gate is answered, and the kanban/board view has since shipped (#164,
-    completed by #302 — including the board's dictation mics via the shared
-    ``voice.js``), so the retention now rests **solely on the orchestrator
-    (#245) voice mode**: this loop remains the live reference for wiring real
-    narration + a conversation-mode entry point. Delete the set only once
-    #245's voice mode has shipped — see ``docs/voice-loop-spike.md`` for the
-    retention decision.
+    Throwaway by design, but **retained**: the ``spike-voice-loop.*`` set is
+    deleted once a hands-free conversation mode exists **outside** that set —
+    that is, when re-arm (narration end returns to listening with no tap),
+    barge-in (sustained speech cuts playback) and a conversation-mode entry
+    point the user can open all live in shipped app code. The condition names
+    the artifact, not a ticket: an issue closing never satisfies it, and
+    neither does dictation (``voice.js``) or read-aloud
+    (``terminal-readaloud.js``), which are one-way and already shipped. The
+    decision lives in **one** place — issue #1054 — and the PR that closes it
+    is the PR that deletes the set. See ``docs/voice-loop-spike.md`` for the
+    spike's findings.
     """
     page = STATIC_DIR / "spike-voice-loop.html"
     if not page.exists():
