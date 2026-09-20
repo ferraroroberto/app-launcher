@@ -5,13 +5,16 @@ lives here instead.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
+import re
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, WebSocket
 
+from src import audit
 from src.launch_flags import build_claude_flags
 from src.session_client import SessionHostError
 from src.webapp_config import (
@@ -24,6 +27,8 @@ from src.webapp_config import (
     append_auth_token,
 )
 from src.webauthn_gate import WebAuthnGate
+
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -183,6 +188,94 @@ def mirror_url(request: Request, cfg: WebappConfig, sid: str) -> str:
     if gate is not None and WebAuthnGate.configured(cfg):
         url += "&" + urlencode({"tt": gate.mint_local_token()})
     return url
+
+
+# ------------------------------------------------- provider session links
+#
+# Claude Code's remote-control card prints an ``https://claude.ai/code/session_…``
+# URL into the PTY. That link is authenticated by the Anthropic account and
+# opens from any browser on any network, unlike this launcher's own
+# ``?session=`` deep link, which is tailnet-gated by design. Both the Coding
+# tab (``/api/claude-code/sessions``) and the Board (``/api/board``) hand it
+# to the client as ``web_url``, so the resolution lives here rather than in
+# either router (#879 captured it, #1096 gave the Board the same field).
+
+_CLAUDE_WEB_URL_RE = re.compile(
+    r"https://claude\.ai/code/session_"
+    r"\s*([A-Za-z0-9](?:\s*[A-Za-z0-9]){23})(?![A-Za-z0-9])"
+)
+_ANSI_CSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_SESSION_LINK_SCAN_BYTES = 512 * 1024
+
+# A captured URL never changes for a session id, so memoize the hit: the
+# Coding-tab poll and the Board poll both run on a 5s cadence and overlap
+# while the Board tab is up (main.js — fetchSessions is not tab-gated), which
+# without this would re-scan up to 1 MiB of every live transcript twice every
+# five seconds. Only a hit is cached — an empty result means the card has not
+# been printed *yet*, and must stay re-scannable on the next poll.
+_PROVIDER_URL_CACHE: Dict[str, str] = {}
+_PROVIDER_URL_CACHE_MAX = 512
+
+
+def provider_web_url(agent: str, transcript: Path) -> str:
+    """Return the provider-native web URL captured from a PTY transcript.
+
+    Claude's remote-control card often wraps between ``session_`` and its
+    24-character identifier, with cursor-control sequences around the second
+    line. Read bounded head and tail windows, strip CSI, and join only the
+    whitespace inside that known URL shape. Codex local sessions deliberately
+    return no URL: its remote-control surface is not available on the web.
+    """
+    if agent != "claude":
+        return ""
+    try:
+        with transcript.open("rb") as stream:
+            head = stream.read(_SESSION_LINK_SCAN_BYTES)
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            tail = b""
+            if size > _SESSION_LINK_SCAN_BYTES:
+                stream.seek(max(0, size - _SESSION_LINK_SCAN_BYTES))
+                tail = stream.read(_SESSION_LINK_SCAN_BYTES)
+    except OSError as exc:
+        logger.debug(f"provider link transcript read failed: {exc}")
+        return ""
+
+    text = _ANSI_CSI_RE.sub("", (head + b"\n" + tail).decode("utf-8", errors="replace"))
+    match = _CLAUDE_WEB_URL_RE.search(text)
+    if not match:
+        return ""
+    session_token = re.sub(r"\s+", "", match.group(1))
+    return f"https://claude.ai/code/session_{session_token}"
+
+
+def attach_provider_web_urls(sessions: List[Dict[str, Any]]) -> None:
+    """Enrich live full-control rows without requiring a session-host restart.
+
+    Every row gets a ``web_url`` key so the client never has to distinguish
+    "no link" from "field absent"; only ``kind == "pty"`` rows are scanned.
+    Blocking file IO — callers wrap it in ``asyncio.to_thread``.
+    """
+    for session in sessions:
+        session["web_url"] = ""
+        if session.get("kind") != "pty":
+            continue
+        sid = str(session.get("session_id") or "")
+        cached = _PROVIDER_URL_CACHE.get(sid)
+        if cached:
+            session["web_url"] = cached
+            continue
+        url = provider_web_url(
+            str(session.get("agent") or ""), audit.transcript_path(sid)
+        )
+        session["web_url"] = url
+        if url and sid:
+            if len(_PROVIDER_URL_CACHE) >= _PROVIDER_URL_CACHE_MAX:
+                # Dead session ids accumulate over a long-lived tray. Drop the
+                # lot rather than track recency: the cost of rebuilding is one
+                # extra scan per live session, once.
+                _PROVIDER_URL_CACHE.clear()
+            _PROVIDER_URL_CACHE[sid] = url
 
 
 def client_ip(request: Request) -> str:
