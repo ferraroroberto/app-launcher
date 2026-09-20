@@ -7,6 +7,27 @@ icon        = "🚀"
 port        = ":8445"
 description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs · Life OS · Board (fleet kanban) · Settings, all from the phone. Born from one goal: do <i>everything</i> on the PC from mobile. The entry point to it all."
 
+# ---------------------------------------------------------------------------
+# [worktree] -- gitignored paths fleet-config junctions from this primary
+# checkout into every fresh worktree it cuts (skills/_lib/worktree_claim.py's
+# `worktree_junction_targets`). `.venv` is always included; the declaration
+# below adds the HTTPS cert pair.
+#
+# Why (#1080): `git worktree add` populates tracked files only, and
+# `webapp/certificates/` is gitignored, so a side instance stood up out of a
+# worktree served a self-signed-warning page and a broken WebAuthn flow -- a
+# failure that reads like a bug in the change under test. A junction rather
+# than a copy because the certs are read-only at runtime: a regenerated cert
+# reaches every live worktree with no re-provisioning.
+#
+# A declared path that is absent in the primary is skipped rather than failing
+# setup, and `remove-worktree` strips the junction reparse-safely before any
+# delete -- never `git worktree remove` a worktree holding one, git's
+# recursive delete follows it into the primary's real target
+# (fleet-config#847).
+[worktree]
+extra_junctions = ["webapp/certificates"]
+
 [vendored]
 switch = { src = "app/webapp/static/_vendored/switch", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/button" }
