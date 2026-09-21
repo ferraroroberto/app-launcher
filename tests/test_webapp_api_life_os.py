@@ -187,6 +187,19 @@ class TestListSkills:
 
 # --------------------------------------------------------------- launch
 class TestLaunchSkill:
+
+    @pytest.fixture(autouse=True)
+    def _bypass_gate(self, monkeypatch):
+        """Treat the TestClient host as loopback: the launch is passkey-gated
+        since #1036, and the gate itself is covered by
+        test_launch_routes_are_passkey_gated."""
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware,
+            "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+
     def test_launch_pty_sonnet_appends_skill_command(
         self, life_os_client, monkeypatch
     ):
@@ -1051,6 +1064,19 @@ class TestRecapStatus:
 
 
 class TestLaunchRecap:
+
+    @pytest.fixture(autouse=True)
+    def _bypass_gate(self, monkeypatch):
+        """Treat the TestClient host as loopback: the launch is passkey-gated
+        since #1036, and the gate itself is covered by
+        test_launch_routes_are_passkey_gated."""
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware,
+            "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+
     def test_launch_invokes_weekly_recap_review(self, life_os_client, monkeypatch):
         client, _, _ = life_os_client
         from app.webapp.routers import life_os_spawn

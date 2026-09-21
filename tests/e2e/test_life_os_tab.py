@@ -1229,8 +1229,8 @@ def test_life_os_launch_sends_terminal_token(
     authed_page: Page, base_url: str, target: str
 ) -> None:
     """Regression for #1036: tapping a Life OS launch (a skill tile's 🚀 or
-    the weekly-recap 🚀) sends the passkey terminal token, as
-    /api/board/issues/start's caller does. Without it a phone behind a
+    the weekly-recap 🚀) sends the passkey terminal token, as the Board's
+    issue-start does. Without it a phone behind a
     configured WebAuthn gate gets a 401 and the login overlay (cf. #997).
     The real check is still a tap on a phone with the gate configured."""
     _mock_skills(authed_page)
