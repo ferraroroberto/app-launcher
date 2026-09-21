@@ -106,4 +106,3 @@ Secondary note worth a line in any implementation issue: the same extension woul
 - Base reference: [`prateekmedia/claude-agent-sdk-pi`](https://github.com/prateekmedia/claude-agent-sdk-pi) (the pi extension that routes reasoning through the Claude Agent SDK on a Pro/Max subscription).
 - Pi docs: <https://pi.dev/docs/latest/quickstart> (subscription login, model switching, session continue/resume).
 - `src/agents.py` — the agent registry the implementation extends.
-- `docs/voice-loop-spike.md` — companion de-risking spike (same doc shape).

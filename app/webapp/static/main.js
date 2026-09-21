@@ -6,7 +6,7 @@
  */
 
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { apiFailToast, consumeUrlParam, jsonApi, readToken, toast, wireLoginForm, writeToken } from './api.js';
+import { apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
@@ -167,15 +167,6 @@ async function boot() {
   // ceremony-minted one. TTL mirrors the server's 12 h _TERMINAL_TOKEN_TTL.
   const ttFromUrl = consumeUrlParam('tt');
   if (ttFromUrl) writeTerminalToken(ttFromUrl, 12 * 3600);
-  // THROWAWAY spike #246: bake the bearer token into the spike link so a full
-  // page-load of /spike/voice-loop passes the gate over the tunnel (the
-  // middleware accepts ?token=). Loopback bypasses the gate, so a tokenless
-  // href is fine on the PC.
-  if (els.spikeVoiceLink) {
-    const tok = readToken();
-    els.spikeVoiceLink.href =
-      '/spike/voice-loop' + (tok ? '?token=' + encodeURIComponent(tok) : '');
-  }
   const mirrorSid = consumeUrlParam('terminal');
   const sharedSessionSid = consumeUrlParam('session');
   // Only the launcher-spawned PC mirror window uses ?terminal=<sid>.

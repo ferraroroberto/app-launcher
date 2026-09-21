@@ -24,7 +24,7 @@
  * The two voices themselves — hub TTS and Web Speech, plus the one
  * speaking-state machine they share — live in `terminal-speech.js` (#884).
  * This module re-exports them so it stays the single read-aloud engine
- * entry point `terminal-readaloud.js` and `spike-voice-loop.js` import from.
+ * entry point `terminal-readaloud.js` imports from.
  */
 
 import {
