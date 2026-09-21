@@ -36,12 +36,20 @@ from pathlib import Path
 import pytest
 
 from src.session_host import PtyProcess, PtySession, SessionManager
+from tests._pty_frame_text import rendered as _rendered
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or PtyProcess is None or shutil.which("codex") is None,
     reason="Windows, pywinpty, and Codex CLI are required",
 )
 
+# Every marker below is matched against ``_rendered()`` text, never the raw VT
+# frame: a TUI is free to paint one phrase as several styled runs, and an SGR
+# reset dropped between two words destroys the literal substring while the
+# screen still reads correctly.  That is exactly what silently broke the Claude
+# sibling's ``[Pasted text`` marker (#1109); these share its shape, so they are
+# normalised the same way rather than left to break the same way later.
+#
 # Text that only appears once the composer banner has painted.  Note that the
 # composer box paints in the background even while an overlay modal/panel sits
 # on top of it, so this alone does not prove input will land in the composer —
@@ -75,7 +83,7 @@ async def _reach_composer(session: PtySession) -> bool:
     assertion instead of hanging.
     """
     for _ in range(75):  # ~15 s ceiling at 0.2 s per poll, two modals to clear
-        frame = session.snapshot_frame() or ""
+        frame = _rendered(session.snapshot_frame() or "")
         if _UPDATE_MODAL_MARKER in frame:
             # Numbered-select modal: digit moves the cursor, Enter confirms.
             session.write("2\r")
@@ -86,7 +94,7 @@ async def _reach_composer(session: PtySession) -> bool:
         if not session.alive:
             return False
         await asyncio.sleep(0.2)
-    frame = session.snapshot_frame() or ""
+    frame = _rendered(session.snapshot_frame() or "")
     return (
         _UPDATE_MODAL_MARKER not in frame
         and _HOOKS_MODAL_MARKER not in frame.lower()
@@ -144,7 +152,7 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
         # instead of Submit.  Typical render latency is ~65 ms (timing probe,
         # #493); the ceiling only matters under heavy load.
         for _ in range(100):  # 10 s ceiling
-            if "/quit" in (session.snapshot_frame() or ""):
+            if "/quit" in _rendered(session.snapshot_frame() or ""):
                 break
             if not session.alive:
                 pytest.fail("Codex died before the pasted /quit rendered")
@@ -163,7 +171,7 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
             if not session.alive:
                 break
             await asyncio.sleep(0.1)
-        final_frame = session.snapshot_frame() or ""
+        final_frame = _rendered(session.snapshot_frame() or "")
         assert not session.alive, (
             "one Enter did not exit Codex within 15 s — "
             + (

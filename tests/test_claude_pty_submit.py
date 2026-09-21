@@ -32,7 +32,6 @@ with the loaded-probe loop recorded on the issue.
 from __future__ import annotations
 
 import asyncio
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -42,6 +41,7 @@ import pytest
 
 from src.session_host import PtyProcess, PtySession, SessionManager
 from src.vt_snapshot import VtSnapshot
+from tests._pty_frame_text import FRAME_ROW as _FRAME_ROW, rendered as _rendered
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or PtyProcess is None or shutil.which("claude") is None,
@@ -68,12 +68,13 @@ _PAYLOAD = "/probe-499-nonexistent " + (
 ).strip()
 # Anything still sitting in the composer means the CR never submitted — the
 # payload renders either literally or as a collapsed chip (#499's loaded probe
-# saw both).
+# saw both).  Matched against ``_rendered()`` text, never the raw frame: Claude
+# Code v2.1.278 paints the chip word-by-word with an SGR reset between the
+# words, so ``[Pasted text`` is a literal substring of the *screen* but not of
+# the stream, and the prompt glyph is followed by ``\xa0`` rather than a space
+# (#1109 — see ``tests/_pty_frame_text``).  If a future restyle reopens this,
+# the fix belongs in that helper, not in a looser marker or a bigger budget.
 _IN_COMPOSER = ("probe-499-nonexistent", "[Pasted text")
-# ``VtSnapshot.render()`` paints the live frame with one absolute
-# ``ESC[<row>;1H`` per row, after the plain-text scrollback history (#432).
-_FRAME_ROW = re.compile(r"\x1b\[(\d+);1H")
-_ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # A composer border is a full-width run of box-drawing dashes; 20 is well
 # above anything that turns up inside real content.
 _RULE_MIN_DASHES = 20
@@ -90,7 +91,7 @@ def _live_rows(frame: str) -> List[str]:
     parts = _FRAME_ROW.split(frame)
     rows: Dict[int, str] = {}
     for i in range(1, len(parts) - 1, 2):
-        rows[int(parts[i])] = _ANSI.sub("", parts[i + 1])
+        rows[int(parts[i])] = _rendered(parts[i + 1])
     return [rows[key] for key in sorted(rows)]
 
 
@@ -106,22 +107,27 @@ def _composer_text(frame: str) -> str:
     rows = _live_rows(frame)
     rules = [i for i, row in enumerate(rows) if row.count("─") >= _RULE_MIN_DASHES]
     if len(rules) < 2:
-        return "\n".join(rows) or frame
+        return "\n".join(rows) or _rendered(frame)
     return "\n".join(rows[rules[-2] + 1 : rules[-1]])
 
 
 async def _wait_for_any(
     session: PtySession, markers: Tuple[str, ...], budget_s: float
 ) -> bool:
-    """Poll the VT frame until any of ``markers`` appears (case-sensitive)."""
+    """Poll the rendered VT frame until any of ``markers`` appears.
+
+    Case-sensitive, and matched against ``_rendered()`` rather than the raw
+    stream — a marker spanning a styled word boundary exists only on screen
+    (#1109).
+    """
     for _ in range(int(budget_s / 0.1)):
-        frame = session.snapshot_frame() or ""
+        frame = _rendered(session.snapshot_frame() or "")
         if any(m in frame for m in markers):
             return True
         if not session.alive:
             return False
         await asyncio.sleep(0.1)
-    frame = session.snapshot_frame() or ""
+    frame = _rendered(session.snapshot_frame() or "")
     return any(m in frame for m in markers)
 
 
@@ -172,9 +178,9 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         # in terminal-compose.js exists for (#499). A dictation-sized paste
         # renders as a collapsed "[Pasted text #N]" chip, not literal text
         # (observed in the #499 loaded-probe loop), so accept either form.
-        assert await _wait_for_any(
-            session, ("probe-499-nonexistent", "[Pasted text"), 15.0
-        ), "pasted payload never rendered in the Claude composer within 15 s"
+        assert await _wait_for_any(session, _IN_COMPOSER, 15.0), (
+            "pasted payload never rendered in the Claude composer within 15 s"
+        )
         # The chip render is not the end of the paste ingest — the #499 loop
         # showed a CR landing right after the chip paints still gets absorbed.
         # Hold the CR back the way the production Send does (the #499
