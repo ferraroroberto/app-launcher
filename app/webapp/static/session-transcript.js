@@ -95,6 +95,16 @@ export function hasTranscriptReader(s) {
 // Conversation turns (user + assistant entries) per page — ~20 exchanges.
 const PAGE_LIMIT = 40;
 
+// One Load older tap keeps fetching until an older user or assistant turn
+// arrives (#1120). A page can hold no turn at all (the server's per-request
+// read ceiling stops it inside a run of huge tool results), and with tool
+// calls hidden such a page used to add nothing visible. Bounded by requests
+// and by wall time, so a transcript that is all tool calls back to the file
+// start costs a few round trips, not an unbounded walk.
+const OLDER_CHAIN_MAX = 8;
+const OLDER_CHAIN_MS = 2500;
+const OLDER_LABEL = 'Load older';
+
 // Live refresh (#1050). How often a chat view that is actually being looked
 // at asks for what the agent has appended. 3s reads as "live" for a
 // conversation without being a busy-loop; the tick itself is cheap by
@@ -853,6 +863,7 @@ async function loadNewest() {
   stopLiveTimer();
   els.transcriptList.innerHTML = '';
   els.transcriptOlder.hidden = true;
+  els.transcriptOlder.textContent = OLDER_LABEL;
   view.cursor = null;
   view.pendingNodes = [];
   view.ended = false;
@@ -914,38 +925,81 @@ async function loadNewest() {
   scheduleLive(LIVE_POLL_MS);
 }
 
+// The line a Load older that found no turn leaves behind (#1120), so the
+// reader is told what happened instead of seeing a tap that did nothing.
+function olderLabel(entries) {
+  const calls = entries.filter(function (e) { return e.kind === 'tool_call'; }).length;
+  if (!calls) return 'No messages yet — ' + OLDER_LABEL;
+  return calls + ' tool call' + (calls === 1 ? '' : 's') + ' loaded, no messages yet — ' + OLDER_LABEL;
+}
+
+function startMarker() {
+  const li = document.createElement('li');
+  li.className = 'tr-start';
+  li.textContent = 'Start of transcript — no older messages';
+  return li;
+}
+
 async function loadOlder() {
   if (!view || view.loading || view.cursor == null) return;
+  const target = view;
   const seq = view.seq;
   view.loading = true;
   els.transcriptOlder.disabled = true;
+  els.transcriptOlder.textContent = 'Loading…';
   const box = els.transcriptBody;
   const heightBefore = box.scrollHeight;
   const topBefore = box.scrollTop;
-  let body;
+  const startedAt = Date.now();
+  // Older pages accumulate oldest-first and render once, so a run of tool
+  // calls that straddles two pages folds into one group, not two.
+  let older = [];
+  let cursor = view.cursor;
+  let toolErrors = null;
+  let unavailable = null;
+  let requests = 0;
   try {
-    body = await fetchPage(view.cursor);
+    while (cursor != null) {
+      const body = await fetchPage(cursor);
+      if (view !== target || view.seq !== seq) return;
+      requests += 1;
+      if (!body.available) {
+        unavailable = body.reason;
+        cursor = null;
+        break;
+      }
+      older = (body.entries || []).concat(older);
+      toolErrors = body.tool_errors || toolErrors;
+      cursor = body.next_cursor;
+      if (older.some(isTurn)) break;
+      if (requests >= OLDER_CHAIN_MAX || Date.now() - startedAt >= OLDER_CHAIN_MS) break;
+    }
   } catch (exc) {
-    if (view && view.seq === seq) apiFailToast('Load older failed', exc);
-    return;
+    if (view !== target || view.seq !== seq) return;
+    // Whatever pages did arrive still render below; the cursor stays at the
+    // last one that did, so the next tap resumes rather than skipping.
+    apiFailToast('Load older failed', exc);
   } finally {
-    if (view && view.seq === seq) {
+    if (view === target && view.seq === seq) {
       view.loading = false;
       els.transcriptOlder.disabled = false;
     }
   }
-  if (!view || view.seq !== seq) return;
-  if (!body.available) {
-    toast(REASON_COPY[body.reason] || 'Transcript unavailable', 'bad');
-    view.cursor = null;
-    els.transcriptOlder.hidden = true;
-    return;
+  if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
+  if (older.length) {
+    els.transcriptList.insertBefore(
+      renderEntries(older, toolErrors || view.toolErrors || 'reported'),
+      els.transcriptList.firstChild,
+    );
   }
-  els.transcriptList.insertBefore(
-    renderEntries(body.entries || [], body.tool_errors || view.toolErrors || 'reported'),
-    els.transcriptList.firstChild,
-  );
-  view.cursor = body.next_cursor;
+  const foundTurn = older.some(isTurn);
+  view.cursor = cursor;
+  if (cursor == null && !foundTurn && !unavailable) {
+    // Only tool calls back to the file start: say so, rather than let the
+    // button vanish over a list that did not visibly change.
+    els.transcriptList.insertBefore(startMarker(), els.transcriptList.firstChild);
+  }
+  els.transcriptOlder.textContent = foundTurn || !older.length ? OLDER_LABEL : olderLabel(older);
   els.transcriptOlder.hidden = view.cursor == null;
   // Keep what was on screen where it was: grow scrollTop by exactly the
   // height the older page added above it.

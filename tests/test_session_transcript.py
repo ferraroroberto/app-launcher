@@ -360,6 +360,61 @@ def test_byte_cap_yields_a_short_page_with_a_cursor(tmp_path: Path, monkeypatch)
     )
 
 
+def _screenshot_run(prefix: str, count: int, *, size: int = 1024 * 1024) -> List[Dict[str, Any]]:
+    """``count`` tool calls whose results are each one ~``size``-byte line —
+    the base64 image payload of a screenshot tool, the shape that filled
+    #1120's pages with no conversation in them. Synthetic bytes only."""
+    blob = "A" * size
+    lines: List[Dict[str, Any]] = []
+    for k in range(count):
+        tid = f"{prefix}-{k}"
+        lines.append(_assistant([_tool_use("Screenshot", {}, tid)], f"{prefix}-m{k}"))
+        lines.append(_user([_tool_result(tid, [{
+            "type": "image",
+            "source": {"type": "base64", "media_type": "image/png", "data": blob},
+        }])]))
+    return lines
+
+
+def test_huge_tool_results_do_not_starve_a_page_of_turns(tmp_path: Path):
+    """#1120: a few ~1 MB tool-result lines used to spend the whole 2 MiB
+    budget, so a page stopped with zero conversation turns in it. A line is
+    charged at most :data:`LINE_CHARGE_CAP` toward the budget, so one page
+    reaches past them to the older turns."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _user("old prompt"),
+        _assistant([{"type": "text", "text": "old reply"}], "m0"),
+        *_screenshot_run("s", 6),
+        _user("new prompt"),
+        _assistant([{"type": "text", "text": "new reply"}], "m1"),
+    ])
+    page = st.transcript_page(path, limit=40)
+    turns = [e["text"] for e in page["entries"] if st._is_turn(e)]
+    assert turns == ["old prompt", "old reply", "new prompt", "new reply"]
+    assert page["next_cursor"] is None
+
+
+def test_real_bytes_read_stay_under_the_ceiling(tmp_path: Path, monkeypatch):
+    """The charge cap must not make a page unbounded: a region of nothing
+    but huge lines stops at :data:`REQUEST_READ_CEILING` real bytes with a
+    cursor, and the walk from there still reaches every turn. (A page with
+    no turn keeps its raw edge, so a call and its result may land on two
+    pages — `_page`'s documented exception — hence turns, not entries.)"""
+    monkeypatch.setattr(st, "REQUEST_READ_CEILING", 3 * 1024 * 1024)
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _user("first prompt"),
+        _assistant([{"type": "text", "text": "first reply"}], "m0"),
+        *_screenshot_run("s", 10),
+    ])
+    page = st.transcript_page(path, limit=40)
+    assert page["next_cursor"] is not None
+    assert not any(st._is_turn(e) for e in page["entries"])
+    assert len(page["entries"]) < 10, "the ceiling must cut the run short"
+    joined = [e for page in reversed(_walk(path, 40)) for e in page]
+    assert [e["text"] for e in joined if st._is_turn(e)] == ["first prompt", "first reply"]
+    assert sum(1 for e in joined if e["kind"] == "tool_call") == 10
+
+
 def test_pair_split_across_a_page_boundary_keeps_the_result(tmp_path: Path):
     """A tool call whose result lands on the newer page: the result stands
     alone there (never lost), the call shows no result on the older page."""
