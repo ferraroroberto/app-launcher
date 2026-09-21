@@ -48,7 +48,9 @@ function resolve(v) {
 function paintButton(btn, item) {
   btn.innerHTML = (resolve(item.html) || icon(resolve(item.glyph))) +
     '<span class="row-menu-label">' + escapeHtml(resolve(item.text)) + '</span>';
-  btn.title = item.disabled && item.title ? item.title : resolve(item.label);
+  const disabled = !!resolve(item.disabled);
+  btn.disabled = disabled;
+  btn.title = disabled && item.title ? resolve(item.title) : resolve(item.label);
   btn.setAttribute('aria-label', btn.title);
 }
 
@@ -56,7 +58,9 @@ function paintButton(btn, item) {
 // hook the e2e suite targets); `text` is the short caption next to the
 // glyph. `glyph` is a Lucide sprite name; `html` overrides it with ready
 // markup (a brand mark). A `disabled` item stays visible with `title` as
-// its hover hint, like a greyed-out rail button. `dataset` sets data-*
+// its hover hint, like a greyed-out rail button; both may be functions,
+// re-evaluated on every open like `hidden` (#1119: the Life OS viewer's
+// menu serves whichever conversation is open). `dataset` sets data-*
 // attributes — the Coding menu's launch rows carry `data-agent` (#1070),
 // the same hook the row button they replaced had, so a caller (or a test)
 // can name one agent's row without matching on its label text.
@@ -71,14 +75,11 @@ function menuButton(item, close) {
   }
   paintButton(btn, item);
   btn.setAttribute('role', 'menuitem');
-  if (item.disabled) {
-    btn.disabled = true;
-  } else {
-    btn.addEventListener('click', function () {
-      close();
-      item.onTap();
-    });
-  }
+  btn.addEventListener('click', function () {
+    if (btn.disabled) return;
+    close();
+    item.onTap();
+  });
   return btn;
 }
 

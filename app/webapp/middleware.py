@@ -220,8 +220,9 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
     (
         lambda p: p == "/api/life-os/file" or p.startswith("/api/life-os/file/"),
         "passkey",
-        "Life OS private-content browser (#102): file read/delete/rename surfaces "
-        "gitignored private knowledge. The skills list stays token-gated.",
+        "Life OS private-content browser (#102): file read/delete/rename, and "
+        "the conversation viewer's parsed read /file/transcript (#1119), "
+        "surface gitignored private knowledge. The skills list stays token-gated.",
     ),
     (
         lambda p: (
