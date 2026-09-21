@@ -1910,6 +1910,31 @@ def test_history_launch_private_gate(life_os_client, monkeypatch, action):
     assert client.post(endpoint, json={"action": action}, headers={"x-terminal-token": "synthetic-unlock"}).status_code == 400
 
 
+@pytest.mark.parametrize("endpoint,past_gate", [
+    ("/api/life-os/skills/does-not-exist/launch", 404),
+    ("/api/life-os/recap/launch", 400),
+])
+def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, endpoint, past_gate):
+    """#1036: both Life OS launches spawn a coding session, so they carry the
+    same passkey requirement as /api/board/issues/start. The unlocked request
+    is built to fail *after* the gate (unknown skill / missing life_os_dir), so
+    getting past it is proven without spawning anything."""
+    from app.webapp import middleware
+    from src.webauthn_gate import WebAuthnGate
+    client, app, _ = life_os_client
+    if "recap" in endpoint:
+        monkeypatch.setattr(app.state.webapp_config, "life_os_dir", str(tmp_path / "missing"))
+    assert middleware._terminal_guard_level(endpoint) == "passkey"
+    assert client.post(endpoint, json={}, headers={"Cf-Ray": "synthetic"}).status_code == 403
+    assert client.post(endpoint, json={}).status_code == 403
+    monkeypatch.setattr(middleware, "client_in_tailnet", lambda *a: True)
+    monkeypatch.setattr(WebAuthnGate, "configured", lambda *a: True)
+    monkeypatch.setattr(app.state.webauthn_gate, "valid_terminal_token", lambda token: token == "synthetic-unlock")
+    assert client.post(endpoint, json={}).status_code == 401
+    unlocked = client.post(endpoint, json={}, headers={"x-terminal-token": "synthetic-unlock"})
+    assert unlocked.status_code == past_gate, unlocked.text
+
+
 @pytest.mark.parametrize("output,success", [
     ('[{"header":{"agent":"codex","sid":"synthetic"},"body":"fixture","native":true}]', True),
     ('[]', False), ('[{"header":{},"native":true}]', False), ('invalid', False),

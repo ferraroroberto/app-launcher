@@ -142,6 +142,11 @@ def client_in_tailnet(client_host: str, allowlist: List[str]) -> bool:
 # full inventory stays scannable in one place instead of spread across prose
 # comments. Order matters only in that the first matching predicate wins;
 # in practice every predicate here targets a disjoint path shape.
+#
+# The rule a new route is measured against (#1036): anything that spawns a
+# coding session, or reads or injects terminal-grade content, is passkey-gated.
+# Starting an app or a job (/api/apps, /api/jobs) is ordinary launcher work
+# and stays on the bearer token.
 _TerminalGuardRule = Tuple[Callable[[str], bool], str, str]
 
 _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
@@ -216,7 +221,19 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         lambda p: p == "/api/life-os/file" or p.startswith("/api/life-os/file/"),
         "passkey",
         "Life OS private-content browser (#102): file read/delete/rename surfaces "
-        "gitignored private knowledge. Skills list/launch stay public (token-gated).",
+        "gitignored private knowledge. The skills list stays token-gated.",
+    ),
+    (
+        lambda p: (
+            p == "/api/life-os/recap/launch" or
+            # exactly /skills/{id}/launch — /conversations/launch has its own row
+            (p.startswith("/api/life-os/skills/") and p.endswith("/launch")
+             and p.count("/") == 5)
+        ),
+        "passkey",
+        "Life OS skill launch (#102) + weekly-recap launch (#167): both spawn a "
+        "coding session, so they are terminal-grade like /api/board/issues/start "
+        "(#1036). The Life OS tab sends X-Terminal-Token on both.",
     ),
     (
         lambda p: p.startswith("/api/life-os/skills/") and p.endswith("/files"),
