@@ -874,9 +874,9 @@ function appendConvoField(host, label, value) {
 }
 
 // Whether this row can be resumed / handed off with the model currently
-// selected, and why not when it can't (#727's rules, unchanged). One pure
-// function because two surfaces ask: nothing on the row itself now, and the
-// viewer's ⋮ menu (#1119), which re-asks on every open.
+// selected, and why not when it can't (#727's rules, unchanged). Asked by
+// the viewer's ⋮ menu (#1119) on every open, so it always reflects the
+// model currently chosen in the Conversations bar.
 function convoActionState(r) {
   const target = lifeOsModel().split(':')[0];
   const matches = target === r.agent;
