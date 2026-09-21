@@ -35,7 +35,9 @@ lives beside its session siblings in ``routers/sessions.py``.
 Issue-start is injection-safe by construction: the positional prompt is built
 **server-side** as ``/issue-<mode> <N>`` with ``mode`` allowlisted and ``N``
 int-validated, so the string that reaches the session-host's unquoted
-``cmd /c`` line can never contain a metacharacter.
+``cmd /c`` line can never contain a metacharacter. An optional dispatch brief
+(#1114) keeps that property: its text goes to a launcher-owned file and only
+the uuid-named path rides the prompt as ``--brief <path>``.
 
 Dispatch (#302) carries free text — the goal — so it can't use a positional
 prompt at all. Instead it **spawns-then-types**: the session starts with only
@@ -66,6 +68,7 @@ from src import (
     agents,
     audit,
     board,
+    dispatch_brief,
     github_client,
     quota_usage,
     session_client,
@@ -388,6 +391,14 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     session after the issue (#467) via the #458 manual-override path, so it is
     recognizable in the Coding tab without waiting for the agent to self-name.
     The title is display data — it never reaches the command line.
+
+    The optional ``brief`` (#1114, fleet-config#944) is a dispatcher's scope,
+    queue and constraints for the lane, carried on the one channel the lane
+    trusts — its launch command. The text is written to a launcher-owned file
+    (:mod:`src.dispatch_brief`) and only that uuid-named path is appended as
+    ``--brief <path>``, so the invariant above still holds. Absent (or
+    ``null``) → the prompt is byte-identical to a brief-less start; empty or
+    oversize → 400.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -405,6 +416,12 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     cols = safe_int(body, "cols", 120)
     title = str(body.get("title") or "").strip()
     model = str(body.get("model") or "").strip().lower()
+    brief = None
+    if body.get("brief") is not None:
+        try:
+            brief = dispatch_brief.validate_brief(body.get("brief"))
+        except dispatch_brief.BriefError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     if model:
         agent, base_flags = _agent_and_flags(cfg, model)
     else:
@@ -413,20 +430,31 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     entry = _resolve_repo_entry(cfg, repo)
 
     prompt = f"/issue-{mode} {number}"
+    brief_path = None
+    if brief is not None:
+        brief_path = await asyncio.to_thread(dispatch_brief.write_brief, brief)
+        prompt = f"{prompt} --brief {brief_path.as_posix()}"
     native_name_flags = agents.native_session_name_flags_for(agent, title)
     flags = " ".join(
         part for part in (base_flags, native_name_flags, f'"{prompt}"') if part
     )
-    session, sid = await spawn_launcher_session(
-        spawn_claude_session, cfg,
-        project_dir=Path(entry.project_dir), name=entry.name,
-        flags=flags, agent=agent, rows=rows, cols=cols,
-    )
+    try:
+        session, sid = await spawn_launcher_session(
+            spawn_claude_session, cfg,
+            project_dir=Path(entry.project_dir), name=entry.name,
+            flags=flags, agent=agent, rows=rows, cols=cols,
+        )
+    except Exception:
+        # No lane will ever read it — don't leave it for the TTL sweep.
+        if brief_path is not None:
+            await asyncio.to_thread(dispatch_brief.discard_brief, brief_path)
+        raise
     await board_chief._mark_chief_managed(cfg, request, sid, entry.name, number)
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
         sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
         skill=prompt, audit_mod=audit, mirror_fn=open_local_terminal_window,
+        brief_chars=len(brief) if brief is not None else None,
     )
     # Auto-name the session after the issue title (#467): a Board-started
     # session is then recognizable in the Coding tab immediately, instead of

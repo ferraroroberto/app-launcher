@@ -21,6 +21,7 @@ Covers the act-from-the-card loop server-side:
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -1249,6 +1250,97 @@ class TestIssueStart:
         )
         assert resp.status_code == 200
         assert resp.json()["session"]["session_id"] == "spawned-1"
+
+
+class TestIssueStartBrief:
+    """#1114: an optional dispatch brief rides the launch command as a
+    launcher-generated ``--brief <path>`` — never as client text."""
+
+    _spawn = TestIssueStart._spawn
+
+    @pytest.fixture(autouse=True)
+    def _briefs_dir(self, tmp_path, monkeypatch):
+        from src import dispatch_brief
+        d = tmp_path / "briefs"
+        monkeypatch.setattr(dispatch_brief, "BRIEFS_DIR", d)
+        return d
+
+    def _start(self, client, overrides, **extra):
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir(exist_ok=True)
+        return client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 42, "mode": "yolo", **extra},
+        )
+
+    def test_hostile_brief_never_reaches_the_command_line(
+        self, webapp_client, _bypass_gate, _spawn, _briefs_dir
+    ):
+        client, _, overrides = webapp_client
+        brief = 'ship it"; rm -rf / & echo "pwned\nsecond line ^| %PATH% `x`'
+        resp = self._start(client, overrides, brief=brief)
+        assert resp.status_code == 200
+        flags = _spawn["flags"]
+        tail = re.search(r' "/issue-yolo 42 --brief ([^"]+)"$', flags)
+        assert tail, flags
+        path = Path(tail.group(1))
+        assert re.fullmatch(r"[0-9a-f]{32}\.md", path.name)
+        assert path.parent == _briefs_dir
+        assert re.fullmatch(r"[A-Za-z0-9:/._-]+", tail.group(1))
+        for fragment in ('rm -rf', 'pwned', '\n', '^|', '%PATH%', 'ship it'):
+            assert fragment not in flags
+        assert path.read_text(encoding="utf-8") == brief
+        assert resp.json()["launched"] == f"/issue-yolo 42 --brief {tail.group(1)}"
+
+    def test_null_brief_is_absent(self, webapp_client, _bypass_gate, _spawn, _briefs_dir):
+        client, _, overrides = webapp_client
+        assert self._start(client, overrides, brief=None).status_code == 200
+        assert _spawn["flags"].endswith(' "/issue-yolo 42"')
+        assert not _briefs_dir.exists()
+
+    @pytest.mark.parametrize(
+        "brief,detail",
+        [
+            ("", "brief is empty"),
+            ("  \n\t ", "brief is empty"),
+            (123, "brief must be a string"),
+            ("x" * 20_001, "brief too large: 20001 chars (max 20000)"),
+        ],
+        ids=["empty", "whitespace", "not-a-string", "oversize"],
+    )
+    def test_bad_brief_400s_before_spawning(
+        self, webapp_client, _bypass_gate, _spawn, _briefs_dir, brief, detail
+    ):
+        client, _, overrides = webapp_client
+        resp = self._start(client, overrides, brief=brief)
+        assert resp.status_code == 400
+        assert resp.json()["detail"] == detail
+        assert not _spawn
+        assert not _briefs_dir.exists()
+
+    def test_failed_spawn_discards_its_brief(
+        self, webapp_client, _bypass_gate, monkeypatch, _briefs_dir
+    ):
+        from app.webapp.routers import board as board_router
+
+        def boom(*a, **k):
+            raise OSError("no such executable")
+
+        monkeypatch.setattr(board_router, "spawn_claude_session", boom)
+        client, _, overrides = webapp_client
+        resp = self._start(client, overrides, brief="scope: just #42")
+        assert resp.status_code == 400
+        assert list(_briefs_dir.glob("*.md")) == []
+
+    def test_audit_records_size_never_content(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        from app.webapp.routers import board as board_router
+        client, _, overrides = webapp_client
+        brief = "SECRET-SCOPE-MARKER only #42"
+        assert self._start(client, overrides, brief=brief).status_code == 200
+        call = board_router.audit.audit_event.call_args
+        assert call.kwargs["brief_chars"] == len(brief)
+        assert "SECRET-SCOPE-MARKER" not in repr(board_router.audit.mock_calls)
 
 
 # ---------------------------------------------- chief-managed marking (#474)
