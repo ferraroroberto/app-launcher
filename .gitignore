@@ -41,6 +41,8 @@ webapp/certificates/
 webapp/cloudflared.yml
 webapp/terminal-themes.json
 webapp/sessions/
+# Board issue-start dispatch briefs (issue #1114) — launcher-written, TTL-pruned
+webapp/briefs/
 webapp/jobs/
 # durable chief-conversation pointer (issue #675) — machine-written state
 webapp/chief-pointer.json

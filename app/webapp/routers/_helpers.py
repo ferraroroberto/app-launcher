@@ -443,6 +443,7 @@ async def audit_session_start_and_maybe_mirror(
     skill: Optional[str] = None,
     kind: str = "pty",
     resume_sid: Optional[str] = None,
+    brief_chars: Optional[int] = None,
 ) -> None:
     """Audit a freshly spawned PTY session, then mirror it to a PC terminal
     window if appropriate (issue #241) — the shared tail every PTY-launch
@@ -486,6 +487,9 @@ async def audit_session_start_and_maybe_mirror(
         # or the native picker, where no id was chosen up front. None for a
         # caller that has no such concept, and dropped from the line.
         resume_sid=resume_sid,
+        # A Board issue-start dispatch brief (#1114): its size only, never
+        # its content. None (no brief) is dropped from the line.
+        brief_chars=brief_chars,
         client=client_ip(request),
     )
     await audit_off_loop(
