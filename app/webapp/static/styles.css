@@ -3293,17 +3293,6 @@ body.terminal-open {
   justify-content: center;
   gap: 6px;
 }
-.lifeos-convo-resume { padding-inline: 14px; }
-/* Not a disabled button: a phone has no hover to explain one, and a capture
-   with no stored session id is a normal state for a quarter of the archive. */
-.lifeos-convo-nosession {
-  font-size: var(--font-caption);
-  color: var(--muted);
-  background: var(--card-off);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  padding: 4px 10px;
-}
 /* The one lifecycle block — glyph, one-line reason, at most one Retry. */
 #lifeOsConvoState {
   display: flex;
@@ -3314,6 +3303,35 @@ body.terminal-open {
 }
 #lifeOsConvoState .icon { font-size: var(--icon-feature); }
 .lifeos-convo-retry { min-width: 96px; }
+
+/* ---------- conversation viewer (#1119) ---------- */
+/* One capture, read-only, in the Chat pane's own cards. A reading surface
+   like the Browse viewer, so the app theme rather than --term-bg; layered
+   over #lifeOsConvos (290) and under the raw document browser (300), which
+   its ⋮ "Open raw" opens on top of it. */
+#lifeOsConvoViewer.terminal-overlay { background: var(--bg); z-index: 295; }
+/* The reason Resume is unavailable, in the chat-note band under the bar. */
+#lifeOsViewerNote { border-bottom: 1px solid var(--line-muted); }
+#lifeOsViewerState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  align-self: start;
+}
+#lifeOsViewerState .icon { font-size: var(--icon-feature); }
+/* Adjacent-cluster rule doesn't apply (it stands alone), but it is still a
+   pointer target: real 44px geometry, like the Conversations Retry. */
+.lifeos-viewer-raw {
+  min-width: 96px;
+  min-height: var(--row-sm);
+  font: inherit;
+}
+.lifeos-viewer-trunc { padding: 0 14px; }
+/* The row's one remaining control reads as a label, not a bare glyph. */
+/* `font: inherit` because a <button> otherwise takes the UA's font, which
+   rendered this label in a serif face on WebKit. */
+.lifeos-convo-read { padding-inline: 14px; font: inherit; }
 
 /* ---------- Board tab (issue #300 / #164) ---------- */
 /* Dispatch bar (#302): speak/type a goal → a fresh /issue-* session.

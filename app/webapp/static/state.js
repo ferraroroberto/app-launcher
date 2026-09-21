@@ -200,6 +200,14 @@ export const els = {
   lifeOsConvoQuery: document.getElementById('lifeOsConvoQuery'),
   lifeOsConvoList: document.getElementById('lifeOsConvoList'),
   lifeOsConvoState: document.getElementById('lifeOsConvoState'),
+  lifeOsConvoViewer: document.getElementById('lifeOsConvoViewer'),
+  lifeOsViewerBack: document.getElementById('lifeOsViewerBack'),
+  lifeOsViewerTitle: document.getElementById('lifeOsViewerTitle'),
+  lifeOsViewerMenu: document.getElementById('lifeOsViewerMenu'),
+  lifeOsViewerNote: document.getElementById('lifeOsViewerNote'),
+  lifeOsViewerBody: document.getElementById('lifeOsViewerBody'),
+  lifeOsViewerList: document.getElementById('lifeOsViewerList'),
+  lifeOsViewerState: document.getElementById('lifeOsViewerState'),
 
   // Chat pane of the session overlay (#953 transcript, #982 mode)
   chatPane: document.getElementById('chatPane'),

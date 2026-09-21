@@ -596,6 +596,50 @@ def _open_convos_model_menu(page: Page, value: str) -> Locator:
     return option
 
 
+_FAKE_TRANSCRIPT = {
+    "path": ".claude/skills/journal-daily/conversations/"
+            "2026-08-01-0900-ferry-booking.md",
+    "name": "2026-08-01-0900-ferry-booking.md",
+    "available": True,
+    "agent": "claude",
+    "truncated": False,
+    "entries": [
+        {"kind": "user", "text": "book the ferry for Friday",
+         "offset": 0, "timestamp": None, "truncated": False},
+        {"kind": "assistant", "text": "Booked the **07:40**.",
+         "offset": 120, "timestamp": None, "truncated": False},
+    ],
+}
+
+
+def _mock_transcript(page: Page, body: dict = None) -> None:
+    """Stub the viewer's parsed read (#1119). Synthetic turns only — the real
+    life-os checkout holds private conversations and is never read here."""
+    page.route(
+        re.compile(r".*/api/life-os/file/transcript.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(body if body is not None else _FAKE_TRANSCRIPT),
+        ),
+    )
+
+
+def _open_viewer(page: Page, index: int = 0) -> Locator:
+    """Expand conversation row ``index`` and open it in the transcript viewer."""
+    rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows.nth(index).locator(".lifeos-convo-head").click()
+    rows.nth(index).locator(".lifeos-convo-read").click()
+    expect(page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
+    return page.locator("#lifeOsViewerList")
+
+
+def _open_viewer_menu(page: Page) -> Locator:
+    page.locator("#lifeOsViewerMenu").click()
+    menu = page.locator("#lifeOsConvoViewer .row-menu")
+    expect(menu).to_be_visible()
+    return menu
+
+
 def _open_conversations(page: Page, base_url: str) -> None:
     """Open the Life OS tab and the per-skill Conversations view."""
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -768,36 +812,42 @@ def test_life_os_convos_bar_buttons_match_model_selector(
 def test_life_os_unresumable_row_says_so(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727: a capture with no stored session id is readable but cannot be
-    reopened. A phone has no hover, so the reason is a visible chip rather
-    than a disabled button with a tooltip — and roughly a quarter of the
-    archive is in this state, so it must not read as breakage."""
+    """#727, re-homed in the viewer (#1119): a capture with no stored session
+    id is readable but cannot be reopened. A phone has no hover, so the reason
+    is a visible note under the bar rather than only a disabled menu row's
+    tooltip — and roughly a quarter of the archive is in this state, so it
+    must not read as breakage."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
     _open_conversations(authed_page, base_url)
 
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
-    rows.nth(1).locator(".lifeos-convo-head").click()
-    detail = rows.nth(1).locator(".lifeos-convo-detail")
-    expect(detail).to_be_visible()
-    expect(detail.locator(".lifeos-convo-nosession")).to_be_visible()
-    expect(detail.locator(".lifeos-convo-resume")).to_have_count(0)
+    _open_viewer(authed_page, 1)
+    note = authed_page.locator("#lifeOsViewerNote")
+    expect(note).to_be_visible()
+    expect(note).to_contain_text("readable only")
+    _open_viewer_menu(authed_page)
+    expect(authed_page.locator(".lifeos-viewer-resume")).to_have_count(0)
+    authed_page.keyboard.press("Escape")
+    authed_page.locator("#lifeOsViewerBack").click()
 
-    # The resumable row is the contrast: it offers the action.
-    rows.first.locator(".lifeos-convo-head").click()
-    expect(
-        rows.first.locator(".lifeos-convo-detail .lifeos-convo-resume")
-    ).to_be_visible()
+    # The resumable row is the contrast: it offers the action, and says
+    # nothing about why it could not.
+    _open_viewer(authed_page, 0)
+    expect(authed_page.locator("#lifeOsViewerNote")).to_be_hidden()
+    _open_viewer_menu(authed_page)
+    expect(authed_page.locator(".lifeos-viewer-resume")).to_be_enabled()
 
 
 def test_life_os_conversation_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727, the point of the whole feature: ↺ on a row posts that exact
+    """#727, the point of the whole feature: Resume posts that exact
     ``resume_sid`` — no native picker — honouring the Skills header's
     Detached toggle and model combo like every other Life OS launch."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
 
     def _fulfill_launch(route):
         route.fulfill(
@@ -866,14 +916,14 @@ def test_life_os_conversation_resume_posts_the_session_id(
     expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
         "data-value", "claude:opus"
     )
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
-    rows.first.locator(".lifeos-convo-head").click()
+    _open_viewer(authed_page, 0)
+    _open_viewer_menu(authed_page)
     with authed_page.expect_request(
         re.compile(
             r".*/api/life-os/skills/journal-daily/conversations/launch$"
         )
     ) as request_info:
-        rows.first.locator(".lifeos-convo-resume").click()
+        authed_page.locator(".lifeos-viewer-resume").click()
 
     payload = _json.loads(request_info.value.post_data or "")
     assert payload == {
@@ -1054,9 +1104,72 @@ def test_life_os_search_unavailable_is_not_an_error(
     expect(authed_page.locator("#toast")).to_be_hidden()
 
 
+def test_capture_opens_in_the_chat_transcript_view(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1119: the row's book icon opens the capture in the session overlay's
+    own Chat renderer — real turn cards, the user's prompt as plain text and
+    the reply through markdown — not the raw document viewer. One surface,
+    two mounts (#979), so the assertion is on that renderer's own classes."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
+    _open_conversations(authed_page, base_url)
+
+    viewer_list = _open_viewer(authed_page, 0)
+    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
+    turns = viewer_list.locator(".tr-turn")
+    expect(turns).to_have_count(2)
+    expect(turns.first).to_have_class(re.compile(r"\btr-user\b"))
+    expect(turns.first).to_contain_text("book the ferry for Friday")
+    expect(turns.nth(1)).to_have_class(re.compile(r"\btr-assistant\b"))
+    # The reply goes through the markdown renderer; the prompt does not.
+    expect(turns.nth(1).locator(".tr-md strong")).to_have_text("07:40")
+    # Read-only: no composer anywhere in this overlay.
+    expect(authed_page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
+    # The raw viewer is still one tap away, and lands back here on close.
+    _open_viewer_menu(authed_page)
+    expect(authed_page.locator(".lifeos-viewer-groups")).to_be_disabled()
+    authed_page.locator(".lifeos-viewer-open-raw").click()
+    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
+    authed_page.locator("#lifeOsDocClose").click()
+    expect(authed_page.locator("#lifeOsBrowser")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible()
+    authed_page.locator("#lifeOsViewerBack").click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible()
+
+
+def test_unparseable_capture_falls_back_to_the_raw_view(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1119: a capture the parser can make nothing of says so in one line and
+    offers the raw file — never a blank pane, and never an empty conversation
+    passed off as a read one."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page, {
+        "path": _FAKE_TRANSCRIPT["path"], "name": _FAKE_TRANSCRIPT["name"],
+        "available": False, "reason": "no_turns", "agent": "", "entries": [],
+    })
+    _open_conversations(authed_page, base_url)
+
+    viewer_list = _open_viewer(authed_page, 0)
+    expect(viewer_list.locator(".tr-turn")).to_have_count(0)
+    state = authed_page.locator("#lifeOsViewerState")
+    expect(state).to_be_visible()
+    expect(state).to_contain_text("no turns this view can read")
+    # Passive status belongs beside the surface, not in a toast.
+    expect(authed_page.locator("#toast")).to_be_hidden()
+    state.locator(".lifeos-viewer-raw").click()
+    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
+
+
 @pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:opus")])
 def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_url: str, source: str, target: str, browser_name: str) -> None:
-    """Source-aware actions refresh without collapsing a row; handoff is explicit."""
+    """Source-aware actions, now in the viewer menu (#1119); handoff is explicit.
+
+    The menu re-resolves every row on open, so the model chosen in the
+    Conversations bar (under the viewer) decides what it offers."""
     page = authed_page
     _mock_skills(page)
     row = dict(_FAKE_CONVERSATIONS["conversations"][0], agent=source,
@@ -1066,6 +1179,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     unavailable = dict(unknown, topic="Unavailable model source", agent="codex",
                        resume_reason="Codex CLI is unavailable on this computer.")
     _mock_conversations(page, dict(_FAKE_CONVERSATIONS, conversations=[row, unknown, unavailable]))
+    _mock_transcript(page)
     launches = []
     def launch(route):
         launches.append(_json.loads(route.request.post_data))
@@ -1077,36 +1191,49 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     page.locator("#lifeOsDetached").click()
     page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn").click()
     rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
-    rows.first.locator(".lifeos-convo-head").click()
-    detail = rows.first.locator(".lifeos-convo-detail")
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
     _open_convos_model_menu(page, source_choice).click()
-    expect(detail.locator(".lifeos-convo-resume")).to_be_enabled()
-    expect(detail).to_contain_text("Source: " + source)
-    expect(detail.locator(".lifeos-convo-handoff")).to_have_count(0)
+    # Matching provider: Resume is live and there is nothing to hand off to.
+    _open_viewer(page, 0)
+    _open_viewer_menu(page)
+    expect(page.locator(".lifeos-viewer-resume")).to_be_enabled()
+    expect(page.locator(".lifeos-viewer-handoff")).to_have_count(0)
+    page.keyboard.press("Escape")
+    page.locator("#lifeOsViewerBack").click()
+    rows.first.locator(".lifeos-convo-head").click()   # collapse it again
+    expect(rows.first.locator(".lifeos-convo-detail")).to_contain_text("Source: " + source)
+    # The other two rows carry their own reasons, each said in its viewer.
+    for index, fragment in ((1, "Native resume is not verified"),
+                            (2, "CLI is unavailable")):
+        _open_viewer(page, index)
+        expect(page.locator("#lifeOsViewerNote")).to_contain_text(fragment)
+        page.locator("#lifeOsViewerBack").click()
+        rows.nth(index).locator(".lifeos-convo-head").click()
+
+    # Other provider: Resume greys out with its reason, handoff appears.
     _open_convos_model_menu(page, target).click()
-    expect(detail).to_be_visible()
-    expect(detail.locator(".lifeos-convo-resume")).to_be_disabled()
-    expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()
-    rows.nth(1).locator(".lifeos-convo-head").click()
-    expect(rows.nth(1)).to_contain_text("Native resume is not verified")
-    rows.nth(2).locator(".lifeos-convo-head").click()
-    expect(rows.nth(2)).to_contain_text("CLI is unavailable")
+    _open_viewer(page, 0)
+    expect(page.locator("#lifeOsViewerNote")).to_contain_text("Select a")
+    _open_viewer_menu(page)
+    expect(page.locator(".lifeos-viewer-resume")).to_be_disabled()
+    expect(page.locator(".lifeos-viewer-handoff")).to_be_visible()
     # Both projections and themes remain legible and inside the viewport.
     for theme in ("light", "dark"):
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
-        expect(detail.locator(".lifeos-convo-handoff")).to_be_visible()
-        assert page.locator("#lifeOsConvos").evaluate("el => el.scrollWidth <= el.clientWidth")
+        expect(page.locator(".lifeos-viewer-handoff")).to_be_visible()
+        assert page.locator("#lifeOsConvoViewer").evaluate("el => el.scrollWidth <= el.clientWidth")
     messages = []
     def cancel(dialog):
         messages.append(dialog.message)
         dialog.dismiss()
     page.once("dialog", cancel)
-    detail.locator(".lifeos-convo-handoff").click()
+    page.locator(".lifeos-viewer-handoff").click()
     assert not launches
     assert "NEW conversation" in messages[0] and re.search(r"24[,.]000", messages[0])
+    _open_viewer_menu(page)
     page.once("dialog", lambda dialog: dialog.accept())
-    detail.locator(".lifeos-convo-handoff").click()
+    page.locator(".lifeos-viewer-handoff").click()
+    expect(page.locator("#lifeOsConvoViewer")).to_be_hidden()
     expect(page.locator("#lifeOsConvos")).to_be_hidden()
     assert len(launches) == 1
     payload = launches[0]

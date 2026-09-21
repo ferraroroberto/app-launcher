@@ -311,6 +311,11 @@
   <symbol id="i-square" viewBox="0 0 24 24" fill="none">
     <rect width="18" height="18" x="3" y="3" rx="2" />
   </symbol>
+  <symbol id="i-info" viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 16v-4" />
+    <path d="M12 8h.01" />
+  </symbol>
   <symbol id="i-hourglass" viewBox="0 0 24 24" fill="none">
     <path d="M5 22h14" />
     <path d="M5 2h14" />
@@ -1301,6 +1306,29 @@
         </div>
         <ul id="lifeOsConvoList" class="lifeos-convo-list" aria-label="Conversations"></ul>
         <div id="lifeOsConvoState" class="empty" role="status" aria-live="polite" hidden></div>
+      </div>
+    </div>
+
+    <!-- One captured conversation, read-only (#1119): the same chat-style
+         cards the session overlay's Chat pane renders, over a capture parsed
+         server-side (/api/life-os/file/transcript) — one transcript surface,
+         two mounts (#979). Opened by the 📖 on a Conversations row, over that
+         view; every action lives in the bar's one ⋮ menu (life-os-viewer.js),
+         and there is deliberately no composer. -->
+    <div id="lifeOsConvoViewer" class="terminal-overlay" hidden>
+      <div class="terminal-bar">
+        <button id="lifeOsViewerBack" type="button" class="term-btn" title="Back to conversations" aria-label="Back to conversations"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+        <span id="lifeOsViewerTitle" class="terminal-title">conversation</span>
+        <div class="terminal-bar-actions">
+          <button id="lifeOsViewerMenu" type="button" class="term-btn" title="Conversation actions" aria-label="Conversation actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
+        </div>
+      </div>
+      <!-- Why Resume is off for this capture, said on screen: a phone has no
+           hover to read a disabled menu row's tooltip (#727's chip, moved). -->
+      <div id="lifeOsViewerNote" class="chat-note" hidden></div>
+      <div id="lifeOsViewerBody" class="transcript-body">
+        <ol id="lifeOsViewerList" class="transcript-list" aria-label="Conversation transcript"></ol>
+        <div id="lifeOsViewerState" class="empty" role="status" aria-live="polite" hidden></div>
       </div>
     </div>
 

@@ -681,7 +681,12 @@ function applyLive(settled, pending, toolErrors) {
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
-function renderEntries(entries, toolErrors) {
+// Exported for the Life OS conversation viewer (#1119), which mounts this
+// same renderer over a parsed capture rather than growing a second one
+// (#979). Turn cards and run groups carry no reference to the live `view`,
+// except a truncated turn's copy upgrade, and a capture's turns are never
+// truncated.
+export function renderEntries(entries, toolErrors) {
   const frag = document.createDocumentFragment();
   let run = [];
   function flush() {

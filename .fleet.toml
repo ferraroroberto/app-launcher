@@ -36,10 +36,10 @@ disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "da39e1b175
 home_head = { src = "app/webapp/static/_vendored/home-head", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "663347fa2adb07a268bcb7e4eb44ac3ae4a91302", dest = "app/webapp/static/_vendored/nav" }
 # icons is deliberately NOT declared (#1004): our icons-sprite.html is the
-# scaffold's 85 symbols plus 6 app-launcher-only additions (i-bell, i-copy,
-# i-ellipsis-vertical, i-eye-off, i-messages-square, i-power). A [vendored]
-# entry asserts byte-for-byte provenance, so declaring it would let
-# /propagate-vendored overwrite the sprite and delete those six. The other
+# scaffold's 85 symbols plus 7 app-launcher-only additions (i-bell, i-copy,
+# i-ellipsis-vertical, i-eye-off, i-info, i-messages-square, i-power). A
+# [vendored] entry asserts byte-for-byte provenance, so declaring it would let
+# /propagate-vendored overwrite the sprite and delete those seven. The other
 # six components (switch plus the five above) are byte-identical to the
 # scaffold and are declared; tests/test_vendored_manifest.py pins that.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }

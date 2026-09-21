@@ -1,6 +1,8 @@
 """Life OS private-content file browser — read, delete and rename, path-jailed.
 
     GET    /api/life-os/file?path=…            → file content (Tailscale + passkey)
+    GET    /api/life-os/file/transcript?path=… → a conversation log as Chat
+                                                 transcript entries (#1119)
     DELETE /api/life-os/file?path=…            → delete one conversation log
     POST   /api/life-os/file/rename            → rename one conversation log
 
@@ -29,7 +31,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, life_os_index
+from src import audit, life_os_capture, life_os_index
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
 
@@ -46,6 +48,10 @@ _TEXT_SUFFIXES = frozenset(
 )
 # Cap a single file read so a stray huge file can't blow up the phone.
 _MAX_FILE_BYTES = 256 * 1024
+# The transcript view parses the whole conversation rather than showing a
+# screenful of it, so it reads further than the raw viewer; past this the
+# tail is dropped and the response says so.
+_MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024
 # Directory names never walked for the browser (VCS / caches).
 _BROWSE_SKIP_DIRS = frozenset({".git", "__pycache__", ".venv", "node_modules"})
 
@@ -103,6 +109,51 @@ async def get_file(request: Request) -> Dict[str, Any]:
         "lifeos_read", path=rel, bytes=len(raw), client=client_ip(request)
     )
     return {"path": rel, "name": resolved.name, "content": content, "truncated": truncated}
+
+
+@router.get("/api/life-os/file/transcript")
+async def get_file_transcript(request: Request) -> Dict[str, Any]:
+    """One conversation log as Chat-pane transcript entries (#1119).
+
+    Same gate and jail as the raw read above (the ``/api/life-os/file/``
+    prefix is passkey-gated), narrowed like delete/rename to real logs under
+    a skill's ``conversations/``. A capture with no parseable speaker turn
+    answers ``available: false`` with ``reason: "no_turns"`` so the viewer
+    can say so and offer the raw file instead of an empty conversation.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    rel = request.query_params.get("path", "")
+    resolved = resolve_within(Path(cfg.life_os_dir), rel)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="path escapes life_os_dir")
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="file not found")
+    if not _is_conversation_file(Path(cfg.life_os_dir), resolved):
+        raise HTTPException(
+            status_code=403, detail="only conversation logs have a transcript view"
+        )
+    try:
+        with resolved.open("rb") as handle:
+            raw = handle.read(_MAX_TRANSCRIPT_BYTES + 1)
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    truncated = len(raw) > _MAX_TRANSCRIPT_BYTES
+    parsed = life_os_capture.parse_capture(
+        raw[:_MAX_TRANSCRIPT_BYTES].decode("utf-8", errors="replace")
+    )
+    await audit_off_loop(
+        audit.audit_event,
+        "lifeos_read", path=rel, bytes=len(raw), view="transcript",
+        client=client_ip(request),
+    )
+    base = {"path": rel, "name": resolved.name, "agent": parsed["agent"]}
+    if not parsed["entries"]:
+        logger.info("ℹ️ Life OS capture has no parseable turns: %s", resolved.name)
+        return {**base, "available": False, "reason": "no_turns", "entries": []}
+    return {
+        **base, "available": True, "entries": parsed["entries"],
+        "truncated": truncated,
+    }
 
 
 @router.delete("/api/life-os/file")

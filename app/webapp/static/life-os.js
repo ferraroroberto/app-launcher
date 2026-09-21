@@ -19,6 +19,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { ensureTerminalToken } from './webauthn.js';
+import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
 
 // The Skills-summary launch-model dropdown controller ({setValue, getValue}),
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
@@ -360,11 +361,13 @@ function renderFileList(files) {
   });
 }
 
+// Resolves true when the log is gone — the transcript viewer (#1119) closes
+// itself on that, since what it was showing no longer exists.
 async function deleteFile(f) {
   if (!confirm(
     'Delete this conversation log?\n\n' + f.name +
     '\n\nThe file is removed from disk — this cannot be undone.'
-  )) return;
+  )) return false;
   try {
     await jsonApi(
       '/api/life-os/file?path=' + encodeURIComponent(f.path),
@@ -373,8 +376,10 @@ async function deleteFile(f) {
     toast('Deleted ' + f.name, 'good', { icon: 'trash-2' });
     closeDoc();             // in case the deleted file was the open one
     await refreshAfterLogChange();
+    return true;
   } catch (exc) {
     apiFailToast('Delete failed', exc);
+    return false;
   }
 }
 
@@ -407,9 +412,9 @@ async function renameFile(f) {
     'lower-cased):',
     ''
   );
-  if (proposed === null) return;            // cancelled
+  if (proposed === null) return false;      // cancelled
   const slug = slugify(proposed);
-  if (!slug) { toast('Name cannot be empty', 'error'); return; }
+  if (!slug) { toast('Name cannot be empty', 'error'); return false; }
   try {
     const body = await jsonApi('/api/life-os/file/rename', {
       method: 'POST',
@@ -419,8 +424,10 @@ async function renameFile(f) {
     toast('Renamed to ' + (body.name || slug), 'good', { icon: 'pencil' });
     closeDoc();             // name (and path) changed — back to the list
     await refreshAfterLogChange();
+    return true;
   } catch (exc) {
     apiFailToast('Rename failed', exc);
+    return false;
   }
 }
 
@@ -555,6 +562,7 @@ export function openConvos(skill) {
 }
 
 function closeConvos() {
+  closeConvoViewer();   // it is layered over this view — never outlive it
   convoView = null;
   window.clearTimeout(convoQueryTimer);
   els.lifeOsConvos.hidden = true;
@@ -770,8 +778,8 @@ function renderConvoRows(rows, opts) {
   // Set before sorting: sortedConvoRows() reads it to pick the ordering.
   convoView.searching = !!(opts && opts.search);
   convoView.sourceRows = rows.slice();
-  // Store the sorted order: refreshConvoActions() pairs DOM nodes with
-  // convoView.rows by index, so the two must not drift apart.
+  // Store the sorted order: a row hands its own object to the viewer, and
+  // callers read this array expecting the order actually rendered.
   convoView.rows = sortedConvoRows(rows);
   // The label depends on which list is on screen, so it is re-synced on
   // every render, not only on a tap.
@@ -865,91 +873,68 @@ function appendConvoField(host, label, value) {
   host.appendChild(p);
 }
 
-function convoActions(r) {
-  const wrap = document.createElement('div');
-  wrap.className = 'lifeos-convo-actions';
-
+// Whether this row can be resumed / handed off with the model currently
+// selected, and why not when it can't (#727's rules, unchanged). Asked by
+// the viewer's ⋮ menu (#1119) on every open, so it always reflects the
+// model currently chosen in the Conversations bar.
+function convoActionState(r) {
   const target = lifeOsModel().split(':')[0];
   const matches = target === r.agent;
   const provider = r.agent === 'codex' ? 'Codex' : 'Claude';
-  if (r.resumable && r.skill) {
-    const resumeBtn = document.createElement('button');
-    resumeBtn.type = 'button';
-    resumeBtn.className = 'button-ghost lifeos-convo-resume' + (matches ? ' accent-btn' : '');
-    resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume in ' + provider;
-    resumeBtn.disabled = !matches;
-    resumeBtn.addEventListener('click', function () { resumeConversation(r, 'resume'); });
-    wrap.appendChild(resumeBtn);
-  }
-  const reason = !r.resumable ? (r.resume_reason || 'No stored session; readable only.') :
-    (!matches ? 'Select a ' + provider + ' model to resume this source.' : '');
-  if (reason) {
-    const chip = document.createElement('span');
-    chip.className = 'lifeos-convo-nosession';
-    chip.textContent = reason;
-    wrap.appendChild(chip);
-  }
-  if (r.handoff_available && r.skill && !matches && ['claude', 'codex'].includes(target)) {
-    const handoffBtn = document.createElement('button');
-    handoffBtn.type = 'button';
-    handoffBtn.className = 'button-ghost accent-btn lifeos-convo-handoff';
-    handoffBtn.textContent = 'Start new in ' + (target === 'codex' ? 'Codex' : 'Claude');
-    handoffBtn.addEventListener('click', function () { resumeConversation(r, 'handoff'); });
-    wrap.appendChild(handoffBtn);
-  }
+  return {
+    provider: provider,
+    canResume: !!(r.resumable && r.skill),
+    resumeEnabled: matches,
+    reason: !r.resumable
+      ? (r.resume_reason || 'No stored session; readable only.')
+      : (!matches ? 'Select a ' + provider + ' model to resume this source.' : ''),
+    canHandoff: !!(r.handoff_available && r.skill && !matches &&
+      ['claude', 'codex'].includes(target)),
+    handoffTo: target === 'codex' ? 'Codex' : 'Claude',
+  };
+}
 
-  if (r.path) {
-    const openBtn = document.createElement('button');
-    openBtn.type = 'button';
-    openBtn.className = 'button-ghost';
-    openBtn.innerHTML = icon('book-open');
-    openBtn.title = 'Open the raw capture';
-    openBtn.setAttribute('aria-label', 'Open the raw capture');
-    openBtn.addEventListener('click', function () { openCapture(r); });
-    wrap.appendChild(openBtn);
+// The callbacks the viewer's ⋮ menu drives (life-os-viewer.js owns the
+// overlay, this module owns the actions — so neither imports the other).
+const CONVO_VIEWER_ACTIONS = {
+  state: convoActionState,
+  resume: function (r) { resumeConversation(r, 'resume'); },
+  handoff: function (r) { resumeConversation(r, 'handoff'); },
+  rename: function (r) { return renameFile({ path: r.path, name: r.file }); },
+  del: function (r) { return deleteFile({ path: r.path, name: r.file }); },
+  openRaw: openCapture,
+};
 
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'button-ghost';
-    delBtn.innerHTML = icon('trash-2');
-    delBtn.title = 'Delete this conversation log';
-    delBtn.setAttribute('aria-label', 'Delete this conversation log');
-    delBtn.addEventListener('click', function () {
-      deleteFile({ path: r.path, name: r.file });
-    });
-    wrap.appendChild(delBtn);
-
-    const renBtn = document.createElement('button');
-    renBtn.type = 'button';
-    renBtn.className = 'button-ghost';
-    renBtn.innerHTML = icon('pencil');
-    renBtn.title = 'Rename this conversation log';
-    renBtn.setAttribute('aria-label', 'Rename this conversation log');
-    renBtn.addEventListener('click', function () {
-      renameFile({ path: r.path, name: r.file });
-    });
-    wrap.appendChild(renBtn);
-  }
+// The row keeps one control: 📖 opens this conversation in the transcript
+// viewer (#1119). Resume / Start new / Rename / Delete / Open raw all moved
+// into that viewer's ⋮ menu, so a row is a thing you open, not a rail of
+// five decisions.
+function convoActions(r) {
+  const wrap = document.createElement('div');
+  wrap.className = 'lifeos-convo-actions';
+  if (!r.path) return wrap;
+  const openBtn = document.createElement('button');
+  openBtn.type = 'button';
+  openBtn.className = 'button-ghost lifeos-convo-read';
+  openBtn.innerHTML = icon('book-open') + ' Read';
+  openBtn.title = 'Read this conversation';
+  openBtn.setAttribute('aria-label', 'Read this conversation');
+  openBtn.addEventListener('click', function () {
+    openConvoViewer(r, CONVO_VIEWER_ACTIONS);
+  });
+  wrap.appendChild(openBtn);
   return wrap;
 }
 
-// Read one capture in the existing document viewer, layered over this view —
-// closing it comes straight back here, not to a file list we never loaded.
+// Read one capture *raw* in the existing document viewer, layered over the
+// transcript viewer — closing it comes straight back here, not to a file
+// list we never loaded.
 function openCapture(r) {
   captureOnlyDoc = true;
   els.lifeOsBrowserTitle.textContent = r.skill || 'conversation';
   els.lifeOsFileList.innerHTML = '';
   els.lifeOsBrowser.hidden = false;
   loadFile({ path: r.path, name: r.file, category: 'conversations' });
-}
-
-// Refresh only actions when the model changes, preserving expanded history rows.
-function refreshConvoActions() {
-  if (!convoView) return;
-  const actions = els.lifeOsConvoList.querySelectorAll('.lifeos-convo-actions');
-  actions.forEach(function (node, index) {
-    if (convoView.rows[index]) node.replaceWith(convoActions(convoView.rows[index]));
-  });
 }
 
 async function resumeConversation(r, action) {
@@ -1018,6 +1003,7 @@ export function wireLifeOs() {
   if (els.lifeOsConvosBack) {
     els.lifeOsConvosBack.addEventListener('click', closeConvos);
   }
+  wireConvoViewer();
   if (els.lifeOsConvoQuery) {
     els.lifeOsConvoQuery.addEventListener('input', onConvoQuery);
   }
@@ -1063,16 +1049,12 @@ export function wireLifeOs() {
   // wireModelCombo owns its open/close + the summary-tap guard.
   lifeOsModelCombo = wireModelCombo(
     document.getElementById('lifeOsModelCombo'), function (choice) {
-      if (lifeOsConvosModelCombo) {
-        lifeOsConvosModelCombo.setValue(choice);
-        refreshConvoActions();
-      }
+      if (lifeOsConvosModelCombo) lifeOsConvosModelCombo.setValue(choice);
     }
   );
   lifeOsConvosModelCombo = wireModelCombo(
     document.getElementById('lifeOsConvosModelCombo'), function (choice) {
       if (lifeOsModelCombo) lifeOsModelCombo.setValue(choice);
-      refreshConvoActions();
     }
   );
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live

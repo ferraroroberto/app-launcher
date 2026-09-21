@@ -1714,6 +1714,111 @@ class TestConversationGate:
         assert resp.status_code == 403
 
 
+class TestConversationTranscript:
+    """/api/life-os/file/transcript (#1119) — the viewer's parsed read.
+
+    Same gate and jail as the raw file read, narrowed to conversation logs.
+    Captures written here are synthetic; the real checkout is never read.
+    """
+
+    _CAPTURE = (
+        'journal-daily #1\n\n'
+        f'<!-- capture sid="{RESUMABLE_SID}" agent="claude" updated="synthetic" -->\n\n'
+        '**You**: book the ferry\n\n'
+        '**Claude**: Booked the 07:40.\n'
+    )
+
+    def _rel(self, life_os, name="2026-08-01-0900-ferry-booking.md"):
+        return f".claude/skills/journal-daily/conversations/{name}"
+
+    @pytest.fixture
+    def _loopback(self, monkeypatch):
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware, "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+
+    def test_refused_off_tailnet(self, life_os_client):
+        # No _loopback fixture here: the gate is the point of this one.
+        client, _, overrides = life_os_client
+        rel = self._rel(overrides["life_os_dir"])
+        assert client.get(f"/api/life-os/file/transcript?path={rel}").status_code == 403
+
+    def test_refused_over_cloudflare(self, life_os_client, _loopback):
+        client, _, overrides = life_os_client
+        rel = self._rel(overrides["life_os_dir"])
+        resp = client.get(
+            f"/api/life-os/file/transcript?path={rel}",
+            headers={"Cf-Ray": "abc-123"},
+        )
+        assert resp.status_code == 403
+        assert "public tunnel" in resp.json()["detail"].lower()
+
+    def test_returns_chat_entries(self, life_os_client, _loopback):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._rel(life_os)
+        (life_os / rel).write_text(self._CAPTURE, encoding="utf-8")
+        resp = client.get(f"/api/life-os/file/transcript?path={rel}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["available"] is True and body["agent"] == "claude"
+        assert [e["kind"] for e in body["entries"]] == ["user", "assistant"]
+        assert body["entries"][0]["text"] == "book the ferry"
+        assert body["truncated"] is False
+
+    def test_unparseable_capture_is_unavailable_not_empty(
+        self, life_os_client, _loopback
+    ):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._rel(life_os, "2026-06-01-1917-trial.md")   # "trial log"
+        body = client.get(f"/api/life-os/file/transcript?path={rel}").json()
+        assert body["available"] is False and body["reason"] == "no_turns"
+        assert body["entries"] == []
+
+    def test_path_jail_rejects_traversal(self, life_os_client, _loopback):
+        client, _, _ = life_os_client
+        resp = client.get(
+            "/api/life-os/file/transcript?path=../../../../etc/hosts"
+        )
+        assert resp.status_code == 400
+        assert "escape" in resp.json()["detail"].lower()
+
+    def test_refuses_a_file_outside_conversations(self, life_os_client, _loopback):
+        # Reading arbitrary private knowledge through the transcript route
+        # would widen the raw viewer's own narrow delete/rename guard.
+        client, _, _ = life_os_client
+        resp = client.get(
+            "/api/life-os/file/transcript?path=identity/who-i-am.md"
+        )
+        assert resp.status_code == 403
+        assert "conversation logs" in resp.json()["detail"]
+
+    def test_missing_file_is_404(self, life_os_client, _loopback):
+        client, _, _ = life_os_client
+        resp = client.get(
+            "/api/life-os/file/transcript"
+            "?path=.claude/skills/journal-daily/conversations/nope.md"
+        )
+        assert resp.status_code == 404
+
+    def test_oversized_capture_reports_truncation(
+        self, life_os_client, _loopback, monkeypatch
+    ):
+        from app.webapp.routers import life_os_files
+        monkeypatch.setattr(life_os_files, "_MAX_TRANSCRIPT_BYTES", 120)
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        rel = self._rel(life_os)
+        (life_os / rel).write_text(
+            "**You**: " + "x" * 400 + "\n", encoding="utf-8"
+        )
+        body = client.get(f"/api/life-os/file/transcript?path={rel}").json()
+        assert body["available"] is True and body["truncated"] is True
+
+
 class TestSourceHistoryRegression:
     def test_unknown_uuid_cannot_resume(self, life_os_client, monkeypatch):
         from app.webapp import middleware
