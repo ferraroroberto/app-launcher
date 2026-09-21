@@ -378,7 +378,6 @@ export const els = {
   runningAppsEmpty: document.getElementById('runningAppsEmpty'),
   statusReadout: document.getElementById('statusReadout'),
   buildReadout: document.getElementById('buildReadout'),
-  spikeVoiceLink: document.getElementById('spikeVoiceLink'),
 
   scanDialog: document.getElementById('scanDialog'),
   scanResults: document.getElementById('scanResults'),

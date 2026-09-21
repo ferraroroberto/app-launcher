@@ -180,8 +180,8 @@ prefix     = "app/webapp/static/"
 extensions = ["svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "avif", "woff", "woff2", "ttf", "eot", "otf", "webmanifest"]
 label      = "static-asset"
 # A vendored HTML *fragment* (e.g. the icons sprite) is pure markup the smoke
-# suite loads, with no behaviour of its own. Non-vendored .html (index.html,
-# spike pages) are real app pages and fall through to full below.
+# suite loads, with no behaviour of its own. Non-vendored .html (index.html)
+# is a real app page and falls through to full below.
 [[e2e.rule]]
 tier       = "static"
 prefix     = "app/webapp/static/_vendored/"

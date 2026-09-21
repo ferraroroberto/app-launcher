@@ -57,38 +57,6 @@ async def index(request: Request) -> HTMLResponse:
     )
 
 
-@router.get("/spike/voice-loop")
-async def spike_voice_loop(request: Request) -> HTMLResponse:
-    """De-risking spike (#246): a hands-free voice-loop prototype.
-
-    Served through the same ``rewrite_index_html`` + no-cache path as ``/`` so
-    its module script picks up the asset hash (and never serves stale across
-    builds). Bearer-gated like every page (``?token=`` accepted); the page
-    bootstraps the passkey terminal token itself.
-
-    Throwaway by design, but **retained**: the ``spike-voice-loop.*`` set is
-    deleted once a hands-free conversation mode exists **outside** that set —
-    that is, when re-arm (narration end returns to listening with no tap),
-    barge-in (sustained speech cuts playback) and a conversation-mode entry
-    point the user can open all live in shipped app code. The condition names
-    the artifact, not a ticket: an issue closing never satisfies it, and
-    neither does dictation (``voice.js``) or read-aloud
-    (``terminal-readaloud.js``), which are one-way and already shipped. The
-    decision lives in **one** place — issue #1054 — and the PR that closes it
-    is the PR that deletes the set. See ``docs/voice-loop-spike.md`` for the
-    spike's findings.
-    """
-    page = STATIC_DIR / "spike-voice-loop.html"
-    if not page.exists():
-        raise HTTPException(status_code=404, detail="voice-loop spike page missing")
-    asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
-    stamped = rewrite_index_html(page.read_text(encoding="utf-8"), asset_hashes)
-    return HTMLResponse(
-        content=stamped,
-        headers={"Cache-Control": "no-cache, must-revalidate"},
-    )
-
-
 @router.get("/api/version")
 async def version(request: Request) -> Dict[str, Any]:
     """Build identity: this webapp process's own (stable, cached at module
