@@ -13,11 +13,12 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, authHeaders, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
+import { ensureTerminalToken } from './webauthn.js';
 
 // The Skills-summary launch-model dropdown controller ({setValue, getValue}),
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
@@ -208,9 +209,12 @@ async function launchRecap() {
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
+    // Passkey-gated like /api/board/issues/start (#1036): a spawn is
+    // terminal-grade, so the terminal token must ride along (cf. #997).
+    const tt = await ensureTerminalToken();
     const body = await jsonApi('/api/life-os/recap/launch', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify(payload),
     });
     toast(
@@ -242,11 +246,13 @@ async function launchSkill(s) {
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
+    // Passkey-gated, same as launchRecap (#1036).
+    const tt = await ensureTerminalToken();
     const body = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
         body: JSON.stringify(payload),
       }
     );

@@ -1189,3 +1189,91 @@ def _skill_order(page: Page) -> list:
     return page.locator("#lifeOsList li.lifeos-item").evaluate_all(
         "els => els.map(e => e.getAttribute('data-id'))"
     )
+
+
+# ---- #1036: both launch routes are passkey-gated, so the client must send
+# X-Terminal-Token. Loopback and the e2e autoboot bypass the server gate, so a
+# missing header would pass every server-facing test here — this pins the
+# client half directly (the #997 failure mode) by making ensureTerminalToken()
+# believe the gate is configured and the connection is not loopback, seeding a
+# cached token, and asserting it rides the launch POST.
+_SEEDED_TERMINAL_TOKEN = "synthetic-terminal-token"
+
+
+def _pretend_passkey_gate(page: Page) -> None:
+    page.add_init_script(
+        "localStorage.setItem('launcher.tt', %s);"
+        "localStorage.setItem('launcher.tt.exp', String(Date.now() + 3600000));"
+        % _json.dumps(_SEEDED_TERMINAL_TOKEN)
+    )
+    page.route(
+        re.compile(r".*/api/webauthn/status$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"configured": True, "credentials": 1}),
+        ),
+    )
+
+    def _status_over_tailnet(route):
+        body = route.fetch().json()
+        body["terminal"] = {"reachable": True, "reason": "tailnet"}
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body)
+        )
+
+    page.route(re.compile(r".*/api/status$"), _status_over_tailnet)
+
+
+@pytest.mark.parametrize("target", ["skill", "recap"])
+def test_life_os_launch_sends_terminal_token(
+    authed_page: Page, base_url: str, target: str
+) -> None:
+    """Regression for #1036: tapping a Life OS launch (a skill tile's 🚀 or
+    the weekly-recap 🚀) sends the passkey terminal token, as the Board's
+    issue-start does. Without it a phone behind a
+    configured WebAuthn gate gets a 401 and the login overlay (cf. #997).
+    The real check is still a tap on a phone with the gate configured."""
+    _mock_skills(authed_page)
+    _mock_recap(authed_page, staleness="fresh", age_days=1.0)
+    _pretend_passkey_gate(authed_page)
+
+    captured: dict = {}
+
+    def _capture(route):
+        captured["headers"] = route.request.headers
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "x", "name": "x",
+                "session": {"session_id": "x", "kind": "remote"},
+            }),
+        )
+
+    path = (
+        r".*/api/life-os/skills/journal-daily/launch$" if target == "skill"
+        else r".*/api/life-os/recap/launch$"
+    )
+    authed_page.route(re.compile(path), _capture)
+
+    with authed_page.expect_response(re.compile(r".*/api/webauthn/status$")):
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    # Detached → remote, so the mocked response opens no terminal overlay.
+    authed_page.locator("#lifeOsDetached").click()
+    if target == "skill":
+        authed_page.locator(
+            "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-launch"
+        ).click()
+    else:
+        expect(authed_page.locator("#lifeOsRecap")).to_be_visible()
+        authed_page.locator("#lifeOsRecapLaunch").click()
+
+    authed_page.wait_for_timeout(400)
+    assert "headers" in captured, f"{target} launch POST was never intercepted"
+    assert captured["headers"].get("x-terminal-token") == _SEEDED_TERMINAL_TOKEN, (
+        f"{target} launch sent no X-Terminal-Token — behind a configured "
+        "passkey gate this is a 401 + login overlay on the phone (#1036, #997)"
+    )

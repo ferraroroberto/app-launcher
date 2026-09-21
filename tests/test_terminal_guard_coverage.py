@@ -104,25 +104,6 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "One stat() of the recap ledger — staleness state for the tab tile, "
         "no ledger content."
     ),
-    # The two rows below record the status quo, and are the only two this
-    # file is genuinely unsure about (#999). Both spawn a coding session,
-    # which is exactly what earns /api/board/issues/start its passkey row —
-    # but it also matches what /api/apps/{id}/launch and /api/jobs/{id}/run
-    # already do on the bearer token alone, outside any terminal prefix. So
-    # the fleet has two defensible readings: "spawning is terminal-grade" or
-    # "spawning is ordinary launcher work, reading/injecting is what needs a
-    # passkey". Re-gating is a client change too (the Life OS tab would have
-    # to send X-Terminal-Token, cf. #997) and no test on this box can catch
-    # getting that wrong — it reproduces only on a phone with the passkey
-    # gate configured. Pinned as-is, deliberately, for the owner to settle.
-    "/api/life-os/skills/{skill_id}/launch": (
-        "Spawns a life-os session (#102), like /api/board/issues/start which "
-        "IS passkey-gated. Token-only today; see the note above."
-    ),
-    "/api/life-os/recap/launch": (
-        "Spawns a weekly-recap review session (#167). Same shape and same "
-        "open question as the skill launch above."
-    ),
     "/api/tts/health": (
         "Health probe only — the SPA decides read-aloud button visibility "
         "off-tailnet. Stated as deliberate in the /api/tts/speak guard row."
