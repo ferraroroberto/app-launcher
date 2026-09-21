@@ -11,8 +11,10 @@ paired result, ``thinking``, ``system`` plumbing, sub-agent traffic) folded.
 
 Every reader here is **bounded**: a long session's JSONL runs to many MB, so
 a page is assembled from fixed-size byte windows read *backwards* from a
-cursor until enough conversation turns are in hand, and never more than
-:data:`REQUEST_BYTE_CAP` per request. The cursor handed back is the byte
+cursor until enough conversation turns are in hand, within a
+:data:`REQUEST_BYTE_CAP` budget that charges a huge line only
+:data:`LINE_CHARGE_CAP` (#1120) and never past :data:`REQUEST_READ_CEILING`
+real bytes per request. The cursor handed back is the byte
 offset of the oldest line the page kept, so the next (older) page reads
 strictly before it — no turn is duplicated or dropped across pages.
 
@@ -43,10 +45,23 @@ from src.board_transcript import _SKIP_USER_PREFIXES, _assistant_text
 # One backwards read step. 256 KB is the same window the Board's
 # last-exchange reader uses (`board_transcript._EXCHANGE_TAIL_BYTES`).
 WINDOW_BYTES = 256 * 1024
-# Hard ceiling on bytes read for one page, whatever the turn count: a run of
-# huge tool results (a multi-MB file Read) must not turn one request into a
-# whole-file read. Hitting it returns a short page with a cursor, not an error.
+# Budget for one page, whatever the turn count: a long run of tool results
+# must not turn one request into a whole-file read. Hitting it returns a
+# short page with a cursor, not an error. A backwards page charges each line
+# at most LINE_CHARGE_CAP against it (#1120); forward reads and the
+# copy-full-text read still count real bytes against it.
 REQUEST_BYTE_CAP = 2 * 1024 * 1024
+# A backwards page charges one line at most this much against
+# REQUEST_BYTE_CAP (#1120). Screenshot tool results are ~1 MB base64 lines,
+# so charging them in full left a 2 MiB page holding two or three of them and
+# often no user or assistant turn at all. The charge cap lets a page reach
+# its `limit` turns past them instead.
+LINE_CHARGE_CAP = 64 * 1024
+# The real-bytes ceiling that keeps a charged page bounded: however few bytes
+# its lines were charged, a page never reads more than this. Measured on a
+# synthetic run of 1 MB lines: ~40 ms to read and parse 16 MiB, against ~6 ms
+# for a 2 MiB page.
+REQUEST_READ_CEILING = 16 * 1024 * 1024
 DEFAULT_LIMIT = 40
 MAX_LIMIT = 100
 
@@ -258,7 +273,9 @@ def _page(
 
     Reads :data:`WINDOW_BYTES` windows backwards until ``limit``
     conversation turns (``user`` + ``assistant`` entries) are collected, the
-    file start is reached, or :data:`REQUEST_BYTE_CAP` bytes have been read.
+    file start is reached, the kept lines have been charged
+    :data:`REQUEST_BYTE_CAP` (each at most :data:`LINE_CHARGE_CAP`), or
+    :data:`REQUEST_READ_CEILING` real bytes have been read.
     The page is then trimmed at a turn boundary so it holds at most
     ``limit`` turns, and ``next_cursor`` is the offset of the oldest line it
     kept (``None`` once the file start is included). A page never opens
@@ -270,6 +287,7 @@ def _page(
     limit = max(1, min(int(limit), MAX_LIMIT))
     collected: List[Line] = []
     bytes_read = 0
+    charged = 0
     span = WINDOW_BYTES
     while True:
         start = max(0, end - span)
@@ -289,12 +307,19 @@ def _page(
             span *= 2
             continue
         collected = lines + collected
-        if _turns(build(collected)) >= limit or bytes_read >= REQUEST_BYTE_CAP:
+        charged += sum(min(len(raw), LINE_CHARGE_CAP) for _, raw in lines)
+        if (
+            _turns(build(collected)) >= limit
+            or charged >= REQUEST_BYTE_CAP
+            or bytes_read >= REQUEST_READ_CEILING
+        ):
             break
         # Next window ends where the oldest kept line begins (the lines
-        # dropped above it get re-read whole).
+        # dropped above it get re-read whole). A span that had to widen keeps
+        # its width (#1120): huge lines come in runs (a screenshot per tool
+        # call), and restarting each one at WINDOW_BYTES re-read ~3.75 MB to
+        # land one 1 MB line, spending the read ceiling on re-reads.
         end = lines[0][0]
-        span = WINDOW_BYTES
 
     entries = build(collected)
     # Trim to `limit` turns at a turn boundary: drop every raw line before the

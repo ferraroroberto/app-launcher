@@ -2118,6 +2118,12 @@ summary + .opt-group { border-top: 0; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
+/* Where a Load older that found only tool calls ran out (#1120). */
+.tr-start {
+  text-align: center;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
 /* Chat mode's mount of the shared composer (#983) deliberately carries NO
    bottom-padding override of its own (#1099).
 
