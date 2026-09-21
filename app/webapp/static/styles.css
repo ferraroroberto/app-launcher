@@ -299,6 +299,20 @@ html, body {
     body:has(dialog[open]) .app {
       overflow: hidden;
     }
+
+    /* Keep the document 1px scrollable while the session overlay is open
+       (#1099 avenue B). The base body.terminal-open lock below sets
+       overflow: hidden, which propagates to the viewport, and
+       lockBodyScroll() (skipped under this same query) would pin body
+       out of flow — either one zeroes the vendored body::after spacer's
+       overflow, and iOS then contracts the fixed-positioning viewport,
+       leaving a dead band under the overlay's composer. The .app rule above
+       is the lock here; the overlay's own overscroll-behavior: contain stops
+       any gesture chaining through to the 1px. */
+    body.terminal-open {
+      overflow: visible;
+      height: auto;
+    }
   }
 }
 
