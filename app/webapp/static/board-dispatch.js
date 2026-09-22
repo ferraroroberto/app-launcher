@@ -471,7 +471,7 @@ async function dispatchGoal() {
       headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
       body: JSON.stringify(payload),
     });
-    toast((body.launched || dispatchMode) + ' → ' + (body.repo || repo), 'good', { icon: 'rocket' });
+    toast((body.launched || dispatchMode) + ' started in ' + (body.repo || repo), 'good', { icon: 'rocket' });
     // The goal stays in the bar for rapid multi-dispatch ("create more");
     // ✕ clears it. The new card lands in Claude's turn on the next poll.
     fetchBoard().catch(function () {});

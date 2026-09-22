@@ -739,8 +739,8 @@ function emptyText(col, body, ghLoaded, liveRead) {
     return failed ? 'No stuck jobs — open PRs unavailable (GitHub fetch failed).'
       : 'No stuck jobs — open PRs not loaded yet.';
   }
-  return failed ? 'GitHub fetch failed — tap ↻ to retry.'
-    : 'Not loaded from GitHub yet — tap ↻.';
+  return failed ? 'GitHub fetch failed — tap Refresh to retry.'
+    : 'Not loaded from GitHub yet — tap Refresh.';
 }
 
 function renderStatusLine(body) {
@@ -748,7 +748,7 @@ function renderStatusLine(body) {
   if (body.github && body.github.error) {
     parts.push(icon('triangle-alert') + ' GitHub: ' + escapeHtml(body.github.error));
   } else if (body.github && !body.github.fetched_at) {
-    parts.push('GitHub not fetched yet — tap ↻');
+    parts.push('GitHub not fetched yet — tap Refresh');
   }
   if (!liveSessionsRead(body)) {
     parts.push(icon('triangle-alert') + ' session-host unreachable — live sessions unknown');
@@ -908,7 +908,7 @@ export async function openBoardCard(sid) {
     }
   }
   if (!fetchOk) {
-    toast('Board refresh failed — tap ↻ to retry.', 'error');
+    toast('Board refresh failed — tap Refresh to retry.', 'error');
     return;
   }
   const columns = (state.board && state.board.columns) || {};
@@ -958,7 +958,7 @@ async function refreshGithub() {
   } finally {
     refreshInFlight = false;
     els.boardRefresh.disabled = false;
-    els.boardRefresh.textContent = '↻';
+    els.boardRefresh.innerHTML = icon('refresh-cw');
   }
 }
 

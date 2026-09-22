@@ -542,12 +542,12 @@ def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
     # and the width they free is what keeps "unknown" itself from being the
     # part ellipsed off a 390px line.
     assert after[0]["text"] == "Claude Code · 5h 39% · 1w 19% · unknown"
-    assert "↻" not in after[0]["text"]
+    assert "resets" not in after[0]["text"]
     assert "stale" in after[0]["cls"]
     assert after[0]["state"] == "unknown"
     # The measured agent beside it is untouched.
     assert after[1]["cls"] == "quota-line good"
-    assert after[1]["text"].endswith("1w 36% ↻ " + authed_page.evaluate(
+    assert after[1]["text"].endswith("1w 36% resets " + authed_page.evaluate(
         """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
              .format(new Date('2026-09-16T12:00:00Z'))"""
     ))

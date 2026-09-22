@@ -99,6 +99,9 @@
   --row-lg: 60px;
   /* canonical icon-size steps — emoji glyph buttons size via font-size */
   --icon-inline: 16px;
+  /* Lucide chevron-down (the sprite's i-chevron-down) for a CSS-only caret:
+     a pseudo-element cannot <use> a sprite symbol, so it masks this. */
+  --chevron-down-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   --icon-title: 18px;
   --icon-feature: 24px;
   /* home-head's toggle fill (vendored home-head.css contract): a subtle-
@@ -207,6 +210,12 @@
    land on the owning button, the same rule .agent-icon already carries.
    Belt-and-braces for iOS touch adjudication around svg <use> content. */
 .icon { pointer-events: none; }
+/* The contract sizes a glyph at 1em, so one inside caption or label text
+   rendered at 12.5px / 14.7px -- off the design's icons.size steps and
+   visibly lighter than the 16px icons beside it (#1127). Floor every glyph
+   at --icon-inline; explicit title/feature sizes above it are unaffected.
+   Brand marks (.agent-icon) are not `.icon` and keep their own sizing. */
+svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
 
 /* Shared 44px hit-area expansion for an isolated compact control (design.md
    "Touch targets"): keeps the compact visual (e.g. the home-head's 34px
@@ -794,14 +803,22 @@ summary + .opt-group { border-top: 0; }
 .job-item .job-row-load { gap: 4px 8px; }
 .job-sparkline {
   display: inline-flex;
-  gap: 1px;
+  align-items: center;
+  gap: 2px;
   letter-spacing: 0;
   font-size: var(--font-caption);
   line-height: 1;
   vertical-align: middle;
   white-space: nowrap;
 }
+/* A drawn dot, not a `●` glyph (#1127): the character sat on the text
+   baseline at a font-dependent size beside the Lucide icons. */
 .job-spark-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
   color: var(--muted);
 }
 .job-spark-dot.up { color: var(--success); }
@@ -2103,7 +2120,7 @@ summary + .opt-group { border-top: 0; }
   color: var(--muted);
   flex-shrink: 0;
 }
-.chat-note .icon { width: 14px; height: 14px; }
+.chat-note .icon { width: var(--icon-inline); height: var(--icon-inline); }
 /* Terminal ⇄ Chat segmented toggle in the bar (#982): the .segmented recipe
    at the bar's 44px control height, icon-only so the title keeps most of a
    390px phone (labels were measured to crush it — #979 decision log). The
@@ -2570,7 +2587,7 @@ summary + .opt-group { border-top: 0; }
   font-weight: 400;
   color: var(--muted);
 }
-.chg-branch .icon { width: 14px; height: 14px; }
+.chg-branch .icon { width: var(--icon-inline); height: var(--icon-inline); }
 
 /* ---------- webauthn / passkey settings ---------- */
 .webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
@@ -3514,13 +3531,17 @@ body.terminal-open {
    projects" (the default) shows everything. */
 .board-repo-combo { position: relative; }
 .board-repo-combo::after {
-  content: '▾';
+  content: '';
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  background: currentColor;
+  -webkit-mask: var(--chevron-down-mask) center / contain no-repeat;
+  mask: var(--chevron-down-mask) center / contain no-repeat;
   position: absolute;
-  right: 12px;
+  right: 10px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
-  font-size: var(--font-caption);
   pointer-events: none;
 }
 .board-repo-input {
@@ -3637,7 +3658,7 @@ body.terminal-open {
    built from phrasing-only content — a <button> trigger + a
    <span role="listbox"> of <button role="option"> — which is valid in a
    summary, styled to match the flattened .board-dispatch-row select (36px
-   control height, 12px radius, --card-2 fill, ▾ affordance). */
+   control height, 12px radius, --card-2 fill, chevron-down affordance). */
 .model-combo { position: relative; display: inline-flex; }
 .model-combo-trigger {
   height: var(--control-h);
@@ -3655,13 +3676,17 @@ body.terminal-open {
 }
 .model-combo-trigger:active { background: var(--card); }
 .model-combo::after {
-  content: '▾';
+  content: '';
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  background: currentColor;
+  -webkit-mask: var(--chevron-down-mask) center / contain no-repeat;
+  mask: var(--chevron-down-mask) center / contain no-repeat;
   position: absolute;
-  right: 9px;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
-  font-size: var(--font-caption);
   pointer-events: none;
 }
 /* Closed menus live beside their triggers. The controller portals an open

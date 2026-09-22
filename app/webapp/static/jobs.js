@@ -410,7 +410,7 @@ function redrawRunsList(jobId, runs) {
       const rerun = document.createElement('button');
       rerun.type = 'button';
       rerun.className = 'icon-btn';
-      rerun.textContent = '↻';
+      rerun.innerHTML = icon('refresh-cw');
       rerun.title = 'Re-run with these parameters';
       rerun.setAttribute('aria-label', 'Re-run with these parameters');
       rerun.addEventListener('click', function (ev) {
@@ -523,7 +523,7 @@ function renderArtifacts(jobId, runId, artifacts) {
     if (token) href += '?token=' + encodeURIComponent(token);
     link.href = href;
     link.download = artifact.name;
-    link.textContent = '↓ ' + artifact.name;
+    link.innerHTML = icon('download') + ' ' + escapeHtml(artifact.name);
     const size = document.createElement('span');
     size.textContent = formatBytes(artifact.size) || '';
     li.append(link, size);

@@ -7,7 +7,7 @@
  */
 
 import { els } from './state.js';
-import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- listeners panel (Apps tab)
@@ -63,9 +63,12 @@ function buildListenerRow(l, isChild, hasChildren) {
 
   const meta = document.createElement('div');
   const strong = document.createElement('strong');
-  strong.textContent = isChild
-    ? ('↳ ' + (l.service || l.name || ('port ' + l.port)))
-    : (l.app || l.name || ('port ' + l.port));
+  if (isChild) {
+    strong.innerHTML = icon('corner-down-right') + ' ' +
+      escapeHtml(l.service || l.name || ('port ' + l.port));
+  } else {
+    strong.textContent = l.app || l.name || ('port ' + l.port);
+  }
   const sub = document.createElement('span');
   sub.className = 'meta';
   sub.textContent = ' :' + l.port + ' · pid ' + l.pid + ' · ' + (l.name || '?');

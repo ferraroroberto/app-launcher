@@ -485,7 +485,7 @@ function quotaWindowText(windowData, label, fmtReset) {
   if (!windowData || typeof windowData.used_percentage !== 'number') return '';
   let text = label + ' ' + Math.round(windowData.used_percentage) + '%';
   const reset = fmtReset(windowData.resets_at);
-  if (reset) text += ' ↻ ' + reset;
+  if (reset) text += ' resets ' + reset;
   return text;
 }
 
