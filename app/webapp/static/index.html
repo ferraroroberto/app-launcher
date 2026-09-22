@@ -1322,9 +1322,14 @@
       <!-- Why Resume is off for this capture, said on screen: a phone has no
            hover to read a disabled menu row's tooltip (#727's chip, moved). -->
       <div id="lifeOsViewerNote" class="chat-note" hidden></div>
-      <div id="lifeOsViewerBody" class="transcript-body">
-        <ol id="lifeOsViewerList" class="transcript-list" aria-label="Conversation transcript"></ol>
-        <div id="lifeOsViewerState" class="empty" role="status" aria-live="polite" hidden></div>
+      <!-- Anchors the shared ↓ Latest pill (#1140) to the scroller's
+           bottom edge, as in the Chat pane. -->
+      <div class="latest-frame">
+        <div id="lifeOsViewerBody" class="transcript-body">
+          <ol id="lifeOsViewerList" class="transcript-list" aria-label="Conversation transcript"></ol>
+          <div id="lifeOsViewerState" class="empty" role="status" aria-live="polite" hidden></div>
+        </div>
+        <button id="lifeOsViewerLatest" type="button" class="latest-pill" title="Jump to the end of the conversation" aria-label="Jump to the end of the conversation" hidden><span aria-hidden="true">↓</span> Latest</button>
       </div>
     </div>
 
@@ -1705,10 +1710,16 @@
          Visible only while data-mode="chat" (CSS).
          Driven by session-transcript.js. -->
     <div id="chatPane" class="chat-pane">
-      <div id="transcriptBody" class="transcript-body">
-        <button id="transcriptOlder" type="button" class="transcript-older" hidden>Load older</button>
-        <ol id="transcriptList" class="transcript-list" aria-label="Session transcript"></ol>
-        <div id="transcriptState" class="empty" role="status" aria-live="polite" hidden></div>
+      <!-- The frame anchors the shared ↓ Latest pill (#1140, latest-pill.js)
+           to the scroller's visible bottom edge, above the note and the
+           composer, so it can never cover their buttons. -->
+      <div class="latest-frame">
+        <div id="transcriptBody" class="transcript-body">
+          <button id="transcriptOlder" type="button" class="transcript-older" hidden>Load older</button>
+          <ol id="transcriptList" class="transcript-list" aria-label="Session transcript"></ol>
+          <div id="transcriptState" class="empty" role="status" aria-live="polite" hidden></div>
+        </div>
+        <button id="chatLatest" type="button" class="latest-pill" title="Jump to the latest message" aria-label="Jump to the latest message" hidden><span aria-hidden="true">↓</span> Latest</button>
       </div>
       <!-- Why the Terminal segment is off, and what Send means, for a
            detached session (mockup screen 6). -->
@@ -1722,7 +1733,7 @@
       <!-- Floating "Latest" pill (#981): shown only while scrolled more than a
            screen above the tail (terminal-bar.js). A text arrow, as the old
            ↓ Jump had: the vendored Lucide sprite carries no arrow-down. -->
-      <button id="terminalLatest" type="button" class="terminal-latest" title="Jump to latest output" aria-label="Jump to latest output" hidden><span aria-hidden="true">↓</span> Latest</button>
+      <button id="terminalLatest" type="button" class="latest-pill" title="Jump to latest output" aria-label="Jump to latest output" hidden><span aria-hidden="true">↓</span> Latest</button>
     </div>
     <!-- The shared composer (#980): always docked under the terminal on the
          phone (hidden only in the PC mirror window, terminal.js). Markup is

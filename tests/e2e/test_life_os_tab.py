@@ -1223,6 +1223,10 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(turns.nth(1).locator(".tr-md strong")).to_have_text("07:40")
     # Read-only: no composer anywhere in this overlay.
     expect(authed_page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
+    # #1140: a capture that fits on screen has no end to jump to.
+    pill = authed_page.locator("#lifeOsViewerLatest")
+    expect(pill).to_have_count(1)
+    expect(pill).to_be_hidden()
     # The raw viewer is still one tap away, and lands back here on close.
     _open_viewer_menu(authed_page)
     expect(authed_page.locator(".lifeos-viewer-groups")).to_be_disabled()
@@ -1233,6 +1237,36 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible()
     authed_page.locator("#lifeOsViewerBack").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible()
+
+
+_LONG_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=[
+    {"kind": "user" if i % 2 == 0 else "assistant",
+     "text": f"synthetic turn {i} " + "about ferry timetables and ticket prices " * 3,
+     "offset": i * 100, "timestamp": None, "truncated": False}
+    for i in range(40)
+])
+
+
+def test_viewer_latest_pill_jumps_to_the_last_turn(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1140: the shared ↓ Latest pill on the conversation viewer. A finished
+    conversation still opens at its start — it reads top-down — but a long
+    one shows the pill straight away, and one tap reaches the last turn."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page, _LONG_TRANSCRIPT)
+    _open_conversations(authed_page, base_url)
+
+    turns = _open_viewer(authed_page, 0).locator(".tr-turn")
+    expect(turns).to_have_count(40)
+    expect(turns.first).to_be_in_viewport()
+    pill = authed_page.locator("#lifeOsViewerLatest")
+    expect(pill).to_be_visible()
+
+    pill.click()
+    expect(turns.last).to_be_in_viewport()
+    expect(pill).to_be_hidden()
 
 
 def test_unparseable_capture_falls_back_to_the_raw_view(

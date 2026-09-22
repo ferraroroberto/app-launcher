@@ -78,6 +78,7 @@ import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
 
 // Agents whose native history the server-side reader understands — the
 // same set as the endpoint's flavour map (app/webapp/routers/
@@ -117,11 +118,6 @@ const LIVE_POLL_MS = 3000;
 // sleeping session-host would otherwise get 20 requests a minute from every
 // open chat. Doubles to the cap, resets on the first success.
 const LIVE_BACKOFF_MAX_MS = 30000;
-
-// How close to the bottom still counts as "following the conversation", in
-// px. Inside this, new turns scroll into view; outside it the reader has
-// deliberately scrolled up into history and is left exactly where they are.
-const STICK_PX = 120;
 
 // After a send, tick once this long later so the sent turn shows up without
 // waiting for the next scheduled one — the agent appends it to its history
@@ -669,9 +665,13 @@ function clearPending() {
   return open;
 }
 
+// "Following the conversation": within the shared pill's slack of the
+// bottom (latest-pill.js). Inside it, new turns scroll into view; outside it
+// the reader has deliberately scrolled up into history, is left exactly where
+// they are, and the ↓ Latest pill (#1140) is their one tap back — which puts
+// them inside it again, so sticking resumes.
 function atBottom() {
-  const box = els.transcriptBody;
-  return box.scrollHeight - box.scrollTop - box.clientHeight <= STICK_PX;
+  return !scrollerIsAway(els.transcriptBody);
 }
 
 // Apply one tick's worth of new content. The reader's position is the point:
@@ -1164,6 +1164,7 @@ export function wireChatPane() {
   if (!els.chatPane) return;
   syncGroups();
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
+  mountScrollerPill(els.chatLatest, els.transcriptBody);
   chatComposer = mountComposer(els.chatComposeBar, {
     placeholder: 'Message',
     send: sendFromChat,
