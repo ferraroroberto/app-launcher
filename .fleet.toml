@@ -45,6 +45,7 @@ empty_state = { src = "app/webapp/static/_vendored/empty-state", sha = "fb908611
 # six components (switch plus the five above) are byte-identical to the
 # scaffold and are declared; tests/test_vendored_manifest.py pins that.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
+geometry = { src = "tests/e2e/_geometry.py", sha = "05f3e6b2a8dc5a39f46be955055ccc3fe20b23a0", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546fd55bc869acf07dab", dest = "scripts/classify_e2e.py" }
 
@@ -393,6 +394,7 @@ pytest_targets = [
     "tests/e2e/test_row_name_typography.py",
     "tests/e2e/test_icon_sizes.py",
     "tests/e2e/test_vendored_empty_and_select.py",
+    "tests/e2e/test_touch_targets.py",
 ]
 
 # The Life OS tab: skills list, conversations and the doc browser (life-os.js)
@@ -421,4 +423,5 @@ pytest_targets = [
     "tests/e2e/test_row_name_typography.py",
     "tests/e2e/test_icon_sizes.py",
     "tests/e2e/test_vendored_empty_and_select.py",
+    "tests/e2e/test_touch_targets.py",
 ]

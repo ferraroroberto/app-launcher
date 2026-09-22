@@ -234,6 +234,66 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
    adjacent clusters need real geometry, never overlapping expansions. */
 .hit-target { position: relative; }
 .hit-target::before { content: ""; position: absolute; inset: -5px; }
+/* #1124 — the two shapes the audit's under-44px controls come in.
+   `.hit-target-y` is for a control already wide enough (a combo, a labelled
+   toolbar button): it grows only vertically, so neighbours in a horizontal
+   cluster can never overlap however tight the gap. `.hit-target-4` is for a
+   compact square in a cluster: +4 a side reaches 44x44 from 36x36 and needs
+   an 8px gap, which the cluster rules below carry. Both are applied by
+   selector rather than in the markup — every user is an existing control. */
+.hit-target-y { position: relative; }
+.hit-target-y::before { content: ""; position: absolute; inset: -4px 0; }
+.hit-target-4 { position: relative; }
+.hit-target-4::before { content: ""; position: absolute; inset: -4px; }
+
+/* The audit's compact controls (#1124), by shape.
+
+   Wide enough already, short by 8px — the expansion is vertical only, so
+   however tight the cluster's gap is, two neighbours can never share a
+   tappable pixel. */
+.model-combo-trigger,
+.git-status-btn,
+.board-chief-start,
+.board-repo-input { position: relative; }
+.model-combo-trigger::before,
+.git-status-btn::before,
+.board-chief-start::before,
+.board-repo-input::before {
+  content: "";
+  position: absolute;
+  /* -5, not -4: these sit at 35-36px rendered, and -4 leaves 43.6. */
+  inset: -5px 0;
+}
+
+/* The Board dispatch row's record/send pair is short on both axes (38x36).
+   Scoped to that row by the child combinator on purpose: the same classes in
+   the docked composer's grid are already real 44px squares, and expanding
+   those would make them overlap at the grid's 6px gap. */
+.board-dispatch-row > .compose-record,
+.board-dispatch-row > .compose-send { position: relative; }
+.board-dispatch-row > .compose-record::before,
+.board-dispatch-row > .compose-send::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
+/* Compact squares: +4 a side takes 36x36 to 44x44, which needs an 8px gap
+   between neighbours — the clusters below carry it, and the e2e pin checks
+   no two expanded rectangles overlap. */
+.detached-toggle,
+.fav-filter-btn,
+.board-refresh,
+.lifeos-convo-open { position: relative; }
+.detached-toggle::before,
+.fav-filter-btn::before,
+.board-refresh::before,
+.lifeos-convo-open::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+
 
 html, body {
   margin: 0;
@@ -414,6 +474,8 @@ html, body {
   align-items: stretch;
   gap: 8px;
 }
+/* The secondary action beside the full-width primary is a row too. */
+.row.settings-actions .button-ghost { min-height: var(--row-sm); }
 .settings-actions .button-primary {
   display: inline-flex;
   align-items: center;
@@ -747,7 +809,9 @@ summary + .opt-group { border-top: 0; }
   color: var(--muted);
   cursor: pointer;
 }
-.app-item .row-actions.session-actions .icon-btn {
+/* Every rail button, not only the session rail's: the Apps rows' edit-mode
+   buttons measured 38-39px tall (#1124). */
+.app-item .row-actions .icon-btn {
   min-height: var(--row-sm);
 }
 .app-item .row-actions .icon-btn + .icon-btn {
@@ -943,7 +1007,10 @@ summary + .opt-group { border-top: 0; }
   position: relative;   /* anchors the off-main summary popover (issue #139) */
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 8px, not 6: these compact controls reach the 44px floor through an
+     invisible ±4 expansion (#1124), which needs the extra clearance or two
+     neighbours would share tappable pixels. */
+  gap: 8px;
 }
 .git-status-btn { font-size: var(--font-caption); padding: 6px 10px; }
 .git-status-btn.loading { opacity: 0.5; pointer-events: none; }
@@ -1146,9 +1213,12 @@ summary + .opt-group { border-top: 0; }
 }
 /* Sort toggle (issue #229) — same compact footprint as the Add button,
    always visible (Add is edit-mode-only). */
+/* Measured 26x18 (#1124) — the smallest control in the app. */
 .jobs-sort-btn {
   font-size: var(--font-caption);
   padding: 6px 10px;
+  min-height: var(--row-sm);
+  min-width: var(--row-sm);
   white-space: nowrap;
 }
 .jobs-search-bar {
@@ -1569,6 +1639,8 @@ summary + .opt-group { border-top: 0; }
 /* `.select-native` is the vendored component's (#1133) — its `height` is
    what iOS Safari honours on a <select>, where this rule's `min-height` is
    ignored and the control renders stubby. Text inputs keep this recipe. */
+/* A form field is a row, not an inline control: the 44px floor, not the
+   36px control height (#1124 — these measured 39px rendered). */
 .input-native {
   background: var(--card-off);
   color: var(--fg);
@@ -1576,8 +1648,16 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: var(--font-label);
-  min-height: var(--control-h);
+  min-height: var(--row-sm);
 }
+/* The same, for a <select> standing in a stacked form row rather than in an
+   inline toolbar cluster. The vendored component's own 36px `height` is the
+   inline-control contract and stays for those. */
+.stacked .select-native,
+.settings-card .select-native,
+.rename-dialog .select-native,
+.opt-row .select-native,
+.job-param-row .select-native { height: var(--row-sm); }
 /* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
    tiers (issue #477, project-scaffolding's button/ component) — fill,
    border, radius, cursor and the shared :disabled recipe now come from
@@ -3655,7 +3735,10 @@ body.terminal-open {
 .board-dispatch-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 8px, not 6: the row's compact controls reach the 44px floor through an
+     invisible ±4 expansion (#1124), which needs the clearance — at 6px two
+     neighbours would share 2px of tappable width. */
+  gap: 8px;
   flex-wrap: wrap;
 }
 /* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable
@@ -3901,8 +3984,12 @@ body.terminal-open {
 }
 /* Not migrated to the button tiers (issue #477 audit): the column-switcher
    strip is a segmented control (has an .active state). */
+/* The column strip is a row of tabs, so real height, not expansion: they sit
+   flush against each other and any inset would overlap (#1124, measured
+   60x35). */
 .board-strip-btn {
   flex: 1;
+  min-height: var(--row-sm);
   min-width: 0;
   background: var(--card);
   border: 1px solid var(--line);
@@ -4195,8 +4282,10 @@ body.terminal-open {
 }
 .board-issue-btn.icon-only {
   /* Real 44px geometry (#496 audit): the ▶/⚡ pair is an adjacent cluster,
-     so the rectangles are grown for real, not via overlapping insets. */
+     so the rectangles are grown for real, not via overlapping insets. The
+     height was never pinned with the width, so it rendered 44x35 (#1124). */
   min-width: 44px;
+  min-height: var(--row-sm);
   padding: 8px 10px;
   font-size: var(--font-label);
   text-align: center;
