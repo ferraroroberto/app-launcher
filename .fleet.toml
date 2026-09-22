@@ -389,6 +389,7 @@ pytest_targets = [
     "tests/e2e/test_bottom_tab_bar.py",
     "tests/e2e/test_smoke.py",
     "tests/e2e/test_row_name_typography.py",
+    "tests/e2e/test_icon_sizes.py",
 ]
 
 # The Life OS tab: skills list, conversations and the doc browser (life-os.js)
@@ -415,4 +416,5 @@ pytest_targets = [
     "tests/e2e/test_bottom_tab_bar.py",
     "tests/e2e/test_smoke.py",
     "tests/e2e/test_row_name_typography.py",
+    "tests/e2e/test_icon_sizes.py",
 ]

@@ -292,7 +292,7 @@ def test_board_unfetched_github_renders_unknown_not_zero(
     ).to_have_text("(—)")
     expect(
         authed_page.locator('.board-empty[data-col="backlog"]')
-    ).to_have_text("Not loaded from GitHub yet — tap ↻.")
+    ).to_have_text("Not loaded from GitHub yet — tap Refresh.")
 
     loaded_empty = _unfetched_payload()
     loaded_empty["github"] = {

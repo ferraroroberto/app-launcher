@@ -94,7 +94,7 @@ import { icon } from './_vendored/icons/icons.js';
 // screen when the keyboard is up. The CSS min-height floors it at 2 rows.
 const _COMPOSE_MAX_ROWS = 8;
 
-const _TITLE_MIC = 'Dictate (voice → text)';
+const _TITLE_MIC = 'Dictate (voice to text)';
 const _TITLE_MIC_OFF = 'Dictation unavailable — voice-transcriber not configured';
 const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';

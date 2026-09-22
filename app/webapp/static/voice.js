@@ -146,7 +146,7 @@ export function createDictation(opts) {
     button.classList.toggle('recording', on);
     button.setAttribute('aria-pressed', on ? 'true' : 'false');
     button.innerHTML = on ? icon('square') : icon('mic');
-    button.title = on ? 'Stop recording' : 'Dictate (voice → text)';
+    button.title = on ? 'Stop recording' : 'Dictate (voice to text)';
   }
 
   // Replace the tracked dictation span with the latest transcript, leaving

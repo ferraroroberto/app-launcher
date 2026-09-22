@@ -21,15 +21,15 @@ import { KEY_BYTES, SHIFT_KEY_BYTES, CTRL_KEY_BYTES } from './terminal-keys-byte
 
 const _KEYS_MARKUP =
   '<button type="button" class="key-btn" data-key="esc">Esc</button>' +
-  '<button type="button" class="key-btn" data-key="up">↑</button>' +
+  '<button type="button" class="key-btn" data-key="up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>' +
   '<button type="button" class="key-btn" data-key="tab">Tab</button>' +
   '<button type="button" class="key-btn key-ctrl" data-key="ctrl" aria-pressed="false">Ctrl</button>' +
-  '<button type="button" class="key-btn" data-key="left">←</button>' +
-  '<button type="button" class="key-btn" data-key="enter">↵</button>' +
-  '<button type="button" class="key-btn" data-key="right">→</button>' +
+  '<button type="button" class="key-btn" data-key="left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>' +
   '<button type="button" class="key-btn" data-key="c" disabled>C</button>' +
-  '<button type="button" class="key-btn key-shift" data-key="shift" aria-pressed="false">⇧</button>' +
-  '<button type="button" class="key-btn" data-key="down">↓</button>' +
+  '<button type="button" class="key-btn key-shift" data-key="shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>' +
   '<button type="button" class="key-btn" data-key="u" disabled>U</button>' +
   '<button type="button" class="key-btn" data-key="x" disabled>X</button>';
 

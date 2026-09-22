@@ -481,12 +481,34 @@ function quotaLineTier(windows) {
   return usageTier(Math.max.apply(null, pcts));
 }
 
+// The reset marker is the sprite's Lucide refresh-cw rather than a `↻`
+// character (#1127). Spelling it as words instead would cost ~6 characters
+// per window on a line that is already ellipsed at phone width, so the
+// marker stays a glyph — a real one. Built as markup here the way
+// brandIcon() above does, so this module still imports nothing. Each window
+// yields both forms: `html` renders, `text` is the title and the plain
+// reading.
+const QUOTA_RESET_ICON =
+  '<svg class="icon" aria-hidden="true" focusable="false">' +
+  '<use href="#i-refresh-cw"></use></svg>';
+
+// Local so the module stays import-free (same reason as the markup above).
+function escapeQuota(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function quotaWindowText(windowData, label, fmtReset) {
-  if (!windowData || typeof windowData.used_percentage !== 'number') return '';
-  let text = label + ' ' + Math.round(windowData.used_percentage) + '%';
+  if (!windowData || typeof windowData.used_percentage !== 'number') return null;
+  const head = label + ' ' + Math.round(windowData.used_percentage) + '%';
   const reset = fmtReset(windowData.resets_at);
-  if (reset) text += ' ↻ ' + reset;
-  return text;
+  if (!reset) return { text: head, html: escapeQuota(head) };
+  return {
+    text: head + ' resets ' + reset,
+    html: escapeQuota(head) + ' ' + QUOTA_RESET_ICON + ' ' + escapeQuota(reset),
+  };
 }
 
 // ``withResets: false`` for a fallback reading — a percentage that is no
@@ -511,6 +533,7 @@ export function renderQuotaLines(container, lines) {
     if (!line) {
       slot.hidden = true;
       slot.textContent = '';
+      slot.title = '';
       return;
     }
     const harness = line.harness || '';
@@ -540,9 +563,12 @@ export function renderQuotaLines(container, lines) {
     // "Claude Code · quota unknown" when there is nothing to show at all;
     // the bare word when it only qualifies numbers already on the line.
     const suffix = note ? [texts.length ? note : 'quota ' + note] : [];
-    const bits = [line.label || nameLabel(harness)].concat(texts, suffix);
-    slot.textContent = bits.join(' · ');
-    slot.title = slot.textContent;
+    const label = line.label || nameLabel(harness);
+    const plain = [label].concat(texts.map(function (t) { return t.text; }), suffix);
+    const markup = [escapeQuota(label)]
+      .concat(texts.map(function (t) { return t.html; }), suffix.map(escapeQuota));
+    slot.innerHTML = markup.join(' · ');
+    slot.title = plain.join(' · ');
     slot.hidden = false;
   });
 }

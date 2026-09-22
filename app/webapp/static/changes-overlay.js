@@ -109,7 +109,7 @@ function fileRow(file) {
   const base = slash >= 0 ? file.path.slice(slash + 1) : file.path;
   path.innerHTML = (dir ? '<span class="chg-dir">' + escapeHtml(dir) + '</span>' : '') +
     '<span class="chg-base">' + escapeHtml(base) + '</span>' +
-    (file.old_path ? '<span class="chg-dir"> ← ' + escapeHtml(file.old_path) + '</span>' : '');
+    (file.old_path ? '<span class="chg-dir"> renamed from ' + escapeHtml(file.old_path) + '</span>' : '');
   sum.appendChild(path);
   if (file.staged) {
     const pip = document.createElement('span');
