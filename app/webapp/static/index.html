@@ -1207,11 +1207,10 @@
           <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="row settings-actions">
-          <button id="saveSettings" type="button" class="button-ghost accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
+          <button id="saveSettings" type="button" class="button-primary"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
           <button id="rescanBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
         </div>
-        <hr>
-        <div class="webauthn-section">
+        <div class="webauthn-section settings-section">
           <h3><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Terminal access (passkey)</h3>
           <p id="webauthnStatus" class="muted small">Checking…</p>
           <ul id="webauthnDevices" class="webauthn-devices"></ul>
@@ -1221,8 +1220,7 @@
             (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
           </p>
         </div>
-        <hr>
-        <p id="statusReadout" class="muted small"></p>
+        <p id="statusReadout" class="muted small settings-section"></p>
         </div>
       </details>
 
@@ -1247,7 +1245,7 @@
             <select id="tokenJobSelect" class="input-native"></select>
           </label>
           <div class="row settings-actions">
-            <button id="tokenMintBtn" type="button" class="button-ghost accent-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Mint token</button>
+            <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Mint token</button>
           </div>
           <div id="tokenMintResult" class="stacked" hidden>
             <span class="muted small">Copy it now — it is shown only once.</span>

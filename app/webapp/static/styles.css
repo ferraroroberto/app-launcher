@@ -393,7 +393,30 @@ html, body {
    that marks them as toggles rather than one-shot actions. */
 .detached-toggle .icon { font-size: var(--icon-title); }
 .detached-toggle { padding: 6px; min-width: var(--control-h); }
-.settings-actions { flex-wrap: wrap; gap: 8px; }
+/* The view's main action is the full-width primary, on its own line, with
+   the secondary ghost beneath it (#1125) — it used to be the smallest
+   control on the card. */
+/* `.row.settings-actions`, not `.settings-actions`: `.row`'s own
+   `align-items: center` is declared later in this file at equal
+   specificity, and would otherwise shrink these to their content width. */
+.row.settings-actions {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.settings-actions .button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+/* A hairline divider between the card's sections, the same recipe the rest
+   of the app uses, in place of two bare <hr>s (#1125). */
+.settings-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
 
 /* Theme toggle (issue #355; #392 put it in the options summary, #496 moved
    it into the vendored home-head card's .home-toggle slot — the same
@@ -1496,13 +1519,10 @@ summary + .opt-group { border-top: 0; }
   padding: 8px 12px;
 }
 .button-ghost:active { color: var(--fg); }
-.button-ghost.accent-btn {
-  background: var(--accent-soft);
-  color: var(--accent);
-  border-color: var(--accent-border-soft);
-  font-weight: 600;
-}
-.button-ghost.accent-btn:active { color: var(--accent); filter: brightness(0.9); }
+/* `.button-ghost.accent-btn` is gone (#1125): a tinted fill is the tint
+   tier, never a ghost, so the hybrid was not one of design.md's four
+   tiers. Its users moved to button-primary (the view's one main action)
+   or button-tint. */
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
 .small { font-size: var(--font-caption); }
@@ -3418,8 +3438,17 @@ body.terminal-open {
   gap: 6px;
 }
 /* `font: inherit` for the same WebKit serif reason as .lifeos-convo-read. */
+/* Row-sized tint, the same override .listener-kill uses: this app's own
+   .button-tint rule stretches to width:100% for its full-width modal and
+   panel instances, which a row-level action must not do (#1125). */
 .lifeos-convo-resume,
-.lifeos-convo-handoff { padding-inline: 14px; font: inherit; }
+.lifeos-convo-handoff {
+  flex-shrink: 0;
+  width: auto;
+  padding-inline: 14px;
+  min-height: var(--row-sm);
+  font: inherit;
+}
 /* Not a disabled button: a phone has no hover to explain one, and a capture
    with no stored session id is a normal state for part of the archive. */
 .lifeos-convo-nosession {
