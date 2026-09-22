@@ -243,7 +243,7 @@ _BOARD_TARGETS = (
     "tests/e2e/test_coding_model_selector.py tests/e2e/test_terminal_bar_overflow.py "
     "tests/e2e/test_primary_nav.py tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
-    "tests/e2e/test_vendored_empty_and_select.py"
+    "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
 )
 _LIFEOS_TARGETS = (
     "tests/e2e/test_life_os_tab.py tests/e2e/test_markdown_link_rendering.py "
@@ -252,7 +252,7 @@ _LIFEOS_TARGETS = (
     "tests/e2e/test_terminal_bar_overflow.py tests/e2e/test_primary_nav.py "
     "tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
-    "tests/e2e/test_vendored_empty_and_select.py"
+    "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
 )
 
 # What an e2e test says when it exercises a surface's modules: the module file,
