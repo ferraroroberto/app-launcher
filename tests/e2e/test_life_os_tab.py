@@ -21,6 +21,10 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e.conftest import stable_read
+from tests.e2e.test_overlay_standalone_scrollable import (
+    _PATCH_MATCH_MEDIA,
+    _PROJECT_STANDALONE_CSS,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -1267,6 +1271,82 @@ def test_viewer_latest_pill_jumps_to_the_last_turn(
     pill.click()
     expect(turns.last).to_be_in_viewport()
     expect(pill).to_be_hidden()
+
+
+_MEASURE_PILL = """
+() => {
+  const pill = document.getElementById('lifeOsViewerLatest');
+  const r = pill.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  return {
+    vh: window.innerHeight, vw: window.innerWidth,
+    top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+    hittable: !!hit && (hit === pill || pill.contains(hit)),
+    hitBy: hit ? (hit.id || hit.className || hit.tagName) : null,
+    scrollRange: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight,
+    appOverflowY: getComputedStyle(document.querySelector('main.app')).overflowY,
+  };
+}
+"""
+
+
+def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    """#1143: in the installed PWA the floating tab bar sat on top of the
+    conversation viewer and hid its ↓ Latest pill. The standalone shell makes
+    .app position: fixed, so the list and the viewer (both nested inside
+    .app) stack below the body-level bar unless its hide rule names them. The
+    viewer only ever opens over the list, so the list's missing entry is what
+    showed on the phone. tests/test_overlay_nav_hide.py checks each entry.
+
+    Neither headless engine supports display-mode: standalone, so this
+    projects the shell the way #1099's test does. A pass here doesn't replace
+    checking on the device."""
+    page = authed_page
+    if browser_name == "chromium":
+        # The phone rules also need a coarse pointer.
+        cdp = page.context.new_cdp_session(page)
+        cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+    page.add_init_script(_PATCH_MATCH_MEDIA)
+    page.set_viewport_size({"width": 390, "height": 844})
+    _mock_skills(page)
+    _mock_conversations(page)
+    _mock_transcript(page, _LONG_TRANSCRIPT)
+    page.goto(f"{base_url}/", wait_until="load")
+    assert page.evaluate(_PROJECT_STANDALONE_CSS) >= 1, (
+        "no display-mode: standalone rule to project; the vendored shell "
+        "block moved and this would test the browser-tab layout instead"
+    )
+    tabs = page.locator("nav.tabs")
+    expect(tabs).to_be_visible()
+
+    page.locator("#tabLifeOS").click()
+    page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
+    ).click()
+    expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    expect(tabs).to_be_hidden()
+
+    expect(_open_viewer(page, 0).locator(".tr-turn")).to_have_count(40)
+    expect(tabs).to_be_hidden()
+    pill = page.locator("#lifeOsViewerLatest")
+    expect(pill).to_be_visible()
+    m = page.evaluate(_MEASURE_PILL)
+    assert m["top"] >= 0 and m["bottom"] <= m["vh"] + 0.5, f"pill off-screen vertically: {m}"
+    assert m["left"] >= 0 and m["right"] <= m["vw"] + 0.5, f"pill off-screen horizontally: {m}"
+    assert m["hittable"], f"the ↓ Latest pill is covered at its centre by {m['hitBy']!r}: {m}"
+    assert m["appOverflowY"] == "hidden", f".app stays scrollable behind the viewer: {m}"
+    assert m["scrollRange"] >= 1, (
+        f"the document lost its 1px scrollable overflow under the viewer (#1099): {m}"
+    )
+    pill.click()
+    expect(page.locator("#lifeOsViewerList .tr-turn").last).to_be_in_viewport()
+
+    page.locator("#lifeOsViewerBack").click()
+    page.locator("#lifeOsConvosBack").click()
+    expect(page.locator("#lifeOsConvos")).to_be_hidden()
+    expect(tabs).to_be_visible()
 
 
 def test_unparseable_capture_falls_back_to_the_raw_view(

@@ -268,13 +268,22 @@ html, body {
 
    The overlay-hide rule below is app-specific glue the vendored file
    anticipates (its README: "a non-<dialog> overlay -> add the class
-   nav-hidden to <body>") — these six are hand-rolled [hidden]-toggled
+   nav-hidden to <body>") — these are hand-rolled [hidden]-toggled
    overlays, not native <dialog>, which the vendored file already covers via
    body:has(dialog[open]). visibility (not display) matches the vendored
-   technique — gentler on iOS fixed-layer repainting across show/hide. */
+   technique — gentler on iOS fixed-layer repainting across show/hide.
+
+   Every such overlay goes in this rule and in the standalone .app lock below;
+   tests/test_overlay_nav_hide.py fails when one is left out (#1143). The ones
+   nested inside <main class="app"> are the ones that break: the standalone
+   shell makes .app position: fixed, a stacking context, so their z-index 300
+   stacks inside it and the body-level bar (z-index 120) paints over them. */
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
   body:has(#lifeOsBrowser:not([hidden])) .tabs,
+  body:has(#lifeOsConvos:not([hidden])) .tabs,
+  body:has(#lifeOsConvoViewer:not([hidden])) .tabs,
+  body:has(#changesOverlay:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
   body:has(#systemMapLightbox:not([hidden])) .tabs,
   body:has(#summaryModal:not([hidden])) .tabs {
@@ -288,11 +297,17 @@ html, body {
      never the scroller in standalone — so without this, .app's own content
      stays touch-scrollable behind a hand-rolled overlay. Mirrors
      home-automation's `body:has(dialog[open]) .app { overflow: hidden }`;
-     the six app-specific overlays get the same treatment as the .tabs hide
-     rule above, plus native <dialog> for completeness (this app has both). */
+     the app-specific overlays get the same treatment as the .tabs hide
+     rule above, plus native <dialog> for completeness (this app has both).
+     Only the session overlay sets body.terminal-open, so only it needs the
+     #1099 1px-scrollable override below; the others never touch body or the
+     vendored body::after spacer. */
   @media (display-mode: standalone) {
     body.terminal-open .app,
     body:has(#lifeOsBrowser:not([hidden])) .app,
+    body:has(#lifeOsConvos:not([hidden])) .app,
+    body:has(#lifeOsConvoViewer:not([hidden])) .app,
+    body:has(#changesOverlay:not([hidden])) .app,
     body:has(#loginOverlay:not([hidden])) .app,
     body:has(#systemMapLightbox:not([hidden])) .app,
     body:has(#summaryModal:not([hidden])) .app,
