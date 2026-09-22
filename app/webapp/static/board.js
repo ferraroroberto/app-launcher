@@ -53,6 +53,7 @@ import { chatAvailable, modeReason, openSessionOverlay, terminalAvailable } from
 import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
 import { voiceDictationAvailable } from './voice.js';
+import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, renderQuotaLines } from './dom-utils.js';
@@ -71,11 +72,11 @@ import {
 // `live` columns are built from the session-host list, so an unreachable
 // session-host makes them unknown too (#915).
 const COLUMNS = [
-  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', gh: 'all' },
-  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.', live: true },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.', live: true },
-  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', gh: 'part' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', gh: 'all' },
+  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', glyph: 'git-branch', gh: 'all' },
+  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.', glyph: 'hourglass', live: true },
+  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.', glyph: 'circle-check', live: true },
+  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', glyph: 'git-pull-request', gh: 'part' },
+  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'square-check', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
@@ -845,7 +846,13 @@ export function renderBoard() {
       return renderCard(col.key, card, openItem);
     }));
     if (empty) {
-      empty.textContent = emptyText(col, body, ghLoaded, liveRead);
+      // The canonical empty-state block (#1133), rebuilt each render: a
+      // muted glyph over the one-line reason, instead of a bare sentence in
+      // a dashed box. `empty` stays the hidden/shown container the poll
+      // toggles, so nothing else about the column changes.
+      empty.replaceChildren(
+        emptyStateEl(col.glyph, emptyText(col, body, ghLoaded, liveRead))
+      );
       empty.hidden = cards.length > 0;
     }
   });

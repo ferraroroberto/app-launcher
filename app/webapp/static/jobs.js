@@ -48,11 +48,20 @@ const runExtras = new Map();
 
 // --------------------------------------------------------------- render
 
+// The empty-state block's visibility, shared by the full render and the
+// poll's in-place patch. The patch used to leave it alone, and its early
+// return on "same number of rows" is taken for 0 === 0 — so a launcher with
+// no jobs registered rendered an empty card and never the reason why
+// (#1133, pre-existing: `hidden` starts set in the markup).
+function syncJobsEmpty() {
+  els.jobsEmpty.hidden = !!state.jobsSearchQuery || state.jobs.length !== 0;
+}
+
 export function renderJobs() {
   const host = els.jobsList;
   host.innerHTML = '';
   const searching = !!state.jobsSearchQuery;
-  els.jobsEmpty.hidden = searching || state.jobs.length !== 0;
+  syncJobsEmpty();
   if (els.jobsAddBtn) els.jobsAddBtn.hidden = !state.editMode;
   syncSortBtn();
 
@@ -864,6 +873,7 @@ export async function runJobNow(job, options) {
 
 // Poll the residual list in place through jobs-row.js's shared DOM contract.
 function patchRowsInPlace() {
+  syncJobsEmpty();
   const host = els.jobsList;
   const existing = Array.from(host.querySelectorAll('li.app-item[data-id]'));
   // Compare against the *sorted* order — the DOM is rendered sorted, so a

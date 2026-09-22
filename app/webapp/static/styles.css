@@ -90,6 +90,9 @@
   --font-caption: 0.78rem;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;
+  /* The vendored select-native/modal components fill their controls with
+     `--input-bg` (#1133); this app's inset-control fill is --card-off. */
+  --input-bg: var(--card-off);
   /* unified row-height scale for repeated list rows (issue #365): sm =
      utility/action targets (iOS 44px tap minimum), md = single-line rows,
      lg = the standard two-line row (name + meta). Every list row height
@@ -216,6 +219,13 @@
    at --icon-inline; explicit title/feature sizes above it are unaffected.
    Brand marks (.agent-icon) are not `.icon` and keep their own sizing. */
 svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
+/* The empty-state glyph is feature-size by its component's contract, but
+   this stylesheet loads after the component's, so `.icon`'s own `1em` would
+   otherwise win on source order alone (#1133). */
+.icon.empty-state-icon {
+  width: var(--icon-feature);
+  height: var(--icon-feature);
+}
 
 /* Shared 44px hit-area expansion for an isolated compact control (design.md
    "Touch targets"): keeps the compact visual (e.g. the home-head's 34px
@@ -1556,7 +1566,10 @@ summary + .opt-group { border-top: 0; }
   gap: 4px;
   margin: 10px 0;
 }
-.input-native, .select-native {
+/* `.select-native` is the vendored component's (#1133) — its `height` is
+   what iOS Safari honours on a <select>, where this rule's `min-height` is
+   ignored and the control renders stubby. Text inputs keep this recipe. */
+.input-native {
   background: var(--card-off);
   color: var(--fg);
   border: 1px solid var(--line);
