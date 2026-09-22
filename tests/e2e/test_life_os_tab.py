@@ -839,6 +839,102 @@ def test_life_os_unresumable_row_says_so(
     expect(authed_page.locator(".lifeos-viewer-resume")).to_be_enabled()
 
 
+def test_life_os_viewer_menu_shows_resume_for_a_resumable_capture(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1137: the viewer's ⋮ menu drops hidden rows from the DOM on every
+    open, so ``to_be_enabled`` alone would pass on a row that is attached but
+    never painted. With a matching model the Resume row must be on screen,
+    enabled and named for its provider."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
+    _open_conversations(authed_page, base_url)
+    _open_convos_model_menu(authed_page, "claude:opus").click()
+
+    _open_viewer(authed_page, 0)
+    menu = _open_viewer_menu(authed_page)
+    resume = menu.locator(".lifeos-viewer-resume")
+    expect(resume).to_be_visible()
+    expect(resume).to_be_enabled()
+    expect(resume).to_contain_text("Resume in Claude")
+
+
+def test_life_os_row_leads_with_resume(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1137: after #1119 a row offered only Read, burying Resume — the
+    action nearly every capture is opened for — two taps deep in the viewer.
+    The row leads with it again, follows the model combo in place (without
+    collapsing the row), and posts exactly what the viewer's Resume posts."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
+    launches = []
+
+    def _launch(route):
+        launches.append(_json.loads(route.request.post_data or ""))
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"session": {"session_id": "synthetic", "kind": "remote"}}))
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"),
+        _launch,
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    # Detached, so the resume lands in a console, not the terminal overlay.
+    authed_page.locator("#lifeOsDetached").click()
+    authed_page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
+    ).click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    _open_convos_model_menu(authed_page, "claude:opus").click()
+
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows.first.locator(".lifeos-convo-head").click()
+    actions = rows.first.locator(".lifeos-convo-actions")
+    resume = actions.locator(".lifeos-convo-resume")
+    expect(resume).to_be_visible()
+    expect(resume).to_be_enabled()
+    expect(resume).to_contain_text("Resume in Claude")
+    expect(actions.locator(".lifeos-convo-read")).to_be_visible()
+    # Resume is the primary action: first in the strip.
+    expect(actions.locator("button").first).to_have_class(
+        re.compile(r"\blifeos-convo-resume\b"))
+    expect(actions.locator(".lifeos-convo-nosession")).to_have_count(0)
+    expect(actions.locator(".lifeos-convo-handoff")).to_have_count(0)
+    # Rename / Delete / Open raw stay in the viewer's ⋮ menu.
+    expect(actions.locator("button")).to_have_count(2)
+
+    # Another provider: the open row updates in place — Resume greys out with
+    # its reason on screen, and the explicit handoff appears.
+    _open_convos_model_menu(authed_page, "codex:gpt-6-astra").click()
+    expect(rows.first.locator(".lifeos-convo-detail")).to_be_visible()
+    expect(resume).to_be_disabled()
+    expect(actions.locator(".lifeos-convo-nosession")).to_contain_text(
+        "Select a Claude model")
+    expect(actions.locator(".lifeos-convo-handoff")).to_contain_text(
+        "Start new in Codex")
+
+    # An unresumable row says why and offers only Read.
+    rows.nth(1).locator(".lifeos-convo-head").click()
+    other = rows.nth(1).locator(".lifeos-convo-actions")
+    expect(other.locator(".lifeos-convo-nosession")).to_contain_text("readable only")
+    expect(other.locator(".lifeos-convo-resume")).to_have_count(0)
+    expect(other.locator(".lifeos-convo-read")).to_be_visible()
+
+    # Back on a matching model, the row's Resume posts the viewer's payload.
+    _open_convos_model_menu(authed_page, "claude:opus").click()
+    resume.click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_hidden()
+    assert launches == [{
+        "mode": "remote", "model": "claude:opus", "action": "resume",
+        "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
+                    for key in ("path", "revision", "agent", "sid")},
+    }], launches
+
+
 def test_life_os_conversation_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:

@@ -875,8 +875,9 @@ function appendConvoField(host, label, value) {
 
 // Whether this row can be resumed / handed off with the model currently
 // selected, and why not when it can't (#727's rules, unchanged). Asked by
-// the viewer's ⋮ menu (#1119) on every open, so it always reflects the
-// model currently chosen in the Conversations bar.
+// the row's strip (#1137, rebuilt on every model change) and the viewer's ⋮
+// menu (#1119, on every open), so both reflect the model currently chosen
+// in the Conversations bar.
 function convoActionState(r) {
   const target = lifeOsModel().split(':')[0];
   const matches = target === r.agent;
@@ -905,13 +906,44 @@ const CONVO_VIEWER_ACTIONS = {
   openRaw: openCapture,
 };
 
-// The row keeps one control: 📖 opens this conversation in the transcript
-// viewer (#1119). Resume / Start new / Rename / Delete / Open raw all moved
-// into that viewer's ⋮ menu, so a row is a thing you open, not a rail of
-// five decisions.
+// The row leads with Resume (#1137) — what nearly every capture is opened
+// for — then 📖 Read into the transcript viewer (#1119). The same state
+// drives both, so the row and the viewer's ⋮ menu can't disagree; Rename /
+// Delete / Open raw stay in that menu only.
 function convoActions(r) {
   const wrap = document.createElement('div');
   wrap.className = 'lifeos-convo-actions';
+  const state = convoActionState(r);
+  if (state.canResume) {
+    const resumeBtn = document.createElement('button');
+    resumeBtn.type = 'button';
+    resumeBtn.className = 'button-ghost lifeos-convo-resume' +
+      (state.resumeEnabled ? ' accent-btn' : '');
+    resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume in ' + state.provider;
+    resumeBtn.disabled = !state.resumeEnabled;
+    resumeBtn.addEventListener('click', function () {
+      CONVO_VIEWER_ACTIONS.resume(r);
+    });
+    wrap.appendChild(resumeBtn);
+  }
+  // A phone has no hover to explain a disabled button, so the reason is on
+  // screen rather than in a tooltip.
+  if (state.reason) {
+    const chip = document.createElement('span');
+    chip.className = 'lifeos-convo-nosession';
+    chip.textContent = state.reason;
+    wrap.appendChild(chip);
+  }
+  if (state.canHandoff) {
+    const handoffBtn = document.createElement('button');
+    handoffBtn.type = 'button';
+    handoffBtn.className = 'button-ghost accent-btn lifeos-convo-handoff';
+    handoffBtn.innerHTML = icon('messages-square') + ' Start new in ' + state.handoffTo;
+    handoffBtn.addEventListener('click', function () {
+      CONVO_VIEWER_ACTIONS.handoff(r);
+    });
+    wrap.appendChild(handoffBtn);
+  }
   if (!r.path) return wrap;
   const openBtn = document.createElement('button');
   openBtn.type = 'button';
@@ -924,6 +956,17 @@ function convoActions(r) {
   });
   wrap.appendChild(openBtn);
   return wrap;
+}
+
+// A model change re-derives every row's Resume state in place, so an
+// expanded row stays expanded. Pairs DOM strips with convoView.rows by index,
+// which is why that array holds the rendered order.
+function refreshConvoActions() {
+  if (!convoView) return;
+  const actions = els.lifeOsConvoList.querySelectorAll('.lifeos-convo-actions');
+  actions.forEach(function (node, index) {
+    if (convoView.rows[index]) node.replaceWith(convoActions(convoView.rows[index]));
+  });
 }
 
 // Read one capture *raw* in the existing document viewer, layered over the
@@ -1049,12 +1092,16 @@ export function wireLifeOs() {
   // wireModelCombo owns its open/close + the summary-tap guard.
   lifeOsModelCombo = wireModelCombo(
     document.getElementById('lifeOsModelCombo'), function (choice) {
-      if (lifeOsConvosModelCombo) lifeOsConvosModelCombo.setValue(choice);
+      if (lifeOsConvosModelCombo) {
+        lifeOsConvosModelCombo.setValue(choice);
+        refreshConvoActions();
+      }
     }
   );
   lifeOsConvosModelCombo = wireModelCombo(
     document.getElementById('lifeOsConvosModelCombo'), function (choice) {
       if (lifeOsModelCombo) lifeOsModelCombo.setValue(choice);
+      refreshConvoActions();
     }
   );
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live

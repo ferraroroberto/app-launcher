@@ -3299,6 +3299,19 @@ body.terminal-open {
   justify-content: center;
   gap: 6px;
 }
+/* `font: inherit` for the same WebKit serif reason as .lifeos-convo-read. */
+.lifeos-convo-resume,
+.lifeos-convo-handoff { padding-inline: 14px; font: inherit; }
+/* Not a disabled button: a phone has no hover to explain one, and a capture
+   with no stored session id is a normal state for part of the archive. */
+.lifeos-convo-nosession {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+}
 /* The one lifecycle block — glyph, one-line reason, at most one Retry. */
 #lifeOsConvoState {
   display: flex;
