@@ -245,6 +245,7 @@ _BOARD_TARGETS = (
 )
 _LIFEOS_TARGETS = (
     "tests/e2e/test_life_os_tab.py tests/e2e/test_markdown_link_rendering.py "
+    "tests/e2e/test_markdown_tables.py "
     "tests/e2e/test_collapsible_other_tabs.py tests/e2e/test_coding_model_selector.py "
     "tests/e2e/test_terminal_bar_overflow.py tests/e2e/test_primary_nav.py "
     "tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py"
