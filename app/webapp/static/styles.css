@@ -2273,6 +2273,44 @@ summary + .opt-group { border-top: 0; }
 /* ...and the fence's own `<code>` child must not paint the chip a second
    time, which would draw a pill around the whole listing. */
 .tr-md pre code { padding: 0; background: none; font-size: inherit; }
+/* GFM tables (#1141) -- `markdown.js` emits the wrapper for every consumer
+   (Chat pane, Life OS conversation + document viewers), so these rules are
+   deliberately unscoped. A wide table scrolls sideways inside its own
+   wrapper and the page never does; unlike #1100's code blocks this scrolls
+   rather than wraps, because columns only read when they stay aligned.
+   Cells break at spaces but never inside a word (`.tr-text`'s
+   `overflow-wrap: anywhere` would otherwise squeeze each column to a
+   character and the table could never overflow into its scroller). */
+.md-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 0 8px;
+}
+.md-table-wrap:last-child { margin-bottom: 0; }
+.md-table {
+  border-collapse: collapse;
+  font-size: var(--font-label);
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.md-table th,
+.md-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.md-table th {
+  background: var(--card-off);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.md-table .md-al-left { text-align: left; }
+.md-table .md-al-center { text-align: center; }
+.md-table .md-al-right { text-align: right; }
 .tr-trunc { font-size: var(--font-caption); color: var(--muted); }
 /* A run of folded entries is one vendored disclosure card; the items inside
    are flat list rows on a hairline, each its own <details>. */
