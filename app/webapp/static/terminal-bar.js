@@ -25,6 +25,7 @@ import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import { openSessionRename, providerWebUrl, stopSession } from './sessions.js';
 import { createRowMenu } from './row-menu.js';
+import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
 import { groupsAreHidden, reloadNewest, toggleGroups } from './session-transcript.js';
 import { inChatMode } from './session-overlay.js';
@@ -83,6 +84,10 @@ export function closeTerminalMenu() {
 function notInChat() {
   return !inChatMode();
 }
+
+// The shared ↓ Latest pill (latest-pill.js, #1140) over the xterm buffer,
+// created by wireTerminalMenu().
+let latestPill = null;
 
 export function wireTerminalMenu() {
   const menu = terminalMenu.attach('terminal', els.terminalMenu, [
@@ -155,46 +160,40 @@ export function wireTerminalMenu() {
   ]);
   els.terminalMenu.closest('.terminal-bar').appendChild(menu);
 
-  els.terminalLatest.addEventListener('click', function () {
-    const t = state.terminal;
-    if (!t || !t.term) return;
-    try { t.term.scrollToBottom(); } catch (_) {}
-    updateLatestPill();
+  latestPill = createLatestPill(els.terminalLatest, {
+    isAway: function () {
+      const t = state.terminal;
+      if (!t || !t.term) return false;
+      const b = t.term.buffer.active;
+      return isScrolledAwayFromTail(b.viewportY, b.baseY, t.term.rows);
+    },
+    jump: function () {
+      const t = state.terminal;
+      if (t && t.term) t.term.scrollToBottom();
+    },
   });
 }
 
 // More than one screen of scrollback below the viewport → show the pill.
 // A full-screen (alternate-buffer) agent has no scrollback, so it never
-// shows there.
+// shows there. Kept rather than unified with the scroll panes' 120px: a
+// terminal scrolls in rows, and a screen is its natural "away" unit.
 function isScrolledAwayFromTail(viewportY, baseY, rows) {
   return baseY - viewportY > rows;
 }
 
 export function updateLatestPill() {
-  const t = state.terminal;
-  let show = false;
-  if (t && t.term) {
-    try {
-      const b = t.term.buffer.active;
-      show = isScrolledAwayFromTail(b.viewportY, b.baseY, t.term.rows);
-    } catch (_) { /* hidden is the safe default */ }
-  }
-  if (els.terminalLatest.hidden === show) els.terminalLatest.hidden = !show;
+  if (latestPill) latestPill.update();
 }
 
 // Keep the pill in step with one terminal's scroll position. Scrolling
 // (touch, wheel, scrollToBottom), new output landing while scrolled up,
 // and a reflow can each move the viewport off or back onto the tail.
-// Coalesced to one check per frame; a stashed warm terminal (#430) is
-// inert. Returns a disposer.
+// Coalesced to one check per frame by the pill; a stashed warm terminal
+// (#430) is inert. Returns a disposer.
 export function watchLatestPill(t) {
-  let frame = 0;
   const schedule = function () {
-    if (frame || t !== state.terminal) return;
-    frame = window.requestAnimationFrame(function () {
-      frame = 0;
-      if (t === state.terminal) updateLatestPill();
-    });
+    if (latestPill && t === state.terminal) latestPill.schedule();
   };
   const subs = [
     t.term.onScroll(schedule),
@@ -202,7 +201,6 @@ export function watchLatestPill(t) {
     t.term.onResize(schedule),
   ];
   return function () {
-    if (frame) window.cancelAnimationFrame(frame);
     subs.forEach(function (d) { try { d.dispose(); } catch (_) {} });
   };
 }

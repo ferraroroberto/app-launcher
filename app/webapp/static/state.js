@@ -208,6 +208,7 @@ export const els = {
   lifeOsViewerBody: document.getElementById('lifeOsViewerBody'),
   lifeOsViewerList: document.getElementById('lifeOsViewerList'),
   lifeOsViewerState: document.getElementById('lifeOsViewerState'),
+  lifeOsViewerLatest: document.getElementById('lifeOsViewerLatest'),
 
   // Chat pane of the session overlay (#953 transcript, #982 mode)
   chatPane: document.getElementById('chatPane'),
@@ -217,6 +218,7 @@ export const els = {
   sessionModeChat: document.getElementById('sessionModeChat'),
   transcriptBody: document.getElementById('transcriptBody'),
   transcriptOlder: document.getElementById('transcriptOlder'),
+  chatLatest: document.getElementById('chatLatest'),
   transcriptList: document.getElementById('transcriptList'),
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),

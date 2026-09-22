@@ -2818,12 +2818,13 @@ body.terminal-open {
   overscroll-behavior: contain;
 }
 .terminal-host .xterm { height: 100%; }
-/* Floating "Latest" pill (#981): replaces the bar's ↓ Jump, shown only while
-   scrolled more than a screen above the tail. Bottom-right of the terminal,
+/* Floating "Latest" pill (#981 → #1140): one look for all three mounts —
+   the Terminal, the Chat pane and the Life OS conversation viewer
+   (latest-pill.js owns when it shows). Bottom-right of its scroll surface,
    so it sits just above the docked composer. A hairline border and the card
    surface lift it off the screen — no shadow (design.md keeps real elevation
    for the bottom nav). */
-.terminal-latest {
+.latest-pill {
   position: absolute;
   right: 12px;
   bottom: 12px;
@@ -2844,8 +2845,18 @@ body.terminal-open {
   font-weight: 600;
   cursor: pointer;
 }
-.terminal-latest[hidden] { display: none; }
-.terminal-latest:active { border-color: var(--accent); color: var(--accent); }
+.latest-pill[hidden] { display: none; }
+.latest-pill:active { border-color: var(--accent); color: var(--accent); }
+/* The scroll panes' positioning box for the pill: it takes the scroller's
+   place in the column, so the pill floats over the scroller's visible
+   bottom edge rather than scrolling with the content. */
+.latest-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 /* The shared composer (#980, composer.js): a column of OCR tray + compose
    bar, always docked under the terminal (and, later, under Chat mode and
    in the Board drawer). Positioned so the keys D-pad and the image menu

@@ -342,3 +342,48 @@ def test_a_transient_unavailable_source_recovers_without_a_tap(
         "back again", timeout=OVERLAY_OPEN_MS
     )
     expect(page.locator("#transcriptState")).to_be_hidden()
+
+
+def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1140: the shared ↓ Latest pill, mounted on the Chat pane. Scrolled up,
+    it shows — and stays shown while live turns land (the reader is still
+    not looking at them). One tap lands on the newest turn, hides it, and
+    hands the pane back to #1050's stick-to-bottom, so the next live turn
+    appears on screen by itself."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    tr.append(*[
+        _turn("user" if i % 2 == 0 else "assistant",
+              f"filler turn {i} " + "with enough words to wrap a line " * 3,
+              1000 + i * 10)
+        for i in range(30)
+    ])
+    _open_chat(page)
+    listing = page.locator("#transcriptList")
+    expect(listing).to_contain_text("filler turn 29", timeout=OVERLAY_OPEN_MS)
+    pill = page.locator("#chatLatest")
+    expect(pill).to_have_count(1)
+    # Opens at the tail: nothing to jump to.
+    expect(pill).to_be_hidden()
+
+    page.locator("#transcriptBody").evaluate(
+        "el => { el.scrollTop = Math.round(el.scrollHeight * 0.3); }"
+    )
+    expect(pill).to_be_visible()
+
+    tr.append(_turn("assistant", "a brand new reply", 5000))
+    expect(listing).to_contain_text("a brand new reply", timeout=OVERLAY_OPEN_MS)
+    expect(pill).to_be_visible()
+
+    pill.click()
+    expect(pill).to_be_hidden()
+    expect(listing.locator(".tr-turn", has_text="a brand new reply")).to_be_in_viewport()
+
+    # Sticking resumed: the next live turn arrives on screen with no scroll.
+    tr.append(_turn("user", "and one more after the jump", 6000))
+    expect(
+        listing.locator(".tr-turn", has_text="and one more after the jump")
+    ).to_be_in_viewport(timeout=OVERLAY_OPEN_MS)
+    expect(pill).to_be_hidden()
