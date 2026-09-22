@@ -233,12 +233,16 @@ def test_jobs_row_renders_sparkline_and_duration_chip(
     assert dot_count == 5, f"expected 5 sparkline dots, got {dot_count}"
     assert spark.locator(".job-spark-dot.down").count() == 1
     assert spark.locator(".job-spark-dot.live").count() == 1
-    # Duration chip text contains both percentiles.
-    chip = row.locator("[data-role='duration-chip']")
-    expect(chip).to_contain_text("p50")
-    expect(chip).to_contain_text("p95")
-    # Stuck marker shows up in the meta text.
-    expect(row.locator(".meta")).to_contain_text("stuck")
+    # Percentiles and the last-run sentence moved off the row into the
+    # detail block it opens (#1130): the row is two lines.
+    expect(row.locator("[data-role='duration-chip']")).to_have_count(0)
+    row.locator("button[aria-label^='View run history']").click()
+    details = authed_page.locator("[data-role='job-details']")
+    expect(details).to_be_visible()
+    expect(details).to_contain_text("p50")
+    expect(details).to_contain_text("p95")
+    # Stuck marker shows up in the last-run line.
+    expect(details).to_contain_text("stuck")
     # Health dot inherits the stuck class.
     expect(row.locator("[data-role='status-dot']")).to_have_class(
         re.compile(r"\bstuck\b")

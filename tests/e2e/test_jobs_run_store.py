@@ -120,10 +120,12 @@ def test_search_jump_artifact_link_and_pin_toggle(
     authed_page.locator("#tabJobs").click()
     row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
     expect(row).to_be_visible()
-    expect(row.locator(".meta")).to_contain_text("21 kept")
-    expect(row.locator(".meta")).to_contain_text("1 pinned")
-
+    # Retention counts moved into the detail block the row opens (#1130).
     row.locator(".launch-btn").click()
+    details = authed_page.locator("[data-role='job-details']")
+    expect(details).to_contain_text("21 kept")
+    expect(details).to_contain_text("1 pinned")
+
     expect(authed_page.locator(".jobs-artifacts")).to_be_visible()
     artifact = authed_page.locator(".jobs-artifacts a")
     expect(artifact).to_have_text(re.compile(r"report\.csv"))

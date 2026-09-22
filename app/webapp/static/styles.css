@@ -668,11 +668,13 @@ summary + .opt-group { border-top: 0; }
   font-weight: 400;
   overflow-wrap: anywhere;
 }
+/* No uppercase transform (#1130): these chips carry *values* -- "py",
+   "daily 03:00", "p50 3m 33s" -- and uppercasing them made the units
+   ambiguous ("P50 3M 33S"). Section headings keep their caption caps. */
 .launch-btn .kind-pill {
   display: inline-block;
   font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   color: var(--muted);
   background: var(--card-off);
   padding: 2px 6px;
@@ -756,8 +758,11 @@ summary + .opt-group { border-top: 0; }
   opacity: 0.35;
   cursor: not-allowed;
 }
+/* `flex: none`: the dot sits in a flex head row, so without it a narrow row
+   squeezes the circle into an oval (#1130, seen at 320px). */
 .app-item .health-dot {
   display: inline-block;
+  flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -804,26 +809,50 @@ summary + .opt-group { border-top: 0; }
 /* Alert-on-failure marker (issue #597) — mirrors the board-chief-crown
    convention: a colored glyph beside the title, not inside the status dot. */
 .job-item .job-alert-icon { color: var(--accent); display: inline-flex; flex: none; }
-/* Two sibling rows under the name, always rendered separately so the
-   eye lands in the same place across every job:
-     row 2 — type pill + schedule chip
-     row 3 — duration (load) chip + sparkline (recent dots) */
-.job-item .job-row-pills,
-.job-item .job-row-load {
+/* One line under the name (#1130): next run, cadence, the seven-dot
+   history, and the not-firing alert when there is one. The row used to
+   carry two further lines (type/situational chips, then percentiles) and a
+   last-run sentence; those moved into .job-details, in the panel the row
+   opens. */
+.job-item .job-row-pills {
   display: flex;
-  flex-wrap: wrap;
+  /* nowrap, so the elastic cadence chip truncates instead of the row
+     spilling onto a third line — which is what wrap does first, since the
+     countdown and the history are both fixed-size. */
+  flex-wrap: nowrap;
   align-items: center;
   gap: 4px 6px;
-  margin-top: 2px;
+  margin-top: 3px;
+  font-size: var(--font-label);
+  min-width: 0;
 }
-.job-item .job-row-pills .kind-pill,
-.job-item .job-row-load .kind-pill {
+/* The three parts have to share one line at 390px next to the action pair,
+   so the chips keep their own caption size and a tight box. The cadence is
+   the elastic one: it truncates (full text in its title) rather than wrap,
+   so a job with three fire times a day still renders two lines. */
+.job-item .job-row-pills .kind-pill {
   white-space: nowrap;
   margin-right: 0;
+  padding: 1px 6px;
+  font-size: var(--font-caption);
 }
-/* Keep the load row visually distinct (slightly tighter) — its
-   contents are quantitative, not categorical. */
-.job-item .job-row-load { gap: 4px 8px; }
+.job-item .job-row-pills .job-countdown-chip,
+.job-item .job-row-pills .job-sparkline { flex: none; }
+.job-item .job-row-pills .job-cadence-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Below the iPhone-SE width there is no room for a useful cadence: it
+   truncates to a letter or two and crowds the history dots. Drop it rather
+   than render a stub — it is one tap away in the detail block, and the two
+   facts that matter most (next fire, recent outcomes) keep their space. */
+@media (max-width: 360px) {
+  .job-item .job-row-pills .job-cadence-chip { display: none; }
+}
+.job-item .job-row-pills .job-sparkline { gap: 2px; }
+.job-item .job-row-pills .job-spark-dot { width: 6px; height: 6px; }
 .job-sparkline {
   display: inline-flex;
   align-items: center;
@@ -1169,8 +1198,7 @@ summary + .opt-group { border-top: 0; }
 .jobs-agenda-body { padding: 4px 0 8px; }
 .jobs-agenda-day {
   font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   color: var(--muted);
   padding: 8px 16px 4px;
   border-top: 1px solid var(--line);
@@ -1215,8 +1243,7 @@ summary + .opt-group { border-top: 0; }
    `color: var(--muted)` (equal specificity, later in the cascade). */
 .launch-btn .job-countdown-chip {
   color: var(--accent);
-  text-transform: none;
-  letter-spacing: 0;
+  font-weight: 600;
 }
 
 /* Missed-fire coverage badge (issue #697) — "this schedule is not firing".
@@ -1225,8 +1252,45 @@ summary + .opt-group { border-top: 0; }
    same specificity reason as the countdown chip above. */
 .launch-btn .job-coverage-pill {
   color: var(--danger);
-  text-transform: none;
-  letter-spacing: 0;
+}
+
+/* The row's detail block (#1130): the facts the two-line row hands off,
+   as label/value rows above the runs list. Caption-size keys in --muted, so
+   the values read first. */
+.job-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.job-detail-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: var(--font-caption);
+  line-height: 1.4;
+}
+.job-detail-key {
+  flex: none;
+  width: 74px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.job-detail-value { color: var(--fg); overflow-wrap: anywhere; }
+.job-detail-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.job-detail-flags .kind-pill {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  background: var(--card-off);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
 }
 
 /* The history sits in its OWN <li> right under the job row — previously
@@ -2011,6 +2075,34 @@ summary + .opt-group { border-top: 0; }
   justify-content: center;
 }
 .app-item .row-actions.agent-actions { position: relative; }
+/* Jobs (#1130): one visible action at the tint tier plus the ⋯ menu, side
+   by side. Row-sized like .listener-kill and the Life OS conversation
+   actions -- this app's .button-tint stretches to width:100% for its
+   full-width instances, which a row-level action must not do. */
+.app-item .row-actions.job-row-actions {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-right: 10px;
+}
+/* A 44px square: the glyph is the label, and the row's text column needs
+   every pixel the rail does not take. */
+.job-item .job-run-btn {
+  flex: none;
+  width: auto;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: var(--font-label);
+}
+.job-item .job-menu-anchor {
+  flex: none;
+  min-height: 44px;
+  min-width: 36px;
+}
+/* The rail's divider rule targets adjacent .icon-btn siblings; the pair
+   here is a tint button beside a kebab, which is not that shape. */
+.app-item .row-actions.job-row-actions .icon-btn + .icon-btn { border-top: 0; }
 /* The kebab keeps the 52px slot the gear held, and `justify-content: center`
    on the rail above centres it against the row's full height — the
    alignment #1025 asked for. */

@@ -61,6 +61,8 @@ def test_toggle_precedes_confirm_toggle_in_dialog(
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
     authed_page.locator("#jobsEditBtn").click()
+    # Edit moved into the row's ⋯ menu (#1130).
+    authed_page.locator("#jobsList li[data-id='demo'] [data-role='job-menu']").click()
     authed_page.locator(
         "#jobsList li[data-id='demo'] button[aria-label='Edit']"
     ).click()
@@ -98,6 +100,8 @@ def test_saving_toggle_sends_alert_on_failure(
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
     authed_page.locator("#jobsEditBtn").click()
+    # Edit moved into the row's ⋯ menu (#1130).
+    authed_page.locator("#jobsList li[data-id='demo'] [data-role='job-menu']").click()
     authed_page.locator(
         "#jobsList li[data-id='demo'] button[aria-label='Edit']"
     ).click()

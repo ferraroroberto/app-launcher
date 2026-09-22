@@ -6,7 +6,17 @@
  */
 
 import { fmtAgo } from './sessions.js';
+import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
+
+// One menu instance for every job row (the pattern apps-coding.js uses for
+// the ⋯ project menu): it remembers which row was open across the 4s poll's
+// re-render and reopens it there.
+const jobMenu = createRowMenu('project-menu');
+
+export function endJobRowRender() {
+  jobMenu.endRender();
+}
 
 function fmtUntil(epochSeconds) {
   const secs = Math.floor(epochSeconds - Date.now() / 1000);
@@ -20,7 +30,10 @@ function renderCountdownChip(job) {
   if (!Number.isFinite(job.next_run_epoch)) return null;
   const chip = document.createElement('span');
   chip.className = 'kind-pill job-countdown-chip';
-  chip.innerHTML = icon('timer') + ' next ' + fmtUntil(job.next_run_epoch);
+  // No glyph (#1130): line 2 has to hold this, the cadence and the seven-dot
+  // history on one line at 390px, and the accent colour already sets "when
+  // it next fires" apart from the cadence beside it.
+  chip.textContent = 'Next ' + fmtUntil(job.next_run_epoch);
   chip.title = job.next_run
     ? 'Next scheduled run: ' + job.next_run
     : 'Next scheduled run';
@@ -140,6 +153,19 @@ function renderCoveragePill(job) {
   return pill;
 }
 
+// The server's cadence text ("daily 03:00") reads as a sentence on the row;
+// the uppercase transform that used to make it "DAILY 03:00" is gone with
+// #1130, so only the first letter is lifted here.
+function renderCadenceChip(job) {
+  const text = (job.schedule_chip || '').trim();
+  if (!text) return null;
+  const chip = document.createElement('span');
+  chip.className = 'kind-pill job-cadence-chip';
+  chip.textContent = text.charAt(0).toUpperCase() + text.slice(1);
+  chip.title = 'Schedule: ' + text;
+  return chip;
+}
+
 function renderSparkline(job) {
   const last7 = job.stats && Array.isArray(job.stats.last7) ? job.stats.last7 : [];
   if (!last7.length) return null;
@@ -158,6 +184,10 @@ function renderSparkline(job) {
   return span;
 }
 
+/* The last run, as one sentence. Since #1130 it sits under the detail
+ * block's own "Last run" key, so it no longer carries the `last:` prefix,
+ * nor the success rate and retention counts — those are sibling rows there,
+ * and printing them twice is what made the old row's meta line unreadable. */
 function describeLastRun(job) {
   const bits = [];
   if (job.last_run) {
@@ -168,25 +198,14 @@ function describeLastRun(job) {
       bits.push('running now' + (ago ? ' · started ' + ago + ' ago' : ''));
     } else {
       const label = status === 'unconfirmed' ? 'not confirmed' : status;
-      const tail = label +
+      bits.push(label +
         (ago ? ' · ' + ago + ' ago' : '') +
-        (duration ? ' · ' + duration : '');
-      bits.push('last: ' + tail);
+        (duration ? ' · ' + duration : ''));
     }
   } else {
     bits.push('never run');
   }
   if (job.stuck) bits.push(icon('triangle-alert') + ' stuck');
-  const successRate = job.stats && job.stats.success_rate_30d;
-  if (successRate != null && Number.isFinite(successRate)) {
-    bits.push(Math.round(successRate * 100) + '% / 30d');
-  }
-  if (Number.isFinite(job.run_count)) {
-    bits.push(job.run_count + ' kept');
-  }
-  if (Number.isFinite(job.pinned_count) && job.pinned_count > 0) {
-    bits.push(job.pinned_count + ' pinned');
-  }
   return bits.join(' · ');
 }
 
@@ -249,94 +268,38 @@ export function renderJobRow(job, options) {
   }
   info.appendChild(head);
 
+  // Line 2 (#1130): when it next runs, how often, and how the last seven
+  // went. Everything else the row used to carry -- type, percentiles, the
+  // last-run sentence, success rate, retention, and the situational chips --
+  // moved into the detail block the row opens (renderJobDetails below), so
+  // the row reads in one glance instead of fourteen data points.
   const pills = document.createElement('div');
   pills.className = 'job-row-pills';
   pills.dataset.role = 'job-pills';
-  const kind = document.createElement('span');
-  kind.className = 'kind-pill';
-  kind.textContent = job.target_kind || '?';
-  pills.appendChild(kind);
-  if (job.schedule_chip) {
-    const schedule = document.createElement('span');
-    schedule.className = 'kind-pill';
-    schedule.textContent = job.schedule_chip;
-    pills.appendChild(schedule);
-  }
   const countdown = renderCountdownChip(job);
   if (countdown) {
     countdown.dataset.role = 'countdown-chip';
     pills.appendChild(countdown);
   }
-  if (job.elevated) {
-    const elevated = document.createElement('span');
-    elevated.className = 'kind-pill job-elevated-pill';
-    elevated.dataset.role = 'elevated-chip';
-    elevated.innerHTML = icon('lock') + ' external schedule';
-    elevated.title = 'Runs through an externally managed elevated task. ' +
-      'Run-now and schedule controls are unavailable here; tap the row to view history.';
-    pills.appendChild(elevated);
-  }
-  // Issue #757: this job's Task Scheduler entry is hand-registered with an
-  // S4U principal so it fires while the machine sits logged out. Like the
-  // elevated pill above, the entry is externally managed — the schedule
-  // controls are withheld and the row says why. Whether the *registered*
-  // entry actually carries that principal is a separate fact, reported by
-  // the coverage pill (`principal_interactive`), not asserted here.
-  if (job.session_less) {
-    const sessionLess = document.createElement('span');
-    sessionLess.className = 'kind-pill job-session-less-pill';
-    sessionLess.dataset.role = 'session-less-chip';
-    sessionLess.innerHTML = icon('moon') + ' logged-out';
-    sessionLess.title = 'Registered to run whether the user is logged on or ' +
-      'not (S4U). The Task Scheduler entry is externally managed, so schedule ' +
-      'controls are unavailable here; re-register it from an elevated shell.';
-    pills.appendChild(sessionLess);
-  }
-  if (job.mutex_group) {
-    const mutex = document.createElement('span');
-    mutex.className = 'kind-pill job-mutex-pill';
-    const depth = Number.isFinite(job.queue_depth) ? job.queue_depth : 0;
-    mutex.innerHTML = icon('link') + ' ';
-    mutex.append(depth > 0 ? job.mutex_group + ' (' + depth + ')' : job.mutex_group);
-    mutex.title = 'Mutex group: ' + job.mutex_group +
-      (depth > 0 ? ' — ' + depth + ' queued' : '');
-    pills.appendChild(mutex);
-  }
-  if (job.webhook) {
-    const webhook = document.createElement('span');
-    webhook.className = 'kind-pill job-webhook-pill';
-    webhook.innerHTML = icon('webhook') + ' ' + job.webhook.provider;
-    webhook.title = 'Webhook trigger (' + job.webhook.provider + ') — POST /api/jobs/' +
-      job.id + '/hook';
-    pills.appendChild(webhook);
-  }
-  // Last on the pills row so the poll-time patch can append/remove it
-  // without an anchor — see patchRowNodes.
-  const coverage = renderCoveragePill(job);
-  if (coverage) coverage.dataset.role = 'coverage-chip';
-  if (coverage) pills.appendChild(coverage);
-  info.appendChild(pills);
-
-  const load = document.createElement('div');
-  load.className = 'job-row-load';
-  load.dataset.role = 'job-load';
-  const duration = renderDurationChip(job);
-  if (duration) {
-    duration.dataset.role = 'duration-chip';
-    load.appendChild(duration);
+  const cadence = renderCadenceChip(job);
+  if (cadence) {
+    cadence.dataset.role = 'cadence-chip';
+    pills.appendChild(cadence);
   }
   const spark = renderSparkline(job);
   if (spark) {
     spark.dataset.role = 'sparkline';
-    load.appendChild(spark);
+    pills.appendChild(spark);
   }
-  info.appendChild(load);
+  // An alert, not a detail: a schedule that is not firing stays on the row.
+  // Last, so the poll-time patch can append/remove it without an anchor.
+  const coverage = renderCoveragePill(job);
+  if (coverage) {
+    coverage.dataset.role = 'coverage-chip';
+    pills.appendChild(coverage);
+  }
+  info.appendChild(pills);
 
-  const meta = document.createElement('span');
-  meta.className = 'meta';
-  meta.dataset.role = 'meta';
-  meta.innerHTML = describeLastRun(job);
-  info.appendChild(meta);
   info.title = 'View run history for ' + job.name;
   info.setAttribute('aria-label', 'View run history for ' + job.name);
   info.addEventListener('click', function () {
@@ -345,13 +308,17 @@ export function renderJobRow(job, options) {
   main.appendChild(info);
   li.appendChild(main);
 
+  // One visible action (#1130): Run, at the tint tier and the 44px touch
+  // floor. Pause/Resume, the dry-run check, Edit and Remove move into the
+  // row's ⋯ menu -- the same shared menu the Coding tile uses -- so the rail
+  // stops being a stack of five equally-weighted glyphs.
   const actions = document.createElement('div');
-  actions.className = 'row-actions session-actions';
+  actions.className = 'row-actions session-actions job-row-actions';
   let run = null;
   if (job.manual_run_allowed !== false) {
     run = document.createElement('button');
     run.type = 'button';
-    run.className = 'icon-btn';
+    run.className = 'button-tint job-run-btn';
     run.dataset.role = 'run-btn';
     setRunBtnState(run, job);
     run.addEventListener('click', function (event) {
@@ -363,62 +330,58 @@ export function renderJobRow(job, options) {
 
   const hasSchedule = job.paused ||
     (job.schedule && job.schedule.type && job.schedule.type !== 'none');
-  if (hasSchedule && job.schedule_controls_allowed !== false) {
-    const pause = document.createElement('button');
-    pause.type = 'button';
-    pause.className = 'icon-btn';
-    pause.dataset.role = 'pause-btn';
-    pause.innerHTML = job.paused ? icon('play') : icon('pause');
-    pause.title = job.paused
-      ? 'Resume schedule for ' + job.name
-      : 'Pause schedule for ' + job.name;
-    pause.setAttribute('aria-label', job.paused ? 'Resume' : 'Pause');
-    pause.addEventListener('click', function (event) {
-      event.stopPropagation();
-      if (handlers.onPause) handlers.onPause(ref.job);
-    });
-    actions.appendChild(pause);
+  const canPause = hasSchedule && job.schedule_controls_allowed !== false;
+  // Every item reads `ref.job`, not the render-time `job`: the poll reuses
+  // this <li> and re-points `ref` (#1007), and the menu outlives the render.
+  const menuItems = [
+    {
+      glyph: function () { return ref.job.paused ? 'play' : 'pause'; },
+      label: function () {
+        return (ref.job.paused ? 'Resume schedule for ' : 'Pause schedule for ') + ref.job.name;
+      },
+      text: function () { return ref.job.paused ? 'Resume' : 'Pause'; },
+      hidden: !canPause,
+      onTap: function () { if (handlers.onPause) handlers.onPause(ref.job); },
+    },
+    {
+      glyph: 'flask-conical',
+      label: 'Dry-run check',
+      text: 'Dry-run check',
+      hidden: !handlers.editMode,
+      onTap: function () {
+        if (handlers.onRun) handlers.onRun(ref.job, { dryRun: 'check', skipDialog: true });
+      },
+    },
+    {
+      glyph: 'pencil',
+      label: 'Edit',
+      text: 'Edit',
+      hidden: !handlers.editMode,
+      onTap: function () { if (handlers.onEdit) handlers.onEdit(ref.job); },
+    },
+    {
+      glyph: 'trash-2',
+      className: 'danger',
+      label: 'Remove',
+      text: 'Remove',
+      hidden: !handlers.editMode,
+      onTap: function () { if (handlers.onRemove) handlers.onRemove(ref.job); },
+    },
+  ];
+  if (menuItems.some(function (item) { return !item.hidden; })) {
+    const anchor = document.createElement('button');
+    anchor.type = 'button';
+    anchor.className = 'icon-btn job-menu-anchor';
+    anchor.dataset.role = 'job-menu';
+    anchor.innerHTML = icon('ellipsis-vertical');
+    anchor.title = 'Job actions for ' + job.name;
+    anchor.setAttribute('aria-label', 'Job actions');
+    anchor.addEventListener('click', function (event) { event.stopPropagation(); });
+    const menuEl = jobMenu.attach(job.id, anchor, menuItems);
+    actions.appendChild(anchor);
+    actions.appendChild(menuEl);
   }
 
-  if (handlers.editMode) {
-    const dryRun = document.createElement('button');
-    dryRun.type = 'button';
-    dryRun.className = 'icon-btn';
-    dryRun.innerHTML = icon('flask-conical');
-    dryRun.title = 'Dry-run check ' + job.name + ' (resolve only, no spawn)';
-    dryRun.setAttribute('aria-label', 'Dry-run check');
-    dryRun.addEventListener('click', function (event) {
-      event.stopPropagation();
-      if (handlers.onRun) {
-        handlers.onRun(ref.job, { dryRun: 'check', skipDialog: true });
-      }
-    });
-    actions.appendChild(dryRun);
-
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'icon-btn';
-    edit.innerHTML = icon('pencil');
-    edit.title = 'Edit ' + job.name;
-    edit.setAttribute('aria-label', 'Edit');
-    edit.addEventListener('click', function (event) {
-      event.stopPropagation();
-      if (handlers.onEdit) handlers.onEdit(ref.job);
-    });
-    actions.appendChild(edit);
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'icon-btn danger';
-    remove.innerHTML = icon('trash-2');
-    remove.title = 'Remove ' + job.name;
-    remove.setAttribute('aria-label', 'Remove');
-    remove.addEventListener('click', function (event) {
-      event.stopPropagation();
-      if (handlers.onRemove) handlers.onRemove(ref.job);
-    });
-    actions.appendChild(remove);
-  }
   if (actions.childElementCount) li.appendChild(actions);
 
   const nodes = {
@@ -427,12 +390,10 @@ export function renderJobRow(job, options) {
     dotEl: dot,
     nameEl: name,
     pillsEl: pills,
-    loadEl: load,
-    metaEl: meta,
     runBtnEl: run,
     countdownEl: countdown,
+    cadenceEl: cadence,
     coverageEl: coverage,
-    durationEl: duration,
     sparkEl: spark,
   };
   li._rowNodes = nodes;
@@ -453,20 +414,130 @@ function swapChip(container, oldElement, freshElement, anchor) {
   return null;
 }
 
+/* The row's detail block (#1130) — everything the two-line row no longer
+ * carries, in the panel that row opens: what it runs, its cadence and next
+ * fire, how long it takes, how often it succeeds, what is kept, and the
+ * situational facts (an externally-managed schedule, a mutex group, a
+ * webhook trigger). Built from the same helpers the row used, so a value
+ * reads identically wherever it lands.
+ */
+function detailRow(label, value) {
+  if (value === null || value === undefined || value === '') return null;
+  const row = document.createElement('div');
+  row.className = 'job-detail-row';
+  const key = document.createElement('span');
+  key.className = 'job-detail-key';
+  key.textContent = label;
+  const val = document.createElement('span');
+  val.className = 'job-detail-value';
+  if (typeof value === 'string') val.innerHTML = value;
+  else val.appendChild(value);
+  row.append(key, val);
+  return row;
+}
+
+export function renderJobDetails(job) {
+  const section = document.createElement('section');
+  section.className = 'job-details';
+  section.dataset.role = 'job-details';
+
+  const stats = job.stats || {};
+  const duration = renderDurationChip(job);
+  const successRate = stats.success_rate_30d;
+  const kept = [];
+  if (Number.isFinite(job.run_count)) kept.push(job.run_count + ' kept');
+  if (Number.isFinite(job.pinned_count) && job.pinned_count > 0) {
+    kept.push(job.pinned_count + ' pinned');
+  }
+
+  const rows = [
+    detailRow('Type', job.target_kind || '?'),
+    detailRow('Schedule', job.paused
+      ? (job.schedule_chip || 'scheduled') + ' · paused'
+      : (job.schedule_chip || 'manual only')),
+    detailRow('Next run', job.next_run || null),
+    detailRow('Duration', duration ? duration.textContent : null),
+    detailRow('Success', successRate != null && Number.isFinite(successRate)
+      ? Math.round(successRate * 100) + '% over 30 days' : null),
+    detailRow('Runs', kept.length ? kept.join(' · ') : null),
+    detailRow('Last run', describeLastRun(job)),
+  ];
+
+  // The situational chips, kept as chips: each is a flag, not a measurement.
+  const flags = document.createElement('div');
+  flags.className = 'job-detail-flags';
+  if (job.elevated) {
+    const elevated = document.createElement('span');
+    elevated.className = 'kind-pill job-elevated-pill';
+    elevated.dataset.role = 'elevated-chip';
+    elevated.innerHTML = icon('lock') + ' external schedule';
+    elevated.title = 'Runs through an externally managed elevated task. ' +
+      'Run-now and schedule controls are unavailable here.';
+    flags.appendChild(elevated);
+  }
+  if (job.session_less) {
+    const sessionLess = document.createElement('span');
+    sessionLess.className = 'kind-pill job-session-less-pill';
+    sessionLess.dataset.role = 'session-less-chip';
+    sessionLess.innerHTML = icon('moon') + ' logged-out';
+    sessionLess.title = 'Registered to run whether the user is logged on or ' +
+      'not (S4U). The Task Scheduler entry is externally managed, so schedule ' +
+      'controls are unavailable here; re-register it from an elevated shell.';
+    flags.appendChild(sessionLess);
+  }
+  if (job.mutex_group) {
+    const mutex = document.createElement('span');
+    mutex.className = 'kind-pill job-mutex-pill';
+    const depth = Number.isFinite(job.queue_depth) ? job.queue_depth : 0;
+    mutex.innerHTML = icon('link') + ' ';
+    mutex.append(depth > 0 ? job.mutex_group + ' (' + depth + ')' : job.mutex_group);
+    mutex.title = 'Mutex group: ' + job.mutex_group +
+      (depth > 0 ? ' — ' + depth + ' queued' : '');
+    flags.appendChild(mutex);
+  }
+  if (job.webhook) {
+    const webhook = document.createElement('span');
+    webhook.className = 'kind-pill job-webhook-pill';
+    webhook.innerHTML = icon('webhook') + ' ' + job.webhook.provider;
+    webhook.title = 'Webhook trigger (' + job.webhook.provider + ') — POST /api/jobs/' +
+      job.id + '/hook';
+    flags.appendChild(webhook);
+  }
+
+  rows.forEach(function (row) { if (row) section.appendChild(row); });
+  if (flags.childElementCount) section.appendChild(flags);
+  return section;
+}
+
 export function patchRowNodes(nodes, job) {
   // First, before any rendering: re-point the row's action handlers at the
   // fresh job (#1007). The poll reuses this <li>, so without this the
-  // buttons keep acting on the object captured at row-creation time.
+  // buttons (and the ⋯ menu's items, which read the same holder) keep
+  // acting on the object captured at row-creation time.
   if (nodes.ref) nodes.ref.job = job;
   applyStatusDot(nodes.dotEl, job);
-  nodes.metaEl.innerHTML = describeLastRun(job);
   if (nodes.runBtnEl) setRunBtnState(nodes.runBtnEl, job);
 
+  // The row's own order: countdown, cadence, sparkline, coverage. Each chip
+  // is swapped against the next one still in the DOM, so a chip that was
+  // absent comes back in the right place.
   const freshCountdown = renderCountdownChip(job);
   if (freshCountdown) freshCountdown.dataset.role = 'countdown-chip';
-  const mutex = nodes.pillsEl.querySelector('.job-mutex-pill');
   nodes.countdownEl = swapChip(
-    nodes.pillsEl, nodes.countdownEl, freshCountdown, mutex
+    nodes.pillsEl, nodes.countdownEl, freshCountdown,
+    nodes.cadenceEl || nodes.sparkEl || nodes.coverageEl
+  );
+
+  const freshCadence = renderCadenceChip(job);
+  if (freshCadence) freshCadence.dataset.role = 'cadence-chip';
+  nodes.cadenceEl = swapChip(
+    nodes.pillsEl, nodes.cadenceEl, freshCadence, nodes.sparkEl || nodes.coverageEl
+  );
+
+  const freshSpark = renderSparkline(job);
+  if (freshSpark) freshSpark.dataset.role = 'sparkline';
+  nodes.sparkEl = swapChip(
+    nodes.pillsEl, nodes.sparkEl, freshSpark, nodes.coverageEl
   );
 
   const freshCoverage = renderCoveragePill(job);
@@ -474,14 +545,4 @@ export function patchRowNodes(nodes, job) {
   nodes.coverageEl = swapChip(
     nodes.pillsEl, nodes.coverageEl, freshCoverage, null
   );
-
-  const freshDuration = renderDurationChip(job);
-  if (freshDuration) freshDuration.dataset.role = 'duration-chip';
-  nodes.durationEl = swapChip(
-    nodes.loadEl, nodes.durationEl, freshDuration, nodes.sparkEl
-  );
-
-  const freshSpark = renderSparkline(job);
-  if (freshSpark) freshSpark.dataset.role = 'sparkline';
-  nodes.sparkEl = swapChip(nodes.loadEl, nodes.sparkEl, freshSpark, null);
 }

@@ -29,9 +29,11 @@ import { fmtAgo } from './sessions.js';
 import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
 import { wireJobsAgenda } from './jobs-agenda.js';
 import {
+  endJobRowRender,
   formatBytes,
   formatDuration,
   patchRowNodes,
+  renderJobDetails,
   renderJobRow,
   runOutcome,
   statusIcon,
@@ -56,6 +58,7 @@ export function renderJobs() {
 
   if (searching) {
     renderSearchMatches(host);
+    endJobRowRender();
     return;
   }
 
@@ -72,6 +75,8 @@ export function renderJobs() {
       host.appendChild(renderHistoryLi(job));
     }
   });
+  // An open ⋯ menu whose row is gone drops its state (row-menu contract).
+  endJobRowRender();
 }
 
 function renderSearchMatches(host) {
@@ -233,6 +238,10 @@ function renderHistoryLi(job) {
   const body = document.createElement('div');
   body.className = 'jobs-history-body';
   body.dataset.role = 'history-body';
+
+  // Everything the two-line row no longer shows (#1130) lives here, above
+  // the runs it belongs to.
+  body.appendChild(renderJobDetails(job));
 
   const runsList = document.createElement('ul');
   runsList.className = 'jobs-runs-list';

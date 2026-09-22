@@ -167,9 +167,11 @@ def test_unconfirmed_row_says_not_confirmed_and_explains_itself(
     claim that was wrong. The exit code's own one-liner rides on the dot's
     tooltip so the row is actionable without opening the log."""
     _open_jobs(authed_page, base_url)
-    meta = authed_page.locator(
-        "#jobsList li[data-id='truncated'] [data-role='meta']"
-    )
+    # The last-run sentence moved into the detail block the row opens (#1130).
+    authed_page.locator(
+        "#jobsList li[data-id='truncated'] button[aria-label^='View run history']"
+    ).click()
+    meta = authed_page.locator("[data-role='job-details']")
     expect(meta).to_contain_text("not confirmed")
     expect(meta).not_to_contain_text("failed")
     expect(_dot(authed_page, "truncated")).to_have_attribute(
