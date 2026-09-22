@@ -1,0 +1,140 @@
+"""Regression pin for #1133 — the vendored empty-state and select-native.
+
+`design_lint` reported both components NOT_ADOPTED while the app hand-rolled
+them: a zero-item list rendered a bare sentence in a dashed box (or, on the
+Board, a sentence with no glyph), and every `<select>` wore the *text input*
+recipe — `min-height`, which iOS Safari ignores on a select, rendering it at
+its stubby intrinsic height with a double border in WebKit.
+
+Both are now the scaffold's components, byte-for-byte (`tests/
+test_vendored_manifest.py` pins the manifest entry; `design_lint`'s vendored
+check pins the bytes). This pins what they render.
+
+The Jobs empty state also never appeared at all: `patchRowsInPlace()` returns
+early when the row count is unchanged, and 0 === 0 takes that branch on every
+poll, so the flag stayed at its markup default of `hidden`. Pinned here too.
+"""
+from __future__ import annotations
+
+import json as _json
+import re
+
+import pytest
+from playwright.sync_api import Page, expect
+
+pytestmark = pytest.mark.smoke
+
+
+def _json_route(page: Page, pattern: str, body: dict) -> None:
+    page.route(
+        re.compile(pattern),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body)),
+    )
+
+
+def _empty_everything(page: Page) -> None:
+    _json_route(page, r".*/api/jobs(\?.*)?$", {"jobs": []})
+    _json_route(page, r".*/api/apps$", {"scan_root": "", "apps": []})
+    _json_route(page, r".*/api/board(\?.*)?$", {
+        "columns": {}, "github": {"fetched_at": "2026-09-22T10:00:00Z"},
+        "live_sessions": {"available": True},
+    })
+    _json_route(page, r".*/api/life-os/skills(\?.*)?$", {
+        "available": True, "life_os_dir": "", "skills": []})
+    _json_route(page, r".*/api/life-os/recap-status$", {
+        "available": False, "ledger_exists": False, "age_days": None,
+        "staleness": "fresh", "proposal_pending": False, "proposal_name": None})
+
+
+def test_zero_item_lists_render_the_canonical_empty_state(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _empty_everything(page)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    for tab, empty_id in (
+        ("#tabClaude", "#claudeEmpty"),
+        ("#tabApps", "#appsEmpty"),
+        ("#tabJobs", "#jobsEmpty"),
+        ("#tabLifeOS", "#lifeOsEmpty"),
+    ):
+        page.locator(tab).click()
+        page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+        block = page.locator(empty_id)
+        expect(block).to_be_visible()
+        expect(block).to_have_class(re.compile(r"\bempty-state\b"))
+        # The canonical shape: a feature-size muted glyph over one line.
+        expect(block.locator(".empty-state-icon")).to_have_count(1)
+        expect(block.locator(".empty-state-message")).to_have_count(1)
+        assert block.locator(".empty-state-icon").bounding_box()["width"] == 24, (
+            f"{empty_id}'s glyph is not at the feature size"
+        )
+
+
+def test_every_board_column_renders_one_when_empty(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _empty_everything(page)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabBoard").click()
+    columns = ("backlog", "claude_turn", "your_turn", "other", "done")
+    for key in columns:
+        block = page.locator(f".board-empty[data-col='{key}'] .empty-state")
+        expect(block.locator(".empty-state-message")).not_to_be_empty()
+        expect(block.locator(".empty-state-icon")).to_have_count(1)
+
+
+def test_a_board_column_with_cards_hides_its_empty_state(
+    authed_page: Page, base_url: str
+) -> None:
+    """The other half of `hidden`: the vendored block is `display: flex`, so
+    it would out-render the hidden attribute without the app's global
+    `[hidden] { display: none !important }`.
+
+    A **guard**, not a regression pin: it passes against pre-#1133 code too
+    (the old empty was a plain div). It is here because adopting a
+    `display: flex` component is exactly what breaks `hidden` in an app that
+    lacks that global rule — the next component adoption should keep it.
+    """
+    page = authed_page
+    _empty_everything(page)
+    _json_route(page, r".*/api/board(\?.*)?$", {
+        "columns": {"backlog": [{
+            "kind": "issue", "key": "app-launcher#1", "repo": "app-launcher",
+            "number": 1, "title": "A synthetic issue", "url": "https://example.com/1",
+            "labels": [], "updated_at": "2026-09-22T10:00:00Z",
+        }]},
+        "github": {"fetched_at": "2026-09-22T10:00:00Z"},
+        "live_sessions": {"available": True},
+    })
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabBoard").click()
+    expect(page.locator(".board-list[data-col='backlog'] li")).to_have_count(1)
+    expect(page.locator(".board-empty[data-col='backlog']")).to_be_hidden()
+
+
+def test_selects_wear_the_vendored_control_recipe(
+    authed_page: Page, base_url: str
+) -> None:
+    """A <select> is a control, not a text input: the height has to come from
+    `height` (iOS Safari ignores `min-height` on a select)."""
+    page = authed_page
+    _empty_everything(page)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabJobs").click()
+    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+    page.locator("#jobsEditBtn").click()
+    page.locator("#jobsAddBtn").click()
+    select = page.locator("#jobKindInput")
+    expect(select).to_be_visible()
+    expect(select).to_have_class(re.compile(r"\bselect-native\b"))
+    expect(select).to_have_css("height", "36px")
+    # Every select in the app shares that one recipe.
+    assert page.evaluate(
+        "() => Array.from(document.querySelectorAll('select'))"
+        ".filter((s) => !s.classList.contains('select-native')).length"
+    ) == 0, "a <select> is still wearing the text-input recipe"

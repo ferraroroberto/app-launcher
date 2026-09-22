@@ -84,7 +84,7 @@ function renderParamRow(param) {
   head.appendChild(nameInput);
 
   const kindSel = document.createElement('select');
-  kindSel.className = 'input-native';
+  kindSel.className = 'select-native';
   kindSel.dataset.role = 'param-kind';
   PARAM_KINDS.forEach(function (k) {
     const opt = document.createElement('option');
@@ -336,7 +336,7 @@ function renderRunDialogField(param, prefill) {
   let input;
   if (param.kind === 'enum') {
     input = document.createElement('select');
-    input.className = 'input-native';
+    input.className = 'select-native';
     (param.options || []).forEach(function (opt) {
       const o = document.createElement('option');
       o.value = opt;

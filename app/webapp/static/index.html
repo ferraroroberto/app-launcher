@@ -21,6 +21,8 @@
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
   <link rel="stylesheet" href="/static/_vendored/button/button.css">
   <link rel="stylesheet" href="/static/_vendored/switch/switch.css">
+  <link rel="stylesheet" href="/static/_vendored/select-native/select-native.css">
+  <link rel="stylesheet" href="/static/_vendored/empty-state/empty-state.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
   <script>
@@ -706,8 +708,9 @@
         </summary>
         <div class="collapse-body">
         <ul id="claudeList" class="card-list" aria-label="Claude Code projects"></ul>
-        <div id="claudeEmpty" class="empty" hidden>
-          No Claude Code projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.
+        <div id="claudeEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+          <p class="empty-state-message">No projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.</p>
         </div>
         <p id="gitStatusLegend" class="muted small git-legend" hidden>
           <span class="git-swatch off-main"></span> not on main ·
@@ -905,8 +908,9 @@
         </summary>
         <div class="collapse-body">
         <ul id="appsList" class="card-list" aria-label="Apps"></ul>
-        <div id="appsEmpty" class="empty" hidden>
-          No apps registered yet — tap <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> to scan your projects root.
+        <div id="appsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
+          <p class="empty-state-message">No apps registered yet — tap Scan to search your projects root.</p>
         </div>
         </div>
       </details>
@@ -923,8 +927,9 @@
         </summary>
         <div class="collapse-body">
         <ul id="registeredTraysList" class="card-list" aria-label="Trays"></ul>
-        <div id="registeredTraysEmpty" class="empty" hidden>
-          No sister trays discovered yet — tap <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> in Settings to scan for <code>tray.bat</code> files.
+        <div id="registeredTraysEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+          <p class="empty-state-message">No sister trays discovered yet — tap Scan in Settings to look for <code>tray.bat</code> files.</p>
         </div>
         <p class="launcher-note">Autostart-enabled trays launch one at a time, in order, once app-launcher's own webapp is up.</p>
         </div>
@@ -977,9 +982,10 @@
           </button>
         </div>
         <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
-        <p id="jobsEmpty" class="muted small" hidden>
-          No jobs registered yet — tap the <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></strong> edit toggle above, then <strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></strong> to add one.
-        </p>
+        <div id="jobsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
+          <p class="empty-state-message">No jobs registered yet — turn on Edit above, then Add to register one.</p>
+        </div>
         </div>
       </details>
     </section>
@@ -1043,9 +1049,9 @@
         </summary>
         <div class="collapse-body">
         <ul id="lifeOsList" class="card-list" aria-label="Life OS skills"></ul>
-        <div id="lifeOsEmpty" class="empty" hidden>
-          No life-os skills found — point <strong>Life OS dir</strong> in Settings
-          at a life-os checkout (skills live under <code>.claude/skills</code>).
+        <div id="lifeOsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
+          <p class="empty-state-message">No life-os skills found — point <strong>Life OS dir</strong> in Settings at a life-os checkout.</p>
         </div>
         </div>
       </details>
@@ -1142,27 +1148,27 @@
         <section class="board-col" data-col="backlog" aria-label="Backlog">
           <h3 class="board-col-title">Backlog <span class="board-col-count" data-col="backlog">(0)</span></h3>
           <ul class="card-list board-list" data-col="backlog"></ul>
-          <div class="empty board-empty" data-col="backlog" hidden></div>
+          <div class="board-empty" data-col="backlog" hidden></div>
         </section>
         <section class="board-col" data-col="claude_turn" aria-label="Claude's turn">
           <h3 class="board-col-title">Claude's turn <span class="board-col-count" data-col="claude_turn">(0)</span></h3>
           <ul class="card-list board-list" data-col="claude_turn"></ul>
-          <div class="empty board-empty" data-col="claude_turn" hidden></div>
+          <div class="board-empty" data-col="claude_turn" hidden></div>
         </section>
         <section class="board-col" data-col="your_turn" aria-label="Your turn">
           <h3 class="board-col-title">Your turn <span class="board-col-count" data-col="your_turn">(0)</span></h3>
           <ul class="card-list board-list" data-col="your_turn"></ul>
-          <div class="empty board-empty" data-col="your_turn" hidden></div>
+          <div class="board-empty" data-col="your_turn" hidden></div>
         </section>
         <section class="board-col" data-col="other" aria-label="Other">
           <h3 class="board-col-title">Other <span class="board-col-count" data-col="other">(0)</span></h3>
           <ul class="card-list board-list" data-col="other"></ul>
-          <div class="empty board-empty" data-col="other" hidden></div>
+          <div class="board-empty" data-col="other" hidden></div>
         </section>
         <section class="board-col" data-col="done" aria-label="Done today">
           <h3 class="board-col-title">Done today <span class="board-col-count" data-col="done">(0)</span></h3>
           <ul class="card-list board-list" data-col="done"></ul>
-          <div class="empty board-empty" data-col="done" hidden></div>
+          <div class="board-empty" data-col="done" hidden></div>
         </section>
       </div>
     </section>
@@ -1235,14 +1241,17 @@
         <div class="collapse-body">
           <p class="muted small">Job-scoped bearer tokens (issue #72) — safe to bake into a Stream Deck button URL: each token can fire only its chosen job and nothing else, and revoking one never touches the main login.</p>
           <ul id="tokensList" class="card-list"></ul>
-          <p id="tokensEmpty" class="empty muted small" hidden>No tokens minted yet.</p>
+          <div id="tokensEmpty" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+          <p class="empty-state-message">No tokens minted yet.</p>
+          </div>
           <label class="stacked">
             <span>Label</span>
             <input id="tokenLabelInput" type="text" class="input-native" placeholder="Stream Deck — daily reporting">
           </label>
           <label class="stacked">
             <span>Job it may fire</span>
-            <select id="tokenJobSelect" class="input-native"></select>
+            <select id="tokenJobSelect" class="select-native"></select>
           </label>
           <div class="row settings-actions">
             <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Mint token</button>
@@ -1418,7 +1427,7 @@
         </label>
         <label class="stacked">
           <span>Kind</span>
-          <select id="jobKindInput" class="input-native">
+          <select id="jobKindInput" class="select-native">
             <option value="">Auto (from extension)</option>
             <option value="python">Python (.py)</option>
             <option value="batch">Batch (.bat)</option>
@@ -1436,7 +1445,7 @@
         <div class="job-kind-group" id="jobInlineShellFields" hidden>
           <label class="stacked">
             <span>Script type</span>
-            <select id="jobInlineExtInput" class="input-native">
+            <select id="jobInlineExtInput" class="select-native">
               <option value=".ps1">PowerShell (.ps1)</option>
               <option value=".bat">Batch (.bat)</option>
               <option value=".sh">Shell — WSL (.sh)</option>
@@ -1456,7 +1465,7 @@
           </label>
           <label class="stacked">
             <span>Method</span>
-            <select id="jobHttpMethodInput" class="input-native">
+            <select id="jobHttpMethodInput" class="select-native">
               <option value="GET">GET</option>
               <option value="HEAD">HEAD</option>
               <option value="POST">POST</option>
@@ -1479,7 +1488,7 @@
         </label>
         <label class="stacked">
           <span>Schedule</span>
-          <select id="jobScheduleType" class="input-native">
+          <select id="jobScheduleType" class="select-native">
             <option value="none">None (manual only)</option>
             <option value="minutes">Every N minutes</option>
             <option value="hourly">Every N hours</option>
@@ -1507,7 +1516,7 @@
         </label>
         <label class="stacked" id="jobScheduleDayRow" hidden>
           <span>Day</span>
-          <select id="jobScheduleDay" class="input-native">
+          <select id="jobScheduleDay" class="select-native">
             <option value="MON">Monday</option>
             <option value="TUE">Tuesday</option>
             <option value="WED">Wednesday</option>
@@ -1563,7 +1572,7 @@
           </p>
           <label class="stacked">
             <span>Provider</span>
-            <select id="jobWebhookProvider" class="input-native">
+            <select id="jobWebhookProvider" class="select-native">
               <option value="">None (disabled)</option>
               <option value="github">GitHub</option>
               <option value="stripe">Stripe</option>
