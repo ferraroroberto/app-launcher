@@ -121,7 +121,13 @@ def test_selects_wear_the_vendored_control_recipe(
     authed_page: Page, base_url: str
 ) -> None:
     """A <select> is a control, not a text input: the height has to come from
-    `height` (iOS Safari ignores `min-height` on a select)."""
+    `height` (iOS Safari ignores `min-height` on a select).
+
+    Which height depends on where it stands, and #1124 settled that: the
+    component's 36px is the inline-toolbar-control contract, while a select
+    standing as a stacked form field is a row the user taps and takes the
+    44px touch floor.
+    """
     page = authed_page
     _empty_everything(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -132,7 +138,11 @@ def test_selects_wear_the_vendored_control_recipe(
     select = page.locator("#jobKindInput")
     expect(select).to_be_visible()
     expect(select).to_have_class(re.compile(r"\bselect-native\b"))
-    expect(select).to_have_css("height", "36px")
+    # A stacked form field is a row the user taps, so it takes the 44px touch
+    # floor (#1124) — still from `height`, which is the half iOS honours. The
+    # component's own 36px stays the contract for an *inline* toolbar select
+    # sharing a row with a toggle and an input.
+    expect(select).to_have_css("height", "44px")
     # Every select in the app shares that one recipe.
     assert page.evaluate(
         "() => Array.from(document.querySelectorAll('select'))"
