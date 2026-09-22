@@ -237,6 +237,7 @@ export function renderJobRow(job, options) {
   const name = document.createElement('span');
   name.className = 'name';
   name.textContent = job.name;
+  name.title = job.name;
   head.appendChild(name);
   if (job.alert_on_failure) {
     const alertIcon = document.createElement('span');

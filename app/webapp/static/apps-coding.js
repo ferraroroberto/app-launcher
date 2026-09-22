@@ -256,7 +256,14 @@ export function renderCodingList(host, items) {
     main.className = 'app-main';
     const name = document.createElement('div');
     name.className = 'coding-name';
-    name.textContent = a.name;   // raw folder name, exactly as on disk
+    // Raw folder name, exactly as on disk. Its own span so the name
+    // truncates on one line while a git branch tag keeps its place (#1126);
+    // `title` carries the full name.
+    const nameText = document.createElement('span');
+    nameText.className = 'coding-name-text';
+    nameText.textContent = a.name;
+    name.appendChild(nameText);
+    name.title = a.name;
     annotateGitStatus(name, a);
     main.appendChild(name);
     li.appendChild(main);
@@ -482,7 +489,7 @@ function annotateGitStatus(nameEl, a) {
   if (gs.dirty || offMain) {
     nameEl.setAttribute('role', 'button');
     nameEl.tabIndex = 0;
-    nameEl.title = 'Show changes';
+    nameEl.title = a.name + ' — show changes';
     nameEl.addEventListener('click', function () { openChanges(a); });
     nameEl.addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter' || ev.key === ' ') {
@@ -578,6 +585,7 @@ function buildGitSummary() {
     // Same precedence as annotateGitStatus: red wins when also dirty.
     name.className = 'git-summary-name ' + (gs.dirty ? 'git-dirty' : 'git-off-main');
     name.textContent = a.name;
+    name.title = a.name;
     const tag = document.createElement('span');
     tag.className = 'git-branch-tag';
     tag.textContent = gs.branch;

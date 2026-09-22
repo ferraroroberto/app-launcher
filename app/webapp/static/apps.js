@@ -169,6 +169,7 @@ function renderList(host, items) {
     const name = document.createElement('span');
     name.className = 'app-row-name';
     name.textContent = a.name;
+    name.title = a.name;
     launch.appendChild(name);
 
     // The full bat path is long enough to wrap to two or three lines on a
@@ -390,6 +391,7 @@ export function renderRunningApps() {
     const name = document.createElement('span');
     name.className = 'name';
     name.textContent = r.name;
+    name.title = r.name;
     head.appendChild(name);
     info.appendChild(head);
 
