@@ -576,7 +576,7 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   padding: 8px 10px;
   margin: 4px 0 0;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   line-height: 1.4;
 }
 
@@ -634,7 +634,7 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-caption);
   color: var(--muted);
   font-weight: 400;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .launch-btn .kind-pill {
   display: inline-block;
@@ -666,7 +666,9 @@ summary + .opt-group { border-top: 0; }
 }
 .app-item .app-row-name {
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Per-row launch cluster (#790) — ⚡ visible, 🚫👁 stealth. Vertically
@@ -834,7 +836,26 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-body);
   font-weight: 600;
   color: var(--fg);
-  word-break: break-all;   /* raw on-disk name — shown verbatim */
+  /* The raw on-disk name, shown verbatim on one line (#1126): it used to
+     `word-break: break-all` into "gitlab-to-github-migrato / r". The text
+     sits in its own span so it truncates on its own while a git branch
+     tag beside it keeps its place; the full name rides `title`. */
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.coding-name-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.coding-name .git-branch-tag {
+  flex: none;
+  max-width: 35%;   /* the name is the primary read; the tag yields first */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* ---------- Coding tab git-status flags (issue #115) ---------- */
 /* On-demand only: tap the header button to annotate tiles. Yellow name
@@ -875,7 +896,14 @@ summary + .opt-group { border-top: 0; }
   line-height: 1.3;
 }
 .git-summary-row .git-branch-tag { margin-left: 0; font-size: var(--font-caption); }
-.git-summary-name { font-weight: 600; word-break: break-all; }
+.git-summary-name {
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-summary-row .git-branch-tag { min-width: 0; }
 .git-summary-name.git-off-main { color: var(--attention); }
 .git-summary-name.git-dirty { color: var(--danger); }
 .git-summary-empty { font-size: var(--font-caption); color: var(--muted); }
@@ -894,7 +922,7 @@ summary + .opt-group { border-top: 0; }
   color: var(--attention);
   background: rgb(from var(--attention) r g b / 0.12);
   vertical-align: middle;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .git-legend {
   display: flex;
@@ -1286,7 +1314,7 @@ summary + .opt-group { border-top: 0; }
   max-height: 50vh;
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .jobs-artifacts {
@@ -1342,7 +1370,7 @@ summary + .opt-group { border-top: 0; }
   max-height: 30vh;
   overflow: auto;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 /* ---------- empty / toast ---------- */
@@ -1522,7 +1550,7 @@ summary + .opt-group { border-top: 0; }
 .launcher-note {
   margin: 10px 2px 0;
   font-size: var(--font-caption);
-  font-style: italic;
+  font-weight: 400;
   color: var(--muted);
 }
 
@@ -1651,7 +1679,7 @@ summary + .opt-group { border-top: 0; }
 .scan-section .meta {
   color: var(--muted);
   font-size: var(--font-caption);
-  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 /* Editor-dialog footer (design modal contract): one full-width solid-accent
@@ -1899,6 +1927,15 @@ summary + .opt-group { border-top: 0; }
   gap: 8px;
   font-size: var(--font-body);
   font-weight: 600;
+}
+/* A name in a row head is one line, truncated, never broken mid-word (#1126).
+   The session and job rows below refine it; the running-apps row relies on
+   this alone. */
+.session-head .name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* Title on its own full-width line above the badges (issue #113), but
    clamped to a single line with an ellipsis (issue #120): a long title

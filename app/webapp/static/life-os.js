@@ -73,7 +73,12 @@ export function renderSkills() {
     main.className = 'app-main';
     const name = document.createElement('div');
     name.className = 'coding-name';
-    name.textContent = s.name;   // name only — one line per tile
+    // Name only, one line per tile: truncated, never broken mid-word (#1126).
+    const nameText = document.createElement('span');
+    nameText.className = 'coding-name-text';
+    nameText.textContent = s.name;
+    name.appendChild(nameText);
+    name.title = s.name;
     main.appendChild(name);
     li.appendChild(main);
 
