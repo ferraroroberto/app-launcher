@@ -108,6 +108,8 @@ def test_job_dialog_switches_use_vendored_component(
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
     authed_page.locator("#jobsEditBtn").click()
+    # Edit moved into the row's ⋯ menu (#1130).
+    authed_page.locator("#jobsList li[data-id='alpha'] [data-role='job-menu']").click()
     authed_page.locator("#jobsList li[data-id='alpha'] button[aria-label='Edit']").click()
 
     expect(authed_page.locator("#jobDialog")).to_be_visible()

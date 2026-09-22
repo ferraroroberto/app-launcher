@@ -104,7 +104,7 @@ def test_jobs_default_to_next_run_order_with_countdown(
     zeta_chip = authed_page.locator(
         "#jobsList li[data-id='zeta'] [data-role='countdown-chip']"
     )
-    expect(zeta_chip).to_contain_text("next in")
+    expect(zeta_chip).to_contain_text("Next in")
     assert authed_page.locator(
         "#jobsList li[data-id='mango'] [data-role='countdown-chip']"
     ).count() == 0, "a job with no next fire must not show a countdown chip"
@@ -161,12 +161,17 @@ def test_external_schedule_card_only_offers_history(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
     row = authed_page.locator("#jobsList li[data-id='hwinfo-restart']")
-    expect(row.locator("[data-role='elevated-chip']")).to_contain_text(
-        "external schedule"
-    )
+    # The external-schedule flag moved into the detail block (#1130); the row
+    # itself offers neither Run nor a ⋯ menu, since every action it would
+    # hold is withheld for an externally managed schedule.
     expect(row.locator("button[aria-label^='View run history']")).to_have_count(1)
     expect(row.locator("[data-role='run-btn']")).to_have_count(0)
-    expect(row.locator("[data-role='pause-btn']")).to_have_count(0)
+    expect(row.locator("[data-role='job-menu']")).to_have_count(0)
+    row.locator("button[aria-label^='View run history']").click()
+    details = authed_page.locator("[data-role='job-details']")
+    expect(details.locator("[data-role='elevated-chip']")).to_contain_text(
+        "external schedule"
+    )
 
 
 def test_manual_run_state_is_distinct_from_next_scheduled_fire(
@@ -200,8 +205,11 @@ def test_manual_run_state_is_distinct_from_next_scheduled_fire(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
     row = authed_page.locator("#jobsList li[data-id='linkedin-scrape']")
-    expect(row.locator("[data-role='meta']")).to_contain_text("running now")
-    expect(row.locator("[data-role='countdown-chip']")).to_contain_text("next in")
+    # "running now" is the last-run sentence, in the detail block (#1130);
+    # the row's countdown still says when it next fires on its own schedule.
+    expect(row.locator("[data-role='countdown-chip']")).to_contain_text("Next in")
+    row.locator("button[aria-label^='View run history']").click()
+    expect(authed_page.locator("[data-role='job-details']")).to_contain_text("running now")
 
 
 def _is_open(page: Page) -> bool:

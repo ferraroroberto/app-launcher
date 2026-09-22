@@ -178,6 +178,9 @@ def test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render(
 
     row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
     expect(row).to_be_visible()
+    # Edit lives in the row's ⋯ menu since #1130; the menu's items read the
+    # same `ref` holder the rail's buttons did, which is what this pins.
+    row.locator("[data-role='job-menu']").click()
     edit_btn = row.locator("button[aria-label='Edit']")
     expect(edit_btn).to_have_count(1)
     row.evaluate("el => { el.dataset.pinTag = 'original'; }")
