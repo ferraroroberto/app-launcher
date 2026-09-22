@@ -922,8 +922,10 @@ function convoActions(r) {
   if (state.canResume) {
     const resumeBtn = document.createElement('button');
     resumeBtn.type = 'button';
-    resumeBtn.className = 'button-ghost lifeos-convo-resume' +
-      (state.resumeEnabled ? ' accent-btn' : '');
+    // Tint tier when it can act, ghost when disabled (#1125) — the old
+    // `button-ghost accent-btn` hybrid was not one of design.md's tiers.
+    resumeBtn.className = (state.resumeEnabled ? 'button-tint' : 'button-ghost') +
+      ' lifeos-convo-resume';
     resumeBtn.innerHTML = icon('rotate-ccw') + ' Resume in ' + state.provider;
     resumeBtn.disabled = !state.resumeEnabled;
     resumeBtn.addEventListener('click', function () {
@@ -942,7 +944,7 @@ function convoActions(r) {
   if (state.canHandoff) {
     const handoffBtn = document.createElement('button');
     handoffBtn.type = 'button';
-    handoffBtn.className = 'button-ghost accent-btn lifeos-convo-handoff';
+    handoffBtn.className = 'button-tint lifeos-convo-handoff';
     handoffBtn.innerHTML = icon('messages-square') + ' Start new in ' + state.handoffTo;
     handoffBtn.addEventListener('click', function () {
       CONVO_VIEWER_ACTIONS.handoff(r);
