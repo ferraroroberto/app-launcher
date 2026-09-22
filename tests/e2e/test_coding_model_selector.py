@@ -418,9 +418,18 @@ def test_quota_rows_show_both_agents_on_one_line_each(
         """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
              .format(new Date('2026-09-14T00:00:00Z'))"""
     )
+    # The reset marker is the Lucide refresh-cw glyph (#1127), so it carries
+    # no text: the rendered line reads with a gap where the icon sits, and
+    # the title keeps the spelled-out reading.
     expect(coding.nth(0)).to_have_text(
-        "Claude Code · 5h 39% ↻ " + expected_5h + " · 1w 19% ↻ " + expected_1w
+        "Claude Code · 5h 39%  " + expected_5h + " · 1w 19%  " + expected_1w
     )
+    expect(coding.nth(0)).to_have_attribute(
+        "title",
+        "Claude Code · 5h 39% resets " + expected_5h
+        + " · 1w 19% resets " + expected_1w,
+    )
+    expect(coding.nth(0).locator("use")).to_have_count(2)
     expect(coding.nth(1)).to_contain_text("Codex · 5h 0% ")
     expect(coding.nth(1)).to_contain_text("1w 36% ")
 
@@ -547,7 +556,7 @@ def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
     assert after[0]["state"] == "unknown"
     # The measured agent beside it is untouched.
     assert after[1]["cls"] == "quota-line good"
-    assert after[1]["text"].endswith("1w 36% resets " + authed_page.evaluate(
+    assert after[1]["text"].endswith("1w 36%  " + authed_page.evaluate(
         """() => new Intl.DateTimeFormat([], {month: 'short', day: 'numeric'})
              .format(new Date('2026-09-16T12:00:00Z'))"""
     ))
