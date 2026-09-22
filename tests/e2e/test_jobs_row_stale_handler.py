@@ -38,7 +38,11 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
-_JOBS_POLL_MS = 4000
+# Ceiling, not a sleep: the wait returns as soon as the polls land. It must
+# cover a slow boot as well as the interval itself — main.js registers the
+# poll's setInterval only after boot() has awaited its ~13 serial fetches,
+# and the test clicks the Jobs tab long before that finishes (#1138).
+_POLL_WAIT_BUDGET_MS = 30_000
 
 
 def _job(*, confirm: bool = False, args: str = "") -> dict:
@@ -84,6 +88,25 @@ def _wire(page: Page, runs: list, state: dict) -> None:
     page.route(re.compile(r".*/api/jobs(\?.*)?$"), _jobs)
 
 
+def _wait_for_polls(page: Page, state: dict, target: int) -> None:
+    """Wait until the mocked ``/api/jobs`` route has been hit ``target`` times.
+
+    A bounded wait on the observable fact, not a fixed sleep (#1138): the
+    old ``wait_for_timeout(2 * poll + 1s)`` missed the first poll whenever a
+    slow WebKit boot delayed the interval's registration. ``page`` pumps
+    Playwright's event loop, which is what runs the route handler that
+    counts — a bare ``time.sleep`` would never see the count move.
+    """
+    waited = 0
+    while state["polls"] < target and waited < _POLL_WAIT_BUDGET_MS:
+        page.wait_for_timeout(250)
+        waited += 250
+    assert state["polls"] >= target, (
+        f"the jobs poll never ran: {state['polls']} /api/jobs hits after "
+        f"{_POLL_WAIT_BUDGET_MS} ms, wanted {target}"
+    )
+
+
 def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
     authed_page: Page, base_url: str
 ) -> None:
@@ -113,10 +136,10 @@ def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
     # Flip the flag server-side, the way another device would, and let a real
     # poll deliver it. Sort order is unchanged, so the row is patched in place.
     state["confirm"] = True
-    polls_before = state["polls"]
-    # Two further polls: one to deliver the flip, one to be sure it settled.
-    authed_page.wait_for_timeout(_JOBS_POLL_MS * 2 + 1_000)
-    assert state["polls"] > polls_before, "the jobs poll never ran"
+    # Two further polls: one to deliver the flip, one to be sure it settled
+    # (the second is sent a full 4s interval after the first, whose mocked
+    # response has long since been patched into the row by then).
+    _wait_for_polls(authed_page, state, state["polls"] + 2)
 
     # The row survived the poll — the in-place patch path ran, which is the
     # only path where the bug exists.
@@ -161,9 +184,7 @@ def test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render(
 
     # Another device edits the job's args; a real poll delivers it.
     state["args"] = "--new"
-    polls_before = state["polls"]
-    authed_page.wait_for_timeout(_JOBS_POLL_MS * 2 + 1_000)
-    assert state["polls"] > polls_before, "the jobs poll never ran"
+    _wait_for_polls(authed_page, state, state["polls"] + 2)
     expect(row).to_have_attribute("data-pin-tag", "original")
 
     edit_btn.click()
