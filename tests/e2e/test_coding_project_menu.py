@@ -150,19 +150,18 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
 
     expect(_anchor(authed_page)).to_be_enabled(timeout=5_000)
 
-    # Order contract (#1070): the favourite agent's launch button, the ⋯
-    # anchor, the star — three controls, nothing else. The floating menu
-    # itself is appended after the star so the rail's sibling-divider rules
-    # still see adjacent buttons. One synchronous evaluate() so the read
-    # can't straddle the ~4 s apps re-render (#680).
+    # Order contract (#1128, the action-row): the leading star, the row
+    # itself (which launches the favourite agent), the ⋯ kebab — three
+    # controls, nothing else. One synchronous evaluate() so the read can't
+    # straddle the ~4 s apps re-render (#680).
     marks = authed_page.evaluate(
         """() => Array.from(
-            document.querySelectorAll('.coding-item[data-id="alpha"] .row-actions > button')
+            document.querySelectorAll('.coding-item[data-id="alpha"] > button')
         ).map(el => el.classList.contains('star-btn')
             ? 'star'
             : (el.dataset.agent || 'github'))"""
     )
-    assert marks == ["claude", "vscode", "star"], marks
+    assert marks == ["star", "claude", "vscode"], marks
     expect(_menu(authed_page)).to_be_hidden()
 
     _anchor(authed_page).click()
@@ -323,21 +322,19 @@ def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
     # Generated from the registry, not hand-written per agent.
     expect(picker.locator("option")).to_have_text(["Claude Code", "Codex CLI"])
 
-    row_btn = authed_page.locator(
-        '.coding-item[data-id="alpha"] .row-actions > .agent-btn[data-agent]'
-    ).first
+    row_btn = authed_page.locator('.coding-item[data-id="alpha"] .action-row-main')
     expect(row_btn).to_have_attribute("data-agent", "claude")
 
-    # Swap the favourite → the row button becomes Codex, no reload.
+    # Swap the favourite → the row launches Codex instead, no reload.
     picker.select_option("codex")
     expect(
         authed_page.locator(
-            '.coding-item[data-id="alpha"] .row-actions > button[data-agent="codex"]'
+            '.coding-item[data-id="alpha"] .action-row-main[data-agent="codex"]'
         )
     ).to_have_count(1, timeout=5_000)
     # The row still carries exactly three controls.
     expect(
-        authed_page.locator('.coding-item[data-id="alpha"] .row-actions > button')
+        authed_page.locator('.coding-item[data-id="alpha"] > button')
     ).to_have_count(3)
 
     # Claude is now the one in the menu, and Codex is not repeated there.
@@ -374,10 +371,10 @@ def test_favorite_agent_stays_on_the_row_even_when_hidden(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
-    # Hidden everywhere else, still on the row.
+    # Hidden everywhere else, still the row's own launch.
     expect(
         authed_page.locator(
-            '.coding-item[data-id="alpha"] .row-actions > button[data-agent="claude"]'
+            '.coding-item[data-id="alpha"] .action-row-main[data-agent="claude"]'
         )
     ).to_have_count(1, timeout=5_000)
     _anchor(authed_page).click()

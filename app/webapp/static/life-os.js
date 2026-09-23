@@ -18,8 +18,13 @@ import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
+import { actionRow } from './action-rows.js';
+import { createRowMenu } from './row-menu.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
+
+// The skill rows' kebab menu (#1128), on the shared row-menu.js.
+const skillMenu = createRowMenu('project-menu');
 
 // The Skills-summary launch-model dropdown controller ({setValue, getValue}),
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
@@ -65,75 +70,38 @@ export function renderSkills() {
   const rest = skills.filter(function (s) { return !s.is_favorite; });
 
   favs.concat(rest).forEach(function (s) {
-    const li = document.createElement('li');
-    li.className = 'app-item coding-item lifeos-item';
-    li.dataset.id = s.id;
-
-    const main = document.createElement('div');
-    main.className = 'app-main';
-    const name = document.createElement('div');
-    name.className = 'coding-name';
-    // Name only, one line per tile: truncated, never broken mid-word (#1126).
-    const nameText = document.createElement('span');
-    nameText.className = 'coding-name-text';
-    nameText.textContent = s.name;
-    name.appendChild(nameText);
-    name.title = s.name;
-    main.appendChild(name);
-    li.appendChild(main);
-
-    const actions = document.createElement('div');
-    actions.className = 'row-actions agent-actions';
-
-    // 📖 Browse — open the read-only content browser for this skill.
-    const browseBtn = document.createElement('button');
-    browseBtn.type = 'button';
-    browseBtn.className = 'icon-btn agent-btn';
-    browseBtn.innerHTML = icon('book-open');
-    browseBtn.title = 'Browse what this skill knows';
-    browseBtn.setAttribute('aria-label', 'Browse ' + s.name);
-    browseBtn.addEventListener('click', function () { openBrowser(s); });
-    actions.appendChild(browseBtn);
-
-    // 🕘 Conversations — the digested index for this skill, with a per-row ↺
-    // that reattaches to that exact session (#727).
-    const convoBtn = document.createElement('button');
-    convoBtn.type = 'button';
-    convoBtn.className = 'icon-btn agent-btn lifeos-convo-btn';
-    convoBtn.innerHTML = icon('messages-square');
-    convoBtn.title = 'Past conversations with ' + s.name;
-    convoBtn.setAttribute('aria-label', 'Conversations with ' + s.name);
-    convoBtn.addEventListener('click', function () { openConvos(s); });
-    actions.appendChild(convoBtn);
-
-    // Launch — fires a fresh Claude session that auto-invokes /<skill>.
-    const launchBtn = document.createElement('button');
-    launchBtn.type = 'button';
-    launchBtn.className = 'icon-btn agent-btn lifeos-launch';
-    launchBtn.innerHTML = icon('rocket');
-    launchBtn.title = 'Launch ' + s.name;
-    launchBtn.setAttribute('aria-label', 'Launch ' + s.name);
-    launchBtn.addEventListener('click', function () { launchSkill(s); });
-    actions.appendChild(launchBtn);
-
-    // Favorite star — rightmost, same glyph, same classes and the same
-    // filled-gold `.is-fav` treatment the Coding row's star uses (#250), so
-    // both tabs read identically.
-    const starBtn = document.createElement('button');
-    starBtn.type = 'button';
-    starBtn.className = 'icon-btn agent-btn star-btn' + (s.is_favorite ? ' is-fav' : '');
-    starBtn.innerHTML = icon('star');
-    starBtn.title = s.is_favorite
-      ? 'Unstar (remove from favorites)'
-      : 'Star (add to favorites)';
-    starBtn.setAttribute('aria-label', starBtn.title);
-    starBtn.setAttribute('aria-pressed', s.is_favorite ? 'true' : 'false');
-    starBtn.addEventListener('click', function () { toggleSkillFavorite(s); });
-    actions.appendChild(starBtn);
-
-    li.appendChild(actions);
-    host.appendChild(li);
+    // Tapping the row launches the skill (#1128, the action-row contract):
+    // a fresh Claude session that auto-invokes /<skill>. The star leads;
+    // Read and Conversations moved into the one trailing kebab.
+    const row = actionRow({
+      id: s.id,
+      className: 'lifeos-item',
+      title: s.name,
+      label: 'Launch ' + s.name,
+      onMain: function () { launchSkill(s); },
+      favorite: { on: s.is_favorite, onToggle: function () { toggleSkillFavorite(s); } },
+      kebabClass: 'lifeos-menu-anchor',
+      kebabLabel: 'Skill actions',
+    });
+    row.li.appendChild(skillMenu.attach(s.id, row.kebab, [
+      {
+        // The read-only content browser for this skill.
+        className: 'lifeos-browse-btn', glyph: 'book-open',
+        label: 'Browse ' + s.name, text: 'Read',
+        onTap: function () { openBrowser(s); },
+      },
+      {
+        // The digested index for this skill, with a per-row ↺ that
+        // reattaches to that exact session (#727).
+        className: 'lifeos-convo-btn', glyph: 'messages-square',
+        label: 'Conversations with ' + s.name, text: 'Conversations',
+        onTap: function () { openConvos(s); },
+      },
+    ]));
+    host.appendChild(row.li);
   });
+  // An open menu whose row is gone drops its state; a reopened one keeps it.
+  skillMenu.endRender();
 }
 
 // Star / unstar a Life OS skill (#1070). Persists server-side, then

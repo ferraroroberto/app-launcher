@@ -144,7 +144,7 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     # The favourite's launch button stays on the row — it is the row's one
     # launch affordance, so it is not the visibility list's to hide (#1070).
     expect(
-        authed_page.locator('.coding-item[data-id="alpha"] .agent-btn[data-agent="claude"]')
+        authed_page.locator('.coding-item[data-id="alpha"] .action-row-main[data-agent="claude"]')
     ).to_have_count(1)
     # The favorite star is never hideable.
     expect(authed_page.locator('.coding-item[data-id="alpha"] .star-btn')).to_have_count(1)
@@ -241,10 +241,12 @@ def test_brand_marks_are_sprite_symbols_with_no_chip(
     _open_surfaces(authed_page)
 
     row = authed_page.locator('.coding-item[data-id="alpha"]')
-    mark = row.locator('.agent-btn[data-agent="claude"] .agent-icon')
+    # Since #1128 the row itself is the favourite's launch (text, no mark),
+    # so every brand mark lives in the ⋯ menu.
+    mark = row.locator('.project-launch-btn[data-agent="codex"] .agent-icon')
     expect(mark).to_have_count(1, timeout=5_000)
     # The mechanism: an inline sprite reference, and no <img> left on the row.
-    expect(mark.locator('use[href="#b-claude"]')).to_have_count(1)
+    expect(mark.locator('use[href="#b-codex"]')).to_have_count(1)
     expect(row.locator("img")).to_have_count(0)
 
     # A monochrome mark paints with currentColor, so its resolved colour has

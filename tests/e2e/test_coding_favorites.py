@@ -112,9 +112,9 @@ def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> N
 
     # Star state is reflected on the tiles.
     bravo_star = authed_page.locator('.coding-item[data-id="bravo"] .star-btn')
-    assert "is-fav" in bravo_star.get_attribute("class")
+    expect(bravo_star).to_have_attribute("aria-pressed", "true")
     alpha_star = authed_page.locator('.coding-item[data-id="alpha"] .star-btn')
-    assert "is-fav" not in alpha_star.get_attribute("class")
+    expect(alpha_star).to_have_attribute("aria-pressed", "false")
 
     # Turn the "★ Favorites" filter ON → only the starred project shows.
     authed_page.locator("#favFilterBtn").click()

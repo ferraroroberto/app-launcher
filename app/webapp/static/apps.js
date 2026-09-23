@@ -22,6 +22,12 @@ import {
   wireFavoriteAgent,
 } from './apps-coding.js';
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
+import { actionRow } from './action-rows.js';
+import { nameLabel } from './dom-utils.js';
+import { createRowMenu } from './row-menu.js';
+
+// The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
+const appMenu = createRowMenu('project-menu');
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -57,167 +63,101 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
-// The per-row launch cluster (issue #790) — the only way to start a
-// bat-based app now that the row body is inert. Two explicit modes rather
-// than a remembered setting: ⚡ opens the CMD window (watch a Streamlit
-// boot, read a traceback), 🚫👁 runs the same bat with no window at all
-// (the phone-first case, PC unattended). Geometry is the Board backlog's
-// ▶/⚡ pair verbatim — `.board-issue-btn.icon-only`, already thumb-sized.
-const LAUNCH_MODES = [
-  { stealth: false, glyph: 'zap', hint: 'in a visible window', how: '' },
-  { stealth: true, glyph: 'eye-off', hint: 'with no window', how: ' in stealth' },
-];
-
-function launchActions(a) {
-  const row = document.createElement('div');
-  row.className = 'app-launch-actions';
-  // Tunnel rows carry their URL as a 🔗 here rather than as link text on a
-  // row of its own — a cloudflared URL with a `?token=…` on it wrapped to
-  // three lines on the phone, and it is never read, only tapped. The
-  // href still holds the whole URL, so tap/copy-link/open-in-new-tab all
-  // behave; the row's health dot already says whether it is up.
-  if (a.kind === 'tunnel') {
-    if (a.tunnel_url) {
-      const link = document.createElement('a');
-      link.className = 'board-issue-btn icon-only app-launch-btn app-tunnel-link';
-      link.href = a.tunnel_url;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      link.innerHTML = icon('link');
-      link.title = a.tunnel_url;
-      link.setAttribute('aria-label', 'Open ' + a.name + ' tunnel');
-      row.appendChild(link);
-    } else {
-      const dead = document.createElement('button');
-      dead.type = 'button';
-      dead.className = 'board-issue-btn icon-only app-launch-btn';
-      dead.innerHTML = icon('link');
-      dead.disabled = true;
-      dead.title = 'Tunnel not running';
-      dead.setAttribute('aria-label', a.name + ' tunnel not running');
-      row.appendChild(dead);
-    }
-  }
-  // Tray rows put their autostart switch on this same line rather than in a
-  // row of its own — a full-width strip below the card cost a whole line to
-  // one 44px control. Unlabelled on purpose: the panel is called Trays and
-  // the switch is the only toggle on the row, so the visible word earned
-  // nothing. Screen readers still get the full "Autostart <name> at boot".
-  if (a.kind === 'tray') {
-    row.appendChild(switchEl(!!a.autostart, {
-      label: 'Autostart ' + a.name + ' at boot',
-      onToggle: function (next, btn) {
-        btn.disabled = true;
-        toggleTrayAutostart(a, next).finally(function () {
-          btn.disabled = false;
-        });
-      },
-    }));
-  }
-  LAUNCH_MODES.forEach(function (m) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'board-issue-btn icon-only app-launch-btn';
-    btn.innerHTML = icon(m.glyph);
-    btn.title = 'Launch ' + a.name + ' ' + m.hint;
-    btn.setAttribute('aria-label', 'Launch ' + a.name + m.how);
-    // The mode is on the element, not just in the closure, so a test (or a
-    // future caller) can address a button by what it does rather than by
-    // its position in the row.
-    btn.dataset.stealth = m.stealth ? '1' : '0';
-    btn.addEventListener('click', function () { launchApp(a, undefined, m.stealth); });
-    row.appendChild(btn);
-  });
-  return row;
+// The row's context line (#1128): kind in sentence case (#1156), a
+// tunnel's probed health, and in Jobs → Edit mode the bat path the ✏️/🗑️
+// menu rows act on — only worth its width when you're about to use them.
+function appMeta(a) {
+  if (state.editMode) return a.bat_path || a.project_dir || '';
+  const parts = [nameLabel(a.kind)];
+  if (a.health === 'up') parts.push('Up');
+  else if (a.health === 'down') parts.push('Down');
+  return parts.join(' · ');
 }
 
+// Apps and Trays rows on the vendored action-row (#1128). Tapping the row
+// launches the bat in a visible window (#790's ⚡: watch a Streamlit boot,
+// read a traceback); every other action rides the one kebab. A tray row
+// keeps its autostart switch as the row's one leading toggle — it is state
+// read at a glance, unlabelled because the panel is called Trays; screen
+// readers still get "Autostart <name> at boot".
 function renderList(host, items) {
   host.innerHTML = '';
   items.forEach(function (a) {
-    const li = document.createElement('li');
-    li.className = 'app-item';
-    li.dataset.id = a.id;
-
-    const main = document.createElement('div');
-    main.className = 'app-main';
-
-    // Inert info block (issue #790) — the row body no longer launches;
-    // the ⚡ / 🚫👁 pair beside it is the only launch affordance. Same
-    // `.launch-btn … inert` shape renderRunningApps already uses, so the
-    // typography stays identical to every other list row.
-    const launch = document.createElement('div');
-    launch.className = 'launch-btn inert';
-
-    // Kind pill and name each get their own line. Sharing one line made a
-    // long name wrap *around* the pill, so the title arrived as a ragged
-    // two-line block indented under a badge.
-    const top = document.createElement('div');
-    top.className = 'app-row-kind';
-    const dot = document.createElement('span');
-    dot.className = 'health-dot';
-    // Health is only known for tunnel apps (probed server-side).
-    if (a.health === 'up') dot.classList.add('up');
-    else if (a.health === 'down') dot.classList.add('down');
-    top.appendChild(dot);
-
-    const pill = document.createElement('span');
-    pill.className = 'kind-pill';
-    pill.textContent = a.kind;
-    top.appendChild(pill);
-    launch.appendChild(top);
-
-    const name = document.createElement('span');
-    name.className = 'app-row-name';
-    name.textContent = a.name;
-    name.title = a.name;
-    launch.appendChild(name);
-
-    // The full bat path is long enough to wrap to two or three lines on a
-    // phone and is never what you're scanning for — it only matters when
-    // you're about to rename or remove the row, so it rides Edit mode with
-    // the ✏️/🗑️ rail rather than costing every row the height.
-    if (state.editMode) {
-      const meta = document.createElement('span');
-      meta.className = 'meta';
-      meta.textContent = a.bat_path || a.project_dir || '';
-      launch.appendChild(meta);
+    const row = actionRow({
+      id: a.id,
+      className: 'app-row',
+      title: a.name,
+      meta: appMeta(a),
+      label: 'Launch ' + a.name + ' in a visible window',
+      onMain: function () { launchApp(a, undefined, false); },
+      kebabClass: 'app-menu-anchor',
+      kebabLabel: a.name + ' actions',
+    });
+    if (a.kind === 'tray') {
+      row.li.insertBefore(switchEl(!!a.autostart, {
+        label: 'Autostart ' + a.name + ' at boot',
+        onToggle: function (next, btn) {
+          btn.disabled = true;
+          toggleTrayAutostart(a, next).finally(function () {
+            btn.disabled = false;
+          });
+        },
+      }), row.main);
     }
-
-    main.appendChild(launch);
-    li.appendChild(main);
-    li.appendChild(launchActions(a));
-
-    // Rename + remove are gated behind Jobs tab → Edit mode, so the
-    // lists stay icon-free in normal use (no per-row icon inflation).
-    // Only the Apps tab's bat-based rows reach renderList — Coding-tab
-    // rows render via renderCodingList instead.
-    if (state.editMode) {
-      const actions = document.createElement('div');
-      actions.className = 'row-actions';
-
-      const renameBtn = document.createElement('button');
-      renameBtn.type = 'button';
-      renameBtn.className = 'icon-btn';
-      renameBtn.innerHTML = icon('pencil');
-      renameBtn.title = 'Rename';
-      renameBtn.setAttribute('aria-label', 'Rename');
-      renameBtn.addEventListener('click', function () { openRename(a); });
-      actions.appendChild(renameBtn);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'icon-btn danger';
-      removeBtn.innerHTML = icon('trash-2');
-      removeBtn.title = 'Remove';
-      removeBtn.setAttribute('aria-label', 'Remove');
-      removeBtn.addEventListener('click', function () { removeApp(a); });
-      actions.appendChild(removeBtn);
-
-      li.appendChild(actions);
-    }
-
-    host.appendChild(li);
+    const tunnel = a.kind === 'tunnel';
+    row.li.appendChild(appMenu.attach(a.id, row.kebab, [
+      {
+        // 🚫👁 (#790): the same bat with no console window at all — the
+        // phone-first case, PC unattended.
+        className: 'app-stealth-btn', glyph: 'eye-off',
+        label: 'Launch ' + a.name + ' in stealth', text: 'Launch hidden',
+        onTap: function () { launchApp(a, undefined, true); },
+      },
+      {
+        // A tunnel's URL is tapped, never read: a cloudflared URL with a
+        // `?token=…` on it wrapped to three lines on the phone.
+        className: 'app-tunnel-link', glyph: 'link',
+        label: a.tunnel_url ? 'Open ' + a.name + ' tunnel' : a.name + ' tunnel not running',
+        text: 'Open link',
+        hidden: !tunnel,
+        disabled: !a.tunnel_url,
+        title: 'Tunnel not running',
+        onTap: function () { window.open(a.tunnel_url, '_blank', 'noopener'); },
+      },
+      {
+        className: 'app-copy-url-btn', glyph: 'copy',
+        label: 'Copy ' + a.name + ' tunnel URL', text: 'Copy URL',
+        hidden: !tunnel,
+        disabled: !a.tunnel_url,
+        title: 'Tunnel not running',
+        onTap: function () { copyUrl(a.tunnel_url); },
+      },
+      {
+        // Rename + remove stay gated behind Jobs tab → Edit mode.
+        className: 'app-rename-btn', glyph: 'pencil',
+        label: 'Rename ' + a.name, text: 'Rename',
+        hidden: !state.editMode,
+        onTap: function () { openRename(a); },
+      },
+      {
+        className: 'app-remove-btn', glyph: 'trash-2',
+        label: 'Remove ' + a.name, text: 'Remove',
+        hidden: !state.editMode,
+        onTap: function () { removeApp(a); },
+      },
+    ]));
+    host.appendChild(row.li);
   });
+  appMenu.endRender();
+}
+
+async function copyUrl(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied', 'good');
+  } catch (exc) {
+    apiFailToast('Could not copy the link', exc);
+  }
 }
 
 // Coding-tab launch mode is the ☁️ Detached toggle in the options

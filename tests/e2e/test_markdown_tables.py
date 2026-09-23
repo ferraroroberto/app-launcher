@@ -185,6 +185,8 @@ def test_life_os_document_renders_a_markdown_table(authed_page: Page, base_url: 
     authed_page.locator("#tabLifeOS").click()
     tile = authed_page.locator("#lifeOsList li.lifeos-item[data-id='demo-skill']")
     expect(tile).to_be_visible()
+    # Read lives in the row's ⋯ menu since #1128.
+    tile.locator(".action-row-kebab").click()
     tile.locator("button[title^='Browse']").click()
     authed_page.locator(".lifeos-file-btn").first.click()
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()

@@ -759,41 +759,6 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   margin-right: 6px;
 }
-/* Tunnel URL as a 🔗 in the action cluster (#790) — an <a> wearing the
-   button tier, so it keeps real link behaviour (tap, copy-link, open in
-   new tab) without the URL costing three wrapped lines on the phone. */
-.app-item .app-tunnel-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent);
-  text-decoration: none;
-}
-/* Kind pill and name on separate lines (#790) — sharing one line let a long
-   name wrap around the pill into a ragged block indented under a badge. */
-.app-item .app-row-kind {
-  display: flex;
-  align-items: center;
-  line-height: 1;
-}
-.app-item .app-row-name {
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Per-row launch cluster (#790) — ⚡ visible, 🚫👁 stealth. Vertically
-   centred against the row's full height, and deliberately reusing the
-   Board backlog's .board-issue-btn.icon-only geometry rather than the
-   .row-actions rail: that pair is already the right thumb size. */
-.app-item .app-launch-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 0 12px 0 4px;
-}
 .app-item .row-actions {
   display: flex;
   flex-direction: column;
@@ -976,36 +941,6 @@ summary + .opt-group { border-top: 0; }
 /* ---------- Coding tab tiles (issue #45) ---------- */
 /* Bare folder name on the left, one icon button per coding agent on
    the right — sat side by side, not stacked. */
-.coding-item .app-main { justify-content: center; }
-.coding-name {
-  /* Vertical padding trimmed (was 16px) so tiles take less height and more
-     projects fit per screen (issue #212). Horizontal padding is unchanged —
-     the tiles still breathe sideways. */
-  padding: 7px 18px;
-  font-size: var(--font-body);
-  font-weight: 600;
-  color: var(--fg);
-  /* The raw on-disk name, shown verbatim on one line (#1126): it used to
-     `word-break: break-all` into "gitlab-to-github-migrato / r". The text
-     sits in its own span so it truncates on its own while a git branch
-     tag beside it keeps its place; the full name rides `title`. */
-  display: flex;
-  align-items: baseline;
-  min-width: 0;
-}
-.coding-name-text {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.coding-name .git-branch-tag {
-  flex: none;
-  max-width: 35%;   /* the name is the primary read; the tag yields first */
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 /* ---------- Coding tab git-status flags (issue #115) ---------- */
 /* On-demand only: tap the header button to annotate tiles. Yellow name
    = parked on a non-default branch; red name = uncommitted changes. */
@@ -1059,11 +994,11 @@ summary + .opt-group { border-top: 0; }
 .git-summary-name.git-off-main { color: var(--attention); }
 .git-summary-name.git-dirty { color: var(--danger); }
 .git-summary-empty { font-size: var(--font-body-sm); color: var(--muted); }
-.coding-name.git-off-main { color: var(--attention); }
-.coding-name.git-dirty { color: var(--danger); }
-/* A coloured name is the tap-shortcut into Show changes (#977); the colour
-   already signals, so the only added affordance is the pointer. */
-.coding-name[role="button"] { cursor: pointer; }
+/* A project row's title carries its git state (#115, on the action-row
+   since #1128); the context line spells it out, so colour is never the
+   only channel. */
+.action-row-title.git-off-main { color: var(--attention); }
+.action-row-title.git-dirty { color: var(--danger); }
 .git-branch-tag {
   display: inline-block;
   margin-left: 8px;
@@ -1094,33 +1029,6 @@ summary + .opt-group { border-top: 0; }
 .git-swatch.off-main { background: var(--attention); }
 .git-swatch.dirty { background: var(--danger); }
 
-.row-actions.agent-actions { flex-direction: row; }
-/* The agent icon strip (one button per registry agent + GitHub + star)
-   shares the row with the folder name (issue #120). Buttons are tightened
-   to 52px — still a comfortable ≥44px tap target — so the set fits one
-   row on PC and wider phones. On narrow phones the tile stacks (see the
-   media query below) and the icon strip wraps as the final fallback. */
-.app-item .row-actions.agent-actions .icon-btn {
-  width: 52px;
-  /* Shorter than the two-line row to fit more tiles per screen (issue
-     #212); --row-sm keeps the iOS 44px tap minimum around the 24px glyph
-     (unified scale, issue #365). */
-  min-height: var(--row-sm);
-  padding: 5px;
-}
-.app-item .row-actions.agent-actions .icon-btn + .icon-btn {
-  border-top: 0;
-  border-left: 1px solid var(--line);
-}
-/* The stack-on-narrow rule that used to live here is gone (#1070). A
-   Coding row carried up to nine controls — one per registered agent plus
-   GitHub plus ⋯ plus the star — which could not fit a 390px phone beside
-   the folder name, so the strip dropped onto its own line below it and
-   `flex-wrap` caught the overflow. The row is three controls wide now
-   (favourite launch · ⋯ · star, ~156px), which fits beside even a long
-   folder name on the narrowest phone, so the row stays one line at every
-   width — as does the Life OS tile, which needed an explicit opt-out
-   (issue #124) only for as long as the bare `.coding-item` rule existed. */
 .agent-icon {
   width: 24px;                    /* icons.size feature step (issue #355) */
   height: 24px;
@@ -1134,29 +1042,6 @@ summary + .opt-group { border-top: 0; }
      currentColor from the button and is legible on the bare card in both
      themes by construction — the chip has nothing left to do. */
   flex-shrink: 0;
-}
-/* Disabled: the one shared recipe. A currentColor mark follows the button's
-   own muted colour, so grayscale only has to flatten the marks that carry
-   their own paint (Claude, VS Code, Antigravity). */
-.app-item .row-actions.agent-actions .icon-btn:disabled .agent-icon {
-  filter: grayscale(1);
-}
-
-/* ---------- Coding tab favorites (issue #250) ---------- */
-/* Per-tile star toggle — rightmost in the agent-action strip, the vendored
-   Lucide `star` glyph. Outline + muted colour when unstarred (like the
-   other idle icons); the `.is-fav` rule below fills it gold when starred —
-   the sprite has one star symbol, not a filled/outline pair (#563). */
-.app-item .row-actions.agent-actions .icon-btn.star-btn {
-  font-size: 20px;
-  line-height: 1;
-}
-.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav,
-.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav:active {
-  color: var(--star);
-}
-.app-item .row-actions.agent-actions .icon-btn.star-btn.is-fav .icon {
-  fill: var(--star);
 }
 /* "Favorites" header filter toggle — icon-only at every width (#1070),
    in the same box as the Detached/Resume toggles beside it so the three
@@ -2110,7 +1995,6 @@ textarea.input-native { height: auto; }
   position: relative;
   justify-content: center;
 }
-.app-item .row-actions.agent-actions { position: relative; }
 /* Jobs (#1130): one visible action at the tint tier plus the ⋯ menu, side
    by side. Row-sized like .listener-kill and the Life OS conversation
    actions -- this app's .button-tint stretches to width:100% for its
@@ -2172,6 +2056,11 @@ textarea.input-native { height: auto; }
 .row-menu--fixed { position: fixed; }
 .session-menu { top: 0; right: calc(100% - 4px); }
 .project-menu { top: calc(100% + 2px); right: 4px; }
+/* An action-row's kebab menu (#1128) drops below the row, right-aligned
+   under the kebab: the row is the positioned box. A tray row's autostart
+   switch, its one leading toggle, keeps its own width. */
+.action-row { position: relative; }
+.action-row > .toggle { flex: none; margin: 0 6px; }
 /* The terminal bar's ⋮ menu (#981) drops below the bar, right-aligned under
    its anchor — the bar itself is the positioned box, as for .speak-popover. */
 .terminal-menu { top: calc(100% + 2px); right: 8px; }
@@ -2180,6 +2069,7 @@ textarea.input-native { height: auto; }
    outranks the rail's width / divider rules). The stop row keeps
    `action-stop-close` (danger tint on press, below). */
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn,
+.action-row .row-menu .icon-btn.row-menu-btn,
 .composer .row-menu .icon-btn.row-menu-btn,
 .terminal-bar .row-menu .icon-btn.row-menu-btn {
   /* The composer's and terminal bar's menus sit outside a rail, so they
@@ -2209,6 +2099,7 @@ textarea.input-native { height: auto; }
 /* One shared disabled recipe (design.md button-disabled): flat muted text,
    never opacity — the VS Code item when the `code` CLI is off PATH. */
 .app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled,
+.action-row .row-menu .icon-btn.row-menu-btn:disabled,
 .composer .row-menu .icon-btn.row-menu-btn:disabled,
 .terminal-bar .row-menu .icon-btn.row-menu-btn:disabled {
   color: var(--muted);
@@ -2222,7 +2113,8 @@ textarea.input-native { height: auto; }
   width: 18px;
   height: 18px;
 }
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand {
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand,
+.action-row .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand {
   filter: grayscale(1);
 }
 
@@ -3357,7 +3249,6 @@ body.terminal-open {
    center (issue #155). Shared by the Coding + Life OS option rows. */
 .coding-toggles,
 .lifeos-toggles { display: flex; gap: 6px; }
-.lifeos-launch { font-size: var(--icon-title); }
 
 /* Weekly-recap tile (issue #167): title + a staleness badge on the left, the
    🚀 review launch on the right. The badge is a coloured dot + label whose

@@ -10,10 +10,11 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
-import { bindOutsideClickToClose, brandIcon, brandIconEl } from './dom-utils.js';
+import { bindOutsideClickToClose, brandIcon } from './dom-utils.js';
 import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
 import { createRowMenu } from './row-menu.js';
+import { actionRow } from './action-rows.js';
 import { openChanges } from './changes-overlay.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
@@ -209,24 +210,6 @@ export function wireFavoriteAgent() {
 // dropped to a single agent button (#1070) so the row and the ⋯ menu's
 // launch rows derive their label, their disabled state and their hint from
 // exactly one place.
-function agentLaunchButton(project, agent) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'icon-btn agent-btn';
-  btn.dataset.agent = agent.id;
-  btn.appendChild(brandIconEl(agent.id));
-  if (agent.available) {
-    btn.title = 'Launch ' + agent.label;
-    btn.setAttribute('aria-label', 'Launch ' + agent.label);
-    btn.addEventListener('click', function () { launchApp(project, agent.id); });
-  } else {
-    btn.disabled = true;
-    btn.title = agent.label + ' is not installed';
-    btn.setAttribute('aria-label', agent.label + ' is not installed');
-  }
-  return btn;
-}
-
 export function renderCodingList(host, items) {
   host.innerHTML = '';
   // Favorites pinned to the top (issue #250). `items` arrives alphabetical
@@ -247,81 +230,55 @@ export function renderCodingList(host, items) {
     return;
   }
 
+  // Agents the user hid in the options card (issue #666) — since #1070
+  // that governs the ⋯ menu's launch rows. Re-derived on every render (like
+  // syncFavFilterBtn) so the ~4 s poll can't resurrect a hidden entry.
+  const hidden = hiddenButtons();
+  const favoriteId = favoriteAgentId();
+  const agents = state.agents || [];
+  const favorite = agents.find(function (x) { return x.id === favoriteId; });
+
   ordered.forEach(function (a) {
-    const li = document.createElement('li');
-    li.className = 'app-item coding-item';
-    li.dataset.id = a.id;
-
-    const main = document.createElement('div');
-    main.className = 'app-main';
-    const name = document.createElement('div');
-    name.className = 'coding-name';
-    // Raw folder name, exactly as on disk. Its own span so the name
-    // truncates on one line while a git branch tag keeps its place (#1126);
-    // `title` carries the full name.
-    const nameText = document.createElement('span');
-    nameText.className = 'coding-name-text';
-    nameText.textContent = a.name;
-    name.appendChild(nameText);
-    name.title = a.name;
-    annotateGitStatus(name, a);
-    main.appendChild(name);
-    li.appendChild(main);
-
-    const actions = document.createElement('div');
-    actions.className = 'row-actions agent-actions';
-
-    // Agents the user hid in the options card (issue #666) — since #1070
-    // that governs the ⋯ menu's launch rows, not the row strip. Re-derived
-    // on every render (like syncFavFilterBtn) so the ~4 s poll can't
-    // resurrect a hidden entry.
-    const hidden = hiddenButtons();
-    const favoriteId = favoriteAgentId();
-    const agents = state.agents || [];
-    const favorite = agents.find(function (x) { return x.id === favoriteId; });
-
-    // The favourite's launch button — the row's only agent button, shown
-    // whatever the hidden list says (it is the row's one launch affordance;
-    // hiding it would leave the row with none) and never repeated in the
-    // menu below.
-    if (favorite) {
-      actions.appendChild(agentLaunchButton(a, favorite));
-    }
+    const gs = state.gitStatus && state.gitStatus[a.id];
+    const git = gitFlags(gs);
+    // The row itself launches the favourite agent (#1128, the action-row
+    // contract: tapping the row is its primary action). It is the row's one
+    // launch affordance, so the hidden list never removes it.
+    const row = actionRow({
+      id: a.id,
+      className: 'coding-item',
+      title: a.name,
+      meta: git.meta,
+      label: favorite ? 'Launch ' + favorite.label + ' in ' + a.name : a.name,
+      disabled: !favorite || !favorite.available,
+      hint: favorite ? favorite.label + ' is not installed' : 'No launch agent',
+      onMain: function () { launchApp(a, favorite.id); },
+      favorite: { on: a.is_favorite, onToggle: function () { toggleFavorite(a); } },
+      kebabClass: 'project-menu-anchor',
+      kebabLabel: 'Project actions',
+    });
+    if (favorite) row.main.dataset.agent = favorite.id;
+    if (git.flag) row.title.classList.add(git.flag);
+    // Stored `vscode` hide values from #666 key on this; inert since #1070.
+    row.kebab.dataset.agent = VSCODE_BUTTON_ID;
 
     // ⋯ project menu (#977, widened by #1070) — everything a project row
-    // offers that isn't the favourite launch or the star, in one anchor so
-    // the strip stays one line on the phone:
-    //   · Launch <agent> — one row per visible non-favourite agent (#1070),
-    //     same label/disabled/hint as the row button it replaced.
+    // offers besides the favourite launch and the star:
+    //   · Launch <agent> — one row per visible non-favourite agent (#1070).
     //   · GitHub issues — the repo's open-issues list (sorted by last
     //     updated, excluding audit-meta ledger issues — #341) in a new tab.
-    //     Spawns no process, creates no session. Greyed with a hint when
-    //     the project has no GitHub remote.
+    //     Greyed with a hint when the project has no GitHub remote.
     //   · Open in VS Code (#802) — the project's sibling `.code-workspace`,
-    //     created server-side first if missing; no PTY, no session. Greyed
-    //     with the same hint an uninstalled agent gets when the `code` CLI
+    //     created server-side first if missing. Greyed when the `code` CLI
     //     isn't on PATH.
     //   · Show changes — the read-only working-tree viewer (changes-
     //     overlay.js). Hidden once git-status says the folder isn't a repo.
+    //     Since #1128 this is the only route in from the row: the coloured
+    //     name can't be its own tap target inside the row's launch button.
     //   · Open folder — the project directory in Explorer on the PC.
-    // The menu is appended after the star so the rail's `.icon-btn +
-    // .icon-btn` divider rules still see adjacent buttons; it floats, so
-    // DOM order doesn't show. No longer hideable (#1070): it is the only
-    // route to every non-favourite launch, so hiding it would strand them.
-    // A stored `vscode` value from #666 is simply inert now.
-    const anchor = document.createElement('button');
-    anchor.type = 'button';
-    anchor.className = 'icon-btn agent-btn project-menu-anchor';
-    anchor.dataset.agent = VSCODE_BUTTON_ID;
-    anchor.innerHTML = icon('ellipsis-vertical');
-    anchor.title = 'Project actions';
-    anchor.setAttribute('aria-label', 'Project actions');
-    const gs = state.gitStatus && state.gitStatus[a.id];
-    // One launch row per *visible non-favourite* agent, above the GitHub
-    // row and the three project actions. Declared in the item list rather
-    // than appended conditionally: row-menu.js detaches a hidden row from
-    // the menu instead of marking it [hidden], so a count of the menu's
-    // buttons only ever sees what is actually offered.
+    // Declared in the item list rather than appended conditionally:
+    // row-menu.js detaches a hidden row instead of marking it [hidden], so a
+    // count of the menu's buttons only ever sees what is actually offered.
     const menuItems = agents
       .filter(function (agent) { return agent.id !== favoriteId; })
       .map(function (agent) {
@@ -353,45 +310,28 @@ export function renderCodingList(host, items) {
         window.open(issuesUrl, '_blank', 'noopener,noreferrer');
       },
     });
-    const menuEl = projectMenu.attach(a.id, anchor, menuItems.concat([
-        {
-          className: 'project-vscode-btn',
-          html: brandIcon('vscode', 'row-menu-brand'),
-          label: 'Open in ' + VSCODE_BUTTON_LABEL, text: 'Open in VS Code',
-          disabled: !state.vscodeAvailable,
-          title: VSCODE_BUTTON_LABEL + ' is not installed',
-          onTap: function () { openInVscode(a); },
-        },
-        {
-          className: 'project-changes-btn', glyph: 'git-branch',
-          label: 'Show changes', text: 'Show changes',
-          hidden: !!(gs && !gs.is_git),
-          onTap: function () { openChanges(a); },
-        },
-        {
-          className: 'project-folder-btn', glyph: 'folder',
-          label: 'Open folder', text: 'Open folder',
-          onTap: function () { openFolder(a); },
-        },
-    ]));
-    actions.appendChild(anchor);
-
-    // Favorite star — rightmost in the action strip, a toggle distinct from
-    // the agent-launch buttons. Filled when starred, outline otherwise
-    // (see the .star-btn.is-fav CSS fill treatment).
-    const starBtn = document.createElement('button');
-    starBtn.type = 'button';
-    starBtn.className = 'icon-btn agent-btn star-btn' + (a.is_favorite ? ' is-fav' : '');
-    starBtn.innerHTML = icon('star');
-    starBtn.title = a.is_favorite ? 'Unstar (remove from favorites)' : 'Star (add to favorites)';
-    starBtn.setAttribute('aria-label', starBtn.title);
-    starBtn.setAttribute('aria-pressed', a.is_favorite ? 'true' : 'false');
-    starBtn.addEventListener('click', function () { toggleFavorite(a); });
-    actions.appendChild(starBtn);
-    actions.appendChild(menuEl);
-
-    li.appendChild(actions);
-    host.appendChild(li);
+    row.li.appendChild(projectMenu.attach(a.id, row.kebab, menuItems.concat([
+      {
+        className: 'project-vscode-btn',
+        html: brandIcon('vscode', 'row-menu-brand'),
+        label: 'Open in ' + VSCODE_BUTTON_LABEL, text: 'Open in VS Code',
+        disabled: !state.vscodeAvailable,
+        title: VSCODE_BUTTON_LABEL + ' is not installed',
+        onTap: function () { openInVscode(a); },
+      },
+      {
+        className: 'project-changes-btn', glyph: 'git-branch',
+        label: 'Show changes', text: 'Show changes',
+        hidden: !!(gs && !gs.is_git),
+        onTap: function () { openChanges(a); },
+      },
+      {
+        className: 'project-folder-btn', glyph: 'folder',
+        label: 'Open folder', text: 'Open folder',
+        onTap: function () { openFolder(a); },
+      },
+    ])));
+    host.appendChild(row.li);
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
   projectMenu.endRender();
@@ -472,32 +412,20 @@ function syncFavFilterBtn() {
 // A coloured name is also the shortcut into Show changes (#977): the colour
 // asks "what's different here?", one tap answers it. A clean, on-default
 // name stays inert — nothing to show.
-function annotateGitStatus(nameEl, a) {
-  const gs = state.gitStatus && state.gitStatus[a.id];
-  if (!gs || !gs.is_git) return;
+// What git-status says about a project row (#115/#496), as the title's
+// colour class and the row's context line (#1128): yellow = parked on a
+// non-default branch, red = uncommitted changes. Nothing for a folder that
+// isn't a repo or hasn't been scanned yet.
+function gitFlags(gs) {
+  if (!gs || !gs.is_git) return { flag: '', meta: '' };
   const offMain = !!gs.branch && !gs.on_default_branch;
-  if (gs.dirty) nameEl.classList.add('git-dirty');
-  else if (offMain) nameEl.classList.add('git-off-main');
-  if (offMain) {
-    const tag = document.createElement('span');
-    tag.className = 'git-branch-tag';
-    tag.textContent = gs.branch;
-    tag.title = 'on ' + gs.branch +
-      (gs.default_branch ? ' (default: ' + gs.default_branch + ')' : '');
-    nameEl.appendChild(tag);
-  }
-  if (gs.dirty || offMain) {
-    nameEl.setAttribute('role', 'button');
-    nameEl.tabIndex = 0;
-    nameEl.title = a.name + ' — show changes';
-    nameEl.addEventListener('click', function () { openChanges(a); });
-    nameEl.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        ev.preventDefault();
-        openChanges(a);
-      }
-    });
-  }
+  const parts = [];
+  if (offMain) parts.push('On ' + gs.branch);
+  if (gs.dirty) parts.push('Uncommitted changes');
+  return {
+    flag: gs.dirty ? 'git-dirty' : (offMain ? 'git-off-main' : ''),
+    meta: parts.join(' · '),
+  };
 }
 
 // Always-on git-status refresh (#496, deliberately reversing #115's
@@ -582,7 +510,7 @@ function buildGitSummary() {
     row.className = 'git-summary-row';
     row.setAttribute('role', 'listitem');
     const name = document.createElement('span');
-    // Same precedence as annotateGitStatus: red wins when also dirty.
+    // Same precedence as gitFlags: red wins when also dirty.
     name.className = 'git-summary-name ' + (gs.dirty ? 'git-dirty' : 'git-off-main');
     name.textContent = a.name;
     name.title = a.name;
