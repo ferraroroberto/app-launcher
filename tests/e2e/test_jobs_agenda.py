@@ -118,6 +118,11 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     ids = authed_page.eval_on_selector_all(
         ".jobs-agenda-row", "els => els.map(e => e.dataset.jobId)")
     assert ids == ["alpha", "zeta", "alpha"], "rows must be time-ordered across days"
+    # Each row is a tap target (it reveals its job): the 44px floor, not the
+    # 38px its padding alone gave (#1174).
+    heights = authed_page.eval_on_selector_all(
+        ".jobs-agenda-row", "els => els.map(e => e.getBoundingClientRect().height)")
+    assert all(h >= 43.99 for h in heights), f"agenda rows under 44px: {heights}"
 
     # Dense cadences are summarised, not expanded into the list.
     expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")

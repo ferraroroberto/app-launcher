@@ -1214,6 +1214,8 @@ summary + .opt-group { border-top: 0; }
   align-items: center;
   gap: 10px;
   width: 100%;
+  /* A row is a tap target (it reveals its job): the 44px floor (#1174). */
+  min-height: var(--row-sm);
   padding: 8px 16px;
   background: none;
   border: 0;
@@ -3548,7 +3550,10 @@ body.terminal-open {
 .board-dispatch {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  /* Stacked on the phone, the repo filter's -5px expansion and the control
+     row's -4/-5px meet across this gap: 8px left the two hit areas sharing
+     pixels, --gap (12) keeps them apart (#1174). */
+  gap: var(--gap);
   margin: 0 0 10px;
 }
 /* Phone stacking order (#869 round 2, on-device feedback): the controls lead
@@ -4200,14 +4205,29 @@ body.terminal-open {
 }
 .board-issue-btn:active,
 .board-drawer-action:active { background: var(--card); }
-/* Drawer actions (#984, mockup screen 8): one row of four equal buttons —
-   Rename · Stop · Chat · Terminal — each a glyph stacked over its label at
-   the 44px floor. minmax(0, 1fr) keeps the columns equal (and inside the
-   drawer) at any width, the narrow desktop grid columns included (#473). */
+/* Drawer actions (#984, mockup screen 8): four equal buttons — Rename ·
+   Stop · Chat · Terminal — each a glyph stacked over its label at the 44px
+   floor. The drawer's own width decides the layout, never squeezing a
+   button under the floor (#1174): one row while four 44px columns fit —
+   with an 8px gap from 200px (4x44 + 3x8), a 4px one from 188px, which is
+   what holds the row at 1280px beside the rail — then 2x2 from 96px, then
+   one column (a desktop Board column leaves the drawer ~90px at a 700px
+   window). minmax(0, 1fr) keeps the columns equal and inside the drawer
+   (#473). */
+.board-drawer { container-type: inline-size; }
 .board-drawer-actions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+@container (max-width: 199.98px) {
+  .board-drawer-actions { gap: var(--space-xs); }
+}
+@container (max-width: 187.98px) {
+  .board-drawer-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+}
+@container (max-width: 95.98px) {
+  .board-drawer-actions { grid-template-columns: minmax(0, 1fr); }
 }
 .board-drawer-action {
   display: flex;
@@ -4444,9 +4464,6 @@ body.terminal-open {
     margin-right: 0;
     padding: 0 var(--gap);
   }
-  /* The rail takes 80px from five columns, so the drawer's one row of four
-     44px actions (#984) needs its gaps back to hold the floor at 1280px. */
-  .board-drawer-actions { gap: var(--space-xs); }
 }
 
 /* ---------- wide layout: Code tab list-and-detail (#1135) ---------- */

@@ -1126,7 +1126,7 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
 
 
 def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
-    authed_page: Page, base_url: str
+    authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     """#984 (mockup screen 8): under the shared composer the drawer lays out
     one row of four equal buttons — Rename · Stop · Chat · Terminal, each a
@@ -1192,6 +1192,20 @@ def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
     assert box_actions["x"] + box_actions["width"] >= boxes[3]["x"] + boxes[3]["width"] - 1, (
         "the action row must stay inside the drawer"
     )
+
+    # #1174: the one row is the wide-drawer layout, not a promise at every
+    # width. A desktop column narrows the drawer to ~90px at 700px, where
+    # four columns came to 16px each; below the room for four 44px buttons
+    # the actions fold to 2x2, then to one column — never under the floor.
+    if browser_name == "chromium":
+        for width in (1100, 700):
+            authed_page.set_viewport_size({"width": width, "height": 900})
+            expect(drawer).to_be_visible()
+            for i in range(4):
+                box = stable_read(buttons.nth(i).bounding_box)
+                assert box and box["width"] >= 44 and box["height"] >= 44, (
+                    f"drawer button {labels[i]} under the 44px floor at {width}px: {box}"
+                )
 
     buttons.nth(1).click()
     authed_page.wait_for_timeout(500)
