@@ -4473,9 +4473,23 @@ body.terminal-open {
   }
   /* The sticky top nav used to supply the column's top gap. */
   .app { padding-top: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)); }
-  #paneBoard {
-    width: calc(100vw - var(--layout-rail));
-    margin-left: calc(var(--layout-rail) / 2 - 50vw);
-    margin-right: calc(var(--layout-rail) / 2 - 50vw);
+  /* The Board spans the whole content box right of the rail: .app drops its
+     measure instead of the pane breaking out by 100vw, which counts the
+     scrollbar gutter and landed the pane 7.5px under the rail. */
+  .app:has(> #paneBoard:not([hidden])) {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
   }
+  #paneBoard {
+    width: auto;
+    left: auto;
+    right: auto;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0 var(--gap);
+  }
+  /* The rail takes 80px from five columns, so the drawer's one row of four
+     44px actions (#984) needs its gaps back to hold the floor at 1280px. */
+  .board-drawer-actions { gap: var(--space-xs); }
 }

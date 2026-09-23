@@ -24,6 +24,11 @@ TAB_ORDER = [
 def test_primary_nav_is_responsive_and_accessible(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
+    # The desktop half pins the top control, which is below the wide layout's
+    # 1100px breakpoint (#1135); at 1100px and up the nav is a left rail,
+    # pinned by test_wide_layout.py.
+    if browser_name != "webkit":
+        authed_page.set_viewport_size({"width": 1099, "height": 720})
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=10_000
