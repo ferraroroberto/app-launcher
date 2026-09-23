@@ -438,3 +438,77 @@ pytest_targets = [
     "tests/e2e/test_vendored_empty_and_select.py",
     "tests/e2e/test_touch_targets.py",
 ]
+
+# [design.review] -- the rendered design review's walk (fleet-config
+# skills/_lib/design_review, docs/skills.md "Two legs, two interpreters").
+# The walk clicks the primary tabs, opens every <details> and showModal()s
+# every dialog[id] on its own; each extra step below is ONE click after a
+# fresh load, never a fill or submit, and never on a no_go selector. Only
+# surfaces one click reaches from a fresh load belong here: a list inside a
+# closed card (Projects, Apps, Port listeners, Settings' own cards) and
+# anything inside the session overlay need two clicks or a live session, and
+# are reported as unmeasured (fleet-config#962).
+[design.review]
+theme_storage_key = "app-launcher.theme"
+tab_selector = "[role=tablist] [role=tab]"
+# Never clicked: every danger item (Kill, Stop, Delete, Remove), every row
+# tap (launches an agent or opens an app), anything that sends, dispatches,
+# runs, starts or resumes, and card taps that open a URL.
+no_go = [
+    ".row-menu-danger",
+    ".action-row-main",
+    ".session-open",
+    ".job-run-btn",
+    ".board-drawer-action",
+    ".board-stop-btn",
+    ".board-issue-btn",
+    ".board-item:not([data-session-id]) .board-card",
+    "#boardDispatchSend",
+    "#boardChiefStart",
+    "#boardChiefResume",
+    "#codingChiefStart",
+    "#codingChiefResume",
+    "#claudeResume",
+    "#lifeOsRecapLaunch",
+    "#lifeOsResume",
+]
+
+[[design.review.extra_steps]]
+tab = "claude"
+id = "settings"
+click = "#settingsOpen"
+
+[[design.review.extra_steps]]
+tab = "claude"
+id = "session-menu"
+click = "#sessionsList .session-kebab"
+
+[[design.review.extra_steps]]
+tab = "board"
+id = "drawer"
+click = ".board-item[data-session-id] .board-card"
+
+[[design.review.extra_steps]]
+tab = "lifeos"
+id = "skill-menu"
+click = ".lifeos-menu-anchor"
+
+[[design.review.extra_steps]]
+tab = "lifeos"
+id = "conversations"
+click = "#lifeOsConvoSearch"
+
+[[design.review.extra_steps]]
+tab = "apps"
+id = "running-app-menu"
+click = "#runningAppsList .running-app-menu-anchor"
+
+[[design.review.extra_steps]]
+tab = "jobs"
+id = "job-menu"
+click = ".job-menu-anchor"
+
+[[design.review.extra_steps]]
+tab = "jobs"
+id = "filter"
+click = "#jobsSearchInput"
