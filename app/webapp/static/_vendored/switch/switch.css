@@ -20,7 +20,7 @@
   align-items: center;
   width: 44px;                 /* switch.width */
   height: 26px;                /* switch.height */
-  background: var(--toggle-track);
+  background: var(--control-border);   /* switch.trackOff */
   border: none;
   border-radius: var(--radius-pill);
   padding: 3px;

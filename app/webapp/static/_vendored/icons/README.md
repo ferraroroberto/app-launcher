@@ -11,7 +11,7 @@ The fleet's canonical **icon component**: one inline SVG sprite of the handful o
 
 ## How to vendor
 
-1. Copy this `icons/` folder **verbatim** into your app's static dir (e.g. `app/webapp/static/_vendored/icons/`). Do **not** edit `icons.js` per-app. The only per-app change is **which `<symbol>` glyphs** you keep in `icons-sprite.html` — add the ones you need (paste the matching glyph's paths from [lucide.dev](https://lucide.dev), keeping the `i-NAME` id + `fill="none"`), remove the ones you don't. Don't bulk-import the whole library.
+1. Copy this `icons/` folder **verbatim** into your app's static dir (e.g. `app/webapp/static/_vendored/icons/`). Do **not** edit `icons.js` per-app. The only per-app change is **which `<symbol>` glyphs** you keep in `icons-sprite.html` — add the ones you need (paste the matching glyph's paths from [lucide.dev](https://lucide.dev), keeping the `i-NAME` id + `fill="none"`), remove the ones you don't. Don't bulk-import the whole library. The one deliberate `fill="currentColor"` symbol is `i-star-fill` (the Lucide star, filled): a CSS `fill` cannot reach a `fill="none"` symbol through `<use>`, and the `action-row` favorite needs a filled star to show its pressed state without relying on color.
 2. Paste the entire `<svg>` block from `icons-sprite.html` near the top of your `<body>` — once per page. It renders nothing (it's a 0-size hidden sprite); it just makes the symbols referenceable.
 3. Add the **required `.icon` CSS contract** (below) to your stylesheet.
 4. Reference glyphs:

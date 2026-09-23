@@ -1,0 +1,33 @@
+<!-- Markup skeleton — copy and adapt. A `.card action-list` holds an optional
+     filter field and a `<ul class="action-rows">`. Each row: the primary
+     action is `.action-row-main` (a <button>, or an <a> when the row
+     navigates), and every other action sits behind the one trailing kebab,
+     a SIBLING of the main button so taps never nest. Drop `.action-row-fav`,
+     `.action-row-meta` and `.action-row-verb` when the row has none.
+     The kebab's menu is app-side (see README): its last item is the
+     destructive one, after a divider, in danger-text, behind a confirm. -->
+<div class="card action-list">
+  <label class="action-row-filter">
+    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+    <input type="search" placeholder="Filter skills" aria-label="Filter skills">
+  </label>
+  <ul class="action-rows">
+    <li class="action-row">
+      <button type="button" class="action-row-fav" aria-pressed="true" aria-label="Favorite">
+        <svg class="icon action-row-fav-off" aria-hidden="true"><use href="#i-star"></use></svg>
+        <svg class="icon action-row-fav-on" aria-hidden="true"><use href="#i-star-fill"></use></svg>
+      </button>
+      <button type="button" class="action-row-main">
+        <span class="action-row-title">journal-daily</span>
+        <span class="action-row-meta">Last run yesterday · 3 conversations</span>
+      </button>
+      <button type="button" class="action-row-verb" aria-label="Run">
+        <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>
+      </button>
+      <button type="button" class="action-row-kebab" aria-label="More actions"
+              aria-haspopup="menu" aria-expanded="false">
+        <svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"></use></svg>
+      </button>
+    </li>
+  </ul>
+</div>

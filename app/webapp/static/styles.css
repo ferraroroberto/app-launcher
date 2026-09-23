@@ -126,8 +126,8 @@
      contrast surface on the card — --card-2 here, not --card-off, because
      this app's dark --card-off is true black and would vanish on the card. */
   --close-bg: var(--card-2);
-  /* Vendored switch.css contract (project-scaffolding#120). */
-  --toggle-track: var(--line);
+  /* Vendored switch.css contract (project-scaffolding#120); its off-track
+     is --control-border since #274. */
   --toggle-knob: #ffffff;
   --on: var(--success);
   color-scheme: light;

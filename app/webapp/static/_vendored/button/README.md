@@ -2,11 +2,12 @@
 
 The fleet's canonical **button**: four tiers covering every action, settled by the button-tier sweep (fleet-config#296) after a deterministic CSS parse of ~135 button rule variants across 7 apps found the same class names meaning different buttons per app. Contract: `~/.claude/design.md` → "Component contracts" → **button tiers**.
 
-- `.button-primary` — solid accent fill. The one main action per view.
-- `.button-tint` — accent-soft fill, accent text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
+- `.button-primary` — solid `accent-fill`. The one main action per view.
+- `.button-tint` — accent-soft fill, `accent-text` text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
 - `.button-ghost` — transparent fill, hairline border, muted text. Quiet tertiary actions. **Ghost means transparent** — a tinted fill is a tint, never a "ghost".
 - `.button-surface` — card-off fill at control height. Toolbar/utility/icon buttons.
-- `.button-tint.danger` — the tint recipe restated on `--deficit` for a destructive action.
+- `.button-tint.danger` — the tint recipe restated on `--deficit`, text in `--danger-text`, for a destructive action.
+- Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
 - One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat card-off/line/muted trio, never opacity on a solid fill.
 
 ## Files
@@ -56,7 +57,9 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 
 | Token | Light value | Used for |
 | --- | --- | --- |
-| `--accent` | `#0969da` | primary fill, tint text |
+| `--accent` | `#0969da` | base the soft tints mix from |
+| `--accent-fill` | `#0969da` (dark `#1f6feb`) | primary fill |
+| `--accent-text` | `#0550ae` (dark `#58a6ff`) | tint text |
 | `--accent-fg` | `#ffffff` | primary text |
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | tint fill |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | tint border |
@@ -64,7 +67,8 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--card-off` | `#f6f8fa` | surface fill, disabled fill (all tiers) |
 | `--line` | `#d1d9e0` | ghost/surface border, disabled border |
 | `--muted` | `#656d76` | ghost/surface text, disabled text |
-| `--deficit` | `#cf222e` | danger text |
+| `--deficit` | `#cf222e` | base the danger tint mixes from |
+| `--danger-text` | `#a40e26` (dark `#ff7b72`) | danger text |
 | `--deficit-soft` | `color-mix(in srgb, var(--deficit) 12%, transparent)` | danger fill |
 | `--deficit-border-soft` | `color-mix(in srgb, var(--deficit) 30%, transparent)` | danger border |
 | `--radius-md` | `12px` | corners (`rounded.md`), all tiers |

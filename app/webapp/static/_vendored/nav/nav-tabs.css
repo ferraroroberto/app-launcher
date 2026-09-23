@@ -46,7 +46,7 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.tab.active { background: var(--accent-soft); color: var(--accent); }
+.tab.active { background: var(--accent-soft); color: var(--accent-text); }
 .tab:active { transform: scale(0.97); }
 /* The stroke SVG icon shows everywhere — desktop segmented control and mobile
    pill alike (home-automation #77 made icon-as-SVG the fleet's direction; this
@@ -76,21 +76,30 @@
   }
 }
 /* Narrow non-touch windows (a squeezed desktop browser, fine-pointer tablets):
-   the row of icon+label tabs no longer fits, and without a strategy the labels
-   collide with the next tab (home-automation #365). Collapse to icon-only —
-   the label stays in the accessibility tree via the clip idiom (display:none
-   would strip the button's accessible name). An absolutely-positioned label is
-   no longer a flex item, so `.tab`'s gap leaves no phantom space beside the
-   icon. The coarse-pointer pill below is untouched: it matches
-   (pointer: coarse) first and never reaches this state. */
+   an icon BESIDE its label no longer fits, and labels collided with the next
+   tab (home-automation #365). Stack the icon OVER the label instead, the
+   mobile pill's own shape, so every tab keeps its label: the nav contract is
+   "icon and label, never icon-only" (fleet-config#966). Measured at five tabs
+   from 320 to 520px, Chromium and WebKit: inline, 7-8 letter labels clipped
+   below ~440px; stacked, every label fits (project-scaffolding#278). The
+   ellipsis is the safety net for the Large text step at 320px. min-height
+   holds the 44px floor the stack would otherwise miss by 2px. The
+   coarse-pointer pill below is untouched: it matches (pointer: coarse). */
 @media (pointer: fine) and (max-width: 520px) {
+  .tab {
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    min-height: var(--row-sm);
+    padding: 6px 2px;
+    font-size: var(--font-caption);
+    line-height: 1.1;
+  }
   .tab-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
+    display: block;
+    max-width: 100%;
     overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
+    text-overflow: ellipsis;
   }
 }
 
@@ -280,7 +289,7 @@
   .tab.active {
     background: var(--accent-soft);
     border-color: var(--accent-border-soft);
-    color: var(--accent);
+    color: var(--accent-text);
     box-shadow: none;
   }
   .tab:active { transform: scale(0.97); }
