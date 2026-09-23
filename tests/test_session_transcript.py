@@ -1950,6 +1950,100 @@ def test_find_claude_transcript_needs_a_dir_a_start_and_a_folder(
     assert board_exchange.find_claude_transcript(_claude_session(), []) is None
 
 
+# A conversation id as `build_resume_flags(..., session_id=...)` splices it.
+_RESUMED = "51f1c38e-47c9-4220-9006-367a6dd29390"
+_OTHER = "0c7a1d2e-9b3f-4e1a-8c6d-5f4e3d2c1b0a"
+
+
+def test_resumed_claude_session_reads_its_conversation_before_the_first_prompt(
+    tmp_path: Path, monkeypatch
+):
+    """#1155: a `--resume <id>` launch is a new process with a fresh
+    `started_at`, and until its first prompt nothing moves the conversation's
+    mtime past it (and in a busy folder another live session shares it), so
+    both of the scan's guards refuse. The id names the file exactly; Claude
+    Code appends a resumed turn to that same `<id>.jsonl` (probed on
+    2.1.280), so it is this session's conversation from spawn onwards."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    folder = _claude_folder(
+        tmp_path, "E--work-project",
+        (_RESUMED, 1_000_100.0), (_OTHER, 1_000_150.0),
+    )
+    fresh_start = {"started_at": 2_000_000.0}
+    resumed = _claude_session(
+        flags=f"--resume {_RESUMED} --model opus", **fresh_start
+    )
+    neighbour = _claude_session(session_id="s2", **fresh_start)
+
+    # Stale folder, alone in it: the mtime guard refused; the id answers.
+    assert board_exchange.resolve_claude_transcript(resumed, [resumed]) == (
+        folder / f"{_RESUMED}.jsonl", "resume_id"
+    )
+    # Busy folder: the folder guard refused; the id still answers, and it is
+    # the resumed conversation, not the folder's newest (_OTHER).
+    assert board_exchange.find_claude_transcript(
+        resumed, [resumed, neighbour]
+    ) == folder / f"{_RESUMED}.jsonl"
+    # The neighbour is fresh and never borrows the resumed session's file.
+    assert board_exchange.resolve_claude_transcript(
+        neighbour, [resumed, neighbour]
+    ) == (None, "folder_shared")
+
+
+def test_fresh_and_bare_resume_sessions_keep_both_guards(
+    tmp_path: Path, monkeypatch
+):
+    """#1155's safety half. Nothing is loosened for a session with no id: a
+    fresh launch in a folder of older conversations, and a bare `--resume`
+    (the picker, whose choice nothing on the session records), both still
+    answer no_transcript until they write, and say which guard refused."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
+    for flags in ("--model opus", "--resume --model opus", "--resume"):
+        session = _claude_session(flags=flags, started_at=2_000_000.0)
+        assert board_exchange.resolve_claude_transcript(session, [session]) == (
+            None, "not_written_since_start"
+        ), flags
+    # An id with no file in this cwd's folder is not a correlation either.
+    elsewhere = _claude_session(
+        flags=f"--resume {_OTHER}", started_at=2_000_000.0
+    )
+    assert board_exchange.find_claude_transcript(elsewhere, [elsewhere]) is None
+
+
+def test_resumed_session_that_moved_on_is_refused_by_its_title(
+    tmp_path: Path, monkeypatch
+):
+    """A `/resume` inside the session moves it to another conversation while
+    its launch flags keep the old id. The live-title disproof (#1034) covers
+    that: a title that genuinely conflicts with the resumed file's own name
+    refuses it rather than showing the conversation the user left."""
+    from src import board_exchange
+
+    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    folder = _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
+    path = folder / f"{_RESUMED}.jsonl"
+    path.write_text(
+        json.dumps({"type": "ai-title", "aiTitle": "Fix the backup job"}) + "\n",
+        encoding="utf-8",
+    )
+    os.utime(path, (1_000_100.0, 1_000_100.0))
+    base = {"flags": f"--resume {_RESUMED}", "started_at": 2_000_000.0}
+
+    moved = _claude_session(live_title="✳ Plan the garden", **base)
+    refused_path, why = board_exchange.resolve_claude_transcript(moved, [moved])
+    assert refused_path is None
+    assert why == "not_written_since_start; resume_id title_disproved"
+    # Agreeing, or no title at all (a detached session), still answers.
+    for title in ("✳ Fix the backup job", ""):
+        same = _claude_session(live_title=title, **base)
+        assert board_exchange.find_claude_transcript(same, [same]) == path, title
+
+
 class TestTranscriptEndpoint:
 
     def test_unknown_session(self, webapp_client, _bypass_gate):
@@ -2002,6 +2096,38 @@ class TestTranscriptEndpoint:
         ]
         refused = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert refused["available"] is False and refused["reason"] == "no_transcript"
+
+    def test_resumed_claude_session_shows_history_before_its_first_prompt(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
+    ):
+        """#1155 end to end: a session launched with `--resume <id>`, rowless
+        and sharing its folder with another live session, reads its
+        conversation; a fresh neighbour still answers no_transcript, and the
+        log line names the guard that refused."""
+        from src import board_exchange
+
+        client, _, overrides = webapp_client
+        resumed = _live(
+            project_dir=r"E:\work\project", started_at=2_000_000.0,
+            flags=f"--resume {_RESUMED} --model opus",
+        )
+        neighbour = _live(sid="s2", project_dir=r"E:\work\project", started_at=2_000_000.0)
+        overrides["session"].list_sessions.return_value = [resumed, neighbour]
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
+        monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+        folder = tmp_path / "E--work-project"
+        folder.mkdir()
+        path = _write_jsonl(folder / f"{_RESUMED}.jsonl", _conversation(2))
+        os.utime(path, (1_000_100.0, 1_000_100.0))
+
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["available"] is True and body["source"] == "native"
+        assert "prompt 1 p" in [e["text"] for e in body["entries"] if e["kind"] == "user"]
+
+        with caplog.at_level("INFO"):
+            refused = client.get("/api/claude-code/sessions/s2/transcript").json()
+        assert refused["available"] is False and refused["reason"] == "no_transcript"
+        assert "no_transcript (refused: folder_shared)" in caplog.text
 
     def test_detached_codex_row_reads_its_rollout(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
         from app.webapp.routers import session_transcript as router_mod
