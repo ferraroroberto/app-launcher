@@ -107,7 +107,10 @@ def test_every_control_meets_the_44px_floor(
 @pytest.mark.parametrize("cluster", (
     ".sessions-header-actions",
     ".compose-tools",
-    ".board-dispatch-row",
+    # The whole dispatch bar, not just its control row (#1174): the repo
+    # filter stacks against that row on the phone, and its expansion reached
+    # into the row's across the gap between them.
+    "#boardDispatch",
     "#appsList .action-row",
 ))
 def test_expanded_targets_in_a_cluster_do_not_overlap(
@@ -120,7 +123,7 @@ def test_expanded_targets_in_a_cluster_do_not_overlap(
     _mock(page)
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    if cluster == ".board-dispatch-row":
+    if cluster == "#boardDispatch":
         page.locator("#tabBoard").click()
     elif cluster == "#appsList .action-row":
         page.locator("#tabApps").click()
