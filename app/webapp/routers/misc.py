@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -18,7 +18,7 @@ from fastapi.responses import HTMLResponse
 from src import session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_deployed_sha, resolve_git_sha
-from src.diagnostics import find_pids_on_port, kill_pids, list_app_listeners
+from src.diagnostics import detect_local_scheme, find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
@@ -206,18 +206,46 @@ async def healthz() -> Dict[str, Any]:
     return {"ok": True, "service": "launcher"}
 
 
+# Each listener's scheme, keyed by (pid, port) (#1129). The TLS probe can
+# take up to a second a port and the Apps tab polls this route, so a live
+# listener is probed once; entries for listeners that are gone are dropped
+# on every call.
+_LISTENER_SCHEMES: Dict[Tuple[int, int], str] = {}
+
+
+async def _listener_url(tailnet_host: str, pid: int, port: int) -> Optional[str]:
+    """The phone-openable URL for a listener, or ``None`` without a
+    ``tailnet_host`` — the same shape as a running app's Open (apps.py)."""
+    if not tailnet_host:
+        return None
+    key = (pid, port)
+    scheme = _LISTENER_SCHEMES.get(key)
+    if scheme is None:
+        scheme = await asyncio.to_thread(detect_local_scheme, port)
+        _LISTENER_SCHEMES[key] = scheme
+    return f"{scheme}://{tailnet_host}:{port}/"
+
+
 @router.get("/api/ports/probe")
-async def probe_ports() -> Dict[str, Any]:
+async def probe_ports(request: Request) -> Dict[str, Any]:
     """Discover every LISTEN socket owned by a python/streamlit process.
 
     Streamlit auto-increments its port past 8501, so a fixed port
     list misses apps — this enumerates listeners dynamically. Each
     listener is labelled with the app it belongs to (matched on the
-    process's working directory) so you know what you're killing.
+    process's working directory) so you know what you're killing, and
+    carries the ``url`` its row's Open uses (#1129).
     """
     dir_names = _registered_dir_names()
     owners = list_app_listeners()
     pid_to_port = {o.pid: o.port for o in owners}
+    tailnet_host = (request.app.state.app_config.tailnet_host or "").strip()
+    live = {(o.pid, o.port) for o in owners}
+    for key in [k for k in _LISTENER_SCHEMES if k not in live]:
+        del _LISTENER_SCHEMES[key]
+    urls = await asyncio.gather(
+        *(_listener_url(tailnet_host, o.pid, o.port) for o in owners)
+    )
     out = [
         {
             "port": owner.port,
@@ -230,8 +258,9 @@ async def probe_ports() -> Dict[str, Any]:
             # the parent app's row instead of duplicating the app name.
             "parent_port": pid_to_port.get(owner.parent_pid) if owner.parent_pid else None,
             "service": _service_label(owner.cmdline),
+            "url": url,
         }
-        for owner in owners
+        for owner, url in zip(owners, urls)
     ]
     return {"listeners": out}
 

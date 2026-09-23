@@ -362,6 +362,7 @@ export function renderJobRow(job, options) {
     {
       glyph: 'trash-2',
       className: 'danger',
+      danger: true,
       label: 'Remove',
       text: 'Remove',
       hidden: !handlers.editMode,

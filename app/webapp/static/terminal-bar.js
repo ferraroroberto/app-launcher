@@ -148,7 +148,7 @@ export function wireTerminalMenu() {
       onTap: reloadNewest,
     },
     {
-      className: 'action-stop-close', glyph: 'x',
+      className: 'action-stop-close', glyph: 'x', danger: true,
       label: 'Stop and kill session', text: 'Stop and kill',
       // stopSession() keeps the chief confirm (#547) and closes the overlay
       // once the session it is showing stops.

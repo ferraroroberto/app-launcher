@@ -261,7 +261,7 @@ export function renderSessions() {
         onTap: function () { openSessionRename(s); },
       },
       {
-        className: 'action-stop-close', glyph: 'x',
+        className: 'action-stop-close', glyph: 'x', danger: true,
         label: 'Stop and kill session', text: 'Stop',
         onTap: function () { stopSession(s); },
       },

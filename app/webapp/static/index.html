@@ -884,9 +884,9 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <ul id="runningAppsList" class="card-list" aria-label="Running apps"></ul>
+        <ul id="runningAppsList" class="card-list action-rows" aria-label="Running apps"></ul>
         <p id="runningAppsEmpty" class="muted small">Nothing running. (A webapp restart forgets running apps — check Port listeners for orphans.)</p>
-        <p class="launcher-note">Only apps launched from here appear — start one with the <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-zap"></use></svg> or <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-eye-off"></use></svg> button on a registered app below.</p>
+        <p class="launcher-note">Only apps launched from here appear — tap a registered app below to start one, or use Launch hidden in its menu.</p>
         </div>
       </details>
 
@@ -901,7 +901,7 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <div id="listenersList" class="listeners"></div>
+        <ul id="listenersList" class="card-list action-rows" aria-label="Port listeners"></ul>
         <p id="listenersEmpty" class="muted small">Nothing running on common app ports.</p>
         <p class="launcher-note">The launcher itself isn't listed — it can't kill its own process.</p>
         </div>

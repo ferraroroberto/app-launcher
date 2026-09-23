@@ -1,14 +1,17 @@
 /* Apps tab port-listeners panel: what is bound on this machine right now,
  * with helper services collapsed under their parent app's row (#224/#480)
- * and a per-port kill.
+ * and a per-port Stop process in each row's ⋮ menu (#1129).
  *
  * Split out of apps.js in issue #723. Self-contained — it owns its own
  * fetch, its own expand state, and imports nothing from apps.js.
  */
 
 import { els } from './state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast, logPollFailure } from './api.js';
-import { icon } from './_vendored/icons/icons.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
+import { actionRow } from './action-rows.js';
+import { createRowMenu } from './row-menu.js';
+
+const listenerMenu = createRowMenu('project-menu');
 
 // ----------------------------------------------------------- listeners panel (Apps tab)
 // Parent rows with dependent children keep them collapsed behind a tap
@@ -55,63 +58,98 @@ function renderListeners(items) {
       });
     }
   });
+  listenerMenu.endRender();
 }
 
-function buildListenerRow(l, isChild, hasChildren) {
-  const row = document.createElement('div');
-  row.className = isChild ? 'listener-row child' : 'listener-row';
-
-  const meta = document.createElement('div');
-  const strong = document.createElement('strong');
-  if (isChild) {
-    strong.innerHTML = icon('corner-down-right') + ' ' +
-      escapeHtml(l.service || l.name || ('port ' + l.port));
-  } else {
-    strong.textContent = l.app || l.name || ('port ' + l.port);
+async function copyUrl(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied', 'good');
+  } catch (exc) {
+    apiFailToast('Could not copy the link', exc);
   }
-  const sub = document.createElement('span');
-  sub.className = 'meta';
-  sub.textContent = ' :' + l.port + ' · pid ' + l.pid + ' · ' + (l.name || '?');
-  meta.appendChild(strong);
-  meta.appendChild(sub);
-  row.appendChild(meta);
+}
+
+async function killListener(l, label) {
+  if (!confirm('Stop ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
+  try {
+    const r = await jsonApi('/api/ports/' + l.port + '/kill', { method: 'POST' });
+    toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
+    fetchListeners();
+  } catch (exc) {
+    apiFailToast('Kill failed', exc);
+  }
+}
+
+// One listener as an action-row (#1129). A parent whose helper services
+// are folded under it (#480) toggles them on tap; any other row opens the
+// app, like a running app's Open. The destructive Stop process lives in the
+// ⋮ menu, last and confirmed — nine stacked red Kill buttons were the
+// loudest thing in the app.
+function buildListenerRow(l, isChild, hasChildren) {
+  const label = (isChild ? (l.service || l.name) : (l.app || l.name)) || ('port ' + l.port);
+  const expanded = expandedListenerPorts.has(l.port);
+  const row = actionRow({
+    id: l.port,
+    className: 'listener-row' + (isChild ? ' child' : ''),
+    title: label,
+    meta: (l.name || '?') + ' · pid ' + l.pid,
+    label: hasChildren
+      ? (expanded ? 'Hide' : 'Show') + ' the helper services of ' + label
+      : 'Open ' + label,
+    disabled: !hasChildren && !l.url,
+    hint: 'Set tailnet_host in config/config.json to enable Open',
+    onMain: hasChildren
+      ? function () {
+        if (expandedListenerPorts.has(l.port)) expandedListenerPorts.delete(l.port);
+        else expandedListenerPorts.add(l.port);
+        renderListeners(lastListenerItems);
+      }
+      : function () { window.open(l.url, '_blank', 'noopener,noreferrer'); },
+    kebabClass: 'listener-menu-anchor',
+    kebabLabel: label + ' actions',
+  });
+  // The port is the scannable datum: it leads the context line as a chip.
+  const port = document.createElement('span');
+  port.className = 'listener-port';
+  port.textContent = ':' + l.port;
+  row.meta.insertBefore(port, row.meta.firstChild);
 
   if (hasChildren) {
-    // Collapsed by default (#480): the whole parent row is the tap target;
-    // the chevron rotates open like the panel-level disclosure idiom.
-    row.classList.add('expandable');
-    row.setAttribute('aria-expanded', expandedListenerPorts.has(l.port) ? 'true' : 'false');
+    // Collapsed by default (#480); the chevron rotates open like the
+    // panel-level disclosure idiom.
+    row.li.classList.add('expandable');
+    row.li.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     const chev = document.createElement('span');
     chev.className = 'listener-chevron';
     chev.setAttribute('aria-hidden', 'true');
     chev.textContent = '›';
-    row.appendChild(chev);
-    row.addEventListener('click', function () {
-      if (expandedListenerPorts.has(l.port)) expandedListenerPorts.delete(l.port);
-      else expandedListenerPorts.add(l.port);
-      renderListeners(lastListenerItems);
-    });
+    row.li.insertBefore(chev, row.kebab);
   }
 
-  const kill = document.createElement('button');
-  kill.type = 'button';
-  // Vendored destructive tier (#782) — `power` reads as "shut this down",
-  // where `octagon-x` is this app's *failure* mark (a killed job run).
-  kill.className = 'button-tint danger listener-kill';
-  kill.innerHTML = icon('power') + ' Kill';
-  kill.addEventListener('click', async function (ev) {
-    // Kill on a parent row must never toggle the collapse (#480).
-    ev.stopPropagation();
-    const label = (isChild ? l.service : l.app) || ('port ' + l.port);
-    if (!confirm('Kill ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
-    try {
-      const r = await jsonApi('/api/ports/' + l.port + '/kill', { method: 'POST' });
-      toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
-      fetchListeners();
-    } catch (exc) {
-      apiFailToast('Kill failed', exc);
-    }
-  });
-  row.appendChild(kill);
-  return row;
+  row.li.appendChild(listenerMenu.attach('port:' + l.port, row.kebab, [
+    {
+      className: 'listener-open-btn', glyph: 'globe',
+      label: l.url ? 'Open ' + l.url : 'Set tailnet_host in config/config.json to enable Open',
+      text: 'Open',
+      disabled: !l.url,
+      title: 'Set tailnet_host in config/config.json to enable Open',
+      onTap: function () { window.open(l.url, '_blank', 'noopener,noreferrer'); },
+    },
+    {
+      className: 'listener-copy-btn', glyph: 'copy',
+      label: 'Copy ' + label + ' URL', text: 'Copy URL',
+      disabled: !l.url,
+      title: 'Set tailnet_host in config/config.json to enable Open',
+      onTap: function () { copyUrl(l.url); },
+    },
+    {
+      // `power` reads as "shut this down" (#782); `octagon-x` is this app's
+      // *failure* mark (a killed job run).
+      className: 'listener-kill', glyph: 'power', danger: true,
+      label: 'Stop ' + label + ' (pid ' + l.pid + ')', text: 'Stop process',
+      onTap: function () { killListener(l, label); },
+    },
+  ]));
+  return row.li;
 }
