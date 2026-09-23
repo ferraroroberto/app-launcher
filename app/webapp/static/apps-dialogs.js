@@ -10,6 +10,7 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 import { fetchApps } from './apps.js';
+import { nameLabel } from './dom-utils.js';
 
 // ----------------------------------------------------------- rename dialog
 let renameTargetId = null;
@@ -72,7 +73,7 @@ function renderScanResults() {
     const section = document.createElement('div');
     section.className = 'scan-section';
     const h = document.createElement('h3');
-    h.textContent = kind;
+    h.textContent = nameLabel(kind);
     section.appendChild(h);
     byKind[kind].forEach(function (c) {
       const row = document.createElement('div');
