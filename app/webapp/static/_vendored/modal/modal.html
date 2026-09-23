@@ -1,0 +1,31 @@
+<!-- Fleet editor modal — markup skeleton (copy and adapt).
+     A native <dialog>: open with el.showModal(), close with el.close().
+     The fleet nav hides itself automatically while it is open
+     (body:has(dialog[open]) — see the nav component). -->
+<dialog class="detail-dialog" id="exampleDialog">
+  <div class="detail-card">
+    <div class="detail-header">
+      <h2>Edit thing</h2>
+      <button type="button" class="detail-close" aria-label="Close"
+              onclick="this.closest('dialog').close()">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+
+    <div class="row">
+      <span>Name</span>
+      <input class="input-native" type="text" value="Living room">
+    </div>
+    <div class="row">
+      <span>Mode</span>
+      <select class="select-native">
+        <option>Auto</option>
+        <option>Manual</option>
+      </select>
+    </div>
+
+    <div class="detail-actions">
+      <button type="button" class="detail-save-btn" disabled>Save</button>
+    </div>
+  </div>
+</dialog>

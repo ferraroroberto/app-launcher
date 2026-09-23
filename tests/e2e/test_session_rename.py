@@ -227,7 +227,7 @@ def test_full_control_rename_dialog_copies_session_link(
     )
     assert authed_page.evaluate(
         "() => getComputedStyle(document.querySelector("
-        "'#sessionRenameDialog .dialog-actions--stacked')).borderTopWidth"
+        "'#sessionRenameDialog .detail-actions')).borderTopWidth"
     ) == "0px"
 
     authed_page.locator("#sessionLinkCopy").click()
@@ -344,10 +344,10 @@ def test_rename_dialog_adopts_modal_contract(
 
     # Header × close: this dialog deliberately promotes the compact modal
     # close to the same real 44px geometry as its adjacent Link control while
-    # retaining the `dialog-close` visual treatment. It still sits in the
+    # retaining the vendored `detail-close` visual treatment. It still sits in the
     # header above the input, never in the footer.
     close = authed_page.locator("#sessionRenameCancel")
-    expect(close).to_have_class(re.compile(r"\bdialog-close\b"))
+    expect(close).to_have_class(re.compile(r"\bdetail-close\b"))
     close_box = close.bounding_box()
     field = authed_page.locator("#sessionRenameInput").bounding_box()
     save = authed_page.locator(
@@ -364,7 +364,7 @@ def test_rename_dialog_adopts_modal_contract(
     # Footer: exactly one action, and it is the full-width primary Save — its
     # width matches the input field (both stretch to the dialog content box),
     # never a half-row paired with a Cancel.
-    footer_buttons = authed_page.locator("#sessionRenameForm .dialog-actions button")
+    footer_buttons = authed_page.locator("#sessionRenameForm .detail-actions button")
     expect(footer_buttons).to_have_count(1)
     expect(footer_buttons).to_have_text(re.compile(r"Save"))
     assert save["width"] >= field["width"] - 3, (

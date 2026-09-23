@@ -348,7 +348,7 @@ async function dispatchChat() {
 }
 
 // ---- chief settings dialog (#245): GET on open, PUT on Save. The dialog
-// is the modal contract's editor shape (rename-dialog base). #616 retired
+// is the vendored modal shell (_vendored/modal, #1133). #616 retired
 // the daily-respawn setting (fleet-config#442/#449 shipped compact-and-
 // continue, making an unattended respawn actively harmful to a live batch)
 // — model and worker cap are all that's left to edit here.
