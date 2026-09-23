@@ -1,0 +1,13 @@
+<!-- Markup skeleton — copy into the app's Settings. The control is a vendored
+     range-tab row (link range-tab.css); text-size.js's bindTextSize(group,
+     app) marks the stored step and handles the clicks. Keep the three
+     data-textsize values exactly; the labels may be translated. -->
+<nav class="range-tabs" id="textSizeControl" aria-label="Text size">
+  <button type="button" class="range-tab" data-textsize="small">Small</button>
+  <button type="button" class="range-tab" data-textsize="default">Default</button>
+  <button type="button" class="range-tab" data-textsize="large">Large</button>
+</nav>
+<script type="module">
+  import { bindTextSize } from '/static/_vendored/text-size/text-size.js';
+  bindTextSize(document.getElementById('textSizeControl'), 'my-app');
+</script>

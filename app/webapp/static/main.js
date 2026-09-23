@@ -8,6 +8,7 @@
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
 import { wireTabs } from './tabs.js';
+import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
 import { fetchContextFilter } from './context-filter.js';
@@ -286,5 +287,10 @@ wireWebauthn();
 wireSettings();
 wireTokens();
 wireTheme();
+// Settings → Text size (#1134): same localStorage prefix as the theme,
+// which the pre-paint boot script reads.
+if (document.getElementById('textSizeControl')) {
+  bindTextSize(document.getElementById('textSizeControl'), 'app-launcher');
+}
 
 boot();
