@@ -1659,9 +1659,12 @@ summary + .opt-group { border-top: 0; }
 /* The same, for a <select> standing in a stacked form row rather than in an
    inline toolbar cluster. The vendored component's own 36px `height` is the
    inline-control contract and stays for those. */
+/* Selects outline in the spec's control-border, like .input-native above
+   (fleet-config#963, 3:1 vs the card); the vendored select-native still
+   draws the quieter card hairline. */
+.select-native { border-color: var(--control-border); }
 .stacked .select-native,
 .settings-card .select-native,
-.rename-dialog .select-native,
 .opt-row .select-native,
 .job-param-row .select-native { height: var(--row-sm); }
 /* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
@@ -1755,78 +1758,33 @@ summary + .opt-group { border-top: 0; }
 }
 
 /* ---------- dialogs ---------- */
-.scan-dialog, .rename-dialog {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  color: var(--fg);
-  padding: 16px;
-  max-width: 560px;
-  width: calc(100vw - 32px);
-}
-/* Editor dialogs are top-anchored (design modal contract) so a tall form
-   never jumps vertically as conditional rows show/hide; the dialog itself
-   scrolls once it outgrows the viewport. The native <dialog> renders in the
-   browser's top layer (outside .app's own safe-area padding), so its own
-   margin has to add env(safe-area-inset-top) explicitly — otherwise, in an
-   installed iOS PWA where the webview extends under the status bar, a
-   bare 16px anchors the dialog (and its × close button) right under the
-   clock/battery icons, unreachable to tap. */
-.rename-dialog {
-  margin-top: calc(env(safe-area-inset-top, 0px) + 16px);
-  max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px));
-  overflow-y: auto;
-}
-/* Modal header (design modal contract): heading-lg title on the left, a
-   34px square × close on the right — replaces the old footer Cancel. */
-.dialog-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-bottom: 12px;
-}
-.rename-dialog .dialog-head h2,
-.scan-dialog .dialog-head h2 {
-  margin: 0;
-  font-size: var(--font-heading-lg);
-  line-height: 1.2;
-}
-.dialog-close {
-  position: relative;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  cursor: pointer;
-}
-/* Invisible hit-area expansion: keep the 34px modal.closeSize visual, reach
-   the 44px effective floor (design.md Touch targets). 34 + 2×5 = 44. */
-.dialog-close::before { content: ""; position: absolute; inset: -5px; }
-.dialog-close .icon { width: 18px; height: 18px; }
-.dialog-close:active { color: var(--fg); background: var(--card-off); }
-/* Stacked label/value rows (design modal contract): 12px 0 padding on a
-   border-muted top divider, caption label above a full-width control.
-   Scoped to dialogs — the Settings card keeps its own .stacked recipe. */
-.rename-dialog .stacked {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 0;
-  margin: 0;
-  border-top: 1px solid var(--line-muted);
-}
-.rename-dialog .stacked > span {
-  font-size: var(--font-caption);
-  font-weight: 600;
-  color: var(--muted);
-}
+/* Every editor <dialog> is the vendored modal shell (#1133): .detail-dialog
+   > .detail-card, a .detail-header with the heading-lg title and the 34px ×
+   .detail-close, label/value .row fields on a top divider, and a sticky
+   .detail-actions footer carrying the one full-width .detail-save-btn.
+   What follows is only what this app adds on top. */
+/* Titles carry a leading Lucide glyph. */
+.detail-header h2 { display: flex; align-items: center; gap: 8px; line-height: 1.2; }
+/* A field in a dialog is a row the user taps: the 44px floor (#1124), not
+   the component's 36px inline-control height. Text inputs already get it
+   from .input-native's min-height; a <select> needs `height` (iOS). */
+.detail-card .row .select-native { height: var(--row-sm); }
+/* A multi-line body can't share a line with its label: stack that one row. */
+.detail-card .row:has(> textarea) { flex-direction: column; align-items: stretch; }
+textarea.input-native { height: auto; }
+/* The chief's model picker is a phrasing-only combo (#540), not a select:
+   give it the modal's value-column width, and keep the row label's weight
+   off its trigger and menu. */
+.detail-card .row .model-combo { min-width: 55%; }
+.detail-card .row span.model-combo,
+.detail-card .row span.model-combo-menu { font-weight: 400; }
+/* Footer: the job editor can show a warn-tier "Save anyway" above the
+   primary, so the footer stacks; the primary can lead with a glyph (Run). */
+.detail-actions { display: flex; flex-direction: column; gap: 8px; }
+.detail-save-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* The rename forms' bare title field (no label row): full width, like the
+   footer primary below it. */
+.detail-card > .input-native { width: 100%; }
 /* Titled groups inside the job editor (chains, parameters) — a plain
    divided section, not a browser <fieldset> box. */
 .dialog-section {
@@ -1843,10 +1801,6 @@ summary + .opt-group { border-top: 0; }
   font-size: var(--font-body-sm);
   color: var(--muted);
 }
-.scan-dialog::backdrop, .rename-dialog::backdrop {
-  background: rgba(0,0,0,0.65);
-}
-.scan-dialog h2, .rename-dialog h2 { margin: 0 0 12px; font-size: var(--font-body); }
 .scan-results {
   max-height: 60vh;
   overflow-y: auto;
@@ -1879,22 +1833,6 @@ summary + .opt-group { border-top: 0; }
   color: var(--muted);
   font-size: var(--font-body-sm);
   overflow-wrap: anywhere;
-}
-.dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
-/* Editor-dialog footer (design modal contract): one full-width solid-accent
-   primary on a top divider; × in the header replaced the footer Cancel. */
-.dialog-actions--stacked {
-  flex-direction: column;
-  align-items: stretch;
-  padding-top: 12px;
-  border-top: 1px solid var(--line-muted);
-}
-/* The rename forms' bare title field: .input-native has no width rule, so
-   outside a .stacked flex column it renders at the browser's intrinsic
-   <input> width. Stacked editor controls already stretch; this makes the
-   bare case match, full-width like the footer primary below it. */
-.rename-dialog .input-native {
-  width: 100%;
 }
 .session-link-row {
   display: flex;
@@ -1930,7 +1868,7 @@ summary + .opt-group { border-top: 0; }
 }
 .session-link-row .session-link-copy:active,
 .session-link-row .session-link-copy.is-copied { opacity: 0.5; }
-#sessionRenameDialog .dialog-actions--stacked { border-top: 0; }
+#sessionRenameDialog .detail-actions { border-top: 0; }
 /* Acknowledge-warnings alternative — the tint recipe restated on attention
    (status colors never fill a non-status button solid). */
 .button-tint.warn {
@@ -2483,7 +2421,7 @@ summary + .opt-group { border-top: 0; }
 .tr-turn[open] .tr-turn-hint { visibility: hidden; }
 /* Ghost icon button (design.md button-ghost): transparent fill, muted glyph.
    .hit-target (co-applied) supplies the invisible 44px hit-area expansion —
-   see "Invisible hit-area expansion" above for the same idiom on .dialog-close. */
+   see the vendored modal's .detail-close for the same idiom. */
 .tr-turn-copy {
   flex: 0 0 auto;
   width: 32px;
@@ -3852,31 +3790,6 @@ body.terminal-open {
   font-weight: 700;
   cursor: pointer;
 }
-/* Chief settings dialog rows: label/value on the modal contract's 12px
-   rhythm, value control right-aligned (the rename-dialog base supplies the
-   surface, the header with its ✕ close, and the one full-width primary
-   footer — #545). */
-.chief-settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-top: 1px solid var(--line-muted);
-}
-.chief-settings-row label,
-.chief-settings-row > span:first-child {
-  font-size: var(--font-caption);
-  font-weight: 600;
-  color: var(--muted);
-}
-.chief-settings-row .select-native,
-.chief-settings-row .model-combo,
-.chief-settings-row .input-native {
-  width: auto;
-  min-width: 110px;
-}
-
 /* Launch-model dropdown (#540) for the Coding + Life OS card summaries. A
    native <select> cannot live inside a <summary> — WebKit's HTML parser
    derails on it (closes the <details> early, cascading into a broken tree

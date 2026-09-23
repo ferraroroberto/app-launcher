@@ -148,3 +148,49 @@ def test_selects_wear_the_vendored_control_recipe(
         "() => Array.from(document.querySelectorAll('select'))"
         ".filter((s) => !s.classList.contains('select-native')).length"
     ) == 0, "a <select> is still wearing the text-input recipe"
+
+
+def test_editor_dialogs_wear_the_vendored_modal_shell(
+    authed_page: Page, base_url: str
+) -> None:
+    """The job editor is the scaffold's modal (#1133), not a hand-rolled one.
+
+    The hand-rolled dialogs stacked each field's label above its control *and*
+    drew a divider between fields, so the separation was doubled. The modal
+    contract puts the label and value on one row over a single divider, with
+    the × close in the header and exactly one full-width primary in the
+    footer.
+    """
+    page = authed_page
+    _empty_everything(page)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabJobs").click()
+    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+    page.locator("#jobsEditBtn").click()
+    page.locator("#jobsAddBtn").click()
+
+    dialog = page.locator("#jobDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog).to_have_class(re.compile(r"\bdetail-dialog\b"))
+    expect(dialog.locator(".detail-header .detail-close")).to_have_count(1)
+
+    # Label and value share one line: their boxes overlap vertically.
+    label = dialog.locator(".row", has=page.locator("#jobNameInput")).locator("span").first
+    name_box, label_box = page.locator("#jobNameInput").bounding_box(), label.bounding_box()
+    assert name_box and label_box
+    assert label_box["y"] < name_box["y"] + name_box["height"] and name_box["y"] < label_box["y"] + label_box["height"], (
+        f"the Name label sits above its field, not beside it: label={label_box}, field={name_box}"
+    )
+    assert label_box["x"] < name_box["x"], "the label must lead the row, the value follows"
+
+    # One visible footer action, the full-width primary.
+    visible = dialog.locator(".detail-actions button:visible")
+    expect(visible).to_have_count(1)
+    expect(visible).to_have_class(re.compile(r"\bdetail-save-btn\b"))
+    save_box = visible.bounding_box()
+    card_box = dialog.locator(".detail-card").bounding_box()
+    assert save_box and card_box
+    assert save_box["width"] >= card_box["width"] - 2 * 18 - 2, (
+        f"footer primary is not full-width: {save_box['width']} of card {card_box['width']}"
+    )

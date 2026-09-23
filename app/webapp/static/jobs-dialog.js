@@ -317,7 +317,7 @@ export function openRunDialog(job, prefill, staleKeys) {
 
 function renderRunDialogField(param, prefill) {
   const label = document.createElement('label');
-  label.className = 'stacked';
+  label.className = 'row';
 
   const span = document.createElement('span');
   let title = param.name;

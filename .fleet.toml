@@ -38,6 +38,7 @@ nav = { src = "app/webapp/static/_vendored/nav", sha = "759c667f336d98b040eca80f
 select_native = { src = "app/webapp/static/_vendored/select-native", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/select-native" }
 empty_state = { src = "app/webapp/static/_vendored/empty-state", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/empty-state" }
 range_tab = { src = "app/webapp/static/_vendored/range-tab", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/range-tab" }
+modal = { src = "app/webapp/static/_vendored/modal", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/modal" }
 base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
 action_row = { src = "app/webapp/static/_vendored/action-row", sha = "6204cbc79fc7b0efae989f3e661fab21b21051a5", dest = "app/webapp/static/_vendored/action-row" }
 # icons is deliberately NOT declared (#1004): our icons-sprite.html is the
