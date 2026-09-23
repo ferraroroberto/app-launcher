@@ -3473,27 +3473,26 @@ body.terminal-open {
   align-items: center;
   gap: 8px;
 }
-/* Real 44px geometry rather than an invisible expansion: these sit side by
-   side, so expanded hit rectangles would overlap and land taps on the wrong
-   control. */
-.lifeos-convo-actions .button-ghost {
-  min-height: var(--row-sm);
-  min-width: var(--row-sm);
+/* One size for every button on the row, whatever its tier (#1170): the tint
+   primary used to keep .button-tint's 14px block padding and render 52px
+   beside a 44px Read. Real 44px geometry rather than an invisible expansion:
+   these sit side by side, so expanded hit rectangles would overlap and land
+   taps on the wrong control. `width: auto` because this app's own
+   .button-tint stretches to 100% for its full-width modal and panel
+   instances (#1125); `font: inherit` because a <button> otherwise takes the
+   UA's font, which rendered its label in a serif face on WebKit. */
+.lifeos-convo-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-}
-/* `font: inherit` for the same WebKit serif reason as .lifeos-convo-read. */
-/* Row-sized tint: this app's own
-   .button-tint rule stretches to width:100% for its full-width modal and
-   panel instances, which a row-level action must not do (#1125). */
-.lifeos-convo-resume,
-.lifeos-convo-handoff {
   flex-shrink: 0;
   width: auto;
-  padding-inline: 14px;
+  min-width: var(--row-sm);
+  height: var(--row-sm);
   min-height: var(--row-sm);
+  padding-block: 0;
+  padding-inline: 14px;
   font: inherit;
 }
 /* Not a disabled button: a phone has no hover to explain one, and a capture
@@ -3541,10 +3540,6 @@ body.terminal-open {
   font: inherit;
 }
 .lifeos-viewer-trunc { padding: 0 14px; }
-/* The row's one remaining control reads as a label, not a bare glyph. */
-/* `font: inherit` because a <button> otherwise takes the UA's font, which
-   rendered this label in a serif face on WebKit. */
-.lifeos-convo-read { padding-inline: 14px; font: inherit; }
 
 /* ---------- Board tab (issue #300 / #164) ---------- */
 /* Dispatch bar (#302): speak/type a goal → a fresh /issue-* session.

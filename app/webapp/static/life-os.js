@@ -503,10 +503,12 @@ function convoScope() {
   return (convoView && !convoView.allSkills) ? convoView.skill : null;
 }
 
+// Resolves to the skill's index rows once loaded (null otherwise), which is
+// what a ?convo= link resolves against; tap callers ignore it.
 export function openConvos(skill) {
   // A cached older index.html with this newer bundle would have no overlay to
   // render into — bail rather than throwing on the first property access.
-  if (!els.lifeOsConvos || !els.lifeOsConvoQuery) return;
+  if (!els.lifeOsConvos || !els.lifeOsConvoQuery) return Promise.resolve(null);
   convoView = {
     skill: skill ? skill.id : null,
     name: skill ? skill.name : 'Conversations',
@@ -532,8 +534,9 @@ export function openConvos(skill) {
   }
   syncConvoSortBtn();
   els.lifeOsConvos.hidden = false;
-  if (skill) loadConvos();
-  else showConvoState('empty', 'Search every skill’s conversations.');
+  if (skill) return loadConvos();
+  showConvoState('empty', 'Search every skill’s conversations.');
+  return Promise.resolve(null);
 }
 
 function closeConvos() {
@@ -581,23 +584,26 @@ function hideConvoState() {
 
 // Browse one skill's index — the no-query view. `available: false` means the
 // indexer simply hasn't digested this skill yet; that's an honest empty
-// state, not an error.
+// state, not an error. Resolves to the rows it rendered, or null.
 async function loadConvos() {
   const skill = convoView && convoView.skill;
-  if (!skill) return;
+  if (!skill) return null;
   showConvoState('loading', 'Reading conversations…');
   try {
     const body = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(skill) + '/conversations'
     );
-    if (!convoView || convoView.skill !== skill) return;   // view moved on
+    if (!convoView || convoView.skill !== skill) return null;   // view moved on
     if (!body.available) {
       showConvoState('empty', 'No conversation index yet for this skill.');
-      return;
+      return null;
     }
-    renderConvoRows(body.conversations || [], { scoped: true, search: false });
+    const rows = body.conversations || [];
+    renderConvoRows(rows, { scoped: true, search: false });
+    return rows;
   } catch (exc) {
     showConvoState('error', convoFailure(exc), loadConvos);
+    return null;
   }
 }
 
@@ -870,21 +876,74 @@ function convoActionState(r) {
   };
 }
 
+// The launcher link that reopens one capture (#1170): main.js boot reads
+// ?convo=<skill>/<file> and hands it to openConvoByLink. The skill id and the
+// capture's filename, not its vault path — the server already resolves a
+// file inside that skill's conversations/ folder.
+function convoLinkUrl(r) {
+  return window.location.origin + window.location.pathname + '?convo=' +
+    encodeURIComponent(r.skill) + '/' + encodeURIComponent(r.file);
+}
+
+function copyConvoLink(r) {
+  // iOS only allows a clipboard write inside the tap gesture: writeText is
+  // called synchronously from the click handler, never after an await.
+  try {
+    navigator.clipboard.writeText(convoLinkUrl(r)).then(
+      function () {
+        toast('Launcher link copied (tailnet only)', 'good', { icon: 'link' });
+      },
+      function (exc) { apiFailToast('Copy link failed', exc); }
+    );
+  } catch (exc) {
+    apiFailToast('Copy link failed', exc);
+  }
+}
+
 // The callbacks the viewer's ⋮ menu drives (life-os-viewer.js owns the
 // overlay, this module owns the actions — so neither imports the other).
 const CONVO_VIEWER_ACTIONS = {
   state: convoActionState,
   resume: function (r) { resumeConversation(r, 'resume'); },
   handoff: function (r) { resumeConversation(r, 'handoff'); },
+  canLink: function (r) { return !!(r.skill && r.file); },
+  copyLink: copyConvoLink,
   rename: function (r) { return renameFile({ path: r.path, name: r.file }); },
   del: function (r) { return deleteFile({ path: r.path, name: r.file }); },
   openRaw: openCapture,
 };
 
+// Open one capture from a ?convo= link (#1170): the Conversations overlay
+// scoped to its skill, then the viewer on top — the same layering a tap
+// builds. The viewer needs the full row, so the link resolves through the
+// skill's index; anything that doesn't resolve says so in the overlay.
+export async function openConvoByLink(skillId, file) {
+  const skill = (state.lifeOsSkills || []).find(function (s) {
+    return s.id === skillId;
+  });
+  if (!skill) {
+    openConvos(null);
+    showConvoState('error',
+      'This link is for the skill “' + skillId + '”, which Life OS no longer lists.');
+    return;
+  }
+  const rows = await openConvos(skill);
+  if (!rows || !convoView || convoView.skill !== skill.id) return;
+  const row = rows.find(function (r) { return r.file === file; });
+  if (!row) {
+    showConvoState('error',
+      'This link no longer matches a conversation — it may have been renamed or deleted.');
+    return;
+  }
+  openConvoViewer(row, CONVO_VIEWER_ACTIONS);
+}
+
 // The row leads with Resume (#1137) — what nearly every capture is opened
-// for — then 📖 Read into the transcript viewer (#1119). The same state
-// drives both, so the row and the viewer's ⋮ menu can't disagree; Rename /
-// Delete / Open raw stay in that menu only.
+// for — then 📖 Read into the transcript viewer (#1119) and Copy link
+// (#1170). The same state drives both, so the row and the viewer's ⋮ menu
+// can't disagree; Rename / Delete / Open raw stay in that menu only. One
+// primary per row: Resume (or the handoff, which only shows while Resume is
+// greyed out) is tinted, Read and Copy link are outlined.
 function convoActions(r) {
   const wrap = document.createElement('div');
   wrap.className = 'lifeos-convo-actions';
@@ -932,6 +991,15 @@ function convoActions(r) {
     openConvoViewer(r, CONVO_VIEWER_ACTIONS);
   });
   wrap.appendChild(openBtn);
+  if (!CONVO_VIEWER_ACTIONS.canLink(r)) return wrap;
+  const linkBtn = document.createElement('button');
+  linkBtn.type = 'button';
+  linkBtn.className = 'button-ghost lifeos-convo-copy-link';
+  linkBtn.innerHTML = icon('link') + ' Copy link';
+  linkBtn.title = 'Copy a link to this conversation';
+  linkBtn.setAttribute('aria-label', 'Copy a link to this conversation');
+  linkBtn.addEventListener('click', function () { copyConvoLink(r); });
+  wrap.appendChild(linkBtn);
   return wrap;
 }
 

@@ -126,7 +126,8 @@ async function load() {
 
 // `row` is one Conversations row; `actions` is life-os.js's callbacks:
 // state(row) → {canResume, resumeEnabled, provider, reason, canHandoff,
-// handoffTo}, plus resume / handoff / rename / del / openRaw.
+// handoffTo}, plus resume / handoff / canLink / copyLink / rename / del /
+// openRaw.
 export function openConvoViewer(row, actions) {
   if (!els.lifeOsConvoViewer) return;
   viewer = { row: row, actions: actions };
@@ -190,6 +191,14 @@ export function wireConvoViewer() {
       disabled: function () { return !hasGroups; },
       title: 'This capture holds no tool calls',
       onTap: function () { groupsHidden = !groupsHidden; syncGroups(); },
+    },
+    {
+      // The same ?convo= link as the row's Copy link (#1170); the tap writes
+      // the clipboard synchronously (iOS).
+      glyph: 'link', className: 'lifeos-viewer-copy-link',
+      label: 'Copy a link to this conversation', text: 'Copy link',
+      hidden: function () { return !viewer || !viewer.actions.canLink(viewer.row); },
+      onTap: function () { if (viewer) viewer.actions.copyLink(viewer.row); },
     },
     {
       glyph: 'pencil', className: 'lifeos-viewer-rename',
