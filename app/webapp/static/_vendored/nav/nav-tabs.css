@@ -9,7 +9,8 @@
  *
  * Pairs with nav-tabs.js (behaviour) and nav-tabs.html (markup skeleton).
  *
- * Desktop (pointer: fine) renders a top segmented control; touch / installed-PWA
+ * Desktop (pointer: fine) renders a top segmented control, which becomes an 80px
+ * left rail on a wide window (min-width: 1100px); touch / installed-PWA
  * (pointer: coarse, narrow) renders the floating bottom-tab pill — that pill is
  * the fleet navigation contract every app must feel identical on. */
 
@@ -17,10 +18,10 @@
 .tabs {
   display: flex;
   gap: var(--space-xs);
-  /* Body-level nav: match .app's content column (772px minus 2×--gap)
-     because the nav is intentionally outside .app on iOS PWA. */
+  /* Body-level nav: match .app's content column (layout.measure, 772px,
+     minus 2×--gap) because the nav is intentionally outside .app on iOS PWA. */
   width: calc(100% - var(--gap) - var(--gap));
-  max-width: calc(772px - var(--gap) - var(--gap));
+  max-width: calc(var(--layout-measure, 772px) - var(--gap) - var(--gap));
   margin: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)) auto 14px;
   background: var(--card);
   padding: var(--space-xs);
@@ -94,6 +95,60 @@
     padding: 6px 2px;
     font-size: var(--font-caption);
     line-height: 1.1;
+  }
+  .tab-label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* ------------------------------------------------- wide layout: left rail */
+/* design.md Layout, "Wide layout" (fleet-config#968): on a wide, fine-pointer
+   window the top segmented control becomes a full-height left rail
+   (layout.rail, 80px) on the card surface with a line hairline on its right
+   edge, each tab an icon over its label, never icon-only. Placement only: the
+   active tint, aria-selected and persistence are the rules above, unchanged.
+   Lifted from app-launcher#1166 (project-scaffolding#281). The content offsets
+   key on the nav itself (body:has(> .tabs), .tabs ~ .app) so they outrank an
+   app's own `body`/`.app` padding shorthand loaded after this file; without
+   that, content slides under the rail. Master-detail and a board's
+   full-width exception stay app-side. Below 1100px, or on a coarse pointer at
+   any width, none of this applies. */
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(> .tabs) { padding-left: var(--layout-rail, 80px); }
+  /* The sticky top control used to supply the column's top gap. */
+  .tabs ~ .app { padding-top: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)); }
+  .tabs {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    flex-direction: column;
+    width: var(--layout-rail, 80px);
+    max-width: none;
+    margin: 0;
+    padding: calc(env(safe-area-inset-top, 0px) + var(--gap)) var(--space-xs) var(--gap);
+    border: 0;
+    border-right: 1px solid var(--line);
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+  .tab {
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-xs);
+    min-width: 0;
+    min-height: var(--row-lg);
+    padding: var(--space-sm) var(--space-xs);
+    border-radius: var(--radius-md);
+    font-size: var(--font-caption);
+    line-height: 1.1;
+  }
+  .tab-icon {
+    width: var(--icon-feature);
+    height: var(--icon-feature);
   }
   .tab-label {
     display: block;

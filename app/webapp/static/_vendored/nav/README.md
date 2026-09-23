@@ -7,7 +7,7 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
 | File | Role |
 | --- | --- |
 | `nav-tabs.js` | Behaviour. ESM module — `initNavTabs(opts)`. Discovers tabs/panes from the DOM, persists the active tab, keeps ARIA + roving `tabindex` in sync. |
-| `nav-tabs.css` | Visual contract. The desktop segmented control + the `@media (pointer: coarse)` floating pill + the modal-hide rule. References design tokens only. |
+| `nav-tabs.css` | Visual contract. The desktop segmented control, the wide-layout left rail, the `@media (pointer: coarse)` floating pill and the modal-hide rule. References design tokens only. |
 | `nav-tabs.html` | Markup skeleton to copy and adapt (3 example tabs). |
 
 ## How to vendor
@@ -52,6 +52,10 @@ Each `.tab` carries `data-tab` (its name) and `aria-controls` (the id of the pan
 
 Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the pill uses `--bottom-tabs-icon`. Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract, fleet-config#966); the label ellipsizes only as a last resort (#278).
 
+## Wide layout: left rail
+
+At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-config#968) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281, lifted from app-launcher#1166).
+
 `.tab-emoji` is **legacy** — an emoji span the desktop control used to show instead of the icon, superseded by SVG glyphs fleet-wide (`home-automation#77`, fixed here in `project-scaffolding#142`). `nav-tabs.css` hides it at every width, so an app still shipping the span picks up its desktop icon by re-vendoring the CSS alone; delete the span from your markup when you next touch it. If your app kept a per-app `.tab-icon { display: … }` override to work around the old rule, drop that too — it now fights the vendored file.
 
 ## Required design tokens
@@ -70,6 +74,11 @@ Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class
 | `--font-label` | `0.92rem` | tab label (desktop) |
 | `--font-caption` | `0.78rem` | tab label (narrow desktop) |
 | `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
+| `--row-lg` | `60px` | rail tab min-height |
+| `--space-sm` | `8px` | rail tab padding |
+| `--icon-feature` | `24px` | rail icon size (`icons.size.feature`) |
+| `--layout-measure` | `772px` | desktop column the control spans (falls back to 772px if unset) |
+| `--layout-rail` | `80px` | wide-layout rail width + content offset (falls back to 80px if unset) |
 | `--radius-md` | `12px` | bar corners (desktop) |
 | `--radius-pill` | `9999px` | tab corners |
 | `--radius-nav` | `30px` | floating bar corners (mobile) |
