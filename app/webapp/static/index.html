@@ -12,6 +12,9 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/static/icon-512.png">
+  <!-- base.css first: form controls inherit the page font (its README's
+       load-order contract, project-scaffolding#266). -->
+  <link rel="stylesheet" href="/static/_vendored/base/base.css">
   <link rel="stylesheet" href="/static/vendor/xterm.css">
   <link rel="stylesheet" href="/static/_vendored/card/card.css">
   <!-- home-head.css must load AFTER card.css — it overrides the card's own

@@ -47,7 +47,7 @@ The fleet's canonical **switch** (shadcn Switch shape): a compact 44×26 track +
 
 | Token | Light value | Used for |
 | --- | --- | --- |
-| `--toggle-track` | `var(--line)` (`#d1d9e0`) | off-track fill |
+| `--control-border` | `#818b98` (dark `#6e7681`) | off-track fill: a control boundary, 3:1+ against `card` (fleet-config#963); `--line` was about 1.4:1. `--toggle-track` is no longer read. |
 | `--toggle-knob` | `#ffffff` (light) / `var(--ink)` (dark) | thumb fill |
 | `--on` | `#1a7f37` | on-track fill (`colors.success` — the green decision) |
 | `--radius-pill` | `9999px` | track corners |

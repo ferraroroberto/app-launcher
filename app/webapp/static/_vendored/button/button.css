@@ -44,7 +44,7 @@
  * tinted fill. button-surface is a toolbar/utility/icon button at the
  * control height. Every tier shares the one button-disabled recipe (flat
  * card-off / line / muted trio — AA in both themes). A destructive action
- * restates the tint recipe on `.danger` (deficit-tinted border/text/shade);
+ * restates the tint recipe on `.danger` (deficit-tinted border and shade, danger-text text);
  * status colors never fill a non-status button.
  *
  * No :focus-visible rule here — the app-wide tokenized ring
@@ -60,7 +60,7 @@
                           36px-control footer context. */
   border: 1px solid var(--accent-border-strong);
   border-radius: var(--radius-md);
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-fg);
   font: inherit;
   font-weight: 700;
@@ -69,7 +69,7 @@
 
 .button-tint {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   padding: 13px;
@@ -81,10 +81,11 @@
 .button-tint:active { transform: scale(0.98); }
 
 /* Destructive restatement of the tint recipe (whatsapp-radar .run-btn.danger,
-   ~line 739): same shape, colors swapped to the --deficit tint. */
+   ~line 739): same shape, colors swapped to the --deficit tint, text in --danger-text
+   (fleet-config#963: the base hue drops under AA on its own tint). */
 .button-tint.danger {
   background: var(--deficit-soft);
-  color: var(--deficit);
+  color: var(--danger-text);
   border-color: var(--deficit-border-soft);
 }
 
