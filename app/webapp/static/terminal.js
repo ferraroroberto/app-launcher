@@ -67,6 +67,7 @@ import {
   termScreenTheme,
 } from './terminal-theme.js';
 import { voiceDictationAvailable } from './voice.js';
+import { isWideLayout } from './layout.js';
 import { ensureTerminalToken } from './webauthn.js';
 // Mode routing (#982). Circular with this module by design (same shape as
 // sessions.js ↔ terminal.js): nothing here runs at import time.
@@ -780,6 +781,9 @@ STANDALONE_SHELL_MQ.addEventListener('change', function () {
 
 function lockBodyScroll() {
   if (STANDALONE_SHELL_MQ.matches) return;
+  // Wide layout (#1135): the view docks beside the list, which scrolls on
+  // its own; pinning the body would freeze the list it sits next to.
+  if (isWideLayout()) return;
   if (document.body.style.position === 'fixed') return;
   _savedScrollY = window.scrollY || window.pageYOffset || 0;
   const s = document.body.style;

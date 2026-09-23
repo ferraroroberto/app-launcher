@@ -4493,3 +4493,77 @@ body.terminal-open {
      44px actions (#984) needs its gaps back to hold the floor at 1280px. */
   .board-drawer-actions { gap: var(--space-xs); }
 }
+
+/* ---------- wide layout: Code tab list-and-detail (#1135) ---------- */
+/* design.md Layout, "Master-detail": on the Code tab the session list and the
+   session view sit side by side, list : detail = 1 : 1.5 of the space right
+   of the rail, each scrolling on its own. The view is the same overlay the
+   phone opens full-screen, docked into the detail pane; with nothing open,
+   the pane says so. Leaving the tab closes the view (session-overlay.js).
+   Fixed-position lengths below are percentages of the viewport, so the list
+   and the detail meet on one edge. */
+.session-detail-empty { display: none; }
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(nav.tabs[data-active-tab="claude"]) .app {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: var(--layout-rail);
+    width: calc((100% - var(--layout-rail)) / 2.5);
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+    /* Fixed makes .app a stacking context, so the full-screen overlays
+       nested inside it (changes viewer, system-map lightbox, summary modal)
+       stack within it. Lifting it over the docked view (300) keeps them on
+       top; the two panes never overlap, so nothing else changes order. */
+    z-index: 310;
+  }
+  body:has(nav.tabs[data-active-tab="claude"]) #terminalOverlay,
+  body:has(nav.tabs[data-active-tab="claude"]):not(.terminal-open) .session-detail-empty {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: calc(var(--layout-rail) + (100% - var(--layout-rail)) / 2.5);
+    border-left: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  /* The phone's scroll lock is for a view that covers the page; here the
+     list beside it keeps scrolling (lockBodyScroll skips this query too). */
+  body.terminal-open {
+    overflow: visible;
+    height: auto;
+    touch-action: auto;
+  }
+  body:has(nav.tabs[data-active-tab="claude"]):not(.terminal-open) .session-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--muted);
+  }
+  .session-detail-empty .icon {
+    width: var(--icon-feature);
+    height: var(--icon-feature);
+  }
+  .session-detail-empty-title {
+    margin: 0;
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .session-detail-empty-hint {
+    margin: 0;
+    max-width: 36ch;
+    font-size: var(--font-body-sm);
+  }
+  /* The row whose session is in the view keeps the accent-soft tint. */
+  #sessionsList li.session-item[aria-current="true"] {
+    background: var(--accent-soft);
+  }
+}

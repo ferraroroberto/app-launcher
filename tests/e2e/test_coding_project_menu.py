@@ -212,8 +212,10 @@ def test_menu_closes_on_escape_outside_tap_and_survives_a_rerender(
 
     anchor.click()
     expect(_menu(authed_page)).to_be_visible()
-    # An outside tap closes it (the page heading is outside the rail).
-    authed_page.locator("body").click(position={"x": 5, "y": 5})
+    # An outside tap closes it: the page header's title, outside the menu at
+    # every layout (on a wide window the page's top-left corner is the nav
+    # rail, #1135).
+    authed_page.locator("#paneClaude .home-title").click()
     expect(_menu(authed_page)).to_be_hidden()
 
     # Survives the list rebuild the apps poll does every few seconds: the
