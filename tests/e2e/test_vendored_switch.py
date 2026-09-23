@@ -80,7 +80,7 @@ def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None
     )
 
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     # The Settings card is a disclosure, closed by default (issue #719).
     authed_page.locator("#settingsPanel > summary").click()
     authed_page.locator("#rescanBtn").click()

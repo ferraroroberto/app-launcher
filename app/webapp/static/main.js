@@ -108,12 +108,14 @@ function wireTheme() {
   // CSS keyed on the attribute, so there is nothing to re-render here —
   // the terminal screen follows the app theme (issue #383) via
   // terminal.js's own data-theme observer, which restyles any open
-  // terminal. The button lives in the home-head card's toggle slot (#496)
-  // — no <summary> around it any more, so no stopPropagation needed.
-  els.themeToggle.addEventListener('click', function () {
-    const dark = document.documentElement.dataset.theme !== 'dark';
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
+  // terminal. Every page header carries one (#1131, the home-head toggle
+  // slot); they all flip the same attribute.
+  document.querySelectorAll('.theme-toggle-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      const dark = document.documentElement.dataset.theme !== 'dark';
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      localStorage.setItem('app-launcher.theme', dark ? 'dark' : 'light');
+    });
   });
 }
 

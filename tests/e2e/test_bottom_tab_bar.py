@@ -32,7 +32,6 @@ pytestmark = pytest.mark.smoke
 
 TAB_IDS = [
     "#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard",
-    "#tabSettings",
 ]
 
 

@@ -16,6 +16,7 @@
  */
 
 import { els, state } from './state.js';
+import { renderHomeHead } from './home-head.js';
 import {
   apiFailToast,
   AuthRequiredError,
@@ -73,6 +74,7 @@ function rowHandlers() {
 export function renderJobs() {
   const host = els.jobsList;
   host.innerHTML = '';
+  renderHomeHead();
   const searching = !!state.jobsSearchQuery;
   syncJobsEmpty();
   if (els.jobsAddBtn) els.jobsAddBtn.hidden = !state.editMode;

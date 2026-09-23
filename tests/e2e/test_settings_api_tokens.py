@@ -110,7 +110,7 @@ def _wire(page: Page, state: Dict[str, Any]) -> None:
 
 def _open_settings(page: Page, base_url: str) -> None:
     page.goto(base_url, wait_until="domcontentloaded")
-    page.locator("#tabSettings").click()
+    page.locator(".pane:not([hidden]) .settings-open-btn").click()
     expect(page.locator("#paneSettings")).to_be_visible()
     # The API-tokens card is a disclosure, closed by default (issue #719).
     page.locator("#tokensPanel > summary").click()

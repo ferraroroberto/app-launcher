@@ -388,6 +388,7 @@ paths    = [
 pytest_targets = [
     "tests/e2e/test_board_tab.py",
     "tests/e2e/test_board_chief.py",
+    "tests/e2e/test_page_headers.py",
     "tests/e2e/test_coding_chief.py",
     "tests/e2e/test_session_rename.py",
     "tests/e2e/test_shared_session_title.py",
@@ -417,6 +418,7 @@ paths    = [
 ]
 pytest_targets = [
     "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_page_headers.py",
     "tests/e2e/test_action_row_lists.py",
     "tests/e2e/test_markdown_link_rendering.py",
     "tests/e2e/test_markdown_tables.py",

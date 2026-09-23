@@ -1,7 +1,7 @@
 # Project Instructions
 
 ## This repository
-Phone-first launcher hub for the rest of the home stack. Six tabs: **Coding**, **Apps**, **Jobs**, **Life OS**, **Board** (fleet kanban, incl. the dispatch bar's chat mode talking to a standing fleet chief), and **Settings**. Sister project to `photo-ocr` and `voice-transcriber` (same conventions, auth model, Cloudflare tunnel pattern). Setup, layout, and tab-by-tab usage: `README.md`.
+Phone-first launcher hub for the rest of the home stack. Five tabs: **Coding**, **Apps**, **Jobs**, **Life OS** and **Board** (fleet kanban, incl. the dispatch bar's chat mode talking to a standing fleet chief), plus **Settings** behind the ⚙ gear in every page header (#1131). Sister project to `photo-ocr` and `voice-transcriber` (same conventions, auth model, Cloudflare tunnel pattern). Setup, layout, and tab-by-tab usage: `README.md`.
 
 **Adding a coding agent?** Follow `fleet-config`'s [`docs/adding-a-coding-harness.md`](https://github.com/ferraroroberto/fleet-config/blob/main/docs/adding-a-coding-harness.md) (fleet-config#491) — both halves in dependency order: the `fleet-config` side (context file, skills, hooks, Board state, model tiers), then this repo's (`src/agents.py` entry, brand icon, flag builder, launch-router dispatch, README). Probe per-harness facts, never assume them; don't re-derive the procedure from a prior agent's diff.
 
@@ -39,7 +39,7 @@ Phone-first launcher hub for the rest of the home stack. Six tabs: **Coding**, *
   - app/webapp/static/**/*.css
   - app/webapp/static/**/*.{js,html}
 - key views:                      # single tabbed SPA served at `/`
-  - /          (Coding · Apps · Jobs · Life OS · Board · Settings tabs)
+  - /          (Coding · Apps · Jobs · Life OS · Board tabs, plus the Settings pane)
 
 ## CI expectations
 - Workflow `.github/workflows/e2e.yml`, job `verify-before-ship`, on every PR (and on push to `main`). **Advisory, not required** (no branch protection) — the local gate (`scripts/verify-before-ship.ps1`) is the contract.

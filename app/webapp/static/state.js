@@ -137,8 +137,12 @@ export const state = {
 // ES modules are deferred — they execute after DOMContentLoaded, so
 // document.getElementById is safe to call at module top level.
 export const els = {
-  themeToggle: document.getElementById('themeToggle'),
   homeHeadStatus: document.getElementById('homeHeadStatus'),
+  appsHeadStatus: document.getElementById('appsHeadStatus'),
+  jobsHeadStatus: document.getElementById('jobsHeadStatus'),
+  lifeHeadStatus: document.getElementById('lifeHeadStatus'),
+  boardHeadStatus: document.getElementById('boardHeadStatus'),
+  settingsHeadStatus: document.getElementById('settingsHeadStatus'),
   tabApps: document.getElementById('tabApps'),
   tabJobs: document.getElementById('tabJobs'),
   tabLifeOS: document.getElementById('tabLifeOS'),
@@ -355,7 +359,6 @@ export const els = {
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
 
   rescanBtn: document.getElementById('rescanBtn'),
-  tabSettings: document.getElementById('tabSettings'),
   tokensList: document.getElementById('tokensList'),
   tokensEmpty: document.getElementById('tokensEmpty'),
   tokenLabelInput: document.getElementById('tokenLabelInput'),

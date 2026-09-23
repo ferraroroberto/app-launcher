@@ -58,7 +58,7 @@ def _open_settings(page: Page, base_url: str, theme: str) -> None:
     page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-    page.locator("#tabSettings").click()
+    page.locator(".pane:not([hidden]) .settings-open-btn").click()
     page.locator("#settingsPanel").evaluate("el => { el.open = true; }")
     expect(page.locator("#saveSettings")).to_be_visible()
 

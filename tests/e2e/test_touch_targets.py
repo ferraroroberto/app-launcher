@@ -74,7 +74,7 @@ _SWEEP = """
 }
 """
 
-_TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", "#tabSettings")
+_TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane:not([hidden]) .settings-open-btn")
 
 
 @pytest.mark.parametrize("tab", _TABS)
