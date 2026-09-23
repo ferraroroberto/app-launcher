@@ -1547,7 +1547,14 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
 
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
-        expect(authed_page.locator(".board-strip #boardRefresh")).to_have_count(1)
+        # ↻ docks beside the strip, never inside its tablist: the segmented
+        # control is exactly the five columns (#1175, COMP-03).
+        expect(authed_page.locator(".board-strip-bar > #boardRefresh")).to_have_count(1)
+        expect(authed_page.locator(".board-strip > button")).to_have_count(5)
+        # The count pill keeps AA on its --card-2 fill: --fg, not the resting
+        # tab's --muted (4.08:1 in dark, #1175).
+        fg = authed_page.evaluate("getComputedStyle(document.body).color")
+        expect(authed_page.locator("#boardColBacklog .board-count")).to_have_css("color", fg)
         # Filter drops BELOW the control row, so it sits just above the strip.
         assert filter_box["y"] > mode_box["y"], (
             "phone filter should stack under the controls: "
@@ -1557,7 +1564,7 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
         expect(
             authed_page.locator(".board-dispatch-row #boardRefresh")
         ).to_have_count(1)
-        expect(authed_page.locator(".board-strip")).to_be_hidden()
+        expect(authed_page.locator(".board-strip-bar")).to_be_hidden()
         # One line: filter at the far left, ↻ last, everything on the same row.
         assert filter_box["x"] < mode_box["x"], (
             "desktop filter should lead the line: "

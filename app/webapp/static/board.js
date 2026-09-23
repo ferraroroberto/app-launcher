@@ -972,9 +972,11 @@ async function refreshGithub() {
 // ------------------------------------------------------- column carousel
 
 // #869: on the phone the column-switcher strip IS the column header, so ↻
-// belongs there. On the >=700px grid those switcher buttons are hidden, which
+// belongs beside it — in the strip's bar, not inside the five-tab tablist
+// itself (#1175: a sixth control there made the segmented control six
+// options). On the >=700px grid those switcher buttons are hidden, which
 // left ↻ alone in a full-width row floating at the pane's right edge — so it
-// joins the dispatch row instead, last after ➤, and the empty strip goes.
+// joins the dispatch row instead, last after ➤, and the empty bar goes.
 // CSS can't move a node between containers and a second instance would fork
 // the id board.js mutates, so the one node is re-parented on the breakpoint.
 const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
@@ -985,7 +987,7 @@ function dockRefresh() {
   const mq = window.matchMedia(DESKTOP_BOARD);
   function place() {
     const home = document.querySelector(
-      mq.matches ? '.board-dispatch-row' : '.board-strip'
+      mq.matches ? '.board-dispatch-row' : '.board-strip-bar'
     );
     if (home && btn.parentNode !== home) home.appendChild(btn);
   }
