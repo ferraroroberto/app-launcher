@@ -27,6 +27,12 @@ from tests.e2e.conftest import stable_read
 pytestmark = pytest.mark.smoke
 
 
+def _open_projects(page: Page) -> None:
+    """The launch model combo sits in the Projects card's toolbar since
+    #1132 (out of its <summary>), so the card has to be open to reach it."""
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+
+
 def _config(model: str, choice: str) -> dict:
     """A minimal /api/config payload — enough for fetchConfig +
     renderClaudeSubsection; the other agent subsections are omitted (each
@@ -158,6 +164,7 @@ def test_coding_model_combo_syncs_with_settings_control(
     ``claude_model`` — the #540 no-double-setting contract."""
     state = _mock_config(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
     # Coding (#tabClaude) is the default active tab.
     combo = authed_page.locator("#codingModelCombo")
     trigger = authed_page.locator("#codingModelBtn")
@@ -286,6 +293,7 @@ def test_server_catalog_populates_shared_model_selectors(
 ) -> None:
     """#845/#851: every model surface uses the shared catalog-backed picker."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
 
     coding = authed_page.locator("#codingModelMenu button[data-value]")
     expect(coding).to_have_count(7, timeout=5_000)
@@ -401,6 +409,7 @@ def test_quota_rows_show_both_agents_on_one_line_each(
 
     authed_page.route(re.compile(r".*/api/board(\?.*)?$"), board_route)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
     expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
 
     coding = authed_page.locator("#codingUsage .quota-line")
@@ -481,6 +490,7 @@ def test_quota_rows_degrade_per_agent_without_collapsing(
 ) -> None:
     """#860: an unreadable source dims its own row; the other keeps its numbers."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
     expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
 
     hot = _quota_lines(claude_5h=91, claude_1w=64)
@@ -518,6 +528,7 @@ def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
     must never present it as a current, confident value.
     """
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
     expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
 
     good = _quota_lines()
@@ -631,6 +642,7 @@ def test_model_selection_owns_polls_until_config_save_settles(
         """ % _json.dumps({"config": config}),
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
     combo = authed_page.locator("#codingModelCombo")
     trigger = authed_page.locator("#codingModelBtn")
     expect(combo).to_have_attribute("data-value", "claude:sonnet")

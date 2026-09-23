@@ -22,11 +22,19 @@ import {
 } from './apps-coding.js';
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
 import { actionRow } from './action-rows.js';
+import { listFilter } from './list-filter.js';
 import { nameLabel } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 
 // The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
 const appMenu = createRowMenu('project-menu');
+// The Apps list's name filter (#1132), re-applied after every render.
+const appsFilter = listFilter({
+  input: els.appsFilterInput,
+  list: els.appsList,
+  empty: els.appsFilterEmpty,
+  storageKey: 'app-launcher.filter.apps',
+});
 
 // ----------------------------------------------------------- apps list
 export function renderApps() {
@@ -39,6 +47,7 @@ export function renderApps() {
   renderCodingList(els.claudeList, codingApps);
   renderList(els.registeredTraysList, trayApps);
   renderList(els.appsList, otherApps);
+  appsFilter.apply();
 
   els.claudeEmpty.hidden = codingApps.length !== 0;
   els.registeredTraysEmpty.hidden = trayApps.length !== 0;

@@ -374,15 +374,10 @@ export function wireClaudeOptions() {
   // Pi's effort select and trust range-tab wire their own handlers in
   // renderPiSubsection(), so there are no static listeners for those controls.
   // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
-  // (no server config — read at session-launch time in apps.js). They live
-  // in the Projects card's <summary> (#496 — the launch surface) so they
-  // stay visible when the panel is collapsed — but a click there would
-  // also expand/collapse the <details>, so stopPropagation lives alongside
-  // the flip.
+  // (no server config — read at session-launch time in apps.js). They sit
+  // in the Projects card's toolbar (#496 put them on the launch surface;
+  // #1132 moved them out of its <summary>, where a near-miss folded it).
   [els.claudeDetached, els.claudeResume].forEach(function (btn) {
-    btn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleAriaChecked(btn);
-    });
+    btn.addEventListener('click', function () { toggleAriaChecked(btn); });
   });
 }

@@ -632,18 +632,20 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
             <h3 class="collapse-title">Running sessions</h3>
           </span>
-          <span class="summary-actions">
-            <div class="sessions-header-actions">
-              <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
-                      title="Check each project's git branch + uncommitted changes"
-                      aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> status</button>
-              <div id="gitStatusSummary" class="git-summary" hidden
-                   role="list" aria-label="Projects not on their default branch"></div>
-            </div>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132):
+             a near-miss beside one toggled the whole card. -->
+        <div class="card-toolbar">
+          <div class="sessions-header-actions">
+            <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
+                    title="Check each project's git branch + uncommitted changes"
+                    aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> status</button>
+            <div id="gitStatusSummary" class="git-summary" hidden
+                 role="list" aria-label="Projects not on their default branch"></div>
+          </div>
+        </div>
         <!-- Quota rows (#860) — one line per heavy agent, Claude Code above
              Codex, always both regardless of the selected model. The two
              slots are fixed and positional; renderQuotaLines() only fills
@@ -686,37 +688,47 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
             <h3 class="collapse-title">Projects</h3>
           </span>
-          <span class="summary-actions">
-            <div class="coding-toggles">
-              <!-- Provider-qualified launch model (#540/#845), populated
-                   from the server catalog after config loads. -->
-              <span class="model-combo" id="codingModelCombo" data-value="claude:opus">
-                <button type="button" id="codingModelBtn" class="model-combo-trigger"
-                        aria-haspopup="listbox" aria-expanded="false" aria-controls="codingModelMenu"
-                        title="Model for the next matching Coding-agent launch">Claude · Opus</button>
-                <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Coding launch model" hidden>
-                  <button type="button" role="option" data-value="claude:opus" aria-selected="true">Claude · Opus</button>
-                </span>
-              </span>
-              <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
-                     aria-label="Launch detached"
-                     title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
-              </button>
-              <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
-                     aria-label="Resume session"
-                     title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
-              </button>
-            </div>
-            <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
-                    aria-pressed="false" aria-label="Show only favorites"
-                    title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132):
+             a near-miss beside one toggled the whole card. -->
+        <div class="card-toolbar">
+          <div class="coding-toggles">
+            <!-- Provider-qualified launch model (#540/#845), populated
+                 from the server catalog after config loads. -->
+            <span class="model-combo" id="codingModelCombo" data-value="claude:opus">
+              <button type="button" id="codingModelBtn" class="model-combo-trigger"
+                      aria-haspopup="listbox" aria-expanded="false" aria-controls="codingModelMenu"
+                      title="Model for the next matching Coding-agent launch">Claude · Opus</button>
+              <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Coding launch model" hidden>
+                <button type="button" role="option" data-value="claude:opus" aria-selected="true">Claude · Opus</button>
+              </span>
+            </span>
+            <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
+                   aria-label="Launch detached"
+                   title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
+            </button>
+            <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
+                   aria-label="Resume session"
+                   title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
+            </button>
+          </div>
+          <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
+                  aria-pressed="false" aria-label="Show only favorites"
+                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
+        </div>
+        <label class="action-row-filter list-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="claudeFilterInput" type="search" autocomplete="off" placeholder="Filter projects" aria-label="Filter projects">
+        </label>
         <ul id="claudeList" class="card-list action-rows" aria-label="Claude Code projects"></ul>
+        <div id="claudeFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No projects match the filter.</p>
+        </div>
         <div id="claudeEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
           <p class="empty-state-message">No projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.</p>
@@ -916,7 +928,15 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <label class="action-row-filter list-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="appsFilterInput" type="search" autocomplete="off" placeholder="Filter apps" aria-label="Filter apps">
+        </label>
         <ul id="appsList" class="card-list action-rows" aria-label="Apps"></ul>
+        <div id="appsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No apps match the filter.</p>
+        </div>
         <div id="appsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
           <p class="empty-state-message">No apps registered yet — tap Scan to search your projects root.</p>
@@ -964,33 +984,39 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
             <h3 class="collapse-title">Registered jobs</h3>
           </span>
-          <span class="summary-actions">
-            <div class="jobs-header-actions">
-              <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
-              <span class="jobs-edit-control">
-                <span class="jobs-edit-label">Edit mode</span>
-                <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
-                       aria-label="Edit mode"
-                       title="Edit mode — reveal Add job plus edit + remove on job rows, and rename + remove on Apps tab rows">
-                  <span class="knob"></span><span class="toggle-label">OFF</span>
-                </button>
-              </span>
-              <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
-            </div>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132):
+             a near-miss beside one toggled the whole card. -->
+        <div class="card-toolbar">
+          <div class="jobs-header-actions">
+            <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
+            <span class="jobs-edit-control">
+              <span class="jobs-edit-label">Edit mode</span>
+              <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
+                     aria-label="Edit mode"
+                     title="Edit mode — reveal Add job plus edit + remove on job rows, and rename + remove on Apps tab rows">
+                <span class="knob"></span><span class="toggle-label">OFF</span>
+              </button>
+            </span>
+            <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
+          </div>
+        </div>
         <div class="jobs-search-bar" role="search">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="jobsSearchInput" type="search" autocomplete="off"
-                 placeholder="Search run output" aria-label="Search run output">
+                 placeholder="Search jobs and run output" aria-label="Search jobs and run output">
           <button id="jobsSearchClear" type="button" class="button-ghost hit-target"
                   aria-label="Clear run search" title="Clear run search" hidden>
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
+        <div id="jobsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No jobs or run output match the search.</p>
+        </div>
         <div id="jobsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
           <p class="empty-state-message">No jobs registered yet — turn on Edit above, then Add to register one.</p>
@@ -1023,40 +1049,42 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-library-big"></use></svg>
             <h3 class="collapse-title">Skills</h3>
           </span>
-          <span class="summary-actions">
-            <div class="lifeos-toggles">
-              <!-- Launch model (#540/#845): the same provider-qualified
-                   Claude/Codex combo as Coding and Board. -->
-              <span class="model-combo" id="lifeOsModelCombo" data-value="claude:sonnet">
-                <button type="button" id="lifeOsModelBtn" class="model-combo-trigger"
-                        aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsModelMenu"
-                        title="Model for the launched life-os skill">Sonnet</button>
-                <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
-              </span>
-              <!-- Cross-skill conversation search (#727): opens the same
-                   Conversations view a tile's 🕘 opens, but unscoped — every
-                   skill at once, which is the only way to find a conversation
-                   when you can't remember which skill it happened in. -->
-              <button type="button" id="lifeOsConvoSearch" class="lifeos-convo-open"
-                     aria-label="Search all conversations"
-                     title="Search conversations across every skill">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
-              </button>
-              <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
-                     aria-label="Launch detached"
-                     title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
-              </button>
-              <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
-                     aria-label="Resume session"
-                     title="Resume: reopen the selected agent's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
-              </button>
-            </div>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132):
+             a near-miss beside one toggled the whole card. -->
+        <div class="card-toolbar">
+          <div class="lifeos-toggles">
+            <!-- Launch model (#540/#845): the same provider-qualified
+                 Claude/Codex combo as Coding and Board. -->
+            <span class="model-combo" id="lifeOsModelCombo" data-value="claude:sonnet">
+              <button type="button" id="lifeOsModelBtn" class="model-combo-trigger"
+                      aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsModelMenu"
+                      title="Model for the launched life-os skill">Sonnet</button>
+              <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
+            </span>
+            <!-- Cross-skill conversation search (#727): opens the same
+                 Conversations view a tile's 🕘 opens, but unscoped — every
+                 skill at once, which is the only way to find a conversation
+                 when you can't remember which skill it happened in. -->
+            <button type="button" id="lifeOsConvoSearch" class="lifeos-convo-open"
+                   aria-label="Search all conversations"
+                   title="Search conversations across every skill">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            </button>
+            <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
+                   aria-label="Launch detached"
+                   title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
+            </button>
+            <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
+                   aria-label="Resume session"
+                   title="Resume: reopen the selected agent's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
+            </button>
+          </div>
+        </div>
         <ul id="lifeOsList" class="card-list action-rows" aria-label="Life OS skills"></ul>
         <div id="lifeOsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
