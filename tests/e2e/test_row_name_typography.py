@@ -111,23 +111,24 @@ def test_project_skill_and_app_names_stay_on_one_line(
     _mock(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
-    # Coding tab (the default): a long project name beside a long branch tag.
+    # Coding tab (the default): a long project name; since #1128 its long
+    # branch rides the row's context line instead of sharing the title's.
     authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
-    project = authed_page.locator('.coding-item[data-id="longproj"] .coding-name')
+    project = authed_page.locator('.coding-item[data-id="longproj"] .action-row-title')
     expect(project).to_be_visible()
-    expect(project.locator(".git-branch-tag")).to_be_visible()
-    _assert_one_line(authed_page, '.coding-item[data-id="longproj"] .coding-name', _PROJECT)
+    expect(authed_page.locator('.coding-item[data-id="longproj"] .action-row-meta')).to_be_visible()
+    _assert_one_line(authed_page, '.coding-item[data-id="longproj"] .action-row-title', _PROJECT)
 
     authed_page.locator("#tabLifeOS").click()
     expect(authed_page.locator("#lifeOsList li.lifeos-item[data-id='longskill']")).to_be_visible()
-    _assert_one_line(authed_page, "#lifeOsList li.lifeos-item[data-id='longskill'] .coding-name", _SKILL)
+    _assert_one_line(authed_page, "#lifeOsList li.lifeos-item[data-id='longskill'] .action-row-title", _SKILL)
 
     authed_page.locator("#tabApps").click()
     card = authed_page.locator(".apps-list-card")
     if card.get_attribute("open") is None:
         card.locator("summary").click()
-    expect(authed_page.locator("#appsList .app-row-name")).to_be_visible()
-    _assert_one_line(authed_page, "#appsList .app-row-name", _APP)
+    expect(authed_page.locator("#appsList .action-row-title")).to_be_visible()
+    _assert_one_line(authed_page, "#appsList .action-row-title", _APP)
 
 
 def test_helper_notes_are_upright_and_labels_sentence_cased(

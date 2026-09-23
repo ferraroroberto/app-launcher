@@ -101,7 +101,7 @@ def test_git_status_auto_annotates_tiles_without_tap(
         timeout=10_000
     )
 
-    name = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .coding-name')
+    name = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .action-row-title')
     classes = name.evaluate("el => el.className")
     assert "git-dirty" in classes, (
         f"dirty tile should be red without any tap — class was {classes!r}"
@@ -111,8 +111,11 @@ def test_git_status_auto_annotates_tiles_without_tap(
         f"off-default — class was {classes!r}"
     )
 
-    tag = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .git-branch-tag')
-    expect(tag).to_have_text(_BRANCH)
+    # The branch rides the row's context line (#1128), spelled out beside
+    # the colour so hue is never the only channel.
+    meta = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .action-row-meta')
+    expect(meta).to_contain_text(_BRANCH)
+    expect(meta).to_contain_text("Uncommitted changes")
 
     # The summary head card aggregates the same cache (#496 item 1/3).
     expect(authed_page.locator("#homeHeadStatus")).to_contain_text("dirty")

@@ -81,7 +81,7 @@ def _open_coding(page: Page, base_url: str) -> None:
     # the tile buttons are clickable.
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     page.wait_for_selector(
-        '#claudeList .coding-item[data-id="demo"] button.agent-btn[data-agent="claude"]',
+        '#claudeList .coding-item[data-id="demo"] button.action-row-main[data-agent="claude"]',
         timeout=5_000,
     )
 
@@ -108,7 +108,7 @@ def test_resume_only_launch_streams_pty(
     with authed_page.expect_request("**/api/apps/*/launch") as req_info:
         authed_page.locator(
             '#claudeList .coding-item[data-id="demo"] '
-            'button.agent-btn[data-agent="claude"]'
+            'button.action-row-main[data-agent="claude"]'
         ).click()
 
     payload = req_info.value.post_data_json
@@ -131,7 +131,7 @@ def test_resume_with_detached_launches_remote_console(
     with authed_page.expect_request("**/api/apps/*/launch") as req_info:
         authed_page.locator(
             '#claudeList .coding-item[data-id="demo"] '
-            'button.agent-btn[data-agent="claude"]'
+            'button.action-row-main[data-agent="claude"]'
         ).click()
 
     payload = req_info.value.post_data_json

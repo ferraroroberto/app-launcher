@@ -123,92 +123,79 @@ def test_path_is_hidden_until_edit_mode(authed_page: Page, base_url: str) -> Non
     """The bat path wraps to two or three lines on a phone and is only
     wanted when renaming/removing, so #790 moved it behind Edit mode."""
     _navigate(authed_page, base_url)
-    row = authed_page.locator("#appsList li.app-item").first
+    row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".meta")).to_have_count(0)
-    # The kind pill and the name are on their own lines, not sharing one.
-    expect(row.locator(".app-row-kind .kind-pill")).to_have_text("streamlit")
-    expect(row.locator(".app-row-name")).to_have_text("Photo OCR")
+    # One title line, one context line (#1128): the kind in sentence case
+    # (#1156) folded into the context line, no path.
+    expect(row.locator(".action-row-title")).to_have_text("Photo OCR")
+    expect(row.locator(".action-row-meta")).to_have_text("Streamlit")
 
 
 def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
     _navigate(authed_page, base_url, edit=True)
-    row = authed_page.locator("#appsList li.app-item").first
+    row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
+    expect(row.locator(".action-row-meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
 
 
-def test_tunnel_url_is_a_link_icon_not_wrapped_text(
+def test_tunnel_url_lives_in_the_row_menu_not_as_text(
     authed_page: Page, base_url: str
 ) -> None:
     """#790: a cloudflared URL with a `?token=…` wrapped to three lines on
-    the phone and was only ever tapped, so it became a 🔗 in the action
-    cluster. The href must still carry the whole URL — the point is to hide
-    the text, not to lose copy-link / open-in-new-tab."""
+    the phone and was only ever tapped. Since #1128 it is Open link and Copy
+    URL in the row's ⋯ menu, and never rendered as body text."""
     _navigate(authed_page, base_url)
-    row = authed_page.locator('#appsList li.app-item[data-id="vt-tunnel"]')
+    row = authed_page.locator('#appsList li.action-row[data-id="vt-tunnel"]')
     expect(row).to_be_visible(timeout=5_000)
-
-    link = row.locator("a.app-tunnel-link")
-    expect(link).to_have_attribute("href", "https://whisper.example.com/?token=abc123")
-    expect(link).to_have_attribute("target", "_blank")
-    # The URL is reachable but never rendered as body text.
     assert "whisper.example.com" not in (row.inner_text() or "")
 
-    # A tunnel that isn't up shows the same glyph, disabled — the row's
-    # health dot is what reports up/down.
-    dead = authed_page.locator('#appsList li.app-item[data-id="dead-tunnel"]')
-    expect(dead.locator("a.app-tunnel-link")).to_have_count(0)
-    expect(dead.locator(".app-launch-btn:disabled")).to_have_count(1)
+    row.locator(".action-row-kebab").click()
+    expect(row.locator(".app-tunnel-link")).to_be_enabled()
+    expect(row.locator(".app-copy-url-btn")).to_be_enabled()
+    authed_page.keyboard.press("Escape")
+
+    # A tunnel that isn't up offers the same rows, disabled; its context
+    # line says it is down.
+    dead = authed_page.locator('#appsList li.action-row[data-id="dead-tunnel"]')
+    dead.locator(".action-row-kebab").click()
+    expect(dead.locator(".app-tunnel-link")).to_be_disabled()
+    expect(dead.locator(".app-copy-url-btn")).to_be_disabled()
 
 
-def test_row_body_does_not_launch(authed_page: Page, base_url: str) -> None:
-    """The name/path block is inert — #790 moved launching to the buttons."""
-    launches = _navigate(authed_page, base_url)
-    row = authed_page.locator("#appsList li.app-item").first
-    expect(row).to_be_visible(timeout=5_000)
-
-    body = row.locator(".launch-btn")
-    expect(body).to_have_class("launch-btn inert")
-    body.click()
-    # No auto-retry here on purpose: assert the *absence* of a request.
-    # A launch would have been captured synchronously by the route handler
-    # long before the following visible-launch assertion runs.
-    assert launches == [], f"row body still launched: {launches}"
-
-
-def test_visible_and_stealth_buttons_post_their_own_mode(
+def test_row_launches_visible_and_menu_launches_hidden(
     authed_page: Page, base_url: str
 ) -> None:
+    """#1128: tapping the row is the primary action (the visible-window
+    launch, #790's ⚡); Launch hidden (🚫👁) is in the ⋯ menu."""
     launches = _navigate(authed_page, base_url)
-    row = authed_page.locator("#appsList li.app-item").first
-    expect(row.locator(".app-launch-btn")).to_have_count(2, timeout=5_000)
+    row = authed_page.locator("#appsList li.action-row").first
+    expect(row).to_be_visible(timeout=5_000)
 
-    # ⚡ — no `stealth` key at all, so the server keeps its visible default.
-    row.locator('.app-launch-btn[data-stealth="0"]').click()
+    # Visible: no `stealth` key at all, so the server keeps its default.
+    row.locator(".action-row-main").click()
     expect(authed_page.locator("#toast")).to_contain_text("Launched Photo OCR")
     assert launches == [{}], f"visible launch sent {launches}"
 
-    # 🚫👁 — explicit opt-in to the windowless spawn.
-    row.locator('.app-launch-btn[data-stealth="1"]').click()
+    # Hidden: explicit opt-in to the windowless spawn.
+    row.locator(".action-row-kebab").click()
+    row.locator(".app-stealth-btn").click()
     expect(authed_page.locator("#toast")).to_contain_text("(stealth)")
     assert launches == [{}, {"stealth": True}], f"stealth launch sent {launches}"
 
 
-def test_tray_rows_get_the_same_pair(authed_page: Page, base_url: str) -> None:
+def test_tray_rows_launch_the_same_way(authed_page: Page, base_url: str) -> None:
     """#790 applies to both bat-launching panels, not just Registered apps."""
     launches = _navigate(authed_page, base_url)
-    row = authed_page.locator("#registeredTraysList li.app-item").first
+    row = authed_page.locator("#registeredTraysList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".launch-btn")).to_have_class("launch-btn inert")
 
-    expect(row.locator(".app-launch-btn")).to_have_count(2)
-    row.locator('.app-launch-btn[data-stealth="1"]').click()
+    row.locator(".action-row-kebab").click()
+    row.locator(".app-stealth-btn").click()
     assert launches == [{"stealth": True}], f"tray stealth launch sent {launches}"
 
-    # The autostart switch shares the launch line rather than owning a
-    # full-width strip of its own, and carries no visible label — its
-    # accessible name is the only thing that must still say what it does.
-    toggle = row.locator(".app-launch-actions button.toggle")
+    # The autostart switch is the row's one leading toggle and carries no
+    # visible label — its accessible name is the only thing that must still
+    # say what it does.
+    toggle = row.locator(":scope > button.toggle")
     expect(toggle).to_have_count(1)
     expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")

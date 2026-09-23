@@ -417,6 +417,7 @@ paths    = [
 ]
 pytest_targets = [
     "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_action_row_lists.py",
     "tests/e2e/test_markdown_link_rendering.py",
     "tests/e2e/test_markdown_tables.py",
     "tests/e2e/test_collapsible_other_tabs.py",

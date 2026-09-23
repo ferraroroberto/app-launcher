@@ -266,7 +266,7 @@ def _launch_journal_daily(
         page.locator("#lifeOsResume").click()
 
     tile = page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily']")
-    tile.locator(".lifeos-launch").click()
+    tile.locator(".action-row-main").click()
 
     # Wait for the launch route to capture the POST body.
     page.wait_for_timeout(400)
@@ -356,8 +356,10 @@ def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     # pass a tick before the child .coding-name / action strip are painted, so
     # a single immediate bounding_box() read returns None. Wait for both parts
     # to be visible, then poll until both boxes settle.
-    name = tile.locator(".coding-name")
-    actions = tile.locator(".row-actions.agent-actions")
+    # Since #1128 the row is the vendored action-row: the title and the one
+    # trailing kebab are what must share the line.
+    name = tile.locator(".action-row-title")
+    actions = tile.locator(".action-row-kebab")
     expect(name).to_be_visible(timeout=5_000)
     expect(actions).to_be_visible(timeout=5_000)
 
@@ -425,6 +427,8 @@ def test_life_os_browser_full_screen_doc_toggle(
         "#lifeOsList li.lifeos-item[data-id='journal-daily']"
     )
     expect(tile).to_be_visible(timeout=5_000)
+    # Read lives in the row's ⋯ menu since #1128.
+    tile.locator(".action-row-kebab").click()
     tile.locator("button[title^='Browse']").click()
 
     # File list full-screen; content layer + ✕ hidden.
@@ -500,9 +504,7 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
-    authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] button[title^='Browse']"
-    ).click()
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-browse-btn").click()
 
     # No delete control anywhere in the list, and the toolbar 🗑️ stays hidden.
     expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(
@@ -651,9 +653,7 @@ def _open_conversations(page: Page, base_url: str) -> None:
     expect(page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
         timeout=5_000
     )
-    page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
-    ).click()
+    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
     expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
 
 
@@ -889,9 +889,7 @@ def test_life_os_row_leads_with_resume(
     authed_page.locator("#tabLifeOS").click()
     # Detached, so the resume lands in a console, not the terminal overlay.
     authed_page.locator("#lifeOsDetached").click()
-    authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
-    ).click()
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
     _open_convos_model_menu(authed_page, "claude:opus").click()
 
@@ -974,9 +972,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
     # terminal overlay (nothing to tear down in the assertion).
     authed_page.locator("#lifeOsDetached").click()
 
-    authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
-    ).click()
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
     expect(authed_page.locator("#lifeOsConvosModelCombo")).to_be_visible()
     option = _open_convos_model_menu(authed_page, "claude:opus")
@@ -1322,9 +1318,7 @@ def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
     expect(tabs).to_be_visible()
 
     page.locator("#tabLifeOS").click()
-    page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn"
-    ).click()
+    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
     expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
     expect(tabs).to_be_hidden()
 
@@ -1399,7 +1393,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabLifeOS").click()
     page.locator("#lifeOsDetached").click()
-    page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-convo-btn").click()
+    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
     rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
     _open_convos_model_menu(page, source_choice).click()
@@ -1522,6 +1516,14 @@ def test_life_os_skill_can_be_starred_and_sorts_to_the_top(
     assert posted == [{"id": "sparring-work", "favorite": True}], posted
 
 
+def _skill_menu_item(page: Page, skill_id: str, item: str):
+    """Open a skill row's ⋯ menu and return one of its items (#1128: Read
+    and Conversations moved off the row into its one kebab)."""
+    row = page.locator(f"#lifeOsList li.lifeos-item[data-id='{skill_id}']")
+    row.locator(".action-row-kebab").click()
+    return row.locator(item)
+
+
 def _skill_order(page: Page) -> list:
     return page.locator("#lifeOsList li.lifeos-item").evaluate_all(
         "els => els.map(e => e.getAttribute('data-id'))"
@@ -1602,7 +1604,7 @@ def test_life_os_launch_sends_terminal_token(
     authed_page.locator("#lifeOsDetached").click()
     if target == "skill":
         authed_page.locator(
-            "#lifeOsList li.lifeos-item[data-id='journal-daily'] .lifeos-launch"
+            "#lifeOsList li.lifeos-item[data-id='journal-daily'] .action-row-main"
         ).click()
     else:
         expect(authed_page.locator("#lifeOsRecap")).to_be_visible()

@@ -63,12 +63,12 @@ def test_only_tray_kind_rows_appear_in_registered_trays_panel(
     )
     _navigate(authed_page, base_url)
 
-    tray_rows = authed_page.locator("#registeredTraysList li.app-item")
+    tray_rows = authed_page.locator("#registeredTraysList li.action-row")
     expect(tray_rows).to_have_count(1, timeout=5_000)
     expect(tray_rows.first).to_contain_text("Home Automation")
 
     # The streamlit row must land in Registered apps, not here.
-    other_rows = authed_page.locator("#appsList li.app-item")
+    other_rows = authed_page.locator("#appsList li.action-row")
     expect(other_rows).to_have_count(1)
     expect(other_rows.first).to_contain_text("Photo OCR")
 
@@ -117,11 +117,11 @@ def test_autostart_toggle_reflects_state_and_patches(
     authed_page.route("**/api/apps/home-automation-tray", _patch_handler)
     _navigate(authed_page, base_url)
 
-    # #790 moved the switch onto the launch-button line and dropped its
-    # visible label — the panel is called Trays and it is the row's only
-    # toggle, so the word earned nothing.
+    # #790 dropped the switch's visible label — the panel is called Trays
+    # and it is the row's only toggle; since #1128 it is the action-row's
+    # one leading toggle.
     toggle = authed_page.locator(
-        "#registeredTraysList li.app-item .app-launch-actions button.toggle"
+        "#registeredTraysList li.action-row > button.toggle"
     )
     expect(toggle).to_have_class("toggle")
     expect(toggle.locator(".knob")).to_have_count(1)

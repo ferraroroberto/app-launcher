@@ -173,27 +173,27 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     expect(authed_page.locator("#changesList .chg-file")).to_have_count(0)
 
 
-def test_red_name_opens_changes_and_clean_name_is_inert(
+def test_red_title_flags_the_row_and_changes_open_from_its_menu(
     authed_page: Page, base_url: str
 ) -> None:
+    """Since #1128 the row is one launch button, so the red name can no
+    longer be its own tap target into Show changes (#977). The colour still
+    flags the row; the ⋯ menu is the way in."""
     fetched = _install_routes(authed_page, dirty=True)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
-    name = authed_page.locator('.coding-item[data-id="alpha"] .coding-name')
-    expect(name).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=5_000)
-    expect(name).to_have_attribute("role", "button")
-    name.click()
+    title = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
+    expect(title).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=5_000)
+    expect(title).not_to_have_attribute("role", "button")
+    _open_via_menu(authed_page)
     expect(authed_page.locator("#changesOverlay")).to_be_visible()
     assert len(fetched["changes"]) == 1
     authed_page.keyboard.press("Escape")
     expect(authed_page.locator("#changesOverlay")).to_be_hidden()
 
-    clean = authed_page.locator('.coding-item[data-id="clean"] .coding-name')
-    expect(clean).not_to_have_attribute("role", "button")
-    clean.click()
-    expect(authed_page.locator("#changesOverlay")).to_be_hidden()
-    assert len(fetched["changes"]) == 1
+    clean = authed_page.locator('.coding-item[data-id="clean"] .action-row-title')
+    expect(clean).not_to_have_class(re.compile(r"\bgit-(dirty|off-main)\b"))
 
 
 def test_clean_tree_shows_the_empty_state(authed_page: Page, base_url: str) -> None:
@@ -203,11 +203,11 @@ def test_clean_tree_shows_the_empty_state(authed_page: Page, base_url: str) -> N
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
-    # Off-main but clean: yellow name, still a shortcut (the branch is the
-    # "what's different here").
-    name = authed_page.locator('.coding-item[data-id="alpha"] .coding-name')
+    # Off-main but clean: yellow name; Show changes still answers "what's
+    # different here" (the branch).
+    name = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
     expect(name).to_have_class(re.compile(r"\bgit-off-main\b"), timeout=5_000)
-    name.click()
+    _open_via_menu(authed_page)
     expect(authed_page.locator("#changesOverlay")).to_be_visible()
     expect(authed_page.locator("#changesState")).to_contain_text("Working tree clean")
     expect(authed_page.locator("#changesList .chg-file")).to_have_count(0)

@@ -108,7 +108,7 @@ def test_every_control_meets_the_44px_floor(
     ".sessions-header-actions",
     ".compose-tools",
     ".board-dispatch-row",
-    ".app-item .app-launch-actions",
+    "#appsList .action-row",
 ))
 def test_expanded_targets_in_a_cluster_do_not_overlap(
     authed_page: Page, base_url: str, cluster: str
@@ -122,7 +122,7 @@ def test_expanded_targets_in_a_cluster_do_not_overlap(
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     if cluster == ".board-dispatch-row":
         page.locator("#tabBoard").click()
-    elif cluster == ".app-item .app-launch-actions":
+    elif cluster == "#appsList .action-row":
         page.locator("#tabApps").click()
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
     page.wait_for_timeout(400)
@@ -148,6 +148,6 @@ def test_the_helper_is_wired_to_a_real_locator(
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabApps").click()
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    launch = page.locator("#appsList .app-launch-actions button").first
+    launch = page.locator("#appsList .action-row-kebab").first
     expect(launch).to_be_visible()
     assert_min_target(launch)
