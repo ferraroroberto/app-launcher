@@ -7,9 +7,8 @@
  * routers/context_filter.py later.
  *
  * GET /api/context-filter -> {mode, harnesses, stats}. The mode control is a
- * three-way segmented switch built from the app's own .segmented styling
- * (same shape as claude-options.js's model/effort rows) — no vendored
- * segmented component exists, and none is added here. A click PUTs then
+ * three-way row of the vendored range-tab pills (#1133), the same shape as
+ * claude-options.js's permission rows. A click PUTs then
  * re-fetches; never an optimistic flip (main.js's toggleBootAutostart
  * precedent).
  */
@@ -35,6 +34,7 @@ function renderModeControl(mode) {
   MODES.forEach(function (m) {
     const b = document.createElement('button');
     b.type = 'button';
+    b.className = 'range-tab';
     b.textContent = MODE_LABELS[m];
     b.dataset.value = m;
     if (m === mode) b.classList.add('active');

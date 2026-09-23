@@ -648,27 +648,9 @@ summary + .opt-group { border-top: 0; }
   width: 56px;
   flex-shrink: 0;
 }
-.segmented {
-  display: flex;
-  flex: 1;
-  background: var(--card-off);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  gap: 2px;
-}
-.segmented button {
-  flex: 1;
-  background: transparent;
-  border: 0;
-  padding: 7px 4px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
-  font-weight: 500;
-  color: var(--muted);
-  cursor: pointer;
-}
-.segmented button.active { background: var(--card); color: var(--fg); }
+/* The vendored range-tab row (#1133) sits in an .opt-row beside its label:
+   it takes the row's remaining width, and the row owns the spacing. */
+.opt-row .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
 .toggles {
   display: flex;
   flex-wrap: wrap;
@@ -2349,13 +2331,18 @@ summary + .opt-group { border-top: 0; }
   flex-shrink: 0;
 }
 .chat-note .icon { width: var(--icon-inline); height: var(--icon-inline); }
-/* Terminal ⇄ Chat segmented toggle in the bar (#982): the .segmented recipe
-   at the bar's 44px control height, icon-only so the title keeps most of a
-   390px phone (labels were measured to crush it — #979 decision log). The
-   active segment lifts on the card surface in accent; an unavailable one
-   takes the fleet's one disabled recipe (canvas-subtle / hairline / muted,
-   never opacity) and toasts its reason on tap. */
+/* Terminal ⇄ Chat toggle in the bar (#982): an inset track at the bar's
+   44px control height, icon-only so the title keeps most of a 390px phone
+   (labels were measured to crush it — #979 decision log). A toolbar toggle,
+   not a range, so it stays app-side rather than on the vendored range-tab
+   (#1133). The active segment lifts on the card surface in accent; an
+   unavailable one takes the fleet's one disabled recipe (canvas-subtle /
+   hairline / muted, never opacity) and toasts its reason on tap. */
 .session-mode {
+  display: flex;
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   flex: 0 0 auto;
   min-height: 44px;
   box-sizing: border-box;
@@ -4547,9 +4534,8 @@ body.terminal-open {
 }
 
 /* ---------- context filter (issue #713) ---------- */
-/* The Settings-tab card's mode control reuses the existing .segmented
-   shape (same pattern as the Coding-options Claude model/effort rows) —
-   no new vendored component, just this app's own tokens. */
+/* The Settings-tab card's mode control is the vendored range-tab row
+   (#1133), the same pills as the Coding-options permission rows. */
 .context-filter-subhead {
   margin: 16px 0 6px;
   font-size: var(--font-caption);
