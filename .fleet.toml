@@ -30,7 +30,7 @@ extra_junctions = ["webapp/certificates"]
 
 [vendored]
 switch = { src = "app/webapp/static/_vendored/switch", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/switch" }
-button = { src = "app/webapp/static/_vendored/button", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/button" }
+button = { src = "app/webapp/static/_vendored/button", sha = "a16c9aab845a97499406284107e62e8ae3a5a9ec", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/disclosure" }
 home_head = { src = "app/webapp/static/_vendored/home-head", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/home-head" }
@@ -38,7 +38,7 @@ nav = { src = "app/webapp/static/_vendored/nav", sha = "759c667f336d98b040eca80f
 select_native = { src = "app/webapp/static/_vendored/select-native", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/select-native" }
 empty_state = { src = "app/webapp/static/_vendored/empty-state", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/empty-state" }
 range_tab = { src = "app/webapp/static/_vendored/range-tab", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/range-tab" }
-modal = { src = "app/webapp/static/_vendored/modal", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/modal" }
+modal = { src = "app/webapp/static/_vendored/modal", sha = "a16c9aab845a97499406284107e62e8ae3a5a9ec", dest = "app/webapp/static/_vendored/modal" }
 text_size = { src = "app/webapp/static/_vendored/text-size", sha = "ad963f3010f7fb012959527fdf893a7041004ced", dest = "app/webapp/static/_vendored/text-size" }
 base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
 action_row = { src = "app/webapp/static/_vendored/action-row", sha = "6204cbc79fc7b0efae989f3e661fab21b21051a5", dest = "app/webapp/static/_vendored/action-row" }

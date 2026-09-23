@@ -97,8 +97,7 @@ body:has(dialog[open]) .app { overflow: hidden; }
   justify-content: center;
 }
 /* 34px is below the 44px tap floor (design.md "Touch targets"); expand the
-   hit area invisibly rather than inflating the visual button, same trick as
-   .detail-save-btn's ::before below (34 + 2*5 = 44). */
+   hit area invisibly rather than inflating the visual button (34 + 2*5 = 44). */
 .detail-close::before { content: ""; position: absolute; inset: -5px; }
 .detail-close .icon { width: var(--icon-title); height: var(--icon-title); }
 
@@ -138,10 +137,14 @@ body:has(dialog[open]) .app { overflow: hidden; }
   border-top: 1px solid var(--line);
   border-radius: 0 0 var(--radius) var(--radius);
 }
+/* The footer primary IS button-primary (design.md modal.primaryButton), so it
+   takes the spec's 48px, never --control-h: an app whose --control-h is its
+   36px inline-control height would otherwise get 36px dialog primaries
+   (#280). 48px clears the 44px tap floor on its own, so no hit-area
+   extension is needed. */
 .detail-save-btn {
-  position: relative;
   width: 100%;
-  min-height: var(--control-h);
+  min-height: 48px;
   border: 1px solid var(--accent-border-strong);
   border-radius: var(--radius-md);
   background: var(--accent-fill);
@@ -150,9 +153,6 @@ body:has(dialog[open]) .app { overflow: hidden; }
   font-weight: 700;
   cursor: pointer;
 }
-/* 36px visual height is below the 44px tap floor; the ::before extends the
-   target vertically without inflating the visual button. */
-.detail-save-btn::before { content: ""; position: absolute; inset: -4px 0; }
 /* One disabled recipe for both themes (home-automation#362): opacity on the
    solid accent fill blends sub-AA either way (~2.2:1 light / ~2.5:1 dark);
    the flat card-off/muted/line trio reads identically greyed-out in both
