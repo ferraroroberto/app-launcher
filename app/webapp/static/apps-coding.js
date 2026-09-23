@@ -405,11 +405,11 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  // Icon-only at every width (#1070). The caption used to drop below 520px
-  // only, which left a wide labelled pill next to three icon-sized controls
-  // on a desktop header. The star alone is unambiguous; the text name lives
-  // on aria-label/title, which is where a screen reader reads it anyway.
-  btn.innerHTML = icon('star');
+  // A glyph plus a word, like the Detached and Resume toggles beside it
+  // (#1176). #1070 made it icon-only when those neighbours were icon-only
+  // too; a star is not a conventional glyph, so the set carries words now.
+  // aria-label/title keep the full "Show only favorites".
+  btn.innerHTML = icon('star') + ' Starred';
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
