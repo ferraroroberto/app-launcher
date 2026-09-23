@@ -150,6 +150,10 @@ export function renderSessions() {
     // session's row by id rather than position — e.g. the kill regression
     // must act on the session it launched, never ".first" (issue #260).
     li.dataset.sessionId = s.session_id;
+    // The session in the wide layout's docked view (#1135).
+    if (state.sessionView && state.sessionView.session.session_id === s.session_id) {
+      li.setAttribute('aria-current', 'true');
+    }
 
     const main = document.createElement('div');
     main.className = 'app-main';

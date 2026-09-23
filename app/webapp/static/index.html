@@ -1879,6 +1879,15 @@
     </form>
   </div>
 
+  <!-- Wide layout only (#1135): the Code tab's detail pane while no session
+       is open in it. CSS shows it at (min-width: 1100px) and (pointer: fine)
+       on the Code tab; everywhere else it is display: none. -->
+  <div id="sessionDetailEmpty" class="session-detail-empty">
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
+    <p class="session-detail-empty-title">No session open</p>
+    <p class="session-detail-empty-hint">A session's Chat opens here, beside the list. A full-control session's terminal opens in its own window.</p>
+  </div>
+
   <!-- The session overlay (#982, Step 3 of #979): one shell, two render
        modes. `data-mode="terminal"` shows the live PTY (#terminalHost + the
        docked composer); `data-mode="chat"` shows the transcript's chat-style

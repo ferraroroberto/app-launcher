@@ -45,6 +45,8 @@ import { applyTermTheme } from './terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal-bar.js';
 import { closeSpeakPopover, revealReadAloudButton } from './terminal-readaloud.js';
 import { terminalComposer } from './terminal-compose.js';
+import { isWideLayout } from './layout.js';
+import { setTab } from './tabs.js';
 
 // Last-viewed mode per session id — one JSON map under one key rather than
 // a key per session, capped so ended sessions don't accumulate forever.
@@ -186,8 +188,21 @@ export function setSessionMode(mode) {
   applyTermTheme();
 }
 
+// The wide layout's list-and-detail (#1135): the row whose session is in the
+// docked view keeps the accent tint. The mark is harmless below 1100px,
+// where the view covers the list; CSS only paints it at the wide query.
+export function markSelectedSession(sid) {
+  document.querySelectorAll('#sessionsList li.session-item').forEach(function (li) {
+    if (sid && li.dataset.sessionId === sid) li.setAttribute('aria-current', 'true');
+    else li.removeAttribute('aria-current');
+  });
+}
+
 export function openSessionOverlay(session, wantMode) {
   if (!session || !session.session_id) return;
+  // On a wide window the view is the Code tab's detail pane, so a session
+  // opened from elsewhere (the Board drawer) lands on the Code tab.
+  if (isWideLayout() && state.tab !== 'claude') setTab('claude');
   const termOK = terminalAvailable(session);
   const chatOK = chatAvailable(session);
   // A session that can offer neither pane still opens (#1025): both segments
@@ -210,6 +225,7 @@ export function openSessionOverlay(session, wantMode) {
   syncSegment('terminal', session);
   syncSegment('chat', session);
   setSessionMode(mode);
+  markSelectedSession(session.session_id);
 }
 
 export function closeSessionOverlay() {
@@ -217,9 +233,18 @@ export function closeSessionOverlay() {
   closeChatPane();
   if (els.terminalOverlay) delete els.terminalOverlay.dataset.mode;
   hideTerminal();
+  markSelectedSession(null);
 }
 
 export function wireSessionModeToggle() {
+  // A wide window shows the rail beside the docked view, so another tab is
+  // one click away. The view belongs to the Code tab's list: leaving it
+  // closes the view (a terminal stays warm, #430), rather than leaving a
+  // hidden chat polling for a reader who has gone (#1050).
+  document.addEventListener('launcher:tab', function (ev) {
+    const tab = ev.detail && ev.detail.tab;
+    if (tab !== 'claude' && state.sessionView && isWideLayout()) closeSessionOverlay();
+  });
   if (!els.sessionMode) return;
   els.sessionMode.addEventListener('click', function (ev) {
     const btn = ev.target.closest('.session-mode-btn');

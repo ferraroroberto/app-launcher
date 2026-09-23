@@ -20,6 +20,13 @@ import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
 let nav = null;
 
+// Every switch, Settings included, as a `launcher:tab` event (#1135): the
+// wide layout's docked session view closes when the Code tab is left, and
+// listening beats session-overlay.js and this file importing each other.
+function announceTab(tab) {
+  document.dispatchEvent(new CustomEvent('launcher:tab', { detail: { tab: tab } }));
+}
+
 export function setTab(tab) {
   if (nav) nav.setTab(tab);
 }
@@ -41,6 +48,7 @@ export function openSettings() {
   });
   tabs.dataset.activeTab = 'settings';
   state.tab = 'settings';
+  announceTab('settings');
   const scroller = document.querySelector('.app');
   if (scroller) scroller.scrollTop = 0;
   window.scrollTo(0, 0);
@@ -56,6 +64,7 @@ export function wireTabs() {
       state.tab = tab;
       const settings = document.getElementById('paneSettings');
       if (settings) settings.hidden = true;
+      announceTab(tab);
     },
   });
   document.querySelectorAll('.settings-open-btn').forEach(function (btn) {
