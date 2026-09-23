@@ -143,7 +143,10 @@ async function copyMinted() {
 
 export function wireTokens() {
   if (!els.tokensList) return;
-  if (els.tabSettings) els.tabSettings.addEventListener('click', ensureLoaded);
+  // Load the token list when Settings opens (#1131: from any header's gear).
+  document.querySelectorAll('.settings-open-btn').forEach(function (btn) {
+    btn.addEventListener('click', ensureLoaded);
+  });
   els.tokenMintBtn.addEventListener('click', mintToken);
   els.tokenCopyBtn.addEventListener('click', copyMinted);
 }

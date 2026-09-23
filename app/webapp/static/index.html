@@ -594,11 +594,6 @@
       <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
       <span class="tab-label">Jobs</span>
     </button>
-    <button id="tabSettings" type="button" class="tab" data-tab="settings"
-            role="tab" aria-selected="false" aria-controls="paneSettings" tabindex="-1">
-      <svg class="tab-icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
-      <span class="tab-label">Settings</span>
-    </button>
   </nav>
 
   <main class="app">
@@ -608,16 +603,20 @@
            + the theme toggle pinned right (home-head.css contract). The
            toggle keeps its #themeToggle id so main.js's wireTheme and the
            CSS-keyed sun/moon swap carry over unchanged. -->
-      <div class="card home-head">
+      <div class="card home-head page-head">
         <span class="home-title">
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg>
-          Launcher
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg>
+          Code
         </span>
         <span id="homeHeadStatus" class="status"></span>
-        <button type="button" id="themeToggle" class="home-toggle hit-target"
+        <button type="button" id="themeToggle" class="home-toggle hit-target theme-toggle-btn"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" id="settingsOpen" class="home-toggle hit-target settings-open-btn"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
 
@@ -887,6 +886,24 @@
     </section>
 
     <section id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
+          Apps
+        </span>
+        <span id="appsHeadStatus" class="status"></span>
+        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="home-toggle hit-target settings-open-btn"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
       <details class="card card--collapsible sessions-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">
@@ -966,6 +983,24 @@
     </section>
 
     <section id="paneJobs" class="pane" role="tabpanel" aria-labelledby="tabJobs" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
+          Jobs
+        </span>
+        <span id="jobsHeadStatus" class="status"></span>
+        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="home-toggle hit-target settings-open-btn"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
       <details id="jobsAgendaCard" class="card card--collapsible sessions-card jobs-agenda-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
@@ -1026,6 +1061,24 @@
     </section>
 
     <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
+          Life
+        </span>
+        <span id="lifeHeadStatus" class="status"></span>
+        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="home-toggle hit-target settings-open-btn"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
       <!-- No separate options card (#496 round 2, mirroring the Coding tab):
            the model combo + Detached/Resume launch controls live in the
            Skills card's summary below — the surface skills are launched from. The recap
@@ -1095,6 +1148,24 @@
     </section>
 
     <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
+          Board
+        </span>
+        <span id="boardHeadStatus" class="status"></span>
+        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="home-toggle hit-target settings-open-btn"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
       <div id="boardDispatch" class="board-dispatch">
         <div class="board-repo-combo">
           <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
@@ -1210,7 +1281,22 @@
       </div>
     </section>
 
-    <section id="paneSettings" class="pane" role="tabpanel" aria-labelledby="tabSettings" hidden>
+    <!-- No tab since #1131: every page header's gear opens this pane. -->
+    <section id="paneSettings" class="pane" aria-label="Settings" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+          Settings
+        </span>
+        <span id="settingsHeadStatus" class="status"></span>
+        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+      </div>
       <details id="settingsPanel" class="card card--collapsible settings-card">
         <summary class="collapse-summary">
           <span class="collapse-main">

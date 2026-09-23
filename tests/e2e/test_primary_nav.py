@@ -18,7 +18,6 @@ TAB_ORDER = [
     "tabLifeOS",
     "tabApps",
     "tabJobs",
-    "tabSettings",
 ]
 
 

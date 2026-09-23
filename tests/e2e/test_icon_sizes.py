@@ -61,7 +61,7 @@ def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) 
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     strays: list[str] = []
-    for tab in ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", "#tabSettings"):
+    for tab in ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane:not([hidden]) .settings-open-btn"):
         page.locator(tab).click()
         page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
         page.wait_for_timeout(400)

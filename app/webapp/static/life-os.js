@@ -13,6 +13,7 @@
  */
 
 import { els, state } from './state.js';
+import { renderHomeHead } from './home-head.js';
 import { apiFailToast, authHeaders, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -58,6 +59,7 @@ export async function fetchSkills() {
 export function renderSkills() {
   const host = els.lifeOsList;
   if (!host) return;
+  renderHomeHead();
   host.innerHTML = '';
   const skills = state.lifeOsSkills;
   els.lifeOsEmpty.hidden = skills.length !== 0;

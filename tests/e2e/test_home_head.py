@@ -29,7 +29,8 @@ def test_home_head_is_first_card_with_stats_and_toggle(
 
     head = authed_page.locator("#paneClaude .home-head")
     expect(head).to_be_visible()
-    expect(head.locator(".home-title")).to_contain_text("Launcher")
+    # Since #1131 the header names its tab.
+    expect(head.locator(".home-title")).to_contain_text("Code")
 
     # First card of the pane — the summary row leads the tab.
     first_class = authed_page.evaluate(

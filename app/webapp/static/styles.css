@@ -531,6 +531,14 @@ html, body {
 :root[data-theme="dark"] .theme-icon-moon { display: none; }
 :root:not([data-theme="dark"]) .theme-icon-sun { display: none; }
 
+/* ---------- page header (#1131) ---------- */
+/* Every pane opens with the vendored home-head: the tab's name, one context
+   line, then two trailing actions — the theme toggle and the Settings gear.
+   The component pins its one toggle right with margin-left:auto; a second
+   one must not also take an auto margin, or the free space splits between
+   them. */
+.home-head .home-toggle + .home-toggle { margin-left: 0; }
+
 /* ---------- collapsible cards (vendored disclosure) ---------- */
 /* Structure and closed-box geometry come from _vendored/disclosure — the
    .card--collapsible modifier + .collapse-summary/.collapse-main/

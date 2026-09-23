@@ -238,7 +238,8 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
 # full diff to one tab's tests. Each surface is pinned with a path that narrows
 # and shared paths that must keep the whole suite.
 _BOARD_TARGETS = (
-    "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py tests/e2e/test_coding_chief.py "
+    "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py tests/e2e/test_page_headers.py "
+    "tests/e2e/test_coding_chief.py "
     "tests/e2e/test_session_rename.py tests/e2e/test_shared_session_title.py "
     "tests/e2e/test_coding_model_selector.py tests/e2e/test_terminal_bar_overflow.py "
     "tests/e2e/test_primary_nav.py tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py "
@@ -246,7 +247,8 @@ _BOARD_TARGETS = (
     "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
 )
 _LIFEOS_TARGETS = (
-    "tests/e2e/test_life_os_tab.py tests/e2e/test_action_row_lists.py "
+    "tests/e2e/test_life_os_tab.py tests/e2e/test_page_headers.py "
+    "tests/e2e/test_action_row_lists.py "
     "tests/e2e/test_markdown_link_rendering.py "
     "tests/e2e/test_markdown_tables.py "
     "tests/e2e/test_collapsible_other_tabs.py tests/e2e/test_coding_model_selector.py "

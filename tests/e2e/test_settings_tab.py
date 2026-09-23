@@ -3,8 +3,9 @@
 Settings moved from an always-visible collapsible card at the bottom of
 every tab into a sixth navigation tab. Contract under test:
 
-  * ``#tabSettings`` is a real tab: clicking it shows ``#paneSettings``
-    with the settings controls and hides the other panes.
+  * Settings has no tab since #1131: every page header's gear shows
+    ``#paneSettings`` with the settings controls and hides the other panes,
+    and choosing any tab leaves it.
   * The settings card no longer bleeds into the other tabs — on the
     default Coding tab the panel is hidden.
   * The app theme toggle lives on the Coding tab (issue #392 moved it out
@@ -46,12 +47,12 @@ def test_settings_tab_opens_pane_with_controls(
         "Build:", timeout=10_000
     )
 
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     expect(authed_page.locator("#paneClaude")).to_be_hidden()
-    expect(authed_page.locator("#tabSettings")).to_have_attribute(
-        "aria-selected", "true"
-    )
+    # No tab is selected while Settings shows (#1131: it has no tab).
+    expect(authed_page.locator("nav.tabs .tab[aria-selected='true']")).to_have_count(0)
+    expect(authed_page.locator("nav.tabs")).to_have_attribute("data-active-tab", "settings")
 
     # The Settings card is a disclosure, closed by default (issue #719) — its
     # body fields are hidden until the summary is tapped.
@@ -79,7 +80,7 @@ def test_theme_toggle_lives_on_coding_tab_and_flips_theme(
     # Lives in the home-head card on the Coding tab (#496) — visible on load.
     expect(toggle).to_be_visible()
     # Not duplicated into the Settings pane.
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     expect(toggle).to_be_hidden()
     authed_page.locator("#tabClaude").click()
     expect(toggle).to_be_visible()
@@ -100,7 +101,7 @@ def test_terminal_history_lines_field_loads_and_saves(
     """The scrollback-depth field (issue #435 follow-up) loads pre-filled
     from GET /api/config and a new value survives a Save + page reload."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     field = authed_page.locator("#terminalHistoryLines")
     expect(field).to_be_visible()
@@ -114,7 +115,7 @@ def test_terminal_history_lines_field_loads_and_saves(
 
     # Reload to confirm it actually persisted server-side, not just DOM.
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#terminalHistoryLines")).to_have_value("5000")
 
@@ -129,7 +130,7 @@ def test_save_settings_does_not_report_success_after_a_failed_patch(
     succeeded. `patchConfig` already documents that callers must branch on
     its resolved boolean; this proves the Settings Save handler now does."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
 
     authed_page.route(
@@ -166,7 +167,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     a fresh GET /api/config (not just the optimistic click); then click it
     off and confirm the same across a reload."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     toggle = authed_page.locator("#bootAutostartToggle")
     expect(toggle).to_be_visible()
@@ -175,7 +176,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     toggle.click()
     expect(toggle).to_have_attribute("aria-checked", "true")
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
         "aria-checked", "true"
@@ -186,7 +187,7 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
         "aria-checked", "false"
     )
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     expect(authed_page.locator("#bootAutostartToggle")).to_have_attribute(
         "aria-checked", "false"
@@ -198,7 +199,7 @@ def test_settings_boolean_controls_use_vendored_switch(
 ) -> None:
     """Settings booleans use the fleet switch track + sliding thumb."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
 
     for selector in ("#bootAutostartToggle",):
@@ -218,7 +219,7 @@ def test_settings_status_readout_has_no_tls_or_tunnel_url(
     follow-up) — needless exposure of the tunnel hostname in the UI. Any
     reachability warning may still render; TLS/tunnel text must not."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "settingsPanel")
     readout = authed_page.locator("#statusReadout")
     text = (readout.text_content() or "").lower()
@@ -246,7 +247,7 @@ def test_context_filter_card_renders_and_reflects_api_mode(
     button is marked active for a null/unknown value).
     """
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator("#tabSettings").click()
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     _open_card(authed_page, "contextFilterPanel")
 
     panel = authed_page.locator("#contextFilterPanel")
