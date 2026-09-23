@@ -233,6 +233,13 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     assert chief_li.locator(
         '.board-chief-crown use[href="#i-crown"]'
     ).count() == 1
+    # The tint's meta line takes --accent-text, the spec's text on
+    # accent-soft: --muted read 4.17:1 there (#1175, COLOR-02).
+    accent_text = authed_page.evaluate(
+        "() => { const s = document.createElement('span');"
+        " s.style.color = 'var(--accent-text)'; document.body.appendChild(s);"
+        " const c = getComputedStyle(s).color; s.remove(); return c; }")
+    expect(chief_li.locator(".board-card-top").first).to_have_css("color", accent_text)
 
     chief_li.locator("button.board-card").click()
     drawer = authed_page.locator(".board-drawer")

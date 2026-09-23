@@ -3816,11 +3816,20 @@ body.terminal-open {
 
 /* Column switcher strip: four count buttons + the gh refresh. Doubles as
    the column header on the phone, where the carousel shows one column. */
-.board-strip {
+/* The phone's column strip and ↻ share one bar; the strip itself is the
+   five-tab segmented control, ↻ sits beside it, outside the tablist (#1175). */
+.board-strip-bar {
   display: flex;
   align-items: center;
   gap: 6px;
   margin: 0 0 10px;
+}
+.board-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 /* Not migrated to the button tiers (issue #477 audit): the column-switcher
    strip is a segmented control (has an .active state). */
@@ -3850,6 +3859,9 @@ body.terminal-open {
   padding: 1px 5px;
   border-radius: var(--radius-pill);
   background: var(--card-2);
+  /* Its own text colour, not the resting tab's --muted: that reads 4.08:1
+     on the dark --card-2 pill (#1175). */
+  color: var(--fg);
   font-size: var(--font-caption);
 }
 /* "Your turn" holding work is the one number that matters. State signal,
@@ -4038,6 +4050,15 @@ body.terminal-open {
   border-left: 3px solid var(--accent);
   opacity: 1;
 }
+/* Secondary text on an accent-soft tint: --muted reads 4.17:1 there (the
+   card meta "repo · working · 2m"), under AA. Inside every tinted row the
+   muted role resolves to --accent-text, the spec's text-on-accent-soft
+   colour, so each muted descendant holds AA without a per-element rule and
+   the git dirty/off-main colours, which use their own tokens, are untouched
+   (#1175). The Code tab's in-view row joins them in its wide-layout block. */
+.board-item.board-item-chief .board-card,
+.app-item.session-item.session-item-chief,
+.board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
 .board-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 .board-empty { margin: 4px 0 12px; }
 
@@ -4305,7 +4326,7 @@ body.terminal-open {
      into the dispatch row at this breakpoint, so the strip has no desktop
      occupant left and the whole row goes, instead of leaving ↻ floating
      alone at the pane's right edge above the headers it refreshes. */
-  .board-strip { display: none; }
+  .board-strip-bar { display: none; }
   /* The whole bar is one line on a desktop-width pane (#869 round 2): the
      project filter at the far left, then the mode/model combos, the goal,
      the compose buttons and ↻. The three .board-dispatch children lay out
@@ -4540,5 +4561,6 @@ body.terminal-open {
   /* The row whose session is in the view keeps the accent-soft tint. */
   #sessionsList li.session-item[aria-current="true"] {
     background: var(--accent-soft);
+    --muted: var(--accent-text);
   }
 }

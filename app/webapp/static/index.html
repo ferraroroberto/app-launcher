@@ -777,7 +777,7 @@
 
         <div class="opt-group">
           <h3 class="opt-group-title">Favorite agent</h3>
-          <p class="opt-hint">The one agent that keeps its own launch button on every project row. Every other visible agent moves into the row&rsquo;s &#8942; menu, one tap deeper.</p>
+          <p class="opt-hint">The one agent that keeps its own launch button on every project row. Every other visible agent moves into the row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu, one tap deeper.</p>
           <div class="opt-row">
             <span class="opt-name">Agent</span>
             <select id="codingFavoriteAgent" class="select-native"
@@ -787,7 +787,7 @@
 
         <div class="opt-group">
           <h3 class="opt-group-title">Visible agents</h3>
-          <p class="opt-hint">Which agents are offered in each project row&rsquo;s &#8942; menu. Hiding one only trims that menu — a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
+          <p class="opt-hint">Which agents are offered in each project row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu. Hiding one only trims that menu — a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
           <div id="agentVisibility" class="toggles"></div>
         </div>
 
@@ -1242,17 +1242,21 @@
                   title="Chief settings" aria-label="Chief settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
         </div>
       </div>
-      <div class="board-strip" role="tablist" aria-label="Board columns">
-        <button id="boardColBacklog" type="button" class="board-strip-btn" data-col="backlog"
-                role="tab" aria-selected="false">Git <span class="board-count">0</span></button>
-        <button id="boardColClaude" type="button" class="board-strip-btn" data-col="claude_turn"
-                role="tab" aria-selected="false">Bot <span class="board-count">0</span></button>
-        <button id="boardColYours" type="button" class="board-strip-btn active" data-col="your_turn"
-                role="tab" aria-selected="true">You <span class="board-count">0</span></button>
-        <button id="boardColOther" type="button" class="board-strip-btn" data-col="other"
-                role="tab" aria-selected="false">Other <span class="board-count">0</span></button>
-        <button id="boardColDone" type="button" class="board-strip-btn" data-col="done"
-                role="tab" aria-selected="false">Done <span class="board-count">0</span></button>
+      <!-- The strip is a five-tab segmented control; the phone docks ↻ beside
+           it in this bar rather than inside the tablist (#1175). -->
+      <div class="board-strip-bar">
+        <div class="board-strip" role="tablist" aria-label="Board columns">
+          <button id="boardColBacklog" type="button" class="board-strip-btn" data-col="backlog"
+                  role="tab" aria-selected="false">Git <span class="board-count">0</span></button>
+          <button id="boardColClaude" type="button" class="board-strip-btn" data-col="claude_turn"
+                  role="tab" aria-selected="false">Bot <span class="board-count">0</span></button>
+          <button id="boardColYours" type="button" class="board-strip-btn active" data-col="your_turn"
+                  role="tab" aria-selected="true">You <span class="board-count">0</span></button>
+          <button id="boardColOther" type="button" class="board-strip-btn" data-col="other"
+                  role="tab" aria-selected="false">Other <span class="board-count">0</span></button>
+          <button id="boardColDone" type="button" class="board-strip-btn" data-col="done"
+                  role="tab" aria-selected="false">Done <span class="board-count">0</span></button>
+        </div>
         <button id="boardRefresh" type="button" class="icon-btn board-refresh"
                 title="Refresh GitHub issues / PRs / done-today (runs gh)"
                 aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
