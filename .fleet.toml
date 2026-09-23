@@ -447,7 +447,9 @@ pytest_targets = [
 # surfaces one click reaches from a fresh load belong here: a list inside a
 # closed card (Projects, Apps, Port listeners, Settings' own cards) and
 # anything inside the session overlay need two clicks or a live session, and
-# are reported as unmeasured (fleet-config#962).
+# are reported as unmeasured (fleet-config#962). Nor may a step depend on
+# live data: the Running apps list is usually empty, and one step that
+# cannot find its target on every device leaves 11 rules unmeasured.
 [design.review]
 theme_storage_key = "app-launcher.theme"
 # No tab_selector: the walk resolves it *inside* the first [role=tablist], so
@@ -499,11 +501,6 @@ click = ".lifeos-menu-anchor"
 tab = "lifeos"
 id = "conversations"
 click = "#lifeOsConvoSearch"
-
-[[design.review.extra_steps]]
-tab = "apps"
-id = "running-app-menu"
-click = "#runningAppsList .running-app-menu-anchor"
 
 [[design.review.extra_steps]]
 tab = "jobs"
