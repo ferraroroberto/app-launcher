@@ -16,7 +16,7 @@ import { els, state } from './state.js';
 import { apiFailToast, authHeaders, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
-import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
@@ -339,7 +339,7 @@ function renderFileList(files) {
     if (f.category !== lastCat) {
       const h = document.createElement('li');
       h.className = 'lifeos-file-cat';
-      h.textContent = f.category;
+      h.textContent = nameLabel(f.category);
       host.appendChild(h);
       lastCat = f.category;
     }

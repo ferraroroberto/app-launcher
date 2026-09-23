@@ -24,10 +24,24 @@
   /* colors — accent + status (status colors signal state only) */
   --accent: #0969da;
   --accent-fg: #ffffff;      /* text/icon on an accent (or danger) fill */
+  --accent-fill: #0969da;    /* solid primary fill (button-primary) */
+  --accent-text: #0550ae;    /* accent TEXT on an accent-soft tint */
   --success: #1a7f37;
   --attention: #9a6700;
   --attention-fg: #ffffff;   /* text on an attention fill */
   --danger: #cf222e;
+  /* Status TEXT on its own 16% tint (badge, banner, destructive tint): the
+     base hue drops under AA there, so text takes these and the base stays
+     for fills, dots, icons and borders (fleet-config#963). sRGB-only on
+     purpose -- each holds a verified ratio. */
+  --success-text: #116329;
+  --danger-text: #a40e26;
+  --attention-text: #7d4e00;
+  /* Neutral control surfaces: input/select boundary + switch off-track
+     (3:1 vs --card, WCAG 1.4.11; card hairlines keep --line), and the chip /
+     filter-pill fill, whose text is --fg (--muted drops under AA on it). */
+  --control-border: #818b98;
+  --neutral-soft: color-mix(in srgb, var(--muted) 16%, transparent);
   --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
   --code-fg: #1f2328;        /* text inside a code/output inset */
   /* Unified-diff line tints (#977, GitHub's light diff palette): added /
@@ -79,13 +93,14 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --gap: 12px;
-  /* typography roles — system stack; the five sizes cover every text need
+  /* typography roles — system stack; the six sizes cover every text need
      (nav labels keep the vendored nav-tabs.css's phone-validated 11px
      default via --bottom-tabs-label) */
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-heading-xl: 2rem;
   --font-heading-lg: 1.5rem;
   --font-body: 1rem;
+  --font-body-sm: 0.875rem;  /* every secondary line: paths, status, row meta, helper copy */
   --font-label: 0.92rem;
   --font-caption: 0.78rem;
   /* shared inline-control height (select / input / compact buttons) */
@@ -135,10 +150,16 @@
   --line-muted: #21262d;
   --accent: #2f81f7;
   --accent-fg: #ffffff;
+  --accent-fill: #1f6feb;    /* one step below --accent so white text holds AA */
+  --accent-text: #58a6ff;
   --success: #3fb950;
   --attention: #d29922;
   --attention-fg: #181818;   /* the brighter dark amber carries dark text */
   --danger: #f85149;
+  --success-text: #56d364;
+  --danger-text: #ff7b72;
+  --attention-text: #e3b341;
+  --control-border: #6e7681;
   --star: #d29922;           /* spec tile-yellow, dark value */
   --code-fg: #e6edf3;
   --diff-add-bg: rgba(46, 160, 67, 0.15);
@@ -171,12 +192,14 @@
 @media (color-gamut: p3) {
   :root {
     --accent: oklch(0.52 0.18 256);
+    --accent-fill: oklch(0.52 0.18 256);
     --success: oklch(0.55 0.14 150);
     --danger: oklch(0.55 0.20 25);
     --attention: oklch(0.55 0.11 80);
   }
   [data-theme="dark"] {
     --accent: oklch(0.64 0.18 256);
+    --accent-fill: oklch(0.57 0.21 260);
     --success: oklch(0.72 0.18 150);
     --danger: oklch(0.68 0.20 25);
     --attention: oklch(0.77 0.13 85);
@@ -590,7 +613,7 @@ summary + .opt-group { border-top: 0; }
   margin: 12px 0 10px;
 }
 .opt-hint {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   margin: 8px 2px;
   line-height: 1.45;
@@ -735,20 +758,21 @@ summary + .opt-group { border-top: 0; }
 }
 .launch-btn.inert:active { background: transparent; }
 .launch-btn .meta {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   font-weight: 400;
   overflow-wrap: anywhere;
 }
 /* No uppercase transform (#1130): these chips carry *values* -- "py",
    "daily 03:00", "p50 3m 33s" -- and uppercasing them made the units
-   ambiguous ("P50 3M 33S"). Section headings keep their caption caps. */
+   ambiguous ("P50 3M 33S"). Section headings are sentence case too:
+   caps are the overline role's alone (design.md Typography, #1156). */
 .launch-btn .kind-pill {
   display: inline-block;
   font-size: var(--font-caption);
   letter-spacing: 0.02em;
-  color: var(--muted);
-  background: var(--card-off);
+  color: var(--fg);
+  background: var(--neutral-soft);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   margin-right: 6px;
@@ -825,7 +849,7 @@ summary + .opt-group { border-top: 0; }
 .app-item .row-actions .action-stop-close:active,
 .terminal-bar .row-menu .action-stop-close:active {
   background: rgb(from var(--danger) r g b / 0.2);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 /* Open button before its app has bound a port / with no tailnet_host */
 .app-item .row-actions .icon-btn:disabled {
@@ -1038,7 +1062,7 @@ summary + .opt-group { border-top: 0; }
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   line-height: 1.3;
 }
 .git-summary-row .git-branch-tag { margin-left: 0; font-size: var(--font-caption); }
@@ -1052,7 +1076,7 @@ summary + .opt-group { border-top: 0; }
 .git-summary-row .git-branch-tag { min-width: 0; }
 .git-summary-name.git-off-main { color: var(--attention); }
 .git-summary-name.git-dirty { color: var(--danger); }
-.git-summary-empty { font-size: var(--font-caption); color: var(--muted); }
+.git-summary-empty { font-size: var(--font-body-sm); color: var(--muted); }
 .coding-name.git-off-main { color: var(--attention); }
 .coding-name.git-dirty { color: var(--danger); }
 /* A coloured name is the tap-shortcut into Show changes (#977); the colour
@@ -1065,7 +1089,7 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-sm);
   font-size: var(--font-caption);
   font-weight: 500;
-  color: var(--attention);
+  color: var(--attention-text);
   background: rgb(from var(--attention) r g b / 0.12);
   vertical-align: middle;
   overflow-wrap: anywhere;
@@ -1234,7 +1258,7 @@ summary + .opt-group { border-top: 0; }
   min-width: 0;
   min-height: 44px;
   padding: 0 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   background: var(--card-off);
   color: var(--fg);
@@ -1322,7 +1346,7 @@ summary + .opt-group { border-top: 0; }
    chip. Scoped under .launch-btn to beat `.launch-btn .kind-pill`'s
    `color: var(--muted)` (equal specificity, later in the cascade). */
 .launch-btn .job-countdown-chip {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
 }
 
@@ -1331,7 +1355,7 @@ summary + .opt-group { border-top: 0; }
    means the job silently produced nothing. Scoped under .launch-btn for the
    same specificity reason as the countdown chip above. */
 .launch-btn .job-coverage-pill {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* The row's detail block (#1130): the facts the two-line row hands off,
@@ -1348,7 +1372,7 @@ summary + .opt-group { border-top: 0; }
   display: flex;
   gap: 10px;
   align-items: baseline;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   line-height: 1.4;
 }
 .job-detail-key {
@@ -1366,8 +1390,8 @@ summary + .opt-group { border-top: 0; }
 }
 .job-detail-flags .kind-pill {
   font-size: var(--font-caption);
-  color: var(--muted);
-  background: var(--card-off);
+  color: var(--fg);
+  background: var(--neutral-soft);
   padding: 2px 6px;
   border-radius: var(--radius-sm);
   white-space: nowrap;
@@ -1402,7 +1426,7 @@ summary + .opt-group { border-top: 0; }
   z-index: 1;
 }
 .jobs-history-bar .jobs-history-title {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   /* Long job names shouldn't push ✕ Close off the right edge. */
   overflow: hidden;
@@ -1464,7 +1488,7 @@ summary + .opt-group { border-top: 0; }
   flex: 1;
   min-width: 0;
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .jobs-run-btn.selected {
   border-color: var(--accent);
@@ -1521,7 +1545,7 @@ summary + .opt-group { border-top: 0; }
   gap: 8px;
   min-height: 44px;
   border-bottom: 1px solid var(--line);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .jobs-artifacts a {
   color: var(--accent);
@@ -1534,7 +1558,7 @@ summary + .opt-group { border-top: 0; }
   margin-top: 8px;
 }
 .jobs-webhook-payload > summary {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   cursor: pointer;
 }
@@ -1644,7 +1668,7 @@ summary + .opt-group { border-top: 0; }
 .input-native {
   background: var(--card-off);
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: var(--font-label);
@@ -1682,7 +1706,7 @@ summary + .opt-group { border-top: 0; }
    or button-tint. */
 .row { display: flex; gap: 8px; align-items: center; }
 .muted { color: var(--muted); }
-.small { font-size: var(--font-caption); }
+.small { font-size: var(--font-body-sm); }
 
 /* Status + build identity footer (issue #212): centred plain text at the
    very bottom of the page, outside every card. */
@@ -1707,7 +1731,7 @@ summary + .opt-group { border-top: 0; }
   min-height: var(--row-md);
   border-bottom: 1px solid var(--line);
   padding: 6px 12px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .listener-row:last-child { border-bottom: none; }
 .listener-row > div { min-width: 0; }
@@ -1717,7 +1741,7 @@ summary + .opt-group { border-top: 0; }
   border-left: 2px solid var(--accent);
 }
 .listener-row strong { word-break: break-word; }
-.listener-row .meta { color: var(--muted); font-size: var(--font-caption); }
+.listener-row .meta { color: var(--muted); font-size: var(--font-body-sm); }
 /* Parent row whose dependent children are collapsed behind a tap (#480). */
 .listener-row.expandable { cursor: pointer; }
 .listener-chevron {
@@ -1743,7 +1767,7 @@ summary + .opt-group { border-top: 0; }
 }
 .launcher-note {
   margin: 10px 2px 0;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   font-weight: 400;
   color: var(--muted);
 }
@@ -1834,7 +1858,7 @@ summary + .opt-group { border-top: 0; }
 }
 .dialog-section-hint {
   margin: 2px 0 8px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
 }
 .scan-dialog::backdrop, .rename-dialog::backdrop {
@@ -1849,8 +1873,7 @@ summary + .opt-group { border-top: 0; }
 .scan-section { margin-bottom: 12px; }
 .scan-section h3 {
   font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-weight: 700;
   color: var(--muted);
   margin: 12px 0 6px;
 }
@@ -1866,13 +1889,13 @@ summary + .opt-group { border-top: 0; }
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   margin-bottom: 4px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   text-align: left;
 }
 .scan-section .scan-row > div { flex: 1; min-width: 0; }
 .scan-section .meta {
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   overflow-wrap: anywhere;
 }
 .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -1930,7 +1953,7 @@ summary + .opt-group { border-top: 0; }
    (status colors never fill a non-status button solid). */
 .button-tint.warn {
   background: rgb(from var(--attention) r g b / 0.16);
-  color: var(--attention);
+  color: var(--attention-text);
   border-color: rgb(from var(--attention) r g b / 0.24);
 }
 
@@ -1975,7 +1998,7 @@ summary + .opt-group { border-top: 0; }
   align-items: flex-start;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   line-height: 1.35;
 }
 .job-preflight-problem.error {
@@ -2086,7 +2109,7 @@ summary + .opt-group { border-top: 0; }
 .login-card input {
   background: var(--card-off);
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   padding: 12px;
   font-size: var(--font-label);
@@ -2094,10 +2117,10 @@ summary + .opt-group { border-top: 0; }
 .login-error {
   background: rgb(from var(--danger) r g b / 0.15);
   border: 1px solid var(--danger);
-  color: var(--danger);
+  color: var(--danger-text);
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 
 /* ---------- running sessions (tap to open the terminal) ---------- */
@@ -2153,7 +2176,7 @@ summary + .opt-group { border-top: 0; }
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.session-kind.pty { background: rgb(from var(--success) r g b / 0.16); color: var(--success); }
+.session-kind.pty { background: rgb(from var(--success) r g b / 0.16); color: var(--success-text); }
 .session-kind.remote { background: rgb(from var(--fg) r g b / 0.08); color: var(--muted); }
 /* ---------- row action menus: session kebab (#953) + project ⋯ (#977) ---------- */
 /* One anchor in the rail opens a floating vertical list — one icon + label
@@ -2321,7 +2344,7 @@ summary + .opt-group { border-top: 0; }
   justify-content: center;
   gap: 6px;
   padding: var(--gap);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   flex-shrink: 0;
 }
@@ -2395,7 +2418,7 @@ summary + .opt-group { border-top: 0; }
 /* Where a Load older that found only tool calls ran out (#1120). */
 .tr-start {
   text-align: center;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
 }
 /* Chat mode's mount of the shared composer (#983) deliberately carries NO
@@ -2464,7 +2487,7 @@ summary + .opt-group { border-top: 0; }
 .tr-turn-hint {
   flex: 1;
   min-width: 0;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -2570,7 +2593,7 @@ summary + .opt-group { border-top: 0; }
 .md-table .md-al-left { text-align: left; }
 .md-table .md-al-center { text-align: center; }
 .md-table .md-al-right { text-align: right; }
-.tr-trunc { font-size: var(--font-caption); color: var(--muted); }
+.tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
 /* A run of folded entries is one vendored disclosure card; the items inside
    are flat list rows on a hairline, each its own <details>. */
 /* The bar's eye toggle: groups stay in the DOM (a tap brings them back
@@ -2604,7 +2627,7 @@ summary + .opt-group { border-top: 0; }
   min-height: var(--row-sm);
   padding: 12px 0;
   cursor: pointer;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
 }
 .tr-item > summary::-webkit-details-marker { display: none; }
@@ -2629,7 +2652,7 @@ summary + .opt-group { border-top: 0; }
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   background: rgb(from var(--danger) r g b / 0.12);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: var(--font-caption);
   font-weight: 700;
   line-height: 1.5;
@@ -2643,7 +2666,7 @@ summary + .opt-group { border-top: 0; }
    failure, and dressing it as one would be the same lie in reverse. */
 .tr-outcome-unknown {
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   line-height: 1.4;
 }
 /* The transcript's one preformatted surface, shared by a tool result
@@ -2788,7 +2811,7 @@ summary + .opt-group { border-top: 0; }
   align-items: center;
   gap: 4px;
   margin-left: 8px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   font-weight: 400;
   color: var(--muted);
 }
@@ -2811,7 +2834,7 @@ summary + .opt-group { border-top: 0; }
   background: var(--card-2);
   border-radius: var(--radius-md);
   padding: 8px 10px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .webauthn-devices li span { flex: 1; word-break: break-word; }
 /* Not an .app-item, so it doesn't inherit the tab's
@@ -3095,7 +3118,7 @@ body.terminal-open {
    next key. */
 .key-btn.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent);
 }
 /* C/U/X (issue #986): disabled whenever Ctrl isn't held, so a stray tap
@@ -3285,7 +3308,7 @@ body.terminal-open {
   padding: 10px 12px;
   background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
 }
 .compose-send {
@@ -3294,7 +3317,7 @@ body.terminal-open {
   padding: 0 16px;
   font-size: var(--icon-title);
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -3377,7 +3400,7 @@ body.terminal-open {
   font-size: var(--font-label);
   font-weight: 600;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -3387,7 +3410,7 @@ body.terminal-open {
 .ocr-extract.working { opacity: 1; }
 .terminal-status {
   padding: 8px 12px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--attention);
   background: var(--card);
   border-top: 1px solid var(--line);
@@ -3477,8 +3500,7 @@ body.terminal-open {
 }
 .lifeos-file-cat {
   font-size: var(--font-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  font-weight: 700;
   color: var(--muted);
   margin: 10px 4px 4px;
 }
@@ -3637,7 +3659,7 @@ body.terminal-open {
 /* Not a disabled button: a phone has no hover to explain one, and a capture
    with no stored session id is a normal state for part of the archive. */
 .lifeos-convo-nosession {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   background: var(--card-off);
   border: 1px solid var(--line);
@@ -3767,7 +3789,7 @@ body.terminal-open {
   min-height: 40px;
   background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   padding: 0 28px 0 10px;
   font-size: var(--font-caption);
@@ -3819,7 +3841,7 @@ body.terminal-open {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
 .board-chief-status-text { flex: 1; min-width: 0; }
@@ -3836,7 +3858,7 @@ body.terminal-open {
   min-height: var(--control-h);
   padding: 0 14px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-md);
   font-size: var(--font-caption);
@@ -3883,7 +3905,7 @@ body.terminal-open {
   padding: 0 24px 0 10px;
   background: var(--card-2);
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
   font-size: var(--font-caption);
   cursor: pointer;
@@ -4042,7 +4064,7 @@ body.terminal-open {
    36px-square siblings — not the wider .board-issue-btn padding the shared
    board-button rule below hands it. */
 .board-dispatch-row .board-refresh { padding: 0; }
-.board-status { color: var(--muted); font-size: var(--font-caption); margin: 0 0 8px; }
+.board-status { color: var(--muted); font-size: var(--font-body-sm); margin: 0 0 8px; }
 
 /* Quota rows (issues #326/#847/#860) — one line per heavy agent, Claude
    Code above Codex, stacked so both are readable at a glance.
@@ -4062,7 +4084,7 @@ body.terminal-open {
 .quota-line {
   min-width: 0;
   max-width: 100%;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -4145,7 +4167,7 @@ body.terminal-open {
 }
 .board-card:disabled { cursor: default; opacity: 0.75; }
 .board-card-top {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -4267,7 +4289,7 @@ body.terminal-open {
 }
 .board-card-meta-inline {
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   font-weight: 400;
   overflow: hidden;
   white-space: nowrap;
@@ -4321,7 +4343,7 @@ body.terminal-open {
   gap: 6px;
   max-height: 40vh;
   overflow-y: auto;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
 }
 .board-exchange[data-state="loading"],
 .board-exchange[data-state="empty"],
@@ -4332,7 +4354,7 @@ body.terminal-open {
 }
 .board-exchange-user {
   color: var(--muted);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   white-space: pre-wrap;
   border-left: 2px solid var(--muted);
   padding-left: 8px;
@@ -4533,8 +4555,6 @@ body.terminal-open {
   font-size: var(--font-caption);
   font-weight: 700;
   color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 .context-filter-harness-list .context-filter-harness {
   justify-content: space-between;
@@ -4557,15 +4577,15 @@ body.terminal-open {
 }
 .context-filter-status-active {
   background: rgb(from var(--success) r g b / 0.16);
-  color: var(--success);
+  color: var(--success-text);
 }
 .context-filter-status-unsupported {
   background: rgb(from var(--danger) r g b / 0.16);
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .context-filter-status-planned {
-  background: var(--card-off);
-  color: var(--muted);
+  background: var(--neutral-soft);
+  color: var(--fg);
 }
 .context-filter-stats {
   display: flex;
@@ -4586,6 +4606,6 @@ body.terminal-open {
   gap: 2px;
 }
 .context-filter-per-agent li {
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   color: var(--muted);
 }

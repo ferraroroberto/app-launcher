@@ -436,7 +436,7 @@ function fmtResetDay(value) {
   return new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' }).format(date);
 }
 
-function nameLabel(value) {
+export function nameLabel(value) {
   return String(value || '').replace(/[-_]+/g, ' ').replace(/^./, function (c) {
     return c.toUpperCase();
   });
