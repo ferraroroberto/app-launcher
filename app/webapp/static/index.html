@@ -12,6 +12,25 @@
   <link rel="apple-touch-icon" href="/static/icon-180.png">
   <link rel="icon" href="/static/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" href="/static/icon-512.png">
+  <!-- Pre-paint boot (#1134): the vendored text-size boot, which stamps both
+       html[data-theme] and html[data-textsize] from app-launcher.theme /
+       app-launcher.textsize before any stylesheet, so nothing flashes. -->
+  <script>
+    (function () {
+      var app = 'app-launcher';
+      var root = document.documentElement;
+      var theme = null;
+      var size = null;
+      try {
+        theme = localStorage.getItem(app + '.theme');
+        size = localStorage.getItem(app + '.textsize');
+      } catch (e) {}
+      var dark = theme ? theme === 'dark'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      root.dataset.theme = dark ? 'dark' : 'light';
+      root.dataset.textsize = size === 'small' || size === 'large' ? size : 'default';
+    })();
+  </script>
   <!-- base.css first: form controls inherit the page font (its README's
        load-order contract, project-scaffolding#266). -->
   <link rel="stylesheet" href="/static/_vendored/base/base.css">
@@ -28,16 +47,10 @@
   <link rel="stylesheet" href="/static/_vendored/range-tab/range-tab.css">
   <link rel="stylesheet" href="/static/_vendored/modal/modal.css">
   <link rel="stylesheet" href="/static/_vendored/action-row/action-row.css">
+  <link rel="stylesheet" href="/static/_vendored/text-size/text-size.css">
   <link rel="stylesheet" href="/static/_vendored/empty-state/empty-state.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
-  <script>
-    (function(){
-      var t = localStorage.getItem('app-launcher.theme');
-      var dark = t ? t === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-    })();
-  </script>
 </head>
 <body>
   <!-- Lucide icon sprite — vendored from _vendored/icons/ (issue #355 PR 3).
@@ -1296,6 +1309,17 @@
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
+      </div>
+      <!-- Text size (#1134): the escape from the viewport zoom lock (WCAG
+           1.4.4). Scales the root font-size, so rem type grows and px
+           geometry (nav, rows, hit targets) does not. -->
+      <div class="card text-size-card">
+        <span class="text-size-label">Text size</span>
+        <nav class="range-tabs" id="textSizeControl" aria-label="Text size">
+          <button type="button" class="range-tab" data-textsize="small">Small</button>
+          <button type="button" class="range-tab" data-textsize="default">Default</button>
+          <button type="button" class="range-tab" data-textsize="large">Large</button>
+        </nav>
       </div>
       <details id="settingsPanel" class="card card--collapsible settings-card">
         <summary class="collapse-summary">

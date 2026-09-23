@@ -539,6 +539,19 @@ html, body {
    them. */
 .home-head .home-toggle + .home-toggle { margin-left: 0; }
 
+/* Settings → Text size (#1134): a label beside the vendored range-tab row. */
+.text-size-card {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+}
+.text-size-label {
+  flex: none;
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+.text-size-card .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
+
 /* ---------- collapsible cards (vendored disclosure) ---------- */
 /* Structure and closed-box geometry come from _vendored/disclosure — the
    .card--collapsible modifier + .collapse-summary/.collapse-main/

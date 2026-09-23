@@ -1,0 +1,30 @@
+<!-- Pre-paint boot script — paste INLINE into <head>, before any stylesheet
+     link or body markup, replacing the app's own theme boot script (this one
+     does both jobs). Per-app variation is the `app` prefix only: set it to the
+     app's localStorage namespace (e.g. 'app-launcher'), the same prefix the
+     theme toggle and bindTextSize() use.
+
+     Stamps, before first paint so nothing flashes or reflows:
+     - html[data-theme]    from `<app>.theme` ('dark' | 'light'), else the
+                           OS prefers-color-scheme (design.md "Theme switching")
+     - html[data-textsize] from `<app>.textsize` ('small' | 'default' |
+                           'large'), else 'default' (design.md "Text size")
+     Keep it inline: a <script src> in <head> blocks first paint on a request.
+     Storage can throw (private mode, blocked site data); the catch falls back
+     to the defaults. -->
+<script>
+  (function () {
+    var app = 'my-app';
+    var root = document.documentElement;
+    var theme = null;
+    var size = null;
+    try {
+      theme = localStorage.getItem(app + '.theme');
+      size = localStorage.getItem(app + '.textsize');
+    } catch (e) {}
+    var dark = theme ? theme === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.textsize = size === 'small' || size === 'large' ? size : 'default';
+  })();
+</script>
