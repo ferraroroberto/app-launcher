@@ -78,6 +78,7 @@ export const state = {
   // 4 s apps poll re-renders without dropping it.
   codingFavFilter: localStorage.getItem('launcher.codingFavFilter') === '1',
   jobs: [],
+  jobsLoaded: false,   // first /api/jobs answer arrived (#1176)
   // Jobs-list ordering (issue #229). 'next' = ascending by computed next
   // fire (imminent dailies above weeklies; manual/paused sink to the
   // bottom); 'name' = A–Z. Persisted across reloads like editMode.
@@ -237,6 +238,7 @@ export const els = {
 
   jobsList: document.getElementById('jobsList'),
   jobsEmpty: document.getElementById('jobsEmpty'),
+  jobsLoading: document.getElementById('jobsLoading'),
   jobsFilterEmpty: document.getElementById('jobsFilterEmpty'),
   jobsAddBtn: document.getElementById('jobsAddBtn'),
   jobsSortBtn: document.getElementById('jobsSortBtn'),

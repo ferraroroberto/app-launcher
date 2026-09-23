@@ -720,17 +720,17 @@
             <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
                    aria-label="Launch detached"
                    title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg> Detached
             </button>
             <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
                    aria-label="Resume session"
                    title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume
             </button>
           </div>
           <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
                   aria-pressed="false" aria-label="Show only favorites"
-                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
+                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg> Starred</button>
         </div>
         <label class="action-row-filter list-filter">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
@@ -743,7 +743,7 @@
         </div>
         <div id="claudeEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
-          <p class="empty-state-message">No projects found — point <strong>Projects dir</strong> in Settings at a folder that has project subdirectories.</p>
+          <p class="empty-state-message">No projects found — point <strong>Projects folder</strong> in Settings at a folder that has project subdirectories.</p>
         </div>
         <p id="gitStatusLegend" class="muted small git-legend" hidden>
           <span class="git-swatch off-main"></span> not on main ·
@@ -1065,6 +1065,10 @@
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No jobs or run output match the search.</p>
         </div>
+        <div id="jobsLoading" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+          <p class="empty-state-message">Loading jobs…</p>
+        </div>
         <div id="jobsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
           <p class="empty-state-message">No jobs registered yet — turn on Edit above, then Add to register one.</p>
@@ -1142,19 +1146,19 @@
             <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
                    aria-label="Launch detached"
                    title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg> Detached
             </button>
             <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
                    aria-label="Resume session"
                    title="Resume: reopen the selected agent's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume
             </button>
           </div>
         </div>
         <ul id="lifeOsList" class="card-list action-rows" aria-label="Life OS skills"></ul>
         <div id="lifeOsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
-          <p class="empty-state-message">No life-os skills found — point <strong>Life OS dir</strong> in Settings at a life-os checkout.</p>
+          <p class="empty-state-message">No life-os skills found — point <strong>Life OS folder</strong> in Settings at a life-os checkout.</p>
         </div>
         </div>
       </details>
@@ -1329,40 +1333,47 @@
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
-            <h3 class="collapse-title">Settings</h3>
+            <h3 class="collapse-title">General</h3>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
         <label class="stacked">
-          <span>Projects dir (Claude Code)</span>
-          <input id="projectsDir" type="text" class="input-native">
+          <span>Projects folder</span>
+          <input id="projectsDir" type="text" class="input-native" aria-describedby="projectsDirHelp">
         </label>
+        <p id="projectsDirHelp" class="field-help">Where Code looks for projects: each folder inside it is one.</p>
         <label class="stacked">
-          <span>Ignored folders — one per line, names or <code>*</code> globs</span>
-          <textarea id="projectsIgnore" class="input-native" rows="3"
+          <span>Hidden projects</span>
+          <textarea id="projectsIgnore" class="input-native" aria-describedby="projectsIgnoreHelp" rows="3"
                     placeholder="archive&#10;*-old&#10;scratch"></textarea>
         </label>
+        <p id="projectsIgnoreHelp" class="field-help">Folders Code leaves out, one per line. A * matches anything, so *-old hides every name ending in -old.</p>
         <label class="stacked">
-          <span>Apps scan root</span>
-          <input id="appsScanRoot" type="text" class="input-native">
+          <span>Apps folder</span>
+          <input id="appsScanRoot" type="text" class="input-native" aria-describedby="appsScanRootHelp">
         </label>
+        <p id="appsScanRootHelp" class="field-help">Where Scan for new apps looks for apps to add.</p>
         <label class="stacked">
-          <span>Life OS dir (life-os checkout)</span>
-          <input id="lifeOsDir" type="text" class="input-native">
+          <span>Life OS folder</span>
+          <input id="lifeOsDir" type="text" class="input-native" aria-describedby="lifeOsDirHelp">
         </label>
+        <p id="lifeOsDirHelp" class="field-help">Your life-os copy, which the Life OS tab reads.</p>
         <label class="stacked">
-          <span>Fleet-config dir (system map)</span>
-          <input id="claudeConfigDir" type="text" class="input-native">
+          <span>Fleet config folder</span>
+          <input id="claudeConfigDir" type="text" class="input-native" aria-describedby="claudeConfigDirHelp">
         </label>
+        <p id="claudeConfigDirHelp" class="field-help">Your fleet-config copy, where the system map on the Code tab comes from.</p>
         <label class="stacked">
-          <span>Terminal scrollback (lines) — how much history a full-screen agent (Codex, etc.) keeps for a reconnect</span>
-          <input id="terminalHistoryLines" type="number" class="input-native" step="100">
+          <span>Terminal history (lines)</span>
+          <input id="terminalHistoryLines" type="number" class="input-native" aria-describedby="terminalHistoryLinesHelp" step="100">
         </label>
+        <p id="terminalHistoryLinesHelp" class="field-help">How much a full-screen agent such as Codex keeps to redraw when you reconnect.</p>
         <div class="switch-row settings-switch-row">
           <span>Start app-launcher at log on</span>
-          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
+        <p id="bootAutostartHelp" class="field-help">Starts it when you sign in to Windows, from your Startup folder; no admin rights needed.</p>
         <div class="row settings-actions">
           <button id="saveSettings" type="button" class="button-primary"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
           <button id="rescanBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg> Scan for new apps</button>
@@ -1589,7 +1600,7 @@
           </select>
         </label>
         <label class="row" id="jobScriptRow">
-          <span>Script path</span>
+          <span>Script file</span>
           <input id="jobScriptInput" type="text" class="input-native"
                  placeholder="E:\automation\content-management\launch_reporting.bat">
         </label>
@@ -1658,11 +1669,11 @@
           <input id="jobScheduleEvery" type="number" class="input-native" min="1" value="1">
         </label>
         <label class="row" id="jobScheduleAtRow" hidden>
-          <span>At (HH:MM)</span>
+          <span>At</span>
           <input id="jobScheduleAt" type="text" class="input-native" placeholder="06:00" pattern="[0-2][0-9]:[0-5][0-9]">
         </label>
         <label class="row" id="jobScheduleTimesRow" hidden>
-          <span>Times — comma-separated HH:MM list</span>
+          <span>Times, comma-separated</span>
           <input id="jobScheduleTimes" type="text" class="input-native" placeholder="06:00, 12:00, 18:00">
         </label>
         <label class="row" id="jobScheduleDayRow" hidden>
@@ -1683,8 +1694,9 @@
                  min="0" max="86400" placeholder="0">
         </label>
         <label class="row">
-          <span>Mutex group (optional)</span>
+          <span>Exclusive group (optional)</span>
           <input id="jobMutexGroupInput" type="text" class="input-native"
+                 title="Jobs that share a group never run at the same time; the later one waits."
                  maxlength="32" placeholder="e.g. chrome-profile">
         </label>
         <div class="job-alert-row switch-row">
@@ -1736,7 +1748,7 @@
                    placeholder="literal value or $secret:key">
           </label>
           <label class="row" id="jobWebhookEventsRow" hidden>
-            <span>Event allowlist (comma-separated; empty = all)</span>
+            <span>Only these events (comma-separated; empty means all)</span>
             <input id="jobWebhookEventsInput" type="text" class="input-native"
                    placeholder="push, pull_request">
           </label>
@@ -1768,8 +1780,8 @@
         <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
         <div id="jobRunDialogFields"></div>
         <div class="job-run-dryrow switch-row">
-          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry-run (sets <code>JOB_DRY_RUN=1</code> — opted-in scripts skip side effects)</span>
-          <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry-run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry run — scripts that support it skip their side effects</span>
+          <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="detail-actions">
           <button type="submit" class="detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run</button>

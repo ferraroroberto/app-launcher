@@ -52,8 +52,29 @@ def test_zero_item_lists_render_the_canonical_empty_state(
 ) -> None:
     page = authed_page
     _empty_everything(page)
+    # Hold the first jobs answer: until it lands the list is loading, not
+    # empty, and says so; the sort button is labelled already (#1176).
+    held, released = [], []
+
+    def _hold_jobs(route):
+        if released:
+            route.fulfill(status=200, content_type="application/json", body='{"jobs": []}')
+        else:
+            held.append(route)
+
+    page.route(re.compile(r".*/api/jobs(\?.*)?$"), _hold_jobs)
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabJobs").click()
+    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+    expect(page.locator("#jobsLoading")).to_be_visible()
+    expect(page.locator("#jobsLoading")).to_contain_text("Loading jobs")
+    expect(page.locator("#jobsEmpty")).to_be_hidden()
+    expect(page.locator("#jobsSortBtn")).to_have_text(re.compile(r"\S"))
+    released.append(True)
+    for route in held:
+        route.fulfill(status=200, content_type="application/json", body='{"jobs": []}')
+    expect(page.locator("#jobsLoading")).to_be_hidden()
 
     for tab, empty_id in (
         ("#tabClaude", "#claudeEmpty"),
@@ -84,7 +105,9 @@ def test_every_board_column_renders_one_when_empty(
     columns = ("backlog", "claude_turn", "your_turn", "other", "done")
     for key in columns:
         block = page.locator(f".board-empty[data-col='{key}'] .empty-state")
-        expect(block.locator(".empty-state-message")).not_to_be_empty()
+        # Why it is empty, and the control that fills it (#1176).
+        expect(block.locator(".empty-state-message")).to_contain_text(
+            re.compile(r"Refresh|dispatch bar"))
         expect(block.locator(".empty-state-icon")).to_have_count(1)
 
 

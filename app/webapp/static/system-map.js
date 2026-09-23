@@ -49,7 +49,7 @@ async function loadImage() {
       return;
     }
     if (res.status === 404) {
-      setStatus('System map not found — run /system-map in fleet-config, or point Fleet-config dir in Settings at a fleet-config checkout.');
+      setStatus('System map not found — run /system-map in fleet-config, or point Fleet config folder in Settings at a fleet-config checkout.');
       return;
     }
     if (!res.ok) throw new Error('status ' + res.status);

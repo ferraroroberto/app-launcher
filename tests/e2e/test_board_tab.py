@@ -310,10 +310,10 @@ def test_board_unfetched_github_renders_unknown_not_zero(
         expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
     expect(
         authed_page.locator('.board-empty[data-col="backlog"]')
-    ).to_have_text("No open issues.")
+    ).to_have_text("No open issues — tap Refresh to check GitHub again.")
     expect(
         authed_page.locator('.board-empty[data-col="done"]')
-    ).to_have_text("Nothing closed today yet.")
+    ).to_have_text("Nothing closed today yet — tap Refresh to check GitHub again.")
 
 
 def test_board_poll_heals_github_emptied_by_restart(
@@ -398,10 +398,12 @@ def test_board_unreadable_sources_render_unknown_not_zero(
         expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
     expect(
         authed_page.locator('.board-empty[data-col="your_turn"]')
-    ).to_have_text("Nothing needs you right now.")
+    ).to_have_text(
+        "Nothing needs you right now — start work from the dispatch bar above.")
     expect(
         authed_page.locator('.board-empty[data-col="claude_turn"]')
-    ).to_have_text("No sessions on Claude’s side.")
+    ).to_have_text(
+        "No sessions on Claude’s side — start one from the dispatch bar above.")
     expect(authed_page.locator("#boardStatus")).not_to_contain_text(
         "session-host unreachable"
     )

@@ -569,7 +569,9 @@ html, body {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  /* A wrapped line meets the one above across the row gap, where a combo
+     trigger's -5 and a toggle's -4 expansion need 9 (#1176). */
+  gap: var(--gap) 8px;
   margin: 0 0 12px;
 }
 /* The vendored filter field above a long list (#1132): flush with the card
@@ -1561,6 +1563,14 @@ summary + .opt-group { border-top: 0; }
   flex-direction: column;
   gap: 4px;
   margin: 10px 0;
+}
+/* One help line under a Settings field, saying why it matters (#1176). It
+   hugs the field above rather than taking the label's full 10px margin. */
+.settings-card .field-help {
+  margin: -6px 0 10px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  line-height: 1.45;
 }
 /* `.select-native` is the vendored component's (#1133) — its `height` is
    what iOS Safari honours on a <select>, where this rule's `min-height` is
@@ -3274,7 +3284,14 @@ body.terminal-open {
    this the Coding row's three children space-between and Detached floats in the
    center (issue #155). Shared by the Coding + Life OS option rows. */
 .coding-toggles,
-.lifeos-toggles { display: flex; gap: 6px; }
+.lifeos-toggles {
+  display: flex;
+  /* Labelled toggles (#1176) wrap rather than push the page sideways under
+     Large text, and their -4 expansions need 8px between neighbours and 9+
+     between lines — 6 left them sharing tappable pixels. */
+  flex-wrap: wrap;
+  gap: var(--gap) 8px;
+}
 
 /* Weekly-recap tile (issue #167): title + a staleness badge on the left, the
    🚀 review launch on the right. The badge is a coloured dot + label whose
