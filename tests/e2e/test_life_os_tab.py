@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e.conftest import stable_read
+from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_overlay_standalone_scrollable import (
     _PATCH_MATCH_MEDIA,
     _PROJECT_STANDALONE_CSS,
@@ -854,6 +855,7 @@ def test_life_os_viewer_menu_shows_resume_for_a_resumable_capture(
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _mock_transcript(authed_page)
+    authed_page.add_init_script(_CLIPBOARD_MOCK)
     _open_conversations(authed_page, base_url)
     _open_convos_model_menu(authed_page, "claude:opus").click()
 
@@ -863,6 +865,44 @@ def test_life_os_viewer_menu_shows_resume_for_a_resumable_capture(
     expect(resume).to_be_visible()
     expect(resume).to_be_enabled()
     expect(resume).to_contain_text("Resume in Claude")
+    # #1170: Copy link sits with the safe actions; destructive Delete stays last.
+    expect(menu.locator(".row-menu-btn").last).to_have_class(
+        re.compile(r"\blifeos-viewer-delete\b"))
+    menu.locator(".lifeos-viewer-copy-link").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
+    assert authed_page.evaluate("() => window.__copied[0]") == (
+        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
+
+
+def test_life_os_convo_link_opens_that_conversation(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1170: a copied ``?convo=<skill>/<file>`` link lands on the Life OS tab
+    with that capture open in the viewer, and strips the param. A link that no
+    longer resolves says so in the Conversations overlay — never a blank
+    pane."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _mock_transcript(authed_page)
+    authed_page.goto(
+        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md",
+        wait_until="domcontentloaded")
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=10_000)
+    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
+    expect(authed_page.locator("#tabLifeOS")).to_have_attribute("aria-selected", "true")
+    assert "convo=" not in authed_page.url
+
+    authed_page.goto(f"{base_url}/?convo=journal-daily/2026-01-01-gone.md",
+                     wait_until="domcontentloaded")
+    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
+        "no longer matches", timeout=10_000)
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+
+    authed_page.goto(f"{base_url}/?convo=no-such-skill/x.md",
+                     wait_until="domcontentloaded")
+    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
+        "no-such-skill", timeout=10_000)
 
 
 def test_life_os_row_leads_with_resume(
@@ -875,6 +915,7 @@ def test_life_os_row_leads_with_resume(
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _mock_transcript(authed_page)
+    authed_page.add_init_script(_CLIPBOARD_MOCK)
     launches = []
 
     def _launch(route):
@@ -907,8 +948,24 @@ def test_life_os_row_leads_with_resume(
         re.compile(r"\blifeos-convo-resume\b"))
     expect(actions.locator(".lifeos-convo-nosession")).to_have_count(0)
     expect(actions.locator(".lifeos-convo-handoff")).to_have_count(0)
-    # Rename / Delete / Open raw stay in the viewer's ⋮ menu.
-    expect(actions.locator("button")).to_have_count(2)
+    # Rename / Delete / Open raw stay in the viewer's ⋮ menu; Copy link (#1170)
+    # joins Read on the row.
+    expect(actions.locator("button")).to_have_count(3)
+    # One row, one size (#1170): Resume stays the tinted primary, Read and
+    # Copy link are outlined, and every button is the same 44px tall — Resume
+    # used to keep .button-tint's 14px block padding and outgrow Read.
+    expect(resume).to_have_class(re.compile(r"\bbutton-tint\b"))
+    for cls in (".lifeos-convo-read", ".lifeos-convo-copy-link"):
+        expect(actions.locator(cls)).to_have_class(re.compile(r"\bbutton-ghost\b"))
+    for i in range(3):
+        expect(actions.locator("button").nth(i)).to_have_css("height", "44px")
+    # Copy link writes the ?convo= deep link inside the tap (iOS).
+    actions.locator(".lifeos-convo-copy-link").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
+    assert authed_page.evaluate("() => window.__copied[0]") == (
+        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
+    expect(authed_page.locator("#toast")).to_contain_text("link copied")
 
     # Another provider: the open row updates in place — Resume greys out with
     # its reason on screen, and the explicit handoff appears.
@@ -919,6 +976,8 @@ def test_life_os_row_leads_with_resume(
         "Select a Claude model")
     expect(actions.locator(".lifeos-convo-handoff")).to_contain_text(
         "Start new in Codex")
+    for cls in (".lifeos-convo-resume", ".lifeos-convo-handoff"):
+        expect(actions.locator(cls)).to_have_css("height", "44px")
 
     # An unresumable row says why and offers only Read.
     rows.nth(1).locator(".lifeos-convo-head").click()

@@ -7,7 +7,7 @@
 
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
-import { wireTabs } from './tabs.js';
+import { setTab, wireTabs } from './tabs.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
 import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
@@ -16,7 +16,7 @@ import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps-coding.js';
 import { fetchListeners } from './apps-listeners.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
-import { fetchSkills, wireLifeOs } from './life-os.js';
+import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
@@ -226,6 +226,16 @@ async function boot() {
     // construction (each link carries one param).
     const boardSid = consumeUrlParam('board');
     if (boardSid) openBoardCard(boardSid).catch(function () {});
+    // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation
+    // link reopens that capture in the viewer, over the Life OS tab.
+    const convo = consumeUrlParam('convo');
+    const cut = convo ? convo.indexOf('/') : -1;
+    if (!boardSid && cut > 0) {
+      setTab('lifeos');
+      openConvoByLink(convo.slice(0, cut), convo.slice(cut + 1)).catch(function (exc) {
+        console.warn('boot: conversation link failed', exc);
+      });
+    }
   }
   setInterval(function () {
     fetchApps().catch(function () {});

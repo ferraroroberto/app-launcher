@@ -12,8 +12,9 @@ import { escapeHtml } from './dom-utils.js';
 // --------------------------------------------------------------- tokens
 // Read a `?<name>=<value>` deep-link param once, strip it from the visible
 // URL, and return its trimmed value (or null if absent/blank). Used for the
-// bearer ?token=, PC-mirror ?terminal=<sid>, shared ?session=<sid>, and Board
-// ?board=<sid> deep link (issue #301).
+// bearer ?token=, PC-mirror ?terminal=<sid>, shared ?session=<sid>, Board
+// ?board=<sid> deep link (issue #301), and Life OS ?convo=<skill>/<file>
+// (issue #1170).
 export function consumeUrlParam(name) {
   const params = new URLSearchParams(window.location.search);
   const v = (params.get(name) || '').trim();
