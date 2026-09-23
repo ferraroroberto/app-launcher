@@ -12,12 +12,10 @@
  * tint). This file generalizes the reference recipes out of their per-app
  * homes so the drift stops:
  *   - .button-primary        <- _vendored/modal/modal.css .detail-save-btn
- *                                (this repo) — the modal's embedded copy is
- *                                untouched (footer-context width:100% +
- *                                --control-h + tap-target ::before extension
- *                                stay there); this component lifts only the
- *                                tier's visual recipe and uses the spec's
- *                                own 48px height instead of --control-h.
+ *                                (this repo) — the modal's embedded copy keeps
+ *                                its footer-context width:100%; both hold the
+ *                                spec's 48px height, never --control-h
+ *                                (#280).
  *   - .button-tint            <- home-automation styles.css .big-btn
  *                                (~line 2533)
  *   - .button-ghost           <- the fleet-majority .ghost-btn recipe
@@ -55,9 +53,7 @@
 
 .button-primary {
   min-height: 48px;   /* spec value (design.md components.button-primary);
-                          the modal's embedded .detail-save-btn uses
-                          --control-h (36px) instead because it lives in the
-                          36px-control footer context. */
+                          the modal's embedded .detail-save-btn matches it. */
   border: 1px solid var(--accent-border-strong);
   border-radius: var(--radius-md);
   background: var(--accent-fill);

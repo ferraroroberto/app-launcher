@@ -61,7 +61,7 @@ The fleet's canonical **editor modal**: a native `<dialog>` with a `heading-lg` 
 | `--input-bg` | `#f6f8fa` (light) / `#0d1117` (dark) | control fill |
 | `--radius` | `16px` | dialog/card corners |
 | `--radius-md` | `12px` | close button, controls, primary |
-| `--control-h` | `36px` | control + primary height |
+| `--control-h` | `36px` | inline control height (the primary is a fixed 48px `button-primary`, independent of it) |
 | `--space-lg` | `24px` | mobile top anchor gap |
 | `--gap` | `12px` | mobile max-height reserve |
 | `--font-heading-lg` | `1.5rem` | title |

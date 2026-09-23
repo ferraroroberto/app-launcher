@@ -194,3 +194,8 @@ def test_editor_dialogs_wear_the_vendored_modal_shell(
     assert save_box["width"] >= card_box["width"] - 2 * 18 - 2, (
         f"footer primary is not full-width: {save_box['width']} of card {card_box['width']}"
     )
+    # The primary is design.md's button-primary: 48px, not the app's 36px
+    # --control-h inline-control height (#1173, project-scaffolding#280).
+    assert save_box["height"] >= 47.5, (
+        f"footer primary renders {save_box['height']}px, under button-primary's 48px"
+    )
