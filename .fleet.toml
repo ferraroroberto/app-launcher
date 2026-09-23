@@ -450,7 +450,9 @@ pytest_targets = [
 # are reported as unmeasured (fleet-config#962).
 [design.review]
 theme_storage_key = "app-launcher.theme"
-tab_selector = "[role=tablist] [role=tab]"
+# No tab_selector: the walk resolves it *inside* the first [role=tablist], so
+# the default [role=tab] is right and "[role=tablist] [role=tab]" matches
+# nothing (every tab click timed out on the first run with it).
 # Never clicked: every danger item (Kill, Stop, Delete, Remove), every row
 # tap (launches an agent or opens an app), anything that sends, dispatches,
 # runs, starts or resumes, and card taps that open a URL.
