@@ -1041,30 +1041,23 @@ export function wireLifeOs() {
     syncConvoSortBtn();
     els.lifeOsConvosSort.addEventListener('click', toggleConvoSort);
   }
-  // The Skills header 🔎 opens the same view unscoped. It shares the summary
-  // with the model combo and the toggles, so a tap must not also collapse
-  // the panel (same reason as the switches below).
+  // The Skills toolbar's 🔎 opens the same view unscoped.
   if (els.lifeOsConvoSearch) {
-    els.lifeOsConvoSearch.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      ev.preventDefault();
+    els.lifeOsConvoSearch.addEventListener('click', function () {
       openConvos(null);
       if (els.lifeOsConvoQuery) els.lifeOsConvoQuery.focus();
     });
   }
   // Detached/Resume are plain client-side switches (issue #355) — no server
-  // config, just read at launch time above. They live in the Skills card's
-  // <summary> (#496 round 2, mirroring the Coding tab's Projects card), so
-  // stopPropagation keeps a tap from also collapsing the panel.
+  // config, just read at launch time above. They sit in the Skills card's
+  // toolbar (#496 round 2 put them on the launch surface; #1132 moved them
+  // out of its <summary>, mirroring the Coding tab's Projects card).
   [els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
     if (!btn) return;
-    btn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleAriaChecked(btn);
-    });
+    btn.addEventListener('click', function () { toggleAriaChecked(btn); });
   });
-  // The provider-qualified model dropdown (#540/#845) shares that summary;
-  // wireModelCombo owns its open/close + the summary-tap guard.
+  // The provider-qualified model dropdown (#540/#845) shares that toolbar;
+  // wireModelCombo owns its open/close.
   lifeOsModelCombo = wireModelCombo(
     document.getElementById('lifeOsModelCombo'), function (choice) {
       if (lifeOsConvosModelCombo) {

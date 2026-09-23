@@ -68,13 +68,14 @@ def test_options_card_is_last_and_toggles_live_on_projects_card(
         f"options card must be the pane's last card, got {last_id!r}"
     )
 
-    # Detached + Resume moved into the Projects card's summary — the surface
-    # sessions are launched from — and stay functional switches there.
-    projects_summary = authed_page.locator(
-        "details.projects-card summary"
+    # Detached + Resume live on the Projects card — the surface sessions are
+    # launched from — in its toolbar since #1132, not its <summary>.
+    authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+    projects_toolbar = authed_page.locator(
+        "details.projects-card .card-toolbar"
     )
-    expect(projects_summary.locator("#claudeDetached")).to_be_attached()
-    expect(projects_summary.locator("#claudeResume")).to_be_attached()
+    expect(projects_toolbar.locator("#claudeDetached")).to_be_attached()
+    expect(projects_toolbar.locator("#claudeResume")).to_be_attached()
 
     # A toggle tap flips the switch without expanding/collapsing the panel
     # (the stopPropagation guard rode along with the move).

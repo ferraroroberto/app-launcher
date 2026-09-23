@@ -166,7 +166,8 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     assert tiles.count() == 2
     expect(tiles.first).to_contain_text("journal-daily")
     # The shared Claude/Codex model dropdown + Detached toggle live in the
-    # Skills card's summary (#496; provider parity in #845).
+    # Skills card's toolbar (#496; provider parity in #845; out of the
+    # summary since #1132).
     expect(authed_page.locator("#lifeOsModelCombo")).to_be_attached()
     expect(
         authed_page.locator(
@@ -191,11 +192,11 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     # The old standalone options card no longer exists.
     expect(authed_page.locator("#lifeOsOptions")).to_have_count(0)
 
-    # The model dropdown + both toggles render inside the Skills <details>
-    # summary.
-    summary = authed_page.locator("details.lifeos-list-card summary")
+    # The model dropdown + both toggles render in the Skills card's toolbar
+    # (#1132 moved them out of its <summary>).
+    toolbar = authed_page.locator("details.lifeos-list-card .card-toolbar")
     for cid in ("#lifeOsModelCombo", "#lifeOsDetached", "#lifeOsResume"):
-        expect(summary.locator(cid)).to_be_visible()
+        expect(toolbar.locator(cid)).to_be_visible()
 
     # A toggle tap flips the switch but must not collapse the open panel.
     skills_card = authed_page.locator("details.lifeos-list-card")

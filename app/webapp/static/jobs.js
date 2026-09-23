@@ -55,6 +55,19 @@ const runExtras = new Map();
 // (#1133, pre-existing: `hidden` starts set in the markup).
 function syncJobsEmpty() {
   els.jobsEmpty.hidden = !!state.jobsSearchQuery || state.jobs.length !== 0;
+  if (!state.jobsSearchQuery && els.jobsFilterEmpty) els.jobsFilterEmpty.hidden = true;
+}
+
+// The job row's callbacks, shared by the full list and a search's name hits.
+function rowHandlers() {
+  return {
+    editMode: state.editMode,
+    onToggle: toggleExpanded,
+    onRun: runJobNow,
+    onPause: togglePause,
+    onEdit: openJobDialog,
+    onRemove: removeJob,
+  };
 }
 
 export function renderJobs() {
@@ -66,20 +79,24 @@ export function renderJobs() {
   syncSortBtn();
 
   if (searching) {
-    renderSearchMatches(host);
+    // Jobs whose name matches come first, as ordinary rows (#1132: the
+    // search used to match run output only, never the job you were looking
+    // for by name), then the run-output hits.
+    const query = state.jobsSearchQuery.toLowerCase();
+    const named = sortedJobs().filter(function (job) {
+      return String(job.name || '').toLowerCase().indexOf(query) !== -1 ||
+        String(job.id || '').toLowerCase().indexOf(query) !== -1;
+    });
+    named.forEach(function (job) {
+      host.appendChild(renderJobRow(job, rowHandlers()).li);
+    });
+    renderSearchMatches(host, named.length);
     endJobRowRender();
     return;
   }
 
   sortedJobs().forEach(function (job) {
-    host.appendChild(renderJobRow(job, {
-      editMode: state.editMode,
-      onToggle: toggleExpanded,
-      onRun: runJobNow,
-      onPause: togglePause,
-      onEdit: openJobDialog,
-      onRemove: removeJob,
-    }).li);
+    host.appendChild(renderJobRow(job, rowHandlers()).li);
     if (state.expandedJob === job.id) {
       host.appendChild(renderHistoryLi(job));
     }
@@ -88,15 +105,10 @@ export function renderJobs() {
   endJobRowRender();
 }
 
-function renderSearchMatches(host) {
+function renderSearchMatches(host, namedCount) {
   const matches = state.jobsSearchMatches || [];
-  if (!matches.length) {
-    const empty = document.createElement('li');
-    empty.className = 'jobs-search-empty muted small';
-    empty.textContent = 'No matching run output.';
-    host.appendChild(empty);
-    return;
-  }
+  // Nothing by name and nothing in the output: the canonical empty state.
+  if (els.jobsFilterEmpty) els.jobsFilterEmpty.hidden = !!(matches.length || namedCount);
   matches.forEach(function (match) {
     const li = document.createElement('li');
     li.className = 'app-item job-search-hit';
@@ -129,6 +141,7 @@ async function runJobsSearch() {
     return;
   }
   els.jobsList.innerHTML = '<li class="jobs-search-empty muted small">Searching run output…</li>';
+  if (els.jobsFilterEmpty) els.jobsFilterEmpty.hidden = true;
   try {
     const body = await jsonApi('/api/jobs/runs/search?q=' + encodeURIComponent(query));
     if (state.jobsSearchQuery !== query) return;
@@ -923,12 +936,7 @@ export function wireJobs() {
     fetchJobs().catch(function () {});
   });
   if (els.jobsSortBtn) {
-    // The toggle lives in the card's <summary>; stop the click so it
-    // flips the sort without also toggling the <details> open/closed.
-    els.jobsSortBtn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      toggleSort();
-    });
+    els.jobsSortBtn.addEventListener('click', toggleSort);
   }
   if (els.jobsSearchInput) {
     els.jobsSearchInput.addEventListener('input', function () {

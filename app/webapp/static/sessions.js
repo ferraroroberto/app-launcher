@@ -536,17 +536,6 @@ function wireSessionRenameDialog() {
 }
 
 export function wireSessions() {
-  // The ⎇ status button (and the off-main popover) live in the Running-
-  // sessions card's <summary>, so a click there would also toggle the
-  // <details>. Stop the click at the actions container so it only drives
-  // the buttons, never the collapse — same trick the Coding options card
-  // uses for its Detached/Resume toggles.
-  const headerActions = els.gitStatusBtn
-    ? els.gitStatusBtn.closest('.sessions-header-actions')
-    : null;
-  if (headerActions) {
-    headerActions.addEventListener('click', function (ev) { ev.stopPropagation(); });
-  }
   // Manual Start-chief (#547) — same ensure endpoint as the Board's chat
   // mode, so a chief killed while the Coding tab was open (or via a
   // deliberate tray/session-host restart) can be brought back without

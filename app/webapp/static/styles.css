@@ -534,14 +534,20 @@ html, body {
 /* ---------- collapsible cards (vendored disclosure) ---------- */
 /* Structure and closed-box geometry come from _vendored/disclosure — the
    .card--collapsible modifier + .collapse-summary/.collapse-main/
-   .collapse-title/.collapse-chevron/.collapse-body classes. The app adds
-   only the action cluster that rides between title and chevron (git
-   status, favorites filter, sort/add, the option toggles, Edit mode). */
-.summary-actions {
-  display: inline-flex;
+   .collapse-title/.collapse-chevron/.collapse-body classes. A <summary>
+   holds nothing but icon, title and chevron (#1132): a card's own controls
+   (git status, the launch toggles, Edit mode, sort/add) sit in a toolbar
+   row at the top of its body, where a near-miss can't fold the card. */
+.card-toolbar {
+  display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 12px;
 }
+/* The vendored filter field above a long list (#1132): flush with the card
+   body's own padding rather than the component's gutter margin. */
+.action-row-filter.list-filter { margin: 0 0 12px; }
 /* The Coding-options card keeps its .opt-group children as direct body
    content (they bring their own padding + dividers); the [open] summary
    hairline is the only divider under the header. */

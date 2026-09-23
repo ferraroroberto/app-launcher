@@ -15,6 +15,7 @@ import { renderBoard } from './board.js';
 import { renderHomeHead } from './home-head.js';
 import { createRowMenu } from './row-menu.js';
 import { actionRow } from './action-rows.js';
+import { listFilter } from './list-filter.js';
 import { openChanges } from './changes-overlay.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
@@ -53,6 +54,13 @@ function favoriteAgentId() {
 // The ⋯ menu shared by every Coding row; drops below the rail (see
 // `.project-menu` in styles.css) and survives the ~4 s apps re-render.
 const projectMenu = createRowMenu('project-menu');
+// The Projects list's name filter (#1132), re-applied after every render.
+const projectsFilter = listFilter({
+  input: els.claudeFilterInput,
+  list: els.claudeList,
+  empty: els.claudeFilterEmpty,
+  storageKey: 'app-launcher.filter.projects',
+});
 
 function hiddenButtons() {
   const cfg = state.config || {};
@@ -227,6 +235,7 @@ export function renderCodingList(host, items) {
     note.innerHTML = 'No favorites yet — tap a project’s ' + icon('star') + ' to star it.';
     host.appendChild(note);
     projectMenu.close();
+    projectsFilter.apply();
     return;
   }
 
@@ -335,6 +344,7 @@ export function renderCodingList(host, items) {
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
   projectMenu.endRender();
+  projectsFilter.apply();
 }
 
 // Open the project directory in Explorer on the PC (#977). Fire-and-report,
@@ -550,11 +560,9 @@ export function wireCoding() {
     });
   }
   if (els.favFilterBtn) {
-    els.favFilterBtn.addEventListener('click', function (ev) {
-      // The toggle lives inside the Projects <summary>; stopPropagation keeps
-      // the tap from also collapsing the panel (same trick the Settings edit
-      // toggle and the sessions header actions use).
-      ev.stopPropagation();
+    els.favFilterBtn.addEventListener('click', function () {
+      // In the Projects card's toolbar since #1132, not its <summary>, so a
+      // tap can no longer fold the card and needs no stopPropagation.
       state.codingFavFilter = !state.codingFavFilter;
       localStorage.setItem(
         'launcher.codingFavFilter', state.codingFavFilter ? '1' : '0'
