@@ -63,9 +63,9 @@ from src import board
 from src.board_exchange import (
     _find_codex_transcript,
     find_antigravity_transcript,
-    find_claude_transcript,
     find_copilot_transcript,
     find_pi_transcript,
+    resolve_claude_transcript,
 )
 from src.session_transcript import (
     DEFAULT_LIMIT,
@@ -105,8 +105,12 @@ def _resolve_path(
     state_sid: Optional[str],
     flavor: str,
     live: List[Dict[str, Any]],
-) -> Optional[Path]:
-    """The history file for this session, or None when none is known.
+) -> Tuple[Optional[Path], str]:
+    """The history file for this session (None when none is known), and how.
+
+    The second element is ``""`` for every flavour but Claude, whose
+    filesystem fallback says which source answered or which guard refused
+    (#1155), for the ``no_transcript`` log line.
 
     Six shapes, in decreasing directness: the row carries the path
     (Claude, Grok); the row's own *key* is the harness's session id and
@@ -122,30 +126,35 @@ def _resolve_path(
     and the filesystem fallback covers the window where the hook has
     deleted the row out from under a still-live session — ``SessionEnd``
     fires on ``/resume`` and ``/clear``, not just on exit, and only the
-    next prompt writes the row back.
+    next prompt writes the row back. A ``--resume <id>`` launch adds a third,
+    for when the fallback's guards refuse: the id names the file (#1155).
     """
     if flavor == "codex":
-        return _find_codex_transcript(session)
+        return _find_codex_transcript(session), ""
     if flavor == "pi":
-        return find_pi_transcript(str(state_sid or ""))
+        return find_pi_transcript(str(state_sid or "")), ""
     if flavor == "antigravity":
-        return find_antigravity_transcript(session, live)
+        return find_antigravity_transcript(session, live), ""
     if flavor == "copilot":
-        return find_copilot_transcript(session)
+        return find_copilot_transcript(session), ""
     raw = (row or {}).get("transcript_path")
     if raw:
-        return Path(str(raw))
-    return find_claude_transcript(session, live) if flavor == "claude" else None
+        return Path(str(raw)), "row"
+    if flavor != "claude":
+        return None, ""
+    return resolve_claude_transcript(session, live)
 
 
 async def _resolve_source(
     sid: str, cfg: WebappConfig
-) -> Tuple[Optional[str], Optional[str], Optional[Path], str]:
+) -> Tuple[Optional[str], Optional[str], Optional[Path], str, str]:
     """Session lookup + history-path resolution, shared by both routes.
 
-    Returns ``(reason, flavor, path, agent)`` — ``reason`` is set (and
+    Returns ``(reason, flavor, path, agent, why)`` — ``reason`` is set (and
     ``flavor``/``path`` are ``None``) exactly when the caller must respond
-    ``_unavailable(sid, reason)`` instead of reading the source.
+    ``_unavailable(sid, reason)`` instead of reading the source. ``why`` is
+    how the path was resolved or, for ``no_transcript``, which guard
+    refused (``""`` where a flavour has nothing to add).
     """
     live, state = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
@@ -155,12 +164,12 @@ async def _resolve_source(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
     )
     if session is None:
-        return "session_not_found", None, None, ""
+        return "session_not_found", None, None, "", ""
     agent = str(session.get("agent") or "claude").lower()
     # A detached row resolves exactly like a full-control one (#966): neither
     # source reads the launcher's PTY capture.
     if agent not in _FLAVOR_BY_AGENT:
-        return "unsupported_agent", None, None, agent
+        return "unsupported_agent", None, None, agent, ""
 
     flavor = _FLAVOR_BY_AGENT[agent]
     row = board.state_row_for_session(live, state["rows"], sid)
@@ -170,10 +179,12 @@ async def _resolve_source(
     state_sid = (
         board.state_sid_for_session(live, state["rows"], sid) if flavor == "pi" else None
     )
-    path = await asyncio.to_thread(_resolve_path, session, row, state_sid, flavor, live)
+    path, why = await asyncio.to_thread(
+        _resolve_path, session, row, state_sid, flavor, live
+    )
     if path is None or not path.is_file():
-        return "no_transcript", None, None, agent
-    return None, flavor, path, agent
+        return "no_transcript", None, None, agent, why
+    return None, flavor, path, agent, why
 
 
 @router.get("/api/claude-code/sessions/{sid}/transcript")
@@ -208,10 +219,13 @@ async def session_transcript(
         raise HTTPException(
             status_code=400, detail="pass either before or after, not both"
         )
-    reason, flavor, path, agent = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, why = await _resolve_source(sid, cfg)
     if reason is not None:
         if reason != "session_not_found":
-            logger.info("ℹ️ transcript %s (%s) unavailable: %s", sid[:8], agent, reason)
+            logger.info(
+                "ℹ️ transcript %s (%s) unavailable: %s%s",
+                sid[:8], agent, reason, f" (refused: {why})" if why else "",
+            )
         return _unavailable(sid, reason)
     if after is not None:
         return await _tail_response(sid, agent, flavor, path, after, size)
@@ -294,7 +308,7 @@ async def session_transcript_entry(
     either way.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, flavor, path, agent = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, _why = await _resolve_source(sid, cfg)
     if reason is not None:
         return _unavailable(sid, reason)
     try:

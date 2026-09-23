@@ -151,6 +151,23 @@ _CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 _CLAUDE_SLUG_RE = re.compile(r"[^A-Za-z0-9]")
 # Same meaning as `_AGY_MTIME_SLOP_SECONDS`, for the same reason.
 _CLAUDE_MTIME_SLOP_SECONDS = 60
+# A Claude Resume launch that names its conversation (#633's chief Resume,
+# Life OS's conversation resume): `build_resume_flags` splices
+# `--resume <session id>` into the launch flags. Only a UUID counts, so a
+# bare `--resume` (the picker) followed by an ordinary flag never matches.
+_CLAUDE_RESUME_ID_RE = re.compile(
+    r"(?:^|\s)(?:--resume|-r)(?:\s+|=)"
+    r"([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})"
+    r"(?=\s|$)"
+)
+# Why the Claude filesystem fallback answered nothing (#1155), named in the
+# `/transcript` route's `no_transcript` log line so the next report is
+# diagnosable from the log alone.
+_CLAUDE_REFUSED_UNCORRELATED = "no_dir_or_start"
+_CLAUDE_REFUSED_SHARED_FOLDER = "folder_shared"
+_CLAUDE_REFUSED_NO_FILE = "no_conversation_file"
+_CLAUDE_REFUSED_STALE = "not_written_since_start"
+_CLAUDE_REFUSED_TITLE = "title_disproved"
 
 
 def unavailable(reason: str) -> Dict[str, Any]:
@@ -617,6 +634,35 @@ def _scan_claude_transcript(
     live: Iterable[Dict[str, Any]],
     disprove: bool = False,
 ) -> Tuple[Optional[Path], str]:
+    """:func:`_claude_scan` without the refusal reason: the drawer's view."""
+    path, verdict, _refused = _claude_scan(session, live, disprove)
+    return path, verdict
+
+
+def _claude_project_folders(project_dir: str) -> Optional[List[Path]]:
+    """The ``~/.claude/projects`` folders for a cwd, or None if unreadable.
+
+    Built from the *normalized* directory so the session's own spelling —
+    separator flavour, trailing slash, drive-letter case — cannot change the
+    folder it looks for; matched case-insensitively for the legacy
+    lowercased folders.
+    """
+    slug = _CLAUDE_SLUG_RE.sub("-", _normalize_dir(project_dir))
+    try:
+        return [
+            child
+            for child in _CLAUDE_PROJECTS_DIR.iterdir()
+            if child.name.lower() == slug and child.is_dir()
+        ]
+    except OSError:
+        return None
+
+
+def _claude_scan(
+    session: Dict[str, Any],
+    live: Iterable[Dict[str, Any]],
+    disprove: bool = False,
+) -> Tuple[Optional[Path], str, str]:
     """The Claude Code conversation log for a live session, from the
     filesystem alone (#1023) — the fallback for when no state row names one.
 
@@ -672,11 +718,14 @@ def _scan_claude_transcript(
     the path so the caller can report it;
     :func:`find_claude_transcript` is the unchanged two-state view for
     every caller that does not want the third guard.
+
+    The third element names the guard that refused (``""`` on success), so
+    a ``no_transcript`` answer can say why (#1155).
     """
     project_dir = str(session.get("project_dir") or "")
     started = _started_epoch(session)
     if not project_dir or started is None:
-        return None, _TITLE_CHECK_NOT_CHECKED
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_UNCORRELATED
     normalized = _normalize_dir(project_dir)
     sid = str(session.get("session_id") or "")
     for other in live or ():
@@ -686,22 +735,13 @@ def _scan_claude_transcript(
             and other.get("alive")
             and _normalize_dir(other.get("project_dir")) == normalized
         ):
-            return None, _TITLE_CHECK_NOT_CHECKED
+            return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_SHARED_FOLDER
 
-    # Built from the *normalized* directory so the session's own spelling —
-    # separator flavour, trailing slash, drive-letter case — cannot change
-    # the folder it looks for.
-    slug = _CLAUDE_SLUG_RE.sub("-", normalized)
     newest: Optional[Path] = None
     newest_at = 0.0
-    try:
-        folders = [
-            child
-            for child in _CLAUDE_PROJECTS_DIR.iterdir()
-            if child.name.lower() == slug and child.is_dir()
-        ]
-    except OSError:
-        return None, _TITLE_CHECK_NOT_CHECKED
+    folders = _claude_project_folders(project_dir)
+    if folders is None:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
     for folder in folders:
         try:
             candidates = list(folder.glob("*.jsonl"))
@@ -714,28 +754,93 @@ def _scan_claude_transcript(
                 continue
             if newest is None or written > newest_at:
                 newest, newest_at = path, written
-    if newest is None or newest_at < started - _CLAUDE_MTIME_SLOP_SECONDS:
-        return None, _TITLE_CHECK_NOT_CHECKED
+    if newest is None:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
+    if newest_at < started - _CLAUDE_MTIME_SLOP_SECONDS:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_STALE
     if not disprove:
-        return newest, _TITLE_CHECK_NOT_CHECKED
+        return newest, _TITLE_CHECK_NOT_CHECKED, ""
     verdict = _disprove_by_live_title(newest, session)
     if verdict == _TITLE_CHECK_DISPROVED:
-        return None, verdict
-    return newest, verdict
+        return None, verdict, _CLAUDE_REFUSED_TITLE
+    return newest, verdict, ""
+
+
+def claude_resume_id(session: Dict[str, Any]) -> Optional[str]:
+    """The conversation id a Claude session was launched to resume, if any.
+
+    Read from the session's own launch ``flags``: ``--resume <id>`` names
+    the conversation exactly. A bare ``--resume`` (the picker) and a fresh
+    launch answer None: the user picks after spawn, and nothing on the
+    session record says what they picked.
+    """
+    match = _CLAUDE_RESUME_ID_RE.search(str(session.get("flags") or ""))
+    return match.group(1).lower() if match else None
+
+
+def _claude_resumed_transcript(session: Dict[str, Any]) -> Optional[Path]:
+    """``<cwd folder>/<resume id>.jsonl`` for a ``--resume <id>`` launch.
+
+    Probed on Claude Code 2.1.280 (#1155): an interactive
+    ``claude --resume <id>`` appends to that same ``<id>.jsonl`` rather than
+    opening a new file, so the id names this session's conversation from
+    spawn onwards, including before any prompt, when the hook row is gone
+    and the scan's guards can refuse.
+    """
+    resume_id = claude_resume_id(session)
+    project_dir = str(session.get("project_dir") or "")
+    if not resume_id or not project_dir:
+        return None
+    for folder in _claude_project_folders(project_dir) or ():
+        path = folder / f"{resume_id}.jsonl"
+        if path.is_file():
+            return path
+    return None
+
+
+def resolve_claude_transcript(
+    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
+) -> Tuple[Optional[Path], str]:
+    """``/transcript``'s row-less Claude resolution (#1023, #1155).
+
+    The scan (two guards, no title disproof) answers first. When it refuses,
+    a ``--resume <id>`` launch still names its conversation: the resumed
+    session is a new process with a fresh ``started_at``, in a folder that
+    may host other live sessions, so either guard can refuse a file that is
+    exactly this session's. The id is exact, so neither guard applies to it,
+    but one thing can still make it wrong: a ``/resume`` *inside* the
+    session moves it to another conversation while its launch flags keep
+    the old id. The live-title disproof (#1034) covers that: a title that
+    genuinely conflicts with the resumed file's own name refuses it. A fresh
+    launch and a bare ``--resume`` have no id and are unaffected.
+
+    Returns ``(path, why)``: ``why`` is ``"scan"`` or ``"resume_id"`` for an
+    answer, else the refusing guard, for the ``no_transcript`` log line.
+    """
+    path, _verdict, refused = _claude_scan(session, live)
+    if path is not None:
+        return path, "scan"
+    resumed = _claude_resumed_transcript(session)
+    if resumed is None:
+        return None, refused
+    if _disprove_by_live_title(resumed, session) == _TITLE_CHECK_DISPROVED:
+        return None, f"{refused}; resume_id {_CLAUDE_REFUSED_TITLE}"
+    return resumed, "resume_id"
 
 
 def find_claude_transcript(
     session: Dict[str, Any], live: Iterable[Dict[str, Any]]
 ) -> Optional[Path]:
-    """:func:`_scan_claude_transcript` without the opt-in third guard.
+    """:func:`resolve_claude_transcript` without the reason.
 
-    The shape every caller had before #1034, and the one ``/transcript``
-    still uses (#1023): the two original guards only, answering a path or
-    ``None``. Parameterised rather than forked — a second copy of this
-    correlation drifting from the first is exactly what the six-flavour
-    reader in ``session_transcript.py`` has avoided so far.
+    The shape every caller had before #1034: the two original guards only
+    (plus, since #1155, a ``--resume <id>`` launch's own conversation when
+    they refuse), answering a path or ``None``. Parameterised rather than
+    forked — a second copy of this correlation drifting from the first is
+    exactly what the six-flavour reader in ``session_transcript.py`` has
+    avoided so far.
     """
-    return _scan_claude_transcript(session, live)[0]
+    return resolve_claude_transcript(session, live)[0]
 
 
 def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
