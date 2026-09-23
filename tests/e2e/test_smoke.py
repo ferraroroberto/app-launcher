@@ -52,14 +52,16 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
         "() => document.querySelectorAll('#claudeModelMenu > [role=option]').length > 0",
         timeout=5_000,
     )
-    authed_page.wait_for_selector("#claudeEffort > button", timeout=5_000)
-    authed_page.wait_for_selector("#claudePermission > button", timeout=5_000)
+    # Effort is a select-native and Permission a vendored range-tab row
+    # (#1133): six effort levels pass range-tab's five-pill cap.
+    authed_page.wait_for_selector("select#claudeEffort > option", state="attached", timeout=5_000)
+    authed_page.wait_for_selector("#claudePermission > button.range-tab", timeout=5_000)
     model_count = authed_page.locator("#claudeModelMenu > [role='option']").count()
-    effort_count = authed_page.locator("#claudeEffort > button").count()
-    perm_count = authed_page.locator("#claudePermission > button").count()
+    effort_count = authed_page.locator("select#claudeEffort > option").count()
+    perm_count = authed_page.locator("#claudePermission > button.range-tab").count()
     assert model_count >= 1, f"#claudeModel rendered no buttons (got {model_count})"
-    assert effort_count >= 1, f"#claudeEffort rendered no buttons (got {effort_count})"
-    assert perm_count == 2, f"#claudePermission expected 2 buttons (got {perm_count})"
+    assert effort_count >= 1, f"#claudeEffort rendered no options (got {effort_count})"
+    assert perm_count == 2, f"#claudePermission expected 2 range-tab pills (got {perm_count})"
 
 
 def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:

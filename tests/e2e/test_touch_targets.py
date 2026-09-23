@@ -13,11 +13,11 @@ and pairwise non-overlap. Two controls may each reach 44px invisibly, but if
 their expanded rectangles intersect, a tap in the shared zone is ambiguous —
 so both halves are asserted.
 
-**`.segmented` is excluded**, by the issue's own scope: that control is
-replaced by the vendored `range-tab`, which waits on
-ferraroroberto/project-scaffolding#267. Its buttons are the only controls
-still under the floor, and this exclusion is what keeps that visible rather
-than quietly widening the net.
+The sweep has no exclusions for sub-floor controls. The old `.segmented`
+control (29px buttons) was left out of the first version on purpose, to keep
+that gap visible. It is now the vendored `range-tab` (#1133), whose `::before`
+expands every pill to 44px vertically without overlapping its neighbours, so
+the sweep covers it like everything else.
 """
 from __future__ import annotations
 
@@ -29,9 +29,9 @@ from tests.e2e.test_row_name_typography import _mock
 
 pytestmark = pytest.mark.smoke
 
-# Everything a thumb can hit, minus the out-of-scope segmented control.
+# Everything a thumb can hit.
 _CONTROLS = (
-    "button:not(.segmented button), select, input[type='number'], "
+    "button, select, input[type='number'], "
     "input[type='text'], [role='switch'], [role='tab'], summary"
 )
 
@@ -42,7 +42,6 @@ _SWEEP = """
 (sel) => {
   const out = [];
   document.querySelectorAll(sel).forEach((el) => {
-    if (el.closest('.segmented')) return;
     // The floating nav is excluded: it is the vendored nav component's own
     // contract (53x53 at rest, measured), and it animates on boot and hides
     // under an overlay -- so a sweep that opens every <details> catches it

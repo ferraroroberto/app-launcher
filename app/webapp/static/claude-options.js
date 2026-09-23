@@ -2,7 +2,7 @@
  * Claude Code subsection (model + effort + verbose/debug + flags preview),
  * an Antigravity subsection (skip-permissions + sandbox toggles), a
  * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
- * Pi subsection (model picker + segmented effort / project-trust controls — Opus and
+ * Pi subsection (model picker + effort select + project-trust range-tab — Opus and
  * Sonnet run on the claude-agent-sdk subscription path, GPT on the openai-codex
  * ChatGPT-plan path, so the provider/model are always passed explicitly).
  *
@@ -122,15 +122,16 @@ export function renderClaudeOptions() {
 }
 
 // One host, one array of items, the currently-active value, a label
-// renderer, and a select callback — every model/effort/permission/trust
-// segmented control below (effort, permission, and trust) is this same shape
-// (issue #520). `valueFn` defaults to identity for plain-string items.
-function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, valueFn) {
+// renderer, and a select callback — every permission/trust range-tab below
+// is this same shape (issue #520), on the vendored range-tab pills (#1133).
+// `valueFn` defaults to identity for plain-string items.
+function renderRangeTabs(host, items, currentValue, labelFn, onSelect, valueFn) {
   host.innerHTML = '';
   (items || []).forEach(function (item) {
     const value = valueFn ? valueFn(item) : item;
     const b = document.createElement('button');
     b.type = 'button';
+    b.className = 'range-tab';
     b.textContent = labelFn(item);
     b.dataset.value = value;
     if (value === currentValue) b.classList.add('active');
@@ -139,6 +140,22 @@ function renderSegmentedControl(host, items, currentValue, labelFn, onSelect, va
     });
     host.appendChild(b);
   });
+}
+
+// Effort / reasoning is a select-native, not pills (#1133): the lists run
+// three to seven options and "Extra high" won't fit a pill, past range-tab's
+// five-pill, one-line contract. onchange is assigned, not added, because
+// every config readback re-renders the options into the same element.
+function renderEffortSelect(select, items, currentValue, labelFn, onSelect) {
+  select.innerHTML = '';
+  (items || []).forEach(function (item) {
+    const opt = document.createElement('option');
+    opt.value = item;
+    opt.textContent = labelFn(item);
+    select.appendChild(opt);
+  });
+  select.value = currentValue;
+  select.onchange = function () { onSelect(select.value); };
 }
 
 function renderClaudeSubsection() {
@@ -162,14 +179,14 @@ function renderClaudeSubsection() {
   if (codingModelCombo && state.config.coding_model_choice) {
     codingModelCombo.setValue(state.config.coding_model_choice);
   }
-  renderSegmentedControl(
+  renderEffortSelect(
     els.claudeEffort,
     c.efforts_available,
     c.effort,
     function (e) { return e === 'off' ? 'Default' : effortLabel(e); },
     function (e) { patchConfig({ claude_effort: e }); }
   );
-  renderSegmentedControl(
+  renderRangeTabs(
     els.claudePermission,
     c.permission_modes_available,
     c.permission_mode,
@@ -188,7 +205,7 @@ function renderCodexSubsection() {
     codexModelCombo.setOptions(modelOptions(c.models_available));
     codexModelCombo.setValue(c.model);
   }
-  renderSegmentedControl(
+  renderEffortSelect(
     els.codexEffort,
     c.efforts_available,
     c.effort,
@@ -196,8 +213,8 @@ function renderCodexSubsection() {
     function (e) { patchConfig({ codex_effort: e }); }
   );
   // Permission mode — auto (no prompts, still sandboxed) vs skip (the
-  // all-bypass switch). Same two-state segmented control as Claude.
-  renderSegmentedControl(
+  // all-bypass switch). Same two-state range-tab as Claude.
+  renderRangeTabs(
     els.codexPermission,
     c.permission_modes_available,
     c.permission_mode,
@@ -239,8 +256,8 @@ function renderPiSubsection() {
     piModelCombo.setOptions(modelOptions(p.models_available));
     piModelCombo.setValue(p.model);
   }
-  // Effort — segmented control mapped to `--thinking`, mirroring Claude.
-  renderSegmentedControl(
+  // Effort — mapped to `--thinking`, mirroring Claude.
+  renderEffortSelect(
     els.piEffort,
     p.efforts_available,
     p.effort,
@@ -250,7 +267,7 @@ function renderPiSubsection() {
   // Project trust — `--approve` (Trust) vs `--no-approve` (Ask). NOT a
   // tool-permission gate (pi has no sandbox); it governs whether pi loads
   // project-local `.pi/` resources.
-  renderSegmentedControl(
+  renderRangeTabs(
     els.piTrust,
     p.trust_modes_available,
     p.trust_mode,
@@ -267,7 +284,7 @@ function renderGrokSubsection() {
   // Reasoning tier — mirrors Codex's Effort control. Grok has one model
   // (`grok models` lists only grok-4.5), so this is the only quality knob
   // and there is deliberately no model picker to render.
-  renderSegmentedControl(
+  renderEffortSelect(
     els.grokEffort,
     g.efforts_available,
     g.effort,
@@ -277,7 +294,7 @@ function renderGrokSubsection() {
   // Permission mode — auto (no prompts, guard rails intact) vs skip
   // (bypassPermissions). Same two-state shape as Claude and Codex, rather
   // than grok's own six-value flag space.
-  renderSegmentedControl(
+  renderRangeTabs(
     els.grokPermission,
     g.permission_modes_available,
     g.permission_mode,
@@ -354,7 +371,7 @@ export function wireClaudeOptions() {
   wireBoolSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');
   wireBoolSwitch(els.antigravitySandbox, 'antigravity_sandbox');
   wireBoolSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
-  // Pi's effort and trust segmented buttons wire their own click handlers in
+  // Pi's effort select and trust range-tab wire their own handlers in
   // renderPiSubsection(), so there are no static listeners for those controls.
   // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
   // (no server config — read at session-launch time in apps.js). They live

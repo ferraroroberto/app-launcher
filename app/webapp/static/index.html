@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="/static/_vendored/button/button.css">
   <link rel="stylesheet" href="/static/_vendored/switch/switch.css">
   <link rel="stylesheet" href="/static/_vendored/select-native/select-native.css">
+  <link rel="stylesheet" href="/static/_vendored/range-tab/range-tab.css">
   <link rel="stylesheet" href="/static/_vendored/empty-state/empty-state.css">
   <link rel="stylesheet" href="/static/styles.css">
   <title>Launcher</title>
@@ -774,11 +775,11 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
-            <div id="claudeEffort" class="segmented" role="radiogroup" aria-label="Effort"></div>
+            <select id="claudeEffort" class="select-native" aria-label="Effort"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="claudePermission" class="segmented" role="radiogroup" aria-label="Permission mode"></div>
+            <div id="claudePermission" class="range-tabs" role="radiogroup" aria-label="Permission mode"></div>
           </div>
           <div class="toggles">
             <span class="switch-row"><span>Verbose</span><button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
@@ -800,11 +801,11 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Reasoning</span>
-            <div id="codexEffort" class="segmented" role="radiogroup" aria-label="Codex reasoning"></div>
+            <select id="codexEffort" class="select-native" aria-label="Codex reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="codexPermission" class="segmented" role="radiogroup" aria-label="Codex permission mode"></div>
+            <div id="codexPermission" class="range-tabs" role="radiogroup" aria-label="Codex permission mode"></div>
           </div>
           <p class="opt-hint">Runs on your ChatGPT-plan login (<code>codex login</code>). Model and compatible reasoning effort are passed explicitly; each model remembers its last effort. Luna defaults to Extra High.</p>
           <div id="codexFlagsPreview" class="flags-preview">codex</div>
@@ -842,11 +843,11 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
-            <div id="piEffort" class="segmented" role="radiogroup" aria-label="Pi reasoning"></div>
+            <select id="piEffort" class="select-native" aria-label="Pi reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Project trust</span>
-            <div id="piTrust" class="segmented" role="radiogroup" aria-label="Pi project trust"></div>
+            <div id="piTrust" class="range-tabs" role="radiogroup" aria-label="Pi project trust"></div>
           </div>
           <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong>/<strong>Fable</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>Luna</strong>/<strong>Terra</strong>/<strong>Sol</strong> run on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Unavailable rollout models stay disabled. Effort maps to <code>--thinking</code>.</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
@@ -856,11 +857,11 @@
           <h3 class="opt-group-title">Grok Build</h3>
           <div class="opt-row">
             <span class="opt-name">Reasoning</span>
-            <div id="grokEffort" class="segmented" role="radiogroup" aria-label="Grok reasoning"></div>
+            <select id="grokEffort" class="select-native" aria-label="Grok reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="grokPermission" class="segmented" role="radiogroup" aria-label="Grok permission mode"></div>
+            <div id="grokPermission" class="range-tabs" role="radiogroup" aria-label="Grok permission mode"></div>
           </div>
           <p class="opt-hint">Runs on your <code>grok.com</code> login (<code>grok login</code>) — model stays the account default (<code>grok-4.5</code>, the only one <code>grok models</code> lists); the tiers map to <code>--reasoning-effort</code>.</p>
           <div id="grokFlagsPreview" class="flags-preview">grok</div>
@@ -1286,7 +1287,7 @@
         </summary>
         <div class="collapse-body">
           <p class="muted small">Machine-wide token-reduction hook (fleet-config#392) — the mode you pick here takes effect immediately for every coding-agent session on this PC, no restart needed.</p>
-          <div id="contextFilterMode" class="segmented" role="group" aria-label="Context filter mode"></div>
+          <div id="contextFilterMode" class="range-tabs" role="group" aria-label="Context filter mode"></div>
 
           <h4 class="context-filter-subhead">Harness support</h4>
           <ul id="contextFilterHarnesses" class="card-list context-filter-harness-list" aria-label="Coding agents the filter reaches"></ul>
@@ -1748,7 +1749,7 @@
              session can't offer (a detached session has no terminal; an
              agent without a transcript reader has no chat) is aria-disabled
              and a tap on it toasts the reason — session-overlay.js. -->
-        <div id="sessionMode" class="segmented session-mode" role="group" aria-label="View mode">
+        <div id="sessionMode" class="session-mode" role="group" aria-label="View mode">
           <button id="sessionModeTerminal" type="button" class="session-mode-btn" data-mode="terminal" title="Terminal" aria-label="Terminal" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg></button>
           <button id="sessionModeChat" type="button" class="session-mode-btn" data-mode="chat" title="Chat" aria-label="Chat" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg></button>
         </div>

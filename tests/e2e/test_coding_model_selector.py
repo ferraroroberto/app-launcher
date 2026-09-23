@@ -219,9 +219,7 @@ def test_coding_model_combo_syncs_with_settings_control(
     expect(authed_page.locator("#codexModel")).to_have_attribute(
         "data-value", "gpt-5.6-sol"
     )
-    expect(authed_page.locator("#codexEffort [data-value='high']")).to_have_class(
-        re.compile(r"\bactive\b"), timeout=5_000
-    )
+    expect(authed_page.locator("#codexEffort")).to_have_value("high", timeout=5_000)
 
     authed_page.locator("#piModel .model-combo-trigger").click()
     pi_menu = authed_page.locator("#piModelMenu")
