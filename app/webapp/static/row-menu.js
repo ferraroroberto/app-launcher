@@ -63,11 +63,16 @@ function paintButton(btn, item) {
 // menu serves whichever conversation is open). `dataset` sets data-*
 // attributes — the Coding menu's launch rows carry `data-agent` (#1070),
 // the same hook the row button they replaced had, so a caller (or a test)
-// can name one agent's row without matching on its label text.
+// can name one agent's row without matching on its label text. `danger`
+// marks a destructive item (#1129: Stop, Kill, Remove, Delete): it renders
+// last, after a divider, in the danger text colour — the one place a row's
+// destructive action lives (the action-row contract, fleet-config#965). Any
+// confirm stays the caller's, in onTap.
 function menuButton(item, close) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'icon-btn row-menu-btn ' + (item.className || '');
+  btn.className = 'icon-btn row-menu-btn ' + (item.danger ? 'row-menu-danger ' : '') +
+    (item.className || '');
   if (item.dataset) {
     Object.keys(item.dataset).forEach(function (k) {
       btn.dataset[k] = item.dataset[k];
@@ -229,15 +234,27 @@ export function createRowMenu(menuClass, opts) {
       const rows = items.map(function (item) {
         return { item: item, btn: menuButton(item, close) };
       });
+      // Destructive rows go last whatever the caller's order, behind one
+      // divider that only shows when something safe sits above them.
+      const divider = document.createElement('div');
+      divider.className = 'row-menu-divider';
+      divider.setAttribute('role', 'separator');
       const render = function () {
+        const shown = [];
         rows.forEach(function (row) {
           if (resolve(row.item.hidden)) {
             if (row.btn.parentNode) row.btn.parentNode.removeChild(row.btn);
             return;
           }
           paintButton(row.btn, row.item);
-          menu.appendChild(row.btn);
+          shown.push(row);
         });
+        const safe = shown.filter(function (row) { return !row.item.danger; });
+        const danger = shown.filter(function (row) { return row.item.danger; });
+        safe.forEach(function (row) { menu.appendChild(row.btn); });
+        if (safe.length && danger.length) menu.appendChild(divider);
+        else if (divider.parentNode) divider.parentNode.removeChild(divider);
+        danger.forEach(function (row) { menu.appendChild(row.btn); });
       };
       render();
       renderers.set(menu, render);

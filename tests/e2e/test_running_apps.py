@@ -84,18 +84,19 @@ def test_section_renders_rows(authed_page: Page, base_url: str) -> None:
     _navigate(authed_page, base_url)
     authed_page.locator("#tabApps").click()
 
-    rows = authed_page.locator("#runningAppsList li.app-item")
+    rows = authed_page.locator("#runningAppsList li.action-row")
     expect(rows).to_have_count(2, timeout=5_000)
 
     # Row 0 has a URL — Open enabled; row 1 has none — Open disabled.
     row0, row1 = rows.nth(0), rows.nth(1)
-    expect(row0.locator(".name")).to_have_text("Voice Transcriber")
-    expect(row0.locator(".kind-pill")).to_have_text("webapp")
-    expect(row0.locator(".meta")).to_contain_text(":8501")
+    # The row itself is Open (#1129, an action-row): enabled with a URL.
+    expect(row0.locator(".action-row-title")).to_have_text("Voice Transcriber")
+    expect(row0.locator(".action-row-meta")).to_contain_text("Webapp")
+    expect(row0.locator(".action-row-meta")).to_contain_text(":8501")
     expect(row0.locator(".action-open")).to_be_enabled()
 
-    expect(row1.locator(".name")).to_have_text("Photo OCR")
-    expect(row1.locator(".meta")).to_contain_text("binding")
+    expect(row1.locator(".action-row-title")).to_have_text("Photo OCR")
+    expect(row1.locator(".action-row-meta")).to_contain_text("binding")
     expect(row1.locator(".action-open")).to_be_disabled()
 
 
@@ -121,7 +122,7 @@ def test_open_button_opens_new_tab(authed_page: Page, base_url: str) -> None:
     _navigate(authed_page, base_url)
     authed_page.locator("#tabApps").click()
 
-    open_btn = authed_page.locator("#runningAppsList li.app-item .action-open")
+    open_btn = authed_page.locator("#runningAppsList li.action-row .action-open")
     expect(open_btn).to_be_enabled(timeout=5_000)
     open_btn.click()
 
@@ -159,8 +160,10 @@ def test_stop_confirms_and_posts(authed_page: Page, base_url: str) -> None:
     _navigate(authed_page, base_url)
     authed_page.locator("#tabApps").click()
 
-    rows = authed_page.locator("#runningAppsList li.app-item")
+    rows = authed_page.locator("#runningAppsList li.action-row")
     expect(rows).to_have_count(1, timeout=5_000)
+    # Stop is the ⋮ menu's last, danger item now (#1129), still confirmed.
+    rows.first.locator(".action-row-kebab").click()
     rows.first.locator(".action-stop-close").click()
 
     expect(rows).to_have_count(0, timeout=5_000)

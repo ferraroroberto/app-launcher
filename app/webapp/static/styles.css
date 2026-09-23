@@ -1586,54 +1586,31 @@ summary + .opt-group { border-top: 0; }
 }
 .page-foot p { margin: 2px 0; }
 
-.listeners {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  margin: 10px 0;
-}
-/* Flat separator rows (issue #365) — same treatment as .app-item. */
-.listener-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: var(--row-md);
-  border-bottom: 1px solid var(--line);
-  padding: 6px 12px;
-  font-size: var(--font-body-sm);
-}
-.listener-row:last-child { border-bottom: none; }
-.listener-row > div { min-width: 0; }
-/* A helper service nested under its parent app's row (#224). */
+/* Port listeners (#1129) are action-rows: a parent app's row folds its
+   helper services behind a tap (#480), and a helper nests under it (#224).
+   The port is the scannable datum, so it leads the context line as a
+   monospace chip. */
 .listener-row.child {
   margin-left: 18px;
   border-left: 2px solid var(--accent);
 }
-.listener-row strong { word-break: break-word; }
-.listener-row .meta { color: var(--muted); font-size: var(--font-body-sm); }
-/* Parent row whose dependent children are collapsed behind a tap (#480). */
-.listener-row.expandable { cursor: pointer; }
 .listener-chevron {
-  flex-shrink: 0;
-  margin-left: auto;
+  flex: none;
   color: var(--muted);
   font-size: 20px;
   line-height: 1;
+  padding: 0 6px;
   transition: transform 0.15s ease;
 }
 .listener-row[aria-expanded="true"] .listener-chevron { transform: rotate(90deg); }
-/* The per-port Kill button rides the vendored destructive tier
-   (.button-tint.danger, _vendored/button/button.css) rather than a bespoke
-   red-outline recipe in an off-scale caption font (#782). Only the compact
-   row geometry is local: this app's own .button-tint override stretches to
-   width:100% for its full-width modal/panel instances, which a row-level
-   action must not do. --row-sm keeps the 44px tap floor. */
-.listener-kill {
-  flex-shrink: 0;
-  width: auto;
-  padding: 0 14px;
-  min-height: var(--row-sm);
+.listener-port {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: var(--font-caption);
+  color: var(--fg);
+  background: var(--neutral-soft);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+  margin-right: 6px;
 }
 .launcher-note {
   margin: 10px 2px 0;
@@ -1996,8 +1973,8 @@ textarea.input-native { height: auto; }
   justify-content: center;
 }
 /* Jobs (#1130): one visible action at the tint tier plus the ⋯ menu, side
-   by side. Row-sized like .listener-kill and the Life OS conversation
-   actions -- this app's .button-tint stretches to width:100% for its
+   by side. Row-sized like the Life OS conversation actions -- this app's
+   .button-tint stretches to width:100% for its
    full-width instances, which a row-level action must not do. */
 .app-item .row-actions.job-row-actions {
   flex-direction: row;
@@ -2104,6 +2081,20 @@ textarea.input-native { height: auto; }
 .terminal-bar .row-menu .icon-btn.row-menu-btn:disabled {
   color: var(--muted);
   cursor: default;
+}
+/* A destructive item (#1129, row-menu.js `danger`): last, after a divider,
+   in the danger text colour — never a filled or tinted red button on the
+   row itself (the action-row contract). */
+.app-item .row-actions .row-menu .icon-btn.row-menu-btn.row-menu-danger,
+.action-row .row-menu .icon-btn.row-menu-btn.row-menu-danger,
+.composer .row-menu .icon-btn.row-menu-btn.row-menu-danger,
+.terminal-bar .row-menu .icon-btn.row-menu-btn.row-menu-danger {
+  color: var(--danger-text);
+}
+.row-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
 }
 .row-menu .row-menu-label { line-height: 1.2; }
 /* A brand mark as a menu glyph sits at the Lucide inline step. This rule
@@ -3461,7 +3452,7 @@ body.terminal-open {
   gap: 6px;
 }
 /* `font: inherit` for the same WebKit serif reason as .lifeos-convo-read. */
-/* Row-sized tint, the same override .listener-kill uses: this app's own
+/* Row-sized tint: this app's own
    .button-tint rule stretches to width:100% for its full-width modal and
    panel instances, which a row-level action must not do (#1125). */
 .lifeos-convo-resume,

@@ -18,6 +18,7 @@ iPhone projection confirms the phone surface too.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -106,12 +107,12 @@ def test_parent_collapsed_by_default_and_toggles(listeners_page: Page) -> None:
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
 
     # Tap reveals the two helper children…
-    parent.click()
+    parent.locator(".action-row-main").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(2)
     expect(_parent_row(page)).to_have_attribute("aria-expanded", "true")
 
     # …and a second tap collapses them again.
-    _parent_row(page).click()
+    _parent_row(page).locator(".action-row-main").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     expect(_parent_row(page)).to_have_attribute("aria-expanded", "false")
 
@@ -143,14 +144,39 @@ def test_kill_works_collapsed_parent_and_expanded_child(
     page.route("**/api/ports/*/kill", _capture_kill)
     page.on("dialog", lambda d: d.accept())
 
-    # Kill on the collapsed parent fires the API and must NOT expand the row
-    # (stopPropagation) — the children stay hidden.
-    _parent_row(page).locator("button").click()
+    # Stop process sits in the ⋮ menu (#1129): the kebab is the row's sibling
+    # control, so using it on the collapsed parent fires the API and must NOT
+    # expand the row — the children stay hidden.
+    parent = _parent_row(page)
+    parent.locator(".action-row-kebab").click()
+    parent.locator(".listener-kill").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     assert killed_ports == ["8000"], f"parent kill hit {killed_ports!r}"
 
     # Expand, then kill one child individually.
-    _parent_row(page).click()
+    _parent_row(page).locator(".action-row-main").click()
     child = page.locator("#listenersList .listener-row.child").first
-    child.locator("button").click()
+    child.locator(".action-row-kebab").click()
+    child.locator(".listener-kill").click()
     assert killed_ports == ["8000", "8081"], f"child kill hit {killed_ports!r}"
+
+
+def test_no_visible_kill_and_the_menu_puts_danger_last(listeners_page: Page) -> None:
+    """#1129: nine stacked red Kill buttons were the loudest thing in the app.
+    A destructive action is the least prominent control on a row: the row
+    menu's last item, after a divider, in the danger text colour, and still
+    confirmed (the other kill test accepts that dialog)."""
+    page = listeners_page
+    expect(page.locator("#listenersList .button-tint.danger")).to_have_count(0)
+
+    row = page.locator("#listenersList .listener-row").first
+    row.locator(".action-row-kebab").click()
+    menu = row.locator(".row-menu")
+    expect(menu).to_be_visible()
+    last = menu.locator(":scope > *").last
+    expect(last).to_have_class(re.compile(r"\brow-menu-danger\b"))
+    expect(last).to_have_class(re.compile(r"\blistener-kill\b"))
+    expect(menu.locator(":scope > .row-menu-divider")).to_have_count(1)
+    assert menu.evaluate(
+        "m => m.lastElementChild.previousElementSibling.classList.contains('row-menu-divider')"
+    ), "the destructive item is not separated from the rest by the divider"

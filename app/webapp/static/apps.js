@@ -15,7 +15,6 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
-import { icon } from './_vendored/icons/icons.js';
 import { switchEl } from './_vendored/switch/switch.js';
 import {
   renderAgentVisibility, renderCodingList, renderFavoriteAgent, wireCoding,
@@ -140,7 +139,7 @@ function renderList(host, items) {
         onTap: function () { openRename(a); },
       },
       {
-        className: 'app-remove-btn', glyph: 'trash-2',
+        className: 'app-remove-btn', glyph: 'trash-2', danger: true,
         label: 'Remove ' + a.name, text: 'Remove',
         hidden: !state.editMode,
         onTap: function () { removeApp(a); },
@@ -298,8 +297,11 @@ export async function fetchAgents() {
 }
 
 // -------------------------------------------------- running apps panel
-// Apps spawned from the launcher (bats). Mirrors the Claude Code tab's
-// Running sessions panel: list, tap-to-open over Tailscale, per-app stop.
+// Apps spawned from the launcher (bats), as action-rows (#1129): tapping the
+// row opens the app over Tailscale; Copy URL and the destructive Stop (last,
+// confirmed) are in its ⋮ menu rather than a visible button.
+const runningMenu = createRowMenu('project-menu');
+
 export function renderRunningApps() {
   const host = els.runningAppsList;
   host.innerHTML = '';
@@ -307,79 +309,44 @@ export function renderRunningApps() {
   renderHomeHead();
 
   state.runningApps.forEach(function (r) {
-    const li = document.createElement('li');
-    li.className = 'app-item session-item';
-    li.dataset.pid = r.pid;
-
-    const main = document.createElement('div');
-    main.className = 'app-main';
-
-    // Inert info block — the row itself isn't tappable; actions are
-    // the two buttons. Reuses .launch-btn styling minus the click.
-    const info = document.createElement('div');
-    info.className = 'launch-btn session-open inert';
-
-    const head = document.createElement('div');
-    head.className = 'session-head';
-    const dot = document.createElement('span');
-    dot.className = 'health-dot ' + ((r.alive && r.port) ? 'up' : 'down');
-    head.appendChild(dot);
-    const pill = document.createElement('span');
-    pill.className = 'kind-pill';
-    pill.textContent = r.kind;
-    head.appendChild(pill);
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = r.name;
-    name.title = r.name;
-    head.appendChild(name);
-    info.appendChild(head);
-
-    const meta = document.createElement('span');
-    meta.className = 'meta';
     const ago = fmtAgo(r.started_at);
-    const parts = [];
+    const parts = [nameLabel(r.kind)];
     if (ago) parts.push('up ' + ago);
     parts.push(r.port ? ':' + r.port : 'binding…');
     parts.push('pid ' + r.pid);
-    meta.textContent = parts.join(' · ');
-    info.appendChild(meta);
-    main.appendChild(info);
-    li.appendChild(main);
-
-    const actions = document.createElement('div');
-    actions.className = 'row-actions session-actions';
-
-    const openBtn = document.createElement('button');
-    openBtn.type = 'button';
-    openBtn.className = 'icon-btn action-open';
-    openBtn.innerHTML = icon('globe');
-    openBtn.setAttribute('aria-label', 'Open app');
-    if (r.url) {
-      openBtn.title = 'Open ' + r.url;
-      openBtn.addEventListener('click', function () {
-        window.open(r.url, '_blank', 'noopener,noreferrer');
-      });
-    } else {
-      openBtn.disabled = true;
-      openBtn.title = r.port
-        ? 'Set tailnet_host in config/config.json to enable Open'
-        : 'Waiting for the app to bind a port…';
-    }
-    actions.appendChild(openBtn);
-
-    const stopBtn = document.createElement('button');
-    stopBtn.type = 'button';
-    stopBtn.className = 'icon-btn action-stop-close';
-    stopBtn.innerHTML = icon('square');
-    stopBtn.title = 'Stop ' + r.name;
-    stopBtn.setAttribute('aria-label', 'Stop app');
-    stopBtn.addEventListener('click', function () { stopAppInstance(r); });
-    actions.appendChild(stopBtn);
-
-    li.appendChild(actions);
-    host.appendChild(li);
+    const noUrl = r.port
+      ? 'Set tailnet_host in config/config.json to enable Open'
+      : 'Waiting for the app to bind a port…';
+    const row = actionRow({
+      className: 'running-app',
+      title: r.name,
+      meta: parts.join(' · '),
+      label: r.url ? 'Open ' + r.url : 'Open ' + r.name,
+      disabled: !r.url,
+      hint: noUrl,
+      onMain: function () { window.open(r.url, '_blank', 'noopener,noreferrer'); },
+      kebabClass: 'running-app-menu-anchor',
+      kebabLabel: r.name + ' actions',
+    });
+    row.li.dataset.pid = r.pid;
+    row.main.classList.add('action-open');
+    row.li.appendChild(runningMenu.attach(r.app_id + ':' + r.pid, row.kebab, [
+      {
+        className: 'running-app-copy-btn', glyph: 'copy',
+        label: 'Copy ' + r.name + ' URL', text: 'Copy URL',
+        disabled: !r.url,
+        title: noUrl,
+        onTap: function () { copyUrl(r.url); },
+      },
+      {
+        className: 'action-stop-close', glyph: 'square', danger: true,
+        label: 'Stop ' + r.name, text: 'Stop',
+        onTap: function () { stopAppInstance(r); },
+      },
+    ]));
+    host.appendChild(row.li);
   });
+  runningMenu.endRender();
 }
 
 async function stopAppInstance(r) {
