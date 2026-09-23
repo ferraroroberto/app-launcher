@@ -3599,8 +3599,11 @@ body.terminal-open {
   align-items: center;
   /* 8px, not 6: the row's compact controls reach the 44px floor through an
      invisible ±4 expansion (#1124), which needs the clearance — at 6px two
-     neighbours would share 2px of tappable width. */
+     neighbours would share 2px of tappable width. A wrapped row's lines meet
+     across the row gap instead, where a trigger's -5 and a compose button's
+     -4 need 9: --gap, as the bar's own stack uses (#1182, #1174). */
   gap: 8px;
+  row-gap: var(--gap);
   flex-wrap: wrap;
 }
 /* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable

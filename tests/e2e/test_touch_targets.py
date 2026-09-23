@@ -139,6 +139,18 @@ def test_expanded_targets_in_a_cluster_do_not_overlap(
         pytest.skip(f"{cluster} renders fewer than two controls here")
     assert_no_overlap(buttons)
 
+    if cluster == "#boardDispatch":
+        # Wrapped, the control row's lines meet across its row gap, which
+        # the -5/-4 expansions outgrew at 8px (#1182). At 390px the row
+        # wraps only when a late label lands wide; Large text on a 320px
+        # phone wraps it every time.
+        page.evaluate("localStorage.setItem('app-launcher.textsize', 'large')")
+        page.set_viewport_size({"width": 320, "height": 844})
+        page.reload(wait_until="domcontentloaded")
+        page.locator("#tabBoard").click()
+        page.wait_for_timeout(400)
+        assert_no_overlap(page.locator(f"{cluster} button:visible"))
+
 
 def test_the_helper_is_wired_to_a_real_locator(
     authed_page: Page, base_url: str
