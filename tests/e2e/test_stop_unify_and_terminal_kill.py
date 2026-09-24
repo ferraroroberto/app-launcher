@@ -90,12 +90,13 @@ def test_terminal_view_has_back_arrow_and_session_menu(
     expect(authed_page.locator("#terminalKill")).to_have_count(0)
     expect(authed_page.locator("#terminalJumpEnd")).to_have_count(0)
 
-    # ⋮ opens Rename · Copy link · Stop and kill, in that order.
+    # ⋮ opens Rename · Copy link · Compact (#1218, a Claude session) · Stop
+    # and kill, in that order.
     authed_page.locator("#terminalMenu").click()
     menu = authed_page.locator("#terminalOverlay .terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Stop and kill"]
+        ["Rename", "Copy link", "Compact", "Stop and kill"]
     )
     # The overlay's own copy of the unified stop (#253) — the same path the
     # row menu's Stop calls, reached from inside the session view.
