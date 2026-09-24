@@ -239,7 +239,7 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
         "() => { const s = document.createElement('span');"
         " s.style.color = 'var(--accent-text)'; document.body.appendChild(s);"
         " const c = getComputedStyle(s).color; s.remove(); return c; }")
-    expect(chief_li.locator(".board-card-top").first).to_have_css("color", accent_text)
+    expect(chief_li.locator(".board-card-meta").first).to_have_css("color", accent_text)
 
     chief_li.locator("button.board-card").click()
     drawer = authed_page.locator(".board-drawer")

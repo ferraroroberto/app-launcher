@@ -1183,13 +1183,32 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
+      <!-- Heading first (#1198): like every other tab, the first thing under
+           the page header is a section card. Its controls stay in the body,
+           never in the <summary> (#1132). -->
+      <details id="boardDispatchCard" class="card card--collapsible board-dispatch-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+            <h3 class="collapse-title">Dispatch</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
       <div id="boardDispatch" class="board-dispatch">
-        <div class="board-repo-combo">
-          <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
-                  aria-haspopup="listbox" aria-expanded="false"
-                  aria-controls="boardDispatchRepoList" aria-label="Project filter / dispatch target">All projects</button>
-          <input type="hidden" id="boardDispatchRepo">
-          <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
+        <!-- The phone docks ↻ beside the filter it sits over; the desktop
+             row takes it into the control row instead (dockRefresh). -->
+        <div class="board-filter-row">
+          <div class="board-repo-combo">
+            <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="boardDispatchRepoList" aria-label="Project filter / dispatch target">All projects</button>
+            <input type="hidden" id="boardDispatchRepo">
+            <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
+          </div>
+          <button id="boardRefresh" type="button" class="icon-btn board-refresh"
+                  title="Refresh GitHub issues / PRs / done-today (runs gh)"
+                  aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
         </div>
         <div class="board-dispatch-row">
           <!-- Mode was a 4-segment radiogroup until #547 collapsed it into a
@@ -1246,25 +1265,6 @@
                   title="Chief settings" aria-label="Chief settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
         </div>
       </div>
-      <!-- The strip is a five-tab segmented control; the phone docks ↻ beside
-           it in this bar rather than inside the tablist (#1175). -->
-      <div class="board-strip-bar">
-        <div class="board-strip" role="tablist" aria-label="Board columns">
-          <button id="boardColBacklog" type="button" class="board-strip-btn" data-col="backlog"
-                  role="tab" aria-selected="false">Git <span class="board-count">0</span></button>
-          <button id="boardColClaude" type="button" class="board-strip-btn" data-col="claude_turn"
-                  role="tab" aria-selected="false">Bot <span class="board-count">0</span></button>
-          <button id="boardColYours" type="button" class="board-strip-btn active" data-col="your_turn"
-                  role="tab" aria-selected="true">You <span class="board-count">0</span></button>
-          <button id="boardColOther" type="button" class="board-strip-btn" data-col="other"
-                  role="tab" aria-selected="false">Other <span class="board-count">0</span></button>
-          <button id="boardColDone" type="button" class="board-strip-btn" data-col="done"
-                  role="tab" aria-selected="false">Done <span class="board-count">0</span></button>
-        </div>
-        <button id="boardRefresh" type="button" class="icon-btn board-refresh"
-                title="Refresh GitHub issues / PRs / done-today (runs gh)"
-                aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
-      </div>
       <div id="boardStatus" class="board-status" hidden></div>
       <!-- Same two quota rows as the Coding tab (#860) — this is where the
            heavier sessions get launched, so both agents' headroom has to be
@@ -1273,32 +1273,86 @@
         <span class="quota-line" hidden></span>
         <span class="quota-line" hidden></span>
       </div>
+        </div>
+      </details>
+      <!-- Each column is a section card like every other tab's (#1198):
+           stacked on the phone, side by side in the desktop grid. Static
+           markup, so the 5 s poll re-renders the lists inside without ever
+           touching a section's open state. The two live columns open by
+           default; the GitHub-fed ones wait folded on the phone (board.js
+           opens all five on the desktop grid). The count is text, not a
+           control, so it may sit in the summary. -->
       <div id="boardColumns" class="board-columns">
-        <section class="board-col" data-col="backlog" aria-label="Backlog">
-          <h3 class="board-col-title">Backlog <span class="board-col-count" data-col="backlog">(0)</span></h3>
-          <ul class="card-list board-list" data-col="backlog"></ul>
-          <div class="board-empty" data-col="backlog" hidden></div>
-        </section>
-        <section class="board-col" data-col="claude_turn" aria-label="Claude's turn">
-          <h3 class="board-col-title">Claude's turn <span class="board-col-count" data-col="claude_turn">(0)</span></h3>
-          <ul class="card-list board-list" data-col="claude_turn"></ul>
-          <div class="board-empty" data-col="claude_turn" hidden></div>
-        </section>
-        <section class="board-col" data-col="your_turn" aria-label="Your turn">
-          <h3 class="board-col-title">Your turn <span class="board-col-count" data-col="your_turn">(0)</span></h3>
-          <ul class="card-list board-list" data-col="your_turn"></ul>
-          <div class="board-empty" data-col="your_turn" hidden></div>
-        </section>
-        <section class="board-col" data-col="other" aria-label="Other">
-          <h3 class="board-col-title">Other <span class="board-col-count" data-col="other">(0)</span></h3>
-          <ul class="card-list board-list" data-col="other"></ul>
-          <div class="board-empty" data-col="other" hidden></div>
-        </section>
-        <section class="board-col" data-col="done" aria-label="Done today">
-          <h3 class="board-col-title">Done today <span class="board-col-count" data-col="done">(0)</span></h3>
-          <ul class="card-list board-list" data-col="done"></ul>
-          <div class="board-empty" data-col="done" hidden></div>
-        </section>
+        <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+              <h3 class="collapse-title">Backlog</h3>
+              <span class="collapse-count board-count" data-col="backlog">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="backlog"></ul>
+            <div class="board-empty" data-col="backlog" hidden></div>
+          </div>
+        </details>
+        <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+              <h3 class="collapse-title">Claude's turn</h3>
+              <span class="collapse-count board-count" data-col="claude_turn">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="claude_turn"></ul>
+            <div class="board-empty" data-col="claude_turn" hidden></div>
+          </div>
+        </details>
+        <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg>
+              <h3 class="collapse-title">Your turn</h3>
+              <span class="collapse-count board-count" data-col="your_turn">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="your_turn"></ul>
+            <div class="board-empty" data-col="your_turn" hidden></div>
+          </div>
+        </details>
+        <details id="boardColOther" class="card card--collapsible board-col" data-col="other">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
+              <h3 class="collapse-title">Other</h3>
+              <span class="collapse-count board-count" data-col="other">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="other"></ul>
+            <div class="board-empty" data-col="other" hidden></div>
+          </div>
+        </details>
+        <details id="boardColDone" class="card card--collapsible board-col" data-col="done">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-check"></use></svg>
+              <h3 class="collapse-title">Done today</h3>
+              <span class="collapse-count board-count" data-col="done">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="done"></ul>
+            <div class="board-empty" data-col="done" hidden></div>
+          </div>
+        </details>
       </div>
     </section>
 

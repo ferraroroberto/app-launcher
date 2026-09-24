@@ -2,7 +2,7 @@
 
 The launcher's fifth surface (issue #164, shipped in four steps: **#300** read-only render, **#301** drill-down + reply + one-tap issue start, **#302** dispatch bar, **#399** split into five single-purpose columns). It is a **read-only fleet kanban** that answers one question — *"what needs me now, across everything"* — over five **computed** columns, each holding one kind of card. A card moves because reality changed; there is deliberately no drag-and-drop. It renders four independently-degrading live sources (the session-host's session list, fleet-config's sessions-state and active-issues files, and today's job runs) plus a cached GitHub view (`gh`-fetched issues / PRs).
 
-On the phone the five columns are a swipeable one-column-per-screen carousel with a count strip on top; desktop shows all five side by side, each column header carrying its own `(N)` item count (#603). The **Your turn** count is the number that matters — its strip button highlights when nonzero.
+Each column is a collapsible section card, the same `details.card.card--collapsible` container the other tabs use (#1198), with the column's item count in its summary (#603). On the phone the sections stack: **Claude's turn** and **Your turn** open, **Backlog**, **Other** and **Done** folded. On the desktop grid all five sit side by side, open. `renderBoard()` only re-renders the lists inside, so the 5 s poll never changes a section's open state; a drawer opened from outside its section (the `?board=` deep link, a chief chat send) unfolds that section once. The **Your turn** count is the number that matters — it highlights when nonzero. Every card leads with its title, clamped to two lines with the full text in the `title` attribute, and the repo/number meta line under it.
 
 ## The five columns and their data sources
 
@@ -102,7 +102,7 @@ The frontend precedence lives in one place — `sessions.js`'s `sessionTitle()` 
 
 ## The Claude usage badges (#326)
 
-The strip above the columns can show two small dot+label badges — 5h and 7d Claude account usage % — sourced from a **rate-limits cache** a [`fleet-config`](https://github.com/ferraroroberto/fleet-config) statusline writer maintains ([fleet-config#259](https://github.com/ferraroroberto/fleet-config/issues/259)) — path `rate_limits_file`, default `~/.claude/hooks/state/rate-limits.json`. As of this writing that writer doesn't exist yet, so the badges render hidden until it lands; the Board only ever reads the file.
+The Dispatch card can show two small dot+label badges — 5h and 7d Claude account usage % — sourced from a **rate-limits cache** a [`fleet-config`](https://github.com/ferraroroberto/fleet-config) statusline writer maintains ([fleet-config#259](https://github.com/ferraroroberto/fleet-config/issues/259)) — path `rate_limits_file`, default `~/.claude/hooks/state/rate-limits.json`. As of this writing that writer doesn't exist yet, so the badges render hidden until it lands; the Board only ever reads the file.
 
 **Schema** the writer is expected to produce: `{ "five_hour": {"used_percentage": N, "resets_at": epoch}, "seven_day": {...}, "captured_at": iso8601 }`. Either window, or any sub-field within a present window, may be `null`/absent — `src/board.py::read_rate_limits()` treats each independently and never raises on a missing/corrupt file (`available: False`, both windows `None`).
 
@@ -162,7 +162,7 @@ The undifferentiated `needs-you` conflated operationally distinct situations, fo
 
 Pinned above the columns, the **dispatch bar** speaks a new goal into existence: a goal box, a repo picker (the same live claude-code listing the Coding tab launches from), an **add / build / yolo** mode dropdown, a **model** dropdown (#500: Sonnet default / Opus / Fable spawn a Claude Code session at that model; GPT-5.6 spawns a Codex CLI session with the Coding tab's shared Codex flags — Codex has no per-model flag, so it runs the account default at the configured effort; 400 if Codex isn't installed), a 🎤, and a ➤. Endpoint: `POST /api/board/dispatch`, body `{repo, goal, mode, model, rows, cols, desktop}`.
 
-**Layout (#869).** The bar is one line on a desktop-width pane — repo filter at the far left, then the mode and model dropdowns, the goal, the compose buttons and ↻ (which docks here rather than in the column strip, whose switcher buttons are hidden at that breakpoint). On the phone the same controls are one row with the repo filter beneath them, directly above the column strip it filters — three rows, not four. One markup order, reordered per breakpoint with CSS `order`, and the single `#boardRefresh` node re-parented on the media query (`board.js::dockRefresh`) so nothing is duplicated.
+**Layout (#869).** The bar is one line on a desktop-width pane — repo filter at the far left, then the mode and model dropdowns, the goal, the compose buttons and ↻. On the phone the same controls are one row with the repo filter and ↻ beneath them, directly above the column sections it filters — three rows, not four. One markup order, reordered per breakpoint with CSS `order`, and the single `#boardRefresh` node re-parented on the media query (`board.js::dockRefresh`) so nothing is duplicated.
 
 The modes map to `/issue-*` commands:
 
@@ -315,7 +315,7 @@ Callers should treat anything other than `reason: "ok"` as unconfirmed and verif
 
 **Dispatch brief (#1114).** A dispatcher (the fleet chief, via `chief_ops.py dispatch --brief-file`, fleet-config#944) may add an optional `brief` string: the lane's scope, queue and constraints. A lane trusts only its launch command, so the brief has to travel there — but free text must never reach the unquoted `cmd /c` line. The launcher therefore writes it to `webapp/briefs/<uuid>.md` (relocated with the audit files by `LAUNCHER_AUDIT_DIR`, gitignored) and appends only that path: the prompt becomes `/issue-<mode> <N> --brief <path>`. Absent or `null` → the prompt is exactly as before; empty or over 20,000 chars → 400 (`brief is empty` / `brief too large: …`). Each write prunes briefs older than 7 days and keeps at most the newest 200; a failed spawn discards its brief immediately. The audit line records `brief_chars`, never the text. Reading the brief is the skills' job (fleet-config#944) — this endpoint only delivers it.
 
-**`?board=<sid>` deep-link** (`board.js::openBoardCard`): activates the Board tab, fetches the board, finds the column holding that `session_id`, opens its drawer, and scrolls the carousel to it — the landing page a `notify_on_idle` Slack ping links to. If the session is already gone, it toasts and leaves the board browsable rather than pausing the poll forever on a non-existent card.
+**`?board=<sid>` deep-link** (`board.js::openBoardCard`): activates the Board tab, fetches the board, finds the column holding that `session_id`, opens its drawer, unfolds its section and scrolls the card into view — the landing page a `notify_on_idle` Slack ping links to. If the session is already gone, it toasts and leaves the board browsable rather than pausing the poll forever on a non-existent card.
 
 ## Refresh / cache contract
 

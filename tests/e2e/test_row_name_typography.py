@@ -156,9 +156,10 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
     expect(note).to_have_css("font-style", "normal")
     expect(note).to_have_css("font-weight", "400")
 
-    for strip, label in (("#boardColBacklog", "Git"), ("#boardColClaude", "Bot"),
-                         ("#boardColYours", "You"), ("#boardColOther", "Other"),
-                         ("#boardColDone", "Done")):
-        text = authed_page.locator(strip).evaluate("el => el.firstChild.textContent.trim()")
-        assert text == label, f"{strip} reads {text!r}; strip labels are sentence case"
+    for section, label in (("#boardColBacklog", "Backlog"),
+                           ("#boardColClaude", "Claude's turn"),
+                           ("#boardColYours", "Your turn"),
+                           ("#boardColOther", "Other"),
+                           ("#boardColDone", "Done today")):
+        expect(authed_page.locator(f"{section} .collapse-title")).to_have_text(label)
     expect(authed_page.locator("#codingOptions .collapse-title")).to_have_text("Options")
