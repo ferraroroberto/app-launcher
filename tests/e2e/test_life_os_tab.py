@@ -1271,6 +1271,11 @@ _QUESTION_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=_FAKE_TRANSCRIPT["entries"
                     "multiSelect": False, "options": [
                         {"label": "07:40", "description": "first boat"},
                         {"label": "11:15", "description": "late morning"}]}]},
+    {"kind": "tool_call", "name": "ExitPlanMode", "summary": "# Book it",
+     "call_id": "toolu_viewer_plan", "plan": "## Book it\n\n- pay by card",
+     "plan_truncated": False, "result": "User has approved your plan.",
+     "plan_outcome": "approved", "result_truncated": False,
+     "sidechain": False, "offset": 400, "timestamp": None},
 ])
 
 
@@ -1310,6 +1315,12 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(card.locator(".tr-ask-opt:enabled")).to_have_count(0)
     expect(card.locator(".tr-ask-input")).to_be_hidden()
     expect(card.locator(".tr-ask-status")).to_have_text("No answer recorded here")
+    # #1151: a plan renders as its card here too — markdown, its outcome,
+    # and nothing to tap.
+    plan = viewer_list.locator(".tr-plan-item")
+    expect(plan.locator(".tr-plan-body h2")).to_have_text("Book it")
+    expect(plan).to_have_attribute("data-mode", "approved")
+    expect(plan.locator("button")).to_have_count(0)
     # #1140: a capture that fits on screen has no end to jump to.
     pill = authed_page.locator("#lifeOsViewerLatest")
     expect(pill).to_have_count(1)
