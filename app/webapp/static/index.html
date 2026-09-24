@@ -1947,6 +1947,9 @@
         <div id="transcriptBody" class="transcript-body">
           <button id="transcriptOlder" type="button" class="transcript-older" hidden>Load older</button>
           <ol id="transcriptList" class="transcript-list" aria-label="Session transcript"></ol>
+          <!-- The plan picker read off the terminal (#1151), answerable from
+               here while it is up. Driven by session-transcript.js. -->
+          <div id="transcriptPlanLive" class="tr-plan-live" hidden></div>
           <div id="transcriptState" class="empty" role="status" aria-live="polite" hidden></div>
         </div>
         <button id="chatLatest" type="button" class="latest-pill" title="Jump to the latest message" aria-label="Jump to the latest message" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg> Latest</button>

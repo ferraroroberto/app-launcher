@@ -2643,7 +2643,9 @@ textarea.input-native { height: auto; }
   font: inherit;
   font-size: var(--font-body);
 }
-.tr-ask-send { flex: none; min-height: 44px; padding: 0 16px; }
+/* Row-sized: .button-tint stretches to width:100% for its full-width uses,
+   which squeezed the text field beside it to a sliver. */
+.tr-ask-send { flex: none; width: auto; min-height: 44px; padding: 0 16px; }
 .tr-ask-submit { width: 100%; margin-top: 12px; }
 /* ExitPlanMode card (#1151): the question card's frame around the plan,
    which is markdown like a reply (the shared `.tr-md` rules style it). */
@@ -2654,6 +2656,13 @@ textarea.input-native { height: auto; }
   overflow-wrap: anywhere;
 }
 .tr-plan > .tr-trunc { margin-top: 8px; }
+/* The plan panel (#1151): the plan card's frame below the transcript list,
+   at the list's own 12px rhythm, while the terminal shows the picker. The
+   feedback option is a list row like the others, its text field under it. */
+.tr-plan-live { margin-top: 12px; }
+.tr-plan-live[hidden] { display: none; }
+.tr-plan-live-card .tr-pre.tr-plan-body { margin-top: 8px; }
+.tr-plan-feedback-row > .tr-ask-opt { cursor: default; }
 /* The transcript's one preformatted surface, shared by a tool result
    (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
    #1100) rather than declared twice -- they had become the same ten
