@@ -373,10 +373,15 @@ def test_terminal_watchdog_fires_when_nothing_ever_paints(
     )
 
     # And it must be recoverable — tapping it starts a fresh connect attempt
-    # (a new WebSocket instance), not a dead end.
+    # (a new WebSocket instance), not a dead end. Asserted on the socket
+    # itself: the "Connecting…" it shows in between lasts only until the
+    # stub's next open, and since #1219 a cleared status also empties its
+    # text, so the old read of that word was catching leftover text.
+    authed_page.evaluate("() => { window.__wsBeforeTap = window.__silentWs; }")
     authed_page.locator("#terminalStatus").click()
     authed_page.wait_for_function(
-        "() => document.getElementById('terminalStatus').textContent"
-        ".indexOf('Connecting') !== -1",
+        "() => window.__silentWs && window.__silentWs !== window.__wsBeforeTap"
+        " && document.getElementById('terminalStatus').textContent"
+        ".indexOf('No response yet') === -1",
         timeout=5_000,
     )
