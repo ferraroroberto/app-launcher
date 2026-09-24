@@ -1089,10 +1089,10 @@ summary + .opt-group { border-top: 0; }
      themes by construction — the chip has nothing left to do. */
   flex-shrink: 0;
 }
-/* "Favorites" header filter toggle — icon-only at every width (#1070),
-   in the same box as the Detached/Resume toggles beside it so the three
-   header controls read as one set. Gold outline + filled star glyph when
-   the filter is active (fill rule: `.fav-filter-btn.active .icon`, near
+/* "Favorites" header filter toggle — icon-only at every width (#1070,
+   kept by #1194 after the Detached/Resume toggles beside it gained a word
+   in #1176), at the same height as those toggles. Gold outline + filled
+   star glyph when the filter is active (fill rule: `.fav-filter-btn.active .icon`, near
    `.opt-group`). The accessible name stays on aria-label/title.
    Written as `.button-ghost.fav-filter-btn` on purpose: the plain
    `.fav-filter-btn` selector loses the padding to `.button-ghost`'s own

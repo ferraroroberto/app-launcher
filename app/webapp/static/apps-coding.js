@@ -405,11 +405,11 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  // A glyph plus a word, like the Detached and Resume toggles beside it
-  // (#1176). #1070 made it icon-only when those neighbours were icon-only
-  // too; a star is not a conventional glyph, so the set carries words now.
-  // aria-label/title keep the full "Show only favorites".
-  btn.innerHTML = icon('star') + ' Starred';
+  // Icon only (#1194): #1176 gave the Detached and Resume toggles beside it
+  // a word, and briefly this one too; the star stays bare. The name
+  // lives on aria-label/title ("Show only favorites"), where a screen
+  // reader reads it anyway.
+  btn.innerHTML = icon('star');
 }
 
 // Colour a Coding tile's folder name from the cached git-status map
