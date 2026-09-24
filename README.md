@@ -784,6 +784,16 @@ Byte-loss at the PTY write boundary itself has a dedicated **non-browser** guard
 
 **Leaked browser helpers are swept after every session** (issue #709). `tests/e2e/_browser_sweep.py` is a **vendor-verbatim** copy of `project-scaffolding`'s canonical helper (project-scaffolding#203/#204) — do not adapt or re-derive it; re-vendor it byte-for-byte and bump the `sha` in `.fleet.toml`'s `[vendored]` block. `tests/e2e/conftest.py::pytest_sessionfinish` calls it once the whole session — fixtures included — has torn down, scoped to this checkout, and prints a one-line summary naming what it killed and what it deliberately left alone. A kill needs all three of: the process is really running, its parent is dead (PID-reuse-checked), and its working directory sits under this checkout. Everything else gets its own verdict instead — an already-exited-but-handle-held `zombie` (unkillable, harmless, and **never** a gate failure), a live-parent session, a sibling checkout, an unreadable cwd. Chromium is deliberately **out** of the sweep set, so the user's own Chrome is never a target; only WebKit helpers plus WebKit's `Playwright.exe` browser-main process are. The sweep is advisory — it never changes the exit status. It also runs standalone, which is worth doing before a `git worktree remove` that fails as "busy": `& .\.venv\Scripts\python.exe tests\e2e\_browser_sweep.py <path> [--dry-run]`.
 
+### Design review on synthetic data
+
+fleet-config's `/design-review app-launcher --synthetic` measures the session overlay's Chat and Terminal views, which the live walk must never open because it would attach to a real session. It walks a throwaway instance booted by `scripts/design_review_synthetic.py`, declared in `.fleet.toml`'s `[design.review.synthetic]` (#1227):
+
+- **Code:** a `git archive` copy of `HEAD` on free ports, so the checkout is never written and every `PROJECT_ROOT` file is a throwaway one.
+- **Data:** synthetic only. A demo project, one stub PTY session (the e2e gate's `--e2e-stub` child, from `tests/e2e/stub_session.py`) with a synthetic Chat transcript, one Life OS skill, one job and one app. Every config path, `USERPROFILE`/`HOME` and `CLAUDE_CONFIG_DIR` point into the temp tree.
+- **Role:** `LAUNCHER_SESSION_HOST_PORT` marks the instance disposable, so it never alerts.
+- **Lifecycle:** it prints `URL=` once ready and, when its stdin closes, stops its servers and deletes the temp tree.
+- **Isolation:** the live tray and the `:8446` session-host are never touched. Run it by hand the same way: `.venv\Scripts\python.exe scripts\design_review_synthetic.py`, then press Ctrl+Z, Enter to close stdin.
+
 ### Verifying changes before ship
 
 `run-e2e.ps1` above is the dev loop — fast, but it *skips* the whole e2e suite if the tray isn't up, which is the wrong default for a final check (a forgotten tray looks like a green run). The pre-ship gate closes that hole:
