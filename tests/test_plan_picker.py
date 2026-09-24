@@ -7,6 +7,9 @@ Code 2.1.281 (a plan-mode session at 120 columns, a skip-permissions one at
 feedback field's hint under its label, and the ``ctrl+g`` footer naming the
 plan file. Keys, as probed: a "Yes" digit approves on its own; the feedback
 digit focuses a text field, the text follows, Enter sends the plan back.
+
+The same screen read serves the overlay's context ring (#1223): the fleet
+statusline's ``NN%c`` under Claude Code's prompt, tested at the end.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from typing import Any, Dict, List
 import pytest
 
 from src import plan_picker as pp
+from src.statusline_context import context_percent
 
 RULE = "\u2500" * 40
 DASH = "\u254c" * 40
@@ -247,6 +251,7 @@ def picker_client(webapp_client, monkeypatch, tmp_path):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
     monkeypatch.setattr(router, "_ANSWER_KEY_GAP_S", 0)
     router._PICKER_SEEN.clear()
+    router._CONTEXT_SEEN.clear()
     typed: List[Any] = []
 
     async def fake_pty(port, sid, keys):
@@ -353,3 +358,116 @@ def test_a_bad_tap_is_a_400_and_a_failed_write_says_how_far_it_got(picker_client
     r = _post(client, {"option": 3, "label": "Tell Claude what to change", "feedback": "smaller"})
     assert r.status_code == 502
     assert r.json()["detail"] == "Answer only partly sent (1 of 3 keys): check the terminal"
+
+
+# ------------------------------------------------------ context use (#1223)
+
+# Footers as the fleet statusline paints them (statusline-command.ps1),
+# rendered off live captures at 120 and 46 columns: usage first, then the
+# model family, then the folder; at 120 columns Claude Code can print its
+# own text further along the same row.
+FOOTER = "  27%c 10%s 79%w | opus | fleet-config (main)"
+FOOTER_WIDE = (
+    "  32%c 4%s 78%w | opus | fleet-config (main)"
+    "                                                             316677 tokens"
+)
+# used_percentage is null early in a session and right after /compact: the
+# script omits %c and the row starts at the 5-hour figure.
+FOOTER_AFTER_COMPACT = "  5%s 10%w | opus | app-launcher (main)"
+PROMPT = [RULE, f"{CUR} ", RULE]
+MODE_LINE = "  ⏵⏵ bypass permissions on (shift+tab to cycle)"
+
+
+def _footer_screen(*footers: str) -> List[str]:
+    return ["● Done.", "", *PROMPT, *footers, MODE_LINE, "", ""]
+
+
+def _write_capture(path: Path, lines: List[str]) -> None:
+    # Text mode, the way the session-host writes it.
+    with path.open("w", encoding="utf-8") as fh:
+        fh.write("\r\n".join(lines))
+
+
+@pytest.mark.parametrize("lines,expected", [
+    (_footer_screen(FOOTER), 27),
+    (_footer_screen(FOOTER_WIDE), 32),
+    (_footer_screen("  6%c 6%s 76%w | Fable 5.1 | project"), 6),
+    (_footer_screen("  100%c | opus | proj"), 100),
+    (_footer_screen(FOOTER_AFTER_COMPACT), None),
+    (_footer_screen("  opus | proj (main)"), None),
+    (_footer_screen(), None),
+    (["", " Nothing to see", ""], None),
+])
+def test_context_is_the_statuslines_percent_c(lines, expected):
+    assert context_percent(lines) == expected
+
+
+def test_only_the_bottom_most_statusline_counts():
+    """An older footer higher on the screen (or one quoted in a reply) says
+    nothing about now: the newest row wins, and one without %c is None
+    rather than the stale figure above it."""
+    older = ["  71%c 10%s 79%w | opus | proj", ""]
+    assert context_percent(older + _footer_screen(FOOTER)) == 27
+    assert context_percent(older + _footer_screen(FOOTER_AFTER_COMPACT)) is None
+
+
+def test_text_that_only_looks_like_a_footer_is_not_one():
+    for line in ("  12%cache hit rate", "  5%status", "  context at 40%c", "  1234%c | x"):
+        assert context_percent(_footer_screen(line)) is None, line
+
+
+def test_context_reads_off_the_rendered_capture():
+    """Through the real render: the colour escapes the script wraps around
+    ``NN%c`` (green/yellow/red) are gone once pyte has drawn the row."""
+    raw = "\r\n".join([
+        "● Done.", "", *PROMPT,
+        "  \x1b[33m64%c\x1b[0m 10%s 79%w | opus | proj (main)", MODE_LINE,
+    ])
+    assert context_percent(pp.screen_lines(raw, rows=12, cols=60)) == 64
+
+
+def _get_context(client):
+    return client.get("/api/claude-code/sessions/s1/context")
+
+
+def test_the_context_route_is_passkey_gated():
+    from app.webapp.middleware import _terminal_guard_level
+    assert _terminal_guard_level("/api/claude-code/sessions/abc/context") == "passkey"
+
+
+def test_the_context_route_serves_the_footers_percent(picker_client, tmp_path):
+    client, _, _, _ = picker_client
+    capture = tmp_path / "s1.transcript"
+    _write_capture(capture, _footer_screen(FOOTER))
+    assert _get_context(client).json() == {"available": True, "percent": 27, "reason": None}
+    _write_capture(capture, _footer_screen(FOOTER_AFTER_COMPACT))
+    assert _get_context(client).json() == {
+        "available": True, "percent": None, "reason": "not_showing",
+    }
+
+
+def test_the_context_route_says_why_there_is_no_number(picker_client):
+    client, session, _, _ = picker_client
+    assert _get_context(client).json() == {
+        "available": False, "percent": None, "reason": "no_screen",
+    }
+    for live, reason in ((_live(kind="remote"), "detached"), (_live(agent="codex"), "unsupported_agent")):
+        session.list_sessions.return_value = [live]
+        assert _get_context(client).json() == {
+            "available": False, "percent": None, "reason": reason,
+        }
+    session.list_sessions.return_value = []
+    assert _get_context(client).json()["reason"] == "session_not_found"
+
+
+def test_the_context_route_logs_a_change_not_a_tick(picker_client, tmp_path, caplog):
+    client, _, _, _ = picker_client
+    capture = tmp_path / "s1.transcript"
+    _write_capture(capture, _footer_screen(FOOTER))
+    with caplog.at_level("INFO", logger="app.webapp.routers.session_transcript"):
+        for _ in range(3):
+            _get_context(client)
+        _write_capture(capture, _footer_screen(FOOTER_AFTER_COMPACT))
+        _get_context(client)
+    lines = [r.getMessage() for r in caplog.records if "context s1" in r.getMessage()]
+    assert lines == ["ℹ️ context s1: showing (27%)", "ℹ️ context s1: not showing"]
