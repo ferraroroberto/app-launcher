@@ -9,6 +9,7 @@ import { els, state } from './state.js';
 import { apiFailToast, escapeHtml, readToken } from './api.js';
 import { clearTerminalToken, ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { createRepaintClearer } from './repaint-scrollback.js';
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000];
 const RECONNECT_GIVE_UP_MS = 30000;
@@ -197,6 +198,10 @@ export function connectTerminalWs(terminal) {
   }
   const ws = new WebSocket(termWsUrl(terminal.sid, terminal.tt));
   terminal.ws = ws;
+  // Inline agents only (#930): a fresh stream, so no carry from the old
+  // socket's last message. A full-screen agent paints from the host's VT
+  // snapshot and keeps no scrollback of its own to duplicate into.
+  terminal.repaintClearer = terminal.isFullscreen ? null : createRepaintClearer();
 
   ws.onopen = function () {
     if (terminal !== state.terminal) return;
@@ -252,7 +257,12 @@ export function connectTerminalWs(terminal) {
     }
     const buffer = terminal.term.buffer.active;
     const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
-    terminal.term.write(event.data, function () {
+    // Claude Code's full-viewport repaint would re-commit the rows it
+    // redraws to scrollback (#930): clear scrollback right after it.
+    const data = terminal.repaintClearer
+      ? terminal.repaintClearer(event.data, terminal.term.rows)
+      : event.data;
+    terminal.term.write(data, function () {
       if (wasAtBottom) {
         try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
       }
