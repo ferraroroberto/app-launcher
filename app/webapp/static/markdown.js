@@ -20,10 +20,10 @@ is how `tests/js/markdown.test.mjs` pins the parser without a browser.
 import { escapeHtml } from './dom-utils.js';
 
 // Escape-first, then apply a small, safe subset (headings, bold, italic,
-// inline code, fenced code, links, unordered lists, GFM tables, paragraphs). Content
-// comes from the user's own private files over a passkey-gated tailnet
-// link, but we still escape every byte before formatting so a stray
-// `<script>` in a note can never execute.
+// inline code, fenced code, links, bulleted and numbered lists, GFM tables,
+// paragraphs). Content comes from the user's own private files over a
+// passkey-gated tailnet link, but we still escape every byte before
+// formatting so a stray `<script>` in a note can never execute.
 function inlineMd(s) {
   return s
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -94,7 +94,8 @@ export function renderMarkdown(text) {
   const lines = escapeHtml(text).split('\n');
   const out = [];
   let inCode = false;
-  let inList = false;
+  // The open list's tag, 'ul' or 'ol'; null outside a list.
+  let listTag = null;
   let para = [];
 
   function flushPara() {
@@ -104,7 +105,7 @@ export function renderMarkdown(text) {
     }
   }
   function flushList() {
-    if (inList) { out.push('</ul>'); inList = false; }
+    if (listTag) { out.push('</' + listTag + '>'); listTag = null; }
   }
 
   for (let i = 0; i < lines.length; i++) {
@@ -144,11 +145,20 @@ export function renderMarkdown(text) {
       out.push('<h' + level + '>' + inlineMd(h[2]) + '</h' + level + '>');
       continue;
     }
-    const li = line.match(/^\s*[-*]\s+(.*)$/);
-    if (li) {
+    // Numbered items open an <ol> (#1202), keeping a first number other
+    // than 1; a change of list kind closes the open list first.
+    const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+    const numbered = bullet ? null : line.match(/^\s*(\d+)[.)]\s+(.*)$/);
+    if (bullet || numbered) {
       flushPara();
-      if (!inList) { out.push('<ul>'); inList = true; }
-      out.push('<li>' + inlineMd(li[1]) + '</li>');
+      const tag = bullet ? 'ul' : 'ol';
+      if (listTag !== tag) {
+        flushList();
+        const start = numbered && numbered[1] !== '1' ? ' start="' + Number(numbered[1]) + '"' : '';
+        out.push('<' + tag + start + '>');
+        listTag = tag;
+      }
+      out.push('<li>' + inlineMd(bullet ? bullet[1] : numbered[2]) + '</li>');
       continue;
     }
     if (!line.trim()) { flushPara(); flushList(); continue; }
