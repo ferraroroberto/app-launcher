@@ -19,6 +19,8 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import stable_read
+
 pytestmark = pytest.mark.smoke
 
 
@@ -108,6 +110,20 @@ def test_jobs_default_to_next_run_order_with_countdown(
     assert authed_page.locator(
         "#jobsList li[data-id='mango'] [data-role='countdown-chip']"
     ).count() == 0, "a job with no next fire must not show a countdown chip"
+
+    # #1207: Mango has no schedule, so outside Edit mode its menu has nothing
+    # to show and renders no kebab. Its Run button still lines up with
+    # Zeta's, which does have one: the kebab's slot is kept either way.
+    mango = authed_page.locator("#jobsList li[data-id='mango']")
+    expect(mango.locator("[data-role='job-menu']")).to_have_count(0)
+    expect(authed_page.locator("#jobsList li[data-id='zeta'] [data-role='job-menu']")).to_have_count(1)
+    xs = [
+        stable_read(lambda i=i: authed_page.locator(
+            f"#jobsList li[data-id='{i}'] [data-role='run-btn']").bounding_box())
+        for i in ("zeta", "mango")
+    ]
+    assert all(xs), f"run buttons not laid out: {xs}"
+    assert abs(xs[0]["x"] - xs[1]["x"]) <= 1, f"Run jumps sideways without a kebab: {xs}"
 
 
 def test_sort_toggle_switches_to_alphabetical(

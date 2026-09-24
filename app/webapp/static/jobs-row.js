@@ -381,6 +381,17 @@ export function renderJobRow(job, options) {
     const menuEl = jobMenu.attach(job.id, anchor, menuItems);
     actions.appendChild(anchor);
     actions.appendChild(menuEl);
+  } else if (actions.childElementCount) {
+    // No visible menu item: keep the kebab's slot so Run lines up with every
+    // other row's (#1207). The same box, never seen, focused or announced.
+    const slot = document.createElement('button');
+    slot.type = 'button';
+    slot.className = 'icon-btn job-menu-slot';
+    slot.disabled = true;
+    slot.tabIndex = -1;
+    slot.setAttribute('aria-hidden', 'true');
+    slot.innerHTML = icon('ellipsis-vertical');
+    actions.appendChild(slot);
   }
 
   if (actions.childElementCount) li.appendChild(actions);
