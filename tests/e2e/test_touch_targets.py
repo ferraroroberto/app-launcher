@@ -86,6 +86,37 @@ _DATA_CONTROL = {
 }
 
 
+def _assert_helper_is_wired_to_a_real_locator(page: Page) -> None:
+    """One assertion through `_geometry.assert_min_target` itself, so the
+    vendored helper is exercised rather than only copied in.
+
+    Formerly `test_the_helper_is_wired_to_a_real_locator`; folded into the
+    `#tabApps` sweep below (#1215), which loads the same mocked Apps tab at
+    the same 390x844 viewport with every <details> open."""
+    launch = page.locator("#appsList .action-row-kebab").first
+    expect(launch).to_be_visible()
+    assert_min_target(launch)
+
+
+def _assert_cluster_does_not_overlap(page: Page, cluster: str) -> None:
+    """Invisible expansion is only legitimate where it cannot collide: two
+    controls whose grown rectangles intersect share tappable pixels.
+
+    Formerly `test_expanded_targets_in_a_cluster_do_not_overlap`, one
+    parametrize case per cluster; each case now runs inside the floor sweep
+    of the tab that renders it (#1215). Its `.sessions-header-actions` and
+    `.compose-tools` cases were dropped there: both always skipped, the
+    first holding a single button (#gitStatusBtn) and the second having no
+    visible composer on the Code tab, so neither ever asserted anything."""
+    # `:visible` matters: a cluster holds controls that are hidden until
+    # something opens them (a row menu, a mode-specific tool), and a hidden
+    # element measures as a zero box at the origin — every one of which
+    # "overlaps" every other.
+    buttons = page.locator(f"{cluster} button:visible")
+    assert buttons.count() >= 2, f"{cluster} renders fewer than two controls here"
+    assert_no_overlap(buttons)
+
+
 @pytest.mark.parametrize("tab", _TABS)
 def test_every_control_meets_the_44px_floor(
     authed_page: Page, base_url: str, tab: str
@@ -133,43 +164,15 @@ def test_every_control_meets_the_44px_floor(
     if toolbar.count() >= 2:
         assert_no_overlap(toolbar)
 
-
-@pytest.mark.parametrize("cluster", (
-    ".sessions-header-actions",
-    ".compose-tools",
-    # The whole dispatch bar, not just its control row (#1174): the repo
-    # filter stacks against that row on the phone, and its expansion reached
-    # into the row's across the gap between them.
-    "#boardDispatch",
-    "#appsList .action-row",
-))
-def test_expanded_targets_in_a_cluster_do_not_overlap(
-    authed_page: Page, base_url: str, cluster: str
-) -> None:
-    """Invisible expansion is only legitimate where it cannot collide: two
-    controls whose grown rectangles intersect share tappable pixels."""
-    page = authed_page
-    page.add_init_script("localStorage.setItem('launcher.editMode', '1')")
-    _mock(page)
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    if cluster == "#boardDispatch":
-        page.locator("#tabBoard").click()
-    elif cluster == "#appsList .action-row":
-        page.locator("#tabApps").click()
-    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    page.wait_for_timeout(400)
-
-    # `:visible` matters: a cluster holds controls that are hidden until
-    # something opens them (a row menu, a mode-specific tool), and a hidden
-    # element measures as a zero box at the origin — every one of which
-    # "overlaps" every other.
-    buttons = page.locator(f"{cluster} button:visible")
-    if buttons.count() < 2:
-        pytest.skip(f"{cluster} renders fewer than two controls here")
-    assert_no_overlap(buttons)
-
-    if cluster == "#boardDispatch":
+    if tab == "#tabApps":
+        _assert_helper_is_wired_to_a_real_locator(page)
+        _assert_cluster_does_not_overlap(page, "#appsList .action-row")
+    elif tab == "#tabBoard":
+        # The whole dispatch bar, not just its control row (#1174): the repo
+        # filter stacks against that row on the phone, and its expansion
+        # reached into the row's across the gap between them.
+        _assert_cluster_does_not_overlap(page, "#boardDispatch")
+        # Last, because it reloads the page at another size and text step.
         # Wrapped, the control row's lines meet across its row gap, which
         # the -5/-4 expansions outgrew at 8px (#1182). At 390px the row
         # wraps only when a late label lands wide; Large text on a 320px
@@ -179,20 +182,4 @@ def test_expanded_targets_in_a_cluster_do_not_overlap(
         page.reload(wait_until="domcontentloaded")
         page.locator("#tabBoard").click()
         page.wait_for_timeout(400)
-        assert_no_overlap(page.locator(f"{cluster} button:visible"))
-
-
-def test_the_helper_is_wired_to_a_real_locator(
-    authed_page: Page, base_url: str
-) -> None:
-    """One assertion through `_geometry.assert_min_target` itself, so the
-    vendored helper is exercised rather than only copied in."""
-    page = authed_page
-    _mock(page)
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabApps").click()
-    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    launch = page.locator("#appsList .action-row-kebab").first
-    expect(launch).to_be_visible()
-    assert_min_target(launch)
+        assert_no_overlap(page.locator("#boardDispatch button:visible"))

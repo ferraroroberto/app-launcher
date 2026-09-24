@@ -245,7 +245,7 @@ _BOARD_TARGETS = (
     "tests/e2e/test_coding_chief.py "
     "tests/e2e/test_session_rename.py tests/e2e/test_shared_session_title.py "
     "tests/e2e/test_coding_model_selector.py tests/e2e/test_terminal_bar_overflow.py "
-    "tests/e2e/test_primary_nav.py tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py "
+    "tests/e2e/test_primary_nav.py tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
     "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
 )
@@ -257,7 +257,7 @@ _LIFEOS_TARGETS = (
     "tests/e2e/test_markdown_tables.py "
     "tests/e2e/test_collapsible_other_tabs.py tests/e2e/test_coding_model_selector.py "
     "tests/e2e/test_terminal_bar_overflow.py tests/e2e/test_primary_nav.py "
-    "tests/e2e/test_bottom_tab_bar.py tests/e2e/test_smoke.py "
+    "tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
     "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
 )

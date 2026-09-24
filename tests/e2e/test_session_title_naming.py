@@ -5,7 +5,7 @@ tab read.
 
 Two pure-function contracts back the feature, pinned here via dynamic
 ``import()`` in the page (the same probe pattern as
-``test_fullscreen_keyboard_pan.py``):
+``test_terminal_module_probes.py``):
 
 1. ``sessions.js`` ``sessionTitle()`` smart precedence. A genuine shared
    title (fleet-config#302, ``shared_name`` with ``shared_name_source`` !==
