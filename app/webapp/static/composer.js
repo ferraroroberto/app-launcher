@@ -44,8 +44,9 @@
  *                        Chat mode asks for it.
  *   }) → handle
  *
- * The handle: `root`, `textarea`, `attachFiles(files)` (paste / drop entry
- * point), `reset()` (leave-surface teardown), `closePopovers()`,
+ * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
+ * image button, the composer's own paste and drop (#1206) and the terminal
+ * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`.
  *
@@ -157,6 +158,23 @@ function render(host, placeholder) {
     attachInput: host.querySelector('.composer-attach-input'),
     ocrInput: host.querySelector('.composer-ocr-input'),
   };
+}
+
+// A paste's files, or none when it also carries plain text (see the paste
+// listener in mountComposer).
+function pastedFiles(dt) {
+  if (!dt || Array.prototype.indexOf.call(dt.types || [], 'text/plain') !== -1) return [];
+  const files = [];
+  const items = dt.items || [];
+  for (let i = 0; i < items.length; i++) {
+    const file = items[i].kind === 'file' ? items[i].getAsFile() : null;
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+function carriesFiles(dt) {
+  return !!dt && Array.prototype.indexOf.call(dt.types || [], 'Files') !== -1;
 }
 
 function setButtonState(btn, enabled, titleOn, titleOff) {
@@ -351,6 +369,27 @@ export function mountComposer(host, opts) {
     const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
     el.attachInput.value = '';
     attachFiles(list);
+  });
+
+  // Paste and drop reach attachFiles from every mount (#1206). They were only
+  // wired to the terminal's xterm host (terminal-image.js), so Chat, which
+  // has no terminal, took neither. A clipboard that also carries plain text
+  // pastes as text: Office and similar apps put a rendered image of copied
+  // text beside it, and that paste must never turn into an upload.
+  el.textarea.addEventListener('paste', function (ev) {
+    const files = pastedFiles(ev.clipboardData);
+    if (!files.length) return;
+    ev.preventDefault();
+    attachFiles(files);
+  });
+  host.addEventListener('dragover', function (ev) {
+    if (carriesFiles(ev.dataTransfer)) ev.preventDefault();
+  });
+  host.addEventListener('drop', function (ev) {
+    const dt = ev.dataTransfer;
+    if (!dt || !dt.files || !dt.files.length) return;
+    ev.preventDefault();
+    attachFiles(dt.files);
   });
 
   // The image button's two options. Registered BEFORE the menu binds its own
