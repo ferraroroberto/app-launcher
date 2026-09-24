@@ -2048,11 +2048,14 @@ textarea.input-native { height: auto; }
   padding: 0 10px;
   font-size: var(--font-label);
 }
-.job-item .job-menu-anchor {
+.job-item .job-menu-anchor,
+.job-item .job-menu-slot {
   flex: none;
   min-height: 44px;
   min-width: 36px;
 }
+/* The kebab's stand-in on a row with no menu (#1207): its box, unseen. */
+.job-item .job-menu-slot { visibility: hidden; }
 /* The rail's divider rule targets adjacent .icon-btn siblings; the pair
    here is a tint button beside a kebab, which is not that shape. */
 .app-item .row-actions.job-row-actions .icon-btn + .icon-btn { border-top: 0; }
