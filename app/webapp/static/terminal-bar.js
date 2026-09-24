@@ -3,7 +3,8 @@
  *
  * The bar used to carry ✕ Kill and ↓ Jump as permanent controls. They
  * left the bar so it fits a 390px phone without scrolling: ‹ Back · title
- * · Terminal⇄Chat toggle (#982, session-overlay.js) · 🔊 · ⋮.
+ * · context ring (#1223, context-ring.js) · Terminal⇄Chat toggle (#982,
+ * session-overlay.js) · 🔊 · ⋮.
  *
  *   ⋮ menu — Rename · Copy link · [Show/Hide tool calls · Reload, Chat mode
  *   only] · [Compact, Claude sessions only, #1218] · Stop and kill. Copy link prefers the session's provider-native

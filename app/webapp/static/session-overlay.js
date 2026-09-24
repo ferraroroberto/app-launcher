@@ -43,6 +43,7 @@ import {
 } from './session-transcript.js';
 import { applyTermTheme } from './terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal-bar.js';
+import { syncContextRing, wireContextRing } from './context-ring.js';
 import { closeSpeakPopover, revealReadAloudButton } from './terminal-readaloud.js';
 import { terminalComposer } from './terminal-compose.js';
 import { isWideLayout } from './layout.js';
@@ -165,6 +166,9 @@ export function setSessionMode(mode) {
   // Terminal never fetches chat for the session it is showing — the "10
   // windows, only one being read" constraint the feature exists for.
   syncLiveRefresh();
+  // The context ring (#1223) polls its own route in both modes; a switch
+  // reads it once more straight away.
+  syncContextRing();
   if (mode === 'terminal') {
     const t = state.terminal;
     if (t && t.sid === s.session_id) {
@@ -230,6 +234,7 @@ export function openSessionOverlay(session, wantMode) {
 
 export function closeSessionOverlay() {
   state.sessionView = null;
+  syncContextRing();
   closeChatPane();
   if (els.terminalOverlay) delete els.terminalOverlay.dataset.mode;
   hideTerminal();
@@ -245,6 +250,7 @@ export function wireSessionModeToggle() {
     const tab = ev.detail && ev.detail.tab;
     if (tab !== 'claude' && state.sessionView && isWideLayout()) closeSessionOverlay();
   });
+  wireContextRing();
   if (!els.sessionMode) return;
   els.sessionMode.addEventListener('click', function (ev) {
     const btn = ev.target.closest('.session-mode-btn');

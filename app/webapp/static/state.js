@@ -216,6 +216,7 @@ export const els = {
   // Chat pane of the session overlay (#953 transcript, #982 mode)
   chatPane: document.getElementById('chatPane'),
   chatNote: document.getElementById('chatNote'),
+  contextRing: document.getElementById('contextRing'),
   sessionMode: document.getElementById('sessionMode'),
   sessionModeTerminal: document.getElementById('sessionModeTerminal'),
   sessionModeChat: document.getElementById('sessionModeChat'),

@@ -411,7 +411,7 @@ export const CHIEF_RESTART_CONFIRM =
 
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".
-function usageTier(pct) {
+export function usageTier(pct) {
   if (pct == null || isNaN(pct)) return 'muted';
   if (pct >= 80) return 'danger';
   if (pct >= 60) return 'warn';

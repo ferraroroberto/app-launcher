@@ -2254,6 +2254,31 @@ textarea.input-native { height: auto; }
   box-shadow: none;
   cursor: default;
 }
+/* Context ring (#1223): the session's context-window use, just before the
+   toggle. A real 44×44 term-btn (the bar is a cluster, so no expanded hit
+   area), holding an 18px SVG ring — the toggle's own glyph size. The track
+   is the hairline; the fill is accent, stepping to attention / danger at
+   the app's 60 / 80 usage tiers (context-ring.js sets data-tier). SVG
+   rather than a conic-gradient so the arc stays crisp on iOS WebKit. */
+.context-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  padding: 0;
+  color: var(--accent);
+}
+.context-ring[data-tier="warn"] { color: var(--attention); }
+.context-ring[data-tier="danger"] { color: var(--danger); }
+.context-ring-svg { width: 18px; height: 18px; pointer-events: none; }
+.context-ring-track,
+.context-ring-fill {
+  fill: none;
+  stroke-width: 3;
+}
+.context-ring-track { stroke: var(--line); }
+.context-ring-fill { stroke: currentColor; stroke-linecap: butt; }
 /* One 12px gutter everywhere: page edge, between cards, and (below) the
    row padding inside an opened group — nothing else sets a gap here. */
 .transcript-body, .changes-body {
@@ -2897,9 +2922,10 @@ body.terminal-open {
   display: flex;
   align-items: center;
   /* (#514) 6px, matching .terminal-bar-actions' own gap, so every button
-     sits at one uniform distance. The session overlay's row is five 44px
-     controls at most since #981 (‹ Back · title · mode toggle · 🔊 · ⋮),
-     which leaves the title most of a 390px phone. */
+     sits at one uniform distance. The session overlay's row is six 44px
+     controls at most since #1223 (‹ Back · title · context ring · mode
+     toggle · 🔊 · ⋮), which still leaves the title ~74px of a 390px phone
+     and only a few px of a 320px one with 🔊 showing. */
   gap: 6px;
   padding: 8px 10px;
   background: var(--card);
@@ -2942,9 +2968,10 @@ body.terminal-open {
 }
 .terminal-bar-actions::-webkit-scrollbar { display: none; }
 /* The session overlay's bar no longer needs that scroller (#981): with ✕ and
-   ↓ gone its group holds the Terminal⇄Chat toggle (#982), 🔊 and ⋮, which
-   always fit beside a shrinking title (≈274px of a 320px phone, title keeps
-   the rest). Only the Life OS bars (#886) still scroll. */
+   ↓ gone its group holds the context ring (#1223), the Terminal⇄Chat toggle
+   (#982), 🔊 and ⋮, which always fit beside a shrinking title (≈316px of a
+   320px phone with all four showing, title keeps the rest). Only the Life OS
+   bars (#886) still scroll. */
 #terminalOverlay .terminal-bar-actions { overflow-x: visible; }
 .term-btn {
   background: var(--card-2);

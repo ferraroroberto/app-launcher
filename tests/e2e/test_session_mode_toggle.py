@@ -125,6 +125,19 @@ def _mock_transcript(page: Page, sid: str, calls: list) -> None:
     page.route(re.compile(r".*/api/claude-code/sessions/" + re.escape(sid) + r"/transcript(\?.*)?$"), _handler)
 
 
+def _mock_context_unknown(page: Page, calls: list) -> None:
+    """The context ring's route (#1223) answering with no number — the
+    statusline shows no ``%c`` (early in a session, right after /compact)."""
+    def _handler(route):
+        calls.append(route.request.url)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"available": True, "percent": None, "reason": "not_showing"}),
+        )
+
+    page.route(re.compile(r".*/api/claude-code/sessions/[^/]+/context$"), _handler)
+
+
 def _mock_git_status(page: Page) -> None:
     # #510: a late git-status response rebuilds every Coding row under a click.
     page.route(
@@ -172,7 +185,9 @@ def test_toggle_keeps_terminal_scrollback_and_socket(
 ) -> None:
     sid = launched_pty_session
     calls: list = []
+    context_calls: list = []
     _mock_transcript(authed_page, sid, calls)
+    _mock_context_unknown(authed_page, context_calls)
     authed_page.add_init_script(_WS_PROBE)
     authed_page.goto(f"{base_url}/?session={sid}", wait_until="domcontentloaded")
     overlay = authed_page.locator("#terminalOverlay")
@@ -231,6 +246,12 @@ def test_toggle_keeps_terminal_scrollback_and_socket(
     pages = [u for u in calls if "after=" not in u]
     assert len(pages) == 1, f"the transcript was reloaded by a mode switch: {calls}"
 
+    # The context ring (#1223) asked its own route for this session, in
+    # both modes, and got no number: nothing is drawn — never a 0% ring.
+    assert context_calls, "the context ring never asked for the session's context"
+    assert all(f"/sessions/{sid}/context" in u for u in context_calls), context_calls
+    expect(authed_page.locator("#contextRing")).to_be_hidden()
+
 
 def test_row_tap_reopens_last_mode(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
@@ -279,11 +300,13 @@ def test_detached_session_opens_in_chat_with_terminal_off(
     authed_page: Page, base_url: str
 ) -> None:
     calls: list = []
+    context_calls: list = []
     _mock_git_status(authed_page)
     _mock_sessions_list(authed_page, [
         _session_row(_DETACHED_SID, kind="remote", agent="claude", title="Detached demo"),
     ])
     _mock_transcript(authed_page, _DETACHED_SID, calls)
+    _mock_context_unknown(authed_page, context_calls)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     row = _row(authed_page, _DETACHED_SID)
     overlay = authed_page.locator("#terminalOverlay")
@@ -304,6 +327,10 @@ def test_detached_session_opens_in_chat_with_terminal_off(
     term_seg.click(force=True)
     expect(authed_page.locator("#toast")).to_contain_text("Detached session — no terminal")
     expect(overlay).to_have_attribute("data-mode", "chat")
+    # A detached session has no screen to read its context off (#1223): the
+    # ring is absent and its route is never even asked.
+    expect(authed_page.locator("#contextRing")).to_be_hidden()
+    assert context_calls == [], f"the ring polled a detached session: {context_calls}"
     # The row keeps its own action menu behind the kebab, and shows no
     # chevron and no gear (#1025).
     authed_page.locator("#terminalBack").click()
