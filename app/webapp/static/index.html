@@ -2032,7 +2032,16 @@
          textarea + 2x2 grid (mic · keys / image · send), the image button's
          attach / OCR options menu, the OCR staging tray, the keys D-pad. -->
     <div id="terminalComposeBar" class="composer" hidden></div>
-    <div id="terminalStatus" class="terminal-status" hidden></div>
+    <!-- The bottom status strip (#1219): always laid out, in Terminal and
+         Chat mode alike, so the controls above it clear the phone's rounded
+         corners and never move when a message comes or goes. Blank when
+         idle; the one message (connection state, "Tap to reconnect") is
+         #terminalStatus inside it, centred, and only that child toggles
+         `hidden`. The live region is the strip, not the message, because a
+         region that appears together with its text is often not announced. -->
+    <div id="terminalStatusStrip" class="terminal-status-strip" role="status" aria-live="polite">
+      <div id="terminalStatus" class="terminal-status" hidden></div>
+    </div>
   </div>
 
   <!-- Read-aloud summary modal (issue #210): shows the hub summary text while

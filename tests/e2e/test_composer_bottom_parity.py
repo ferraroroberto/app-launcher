@@ -97,8 +97,8 @@ def test_composer_mounts_share_one_bottom_padding_recipe(
         "Terminal/Chat asymmetry issue #1099 is about: on a device with a "
         "non-zero safe-area inset the two modes then leave different amounts of "
         "empty space below the same button grid. Both mounts must take the base "
-        "`.compose-bar` recipe. If bottom UI genuinely needs to clear the home "
-        "indicator, that belongs on `.terminal-overlay`'s own `padding-bottom` "
-        "(see the comment in its rule), so every mode and all three overlays "
-        f"sharing the class move together. Found: {offenders}"
+        "`.compose-bar` recipe. The home-indicator inset belongs on the "
+        "session overlay's bottom status strip (`.terminal-status-strip`, "
+        "#1219), the one element under both panes, so every mode moves "
+        f"together. Found: {offenders}"
     )

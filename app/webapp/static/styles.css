@@ -2183,9 +2183,11 @@ textarea.input-native { height: auto; }
   min-height: 0;
 }
 #terminalOverlay:not([data-mode="chat"]) .chat-pane { display: none; }
+/* The bottom status strip (#terminalStatusStrip) is deliberately NOT in this
+   list (#1219): it stays in both modes, so Chat's controls sit on the same
+   reserved strip as Terminal's and a mode switch never moves them. */
 #terminalOverlay[data-mode="chat"] .terminal-host,
-#terminalOverlay[data-mode="chat"] #terminalComposeBar,
-#terminalOverlay[data-mode="chat"] #terminalStatus { display: none; }
+#terminalOverlay[data-mode="chat"] #terminalComposeBar { display: none; }
 /* Why the Terminal segment is off (a detached session) — caption under the
    list, above the composer. Padded on the one 12px gutter on every side
    (#1098). It used to be `0 12px 8px`, and the only air above it was the
@@ -2332,11 +2334,10 @@ textarea.input-native { height: auto; }
    identical markup (composer.js `mountComposer`), so this rule was the only
    thing that told them apart.
 
-   If a row of bottom UI ever does need to clear the home indicator, it goes
-   on `.terminal-overlay`'s own `padding-bottom` — see the comment in that
-   rule, which already names itself as the place for it — so both modes and
-   all three overlays sharing the class move together. Never on one mount of
-   a shared component. */
+   That row of bottom UI now exists (#1219): the status strip under both
+   panes, `.terminal-status-strip`, which takes the inset once for the
+   session overlay — one element shared by both modes, so they still move
+   together. Never on one mount of a shared component. */
 .transcript-list {
   list-style: none;
   margin: 0;
@@ -2904,12 +2905,15 @@ body.terminal-open {
   flex-direction: column;
   overflow: hidden;
   padding-top: env(safe-area-inset-top, 0);
-  /* No padding-bottom: let the xterm host extend edge-to-edge so the
-     dead black band above the iOS home-indicator goes away. The home
-     gesture area itself remains touch-reserved by iOS, so content
-     there isn't interactive but it does fill the screen visually.
-     If a future row of bottom UI ever needs to sit *above* the home
-     indicator, switch this back to env(safe-area-inset-bottom, 0). */
+  /* No padding-bottom: the overlay itself runs to the physical bottom edge
+     (no dead band of its own background above the iOS home indicator).
+     The session overlay's bottom row is the status strip (#1219), and it
+     takes env(safe-area-inset-bottom) as its OWN padding-bottom — the same
+     shape as `.app` and the lightbox: the bottom-most surface carries the
+     inset, so its background reaches the glass while everything above it
+     clears the indicator and the rounded corners. Not here: that would put
+     a band of the overlay's background under the strip and also move the
+     two Life OS shells that share this class, which have no bottom row. */
   /* Containment + the iOS-supported `overscroll-behavior: contain`
      stop any scroll attempt that exits the overlay from bubbling up
      to the (now-pinned) body and triggering rubber-band. */
@@ -3432,13 +3436,49 @@ body.terminal-open {
 .ocr-extract:active { opacity: 0.85; }
 .ocr-extract:disabled { opacity: 0.6; cursor: default; }
 .ocr-extract.working { opacity: 1; }
+/* The session overlay's bottom status strip (#1219). Always laid out, in
+   both modes, one status line tall — the height the old status line added
+   when it appeared: 8px + one body-sm line + 8px. The controls above it
+   therefore sit clear of the phone's rounded corners, and a message coming
+   or going changes only the strip's content, never its box, so nothing
+   above it moves (it used to be a `hidden` flex child that pushed the
+   composer up on every "Connecting…" and dropped it back on connect).
+
+   env(safe-area-inset-bottom) enters here and nowhere else in the overlay,
+   as this bottom-most surface's own padding — the `.app` / lightbox shape:
+   the card background runs to the glass, the message row sits above the
+   home indicator. content-box, against the global border-box, so the
+   reserved row is the min-height itself and the inset is added below it
+   instead of eating into it.
+
+   No top hairline: blank, the strip reads as the composer's own bottom
+   margin on the same card surface; the message is marked by its colour. */
+.terminal-status-strip {
+  display: flex;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  min-height: calc(var(--font-body-sm) * 1.45 + 16px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--card);
+}
+/* The message itself: stretched to fill the reserved row (so the tap-to-
+   reconnect target is the whole row) and centred both ways, so a short
+   message never runs into a rounded corner and the icon never grows the
+   line box. A message too long for one line wraps and grows the strip —
+   deliberately, rather than truncating the only instruction on a dead-end
+   state (the Tailscale-only notice at 320px). */
 .terminal-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 12px;
   font-size: var(--font-body-sm);
+  line-height: 1.45;
+  text-align: center;
   color: var(--attention);
-  background: var(--card);
-  border-top: 1px solid var(--line);
-  flex-shrink: 0;
 }
 
 /* ---------- Life OS tab (issue #102) ---------- */
