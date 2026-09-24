@@ -54,8 +54,12 @@ const runExtras = new Map();
 // return on "same number of rows" is taken for 0 === 0 — so a launcher with
 // no jobs registered rendered an empty card and never the reason why
 // (#1133, pre-existing: `hidden` starts set in the markup).
+// Until the first /api/jobs answer, the list is loading rather than empty:
+// the loading line says so, and the empty state waits for a real zero (#1176).
 function syncJobsEmpty() {
-  els.jobsEmpty.hidden = !!state.jobsSearchQuery || state.jobs.length !== 0;
+  if (els.jobsLoading) els.jobsLoading.hidden = state.jobsLoaded;
+  els.jobsEmpty.hidden = !state.jobsLoaded || !!state.jobsSearchQuery ||
+    state.jobs.length !== 0;
   if (!state.jobsSearchQuery && els.jobsFilterEmpty) els.jobsFilterEmpty.hidden = true;
 }
 
@@ -926,9 +930,14 @@ export async function fetchJobs() {
   try {
     const body = await jsonApi('/api/jobs');
     state.jobs = body.jobs || [];
+    state.jobsLoaded = true;
     patchRowsInPlace();
   } catch (exc) {
     logPollFailure('jobs fetch failed', exc);
+    if (!state.jobsLoaded && els.jobsLoading) {
+      els.jobsLoading.querySelector('.empty-state-message').textContent =
+        'Could not load jobs — retrying while this tab is open.';
+    }
   }
 }
 
@@ -939,6 +948,9 @@ export function wireJobs() {
   });
   if (els.jobsSortBtn) {
     els.jobsSortBtn.addEventListener('click', toggleSort);
+    // Labelled from the saved order now, not on the first jobs render — the
+    // button was blank while the tab loaded (#1176).
+    syncSortBtn();
   }
   if (els.jobsSearchInput) {
     els.jobsSearchInput.addEventListener('input', function () {

@@ -492,7 +492,7 @@ export function renderJobDetails(job) {
     const depth = Number.isFinite(job.queue_depth) ? job.queue_depth : 0;
     mutex.innerHTML = icon('link') + ' ';
     mutex.append(depth > 0 ? job.mutex_group + ' (' + depth + ')' : job.mutex_group);
-    mutex.title = 'Mutex group: ' + job.mutex_group +
+    mutex.title = 'Exclusive group: ' + job.mutex_group +
       (depth > 0 ? ' — ' + depth + ' queued' : '');
     flags.appendChild(mutex);
   }

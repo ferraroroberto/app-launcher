@@ -102,6 +102,11 @@ def test_every_control_meets_the_44px_floor(
         f"{tab}: {len(under)} control(s) under the 44px effective floor "
         "(#1124):\n  " + "\n  ".join(sorted(set(under)))
     )
+    # The card toolbars' toggles carry visible labels (#1176) and wrap: no
+    # two expanded targets there may share pixels, on a line or across one.
+    toolbar = page.locator(".pane:not([hidden]) .card-toolbar button:visible")
+    if toolbar.count() >= 2:
+        assert_no_overlap(toolbar)
 
 
 @pytest.mark.parametrize("cluster", (

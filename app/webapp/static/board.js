@@ -72,11 +72,12 @@ import {
 // `live` columns are built from the session-host list, so an unreachable
 // session-host makes them unknown too (#915).
 const COLUMNS = [
-  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues.', glyph: 'git-branch', gh: 'all' },
-  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side.', glyph: 'hourglass', live: true },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now.', glyph: 'circle-check', live: true },
-  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs.', glyph: 'git-pull-request', gh: 'part' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'square-check', gh: 'all' },
+  // Each empty sentence names the control that fills its lane (#1176).
+  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues — tap Refresh to check GitHub again.', glyph: 'git-branch', gh: 'all' },
+  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side — start one from the dispatch bar above.', glyph: 'hourglass', live: true },
+  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now — start work from the dispatch bar above.', glyph: 'circle-check', live: true },
+  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs — tap Refresh to check GitHub again.', glyph: 'git-pull-request', gh: 'part' },
+  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet — tap Refresh to check GitHub again.', glyph: 'square-check', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;

@@ -163,20 +163,19 @@ def test_star_toggle_reorders_and_persists(authed_page: Page, base_url: str) -> 
     assert _order(authed_page) == ["delta", "alpha", "bravo", "charlie"]
 
 
-def test_favorites_filter_is_icon_only_and_keeps_its_name(
+def test_favorites_filter_is_labelled_like_its_neighbours(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1070 — the header toggle is the star glyph alone at every width.
+    """#1176 (superseding #1070's icon-only star): the header toggles read as
+    one set, each a glyph plus a short word.
 
-    The caption used to be hidden only below 520px, so a desktop header
-    showed a wide labelled pill beside three icon-sized controls. It is gone
-    at every width now, the box matches the Detached/Resume toggles next to
-    it, and the text name moved to aria-label/title so nothing is lost to a
-    screen reader.
-
-    Runs in both projections, so the width assertion is the point on the
-    390px iPhone leg and the *desktop* leg is the one that would have
-    failed before this change.
+    #1070 dropped the star's caption because a wide labelled pill sat beside
+    icon-only Detached/Resume toggles. The design review's judge then found
+    those icon-only toggles unreadable (J-05: a cloud, a rotate arrow and a
+    star are not conventional glyphs), so all three carry a word now —
+    Detached, Resume, Starred — and the set is consistent the other way
+    round. Its height still matches the Detached toggle beside it, and the
+    accessible name keeps saying what the filter does.
     """
     _install_routes(authed_page)
     authed_page.add_init_script(
@@ -187,14 +186,13 @@ def test_favorites_filter_is_icon_only_and_keeps_its_name(
 
     btn = authed_page.locator("#favFilterBtn")
     expect(btn).to_be_visible()
-    # No caption node, and no stray text beside the glyph, at any width.
-    expect(btn.locator(".fav-filter-label")).to_have_count(0)
-    expect(btn).to_have_text("")
+    # A glyph plus one short word, like Detached and Resume beside it.
+    expect(btn).to_have_text("Starred")
     # The accessible name still carries the word the caption used to show.
     expect(btn).to_have_attribute("aria-label", "Show only favorites")
     expect(btn).to_have_attribute("title", "Show only favorites")
 
-    # Same box as the toggles beside it — the "reads as one set" half of the
+    # Same height as the toggles beside it — the "reads as one set" half of the
     # ask. Compared with a 1px tolerance for sub-pixel heights; the Projects
     # header is static markup, so neither read straddles a re-render.
     fav_box = btn.bounding_box()
@@ -203,10 +201,6 @@ def test_favorites_filter_is_icon_only_and_keeps_its_name(
     assert abs(fav_box["height"] - tog_box["height"]) <= 1, (
         f"favourites filter {fav_box['height']}px vs Detached "
         f"{tog_box['height']}px — the header controls no longer match"
-    )
-    assert abs(fav_box["width"] - tog_box["width"]) <= 1, (
-        f"favourites filter {fav_box['width']}px wide vs Detached "
-        f"{tog_box['width']}px — still a labelled pill?"
     )
 
     # Still a working toggle, and still gold when on.
