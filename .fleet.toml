@@ -441,14 +441,13 @@ pytest_targets = [
 # [design.review] -- the rendered design review's walk (fleet-config
 # skills/_lib/design_review, docs/skills.md "Two legs, two interpreters").
 # The walk clicks the primary tabs, opens every <details> and showModal()s
-# every dialog[id] on its own; each extra step below is ONE click after a
-# fresh load, never a fill or submit, and never on a no_go selector. Only
-# surfaces one click reaches from a fresh load belong here: a list inside a
-# closed card (Projects, Apps, Port listeners, Settings' own cards) and
-# anything inside the session overlay need two clicks or a live session, and
-# are reported as unmeasured (fleet-config#962). Nor may a step depend on
-# live data: the Running apps list is usually empty, and one step that
-# cannot find its target on every device leaves 11 rules unmeasured.
+# every dialog[id] on its own; each extra step below is a click (or a short
+# `clicks` sequence) after a fresh load, never a fill or submit, and never on
+# or inside a no_go selector. A step whose target is missing on the live app
+# (an empty list) is recorded STEP_TARGET_ABSENT and leaves unrelated rules
+# alone (fleet-config#995). Anything inside the session overlay needs a
+# session the walk must never attach to on the live app: those steps are
+# `synthetic = true` and run only against the throwaway instance below.
 [design.review]
 theme_storage_key = "app-launcher.theme"
 # No tab_selector: the walk resolves it *inside* the first [role=tablist], so
@@ -510,3 +509,51 @@ click = ".job-menu-anchor"
 tab = "jobs"
 id = "filter"
 click = "#jobsSearchInput"
+
+# The throwaway instance `/design-review app-launcher --synthetic` walks
+# (fleet-config#995, app-launcher#1227): a git-archive copy of HEAD on free
+# ports with synthetic data only -- a demo project, a stub PTY session with a
+# synthetic Chat transcript, one Life OS skill, one job, one app. Its no_go is
+# the live list with `.board-drawer-action` narrowed to Rename, so the drawer's
+# Chat and Terminal open on the stub session while Stop, Issue and Rename stay
+# vetoed; `.session-open` stays vetoed because a desktop row tap mirrors the
+# session into a window on the PC.
+[design.review.synthetic]
+command = ["scripts/design_review_synthetic.py"]
+startup_timeout_s = 180
+no_go = [
+    ".row-menu-danger",
+    ".action-row-main",
+    ".session-open",
+    ".job-run-btn",
+    ".board-rename-btn",
+    ".board-stop-btn",
+    ".board-issue-btn",
+    ".board-item:not([data-session-id]) .board-card",
+    "#boardDispatchSend",
+    "#boardChiefStart",
+    "#boardChiefResume",
+    "#codingChiefStart",
+    "#codingChiefResume",
+    "#claudeResume",
+    "#lifeOsRecapLaunch",
+    "#lifeOsResume",
+]
+
+[[design.review.extra_steps]]
+tab = "board"
+id = "session-chat"
+clicks = [".board-item[data-session-id] .board-card", ".board-open-chat"]
+synthetic = true
+
+[[design.review.extra_steps]]
+tab = "board"
+id = "session-terminal"
+clicks = [".board-item[data-session-id] .board-card", ".board-open-terminal"]
+synthetic = true
+
+[[design.review.extra_steps]]
+tab = "board"
+id = "session-overlay-menu"
+clicks = [".board-item[data-session-id] .board-card", ".board-open-terminal", "#terminalMenu"]
+synthetic = true

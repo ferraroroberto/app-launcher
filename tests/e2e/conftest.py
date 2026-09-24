@@ -57,6 +57,11 @@ from tests._credential_hygiene import (
     register_secret,
 )
 from tests.e2e._browser_sweep import sweep_browser_helpers
+# The stub child + claude shim live in a plain module the synthetic design-review
+# instance shares (app-launcher#1227); the private names stay for this file's callers.
+from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER
+from tests.e2e.stub_session import STUB_FLAG as _STUB_FLAG
+from tests.e2e.stub_session import write_claude_shim as _write_claude_shim
 
 logger = logging.getLogger(__name__)
 
@@ -124,16 +129,6 @@ _UPLOADS_DIR = _REPO_ROOT / ".launcher-tmp"
 # to the live tray mid-run must never trip the check.
 _UPLOAD_MARKER = "e2e-stub-"
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
-# Sentinel flag for the lightweight PTY child (issue #534). Under autoboot the
-# disposable session-host's PATH is prepended with a harness-generated
-# `claude.cmd` shim: a launch whose flags are exactly this sentinel runs a
-# tiny deterministic Python echo loop instead of the real Claude CLI (3-5 s
-# startup each), while any other flag set falls through to the real `claude`.
-# Purely a harness substitution — no production code knows about it.
-_STUB_FLAG = "--e2e-stub"
-# The banner that child prints on startup — the marker that identifies a
-# transcript as harness-written (issue #913's isolation check).
-_STUB_BANNER = "[e2e-stub]"
 # Filled by _autoboot_server so the lightweight fixture can create sessions
 # directly on the disposable session-host (the sentinel flag can't travel
 # through the webapp's launch endpoint, which builds flags from config).
@@ -268,67 +263,6 @@ def _wait_healthz(base: str, timeout: float) -> bool:
             pass
         time.sleep(0.4)
     return False
-
-
-_STUB_CHILD_SOURCE = '''\
-"""Deterministic lightweight PTY child for UI-only e2e tests (issue #534).
-
-Stands in for the real Claude CLI under the disposable autoboot session-host:
-instant startup, echoes each input line (ConPTY cooked mode echoes keystrokes
-too), exits on /quit so the host's graceful stop path works.
-"""
-import sys
-
-print("[e2e-stub] lightweight PTY child ready (issue #534)", flush=True)
-while True:
-    line = sys.stdin.readline()
-    if not line:
-        break
-    text = line.rstrip("\\r\\n")
-    if text.strip() == "/quit":
-        print("[e2e-stub] bye", flush=True)
-        break
-    print(text, flush=True)
-'''
-
-# Drift guard: `_leaked_stub_sessions` identifies a harness-written transcript
-# by this banner, so the child it comes from must actually print it.
-assert _STUB_BANNER in _STUB_CHILD_SOURCE
-
-
-def _write_claude_shim(shim_dir: Path) -> None:
-    """Generate the `claude.cmd` PATH shim + stub child script (issue #534).
-
-    The session-host spawns agents via ``cmd /c … && claude <flags>`` with the
-    command resolved off its own PATH, so prepending this directory to the
-    *disposable* session-host's PATH intercepts every claude launch: the
-    ``--e2e-stub`` sentinel routes to the stub child, anything else falls
-    through to the real ``claude`` resolved at generation time. Where claude
-    isn't installed (the CI runner) the fall-through branch fails loud — but
-    it is never reached there, because `launched_claude_pty_session` skips
-    first (same `shutil.which` guard as always).
-    """
-    stub_py = shim_dir / "e2e_stub_child.py"
-    stub_py.write_text(_STUB_CHILD_SOURCE, encoding="utf-8")
-    real_claude = shutil.which("claude")
-    if real_claude:
-        real_branch = f'call "{real_claude}" %*\nexit /b %ERRORLEVEL%\n'
-    else:
-        real_branch = (
-            "echo [e2e-shim] real claude is not installed 1>&2\n"
-            "exit /b 1\n"
-        )
-    shim = (
-        "@echo off\n"
-        f'if "%~1"=="{_STUB_FLAG}" (\n'
-        f'  "{sys.executable}" -X utf8 "{stub_py}"\n'
-        "  exit /b %ERRORLEVEL%\n"
-        ")\n"
-        f"{real_branch}"
-    )
-    # Text-mode write translates \n -> os.linesep, so the .cmd lands with
-    # proper CRLF line endings on Windows.
-    (shim_dir / "claude.cmd").write_text(shim, encoding="ascii")
 
 
 def _leaked_stub_sessions(
