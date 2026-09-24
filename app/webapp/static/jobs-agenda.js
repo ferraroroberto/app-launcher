@@ -48,8 +48,11 @@ function renderAgenda(data) {
   if (!occ.length && !frequent.length) {
     const p = document.createElement('p');
     p.className = 'muted small';
+    // Names the controls that add one (#1191): a job's Schedule field,
+    // reached through Edit mode on the Registered jobs card below.
     p.textContent = 'No scheduled runs in the next ' +
-      ((data && data.days) || 7) + ' days.';
+      ((data && data.days) || 7) + ' days. To add one, set a job\'s ' +
+      'Schedule in Edit mode under Registered jobs.';
     host.appendChild(p);
     return;
   }

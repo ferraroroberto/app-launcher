@@ -104,3 +104,22 @@ def test_toolbar_toggles_carry_a_visible_word() -> None:
     for el_id in ("claudeDetached", "claudeResume", "favFilterBtn",
                   "lifeOsDetached", "lifeOsResume"):
         assert _by_id(tree, el_id)["text"].strip(), f"#{el_id} is icon-only"
+
+
+_STATIC = _INDEX.parent
+
+
+def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
+    """#1191: the Code tab's chips spell out what they are, and the empty
+    Schedule names controls that exist under those labels."""
+    tree = _tree()
+    assert _by_id(tree, "gitStatusBtn")["text"].strip() == "Git status"
+
+    badge = _STATIC.joinpath("context-filter.js").read_text(encoding="utf-8")
+    assert not re.search(r"\btok\b|\(7d\)", badge), "badge abbreviates"
+
+    agenda = _STATIC.joinpath("jobs-agenda.js").read_text(encoding="utf-8")
+    assert "Schedule in Edit mode under Registered jobs" in agenda
+    texts = {e["text"].strip() for e in tree.elements}
+    for label in ("Schedule", "Edit mode", "Registered jobs"):
+        assert label in texts, f"the empty Schedule names {label!r}, which no control shows"

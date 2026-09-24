@@ -181,3 +181,6 @@ def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:
     authed_page.locator("#jobsAgendaCard summary").click()
     expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
         "No scheduled runs in the next 7 days")
+    # A next step, naming the controls that add one (#1191).
+    expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
+        "set a job's Schedule in Edit mode under Registered jobs")

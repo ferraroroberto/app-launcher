@@ -135,7 +135,22 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
     authed_page: Page, base_url: str
 ) -> None:
     _mock(authed_page)
+    # Week-only savings: the badge's longest wording (#1191).
+    _json_route(authed_page, re.compile(r".*/api/context-filter$"), {
+        "mode": {"available": False}, "harnesses": [],
+        "stats": {"available": True, "today": {"tokens_saved": 0},
+                  "last_7_days": {"tokens_saved": 123456}},
+    })
+    authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    # The Code tab's chips say what they are, whole words, on one line (#1191).
+    for sel, text in (("#gitStatusBtn", "Git status"),
+                      ("#codingFilterSavedBadge",
+                       "Context filter saved 123.5k tokens in 7 days")):
+        expect(authed_page.locator(sel)).to_have_text(text)
+        m = stable_read(lambda: authed_page.evaluate(_LINES, sel))
+        assert m is not None and m["lines"] == 1, f"{sel} wraps at 390px: {m}"
 
     note = authed_page.locator(".launcher-note").first
     expect(note).to_have_css("font-style", "normal")

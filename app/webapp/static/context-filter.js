@@ -127,8 +127,10 @@ function renderBadge(stats) {
   els.codingFilterBadge.hidden = false;
   els.codingFilterSavedBadge.hidden = false;
   els.codingFilterSavedBadge.className = 'usage-badge good';
-  els.codingFilterSavedBadge.textContent =
-    fmtTokens(saved) + ' tok saved · filter' + (useToday ? '' : ' (7d)');
+  // User words (#1191): the filter as its Settings card names it, whole
+  // "tokens", and the window spelled out.
+  els.codingFilterSavedBadge.textContent = 'Context filter saved ' +
+    fmtTokens(saved) + ' tokens ' + (useToday ? 'today' : 'in 7 days');
 }
 
 export async function fetchContextFilter() {
