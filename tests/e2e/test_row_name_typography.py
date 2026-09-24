@@ -106,9 +106,9 @@ def _assert_one_line(page: Page, sel: str, full_name: str) -> None:
 
 
 def _assert_project_skill_and_app_names_stay_on_one_line(page: Page) -> None:
-    """Formerly ``test_project_skill_and_app_names_stay_on_one_line``; each
-    name check sets its own 320 and 430px widths, so it runs after the
-    390px helper-copy checks (#1215)."""
+    """Formerly ``test_project_skill_and_app_names_stay_on_one_line`` (#1215):
+    run on a page loaded at the projection's own viewport, as it was written;
+    each name check then sets its own 320 and 430px widths."""
     # Coding tab (the default): a long project name; since #1128 its long
     # branch rides the row's context line instead of sharing the title's.
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
@@ -132,8 +132,10 @@ def _assert_project_skill_and_app_names_stay_on_one_line(page: Page) -> None:
 def test_helper_notes_are_upright_and_labels_sentence_cased(
     authed_page: Page, base_url: str
 ) -> None:
-    """Helper copy and label casing at 390px, then the row names at 320 and
-    430px (#1215 merged the names test in: same mocks, same page)."""
+    """The row names at 320 and 430px, then helper copy and label casing at
+    390px (#1215 merged the names test in: same mocks). Each half keeps the
+    page state it was written against: the names half loads at the
+    projection's own viewport, the helper half reloads at 390px."""
     _mock(authed_page)
     # Week-only savings: the badge's longest wording (#1191).
     _json_route(authed_page, re.compile(r".*/api/context-filter$"), {
@@ -141,6 +143,9 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
         "stats": {"available": True, "today": {"tokens_saved": 0},
                   "last_7_days": {"tokens_saved": 123456}},
     })
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _assert_project_skill_and_app_names_stay_on_one_line(authed_page)
+
     authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
@@ -163,6 +168,3 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
                            ("#boardColDone", "Done today")):
         expect(authed_page.locator(f"{section} .collapse-title")).to_have_text(label)
     expect(authed_page.locator("#codingOptions .collapse-title")).to_have_text("Options")
-
-    # Last: resizes the viewport and walks the tabs.
-    _assert_project_skill_and_app_names_stay_on_one_line(authed_page)
