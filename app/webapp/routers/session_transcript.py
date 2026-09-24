@@ -44,6 +44,14 @@ one ``user``/``assistant`` turn from the same source, uncapped — the Chat
 pane's copy button (#985) calls it only when the page's own copy of that
 entry came back ``truncated: true``. Same source resolution, same gate.
 
+``POST /api/claude-code/sessions/{sid}/answer`` answers the session's
+pending ``AskUserQuestion`` from the Chat pane's question card (#1149):
+re-checks at send time that the call is still the one waiting, turns the
+pick into the picker's own keystrokes (``src.ask_user_question``) and types
+them — raw, one key per write — over the PTY socket, or one console-input
+call per key for a detached session. Same gate as ``/input``; its own
+``_TERMINAL_GUARD_RULES`` row.
+
 Unavailable sources are told apart on purpose (``reason``): a session the
 host doesn't know, an agent with no structured history, a history file that
 isn't there, and a file that *is* there but couldn't be read. Bodies are
@@ -53,13 +61,18 @@ never logged.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from websockets.asyncio.client import connect as ws_connect
+from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from src import board
+from src import audit, board, session_client
+from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
+from src.board_transcript import pending_decision_call
 from src.board_exchange import (
     _find_codex_transcript,
     find_antigravity_transcript,
@@ -76,6 +89,7 @@ from src.session_transcript import (
 )
 from src.webapp_config import WebappConfig
 
+from app.webapp.routers._helpers import audit_off_loop, maybe_json
 from app.webapp.routers.board_spawn import _safe_list_sessions
 
 logger = logging.getLogger(__name__)
@@ -147,14 +161,15 @@ def _resolve_path(
 
 async def _resolve_source(
     sid: str, cfg: WebappConfig
-) -> Tuple[Optional[str], Optional[str], Optional[Path], str, str]:
-    """Session lookup + history-path resolution, shared by both routes.
+) -> Tuple[Optional[str], Optional[str], Optional[Path], str, str, Optional[Dict[str, Any]]]:
+    """Session lookup + history-path resolution, shared by every route here.
 
-    Returns ``(reason, flavor, path, agent, why)`` — ``reason`` is set (and
-    ``flavor``/``path`` are ``None``) exactly when the caller must respond
-    ``_unavailable(sid, reason)`` instead of reading the source. ``why`` is
-    how the path was resolved or, for ``no_transcript``, which guard
-    refused (``""`` where a flavour has nothing to add).
+    Returns ``(reason, flavor, path, agent, why, session)`` — ``reason`` is
+    set (and ``flavor``/``path`` are ``None``) exactly when the caller must
+    respond ``_unavailable(sid, reason)`` instead of reading the source.
+    ``why`` is how the path was resolved or, for ``no_transcript``, which
+    guard refused (``""`` where a flavour has nothing to add). ``session``
+    is the session-host's row, ``None`` only for ``session_not_found``.
     """
     live, state = await asyncio.gather(
         asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
@@ -164,12 +179,12 @@ async def _resolve_source(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
     )
     if session is None:
-        return "session_not_found", None, None, "", ""
+        return "session_not_found", None, None, "", "", None
     agent = str(session.get("agent") or "claude").lower()
     # A detached row resolves exactly like a full-control one (#966): neither
     # source reads the launcher's PTY capture.
     if agent not in _FLAVOR_BY_AGENT:
-        return "unsupported_agent", None, None, agent, ""
+        return "unsupported_agent", None, None, agent, "", session
 
     flavor = _FLAVOR_BY_AGENT[agent]
     row = board.state_row_for_session(live, state["rows"], sid)
@@ -183,8 +198,8 @@ async def _resolve_source(
         _resolve_path, session, row, state_sid, flavor, live
     )
     if path is None or not path.is_file():
-        return "no_transcript", None, None, agent, why
-    return None, flavor, path, agent, why
+        return "no_transcript", None, None, agent, why, session
+    return None, flavor, path, agent, why, session
 
 
 @router.get("/api/claude-code/sessions/{sid}/transcript")
@@ -219,7 +234,7 @@ async def session_transcript(
         raise HTTPException(
             status_code=400, detail="pass either before or after, not both"
         )
-    reason, flavor, path, agent, why = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
         if reason != "session_not_found":
             logger.info(
@@ -308,7 +323,7 @@ async def session_transcript_entry(
     either way.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, flavor, path, agent, _why = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
         return _unavailable(sid, reason)
     try:
@@ -329,3 +344,129 @@ async def session_transcript_entry(
         "available": True, "reason": None, "session_id": sid,
         "text": entry["text"], "truncated": entry["truncated"],
     }
+
+
+# The gap between two keystrokes of one answer. The picker takes one key per
+# input event, so each key is its own write; 0.35 s keeps two writes from
+# landing in one read even on a loaded box, and a whole answer (at most four
+# questions) still types in a few seconds.
+_ANSWER_KEY_GAP_S = 0.35
+
+# The card shows the refusal as-is, so it is worded for the reader.
+_NOT_WAITING = "This question is no longer waiting for an answer"
+
+
+class _PartialAnswer(Exception):
+    """A write failed after ``sent`` of ``total`` had already gone in."""
+
+    def __init__(self, sent: int, total: int, detail: str) -> None:
+        super().__init__(detail)
+        self.sent, self.total, self.detail = sent, total, detail
+
+
+async def _type_into_pty(port: int, sid: str, keys: List[Tuple[str, bool]]) -> None:
+    """Raw keystrokes over the session-host socket — the same ``input``
+    frame the terminal's own key bar sends, so no bracketed-paste framing.
+    ``role=pc`` so this short-lived connection never claims the PTY's size;
+    whatever the host streams back is drained and dropped."""
+    writes = [w for text, enter in keys for w in ([text, "\r"] if enter else [text])]
+    sent = 0
+    try:
+        async with ws_connect(session_client.ws_url(port, sid, "pc"), max_size=None) as ws:
+            async def drain() -> None:
+                async for _ in ws:
+                    pass
+
+            drainer = asyncio.create_task(drain())
+            try:
+                for data in writes:
+                    if sent:
+                        await asyncio.sleep(_ANSWER_KEY_GAP_S)
+                    await ws.send(json.dumps({"type": "input", "data": data}))
+                    sent += 1
+                # Let the last frame reach the host before the close does.
+                await asyncio.sleep(_ANSWER_KEY_GAP_S)
+            finally:
+                drainer.cancel()
+    except (OSError, InvalidHandshake, WebSocketException) as exc:
+        raise _PartialAnswer(sent, len(writes), f"terminal socket failed: {exc}") from exc
+
+
+async def _type_into_console(port: int, sid: str, keys: List[Tuple[str, bool]]) -> None:
+    """One console-input call per step for a detached session: the helper
+    types each as key records (and presses Enter itself for a typed answer)."""
+    for sent, (text, enter) in enumerate(keys):
+        if sent:
+            await asyncio.sleep(_ANSWER_KEY_GAP_S)
+        try:
+            await asyncio.to_thread(session_client.send_input, port, sid, text, enter)
+        except session_client.SessionHostError as exc:
+            raise _PartialAnswer(sent, len(keys), str(exc)) from exc
+
+
+@router.post("/api/claude-code/sessions/{sid}/answer")
+async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
+    """Answer the session's pending ``AskUserQuestion`` (#1149).
+
+    Body: ``{"tool_use_id": str, "answers": [...]}`` — one answer per
+    question, shapes in :func:`src.ask_user_question.answer_keystrokes`.
+
+    Checked **at send time**, not trusted from the card: the call named must
+    be the newest decision call still unresolved in the transcript
+    (:func:`src.board_transcript.pending_decision_call`, the definition the
+    Board's ``awaiting-decision`` status uses), or it is a 409 and nothing
+    is typed. The keys are built from the transcript's own copy of the
+    questions, never the client's.
+
+    ``delivered`` is ``"unconfirmed"`` on success: nothing here can see the
+    picker take the keys. The agent's ``tool_result`` landing in the
+    transcript is the confirmation, and the Chat pane's live refresh shows
+    it. A failure part-way is a 502 that says how many writes went in, since
+    a half-typed answer leaves a picker state the user has to look at.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    call_id = body.get("tool_use_id")
+    if not isinstance(call_id, str) or not call_id:
+        raise HTTPException(status_code=400, detail="tool_use_id must be a string")
+    reason, flavor, path, _agent, _why, session = await _resolve_source(sid, cfg)
+    if reason == "session_not_found":
+        raise HTTPException(status_code=409, detail="This session is no longer running")
+    if flavor != "claude" or session is None:
+        # Only Claude Code has the tool; any other reason means there is no
+        # transcript to check against, which must stop the send all the same.
+        raise HTTPException(status_code=409, detail=_NOT_WAITING)
+    pending = await asyncio.to_thread(pending_decision_call, path)
+    if not pending or pending["name"] != ASK_TOOL_NAME or pending["id"] != call_id:
+        logger.info("ℹ️ answer %s refused: question ...%s is not the pending one", sid[:8], call_id[-8:])
+        raise HTTPException(status_code=409, detail=_NOT_WAITING)
+    try:
+        keys = answer_keystrokes(pending["input"].get("questions"), body.get("answers"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    kind = str(session.get("kind") or "pty")
+    deliver = _type_into_console if kind == "remote" else _type_into_pty
+    try:
+        await deliver(cfg.session_host_port, sid, keys)
+    except _PartialAnswer as exc:
+        # Counts only — never the answer, which may be private.
+        await audit_off_loop(
+            audit.session_log, sid, "answer", kind=kind, steps=len(keys),
+            reason="error", sent=exc.sent, detail=exc.detail[:200],
+        )
+        logger.info(
+            "⚠️ answer %s failed after %d/%d writes: %s", sid[:8], exc.sent, exc.total, exc.detail[:200]
+        )
+        where = "the PC console" if kind == "remote" else "the terminal"
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Answer not sent: nothing reached the question" if exc.sent == 0
+                else f"Answer only partly sent ({exc.sent} of {exc.total} keys): check {where}"
+            ),
+        ) from exc
+    await audit_off_loop(
+        audit.session_log, sid, "answer", kind=kind, steps=len(keys), reason="unverified"
+    )
+    logger.info("⌨️ answer %s typed (%s, %d steps); the transcript confirms it", sid[:8], kind, len(keys))
+    return {"ok": True, "delivered": "unconfirmed", "steps": len(keys), "kind": kind}

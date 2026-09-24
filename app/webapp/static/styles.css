@@ -2522,6 +2522,118 @@ textarea.input-native { height: auto; }
   font-size: var(--font-body-sm);
   line-height: 1.4;
 }
+/* AskUserQuestion card (#1149): the agent asking, so it sits in the list
+   like a turn (same card surface and 14px inset), never folded into a run.
+   Options are list rows on a hairline (design.md list-row), each a button:
+   number, bold label, muted description, a check once picked. Static cards
+   keep the same look; only a live one reacts to a tap. */
+.tr-ask-item { min-width: 0; }
+.tr-ask {
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 10px 14px 14px;
+}
+.tr-ask-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--muted);
+}
+.tr-ask-head .icon { width: 16px; height: 16px; flex: none; }
+.tr-ask-q { padding-top: 12px; }
+.tr-ask-q + .tr-ask-q { margin-top: 12px; border-top: 1px solid var(--line-muted); }
+.tr-ask-header {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-ask-question {
+  margin: 8px 0 0;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.tr-ask-hint,
+.tr-ask-typed,
+.tr-ask-status {
+  margin: 4px 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.tr-ask-typed { color: var(--fg); overflow-wrap: anywhere; }
+.tr-ask-status:empty { display: none; }
+.tr-ask-options { display: flex; flex-direction: column; margin-top: 8px; }
+.tr-ask-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--row-sm);
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-top-color: var(--line-muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tr-ask-opt:disabled { cursor: default; color: var(--fg); }
+.tr-ask-opt:not(:disabled):active { background: var(--card-off); }
+.tr-ask-num {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+.tr-ask-opt-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tr-ask-label { font-size: var(--font-body); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.tr-ask-desc { font-size: var(--font-body-sm); color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.tr-ask-mark { flex: none; visibility: hidden; color: var(--accent); }
+.tr-ask-mark .icon { width: 18px; height: 18px; }
+/* Selected (a live multi-part pick) and picked (the recorded answer) share
+   the accent tint the user's own turn wears — nothing new. */
+.tr-ask-opt[aria-pressed="true"],
+.tr-ask-opt--picked {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-soft);
+  border-radius: var(--radius-md);
+}
+.tr-ask-opt[aria-pressed="true"] .tr-ask-mark,
+.tr-ask-opt--picked .tr-ask-mark { visibility: visible; }
+.tr-ask-opt--picked .tr-ask-num,
+.tr-ask-opt[aria-pressed="true"] .tr-ask-num { background: var(--accent-fill); color: var(--accent-fg); }
+.tr-ask-other { display: flex; gap: 8px; margin-top: 8px; }
+.tr-ask-other[hidden] { display: none; }
+.tr-ask-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--card-off);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--font-body);
+}
+.tr-ask-send { flex: none; min-height: 44px; padding: 0 16px; }
+.tr-ask-submit { width: 100%; margin-top: 12px; }
 /* The transcript's one preformatted surface, shared by a tool result
    (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
    #1100) rather than declared twice -- they had become the same ten

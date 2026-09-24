@@ -176,6 +176,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Coding-tab transcript view (#953): the whole conversation, terminal-grade content.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/answer"),
+        "passkey",
+        "Chat question card (#1149): types an answer into a live PTY or console — "
+        "the same write power as /input.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/entry"),
         "passkey",
         "Coding-tab transcript copy (#985): one turn's uncapped text — the same "

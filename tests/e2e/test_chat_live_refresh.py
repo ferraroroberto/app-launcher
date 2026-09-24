@@ -67,6 +67,30 @@ def _mock_sessions_list(page: Page, *, alive: bool = True) -> None:
     page.route(re.compile(r".*/api/claude-code/sessions$"), _handler)
 
 
+_QUESTIONS = [{
+    "question": "Which fix?", "header": "Fix", "multiSelect": False,
+    "options": [
+        {"label": "Await it", "description": "add the missing await"},
+        {"label": "Retry it", "description": "wrap it in a retry"},
+    ],
+}]
+
+
+def _question(call_id: str, offset: int, answer: str | None = None) -> dict:
+    """An AskUserQuestion call as the server forwards it (#1149); answered
+    when ``answer`` is given, pending otherwise."""
+    e = {
+        "kind": "tool_call", "timestamp": "2026-09-19T10:01:02Z",
+        "name": "AskUserQuestion", "summary": "questions", "call_id": call_id,
+        "questions": _QUESTIONS, "result": None, "result_truncated": False,
+        "sidechain": False, "offset": offset,
+    }
+    if answer is not None:
+        e["result"] = f'User has answered your questions: "Which fix?"="{answer}".'
+        e["answers"] = {"Which fix?": answer}
+    return e
+
+
 def _turn(kind: str, text: str, offset: int) -> dict:
     return {
         "kind": kind, "timestamp": "2026-09-19T10:01:00Z", "text": text,
@@ -194,6 +218,54 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
         "found it — a missing await", timeout=OVERLAY_OPEN_MS
     )
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(3)
+
+    # #1149 — a question the agent asks arrives the same way, as its own
+    # card: visible with tool calls hidden (the default), never folded. An
+    # earlier, answered question is history; the newest unanswered one is the
+    # only card a tap can answer.
+    answers: list = []
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/answer$"),
+        lambda route: (
+            answers.append(route.request.post_data_json),
+            route.fulfill(status=200, content_type="application/json",
+                          body=_json.dumps({"ok": True, "delivered": "unconfirmed", "steps": 1})),
+        )[-1],
+    )
+    tr.append(
+        _question("toolu_old", 400, answer="Retry it"),
+        _turn("assistant", "retrying did not help", 450),
+        _question("toolu_live", 500),
+    )
+    cards = page.locator("#transcriptList .tr-ask-item")
+    expect(cards).to_have_count(2, timeout=OVERLAY_OPEN_MS)
+    old, live = cards.nth(0), cards.nth(1)
+    expect(old).to_be_visible()
+    expect(old).to_have_attribute("data-mode", "answered")
+    expect(old.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Retry it")
+    expect(old.locator(".tr-ask-opt:enabled")).to_have_count(0)
+    expect(live).to_have_attribute("data-mode", "live")
+    expect(live.locator(".tr-ask-opt:enabled")).to_have_count(2)
+    expect(live.locator(".tr-ask-input")).to_be_visible()
+
+    # One tap answers a single-select question: the pick goes to the /answer
+    # route by number, with the call it answers, and the card locks until the
+    # agent's result lands.
+    live.locator(".tr-ask-opt").first.click()
+    expect(live).to_have_attribute("data-mode", "sent")
+    expect(live.locator(".tr-ask-opt:enabled")).to_have_count(0)
+    assert answers == [{"tool_use_id": "toolu_live", "answers": [{"option": 1}]}], answers
+
+    # The result arrives on a later tick as a standalone tool_result (the
+    # call had already settled), and the card still closes, marked answered.
+    tr.append({
+        "kind": "tool_result", "timestamp": "2026-09-19T10:01:09Z",
+        "text": "answered", "truncated": False, "tool_use_id": "toolu_live",
+        "answers": {"Which fix?": "Await it"}, "sidechain": False, "offset": 600,
+    }, _turn("assistant", "adding the await", 700))
+    expect(live).to_have_attribute("data-mode", "answered", timeout=OVERLAY_OPEN_MS)
+    expect(live.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Await it")
+    expect(live.locator(".tr-ask-opt:enabled")).to_have_count(0)
 
 
 def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> None:
