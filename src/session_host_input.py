@@ -46,6 +46,32 @@ _BULK_CAP_MS = 3000
 # 50ms setInterval terminal-compose.js polls at.
 _BULK_POLL_S = 0.05
 
+# Attachment settle (issue #1212) — the /input half of terminal-compose.js's
+# #1211 fix. Claude Code turns a pasted image path into an attachment
+# asynchronously: it paints "Pasting…" at once and the "[Image #N]" chip only
+# when done (~200 ms for 1.5 MB, ~400 ms for 11 MB on an idle box), and a CR
+# that arrives in between is absorbed, leaving the prompt unsent in its
+# composer. So a payload carrying an image path never takes the instant short
+# path: it goes through the echo-then-settle loop below however short it is,
+# and the stream does not count as settled while a "Pasting…" has no chip
+# after it. The cap is terminal-compose.js's _ATTACH_CAP_MS verbatim, and it
+# also bounds the ingest wait for such a payload, since its only evidence may
+# be the chip painted at the end of the conversion; it stays inside
+# session_client's _INPUT_TIMEOUT. An agent that never converts paths echoes
+# the path as text and settles on the plain echo-then-quiet rule.
+_ATTACH_CAP_MS = 10000
+# A line that is nothing but an absolute path to an image file — how the
+# composer appends an attachment (its own paragraph, #366). The extensions
+# are the ones Claude Code converts into an attachment.
+_IMAGE_PATH_RE = re.compile(
+    r"^\s*[\"']?(?:[a-z]:[\\/]|[\\/])[^\n\"']*\.(?:png|jpe?g|gif|webp)[\"']?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# What Claude Code paints while converting, normalized (see _normalize_echo):
+# the hint first, then the chip in place of the path.
+_ATTACH_START_MARKER = "pasting…"
+_IMAGE_CHIP_MARKER = "[image#"
+
 # Ingest verification for a server-initiated bulk write (issue #760). The
 # settle protocol above answers "has the terminal gone quiet", which is not
 # the same question as "did my payload actually land": three workers went
@@ -85,8 +111,9 @@ _PASTE_CHIP_MARKER = "[pastedtext#"
 # (#1075). Claude Code renders "[Pasted text #2 +53 lines]", which normalizes
 # to "[pastedtext#2+53lines]" — _normalize_echo strips whitespace and
 # box-drawing but keeps brackets, "#" and digits, so the number is free to
-# read. Pastes are numbered monotonically within a session.
-_PASTE_CHIP_ID_RE = re.compile(re.escape(_PASTE_CHIP_MARKER) + r"(\d+)")
+# read. Pastes are numbered monotonically within a session. An image chip
+# (#1212) is pinned the same way: "[Image #4]" normalizes to "[image#4]".
+_CHIP_ID_RE = re.compile(r"(\[(?:pastedtext|image)#)(\d+)")
 
 # Deferred submit (issue #763, closing #760's third acceptance point: "if the
 # terminal can take input, so can the API"). A *working* agent repaints its
@@ -314,31 +341,53 @@ def _echo_needles(data: str) -> List[str]:
     ][:_ECHO_SAMPLES]
 
 
-def _chip_id_in(normalized: str) -> Optional[str]:
-    """The newest paste-chip number in ``normalized`` terminal output (#1075).
+def _carries_image_path(data: str) -> bool:
+    """Does ``data`` hold an attached image path (issue #1212)?"""
+    return _IMAGE_PATH_RE.search(data) is not None
+
+
+def _attach_converting(normalized: str) -> bool:
+    """Is an image conversion still in flight in ``normalized`` output?
+
+    True while the newest "Pasting…" has no image chip painted after it —
+    terminal-compose.js's ``attachStartAt``/``attachChipAt`` comparison
+    (#1211), read off the ring instead of per-frame timestamps.
+    """
+    start = normalized.rfind(_ATTACH_START_MARKER)
+    return start != -1 and normalized.find(_IMAGE_CHIP_MARKER, start) == -1
+
+
+def _chip_id_in(normalized: str, image: bool = False) -> Optional[str]:
+    """The newest chip in ``normalized`` terminal output (#1075), as its
+    normalized token — ``"[pastedtext#7"``, or ``"[image#4"`` when ``image``.
 
     Highest rather than last-in-paint-order: a composer holding several chips
     repaints them in ascending order, and Claude Code numbers pastes
     monotonically, so within a window that begins at our *own* write the
-    largest number is the chip our write created.
+    largest number is the chip our write created. ``image`` (#1212) pins the
+    chip an image payload's path was converted into; a text payload keeps
+    pinning its collapsed-paste chip.
 
-    ``None`` when the output shows no chip at all — the ordinary case for a
+    ``None`` when the output shows no such chip — the ordinary case for a
     bulk payload small enough that the composer echoes it verbatim instead of
-    collapsing it. The caller then falls back to the payload's own echo, which
-    is the only evidence there is.
+    collapsing it, or for an agent that echoes an image path as text. The
+    caller then falls back to the payload's own echo, which is the only
+    evidence there is.
     """
-    ids = _PASTE_CHIP_ID_RE.findall(normalized)
-    return max(ids, key=int) if ids else None
+    marker = _IMAGE_CHIP_MARKER if image else _PASTE_CHIP_MARKER
+    ids = [num for prefix, num in _CHIP_ID_RE.findall(normalized) if prefix == marker]
+    return marker + max(ids, key=int) if ids else None
 
 
 def _chip_visible(normalized: str, chip_id: str) -> bool:
-    """Is *this* chip number showing in ``normalized`` terminal output?
+    """Is *this* chip (a :func:`_chip_id_in` token) showing in ``normalized``
+    terminal output?
 
     The trailing boundary is the whole point: without it ``#1`` also matches
     ``#12``, which hands back exactly the any-chip-will-do answer this exists
     to avoid.
     """
-    pattern = re.escape(_PASTE_CHIP_MARKER + chip_id) + r"(?!\d)"
+    pattern = re.escape(chip_id) + r"(?!\d)"
     return re.search(pattern, normalized) is not None
 
 
@@ -369,14 +418,21 @@ class InputProtocol:
         return _normalize_echo(window)
 
     @staticmethod
-    def _payload_visible(normalized: str, needles: List[str]) -> bool:
+    def _payload_visible(
+        normalized: str, needles: List[str], image: bool = False
+    ) -> bool:
         """Does ``normalized`` terminal output show this payload?
 
         Evidence is either the payload itself coming back (normalized, so
         wrapping and box-drawing don't hide it) or Claude Code's
-        collapsed-paste chip, which replaces the echo for a bulk paste.
+        collapsed-paste chip, which replaces the echo for a bulk paste. For a
+        payload carrying an image path (``image``, #1212) the "[Image #N]"
+        chip counts too: Claude Code replaces the path with it, so the path
+        itself is never echoed.
         """
         if _PASTE_CHIP_MARKER in normalized:
+            return True
+        if image and _IMAGE_CHIP_MARKER in normalized:
             return True
         return any(needle in normalized for needle in needles)
 
@@ -406,15 +462,6 @@ class InputProtocol:
         if chip_id is not None and _chip_visible(normalized, chip_id):
             return True
         return any(needle in normalized for needle in needles)
-
-    def _echo_seen_since(self, mark: int, needles: List[str]) -> bool:
-        """Has the PTY painted evidence of this payload since ``mark``?
-
-        Only output the terminal produced *after* ``mark`` counts — an
-        identical payload sent earlier in the session can't be mistaken for
-        this one's echo.
-        """
-        return self._payload_visible(self._normalized_since(mark), needles)
 
     def submit_input(self, data: str, submit: bool) -> "InputOutcome":
         """Write ``data`` and, if ``submit``, follow it with a submitting CR.
@@ -447,6 +494,10 @@ class InputProtocol:
           until the session's output stream shows the paste was echoed and
           has gone quiet (floor/quiet/cap — #499); shorter payloads submit
           immediately, matching ``sendSubmit``'s "short sends stay instant".
+        - A payload carrying an image path takes that same settle path
+          however short it is, and also waits out an image conversion still
+          in flight, up to ``_ATTACH_CAP_MS`` (issue #1212) — ``sendSubmit``'s
+          ``attachSettle`` (#1211).
         - A bulk payload is additionally checked for *ingest evidence*
           before the CR is written at all (issue #760): the terminal must
           have painted the payload back (or its ``[Pasted text #N]`` chip)
@@ -551,7 +602,8 @@ class InputProtocol:
         sent_at = time.time()
         if not self._write_locked(framed):
             return InputOutcome(reason=INPUT_DROPPED)
-        if len(data) < _BULK_SUBMIT_THRESHOLD_CHARS:
+        image = _carries_image_path(data)
+        if len(data) < _BULK_SUBMIT_THRESHOLD_CHARS and not image:
             # Short sends stay instant (sendSubmit's own rule) — and so stay
             # unverified: there is no settle window to observe an echo in.
             if not submit:
@@ -561,29 +613,35 @@ class InputProtocol:
             return InputOutcome(reason=INPUT_UNVERIFIED, submitted=True)
         needles = _echo_needles(data)
         floor_at = sent_at + _BULK_FLOOR_MS / 1000
-        settle_deadline = sent_at + _BULK_CAP_MS / 1000
-        ingest_deadline = sent_at + _INGEST_CAP_MS / 1000
+        settle_deadline = sent_at + (_ATTACH_CAP_MS if image else _BULK_CAP_MS) / 1000
+        ingest_deadline = sent_at + (_ATTACH_CAP_MS if image else _INGEST_CAP_MS) / 1000
         quiet_s = _BULK_QUIET_MS / 1000
         ingested = False
+        converting = False
         settled = False
         exited = False
         # Only rescan when the terminal has actually painted something new —
         # this loop polls 20×/s on a process hosting every live PTY, and in
         # the case that matters most (nothing coming back at all) there is
-        # nothing new to normalize on any of those passes.
+        # nothing new to normalize on any of those passes. Only output painted
+        # *after* ``mark`` counts, so an identical payload sent earlier in the
+        # session can't be mistaken for this one's echo.
         scanned_at = mark
         while True:
             if self._exited:
                 exited = True
                 break
-            if not ingested and self._output_total > scanned_at:
+            if (not ingested or image) and self._output_total > scanned_at:
                 scanned_at = self._output_total
-                ingested = self._echo_seen_since(mark, needles)
+                normalized = self._normalized_since(mark)
+                ingested = ingested or self._payload_visible(normalized, needles, image)
+                converting = image and _attach_converting(normalized)
             now = time.time()
             settled = (
                 now >= floor_at
                 and self._last_output_at > sent_at
                 and (now - self._last_output_at) >= quiet_s
+                and not converting
             )
             if ingested and (settled or now >= settle_deadline):
                 break
@@ -625,7 +683,7 @@ class InputProtocol:
                 self._defer_seq,
                 mark,
                 needles,
-                _chip_id_in(self._normalized_since(mark)),
+                _chip_id_in(self._normalized_since(mark), image),
             )
             return InputOutcome(
                 reason=INPUT_DEFERRED,
