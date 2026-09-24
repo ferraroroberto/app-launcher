@@ -181,6 +181,11 @@ def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:
     authed_page.locator("#jobsAgendaCard summary").click()
     expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
         "No scheduled runs in the next 7 days")
-    # A next step, naming the controls that add one (#1191).
-    expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
-        "set a job's Schedule in Edit mode under Registered jobs")
+    # Its own next step (#1201): an Add job button that opens the same
+    # dialog as the Registered jobs card's ➕, with Edit mode off.
+    expect(authed_page.locator("#jobsAddBtn")).to_be_hidden()
+    add = authed_page.locator("#jobsAgendaBody .empty-state-action")
+    expect(add).to_have_text("Add job")
+    add.click()
+    expect(authed_page.locator("#jobDialog")).to_be_visible()
+    expect(authed_page.locator("#jobDialogTitle")).to_have_text("Add job")

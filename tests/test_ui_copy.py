@@ -116,8 +116,9 @@ _STATIC = _INDEX.parent
 
 
 def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
-    """#1191: the Code tab's chips spell out what they are, and the empty
-    Schedule names controls that exist under those labels."""
+    """#1191: the Code tab's chips spell out what they are. #1201: the empty
+    Schedule's own button opens the existing Add job dialog, under the label
+    that dialog already carries — one add flow, not a second one."""
     tree = _tree()
     assert _by_id(tree, "gitStatusBtn")["text"].strip() == "Git status"
 
@@ -125,7 +126,6 @@ def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
     assert not re.search(r"\btok\b|\(7d\)", badge), "badge abbreviates"
 
     agenda = _STATIC.joinpath("jobs-agenda.js").read_text(encoding="utf-8")
-    assert "Schedule in Edit mode under Registered jobs" in agenda
-    texts = {e["text"].strip() for e in tree.elements}
-    for label in ("Schedule", "Edit mode", "Registered jobs"):
-        assert label in texts, f"the empty Schedule names {label!r}, which no control shows"
+    assert "actionLabel: 'Add job'" in agenda
+    assert "openJobDialog(null)" in agenda, "the empty Schedule must reuse the Add job flow"
+    assert _by_id(tree, "jobDialogTitle")["text"].strip() == "Add job"
