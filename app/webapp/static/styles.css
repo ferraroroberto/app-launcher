@@ -3461,6 +3461,13 @@ body.terminal-open {
   padding-bottom: env(safe-area-inset-bottom, 0px);
   background: var(--card);
 }
+/* While the on-screen keyboard is up the overlay is pinned to end at the
+   keyboard's top edge (terminal.js applySize, #135), and the keyboard covers
+   the home indicator, so the inset would only be a ~34px dead band between
+   the composer and the keys. `data-keyboard` is set and cleared at exactly
+   the sites that apply and undo that pin. Only the inset goes: the reserved
+   status row stays, so a message appearing still moves nothing. */
+#terminalOverlay[data-keyboard] .terminal-status-strip { padding-bottom: 0; }
 /* The message itself: stretched to fill the reserved row (so the tap-to-
    reconnect target is the whole row) and centred both ways, so a short
    message never runs into a rounded corner and the icon never grows the
