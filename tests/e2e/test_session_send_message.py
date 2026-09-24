@@ -471,6 +471,41 @@ def test_detached_chat_attach_uploads_inline_and_sends_the_path(
     assert captured["body"] == {"data": path, "submit": True}
     expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
 
+    # #1206: a pasted image and a dropped file take the same path in Chat,
+    # which has no terminal host to catch them. A paste that also carries
+    # plain text stays a text paste: nothing is uploaded.
+    assert not _paste_or_drop(authed_page, "paste", with_text=True)
+    authed_page.wait_for_timeout(300)
+    assert len(uploads) == 1 and field.input_value() == "", uploads
+    assert _paste_or_drop(authed_page, "paste")
+    expect(field).to_have_value(_PATH_RE, timeout=10_000)
+    field.fill("")
+    assert _paste_or_drop(authed_page, "drop")
+    expect(field).to_have_value(_PATH_RE, timeout=10_000)
+    assert len(uploads) == 3 and all("inline=1" in u for u in uploads), uploads
+
+
+def _paste_or_drop(page: Page, kind: str, *, with_text: bool = False) -> bool:
+    """Fire a synthetic paste on the Chat composer's textarea, or a drop on
+    the composer, carrying the 1x1 PNG; return whether the page took it
+    (defaultPrevented). The event's DataTransfer is defined on the event,
+    since neither engine lets a page build a trusted clipboard event."""
+    return page.evaluate(
+        """([b64, kind, withText, composer]) => {
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const dt = new DataTransfer();
+          dt.items.add(new File([bytes], 'e2e-stub-' + kind + '.png', {type: 'image/png'}));
+          if (withText) dt.setData('text/plain', 'copied text');
+          const ev = new Event(kind, {bubbles: true, cancelable: true});
+          Object.defineProperty(ev, kind === 'paste' ? 'clipboardData' : 'dataTransfer', {value: dt});
+          const target = document.querySelector(
+            kind === 'paste' ? composer + ' .composer-input' : composer);
+          target.dispatchEvent(ev);
+          return ev.defaultPrevented;
+        }""",
+        [base64.b64encode(_PNG_1x1).decode(), kind, with_text, COMPOSER],
+    )
+
 
 # --- #1072: Ctrl/Cmd+Enter sends from a desktop keyboard --------------------
 #
