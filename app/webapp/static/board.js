@@ -6,9 +6,9 @@
  * tool-pending), Your turn (stalled/awaiting-decision/awaiting-input
  * sessions only — #608's split of the old undifferentiated needs-you,
  * sharpened by #813's tool-pending carve-out), Other (open PRs +
- * failed/unconfirmed/stuck jobs), Done (closed issues today). Phone-first: the columns
- * container is a scroll-snap carousel (one column per swipe) and the strip
- * above it doubles as column switcher + counts.
+ * failed/unconfirmed/stuck jobs), Done (closed issues today). Each column is a
+ * collapsible section card like every other tab's (#1198) — stacked on the
+ * phone, side by side on the desktop grid — with its count in the summary.
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
@@ -34,7 +34,7 @@
  * as the card filter (#337), chat mode and the whole fleet-chief lifecycle
  * plus its settings dialog (#245/#547) — lives in `board-dispatch.js`. This
  * module keeps card rendering, the drill-down drawer, one-tap issue-start
- * and the column carousel, and calls into that one for the bar.
+ * and the column sections, and calls into that one for the bar.
  */
 
 import { els, state } from './state.js';
@@ -73,17 +73,19 @@ import {
 // session-host makes them unknown too (#915).
 const COLUMNS = [
   // Each empty sentence names the control that fills its lane (#1176).
-  { key: 'backlog', btn: 'boardColBacklog', empty: 'No open issues — tap Refresh to check GitHub again.', glyph: 'git-branch', gh: 'all' },
-  { key: 'claude_turn', btn: 'boardColClaude', empty: 'No sessions on Claude’s side — start one from the dispatch bar above.', glyph: 'hourglass', live: true },
-  { key: 'your_turn', btn: 'boardColYours', empty: 'Nothing needs you right now — start work from the dispatch bar above.', glyph: 'circle-check', live: true },
-  { key: 'other', btn: 'boardColOther', empty: 'No open PRs or stuck jobs — tap Refresh to check GitHub again.', glyph: 'git-pull-request', gh: 'part' },
-  { key: 'done', btn: 'boardColDone', empty: 'Nothing closed today yet — tap Refresh to check GitHub again.', glyph: 'square-check', gh: 'all' },
+  { key: 'backlog', section: 'boardColBacklog', empty: 'No open issues — tap Refresh to check GitHub again.', glyph: 'git-branch', gh: 'all' },
+  { key: 'claude_turn', section: 'boardColClaude', empty: 'No sessions on Claude’s side — start one from the dispatch bar above.', glyph: 'hourglass', live: true },
+  { key: 'your_turn', section: 'boardColYours', empty: 'Nothing needs you right now — start work from the dispatch bar above.', glyph: 'circle-check', live: true },
+  { key: 'other', section: 'boardColOther', empty: 'No open PRs or stuck jobs — tap Refresh to check GitHub again.', glyph: 'git-pull-request', gh: 'part' },
+  { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet — tap Refresh to check GitHub again.', glyph: 'square-check', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
 
 let refreshInFlight = false;
 let lastAutoRefreshAt = 0;
+// The drawer whose section renderBoard() last unfolded (see there).
+let revealedDrawer = null;
 
 // --------------------------------------------------------------- helpers
 
@@ -128,27 +130,34 @@ const CHIEF_STANDING_BY_META = { icon: 'moon', text: 'standing by', cls: 'is-idl
 
 // ----------------------------------------------------------------- cards
 
-function cardShell(iconName, topText, titleText, cls) {
+// Every Board card leads with its title (#1198), clamped to two lines, and
+// the full text stays reachable through the element's `title` attribute.
+function cardTitleEl(cls, text) {
+  const title = document.createElement('span');
+  title.className = cls;
+  title.textContent = text;
+  if (text) title.title = text;
+  return title;
+}
+
+function cardShell(iconName, metaText, titleText, cls) {
   const li = document.createElement('li');
   li.className = 'app-item board-item' + (cls ? ' ' + cls : '');
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'launch-btn board-card';
-  const top = document.createElement('span');
-  top.className = 'board-card-top';
+  const meta = document.createElement('span');
+  meta.className = 'board-card-meta';
   if (iconName) {
     const ic = document.createElement('span');
-    ic.className = 'board-card-top-icon';
+    ic.className = 'board-card-meta-icon';
     ic.innerHTML = icon(iconName);
-    top.appendChild(ic);
+    meta.appendChild(ic);
   }
   // Data (repo/project/session names) rides a text node — never innerHTML.
-  top.appendChild(document.createTextNode(topText));
-  const title = document.createElement('span');
-  title.className = 'board-card-title';
-  title.textContent = titleText;
-  btn.appendChild(top);
-  btn.appendChild(title);
+  meta.appendChild(document.createTextNode(metaText));
+  btn.appendChild(cardTitleEl('board-card-title', titleText));
+  btn.appendChild(meta);
   li.appendChild(btn);
   return { li: li, btn: btn };
 }
@@ -167,10 +176,10 @@ function renderSessionCard(card, openItem) {
   if (isChiefCard(card)) {
     shell.li.classList.add('board-item-chief');
     const crown = document.createElement('span');
-    crown.className = 'board-card-top-icon board-chief-crown';
+    crown.className = 'board-card-meta-icon board-chief-crown';
     crown.innerHTML = icon('crown');
-    const chiefTop = shell.btn.querySelector('.board-card-top');
-    chiefTop.insertBefore(crown, chiefTop.firstChild);
+    const chiefMeta = shell.btn.querySelector('.board-card-meta');
+    chiefMeta.insertBefore(crown, chiefMeta.firstChild);
   }
   // The Board now includes every launcher-owned agent, not only Claude Code
   // (#455). Show the same registry-backed brand identity as the Coding tab so
@@ -180,8 +189,8 @@ function renderSessionCard(card, openItem) {
   const agentIcon = brandIconEl(
     agentId, 'session-agent-icon board-agent-icon', known ? known.label : agentId
   );
-  const top = shell.btn.querySelector('.board-card-top');
-  top.insertBefore(agentIcon, top.firstChild);
+  const metaLine = shell.btn.querySelector('.board-card-meta');
+  metaLine.insertBefore(agentIcon, metaLine.firstChild);
   if (card.session_id) {
     shell.li.dataset.sessionId = card.session_id;
     // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
@@ -535,9 +544,9 @@ async function startIssue(card, mode, btn) {
 
 // Backlog issue tiles (#337 follow-up, restyled #339): a flat separator
 // row — no card background/border, just a bottom-border divider between
-// rows (GitHub-issue-list style) — with repo/# on one line and the full title
-// wrapped below it, and icon-only ▶/⚡ actions vertically centered against the
-// whole row. Doesn't use cardShell() (that's the bordered-box layout the other
+// rows (GitHub-issue-list style) — with the title first (two lines at most,
+// #1198) and repo/# under it, and icon-only ▶/⚡ actions vertically centered
+// against the whole row. Doesn't use cardShell() (that's the bordered-box layout the other
 // card kinds keep); the <li> itself is the flex row so the text stack and the
 // action icons sit side by side without nesting a <button> inside a <button>.
 function renderIssueCard(card) {
@@ -575,11 +584,8 @@ function renderIssueCard(card) {
       meta.title = 'repo has uncommitted changes';
     }
   }
-  const title = document.createElement('span');
-  title.className = 'board-card-title-compact';
-  title.textContent = card.title || '';
+  textCol.appendChild(cardTitleEl('board-card-title-compact', card.title || ''));
   textCol.appendChild(meta);
-  textCol.appendChild(title);
   btn.appendChild(textCol);
   li.appendChild(btn);
   if (card.url) {
@@ -824,6 +830,20 @@ export function renderBoard() {
   const ghLoaded = ghFetched(body);
   const liveRead = liveSessionsRead(body);
 
+  // A drawer opened from outside its section — the ?board= deep link, a chief
+  // chat send — unfolds that section once. After that the section's open
+  // state is the user's again: the poll never re-opens one they folded.
+  if (!expandedCard) {
+    revealedDrawer = null;
+  } else if (revealedDrawer !== state.boardExpanded) {
+    revealedDrawer = state.boardExpanded;
+    const home = COLUMNS.find(function (col) {
+      return visible[col.key].indexOf(expandedCard) !== -1;
+    });
+    const section = home && els[home.section];
+    if (section) section.open = true;
+  }
+
   COLUMNS.forEach(function (col) {
     const cards = visible[col.key];
     // A live column can still hold external cards (hook state + fresh
@@ -832,14 +852,12 @@ export function renderBoard() {
     const unknown = (col.gh === 'all' && !ghLoaded)
       || (col.live && !liveRead && cards.length === 0);
     const shown = unknown ? '—' : String(cards.length);
-    const btn = els[col.btn];
-    if (btn) {
-      const count = btn.querySelector('.board-count');
+    const section = els[col.section];
+    if (section) {
+      const count = section.querySelector('.board-count');
       if (count) count.textContent = shown;
-      btn.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
+      section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
     }
-    const titleCount = els.boardColumns.querySelector('.board-col-count[data-col="' + col.key + '"]');
-    if (titleCount) titleCount.textContent = '(' + shown + ')';
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
     if (!list) return;
@@ -869,7 +887,6 @@ export function renderBoard() {
   // Keep the dispatch bar's repo list + mic visibility in step with state
   // that may land after the first render (/api/apps, /api/status).
   syncDispatchBar();
-  syncStripActive();
 }
 
 // ----------------------------------------------------------------- fetch
@@ -895,7 +912,7 @@ export async function fetchBoard() {
 }
 
 // ?board=<sid> deep-link (#301): land on the Board with that card's drawer
-// open, carousel on the card's column. Called from main.js at boot. `sid` may
+// open, its section unfolded and scrolled into view. Called from main.js at boot. `sid` may
 // be a card's own session_id OR its state_sid (#307) — a Slack ping only ever
 // knows the hook's transcript UUID (fleet-config#242), which is the card's
 // state_sid, not its session-host session_id.
@@ -941,7 +958,10 @@ export async function openBoardCard(sid) {
   // card.session_id, so expanding by a state_sid would never match.
   state.boardExpanded = matchedCard.session_id;
   renderBoard();
-  requestAnimationFrame(function () { showColumn(colKey, false); });
+  requestAnimationFrame(function () {
+    const item = els.boardColumns.querySelector('li.board-item.expanded');
+    if (item) item.scrollIntoView({ block: 'nearest' });
+  });
 }
 
 // Stale = never fetched, or older than GH_STALE_MS. An errored cache is
@@ -970,16 +990,14 @@ async function refreshGithub() {
   }
 }
 
-// ------------------------------------------------------- column carousel
+// --------------------------------------------------------- column sections
 
-// #869: on the phone the column-switcher strip IS the column header, so ↻
-// belongs beside it — in the strip's bar, not inside the five-tab tablist
-// itself (#1175: a sixth control there made the segmented control six
-// options). On the >=700px grid those switcher buttons are hidden, which
-// left ↻ alone in a full-width row floating at the pane's right edge — so it
-// joins the dispatch row instead, last after ➤, and the empty bar goes.
-// CSS can't move a node between containers and a second instance would fork
-// the id board.js mutates, so the one node is re-parented on the breakpoint.
+// ↻ has one node (board.js mutates it by id) and two homes: beside the
+// project filter on the phone, where the filter is the last row of the
+// Dispatch card, directly over the columns it filters; and last in the
+// dispatch control row on the >=700px desktop bar (#869), where the filter
+// sits at the row's far left. CSS can't move a node between containers, so
+// it is re-parented on the breakpoint.
 const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
 
 function dockRefresh() {
@@ -988,7 +1006,7 @@ function dockRefresh() {
   const mq = window.matchMedia(DESKTOP_BOARD);
   function place() {
     const home = document.querySelector(
-      mq.matches ? '.board-dispatch-row' : '.board-strip-bar'
+      mq.matches ? '.board-dispatch-row' : '.board-filter-row'
     );
     if (home && btn.parentNode !== home) home.appendChild(btn);
   }
@@ -998,46 +1016,16 @@ function dockRefresh() {
   else if (mq.addListener) mq.addListener(place);
 }
 
-function columnEl(key) {
-  return els.boardColumns.querySelector('.board-col[data-col="' + key + '"]');
-}
-
-function showColumn(key, smooth) {
-  state.boardCol = key;
-  const wrap = els.boardColumns;
-  const col = columnEl(key);
-  if (wrap && col) {
-    // Scroll only the carousel container. scrollIntoView also scrolls the
-    // *page* vertically when the column overflows the viewport, yanking
-    // the whole tab upward on every strip tap (phone-verify bug, #300).
-    const left = col.getBoundingClientRect().left
-      - wrap.getBoundingClientRect().left + wrap.scrollLeft;
-    wrap.scrollTo({ left: left, behavior: smooth === false ? 'auto' : 'smooth' });
-  }
-  syncStripActive();
-}
-
-function nearestColumnKey() {
-  const wrap = els.boardColumns;
-  const cols = wrap.querySelectorAll('.board-col');
-  if (!cols.length) return state.boardCol;
-  const index = Math.min(
-    cols.length - 1,
-    Math.max(0, Math.round(wrap.scrollLeft / Math.max(1, cols[0].offsetWidth)))
-  );
-  return cols[index].dataset.col;
-}
-
-function syncStripActive() {
+// The desktop grid is a kanban at a glance, so all five sections start open
+// there; the phone keeps the markup's default (the two live columns open).
+// Boot only — after that a section's open state is the user's.
+function openDesktopColumns() {
+  if (!window.matchMedia || !window.matchMedia(DESKTOP_BOARD).matches) return;
   COLUMNS.forEach(function (col) {
-    const btn = els[col.btn];
-    if (!btn) return;
-    const active = col.key === state.boardCol;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    const section = els[col.section];
+    if (section) section.open = true;
   });
 }
-
 
 // ------------------------------------------------------------------ wire
 
@@ -1050,29 +1038,13 @@ export function wireBoard() {
       // it once; while the tab just sits open only the free poll runs.
       if (ghStale(state.board)) refreshGithub().catch(function () {});
     }).catch(function () {});
-    // The pane was hidden until this click — position the carousel on the
-    // remembered column now that it has layout (no animation on arrival).
-    requestAnimationFrame(function () { showColumn(state.boardCol, false); });
   });
   wireDispatch();
   dockRefresh();
+  openDesktopColumns();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {
       apiFailToast('GitHub refresh failed', exc);
     });
   });
-  COLUMNS.forEach(function (col) {
-    const btn = els[col.btn];
-    if (btn) btn.addEventListener('click', function () { showColumn(col.key); });
-  });
-  let scrollTimer = null;
-  els.boardColumns.addEventListener('scroll', function () {
-    if (scrollTimer) clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(function () {
-      state.boardCol = nearestColumnKey();
-      syncStripActive();
-    }, 80);
-  }, { passive: true });
-  // Land on Your turn — the only number that matters when the tab opens.
-  syncStripActive();
 }

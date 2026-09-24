@@ -1,10 +1,10 @@
 """Board tab e2e (issues #300 / #301 / #302 / #164 / #399).
 
 Browser-side coverage: the fifth tab renders the five single-purpose kanban
-columns from a route-mocked ``/api/board`` payload, the strip shows
-per-column counts (with the Your-turn attention highlight), the ↻ button
-POSTs the gh refresh, and the phone projection lays the columns out as a
-one-column-per-viewport carousel while desktop gets the five-column grid.
+columns from a route-mocked ``/api/board`` payload as collapsible section
+cards (#1198) whose summaries carry per-column counts (with the Your-turn
+attention highlight), the ↻ button POSTs the gh refresh, and the phone
+projection stacks the sections while desktop gets the five-column grid.
 The #302 dispatch bar POSTs {repo, goal, mode} and keeps its goal for rapid
 multi-dispatch, and the dictation mics (dispatch bar + the drawer's shared
 composer, #984)
@@ -137,13 +137,15 @@ def _open_board(page: Page, base_url: str) -> None:
     expect(page.locator("#paneBoard")).to_be_visible()
 
 
-def _switch_to_backlog(page: Page) -> None:
-    """Bring the backlog column into view. Phone-only: the strip button that
-    does this (#495) is hidden on the desktop grid, where every column
-    (backlog included) is already visible side by side."""
-    viewport = page.viewport_size or {"width": 0}
-    if viewport["width"] < 700:
-        page.locator("#boardColBacklog").click()
+def _unfold(page: Page, *section_ids: str) -> None:
+    """Open Board column sections (#1198). The GitHub-fed ones start folded on
+    the phone and open on the desktop grid, so tap a summary only when its
+    section is still closed — a tap on an open one would fold it."""
+    for section_id in section_ids:
+        section = page.locator(f"#{section_id}")
+        if section.get_attribute("open") is None:
+            page.locator(f"#{section_id} > summary").click()
+        expect(section).to_have_attribute("open", "")
 
 
 def test_board_renders_columns_counts_and_cards(
@@ -152,7 +154,8 @@ def test_board_renders_columns_counts_and_cards(
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    # Per-column counts on the strip; Your turn (1) carries the attention mark.
+    # Per-column counts in each section's summary; Your turn (1) carries the
+    # attention mark.
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
@@ -169,6 +172,16 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours.nth(0)).to_contain_text("photo-ocr")
     expect(yours.nth(0)).to_contain_text("needs you")
     expect(yours.nth(0)).to_contain_text("chunk merge fix")
+    # Title first (#1198): the card's title leads, the project/status meta
+    # line follows it, and the clamped title keeps its full text reachable.
+    title = yours.nth(0).locator(".board-card > :first-child")
+    expect(title).to_have_class(re.compile(r"\bboard-card-title\b"))
+    expect(title).to_have_attribute("title", "chunk merge fix")
+    expect(yours.nth(0).locator(".board-card > :nth-child(2)")).to_have_class(
+        re.compile(r"\bboard-card-meta\b")
+    )
+
+    _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
 
     # Other holds the open PR + failed job, in that order.
     other = authed_page.locator('.board-list[data-col="other"] li.board-item')
@@ -284,12 +297,9 @@ def test_board_unfetched_github_renders_unknown_not_zero(
     _route_board_from(authed_page, current)
     _open_board(authed_page, base_url)
 
-    for strip in ("#boardColBacklog", "#boardColDone"):
-        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("—")
+    for section in ("#boardColBacklog", "#boardColDone"):
+        expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("1")
-    expect(
-        authed_page.locator('.board-col-count[data-col="backlog"]')
-    ).to_have_text("(—)")
     expect(
         authed_page.locator('.board-empty[data-col="backlog"]')
     ).to_have_text("Not loaded from GitHub yet — tap Refresh.")
@@ -306,8 +316,8 @@ def test_board_unfetched_github_renders_unknown_not_zero(
     current["body"] = loaded_empty
     authed_page.locator("#boardRefresh").click()
 
-    for strip in ("#boardColBacklog", "#boardColDone"):
-        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
+    for section in ("#boardColBacklog", "#boardColDone"):
+        expect(authed_page.locator(f"{section} .board-count")).to_have_text("0")
     expect(
         authed_page.locator('.board-empty[data-col="backlog"]')
     ).to_have_text("No open issues — tap Refresh to check GitHub again.")
@@ -364,11 +374,8 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     _route_board_from(authed_page, current)
     _open_board(authed_page, base_url)
 
-    for strip in ("#boardColClaude", "#boardColYours"):
-        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("—")
-    expect(
-        authed_page.locator('.board-col-count[data-col="your_turn"]')
-    ).to_have_text("(—)")
+    for section in ("#boardColClaude", "#boardColYours"):
+        expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
     expect(
         authed_page.locator('.board-empty[data-col="your_turn"]')
     ).to_have_text("Session-host unreachable — sessions unknown.")
@@ -394,8 +401,8 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     current["body"] = read_empty
     authed_page.locator("#boardRefresh").click()
 
-    for strip in ("#boardColClaude", "#boardColYours"):
-        expect(authed_page.locator(f"{strip} .board-count")).to_have_text("0")
+    for section in ("#boardColClaude", "#boardColYours"):
+        expect(authed_page.locator(f"{section} .board-count")).to_have_text("0")
     expect(
         authed_page.locator('.board-empty[data-col="your_turn"]')
     ).to_have_text(
@@ -410,27 +417,51 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
 
-def test_board_strip_click_scrolls_carousel_not_page(
+def test_board_sections_are_collapsible_cards_that_survive_the_poll(
     authed_page: Page, base_url: str
 ) -> None:
-    """Tapping a strip button pans the carousel horizontally without moving
-    the page vertically (the scrollIntoView fly-up bug found on the phone).
-    Carousel only exists on the phone projection — desktop shows the grid."""
-    viewport = authed_page.viewport_size or {"width": 0}
-    if viewport["width"] >= 700:
-        pytest.skip("carousel is phone-projection-only; desktop uses the grid")
-
+    """#1198: the Board is built like every other tab. The first thing under
+    the page header is a section card holding the dispatch bar, each column
+    is a collapsible section card with its count in the summary, and the
+    phone's column strip is gone. A section the user folds stays folded
+    across the 5 s poll: renderBoard() re-renders the lists, never a
+    section's open state."""
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    scroll_y_before = authed_page.evaluate("window.scrollY")
-    authed_page.locator("#boardColDone").click()
-    authed_page.wait_for_function(
-        "document.getElementById('boardColumns').scrollLeft > 0", timeout=5_000
-    )
-    assert authed_page.evaluate("window.scrollY") == scroll_y_before, (
-        "strip tap scrolled the page vertically (fly-up regression)"
-    )
+    first = authed_page.locator("#paneBoard > .page-head + *")
+    expect(first).to_have_id("boardDispatchCard")
+    expect(first).to_have_class(re.compile(r"\bcard--collapsible\b"))
+    expect(first.locator("> summary .collapse-title")).to_have_text("Dispatch")
+    expect(first.locator("#boardDispatch")).to_have_count(1)
+
+    sections = authed_page.locator("#boardColumns > details.card--collapsible")
+    expect(sections).to_have_count(5)
+    expect(
+        authed_page.locator("#boardColumns > details > summary .board-count")
+    ).to_have_count(5)
+    expect(authed_page.locator(".board-strip")).to_have_count(0)
+
+    # Phone: the live columns open, the GitHub-fed ones folded; the desktop
+    # grid opens all five.
+    viewport = authed_page.viewport_size or {"width": 0}
+    backlog = authed_page.locator("#boardColBacklog")
+    if viewport["width"] < 700:
+        expect(backlog).not_to_have_attribute("open", "")
+    else:
+        expect(backlog).to_have_attribute("open", "")
+    yours = authed_page.locator("#boardColYours")
+    expect(yours).to_have_attribute("open", "")
+
+    authed_page.locator("#boardColYours > summary").click()
+    expect(yours).not_to_have_attribute("open", "")
+    # Wait out one full poll: its response lands, then its render runs.
+    with authed_page.expect_response(
+        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
+    ):
+        pass
+    authed_page.wait_for_timeout(300)
+    expect(yours).not_to_have_attribute("open", "")
 
 
 _FAKE_EXCHANGE = {
@@ -648,7 +679,7 @@ def test_backlog_start_button_posts_issue_start(
     authed_page.route(re.compile(r".*/api/board/issues/start$"), _capture_start)
 
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
     # The dispatch bar's model selector governs one-tap starts too (#505) —
     # pick a non-default value so the POST provably carries the selection.
     authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
@@ -682,7 +713,7 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
 
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
@@ -753,7 +784,7 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
 
     active = authed_page.locator(
         '.board-list[data-col="backlog"] li.board-item', has_text="#301"
@@ -796,7 +827,7 @@ def test_backlog_issue_claim_states_stale_and_unverified(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
 
     stale = authed_page.locator(
         '.board-list[data-col="backlog"] li.board-item', has_text="#301"
@@ -820,7 +851,9 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     authed_page: Page, base_url: str
 ) -> None:
     """#862 regression guard: a long title wraps and grows the backlog row
-    instead of being clipped with an ellipsis on a phone-width viewport."""
+    instead of being clipped with an ellipsis on a phone-width viewport.
+    #1198: it leads the row, above its repo/# line, and wraps to the shared
+    two-line cap at most, with the full text in its title attribute."""
     authed_page.set_viewport_size({"width": 430, "height": 739})
     long_title = (
         "This is a deliberately very long issue title meant to overflow the "
@@ -836,11 +869,15 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
 
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     title_el = tile.locator(".board-card-title-compact")
     expect(title_el).to_be_visible(timeout=15_000)
+    expect(title_el).to_have_attribute("title", long_title)
+    expect(tile.locator(".board-card-text > :first-child")).to_have_class(
+        re.compile(r"\bboard-card-title-compact\b")
+    )
 
     # A wrapped title fits inside its box: scrollWidth must not exceed
     # clientWidth. Read the two widths (not the comparison) so a mid-rebuild
@@ -869,7 +906,9 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
             " const titleBox = title.getBoundingClientRect();"
             " const tileBox = el.getBoundingClientRect();"
             " const actionBox = action.getBoundingClientRect();"
-            " return {title: {height: titleBox.height},"
+            " const cs = getComputedStyle(title);"
+            " const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;"
+            " return {title: {height: titleBox.height, lineHeight: lineHeight},"
             " tile: {y: tileBox.y, height: tileBox.height},"
             " action: {y: actionBox.y, height: actionBox.height}};"
             "}"
@@ -881,6 +920,10 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     action_box = boxes["action"]
     assert title_box["height"] > 26, (
         f"title is only {title_box['height']}px tall — it did not wrap"
+    )
+    assert title_box["height"] <= 2 * title_box["lineHeight"] + 1, (
+        f"title is {title_box['height']}px tall — over the two-line cap "
+        f"({title_box['lineHeight']}px lines)"
     )
     assert tile_box["height"] > 60, (
         f"tile is only {tile_box['height']}px tall — it did not grow with the title"
@@ -1350,7 +1393,7 @@ def test_backlog_cards_color_coded_from_shared_git_cache(
     )
 
     _open_board(authed_page, base_url)
-    _switch_to_backlog(authed_page)
+    _unfold(authed_page, "boardColBacklog")
 
     meta = authed_page.locator(
         '.board-list[data-col="backlog"] .board-card-meta-inline'
@@ -1443,10 +1486,11 @@ def test_dispatch_model_picker_matches_shared_button_shape(
 def test_board_columns_layout_matches_projection(
     authed_page: Page, base_url: str
 ) -> None:
-    """Phone (WebKit / iPhone projection): the carousel shows one column per
-    viewport — a column spans ~the full container width. Desktop (Chromium,
-    fine pointer ≥700px): the grid shows all five columns — each column is
-    well under half the container. Same DOM, projection-dependent CSS."""
+    """Phone (WebKit / iPhone projection): the column sections stack like
+    every other tab's cards — each spans ~the full container width, the next
+    one below it (#1198). Desktop (Chromium, fine pointer ≥700px): the grid
+    shows all five columns — each column is well under half the container.
+    Same DOM, projection-dependent CSS."""
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
@@ -1454,15 +1498,20 @@ def test_board_columns_layout_matches_projection(
     first_col = authed_page.locator(".board-col").first
     expect(first_col).to_be_attached()
 
-    box_container = container.bounding_box()
-    box_col = first_col.bounding_box()
-    assert box_container and box_col, "board columns not laid out"
+    box_container = stable_read(container.bounding_box)
+    box_col = stable_read(first_col.bounding_box)
+    box_next = stable_read(authed_page.locator(".board-col").nth(1).bounding_box)
+    assert box_container and box_col and box_next, "board columns not laid out"
 
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
         assert box_col["width"] >= box_container["width"] * 0.9, (
             f"phone column should fill the viewport: col={box_col['width']}, "
             f"container={box_container['width']}"
+        )
+        assert box_next["y"] >= box_col["y"] + box_col["height"], (
+            f"phone sections should stack: next y={box_next['y']}, "
+            f"first bottom={box_col['y'] + box_col['height']}"
         )
     else:
         assert box_col["width"] <= box_container["width"] * 0.35, (
@@ -1482,10 +1531,9 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     auto`. (2) Mode is the shared `.model-combo`, the same control family as
     the model picker beside it — no native `<select>` left in the row.
     (3) ↻ is projection-dependent: docked into the dispatch row on the desktop
-    grid (where the switcher strip is hidden entirely), still in the switcher
-    strip on the phone, where that strip *is* the column header.
+    grid, beside the project filter on the phone (#1198).
     (4) The project filter leads the desktop line at the far left, and drops
-    below the controls on the phone so it sits just above that strip.
+    below the controls on the phone so it sits just above the columns.
     """
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
@@ -1549,15 +1597,14 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
 
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
-        # ↻ docks beside the strip, never inside its tablist: the segmented
-        # control is exactly the five columns (#1175, COMP-03).
-        expect(authed_page.locator(".board-strip-bar > #boardRefresh")).to_have_count(1)
-        expect(authed_page.locator(".board-strip > button")).to_have_count(5)
-        # The count pill keeps AA on its --card-2 fill: --fg, not the resting
-        # tab's --muted (4.08:1 in dark, #1175).
+        # ↻ docks beside the project filter, the Dispatch card's last row,
+        # now the column strip is gone (#1198).
+        expect(authed_page.locator(".board-filter-row > #boardRefresh")).to_have_count(1)
+        # The count pill keeps AA on its --card-2 fill: --fg, not --muted
+        # (4.08:1 in dark, #1175).
         fg = authed_page.evaluate("getComputedStyle(document.body).color")
         expect(authed_page.locator("#boardColBacklog .board-count")).to_have_css("color", fg)
-        # Filter drops BELOW the control row, so it sits just above the strip.
+        # Filter drops BELOW the control row, so it sits just above the columns.
         assert filter_box["y"] > mode_box["y"], (
             "phone filter should stack under the controls: "
             f"filter y={filter_box['y']}, mode y={mode_box['y']}"
@@ -1566,7 +1613,6 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
         expect(
             authed_page.locator(".board-dispatch-row #boardRefresh")
         ).to_have_count(1)
-        expect(authed_page.locator(".board-strip-bar")).to_be_hidden()
         # One line: filter at the far left, ↻ last, everything on the same row.
         assert filter_box["x"] < mode_box["x"], (
             "desktop filter should lead the line: "

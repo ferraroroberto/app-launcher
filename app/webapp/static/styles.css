@@ -3712,16 +3712,29 @@ body.terminal-open {
      row's -4/-5px meet across this gap: 8px left the two hit areas sharing
      pixels, --gap (12) keeps them apart (#1174). */
   gap: var(--gap);
-  margin: 0 0 10px;
+  margin: 0;
 }
+/* Inside the Dispatch card (#1198) the bar is the body's first row: the
+   status and quota rows under it carry the space above themselves, so a
+   body whose quota rows are empty ends at the bar, not in a blank strip. */
+.board-dispatch-card .board-status,
+.board-dispatch-card .quota-lines { margin: 10px 0 0; }
 /* Phone stacking order (#869 round 2, on-device feedback): the controls lead
    and "All projects" drops to the bottom of the bar, so the filter sits
-   directly above the git/bot/you/Other/Done strip it filters. Source order
+   directly above the column sections it filters. Source order
    stays controls-last because the desktop row below wants the filter first,
    at the far left — CSS order, not two markup copies. */
 .board-dispatch-row { order: 1; }
 .board-chief-status { order: 2; }
-.board-repo-combo { order: 3; }
+.board-filter-row { order: 3; }
+/* The filter and, on the phone, ↻ beside it (dockRefresh). 8px, not less:
+   ↻'s -4px hit expansion must not meet the combo's (#1174). */
+.board-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.board-filter-row .board-repo-combo { flex: 1; min-width: 0; }
 /* #869: the goal is no longer its own full-width block above the controls —
    it flex-fills the control row between the model combo and the mic, which
    drops the phone bar from 4 stacked rows to 3. Row height, not textarea
@@ -3972,59 +3985,22 @@ body.terminal-open {
    free space, so ➤ docks immediately after ✕ instead of being flung to the
    row's far edge with a gap in between. */
 
-/* Column switcher strip: four count buttons + the gh refresh. Doubles as
-   the column header on the phone, where the carousel shows one column. */
-/* The phone's column strip and ↻ share one bar; the strip itself is the
-   five-tab segmented control, ↻ sits beside it, outside the tablist (#1175). */
-.board-strip-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 10px;
-}
-.board-strip {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-/* Not migrated to the button tiers (issue #477 audit): the column-switcher
-   strip is a segmented control (has an .active state). */
-/* The column strip is a row of tabs, so real height, not expansion: they sit
-   flush against each other and any inset would overlap (#1124, measured
-   60x35). */
-.board-strip-btn {
-  flex: 1;
-  min-height: var(--row-sm);
-  min-width: 0;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  padding: 8px 2px;
-  font-size: var(--font-caption);
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.board-strip-btn.active { background: var(--card-2); color: var(--fg); }
+/* Column count in each section's summary (#1198; was the phone strip's
+   pill before the strip retired). Its own text colour, not --muted: that
+   reads 4.08:1 on the dark --card-2 pill (#1175). */
 .board-count {
   display: inline-block;
   min-width: 18px;
   padding: 1px 5px;
   border-radius: var(--radius-pill);
   background: var(--card-2);
-  /* Its own text colour, not the resting tab's --muted: that reads 4.08:1
-     on the dark --card-2 pill (#1175). */
   color: var(--fg);
   font-size: var(--font-caption);
+  text-align: center;
 }
 /* "Your turn" holding work is the one number that matters. State signal,
    not decoration — the warn color marks pending human action. */
-.board-strip-btn.attention .board-count { background: var(--attention); color: var(--attention-fg); }
+.board-col.attention .board-count { background: var(--attention); color: var(--attention-fg); }
 /* Had no icon-button box at all before #547 (only flex: 0 0 auto — a bare
    default browser button, visibly smaller/different than the dispatch bar's
    ↻/send buttons above it). Same 36px --control-h square recipe as
@@ -4106,25 +4082,9 @@ body.terminal-open {
 .usage-badge.good { color: var(--success); }
 .usage-badge.good::before { background: var(--success); }
 
-/* Phone-first carousel: one column per viewport, swipe between them.
-   scroll-snap gives the swipe for free — no gesture JS. */
-.board-columns {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}
-.board-columns::-webkit-scrollbar { display: none; }
-.board-col {
-  flex: 0 0 100%;
-  min-width: 0;
-  scroll-snap-align: start;
-}
-/* The strip is the column header on the carousel; the per-column title
-   only earns space in the desktop grid below. */
-.board-col-title { display: none; }
+/* Columns are section cards (#1198): on the phone they stack like every
+   other tab's cards; the desktop block below lays them side by side. */
+.board-col { min-width: 0; }
 
 .board-list { list-style: none; margin: 0; padding: 0; }
 /* Column, not the shared .app-item row: the drawer and the issue-action
@@ -4154,7 +4114,7 @@ body.terminal-open {
   cursor: pointer;
 }
 .board-card:disabled { cursor: default; opacity: 0.75; }
-.board-card-top {
+.board-card-meta {
   font-size: var(--font-body-sm);
   color: var(--muted);
   display: flex;
@@ -4166,10 +4126,15 @@ body.terminal-open {
   white-space: nowrap;
 }
 .board-agent-icon { width: 16px; height: 16px; }
-.board-card-title {
+/* Title first on every card (#1198), and one shared cap: two lines, the full
+   text in the element's title attribute. Not a one-line ellipsis — that hid
+   too much of a backlog title on a phone (#339). */
+.board-card-title,
+.board-card-title-compact {
   font-size: var(--font-label);
   line-height: 1.3;
   overflow: hidden;
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -4218,7 +4183,7 @@ body.terminal-open {
 .app-item.session-item.session-item-chief,
 .board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
 .board-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
-.board-empty { margin: 4px 0 12px; }
+.board-empty { margin: 0; }
 
 /* Fleet chief row in the Coding tab's session list (#547) — same accent-soft
    tint + accent left edge as the Board card above, adapted to this tab's
@@ -4272,17 +4237,13 @@ body.terminal-open {
   min-width: 0;
   gap: 2px;
 }
-/* Backlog titles stay readable on narrow phones: wrap the full issue title
-   instead of hiding it behind a one-line ellipsis. The row grows with the
-   text column, while the sibling action rail stays vertically centered. */
+/* Backlog titles wrap to the shared two-line cap above rather than a
+   one-line ellipsis; the row grows with the text column, while the sibling
+   action rail stays vertically centered. */
 .board-card-title-compact {
-  display: block;
   min-width: 0;
-  overflow-wrap: anywhere;
   white-space: normal;
-  font-size: var(--font-label);
   font-weight: 600;
-  line-height: 1.3;
 }
 .board-card-meta-inline {
   color: var(--muted);
@@ -4446,7 +4407,7 @@ body.terminal-open {
   cursor: default;
 }
 
-/* Desktop / wide: all five columns side by side; titles come back.
+/* Desktop / wide: all five column sections side by side.
    Board (only) also breaks out of the phone-first `.app` 720px cap —
    full-bleed to the viewport, since `.app`'s horizontal centering makes
    the standard breakout offsets cancel out exactly (issue #325). Every
@@ -4462,29 +4423,20 @@ body.terminal-open {
     padding: 0 24px;
     box-sizing: border-box;
   }
+  /* `start`, not the grid's default stretch: a folded section keeps its
+     52px summary height instead of growing an empty card to the row. */
   .board-columns {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: start;
     gap: 20px;
-    overflow-x: visible;
-    scroll-snap-type: none;
   }
-  .board-col-title {
-    display: block;
-    margin: 0 0 8px;
-    font-size: var(--font-caption);
-    font-weight: 600;
-    text-transform: none;
-    color: var(--muted);
-  }
-  .board-col-count { font-weight: 400; }
-  /* #495: the phone tab-switcher strip duplicates the grid's own aligned
-     .board-col-title headers, with no shared width/gap math between the two
-     rows. #869 finished the job — dockRefresh() re-parents the one ↻ node
-     into the dispatch row at this breakpoint, so the strip has no desktop
-     occupant left and the whole row goes, instead of leaving ↻ floating
-     alone at the pane's right edge above the headers it refreshes. */
-  .board-strip-bar { display: none; }
+  .board-col { margin: 0; }
+  /* A fifth of the pane is narrow: the body's 14px sides on top of each
+     row's own 14px inset left the drawer's four actions too little room for
+     one row. The rows carry that inset already, level with the summary's
+     title, so the grid's bodies drop the sides. */
+  .board-col > .collapse-body { padding: 4px 0 8px; }
   /* The whole bar is one line on a desktop-width pane (#869 round 2): the
      project filter at the far left, then the mode/model combos, the goal,
      the compose buttons and ↻. The three .board-dispatch children lay out
@@ -4497,7 +4449,7 @@ body.terminal-open {
     align-items: center;
     gap: 6px;
   }
-  .board-repo-combo { order: 0; flex: 0 0 auto; }
+  .board-filter-row { order: 0; flex: 0 0 auto; }
   .board-repo-input {
     width: auto;
     min-width: 150px;
