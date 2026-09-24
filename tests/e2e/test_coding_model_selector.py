@@ -228,15 +228,31 @@ def test_coding_model_combo_syncs_with_settings_control(
     )
     expect(authed_page.locator("#codexEffort")).to_have_value("high", timeout=5_000)
 
-    authed_page.locator("#piModel .model-combo-trigger").click()
+    # A long menu is held to the viewport (dom-utils.js positionMenu caps its
+    # height at the room beside the trigger). Whether 15 options (480px) need
+    # capping depends on where the trigger sits, and that used to be wherever
+    # the steps above left the scroll: with the trigger high in a 739px
+    # iPhone viewport all 480px fit, the menu was rightly left whole, and the
+    # check read 480 > 480 (#1188). Pin the geometry instead: a viewport
+    # shorter than the menu, the trigger at its roomiest spot (the top).
+    pi_trigger = authed_page.locator("#piModel .model-combo-trigger")
+    viewport = authed_page.viewport_size
+    authed_page.set_viewport_size({"width": viewport["width"], "height": 400})
+    pi_trigger.evaluate("el => el.scrollIntoView({block: 'start'})")
+    pi_trigger.click()
     pi_menu = authed_page.locator("#piModelMenu")
     expect(pi_menu.locator("[role='option']")).to_have_count(15)
-    menu_sizes = pi_menu.evaluate("el => [el.clientHeight, el.scrollHeight]")
-    assert menu_sizes[1] > menu_sizes[0], "long model menu is not viewport constrained"
+    client, scroll, bottom, room = pi_menu.evaluate(
+        "el => [el.clientHeight, el.scrollHeight, el.getBoundingClientRect().bottom,"
+        " document.documentElement.clientHeight]"
+    )
+    assert scroll > client, f"long model menu is not viewport constrained: {client}/{scroll}"
+    assert bottom <= room, f"model menu runs off the viewport: bottom {bottom} > {room}"
     expect(authed_page.locator("#piModelMenu [data-value='openai/astra']")).to_be_disabled()
     authed_page.locator("#piModelMenu [data-value='openai/sol']").click()
     expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
     expect(authed_page.locator("#piFlagsPreview")).to_have_text("pi --model openai/sol")
+    authed_page.set_viewport_size(viewport)
 
     # Keyboard traversal skips disabled Astra, selects exactly once, and
     # Escape restores focus and the collapsed ARIA state.
