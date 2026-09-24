@@ -167,15 +167,27 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
     # #1025 the row has no menu at all, so the surface to check is the
     # overlay's ⋮ — the only per-session menu left.
     _mock_sessions_list(authed_page, kind=kind)
+    captured: dict = {}
+    _mock_input(authed_page, captured, [(200, {
+        "ok": True, "delivered": True, "submit_state": "confirmed",
+    })])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="chat")
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
     # Chat mode's full set (#982): the two chat-only rows sit between Copy
-    # link and Stop, and nothing named Send appears for either kind.
+    # link and Stop, and nothing named Send appears for either kind. Compact
+    # (#1218) sits last in the safe group, above the destructive divider.
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Show tool calls", "Reload", "Stop and kill"]
+        ["Rename", "Copy link", "Show tool calls", "Reload", "Compact", "Stop and kill"]
     )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
+
+    # ⋮ Compact sends /compact through the same /input route Chat's Send
+    # uses, for either kind, and the toast names the verdict (#1218).
+    menu.locator('button[aria-label="Compact conversation"]').click()
+    expect(authed_page.locator("#toast")).to_contain_text("Compact: Sent")
+    assert captured["body"] == {"data": "/compact", "submit": True}
+    assert captured["calls"] == 1
 
 
 def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
@@ -186,18 +198,19 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="terminal")
 
-    # Terminal mode: Rename · Copy link · Stop and kill (the chat-only rows
-    # are detached from the DOM, not hidden — #982).
+    # Terminal mode: Rename · Copy link · Compact · Stop and kill (the
+    # chat-only rows are detached from the DOM, not hidden — #982; Compact
+    # shows in both modes for a Claude session — #1218).
     buttons = menu.locator("button")
-    expect(buttons).to_have_count(3)
+    expect(buttons).to_have_count(4)
     labels = menu.locator(".row-menu-label")
-    expect(labels).to_have_count(3)
-    for i in range(3):
+    expect(labels).to_have_text(["Rename", "Copy link", "Compact", "Stop and kill"])
+    for i in range(4):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
 
     def _boxes():
-        bs = [buttons.nth(i).bounding_box() for i in range(3)]
+        bs = [buttons.nth(i).bounding_box() for i in range(4)]
         return bs if all(bs) else None
 
     boxes = stable_read(_boxes)
@@ -205,7 +218,7 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     xs = {round(b["x"]) for b in boxes}
     assert len(xs) == 1, f"menu rows are not stacked in one column: {boxes}"
     ys = [b["y"] for b in boxes]
-    assert ys == sorted(ys) and len(set(round(y) for y in ys)) == 3, f"rows are not vertical: {ys}"
+    assert ys == sorted(ys) and len(set(round(y) for y in ys)) == 4, f"rows are not vertical: {ys}"
     for b in boxes:
         assert b["height"] >= 44 - 1, f"row under the 44px hit-target floor: {b}"
         assert b["width"] >= 150, f"row too narrow for icon + label: {b}"
