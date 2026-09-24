@@ -18,7 +18,7 @@
 import { els } from './state.js';
 import { jsonApi } from './api.js';
 import { createRowMenu } from './row-menu.js';
-import { isQuestion, renderEntries } from './session-transcript.js';
+import { isDecisionCard, renderEntries } from './session-transcript.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 
@@ -110,9 +110,10 @@ async function load() {
     return;
   }
   const entries = body.entries || [];
-  // A question card (#1149) renders beside the turns, not in a group.
+  // A decision card (#1149 question, #1151 plan) renders beside the turns,
+  // not in a group.
   hasGroups = entries.some(function (e) {
-    return e.kind !== 'user' && e.kind !== 'assistant' && !isQuestion(e);
+    return e.kind !== 'user' && e.kind !== 'assistant' && !isDecisionCard(e);
   });
   hideState();
   els.lifeOsViewerList.appendChild(renderEntries(entries, 'reported'));

@@ -91,6 +91,22 @@ def _question(call_id: str, offset: int, answer: str | None = None) -> dict:
     return e
 
 
+def _plan(call_id: str, offset: int, **outcome) -> dict:
+    """An ExitPlanMode call as the server forwards it (#1151); ``outcome``
+    carries the result fields for an answered one."""
+    e = {
+        "kind": "tool_call", "timestamp": "2026-09-19T10:01:02Z",
+        "name": "ExitPlanMode", "summary": "# Add the await", "call_id": call_id,
+        "plan": "## Add the await\n\n- wrap the call\n- rerun the suite",
+        "plan_truncated": False, "result": None, "result_truncated": False,
+        "sidechain": False, "offset": offset,
+    }
+    if outcome:
+        e["result"] = "answered"
+        e.update(outcome)
+    return e
+
+
 def _turn(kind: str, text: str, offset: int) -> dict:
     return {
         "kind": kind, "timestamp": "2026-09-19T10:01:00Z", "text": text,
@@ -266,6 +282,34 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     expect(live).to_have_attribute("data-mode", "answered", timeout=OVERLAY_OPEN_MS)
     expect(live.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Await it")
     expect(live.locator(".tr-ask-opt:enabled")).to_have_count(0)
+
+    # #1151 — a plan the agent asks you to approve arrives as its own card
+    # too: the plan through the markdown renderer, and how it was answered.
+    # Read-only: a plan still waiting says where to answer it, never offers
+    # a control.
+    tr.append(
+        _plan("plan_back", 800, error=True, plan_outcome="sent_back",
+              plan_feedback="keep the retry as well"),
+        _turn("assistant", "revised", 850),
+        _plan("plan_ok", 900, plan_outcome="approved", plan_edited=True),
+        _turn("assistant", "on it", 950),
+        _plan("plan_wait", 1000),
+    )
+    plans = page.locator("#transcriptList .tr-plan-item")
+    expect(plans).to_have_count(3, timeout=OVERLAY_OPEN_MS)
+    back, ok, wait = plans.nth(0), plans.nth(1), plans.nth(2)
+    expect(back.locator(".tr-plan-body h2")).to_have_text("Add the await")
+    expect(back.locator(".tr-plan-body li")).to_have_count(2)
+    expect(back).to_have_attribute("data-mode", "sent_back")
+    expect(back.locator(".tr-plan-feedback")).to_have_text("Your feedback: “keep the retry as well”")
+    # A sent-back plan is the user's answer, not a failed call.
+    expect(back.locator(".tr-fail-chip")).to_have_count(0)
+    expect(ok.locator(".tr-ask-status")).to_have_text("Approved after your edits")
+    expect(wait).to_have_attribute("data-mode", "waiting")
+    expect(wait.locator(".tr-ask-status")).to_have_text("Waiting for your answer: answer it in the terminal")
+    expect(wait.locator("button")).to_have_count(0)
+    # The question card above is history now that the agent moved on.
+    expect(live).to_have_attribute("data-mode", "answered")
 
 
 def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> None:

@@ -720,7 +720,7 @@ function renderQuestion(e, toolErrors, answering) {
   }
   li.appendChild(card);
   // A first paint from the entry alone, so a card is right even where
-  // nothing ever calls syncQuestions() (the Life OS viewer).
+  // nothing ever calls syncDecisionCards() (the Life OS viewer).
   const out = questionOutcome(e, null);
   paintQuestion(li, out ? (out.answers ? 'answered' : 'closed') : 'history', out);
   return li;
@@ -854,18 +854,18 @@ function paintQuestion(li, mode, out, statusText) {
   if (live) paintDraft(li);
 }
 
-// The call id of the session's pending question, or null: the newest
-// question in what is loaded, still without a result, with no turn, tool
-// call or thinking after it (a later one means the agent moved on). Results
-// and harness plumbing after it don't count — they are not the agent
-// continuing.
-function currentQuestionId() {
+// The call id of the session's pending decision (a question, #1149, or a
+// plan, #1151), or null: the newest such call in what is loaded, still
+// without a result, with no turn, tool call or thinking after it (a later
+// one means the agent moved on). Results and harness plumbing after it don't
+// count — they are not the agent continuing.
+function currentDecisionId() {
   if (!view || view.ended || !view.entries) return null;
   const list = view.entries;
   for (let i = list.length - 1; i >= 0; i--) {
     const e = list[i];
     if (e.sidechain || e.kind === 'system' || e.kind === 'tool_result') continue;
-    if (isQuestion(e)) return questionOutcome(e, list) ? null : (e.call_id || null);
+    if (isDecisionCard(e)) return questionOutcome(e, list) ? null : (e.call_id || null);
     return null;
   }
   return null;
@@ -873,9 +873,9 @@ function currentQuestionId() {
 
 // Re-derive every card's mode from what is loaded — after a page load, a
 // live tick, a Load older, and a send.
-function syncQuestions() {
+function syncDecisionCards() {
   if (!view) return;
-  const liveId = currentQuestionId();
+  const liveId = currentDecisionId();
   const s = view.session;
   els.transcriptList.querySelectorAll('.tr-ask-item').forEach(function (li) {
     const e = li._trAsk;
@@ -897,6 +897,14 @@ function syncQuestions() {
     }
     paintQuestion(li, detachedSendRefused(s) ? 'console' : 'live', null);
   });
+  els.transcriptList.querySelectorAll('.tr-plan-item').forEach(function (li) {
+    const e = li._trPlan;
+    const out = planOutcome(e, view.entries);
+    if (out) paintPlan(li, out.outcome, out);
+    else if (li._trAnswering && e.call_id && e.call_id === liveId) {
+      paintPlan(li, 'waiting', null, s.kind === 'remote' ? 'the PC console' : 'the terminal');
+    } else paintPlan(li, li._trAnswering ? 'stale' : 'history', null);
+  });
 }
 
 // Send the picks. Re-checks "still the pending question" at the tap — the
@@ -906,14 +914,14 @@ async function submitAnswer(li, answers) {
   if (!view || li.dataset.mode !== 'live') return;
   const target = view;
   const e = li._trAsk;
-  if (currentQuestionId() !== e.call_id) {
+  if (currentDecisionId() !== e.call_id) {
     toast(ASK_NOT_WAITING, 'bad');
-    syncQuestions();
+    syncDecisionCards();
     return;
   }
   target.askSent = target.askSent || {};
   target.askSent[e.call_id] = true;
-  syncQuestions();
+  syncDecisionCards();
   try {
     const tt = await ensureTerminalToken();
     await jsonApi(
@@ -940,7 +948,7 @@ async function submitAnswer(li, answers) {
         apiFailToast('Answer failed', exc);
       }
     }
-    if (view === target) syncQuestions();
+    if (view === target) syncDecisionCards();
     return;
   }
   toast('Answer sent', 'good', { icon: 'send-horizontal' });
@@ -949,6 +957,134 @@ async function submitAnswer(li, answers) {
   target.refreshTimer = window.setTimeout(function () {
     if (view === target) scheduleLive(0);
   }, SENT_REFRESH_MS);
+}
+
+// --- ExitPlanMode card (#1151) --------------------------------------------
+//
+// The plan the agent wants approved, through the same escape-first markdown
+// renderer as a reply, and how it was answered: approved (and whether it was
+// edited first), sent back with the user's feedback, declined, or never
+// shown (the agent called the tool outside plan mode). The server reads
+// those off the result (src/plan_review.py).
+//
+// Read-only everywhere, deliberately. Claude Code can hold the pending call
+// back from the transcript until it is answered (measured: 31 s with the
+// picker up and the call not on disk), so the transcript cannot say "this
+// plan is waiting" reliably, and the picker's first option changes with the
+// session's permission mode ("auto-accept edits" vs "switch to BYPASS
+// PERMISSIONS"). Typing a digit blind could approve into a mode the user
+// never saw. A plan that is still waiting says where to answer it instead.
+
+export function isPlan(e) {
+  return !!e && e.kind === 'tool_call' && e.name === 'ExitPlanMode' && !e.sidechain &&
+    typeof e.plan === 'string';
+}
+
+// A card of its own beside the turns — never folded into a tool-call run.
+export function isDecisionCard(e) {
+  return isQuestion(e) || isPlan(e);
+}
+
+function planFields(x) {
+  return {
+    outcome: x.plan_outcome || (x.error === true ? 'declined' : 'answered'),
+    feedback: x.plan_feedback || '',
+    edited: x.plan_edited === true,
+  };
+}
+
+// The plan's answer: its paired result, or a standalone one carrying its id
+// (the call settled on an earlier tick). null while nothing has come back.
+function planOutcome(e, entries) {
+  if (e.result != null) return planFields(e);
+  const r = (entries || []).find(function (x) {
+    return x.kind === 'tool_result' && x.tool_use_id && x.tool_use_id === e.call_id;
+  });
+  return r ? planFields(r) : null;
+}
+
+const PLAN_STATUS = {
+  approved: 'Approved',
+  sent_back: 'Sent back with feedback',
+  declined: 'Not approved',
+  not_shown: 'Never shown: the agent was not in plan mode',
+  answered: 'Answered',
+  stale: 'No longer waiting for an answer',
+  history: 'No answer recorded here',
+};
+
+function renderPlan(e, toolErrors, answering) {
+  const li = document.createElement('li');
+  li.className = 'tr-plan-item';
+  li._trPlan = e;
+  li._trAnswering = answering || null;
+  if (e.call_id) li.dataset.callId = e.call_id;
+  const card = document.createElement('div');
+  card.className = 'tr-ask tr-plan';
+  tagKey(card, e);
+  const head = document.createElement('div');
+  head.className = 'tr-ask-head';
+  head.innerHTML = icon('file-text');
+  head.appendChild(meta('Plan for approval', e.timestamp));
+  card.appendChild(head);
+  const body = document.createElement('div');
+  body.className = 'tr-md tr-plan-body';
+  body.innerHTML = renderMarkdown(e.plan || '');
+  linkify(body);
+  card.appendChild(body);
+  if (e.plan_truncated) {
+    const mark = document.createElement('div');
+    mark.className = 'tr-trunc';
+    mark.textContent = '(truncated — open the terminal for the rest)';
+    card.appendChild(mark);
+  }
+  const feedback = document.createElement('p');
+  feedback.className = 'tr-ask-typed tr-plan-feedback';
+  feedback.hidden = true;
+  card.appendChild(feedback);
+  const status = document.createElement('p');
+  status.className = 'tr-ask-status';
+  status.setAttribute('role', 'status');
+  card.appendChild(status);
+  const note = toolOutcomeNote(e, toolErrors);
+  if (note) {
+    const unknown = document.createElement('div');
+    unknown.className = 'tr-outcome-unknown';
+    unknown.textContent = note;
+    card.appendChild(unknown);
+  }
+  li.appendChild(card);
+  // First paint from the entry alone (the Life OS viewer never syncs).
+  const out = planOutcome(e, null);
+  paintPlan(li, out ? out.outcome : 'history', out);
+  return li;
+}
+
+// `where` names the surface to answer a waiting plan in.
+function paintPlan(li, mode, out, where) {
+  li.dataset.mode = mode;
+  const card = li.querySelector('.tr-plan');
+  // Only a real tool error is a failure: a declined or sent-back plan is
+  // the user's answer, even though the harness records it as an error.
+  const failed = mode === 'not_shown';
+  card.classList.toggle('tr-item-failed', failed);
+  let chip = card.querySelector('.tr-ask-head .tr-fail-chip');
+  if (failed && !chip) {
+    chip = document.createElement('span');
+    chip.className = 'tr-fail-chip';
+    chip.textContent = 'failed';
+    card.querySelector('.tr-ask-head').appendChild(chip);
+  } else if (!failed && chip) {
+    chip.remove();
+  }
+  const feedback = card.querySelector('.tr-plan-feedback');
+  const said = mode === 'sent_back' && out && out.feedback;
+  feedback.hidden = !said;
+  feedback.textContent = said ? 'Your feedback: “' + out.feedback + '”' : '';
+  let text = PLAN_STATUS[mode] || '';
+  if (mode === 'approved' && out && out.edited) text = 'Approved after your edits';
+  if (mode === 'waiting') text = 'Waiting for your answer: answer it in ' + (where || 'the terminal');
+  card.querySelector('.tr-ask-status').textContent = text;
 }
 
 function runLabel(run) {
@@ -1068,7 +1204,7 @@ function syncRunSummary(li) {
 function appendSettled(entries, toolErrors) {
   entries.forEach(function (e) {
     const last = els.transcriptList.lastElementChild;
-    if (!isTurn(e) && !isQuestion(e) && last && last.classList.contains('tr-run')) {
+    if (!isTurn(e) && !isDecisionCard(e) && last && last.classList.contains('tr-run')) {
       const item = renderItem(e, toolErrors);
       tagKey(item, e);
       last.querySelector('.tr-group-body').appendChild(item);
@@ -1123,7 +1259,7 @@ function applyLive(settled, pending, toolErrors) {
   view.pending = pending;
   view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
   view.entries = view.settled.concat(view.pending);
-  syncQuestions();
+  syncDecisionCards();
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
@@ -1149,6 +1285,9 @@ export function renderEntries(entries, toolErrors, answering) {
     } else if (isQuestion(e)) {
       flush();
       frag.appendChild(renderQuestion(e, toolErrors, answering));
+    } else if (isPlan(e)) {
+      flush();
+      frag.appendChild(renderPlan(e, toolErrors, answering));
     } else {
       run.push(e);
     }
@@ -1361,7 +1500,7 @@ async function loadNewest() {
   view.pendingNodes = pending.length
     ? renderPending(pending, view.toolErrors, null)
     : [];
-  syncQuestions();
+  syncDecisionCards();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
@@ -1438,7 +1577,7 @@ async function loadOlder() {
     // can find its result and never reads as the pending one.
     view.settled = older.concat(view.settled || []);
     view.entries = view.settled.concat(view.pending || []);
-    syncQuestions();
+    syncDecisionCards();
   }
   const foundTurn = older.some(isTurn);
   view.cursor = cursor;

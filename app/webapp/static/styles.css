@@ -2634,6 +2634,15 @@ textarea.input-native { height: auto; }
 }
 .tr-ask-send { flex: none; min-height: 44px; padding: 0 16px; }
 .tr-ask-submit { width: 100%; margin-top: 12px; }
+/* ExitPlanMode card (#1151): the question card's frame around the plan,
+   which is markdown like a reply (the shared `.tr-md` rules style it). */
+.tr-plan-body {
+  margin-top: 8px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.tr-plan > .tr-trunc { margin-top: 8px; }
 /* The transcript's one preformatted surface, shared by a tool result
    (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
    #1100) rather than declared twice -- they had become the same ten

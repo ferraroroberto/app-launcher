@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
+from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
 from src.board_transcript import _SKIP_USER_PREFIXES, _assistant_text
 
 # One backwards read step. 256 KB is the same window the Board's
@@ -582,7 +583,7 @@ def _text_entry(kind: str, offset: int, timestamp: Any, text: str, cap: int, **f
 def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
                    text: str, offset: int, timestamp: Any, sidechain: bool,
                    error: bool = False,
-                   answers: Optional[Dict[str, str]] = None) -> None:
+                   decision: Optional[Dict[str, Any]] = None) -> None:
     """Pair one tool result with its call (#1020 adds ``error``).
 
     ``error`` is written onto the entry **only when true** — the single
@@ -595,6 +596,11 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
     declared once, per flavour, in :data:`FLAVORS`' ``tool_errors`` — the
     client reads that to decide whether an unmarked call means "fine" or
     "nobody can tell".
+
+    ``decision`` is what a decision card needs from the answer (#1149's
+    ``answers``, #1151's ``plan_outcome``…), written onto the call — or onto
+    the standalone result, so a card whose call is already on screen can
+    still close.
     """
     body, truncated = _cap(text.strip(), TOOL_RESULT_CAP)
     call = calls.pop(str(call_id), None) if call_id else None
@@ -603,15 +609,12 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
         call["result_truncated"] = truncated
         if error:
             call["error"] = True
-        if answers:
-            call["answers"] = answers
+        call.update(decision or {})
         return
     # A result whose call fell off this page (or an unknown id): stands alone
-    # so it is neither lost nor mis-paired. ``answers`` rides along so a
-    # question card whose call is already on screen can still close (#1149).
+    # so it is neither lost nor mis-paired.
     fields: Dict[str, Any] = {"error": True} if error else {}
-    if answers:
-        fields["answers"] = answers
+    fields.update(decision or {})
     entries.append(_entry(
         "tool_result", offset, timestamp, text=body, truncated=truncated,
         tool_use_id=str(call_id or ""), sidechain=sidechain, **fields,
@@ -708,6 +711,13 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         if questions:
                             e["questions"] = questions
                             e["call_id"] = str(block.get("id") or "")
+                    elif e["name"] == PLAN_TOOL_NAME:
+                        # The plan card (#1151): the whole plan, not the
+                        # summary's one truncated line of it.
+                        plan = plan_from_input(block.get("input"))
+                        if plan:
+                            e["plan"], e["plan_truncated"] = plan
+                            e["call_id"] = str(block.get("id") or "")
                     entries.append(e)
                     if block.get("id"):
                         open_calls[str(block["id"])] = e
@@ -717,18 +727,30 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             if isinstance(content, list):
                 results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
                 if results:
+                    tool_use_result = obj.get("toolUseResult")
                     for block in results:
+                        call = open_calls.get(str(block.get("tool_use_id")))
+                        result_text = _blocks_text(block.get("content"))
+                        # A decision card's answer rides on the *line*
+                        # (`toolUseResult`) or in the rejection text — #1149's
+                        # picks, #1151's plan outcome; empty for other tools.
+                        decision: Dict[str, Any] = {}
+                        answers = answers_from_result(tool_use_result)
+                        if answers:
+                            decision["answers"] = answers
+                        decision.update(plan_outcome(
+                            call.get("name") if call else None, tool_use_result,
+                            result_text, bool(block.get("is_error")),
+                        ) or {})
                         _attach_result(
                             entries, open_calls, block.get("tool_use_id"),
-                            _blocks_text(block.get("content")), offset, ts, sidechain,
+                            result_text, offset, ts, sidechain,
                             # Claude states it outright: across the 40 newest
                             # transcripts on the dev box a `tool_result` block
                             # came in exactly two key-sets, one of them carrying
                             # `is_error` beside the error text (#1020).
                             error=bool(block.get("is_error")),
-                            # AskUserQuestion's picks ride on the *line*, not
-                            # the block (#1149); None for every other tool.
-                            answers=answers_from_result(obj.get("toolUseResult")),
+                            decision=decision,
                         )
                     continue
                 text = _blocks_text(content)
