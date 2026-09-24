@@ -20,12 +20,21 @@ import { readTerminalToken } from './webauthn.js';
 import { mountComposer } from './composer.js';
 import { stopReading } from './terminal-readaloud.js';
 
-// Delay (ms) before the submitting CR when the compose payload carries a
-// pasted image path (issue #450). Gives Claude Code's path→attachment
-// conversion time to finish so the CR isn't absorbed by it. On-device tunable:
-// too small and the first tap still needs a second Enter; larger only adds a
-// little submit latency on image sends, so this errs generous.
-const _IMAGE_SUBMIT_DELAY_MS = 350;
+// Attachment settle (issue #1211, replacing #450's fixed 350 ms defer): a
+// CR that reaches Claude Code while it is still turning a pasted image path
+// into an attachment is absorbed, and the prompt sits unsent in its composer
+// until someone presses Enter again. The conversion is not a fixed cost: it
+// paints "Pasting…" at once and the "[Image #N]" chip only when done,
+// measured at ~200 ms for a 1.5 MB PNG, ~340 ms for 7.7 MB and ~400 ms for
+// 11 MB on an idle box, so a full-resolution photo pasted from the phone's
+// clipboard outran the fixed defer. The CR now waits on the bulk watch below
+// and, while a "Pasting…" has no chip after it, keeps waiting however quiet
+// the stream is (terminal-connection.js stamps both). An agent that never
+// paints either marker echoes the path as text and settles on the plain
+// echo-then-quiet rule. The cap is longer than the bulk one because the
+// conversion scales with the image and with machine load; a CR sent at the
+// cap is no worse than the old fixed defer.
+const _ATTACH_CAP_MS = 10000;
 
 // Bulk-text CR settle watch (issue #499): a dictation-sized paste can outrun
 // Claude Code's bracketed-paste ingest when the machine is under load
@@ -86,16 +95,13 @@ export function framePaste(t, text) {
 // is literal pasted text by design, so the split is the only ordering that
 // reliably submits. With bracketed mode off there is no paste state machine
 // to race, but the two-frame path is harmless there, so it stays uniform.
-// `opts.submitDelayMs` (issue #450): hold the submitting CR back by this
-// many ms instead of sending it in the same burst as the text. Needed when
-// the payload carries a pasted image path — Claude Code's path→attachment
-// conversion absorbs a CR arriving mid-conversion, so the prompt lands
-// unsubmitted and needs a second Enter. A short defer lets the conversion
-// settle before the CR arrives.
 // `opts.bulkSettle` (issue #499): hold the CR until the session's output
 // stream shows the paste was ingested and settled (echo seen after the send,
 // then quiet — floor/quiet/cap constants above). Used for dictation-sized
 // text payloads, whose ingest under machine load outlives any fixed delay.
+// `opts.attachSettle` (issue #1211): the same watch for a payload carrying
+// an attached-file path, which also waits out an image conversion still in
+// flight, up to _ATTACH_CAP_MS (see that constant).
 // Short plain-text sends pass no options and stay instant (the CR still
 // goes as its own frame, preserving #166's ordering fix).
 export function sendSubmit(t, text, opts) {
@@ -107,21 +113,24 @@ export function sendSubmit(t, text, opts) {
       t.ws.send(JSON.stringify({ type: 'input', data: '\r' }));
     }
   };
-  if (opts && opts.bulkSettle) {
-    const watch = setInterval(function () {
-      const now = Date.now();
-      const settled = now - sentAt >= _BULK_FLOOR_MS
-        && t.lastOutputAt > sentAt
-        && now - t.lastOutputAt >= _BULK_QUIET_MS;
-      if (settled || now - sentAt >= _BULK_CAP_MS) {
-        clearInterval(watch);
-        submit();
-      }
-    }, 50);
+  if (!opts || !(opts.bulkSettle || opts.attachSettle)) {
+    submit();
     return;
   }
-  const delay = opts && opts.submitDelayMs;
-  if (delay > 0) setTimeout(submit, delay); else submit();
+  const cap = opts.attachSettle ? _ATTACH_CAP_MS : _BULK_CAP_MS;
+  const watch = setInterval(function () {
+    const now = Date.now();
+    const converting = t.attachStartAt > sentAt
+      && !(t.attachChipAt >= t.attachStartAt);
+    const settled = now - sentAt >= _BULK_FLOOR_MS
+      && t.lastOutputAt > sentAt
+      && now - t.lastOutputAt >= _BULK_QUIET_MS
+      && !converting;
+    if (settled || now - sentAt >= cap) {
+      clearInterval(watch);
+      submit();
+    }
+  }, 50);
 }
 
 // Store one attachment on the session-host for session `sid` and resolve its
@@ -158,18 +167,21 @@ function uploadTerminalImage(file) {
   return t ? uploadSessionFile(t.sid, file) : Promise.resolve(null);
 }
 
+// sendSubmit's options for one composed send. #499: bulk text (a long
+// dictation) holds the CR until the paste's ingest visibly settles — under
+// machine load a fixed defer still lands mid-ingest and the CR becomes a
+// newline instead of Submit. #1211: an attached-file path holds it until the
+// agent has finished converting the image, however short the buffer.
+export function submitOptions(text, meta) {
+  if (meta && meta.hasImage) return { attachSettle: true };
+  if (text.length >= _BULK_SUBMIT_THRESHOLD_CHARS) return { bulkSettle: true };
+  return undefined;
+}
+
 function sendComposed(text, meta) {
   const t = state.terminal;
   if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return false;
-  // #499: bulk text (a long dictation) holds the CR until the paste's
-  // ingest visibly settles — under machine load a fixed defer still lands
-  // mid-ingest and the CR becomes a newline instead of Submit. The settle
-  // watch also covers #450's image-conversion window when both apply.
-  // #450: an image path in a short buffer keeps its fixed conversion defer.
-  const opts = text.length >= _BULK_SUBMIT_THRESHOLD_CHARS
-    ? { bulkSettle: true }
-    : (meta.hasImage ? { submitDelayMs: _IMAGE_SUBMIT_DELAY_MS } : undefined);
-  sendSubmit(t, text, opts);
+  sendSubmit(t, text, submitOptions(text, meta));
   return true;
 }
 
