@@ -10,6 +10,11 @@ Contract under test:
     background.
   * The machine-local terminal-themes.json (issue #381) still deep-merges
     over the built-in palette for the active mode.
+
+The first bullet (the tokens flip, and no #359 opt-in switch remaining) needs
+only a loaded page and runs in
+``test_terminal_module_probes.py::test_terminal_module_contracts`` since
+#1215; the tests here are the ones that need a live PTY.
 """
 
 from __future__ import annotations
@@ -25,39 +30,33 @@ from tests.e2e.conftest import OVERLAY_OPEN_MS
 pytestmark = pytest.mark.smoke
 
 
-def _term_bg(page: Page) -> str:
-    return page.evaluate(
-        "getComputedStyle(document.documentElement)"
-        ".getPropertyValue('--term-bg').trim()"
-    )
-
-
-def test_terminal_tokens_follow_app_theme(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.evaluate("document.documentElement.dataset.theme = 'light'")
-    assert _term_bg(authed_page) == "#ffffff"
-    authed_page.evaluate("document.documentElement.dataset.theme = 'dark'")
-    assert _term_bg(authed_page) == "#0a0a0a"
-
-
-def test_no_follow_switch_remains(authed_page: Page, base_url: str) -> None:
-    """The #359 opt-in switch is gone — following the theme is not a
-    setting any more."""
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    assert authed_page.locator("#termFollowTheme").count() == 0
-
-
 def test_open_terminal_restyles_live_on_theme_flip(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     """Toggling theme while a terminal is open must recolor xterm live —
     no reopen. xterm mirrors options.theme.background onto its viewport
-    element, so that is the observable."""
+    element, so that is the observable.
+
+    Also pins the JS half of the mirror-window close (issue #20): the
+    ``app-launcher-mirror-<sid>`` marker trailing ``document.title``."""
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+
+    # Mirror-window close marker (issue #20, #266), formerly
+    # test_edge_mirror_close.py::test_mirror_page_keeps_close_marker_in_document_title
+    # — folded in by #1215, same ?terminal= deep link on the same stub PTY.
+    # Loopback access auto-enters mirror mode: /api/status returns
+    # {reachable: true, reason: 'loopback'}, which terminal.js picks up to
+    # flip isMirror = true. The marker must remain at the tail of the title
+    # (a human name may lead, issue #266) so the launcher's substring
+    # EnumWindows scan still finds and closes the Edge --app window.
+    marker = f"app-launcher-mirror-{sid}"
+    authed_page.wait_for_function(
+        f"() => document.title.endsWith({marker!r})",
+        timeout=5_000,
+    )
+
     authed_page.wait_for_selector(".xterm-viewport", timeout=OVERLAY_OPEN_MS)
 
     authed_page.evaluate("document.documentElement.dataset.theme = 'light'")

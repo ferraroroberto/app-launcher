@@ -94,13 +94,9 @@ def test_zero_item_lists_render_the_canonical_empty_state(
             f"{empty_id}'s glyph is not at the feature size"
         )
 
-
-def test_every_board_column_renders_one_when_empty(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    _empty_everything(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # Every Board column renders one too. Formerly
+    # test_every_board_column_renders_one_when_empty, folded in by #1215:
+    # same _empty_everything() mocks, so the Board is one more tab click.
     page.locator("#tabBoard").click()
     columns = ("backlog", "claude_turn", "your_turn", "other", "done")
     for key in columns:

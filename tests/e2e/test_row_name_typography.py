@@ -105,35 +105,35 @@ def _assert_one_line(page: Page, sel: str, full_name: str) -> None:
         )
 
 
-def test_project_skill_and_app_names_stay_on_one_line(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
+def _assert_project_skill_and_app_names_stay_on_one_line(page: Page) -> None:
+    """Formerly ``test_project_skill_and_app_names_stay_on_one_line``; each
+    name check sets its own 320 and 430px widths, so it runs after the
+    390px helper-copy checks (#1215)."""
     # Coding tab (the default): a long project name; since #1128 its long
     # branch rides the row's context line instead of sharing the title's.
-    authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
-    project = authed_page.locator('.coding-item[data-id="longproj"] .action-row-title')
+    page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+    project = page.locator('.coding-item[data-id="longproj"] .action-row-title')
     expect(project).to_be_visible()
-    expect(authed_page.locator('.coding-item[data-id="longproj"] .action-row-meta')).to_be_visible()
-    _assert_one_line(authed_page, '.coding-item[data-id="longproj"] .action-row-title', _PROJECT)
+    expect(page.locator('.coding-item[data-id="longproj"] .action-row-meta')).to_be_visible()
+    _assert_one_line(page, '.coding-item[data-id="longproj"] .action-row-title', _PROJECT)
 
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item[data-id='longskill']")).to_be_visible()
-    _assert_one_line(authed_page, "#lifeOsList li.lifeos-item[data-id='longskill'] .action-row-title", _SKILL)
+    page.locator("#tabLifeOS").click()
+    expect(page.locator("#lifeOsList li.lifeos-item[data-id='longskill']")).to_be_visible()
+    _assert_one_line(page, "#lifeOsList li.lifeos-item[data-id='longskill'] .action-row-title", _SKILL)
 
-    authed_page.locator("#tabApps").click()
-    card = authed_page.locator(".apps-list-card")
+    page.locator("#tabApps").click()
+    card = page.locator(".apps-list-card")
     if card.get_attribute("open") is None:
         card.locator("summary").click()
-    expect(authed_page.locator("#appsList .action-row-title")).to_be_visible()
-    _assert_one_line(authed_page, "#appsList .action-row-title", _APP)
+    expect(page.locator("#appsList .action-row-title")).to_be_visible()
+    _assert_one_line(page, "#appsList .action-row-title", _APP)
 
 
 def test_helper_notes_are_upright_and_labels_sentence_cased(
     authed_page: Page, base_url: str
 ) -> None:
+    """Helper copy and label casing at 390px, then the row names at 320 and
+    430px (#1215 merged the names test in: same mocks, same page)."""
     _mock(authed_page)
     # Week-only savings: the badge's longest wording (#1191).
     _json_route(authed_page, re.compile(r".*/api/context-filter$"), {
@@ -163,3 +163,6 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
                            ("#boardColDone", "Done today")):
         expect(authed_page.locator(f"{section} .collapse-title")).to_have_text(label)
     expect(authed_page.locator("#codingOptions .collapse-title")).to_have_text("Options")
+
+    # Last: resizes the viewport and walks the tabs.
+    _assert_project_skill_and_app_names_stay_on_one_line(authed_page)

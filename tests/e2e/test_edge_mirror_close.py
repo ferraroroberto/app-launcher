@@ -22,6 +22,11 @@ the Windows/PTI title bar), e.g. ``"fix the login bug — app-launcher-mirror-
 <sid>"``. The launcher's scan matches the marker as a *substring*
 (``marker in title``), so the contract this pins is that the marker still
 **trails** the title intact — not that it is the whole title.
+
+The loopback case (a plain ``?terminal=<sid>`` mirror) is asserted by
+``test_terminal_light_theme.py::test_open_terminal_restyles_live_on_theme_flip``
+since #1215, which opens that exact deep link on the same stub PTY; the
+tests here are the origins and boot paths that need their own routes.
 """
 
 from __future__ import annotations
@@ -32,26 +37,6 @@ from playwright.sync_api import Page, expect
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
-
-
-def test_mirror_page_keeps_close_marker_in_document_title(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    sid = launched_pty_session
-    # Loopback access auto-enters mirror mode: /api/status returns
-    # {reachable: true, reason: 'loopback'}, which terminal.js picks up
-    # at line 244-245 to flip isMirror = true.
-    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
-
-    # The marker must remain at the tail of the title (a human name may lead,
-    # issue #266) so the launcher's substring EnumWindows scan still finds and
-    # closes the Edge --app window.
-    marker = f"app-launcher-mirror-{sid}"
-    authed_page.wait_for_function(
-        f"() => document.title.endsWith({marker!r})",
-        timeout=5_000,
-    )
 
 
 def test_mirror_marker_applies_on_tailnet_origin(

@@ -19,7 +19,8 @@ and asserts it is treated as a normal (non-mirror) terminal: the ✏️ compose
 button is visible and the unique mirror ``document.title`` is never set. It is
 the mirror image of ``test_compose_bar.py::test_compose_button_hidden_in_mirror``
 (deep-link open → mirror → compose hidden) and complements
-``test_shutdown_frame.py`` (``routeFrame(_, isMirror=false)`` → ``swallow``,
+``test_terminal_module_probes.py``'s routeFrame probe
+(``routeFrame(_, isMirror=false)`` → ``swallow``,
 never ``close-mirror``).
 """
 

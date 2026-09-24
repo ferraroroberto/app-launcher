@@ -30,27 +30,33 @@ _ROW_SHAPE = """
 """
 
 
-@pytest.mark.parametrize("tab, card, rows", (
-    (None, "details.projects-card", "#claudeList > li"),
-    ("#tabLifeOS", None, "#lifeOsList > li"),
-    ("#tabApps", ".apps-list-card", "#appsList > li"),
-))
+# (tab to click, or None for the default Coding tab; rows selector). One
+# page load walks all three lists (#1215 merged what were three parametrize
+# cases of the same test, each paying its own boot for one evaluate).
+_LISTS = (
+    (None, "#claudeList > li"),        # Code > Projects (details.projects-card)
+    ("#tabLifeOS", "#lifeOsList > li"),  # Life > Skills
+    ("#tabApps", "#appsList > li"),    # Apps (.apps-list-card)
+)
+
+
 def test_rows_are_one_primary_action_plus_one_kebab(
-    authed_page: Page, base_url: str, tab, card, rows
+    authed_page: Page, base_url: str
 ) -> None:
     page = authed_page
     _mock(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    if tab:
-        page.locator(tab).click()
-    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    expect(page.locator(rows).first).to_be_visible(timeout=5_000)
+    for tab, rows in _LISTS:
+        if tab:
+            page.locator(tab).click()
+        page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+        expect(page.locator(rows).first).to_be_visible(timeout=5_000)
 
-    shapes = page.evaluate(_ROW_SHAPE, rows)
-    assert shapes, f"{rows}: no rows rendered"
-    for s in shapes:
-        assert s["main"] == 1, f"{rows} row {s['id']}: the row is not its own primary action ({s})"
-        assert s["kebab"] == 1, f"{rows} row {s['id']}: expected one trailing kebab ({s})"
-        assert s["leading"] <= 1, f"{rows} row {s['id']}: more than one leading toggle ({s})"
-        assert s["direct"] <= 3, f"{rows} row {s['id']}: more than toggle + row + kebab ({s})"
-        assert s["rail"] == 0, f"{rows} row {s['id']}: still carries an icon rail ({s})"
+        shapes = page.evaluate(_ROW_SHAPE, rows)
+        assert shapes, f"{rows}: no rows rendered"
+        for s in shapes:
+            assert s["main"] == 1, f"{rows} row {s['id']}: the row is not its own primary action ({s})"
+            assert s["kebab"] == 1, f"{rows} row {s['id']}: expected one trailing kebab ({s})"
+            assert s["leading"] <= 1, f"{rows} row {s['id']}: more than one leading toggle ({s})"
+            assert s["direct"] <= 3, f"{rows} row {s['id']}: more than toggle + row + kebab ({s})"
+            assert s["rail"] == 0, f"{rows} row {s['id']}: still carries an icon rail ({s})"

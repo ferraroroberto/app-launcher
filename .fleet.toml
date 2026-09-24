@@ -362,11 +362,12 @@ label      = "repo-meta"
 # edits this file or the classifier.
 #
 # Targets are wider than the owned tests on purpose. Each tab module is
-# imported by main.js, so a broken one takes the whole SPA down: test_smoke,
-# test_primary_nav and test_bottom_tab_bar catch that. test_coding_model_selector
-# drives both tabs' model combos (claude-options.js imports them), and
-# test_terminal_bar_overflow shares the terminal bar's classes with the Life OS
-# doc-browser bar and mirrors the board carousel's overflow pattern.
+# imported by main.js, so a broken one takes the whole SPA down: test_smoke
+# and test_primary_nav (which carries the bottom tab bar's checks since #1215)
+# catch that. test_coding_model_selector drives both tabs' model combos
+# (claude-options.js imports them), and test_terminal_bar_overflow shares the
+# terminal bar's classes with the Life OS doc-browser bar and mirrors the board
+# carousel's overflow pattern.
 # tests/test_classify_e2e.py pins every surface with a narrowing path and a
 # shared path that must stay full, and checks that every e2e test naming a
 # surface module is in that surface's targets.
@@ -399,7 +400,6 @@ pytest_targets = [
     "tests/e2e/test_coding_model_selector.py",
     "tests/e2e/test_terminal_bar_overflow.py",
     "tests/e2e/test_primary_nav.py",
-    "tests/e2e/test_bottom_tab_bar.py",
     "tests/e2e/test_smoke.py",
     "tests/e2e/test_row_name_typography.py",
     "tests/e2e/test_icon_sizes.py",
@@ -431,7 +431,6 @@ pytest_targets = [
     "tests/e2e/test_coding_model_selector.py",
     "tests/e2e/test_terminal_bar_overflow.py",
     "tests/e2e/test_primary_nav.py",
-    "tests/e2e/test_bottom_tab_bar.py",
     "tests/e2e/test_smoke.py",
     "tests/e2e/test_row_name_typography.py",
     "tests/e2e/test_icon_sizes.py",

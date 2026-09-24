@@ -18,7 +18,7 @@ that's genuinely still open gets correctly re-pinned.
 The keyboard itself can't be raised in a headless browser, so this pins
 the release half of the contract against a real, live terminal instance
 (not just the pure ``keyboardOverlayHeight()`` helper, which is already
-covered by ``test_keyboard_overlay.py`` and is unchanged by this fix):
+covered by ``test_terminal_module_probes.py`` and is unchanged by this fix):
 stash a stale pinned height/top on the overlay (simulating the stuck
 state), dispatch a real ``orientationchange``, and assert the pin is
 cleared synchronously — before the settle timer's re-fit even runs.
