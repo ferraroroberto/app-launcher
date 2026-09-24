@@ -119,10 +119,19 @@ def _navigate(page: Page, base_url: str, edit: bool = False) -> list[dict]:
     return launches
 
 
-def test_path_is_hidden_until_edit_mode(authed_page: Page, base_url: str) -> None:
-    """The bat path wraps to two or three lines on a phone and is only
-    wanted when renaming/removing, so #790 moved it behind Edit mode."""
-    _navigate(authed_page, base_url)
+def test_rows_hide_path_and_url_and_launch_both_modes(
+    authed_page: Page, base_url: str
+) -> None:
+    """Every Edit-mode-off Apps/Trays row check on one page load (#1215).
+
+    Read-only steps first, then the launches; the captured launch list is
+    asserted cumulatively, so each step's exact contribution is still pinned.
+    """
+    launches = _navigate(authed_page, base_url)
+
+    # -- was test_path_is_hidden_until_edit_mode --
+    # The bat path wraps to two or three lines on a phone and is only
+    # wanted when renaming/removing, so #790 moved it behind Edit mode.
     row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
     # One title line, one context line (#1128): the kind in sentence case
@@ -130,28 +139,17 @@ def test_path_is_hidden_until_edit_mode(authed_page: Page, base_url: str) -> Non
     expect(row.locator(".action-row-title")).to_have_text("Photo OCR")
     expect(row.locator(".action-row-meta")).to_have_text("Streamlit")
 
+    # -- was test_tunnel_url_lives_in_the_row_menu_not_as_text --
+    # #790: a cloudflared URL with a `?token=…` wrapped to three lines on
+    # the phone and was only ever tapped. Since #1128 it is Open link and Copy
+    # URL in the row's ⋯ menu, and never rendered as body text.
+    tunnel = authed_page.locator('#appsList li.action-row[data-id="vt-tunnel"]')
+    expect(tunnel).to_be_visible(timeout=5_000)
+    assert "whisper.example.com" not in (tunnel.inner_text() or "")
 
-def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
-    _navigate(authed_page, base_url, edit=True)
-    row = authed_page.locator("#appsList li.action-row").first
-    expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".action-row-meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
-
-
-def test_tunnel_url_lives_in_the_row_menu_not_as_text(
-    authed_page: Page, base_url: str
-) -> None:
-    """#790: a cloudflared URL with a `?token=…` wrapped to three lines on
-    the phone and was only ever tapped. Since #1128 it is Open link and Copy
-    URL in the row's ⋯ menu, and never rendered as body text."""
-    _navigate(authed_page, base_url)
-    row = authed_page.locator('#appsList li.action-row[data-id="vt-tunnel"]')
-    expect(row).to_be_visible(timeout=5_000)
-    assert "whisper.example.com" not in (row.inner_text() or "")
-
-    row.locator(".action-row-kebab").click()
-    expect(row.locator(".app-tunnel-link")).to_be_enabled()
-    expect(row.locator(".app-copy-url-btn")).to_be_enabled()
+    tunnel.locator(".action-row-kebab").click()
+    expect(tunnel.locator(".app-tunnel-link")).to_be_enabled()
+    expect(tunnel.locator(".app-copy-url-btn")).to_be_enabled()
     authed_page.keyboard.press("Escape")
 
     # A tunnel that isn't up offers the same rows, disabled; its context
@@ -160,15 +158,11 @@ def test_tunnel_url_lives_in_the_row_menu_not_as_text(
     dead.locator(".action-row-kebab").click()
     expect(dead.locator(".app-tunnel-link")).to_be_disabled()
     expect(dead.locator(".app-copy-url-btn")).to_be_disabled()
+    authed_page.keyboard.press("Escape")
 
-
-def test_row_launches_visible_and_menu_launches_hidden(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1128: tapping the row is the primary action (the visible-window
-    launch, #790's ⚡); Launch hidden (🚫👁) is in the ⋯ menu."""
-    launches = _navigate(authed_page, base_url)
-    row = authed_page.locator("#appsList li.action-row").first
+    # -- was test_row_launches_visible_and_menu_launches_hidden --
+    # #1128: tapping the row is the primary action (the visible-window
+    # launch, #790's ⚡); Launch hidden (🚫👁) is in the ⋯ menu.
     expect(row).to_be_visible(timeout=5_000)
 
     # Visible: no `stealth` key at all, so the server keeps its default.
@@ -182,20 +176,28 @@ def test_row_launches_visible_and_menu_launches_hidden(
     expect(authed_page.locator("#toast")).to_contain_text("(stealth)")
     assert launches == [{}, {"stealth": True}], f"stealth launch sent {launches}"
 
+    # -- was test_tray_rows_launch_the_same_way --
+    # #790 applies to both bat-launching panels, not just Registered apps.
+    tray = authed_page.locator("#registeredTraysList li.action-row").first
+    expect(tray).to_be_visible(timeout=5_000)
 
-def test_tray_rows_launch_the_same_way(authed_page: Page, base_url: str) -> None:
-    """#790 applies to both bat-launching panels, not just Registered apps."""
-    launches = _navigate(authed_page, base_url)
-    row = authed_page.locator("#registeredTraysList li.action-row").first
-    expect(row).to_be_visible(timeout=5_000)
-
-    row.locator(".action-row-kebab").click()
-    row.locator(".app-stealth-btn").click()
-    assert launches == [{"stealth": True}], f"tray stealth launch sent {launches}"
+    tray.locator(".action-row-kebab").click()
+    tray.locator(".app-stealth-btn").click()
+    # Cumulative: the tray's stealth launch is the one entry this step adds.
+    assert launches == [{}, {"stealth": True}, {"stealth": True}], (
+        f"tray stealth launch sent {launches[2:]}"
+    )
 
     # The autostart switch is the row's one leading toggle and carries no
     # visible label — its accessible name is the only thing that must still
     # say what it does.
-    toggle = row.locator(":scope > button.toggle")
+    toggle = tray.locator(":scope > button.toggle")
     expect(toggle).to_have_count(1)
     expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")
+
+
+def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
+    _navigate(authed_page, base_url, edit=True)
+    row = authed_page.locator("#appsList li.action-row").first
+    expect(row).to_be_visible(timeout=5_000)
+    expect(row.locator(".action-row-meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")

@@ -127,6 +127,14 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     # Dense cadences are summarised, not expanded into the list.
     expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")
 
+    # -- was test_agenda_row_reveals_job (merged in #1215; last: it expands
+    # a job in the list below) --
+    authed_page.locator(".jobs-agenda-row[data-job-id='zeta']").first.click()
+    # The reveal expands that job's history <li> in the Registered-jobs list.
+    expect(
+        authed_page.locator("#jobsList li.jobs-history-li[data-history-for='zeta']")
+    ).to_be_visible()
+
 
 def test_agenda_day_labels_hold_across_local_midnight(
     authed_page: Page, base_url: str
@@ -160,17 +168,6 @@ def test_agenda_day_labels_hold_across_local_midnight(
     ids = authed_page.eval_on_selector_all(
         ".jobs-agenda-row", "els => els.map(e => e.dataset.jobId)")
     assert ids == ["alpha", "zeta"]
-
-
-def test_agenda_row_reveals_job(authed_page: Page, base_url: str) -> None:
-    _wire(authed_page)
-    _open_agenda(authed_page, base_url)
-
-    authed_page.locator(".jobs-agenda-row[data-job-id='zeta']").first.click()
-    # The reveal expands that job's history <li> in the Registered-jobs list.
-    expect(
-        authed_page.locator("#jobsList li.jobs-history-li[data-history-for='zeta']")
-    ).to_be_visible()
 
 
 def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:

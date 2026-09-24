@@ -137,11 +137,8 @@ def test_row_is_two_lines_with_one_action_and_a_menu(
     # Nothing else is a visible action on the row itself.
     expect(row.locator(".row-actions > button")).to_have_count(2)
 
-
-def test_everything_demoted_is_in_the_detail_block(
-    authed_page: Page, base_url: str
-) -> None:
-    _open_jobs(authed_page, base_url)
+    # -- was test_everything_demoted_is_in_the_detail_block (merged in #1215;
+    # after the row geometry above, since opening the detail block grows it) --
     authed_page.locator(
         "#jobsList li[data-id='demo'] button[aria-label^='View run history']"
     ).click()

@@ -25,11 +25,15 @@ def _is_open(page: Page, selector: str) -> bool:
     return bool(page.locator(selector).evaluate("el => el.open"))
 
 
-def test_sessions_open_and_projects_collapsed_by_default(
+def test_code_tab_panels_default_states_and_header_tap(
     authed_page: Page, base_url: str
 ) -> None:
+    """Both Code-tab panel checks on one page load (#1215). The ⎇ header tap
+    runs last: it opens the git-summary popover, which could otherwise sit
+    over the Projects title the first half taps."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
+    # -- was test_sessions_open_and_projects_collapsed_by_default --
     # Both panels exist as <details>. Scope sessions-card to the Code pane —
     # the Apps/Jobs tabs also carry .sessions-card now (issue #226).
     sessions = authed_page.locator("#paneClaude details.sessions-card")
@@ -48,14 +52,7 @@ def test_sessions_open_and_projects_collapsed_by_default(
     title.click()
     assert not _is_open(authed_page, "details.projects-card"), "second title tap should re-collapse it"
 
-
-def test_header_action_tap_does_not_toggle_sessions_panel(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    sessions = authed_page.locator("#paneClaude details.sessions-card")
-    sessions.wait_for(state="attached", timeout=10_000)
+    # -- was test_header_action_tap_does_not_toggle_sessions_panel --
     assert _is_open(authed_page, "#paneClaude details.sessions-card")
 
     # The ⎇ status button sits inside the sessions <summary>; clicking it

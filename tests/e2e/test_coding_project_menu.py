@@ -180,32 +180,10 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
         ]
     )
 
-    # Open in VS Code: #802's POST, unchanged, and the menu closes on the tap.
-    menu.locator(".project-vscode-btn").click()
-    expect(authed_page.locator("#toast")).to_contain_text("alpha.code-workspace", timeout=5_000)
-    assert posted["vscode"] and posted["vscode"][0].endswith("/api/claude-code/vscode/alpha")
-    expect(menu).to_be_hidden()
-
-    # Open folder: its own POST, toast names Explorer.
-    _anchor(authed_page).click()
-    menu.locator(".project-folder-btn").click()
-    expect(authed_page.locator("#toast")).to_contain_text("Explorer", timeout=5_000)
-    assert posted["folder"] and posted["folder"][0].endswith("/api/claude-code/folder/alpha")
-    expect(menu).to_be_hidden()
-
-
-def test_menu_closes_on_escape_outside_tap_and_survives_a_rerender(
-    authed_page: Page, base_url: str
-) -> None:
-    _install_routes(authed_page, vscode_available=True)
-    _reset_visibility(authed_page, base_url)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-
+    # -- was test_menu_closes_on_escape_outside_tap_and_survives_a_rerender
+    # (merged in #1215; before the POST taps below, which it leaves the menu
+    # open for) --
     anchor = _anchor(authed_page)
-    expect(anchor).to_be_enabled(timeout=5_000)
-    anchor.click()
-    expect(_menu(authed_page)).to_be_visible()
     authed_page.keyboard.press("Escape")
     expect(_menu(authed_page)).to_be_hidden()
     expect(anchor).to_have_attribute("aria-expanded", "false")
@@ -225,6 +203,19 @@ def test_menu_closes_on_escape_outside_tap_and_survives_a_rerender(
     authed_page.wait_for_timeout(5_000)
     expect(_menu(authed_page)).to_be_visible()
     expect(_anchor(authed_page)).to_have_attribute("aria-expanded", "true")
+
+    # Open in VS Code: #802's POST, unchanged, and the menu closes on the tap.
+    menu.locator(".project-vscode-btn").click()
+    expect(authed_page.locator("#toast")).to_contain_text("alpha.code-workspace", timeout=5_000)
+    assert posted["vscode"] and posted["vscode"][0].endswith("/api/claude-code/vscode/alpha")
+    expect(menu).to_be_hidden()
+
+    # Open folder: its own POST, toast names Explorer.
+    _anchor(authed_page).click()
+    menu.locator(".project-folder-btn").click()
+    expect(authed_page.locator("#toast")).to_contain_text("Explorer", timeout=5_000)
+    assert posted["folder"] and posted["folder"][0].endswith("/api/claude-code/folder/alpha")
+    expect(menu).to_be_hidden()
 
 
 def test_vscode_item_disabled_when_cli_missing_and_changes_hidden_for_non_git(

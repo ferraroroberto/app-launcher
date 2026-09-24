@@ -29,10 +29,14 @@ def _is_open(page: Page, selector: str) -> bool:
     return bool(page.locator(selector).evaluate("el => el.open"))
 
 
-def test_apps_tab_panels_default_states(
+def test_apps_life_and_jobs_panels_are_collapsible(
     authed_page: Page, base_url: str
 ) -> None:
+    """All three tabs' panels on one page load (#1215): Apps, then Life,
+    then Jobs last — its Add-job step opens the modal ``#jobDialog``."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    # -- was test_apps_tab_panels_default_states --
     authed_page.locator("#tabApps").click()
 
     for sel, should_open in (
@@ -57,11 +61,27 @@ def test_apps_tab_panels_default_states(
         "second title tap should re-collapse it"
     )
 
+    # -- was test_life_skills_panel_is_collapsible --
+    authed_page.locator("#tabLifeOS").click()
 
-def test_jobs_panel_is_collapsible_and_add_button_does_not_toggle(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    skills = authed_page.locator("#paneLifeOS details.lifeos-list-card")
+    skills.wait_for(state="attached", timeout=10_000)
+    assert _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
+        "skills panel should open by default"
+    )
+
+    title = authed_page.locator("#paneLifeOS details.lifeos-list-card .collapse-title")
+    title.click()
+    assert not _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
+        "title tap should collapse the panel"
+    )
+    title.click()
+    assert _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
+        "second title tap should re-expand it"
+    )
+
+    # -- was test_jobs_panel_is_collapsible_and_add_button_does_not_toggle
+    # (last: it flips Edit mode and opens the modal #jobDialog) --
     authed_page.locator("#tabJobs").click()
 
     jobs = authed_page.locator("#paneJobs details.jobs-card")
@@ -82,25 +102,4 @@ def test_jobs_panel_is_collapsible_and_add_button_does_not_toggle(
     )
     assert bool(authed_page.locator("#jobDialog").evaluate("el => el.open")), (
         "Add job should open its dialog through the real Edit-mode path"
-    )
-
-
-def test_life_skills_panel_is_collapsible(authed_page: Page, base_url: str) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-
-    skills = authed_page.locator("#paneLifeOS details.lifeos-list-card")
-    skills.wait_for(state="attached", timeout=10_000)
-    assert _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
-        "skills panel should open by default"
-    )
-
-    title = authed_page.locator("#paneLifeOS details.lifeos-list-card .collapse-title")
-    title.click()
-    assert not _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
-        "title tap should collapse the panel"
-    )
-    title.click()
-    assert _is_open(authed_page, "#paneLifeOS details.lifeos-list-card"), (
-        "second title tap should re-expand it"
     )

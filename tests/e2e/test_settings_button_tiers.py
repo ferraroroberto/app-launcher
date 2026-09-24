@@ -65,6 +65,12 @@ def _open_settings(page: Page, base_url: str, theme: str) -> None:
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_save_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) -> None:
+    """Save's tier and contrast per theme, plus (merged in #1215, all
+    read-only) the class-level and divider checks that used to open the same
+    pane in a test of their own. Those two are theme- and viewport-agnostic —
+    class names, a node count, and a ``border-top-style`` from a top-level
+    ``.settings-section`` rule no media query touches — so running them in
+    both themes at 390px keeps every assertion as strong."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _open_settings(authed_page, base_url, theme)
 
@@ -84,18 +90,14 @@ def test_save_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) 
         f"Save label contrast is {m['ratio']}:1 in {theme}, under {floor}:1"
     )
 
-
-def test_the_ghost_accent_hybrid_is_gone(authed_page: Page, base_url: str) -> None:
-    _open_settings(authed_page, base_url, "light")
+    # -- was test_the_ghost_accent_hybrid_is_gone --
     expect(authed_page.locator("#saveSettings")).to_have_class("button-primary")
     expect(authed_page.locator("#tokenMintBtn")).to_have_class("button-tint")
     assert authed_page.evaluate(
         "() => document.querySelectorAll('.button-ghost.accent-btn').length"
     ) == 0, "the button-ghost/accent-btn hybrid is back"
 
-
-def test_settings_sections_divide_on_a_hairline(authed_page: Page, base_url: str) -> None:
-    _open_settings(authed_page, base_url, "light")
+    # -- was test_settings_sections_divide_on_a_hairline --
     assert authed_page.evaluate(
         "() => document.querySelectorAll('#paneSettings hr').length"
     ) == 0, "a bare <hr> is back in the Settings pane"
