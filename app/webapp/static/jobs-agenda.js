@@ -11,6 +11,8 @@
 import { els } from './state.js';
 import { AuthRequiredError, jsonApi } from './api.js';
 import { revealJob } from './jobs.js';
+import { openJobDialog } from './jobs-dialog.js';
+import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 
 const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -46,14 +48,13 @@ function renderAgenda(data) {
   const occ = (data && data.occurrences) || [];
   const frequent = (data && data.frequent) || [];
   if (!occ.length && !frequent.length) {
-    const p = document.createElement('p');
-    p.className = 'muted small';
-    // Names the controls that add one (#1191): a job's Schedule field,
-    // reached through Edit mode on the Registered jobs card below.
-    p.textContent = 'No scheduled runs in the next ' +
-      ((data && data.days) || 7) + ' days. To add one, set a job\'s ' +
-      'Schedule in Edit mode under Registered jobs.';
-    host.appendChild(p);
+    // Its own next step (#1201, after #1191): the same Add job dialog the
+    // Registered jobs card's ➕ opens, reachable without Edit mode.
+    host.appendChild(emptyStateEl(
+      'calendar-days',
+      'No scheduled runs in the next ' + ((data && data.days) || 7) + ' days.',
+      { actionLabel: 'Add job', onAction: function () { openJobDialog(null); } }
+    ));
     return;
   }
 
