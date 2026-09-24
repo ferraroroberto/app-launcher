@@ -107,6 +107,46 @@ def _plan(call_id: str, offset: int, **outcome) -> dict:
     return e
 
 
+_BYPASS = "Yes, and switch to BYPASS PERMISSIONS (no further prompts) for this session"
+
+
+class _Picker:
+    """A stub of the plan-picker routes (#1151): what the server read off the
+    terminal's screen (``None``: no picker), and every answer posted."""
+
+    def __init__(self, page: Page, sid: str = _SID) -> None:
+        self.showing: dict | None = None
+        self.answers: list = []
+        base = r".*/api/claude-code/sessions/" + sid
+        page.route(re.compile(base + r"/plan-picker$"), self._read)
+        page.route(re.compile(base + r"/plan-answer$"), self._answer)
+
+    def show(self, plan: str | None = None) -> None:
+        self.showing = {
+            "available": True, "showing": True, "answerable": True, "reason": None,
+            "cursor": 1, "plan": plan, "plan_source": "file" if plan else None,
+            "plan_truncated": False,
+            "options": [
+                {"n": 1, "label": _BYPASS, "kind": "approve"},
+                {"n": 2, "label": "Yes, manually approve edits", "kind": "approve"},
+                {"n": 3, "label": "Tell Claude what to change", "kind": "feedback"},
+            ],
+        }
+
+    def _read(self, route) -> None:
+        body = self.showing or {
+            "available": True, "showing": False, "answerable": False,
+            "reason": "not_showing", "options": [], "cursor": None,
+            "plan": None, "plan_source": None, "plan_truncated": False,
+        }
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
+
+    def _answer(self, route) -> None:
+        self.answers.append(route.request.post_data_json)
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps({"ok": True, "delivered": "unconfirmed", "answer": "approve"}))
+
+
 def _turn(kind: str, text: str, offset: int) -> dict:
     return {
         "kind": kind, "timestamp": "2026-09-19T10:01:00Z", "text": text,
@@ -285,8 +325,9 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
 
     # #1151 — a plan the agent asks you to approve arrives as its own card
     # too: the plan through the markdown renderer, and how it was answered.
-    # Read-only: a plan still waiting says where to answer it, never offers
-    # a control.
+    # The card never offers a control itself; while Chat can't see the
+    # picker on the terminal, a waiting plan says to answer it there.
+    picker = _Picker(page)
     tr.append(
         _plan("plan_back", 800, error=True, plan_outcome="sent_back",
               plan_feedback="keep the retry as well"),
@@ -306,10 +347,62 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     expect(back.locator(".tr-fail-chip")).to_have_count(0)
     expect(ok.locator(".tr-ask-status")).to_have_text("Approved after your edits")
     expect(wait).to_have_attribute("data-mode", "waiting")
-    expect(wait.locator(".tr-ask-status")).to_have_text("Waiting for your answer: answer it in the terminal")
+    expect(wait.locator(".tr-ask-status")).to_have_text(
+        "Waiting for your answer: Chat can’t see the plan picker on the terminal, so answer it there"
+    )
     expect(wait.locator("button")).to_have_count(0)
     # The question card above is history now that the agent moved on.
     expect(live).to_have_attribute("data-mode", "answered")
+
+    # The terminal shows the picker: the panel below the list offers its
+    # options exactly as the screen lists them — the BYPASS wording
+    # included — and leaves out the plan the pending card already shows.
+    panel = page.locator("#transcriptPlanLive")
+    expect(panel).to_be_hidden()
+    picker.show(plan="## Add the await\n\n- wrap the call")
+    expect(panel).to_be_visible(timeout=OVERLAY_OPEN_MS)
+    expect(panel.locator(".tr-ask-opt .tr-ask-label")).to_have_text(
+        [_BYPASS, "Yes, manually approve edits", "Tell Claude what to change"]
+    )
+    expect(panel.locator(".tr-plan-body")).to_have_count(0)
+    expect(wait.locator(".tr-ask-status")).to_have_text("Waiting for your answer: answer it below")
+    # A tap sends the digit with the label it showed, for the server to
+    # check against the screen, and locks the panel.
+    panel.locator("button.tr-ask-opt").first.click()
+    expect(panel.locator(".tr-ask-status")).to_have_text("Sent: waiting for Claude")
+    expect(panel.locator("button:enabled")).to_have_count(0)
+    assert picker.answers == [{"option": 1, "label": _BYPASS, "feedback": None}], picker.answers
+    # The picker closes on the terminal and the approval reaches the card.
+    picker.showing = None
+    expect(panel).to_be_hidden(timeout=OVERLAY_OPEN_MS)
+    tr.append({
+        "kind": "tool_result", "timestamp": "2026-09-19T10:01:12Z", "text": "ok",
+        "truncated": False, "tool_use_id": "plan_wait", "plan_outcome": "approved",
+        "sidechain": False, "offset": 1100,
+    }, _turn("assistant", "editing now", 1150))
+    expect(wait).to_have_attribute("data-mode", "approved", timeout=OVERLAY_OPEN_MS)
+
+    # A picker whose call never reached the transcript: the panel carries
+    # the plan itself (from the plan file the screen names), and sends it
+    # back with the reader's feedback.
+    picker.show(plan="## Revised plan\n\n- keep the retry")
+    expect(panel.locator(".tr-plan-body h2")).to_have_text("Revised plan", timeout=OVERLAY_OPEN_MS)
+    send_back = panel.locator(".tr-ask-send")
+    expect(send_back).to_be_disabled()
+    # The field gets the row, not the button: .button-tint's width:100%
+    # once squeezed it to a sliver and pushed Send back out of the card.
+    def widths():
+        boxes = [panel.locator(sel).bounding_box() for sel in (".tr-ask-input", ".tr-ask-send")]
+        return None if None in boxes else [b["width"] for b in boxes]
+
+    field_w, send_w = stable_read(widths)
+    assert field_w > send_w, (field_w, send_w)
+    panel.locator(".tr-ask-input").fill("keep it smaller")
+    send_back.click()
+    expect(panel.locator(".tr-ask-status")).to_have_text("Sent back: waiting for Claude to revise the plan")
+    assert picker.answers[-1] == {
+        "option": 3, "label": "Tell Claude what to change", "feedback": "keep it smaller",
+    }, picker.answers
 
 
 def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> None:

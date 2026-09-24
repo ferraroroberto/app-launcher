@@ -52,6 +52,13 @@ them — raw, one key per write — over the PTY socket, or one console-input
 call per key for a detached session. Same gate as ``/input``; its own
 ``_TERMINAL_GUARD_RULES`` row.
 
+``GET .../plan-picker`` and ``POST .../plan-answer`` answer Claude Code's
+plan picker (#1151). They read the terminal's screen, not the transcript:
+the session's PTY capture rendered at the PTY's size (``src.plan_picker``).
+The POST reads it again at send time and types only while the tapped digit
+still carries the tapped label. Full-control sessions only, and each route
+has its own ``_TERMINAL_GUARD_RULES`` row.
+
 Unavailable sources are told apart on purpose (``reason``): a session the
 host doesn't know, an agent with no structured history, a history file that
 isn't there, and a file that *is* there but couldn't be read. Bodies are
@@ -70,7 +77,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from src import audit, board, session_client
+from src import audit, board, plan_picker, session_client
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
 from src.board_transcript import pending_decision_call
 from src.board_exchange import (
@@ -470,3 +477,154 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
     )
     logger.info("⌨️ answer %s typed (%s, %d steps); the transcript confirms it", sid[:8], kind, len(keys))
     return {"ok": True, "delivered": "unconfirmed", "steps": len(keys), "kind": kind}
+
+
+# --- Plan picker (#1151) -----------------------------------------------------
+#
+# The transcript can't say "this plan is waiting" (the pending ExitPlanMode
+# call can stay off disk until it is answered), so both routes read the
+# terminal's screen instead: the session's PTY capture rendered at the PTY's
+# own size (src.plan_picker). Full-control sessions only — a detached one has
+# no screen here to read, so its plan is answered in the PC console.
+
+# The last picker state logged per session, so a poll every few seconds
+# leaves one line per change rather than one per tick.
+_PICKER_SEEN: Dict[str, str] = {}
+
+
+def _no_picker(reason: str) -> Dict[str, Any]:
+    return {"available": False, "showing": False, "answerable": False,
+            "reason": reason, "options": [], "cursor": None,
+            "plan": None, "plan_source": None, "plan_truncated": False}
+
+
+async def _read_picker(
+    cfg: WebappConfig, sid: str
+) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """``(reason, session, picker)``: ``reason`` says why there is no screen
+    to read; otherwise ``picker`` is what it shows (``None``: no picker)."""
+    live = await asyncio.to_thread(_safe_list_sessions, cfg.session_host_port)
+    session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
+    if session is None:
+        return "session_not_found", None, None
+    if str(session.get("agent") or "claude").lower() != "claude":
+        return "unsupported_agent", session, None
+    if str(session.get("kind") or "pty") == "remote":
+        return "detached", session, None
+
+    def read() -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+        text = plan_picker.read_capture_tail(audit.transcript_path(sid))
+        if text is None:
+            return "no_screen", None
+        rows = int(session.get("rows") or 40)
+        cols = int(session.get("cols") or 120)
+        return None, plan_picker.parse_picker(plan_picker.screen_lines(text, rows, cols))
+
+    reason, picker = await asyncio.to_thread(read)
+    return reason, session, picker
+
+
+def _log_picker(sid: str, state: str, detail: str = "") -> None:
+    if _PICKER_SEEN.get(sid) == state:
+        return
+    _PICKER_SEEN[sid] = state
+    logger.info("ℹ️ plan picker %s: %s%s", sid[:8], state, f" ({detail})" if detail else "")
+
+
+@router.get("/api/claude-code/sessions/{sid}/plan-picker")
+async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
+    """Whether the session's terminal shows Claude Code's plan picker now,
+    and its options exactly as the screen lists them (Tailscale + passkey).
+
+    Polled by the Chat pane while a full-control Claude session is open.
+    ``reason`` tells apart a session that is gone, a detached one (no screen
+    to read), a capture that can't be read, and a screen with no picker.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, _session, picker = await _read_picker(cfg, sid)
+    if reason is not None:
+        if reason == "session_not_found":
+            _PICKER_SEEN.pop(sid, None)
+        else:
+            _log_picker(sid, reason)
+        return _no_picker(reason)
+    if picker is None:
+        _log_picker(sid, "not showing")
+        return {**_no_picker("not_showing"), "available": True}
+    plan = await asyncio.to_thread(plan_picker.read_plan_file, picker["plan_file"])
+    source = "file" if plan else ("screen" if picker["plan_excerpt"] else None)
+    text, truncated = plan if plan else (picker["plan_excerpt"] or None, False)
+    _log_picker(
+        sid, "showing" if picker["answerable"] else "showing, not answerable",
+        f"{len(picker['options'])} options, plan from {source or 'nowhere'}",
+    )
+    return {
+        "available": True, "showing": True, "answerable": picker["answerable"],
+        "reason": None, "options": picker["options"], "cursor": picker["cursor"],
+        "plan": text, "plan_source": source, "plan_truncated": truncated,
+    }
+
+
+@router.post("/api/claude-code/sessions/{sid}/plan-answer")
+async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
+    """Answer the plan picker on a full-control session's terminal (#1151).
+
+    Body: ``{"option": n, "label": str, "feedback"?: str}`` — the digit and
+    the label the card showed for it. The screen is read again here, at
+    send time, and the keys go in only when that digit still carries that
+    label and the picker can take a digit (``src.plan_picker.answer_keys``);
+    otherwise it is a 409 and nothing is typed. A "Yes" option is its digit;
+    the feedback option is its digit, the text, then Enter.
+
+    ``delivered`` is ``"unconfirmed"``: the picker closing (next poll) and
+    the call's result in the transcript are the confirmation.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    reason, session, picker = await _read_picker(cfg, sid)
+    if reason == "session_not_found":
+        raise HTTPException(status_code=409, detail="This session is no longer running")
+    if reason == "detached":
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't see a detached session's screen: answer the plan in the PC console",
+        )
+    if reason is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't see the plan picker on the terminal, so nothing was sent",
+        )
+    try:
+        keys = plan_picker.answer_keys(
+            picker, body.get("option"), body.get("label"), body.get("feedback")
+        )
+    except plan_picker.PickerChanged as exc:
+        logger.info("ℹ️ plan answer %s refused: %s", sid[:8], exc)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    kind = "feedback" if len(keys) > 1 else "approve"
+    try:
+        await _type_into_pty(cfg.session_host_port, sid, keys)
+    except _PartialAnswer as exc:
+        # Counts only — never the feedback, which may be private.
+        await audit_off_loop(
+            audit.session_log, sid, "plan_answer", kind=kind, steps=len(keys),
+            reason="error", sent=exc.sent, detail=exc.detail[:200],
+        )
+        logger.info(
+            "⚠️ plan answer %s failed after %d/%d writes: %s",
+            sid[:8], exc.sent, exc.total, exc.detail[:200],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Answer not sent: nothing reached the terminal" if exc.sent == 0
+                else f"Answer only partly sent ({exc.sent} of {exc.total} keys): check the terminal"
+            ),
+        ) from exc
+    await audit_off_loop(
+        audit.session_log, sid, "plan_answer", kind=kind, steps=len(keys), reason="unverified"
+    )
+    logger.info("⌨️ plan answer %s typed (%s, option %s)", sid[:8], kind, body.get("option"))
+    return {"ok": True, "delivered": "unconfirmed", "answer": kind}

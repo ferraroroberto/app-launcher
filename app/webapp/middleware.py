@@ -182,6 +182,18 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "the same write power as /input.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/plan-picker"),
+        "passkey",
+        "Chat plan card (#1151): reads the plan picker, and the plan, off a live "
+        "terminal screen — terminal-grade content.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/plan-answer"),
+        "passkey",
+        "Chat plan card (#1151): types a plan answer into a live PTY — the same "
+        "write power as /input.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/entry"),
         "passkey",
         "Coding-tab transcript copy (#985): one turn's uncapped text — the same "

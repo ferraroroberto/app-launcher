@@ -225,6 +225,7 @@ export const els = {
   transcriptOlder: document.getElementById('transcriptOlder'),
   chatLatest: document.getElementById('chatLatest'),
   transcriptList: document.getElementById('transcriptList'),
+  transcriptPlanLive: document.getElementById('transcriptPlanLive'),
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),
 

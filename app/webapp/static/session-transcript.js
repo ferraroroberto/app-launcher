@@ -902,7 +902,7 @@ function syncDecisionCards() {
     const out = planOutcome(e, view.entries);
     if (out) paintPlan(li, out.outcome, out);
     else if (li._trAnswering && e.call_id && e.call_id === liveId) {
-      paintPlan(li, 'waiting', null, s.kind === 'remote' ? 'the PC console' : 'the terminal');
+      paintPlan(li, 'waiting', null, planWhere(s));
     } else paintPlan(li, li._trAnswering ? 'stale' : 'history', null);
   });
 }
@@ -967,13 +967,13 @@ async function submitAnswer(li, answers) {
 // shown (the agent called the tool outside plan mode). The server reads
 // those off the result (src/plan_review.py).
 //
-// Read-only everywhere, deliberately. Claude Code can hold the pending call
-// back from the transcript until it is answered (measured: 31 s with the
-// picker up and the call not on disk), so the transcript cannot say "this
-// plan is waiting" reliably, and the picker's first option changes with the
+// The card itself is read-only. Claude Code can hold the pending call back
+// from the transcript until it is answered (measured: 31 s with the picker
+// up and the call not on disk), so the transcript cannot say "this plan is
+// waiting" reliably, and the picker's first option changes with the
 // session's permission mode ("auto-accept edits" vs "switch to BYPASS
-// PERMISSIONS"). Typing a digit blind could approve into a mode the user
-// never saw. A plan that is still waiting says where to answer it instead.
+// PERMISSIONS"). Answering is the plan panel's below, which reads the
+// terminal's screen instead; a waiting card says where to answer.
 
 export function isPlan(e) {
   return !!e && e.kind === 'tool_call' && e.name === 'ExitPlanMode' && !e.sidechain &&
@@ -1060,7 +1060,7 @@ function renderPlan(e, toolErrors, answering) {
   return li;
 }
 
-// `where` names the surface to answer a waiting plan in.
+// `where` says where to answer a waiting plan.
 function paintPlan(li, mode, out, where) {
   li.dataset.mode = mode;
   const card = li.querySelector('.tr-plan');
@@ -1083,8 +1083,255 @@ function paintPlan(li, mode, out, where) {
   feedback.textContent = said ? 'Your feedback: “' + out.feedback + '”' : '';
   let text = PLAN_STATUS[mode] || '';
   if (mode === 'approved' && out && out.edited) text = 'Approved after your edits';
-  if (mode === 'waiting') text = 'Waiting for your answer: answer it in ' + (where || 'the terminal');
+  if (mode === 'waiting') text = 'Waiting for your answer: ' + (where || 'answer it in the terminal');
   card.querySelector('.tr-ask-status').textContent = text;
+}
+
+// --- The plan panel: answering from the terminal's screen (#1151) ---------
+//
+// The server reads the plan picker off the terminal (src/plan_picker.py):
+// the session's PTY capture rendered at the PTY's own size. While it is up,
+// the panel below the transcript shows the options exactly as the screen
+// lists them, and a tap sends the digit and the label the reader saw. The
+// server reads the screen again before typing and refuses (409) if that
+// digit no longer carries that label, so a tap can never approve into a
+// permission mode the reader didn't see. Full-control Claude sessions only:
+// a detached one has no screen here, and its card says to use the console.
+//
+// Polled with the live tick, so it stops with it (overlay closed, phone
+// locked, session gone).
+
+// How long a sent answer keeps the panel locked while the screen still
+// shows the same picker. Past it the keys evidently didn't take, and the
+// panel offers the options again (the server re-checks every tap anyway).
+const PICKER_SENT_HOLD_MS = 10000;
+
+function pickerAllowed(s) {
+  return !!s && String(s.agent || 'claude').toLowerCase() === 'claude' && s.kind !== 'remote';
+}
+
+function planWhere(s) {
+  if (s && s.kind === 'remote') return 'answer it in the PC console';
+  if (view && view.picker) return 'answer it below';
+  return 'Chat can’t see the plan picker on the terminal, so answer it there';
+}
+
+// The pending plan card the transcript already shows, if any: the panel
+// then leaves the plan out rather than showing it twice.
+function pendingPlanShown() {
+  const id = currentDecisionId();
+  return !!id && (view.entries || []).some(function (e) { return isPlan(e) && e.call_id === id; });
+}
+
+async function pollPicker() {
+  if (!view || view.pickerBusy || !pickerAllowed(view.session) || !liveAllowed()) return;
+  const target = view;
+  target.pickerBusy = true;
+  let body = null;
+  try {
+    body = await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/plan-picker'
+    );
+  } catch (exc) {
+    // Quietly, like a failed live tick: the next one asks again. Until a
+    // read succeeds nothing is confirmed, so nothing is offered.
+    body = null;
+  }
+  target.pickerBusy = false;
+  if (view !== target) return;
+  applyPicker(body && body.showing ? body : null);
+}
+
+function applyPicker(p) {
+  const box = els.transcriptPlanLive;
+  if (!box || !view) return;
+  view.picker = p;
+  const sig = p ? JSON.stringify([p.options, p.cursor, p.answerable, p.plan]) : '';
+  const held = view.pickerSent && Date.now() - view.pickerSent < PICKER_SENT_HOLD_MS;
+  if (sig === view.pickerSig && (held || !view.pickerSent)) {
+    syncDecisionCards();
+    return;
+  }
+  view.pickerSig = sig;
+  view.pickerSent = null;
+  const stick = atBottom();
+  box.innerHTML = '';
+  box.hidden = !p;
+  if (p) box.appendChild(renderPicker(p));
+  syncDecisionCards();
+  if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
+}
+
+function clearPicker() {
+  const box = els.transcriptPlanLive;
+  if (box) {
+    box.innerHTML = '';
+    box.hidden = true;
+  }
+}
+
+function renderPicker(p) {
+  const card = document.createElement('div');
+  card.className = 'tr-ask tr-plan tr-plan-live-card';
+  const head = document.createElement('div');
+  head.className = 'tr-ask-head';
+  head.innerHTML = icon('file-text');
+  head.appendChild(meta('Plan waiting for your answer', null));
+  card.appendChild(head);
+  if (p.plan && !pendingPlanShown()) {
+    if (p.plan_source === 'file') {
+      const body = document.createElement('div');
+      body.className = 'tr-md tr-plan-body';
+      body.innerHTML = renderMarkdown(p.plan);
+      linkify(body);
+      card.appendChild(body);
+    } else {
+      // As the terminal shows it: wrapped to the terminal's width.
+      const body = pre(p.plan, false);
+      body.classList.add('tr-plan-body');
+      card.appendChild(body);
+    }
+    if (p.plan_truncated) {
+      const mark = document.createElement('div');
+      mark.className = 'tr-trunc';
+      mark.textContent = '(truncated — open the terminal for the rest)';
+      card.appendChild(mark);
+    }
+  }
+  const list = document.createElement('div');
+  list.className = 'tr-ask-options';
+  list.setAttribute('role', 'group');
+  list.setAttribute('aria-label', 'Answer the plan');
+  p.options.forEach(function (o) {
+    if (o.kind === 'feedback') {
+      list.appendChild(renderPickerFeedback(p, o));
+      return;
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'tr-ask-opt';
+    b.dataset.n = String(o.n);
+    b.disabled = !(p.answerable && o.kind === 'approve');
+    const num = document.createElement('span');
+    num.className = 'tr-ask-num';
+    num.textContent = String(o.n);
+    const body = document.createElement('span');
+    body.className = 'tr-ask-opt-body';
+    const label = document.createElement('span');
+    label.className = 'tr-ask-label';
+    label.textContent = o.label;
+    body.appendChild(label);
+    b.appendChild(num);
+    b.appendChild(body);
+    b.addEventListener('click', function () { sendPlanAnswer(o, null); });
+    list.appendChild(b);
+  });
+  card.appendChild(list);
+  const status = document.createElement('p');
+  status.className = 'tr-ask-status';
+  status.setAttribute('role', 'status');
+  status.textContent = p.answerable
+    ? 'Read from the terminal just now. A tap sends that answer to Claude.'
+    : 'The terminal is in the middle of an answer: finish it there.';
+  card.appendChild(status);
+  return card;
+}
+
+// "Tell Claude what to change": its number and label like the others, and
+// the feedback typed here rather than on the terminal.
+function renderPickerFeedback(p, o) {
+  const sec = document.createElement('div');
+  sec.className = 'tr-plan-feedback-row';
+  const row = document.createElement('div');
+  row.className = 'tr-ask-opt';
+  const num = document.createElement('span');
+  num.className = 'tr-ask-num';
+  num.textContent = String(o.n);
+  const label = document.createElement('span');
+  label.className = 'tr-ask-label';
+  label.textContent = o.label;
+  row.appendChild(num);
+  row.appendChild(label);
+  sec.appendChild(row);
+  const other = document.createElement('div');
+  other.className = 'tr-ask-other';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tr-ask-input';
+  input.placeholder = 'What should change?';
+  input.setAttribute('aria-label', o.label);
+  input.maxLength = 500;
+  input.disabled = !p.answerable;
+  const send = document.createElement('button');
+  send.type = 'button';
+  send.className = 'button-tint tr-ask-send';
+  send.textContent = 'Send back';
+  send.disabled = true;
+  const go = function () {
+    const t = input.value.trim();
+    if (t && p.answerable) sendPlanAnswer(o, t);
+  };
+  input.addEventListener('input', function () { send.disabled = !input.value.trim() || !p.answerable; });
+  input.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter' && input.value.trim()) {
+      ev.preventDefault();
+      go();
+    }
+  });
+  send.addEventListener('click', go);
+  other.appendChild(input);
+  other.appendChild(send);
+  sec.appendChild(other);
+  return sec;
+}
+
+function lockPicker(text) {
+  const box = els.transcriptPlanLive;
+  if (!box) return;
+  box.querySelectorAll('button, input').forEach(function (el) { el.disabled = true; });
+  const status = box.querySelector('.tr-ask-status');
+  if (status) status.textContent = text;
+}
+
+async function sendPlanAnswer(o, feedback) {
+  if (!view || !view.picker || view.pickerSent) return;
+  const target = view;
+  target.pickerSent = Date.now();
+  lockPicker('Sending…');
+  try {
+    const tt = await ensureTerminalToken();
+    await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/plan-answer',
+      {
+        method: 'POST',
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+        body: JSON.stringify({ option: o.n, label: o.label, feedback: feedback }),
+      }
+    );
+  } catch (exc) {
+    if (view !== target) return;
+    if (exc && exc.status === 502 && /partly sent/.test(exc.message || '')) {
+      // Some keys went in: the picker is mid-answer, so no retry is offered
+      // until the screen changes. The message says where to look.
+      lockPicker(exc.message);
+      toast(exc.message, 'error');
+      return;
+    }
+    if (exc && exc.status === 409) toast(exc.message || 'The plan is no longer waiting', 'bad');
+    else apiFailToast('Answer failed', exc);
+    // Nothing was typed: re-render from a fresh read of the screen.
+    target.pickerSent = null;
+    target.pickerSig = null;
+    pollPicker();
+    return;
+  }
+  toast('Answer sent to the terminal', 'good', { icon: 'send-horizontal' });
+  if (view !== target) return;
+  lockPicker(feedback ? 'Sent back: waiting for Claude to revise the plan' : 'Sent: waiting for Claude');
+  window.clearTimeout(target.refreshTimer);
+  target.refreshTimer = window.setTimeout(function () {
+    if (view === target) scheduleLive(0);
+  }, SENT_REFRESH_MS);
 }
 
 function runLabel(run) {
@@ -1380,6 +1627,9 @@ async function liveTick() {
   const seq = view.seq;
   target.liveTimer = null;
   target.ticking = true;
+  // Not awaited: the screen read is independent of the transcript, and a
+  // session whose transcript is unavailable can still have a plan waiting.
+  pollPicker();
   const q = new URLSearchParams({ after: String(target.tail) });
   if (target.size != null) q.set('size', String(target.size));
   let body;
@@ -1447,6 +1697,10 @@ async function loadNewest() {
   els.transcriptOlder.textContent = OLDER_LABEL;
   view.cursor = null;
   view.pendingNodes = [];
+  clearPicker();
+  view.picker = null;
+  view.pickerSig = null;
+  view.pickerSent = null;
   view.ended = false;
   view.backoff = 0;
   view.reasonShown = false;
@@ -1724,6 +1978,9 @@ export function openChatPane(s) {
     tail: 0, size: null, liveTimer: null, ticking: false, backoff: 0,
     ended: false, reasonShown: false,
     settled: [], pending: [], pendingNodes: [],
+    // The plan panel (#1151): the last screen read, its render signature,
+    // and when an answer was sent from it.
+    picker: null, pickerSig: null, pickerSent: null, pickerBusy: false,
   };
   groupsHidden = true;
   syncGroups();
@@ -1741,6 +1998,7 @@ export function closeChatPane() {
   view = null;
   if (!els.chatPane) return;
   els.transcriptList.innerHTML = '';
+  clearPicker();
   els.chatNote.hidden = true;
   if (chatComposer) chatComposer.reset();
   pinChatToKeyboard();

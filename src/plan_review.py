@@ -15,9 +15,10 @@ the dev box and re-probed on Claude Code 2.1.281):
 * **never shown** — ``is_error`` with a ``<tool_use_error>``: the agent called
   the tool outside plan mode, so there was no picker.
 
-Answering from Chat is not built: the pending call is not reliably in the
+Answering is not read from here: the pending call is not reliably in the
 transcript while the picker is up, and the first option's meaning depends on
-the session's permission mode — see #1151.
+the session's permission mode. :mod:`src.plan_picker` reads the picker off
+the terminal's screen instead (#1151).
 """
 
 from __future__ import annotations
