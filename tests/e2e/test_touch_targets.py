@@ -21,11 +21,13 @@ the sweep covers it like everything else.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
-from tests.e2e.test_row_name_typography import _mock
+from tests.e2e.test_row_name_typography import _json_route, _mock
 
 pytestmark = pytest.mark.smoke
 
@@ -76,6 +78,13 @@ _SWEEP = """
 
 _TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane:not([hidden]) .settings-open-btn")
 
+# A control a tab renders only once its data arrives, which the sweep waits
+# for rather than racing the boot fetch.
+_DATA_CONTROL = {
+    "#tabLifeOS": "#lifeOsRecapLaunch",
+    ".pane:not([hidden]) .settings-open-btn": "#webauthnDevices .icon-btn",
+}
+
 
 @pytest.mark.parametrize("tab", _TABS)
 def test_every_control_meets_the_44px_floor(
@@ -84,10 +93,26 @@ def test_every_control_meets_the_44px_floor(
     page = authed_page
     page.add_init_script("localStorage.setItem('launcher.editMode', '1')")
     _mock(page)
+    # Controls that render only with data: the Life OS recap tile's launch
+    # and a Settings passkey row's remove. Both sat at 30px tall, unseen by
+    # this sweep while the mock hid them (#1190). Registered after _mock, so
+    # these routes win.
+    _json_route(page, re.compile(r".*/api/life-os/recap-status$"), {
+        "available": True, "ledger_exists": True, "age_days": 3,
+        "staleness": "fresh", "proposal_pending": False, "proposal_name": None,
+    })
+    _json_route(page, re.compile(r".*/api/webauthn/status$"), {
+        "configured": True, "enrollment_open": False, "devices": [
+            {"id": "d1", "label": "Synthetic phone", "added_at": "2026-01-01",
+             "last_used": None},
+        ],
+    })
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator(tab).click()
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+    if tab in _DATA_CONTROL:
+        expect(page.locator(_DATA_CONTROL[tab])).to_be_visible()
     page.wait_for_timeout(400)
 
     rects = page.evaluate(_SWEEP, _CONTROLS)

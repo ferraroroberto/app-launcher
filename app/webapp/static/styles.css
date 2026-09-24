@@ -293,6 +293,17 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
   /* -5, not -4: these sit at 35-36px rendered, and -4 leaves 43.6. */
   inset: -5px 0;
 }
+/* The recap tile's launch and a passkey row's remove render 30px tall and
+   stand alone in their row (#1190): -7 reaches 44 inside the card's and the
+   row's own padding, so the expansion never meets a neighbour's. */
+.lifeos-recap-card .icon-btn,
+.webauthn-devices .icon-btn { position: relative; }
+.lifeos-recap-card .icon-btn::before,
+.webauthn-devices .icon-btn::before {
+  content: "";
+  position: absolute;
+  inset: -7px 0;
+}
 
 /* The Board dispatch row's record/send pair is short on both axes (38x36).
    Scoped to that row by the child combinator on purpose: the same classes in
