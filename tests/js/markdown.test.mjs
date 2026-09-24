@@ -92,4 +92,21 @@ const md = (lines) => renderMarkdown(lines.join('\n'));
   assert.ok(fenced.includes('| a | b |\n|---|---|\n| 1 | 2 |'), fenced);
 }
 
-console.log('markdown tables: OK');
+// Numbered lists (#1202): an <ol>, not one run-on paragraph -- a numbered plan
+// in the Chat plan card (#1151) rendered as `<p>1. a 2. b</p>`.
+{
+  assert.equal(md(['1. Add the route', '2. Wire the button']),
+    '<ol>\n<li>Add the route</li>\n<li>Wire the button</li>\n</ol>');
+  // A list that doesn't start at 1 keeps its number; `1)` works like `1.`.
+  assert.ok(md(['3. c', '4. d']).startsWith('<ol start="3">'), md(['3. c', '4. d']));
+  assert.ok(md(['1) a', '2) b']).startsWith('<ol>\n<li>a</li>'), md(['1) a', '2) b']));
+  // Inline markdown renders and HTML stays escaped inside an item.
+  assert.equal(md(['1. `x()` <b>raw</b>']),
+    '<ol>\n<li><code>x()</code> &lt;b&gt;raw&lt;/b&gt;</li>\n</ol>');
+  // Switching kinds closes one list and opens the other.
+  assert.equal(md(['- a', '1. b']), '<ul>\n<li>a</li>\n</ul>\n<ol>\n<li>b</li>\n</ol>');
+  // A lead-in line is its own paragraph.
+  assert.equal(md(['Plan:', '1. a']), '<p>Plan:</p>\n<ol>\n<li>a</li>\n</ol>');
+}
+
+console.log('markdown tables + lists: OK');
