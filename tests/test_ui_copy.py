@@ -101,9 +101,15 @@ def test_dialog_and_settings_labels_hold_no_internal_names() -> None:
 
 def test_toolbar_toggles_carry_a_visible_word() -> None:
     tree = _tree()
-    for el_id in ("claudeDetached", "claudeResume", "favFilterBtn",
+    for el_id in ("claudeDetached", "claudeResume",
                   "lifeOsDetached", "lifeOsResume"):
         assert _by_id(tree, el_id)["text"].strip(), f"#{el_id} is icon-only"
+    # The favourites star is the exception (#1194, the decision on
+    # #1176): icon only, with its name kept on aria-label/title.
+    fav = _by_id(tree, "favFilterBtn")
+    assert not fav["text"].strip(), f"#favFilterBtn shows {fav['text'].strip()!r}"
+    assert fav["attrs"].get("aria-label") == "Show only favorites"
+    assert fav["attrs"].get("title") == "Show only favorites"
 
 
 _STATIC = _INDEX.parent

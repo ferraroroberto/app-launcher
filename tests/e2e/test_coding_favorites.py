@@ -163,19 +163,16 @@ def test_star_toggle_reorders_and_persists(authed_page: Page, base_url: str) -> 
     assert _order(authed_page) == ["delta", "alpha", "bravo", "charlie"]
 
 
-def test_favorites_filter_is_labelled_like_its_neighbours(
+def test_favorites_filter_is_icon_only_beside_labelled_toggles(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1176 (superseding #1070's icon-only star): the header toggles read as
-    one set, each a glyph plus a short word.
+    """#1194 (the decision on #1176): the favourites star is icon only.
 
-    #1070 dropped the star's caption because a wide labelled pill sat beside
-    icon-only Detached/Resume toggles. The design review's judge then found
-    those icon-only toggles unreadable (J-05: a cloud, a rotate arrow and a
-    star are not conventional glyphs), so all three carry a word now —
-    Detached, Resume, Starred — and the set is consistent the other way
-    round. Its height still matches the Detached toggle beside it, and the
-    accessible name keeps saying what the filter does.
+    #1176 gave Detached, Resume and the star a visible word each; the star
+    goes back to the bare glyph while its neighbours keep theirs. The markup
+    and every syncFavFilterBtn() re-render must agree, the accessible name
+    keeps saying what the filter does, and its height still matches the
+    Detached toggle beside it.
     """
     _install_routes(authed_page)
     authed_page.add_init_script(
@@ -186,8 +183,11 @@ def test_favorites_filter_is_labelled_like_its_neighbours(
 
     btn = authed_page.locator("#favFilterBtn")
     expect(btn).to_be_visible()
-    # A glyph plus one short word, like Detached and Resume beside it.
-    expect(btn).to_have_text("Starred")
+    # The glyph alone: no stray word, after the Coding render has run.
+    expect(btn).to_have_text("")
+    expect(btn.locator("svg.icon")).to_have_count(1)
+    # Its neighbour keeps the word #1176 gave it.
+    expect(authed_page.locator("#claudeDetached")).not_to_have_text("")
     # The accessible name still carries the word the caption used to show.
     expect(btn).to_have_attribute("aria-label", "Show only favorites")
     expect(btn).to_have_attribute("title", "Show only favorites")
