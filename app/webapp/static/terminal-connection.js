@@ -170,6 +170,14 @@ function termWsUrl(sid, terminalToken) {
 
 // opts.icon (a Lucide glyph name) renders a leading icon before the escaped
 // message; without it the status stays plain text as before.
+//
+// The message sits inside the always-laid-out bottom strip
+// (#terminalStatusStrip, #1219), which reserves the row whether or not there
+// is a message — so toggling this child's `hidden` changes the strip's
+// content, never its box, and nothing above it moves. `hidden` is kept as
+// the idle signal on purpose: the e2e suite waits on
+// `#terminalStatus.hidden === true` as "connected". Clearing also empties the
+// text, so the strip's live region never holds a stale message.
 export function setTerminalStatus(message, opts) {
   if (!els.terminalStatus) return;
   if (message) {
@@ -182,6 +190,7 @@ export function setTerminalStatus(message, opts) {
     els.terminalStatus.hidden = false;
   } else {
     els.terminalStatus.hidden = true;
+    els.terminalStatus.textContent = '';
   }
 }
 

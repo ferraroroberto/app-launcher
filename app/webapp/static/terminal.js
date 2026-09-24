@@ -263,6 +263,7 @@ export function stashActiveTerminal() {
     els.terminalOverlay.style.height = '';
     els.terminalOverlay.style.bottom = '';
     els.terminalOverlay.style.top = '';
+    delete els.terminalOverlay.dataset.keyboard;
   }
 }
 
@@ -583,10 +584,15 @@ export async function attachTerminalPane(session) {
         els.terminalOverlay.style.height = kbH + 'px';
         els.terminalOverlay.style.bottom = 'auto';
         els.terminalOverlay.style.top = Math.round(vp.offsetTop || 0) + 'px';
+        // Keyboard-up marker for CSS (#1219): the keyboard covers the home
+        // indicator, so the bottom status strip drops its safe-area inset.
+        // Set and cleared at exactly the sites that apply/undo this pin.
+        els.terminalOverlay.dataset.keyboard = 'up';
       } else {
         els.terminalOverlay.style.height = '';
         els.terminalOverlay.style.bottom = '';
         els.terminalOverlay.style.top = '';
+        delete els.terminalOverlay.dataset.keyboard;
       }
     }
     // Full-screen differential agent: once sized, the PTY is PINNED for the
@@ -718,6 +724,7 @@ export async function attachTerminalPane(session) {
         els.terminalOverlay.style.height = '';
         els.terminalOverlay.style.bottom = '';
         els.terminalOverlay.style.top = '';
+        delete els.terminalOverlay.dataset.keyboard;
       }
       if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
       t.orientationSettleTimer = setTimeout(applySize, 350);
@@ -750,6 +757,7 @@ export function closeTerminal() {
     els.terminalOverlay.style.height = '';
     els.terminalOverlay.style.bottom = '';
     els.terminalOverlay.style.top = '';
+    delete els.terminalOverlay.dataset.keyboard;
   }
 }
 
