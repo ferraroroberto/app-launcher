@@ -1719,6 +1719,113 @@ def test_refine_pending_exit_plan_mode_is_awaiting_decision(tmp_path: Path):
     assert cards[0]["status"] == "awaiting-decision"
 
 
+# ------------------------------------------ plan picker on screen (#1203)
+
+
+@pytest.fixture
+def picker_screen(tmp_path: Path, monkeypatch):
+    """Each live session's PTY capture in ``tmp_path``, plus a counter of
+    screen renders. ``show(sid)`` writes the plan picker as the session-host
+    writes a capture (text mode); ``show(sid, picker=False)`` writes an
+    ordinary prompt instead."""
+    from src import audit, board_sessions, plan_picker
+    from tests.test_plan_picker import PLAN_MODE, _screen
+
+    monkeypatch.setattr(audit, "transcript_path", lambda sid: tmp_path / f"{sid}.transcript")
+    monkeypatch.setattr(board_sessions, "_PICKER_SCREEN_CACHE", {}, raising=False)
+    renders: list = []
+    real = plan_picker.screen_lines
+
+    def counting(text, rows, cols):
+        renders.append((rows, cols))
+        return real(text, rows, cols)
+
+    monkeypatch.setattr(plan_picker, "screen_lines", counting)
+
+    def show(sid: str, picker: bool = True) -> None:
+        lines = _screen(PLAN_MODE) if picker else ["\u276f ", "", "  ? for shortcuts"]
+        with (tmp_path / f"{sid}.transcript").open("w", encoding="utf-8") as fh:
+            fh.write("\r\n".join(lines))
+
+    return show, renders
+
+
+def _clean_stop_row(tmp_path: Path) -> dict:
+    """A ``needs-you`` row whose transcript tail has nothing pending — what
+    a session on the picker looks like while Claude keeps the ExitPlanMode
+    call off disk (#1151, #1203)."""
+    stamp_time = NOW - timedelta(minutes=10)
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(tmp_path, stamp_time)
+    return row
+
+
+def test_plan_picker_on_screen_is_awaiting_decision_without_the_call_on_disk(
+    tmp_path: Path, picker_screen
+):
+    """#1203: the tail alone reads a clean stop; the screen shows the plan
+    picker, so the card is awaiting decision in Your turn."""
+    show, _renders = picker_screen
+    show("aaa")
+    live = _live("aaa", "E:/x/y", 30, rows=40, cols=60)
+    cards = board.merge_sessions([live], {"t": _clean_stop_row(tmp_path)}, now=NOW)
+    assert cards[0]["status"] == "awaiting-decision"
+    columns = board.build_board(cards, {}, [])
+    assert [c["session_id"] for c in columns["your_turn"]] == ["aaa"]
+
+
+@pytest.mark.parametrize("case", ["no-picker", "no-capture", "detached", "dead", "working"])
+def test_plan_picker_check_never_forces_a_status(tmp_path: Path, picker_screen, case):
+    """Guard: without a readable picker on a live launcher PTY the card keeps
+    its transcript answer. A detached session has no screen to read, a dead
+    one's last frame proves nothing, and a ``working`` card isn't checked."""
+    show, renders = picker_screen
+    row = _clean_stop_row(tmp_path)
+    extra = {}
+    if case == "no-picker":
+        show("aaa", picker=False)
+    elif case == "detached":
+        show("aaa")
+        extra["kind"] = "remote"
+    elif case == "dead":
+        show("aaa")
+        extra["alive"] = False
+    elif case == "working":
+        show("aaa")
+        row["status"] = "working"
+    cards = board.merge_sessions([_live("aaa", "E:/x/y", 30, **extra)], {"t": row}, now=NOW)
+    assert cards[0]["status"] == ("working" if case == "working" else "idle-finished")
+    if case != "no-picker":
+        assert renders == []
+
+
+def test_plan_picker_screen_is_rendered_only_when_the_capture_changes(
+    tmp_path: Path, picker_screen
+):
+    """The render is the per-poll cost (#1203): an unchanged capture is
+    answered from the cache, a changed one is read again, and a session that
+    leaves the live list leaves the cache."""
+    from src import board_sessions
+
+    show, renders = picker_screen
+    show("aaa")
+    row = _clean_stop_row(tmp_path)
+    live = [_live("aaa", "E:/x/y", 30)]
+    for _ in range(3):
+        cards = board.merge_sessions(live, {"t": row}, now=NOW)
+        assert cards[0]["status"] == "awaiting-decision"
+    assert len(renders) == 1
+    show("aaa", picker=False)
+    capture = tmp_path / "aaa.transcript"
+    later = capture.stat().st_mtime + 5
+    os.utime(capture, (later, later))
+    cards = board.merge_sessions(live, {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle-finished"
+    assert len(renders) == 2
+    board.merge_sessions([], {"t": row}, now=NOW)
+    assert board_sessions._PICKER_SCREEN_CACHE == {}
+
+
 def test_refine_resolved_ask_user_question_is_idle_finished(tmp_path: Path):
     """Once the decision tool_use resolves (a real tool_result lands), the
     session isn't blocked on a decision anymore — nothing else is pending,
