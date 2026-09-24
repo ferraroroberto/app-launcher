@@ -40,6 +40,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
 from src.board_transcript import _SKIP_USER_PREFIXES, _assistant_text
 
 # One backwards read step. 256 KB is the same window the Board's
@@ -580,7 +581,8 @@ def _text_entry(kind: str, offset: int, timestamp: Any, text: str, cap: int, **f
 
 def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
                    text: str, offset: int, timestamp: Any, sidechain: bool,
-                   error: bool = False) -> None:
+                   error: bool = False,
+                   answers: Optional[Dict[str, str]] = None) -> None:
     """Pair one tool result with its call (#1020 adds ``error``).
 
     ``error`` is written onto the entry **only when true** — the single
@@ -601,10 +603,15 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
         call["result_truncated"] = truncated
         if error:
             call["error"] = True
+        if answers:
+            call["answers"] = answers
         return
     # A result whose call fell off this page (or an unknown id): stands alone
-    # so it is neither lost nor mis-paired.
+    # so it is neither lost nor mis-paired. ``answers`` rides along so a
+    # question card whose call is already on screen can still close (#1149).
     fields: Dict[str, Any] = {"error": True} if error else {}
+    if answers:
+        fields["answers"] = answers
     entries.append(_entry(
         "tool_result", offset, timestamp, text=body, truncated=truncated,
         tool_use_id=str(call_id or ""), sidechain=sidechain, **fields,
@@ -692,6 +699,15 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         summary=_tool_summary(block.get("input")),
                         result=None, result_truncated=False, sidechain=sidechain,
                     )
+                    if e["name"] == ASK_TOOL_NAME:
+                        # The Chat pane's question card (#1149): the one tool
+                        # whose structured input is forwarded, plus the id
+                        # the answer route checks against. An input this
+                        # reader doesn't recognise keeps the generic row.
+                        questions = questions_from_input(block.get("input"))
+                        if questions:
+                            e["questions"] = questions
+                            e["call_id"] = str(block.get("id") or "")
                     entries.append(e)
                     if block.get("id"):
                         open_calls[str(block["id"])] = e
@@ -710,6 +726,9 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                             # came in exactly two key-sets, one of them carrying
                             # `is_error` beside the error text (#1020).
                             error=bool(block.get("is_error")),
+                            # AskUserQuestion's picks ride on the *line*, not
+                            # the block (#1149); None for every other tool.
+                            answers=answers_from_result(obj.get("toolUseResult")),
                         )
                     continue
                 text = _blocks_text(content)

@@ -22,6 +22,11 @@
  * render disabled. A detached session whose agent was never probed for
  * console input keeps the composer but not ➤ Send.
  *
+ * Claude Code's AskUserQuestion renders as a question card (#1149), never
+ * folded. The pending one answers through its own route (/answer), not
+ * /input: the picker needs raw keystrokes, and /input frames text as a
+ * paste — see the card's section below.
+ *
  * Since #982 this is one pane of #terminalOverlay, not its own overlay:
  * session-overlay.js opens/closes it and flips the overlay's data-mode;
  * the bar's ⋮ menu (terminal-bar.js) carries the pane's Show-tool-calls and
@@ -516,6 +521,436 @@ function renderItem(e, toolErrors) {
   return d;
 }
 
+// --- AskUserQuestion card (#1149) -----------------------------------------
+//
+// Claude Code's multiple-choice prompt renders as a card of its own, never
+// folded into a tool-call run: it is the agent talking to the user, so it
+// stays visible with tool calls hidden, like a turn. The server forwards the
+// call's questions (and, once answered, `answers`: question → label, labels
+// joined by ", " for a multi-select, or the typed text) — see
+// src/ask_user_question.py.
+//
+// The card is interactive only in the Chat pane (`answering` passed to
+// renderEntries), only for the session's current pending question — the
+// newest one with no result and nothing after it but plumbing — and only
+// while that holds at the moment of the tap. The server checks again before
+// it types a key. Every other card, and every card the Life OS viewer
+// renders, is history: no live control at all.
+
+const ASK_NOT_WAITING = 'This question is no longer waiting for an answer';
+
+// The marker renderEntries takes from the Chat pane (and only from it).
+const CHAT_ANSWERING = { chat: true };
+
+export function isQuestion(e) {
+  return !!e && e.kind === 'tool_call' && e.name === 'AskUserQuestion' && !e.sidechain &&
+    Array.isArray(e.questions) && e.questions.length > 0;
+}
+
+// The call's outcome: its paired result, or — when the call settled on an
+// earlier tick than its result — a standalone tool_result carrying its id.
+// null while nothing has come back.
+function questionOutcome(e, entries) {
+  if (e.result != null) {
+    return { answers: e.answers || null, error: e.error === true };
+  }
+  const r = (entries || []).find(function (x) {
+    return x.kind === 'tool_result' && x.tool_use_id && x.tool_use_id === e.call_id;
+  });
+  return r ? { answers: r.answers || null, error: r.error === true } : null;
+}
+
+// One question's answer out of the `answers` map. Keyed by question text;
+// a lone question takes the lone value even if the texts drifted.
+function answerFor(q, answers, total) {
+  if (!answers) return null;
+  if (Object.prototype.hasOwnProperty.call(answers, q.question)) return answers[q.question];
+  const values = Object.keys(answers).map(function (k) { return answers[k]; });
+  return total === 1 && values.length === 1 ? values[0] : null;
+}
+
+function labelPicked(q, answer, label) {
+  if (answer == null) return false;
+  if (!q.multiSelect) return answer === label;
+  return (', ' + answer + ', ').indexOf(', ' + label + ', ') !== -1;
+}
+
+// One card per call. `answering` is the Chat pane's hook; without it (the
+// Life OS viewer) the card never grows a live control.
+function renderQuestion(e, toolErrors, answering) {
+  const li = document.createElement('li');
+  li.className = 'tr-ask-item';
+  li._trAsk = e;
+  li._trAnswering = answering || null;
+  if (e.call_id) li.dataset.callId = e.call_id;
+  const card = document.createElement('div');
+  card.className = 'tr-ask';
+  tagKey(card, e);
+  if (e.error === true) card.classList.add('tr-item-failed');
+  const head = document.createElement('div');
+  head.className = 'tr-ask-head';
+  head.innerHTML = icon('messages-square');
+  head.appendChild(meta('Agent asks', e.timestamp));
+  if (e.error === true) {
+    const chip = document.createElement('span');
+    chip.className = 'tr-fail-chip';
+    chip.textContent = 'failed';
+    head.appendChild(chip);
+  }
+  card.appendChild(head);
+  const simple = e.questions.length === 1 && !e.questions[0].multiSelect;
+  e.questions.forEach(function (q, qi) {
+    const sec = document.createElement('section');
+    sec.className = 'tr-ask-q';
+    sec.dataset.q = String(qi);
+    if (q.header) {
+      const chip = document.createElement('span');
+      chip.className = 'tr-ask-header';
+      chip.textContent = q.header;
+      sec.appendChild(chip);
+    }
+    const text = document.createElement('p');
+    text.className = 'tr-ask-question';
+    text.textContent = q.question || '';
+    sec.appendChild(text);
+    if (q.multiSelect) {
+      const hint = document.createElement('p');
+      hint.className = 'tr-ask-hint';
+      hint.textContent = 'Pick any number';
+      sec.appendChild(hint);
+    }
+    const list = document.createElement('div');
+    list.className = 'tr-ask-options';
+    list.setAttribute('role', 'group');
+    list.setAttribute('aria-label', q.header || q.question || 'Options');
+    q.options.forEach(function (opt, oi) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'tr-ask-opt';
+      b.dataset.n = String(oi + 1);
+      b.disabled = true;
+      const num = document.createElement('span');
+      num.className = 'tr-ask-num';
+      num.textContent = String(oi + 1);
+      const body = document.createElement('span');
+      body.className = 'tr-ask-opt-body';
+      const label = document.createElement('span');
+      label.className = 'tr-ask-label';
+      label.textContent = opt.label;
+      body.appendChild(label);
+      if (opt.description) {
+        const desc = document.createElement('span');
+        desc.className = 'tr-ask-desc';
+        desc.textContent = opt.description;
+        body.appendChild(desc);
+      }
+      const mark = document.createElement('span');
+      mark.className = 'tr-ask-mark';
+      mark.setAttribute('aria-hidden', 'true');
+      mark.innerHTML = icon('circle-check');
+      b.appendChild(num);
+      b.appendChild(body);
+      b.appendChild(mark);
+      b.addEventListener('click', function () { onOptionTap(li, qi, oi + 1); });
+      list.appendChild(b);
+    });
+    sec.appendChild(list);
+    // "Type something" — single-select only: typing into a multi-select's
+    // text row was not probed (src/ask_user_question.py).
+    if (!q.multiSelect) {
+      const other = document.createElement('div');
+      other.className = 'tr-ask-other';
+      other.hidden = true;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'tr-ask-input';
+      input.placeholder = 'Or type an answer';
+      input.setAttribute('aria-label', 'Type an answer to: ' + (q.question || 'the question'));
+      input.maxLength = 500;
+      input.addEventListener('input', function () { onTextInput(li, qi, input.value); });
+      other.appendChild(input);
+      if (simple) {
+        const send = document.createElement('button');
+        send.type = 'button';
+        send.className = 'button-tint tr-ask-send';
+        send.textContent = 'Send';
+        send.disabled = true;
+        send.addEventListener('click', function () {
+          const t = input.value.trim();
+          if (t) submitAnswer(li, [{ text: t }]);
+        });
+        input.addEventListener('keydown', function (ev) {
+          if (ev.key === 'Enter' && input.value.trim()) {
+            ev.preventDefault();
+            submitAnswer(li, [{ text: input.value.trim() }]);
+          }
+        });
+        other.appendChild(send);
+      }
+      sec.appendChild(other);
+    }
+    const typed = document.createElement('p');
+    typed.className = 'tr-ask-typed';
+    typed.hidden = true;
+    sec.appendChild(typed);
+    card.appendChild(sec);
+  });
+  const status = document.createElement('p');
+  status.className = 'tr-ask-status';
+  status.setAttribute('role', 'status');
+  card.appendChild(status);
+  if (!simple) {
+    const submit = document.createElement('button');
+    submit.type = 'button';
+    submit.className = 'button-primary tr-ask-submit';
+    submit.textContent = 'Submit answers';
+    submit.hidden = true;
+    submit.addEventListener('click', function () {
+      const draft = askDraft(li);
+      if (draftComplete(li._trAsk, draft)) submitAnswer(li, draft);
+    });
+    card.appendChild(submit);
+  }
+  const note = toolOutcomeNote(e, toolErrors);
+  if (note) {
+    const unknown = document.createElement('div');
+    unknown.className = 'tr-outcome-unknown';
+    unknown.textContent = note;
+    card.appendChild(unknown);
+  }
+  li.appendChild(card);
+  // A first paint from the entry alone, so a card is right even where
+  // nothing ever calls syncQuestions() (the Life OS viewer).
+  const out = questionOutcome(e, null);
+  paintQuestion(li, out ? (out.answers ? 'answered' : 'closed') : 'history', out);
+  return li;
+}
+
+// The live card's in-progress picks, one slot per question, kept on the
+// view so a live-refresh rebuild of the card doesn't drop them.
+function askDraft(li) {
+  const e = li._trAsk;
+  if (!view) return [];
+  view.askDrafts = view.askDrafts || {};
+  if (!view.askDrafts[e.call_id]) {
+    view.askDrafts[e.call_id] = e.questions.map(function () { return null; });
+  }
+  return view.askDrafts[e.call_id];
+}
+
+function draftComplete(e, draft) {
+  return e.questions.every(function (q, i) {
+    const a = draft[i];
+    if (!a) return false;
+    if (q.multiSelect) return Array.isArray(a.options) && a.options.length > 0;
+    return a.option != null || !!(a.text && a.text.trim());
+  });
+}
+
+function onOptionTap(li, qi, n) {
+  if (li.dataset.mode !== 'live') return;
+  const e = li._trAsk;
+  if (e.questions.length === 1 && !e.questions[0].multiSelect) {
+    submitAnswer(li, [{ option: n }]);
+    return;
+  }
+  const draft = askDraft(li);
+  if (e.questions[qi].multiSelect) {
+    const picks = (draft[qi] && draft[qi].options) ? draft[qi].options.slice() : [];
+    const at = picks.indexOf(n);
+    if (at === -1) picks.push(n);
+    else picks.splice(at, 1);
+    draft[qi] = picks.length ? { options: picks } : null;
+  } else {
+    draft[qi] = { option: n };
+    const input = li.querySelector('.tr-ask-q[data-q="' + qi + '"] .tr-ask-input');
+    if (input) input.value = '';
+  }
+  paintDraft(li);
+}
+
+function onTextInput(li, qi, value) {
+  if (li.dataset.mode !== 'live') return;
+  const e = li._trAsk;
+  const send = li.querySelector('.tr-ask-send');
+  if (send) send.disabled = !value.trim();
+  if (e.questions.length === 1 && !e.questions[0].multiSelect) return;
+  const draft = askDraft(li);
+  if (value.trim()) draft[qi] = { text: value };
+  else if (draft[qi] && draft[qi].text != null) draft[qi] = null;
+  paintDraft(li);
+}
+
+// Reflect the draft on a live card: pressed options, typed text, Submit.
+function paintDraft(li) {
+  const e = li._trAsk;
+  if (e.questions.length === 1 && !e.questions[0].multiSelect) {
+    // A tap sends, so there is no draft — only Send follows the text field.
+    const input = li.querySelector('.tr-ask-input');
+    const send = li.querySelector('.tr-ask-send');
+    if (send) send.disabled = !(input && input.value.trim());
+    return;
+  }
+  const draft = askDraft(li);
+  e.questions.forEach(function (q, qi) {
+    const a = draft[qi];
+    li.querySelectorAll('.tr-ask-q[data-q="' + qi + '"] .tr-ask-opt').forEach(function (b) {
+      const n = Number(b.dataset.n);
+      const on = !!a && (q.multiSelect ? (a.options || []).indexOf(n) !== -1 : a.option === n);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    const input = li.querySelector('.tr-ask-q[data-q="' + qi + '"] .tr-ask-input');
+    if (input && a && a.text != null && input.value !== a.text) input.value = a.text;
+  });
+  const submit = li.querySelector('.tr-ask-submit');
+  if (submit) submit.disabled = !draftComplete(e, draft);
+}
+
+const ASK_STATUS = {
+  live: '',
+  sent: 'Answer sent: waiting for the agent to take it',
+  closed: 'Not answered: the question was dismissed',
+  stale: ASK_NOT_WAITING,
+  history: 'No answer recorded here',
+  console: 'Answer it in the PC console: sending is off for this agent',
+};
+
+// Put one card into `mode`. Idempotent per mode, so the live tick can call
+// it on every card without disturbing a half-made pick.
+function paintQuestion(li, mode, out, statusText) {
+  if (li.dataset.mode === mode && !statusText) return;
+  li.dataset.mode = mode;
+  const e = li._trAsk;
+  const live = mode === 'live';
+  const simple = e.questions.length === 1 && !e.questions[0].multiSelect;
+  const answers = out && out.answers;
+  e.questions.forEach(function (q, qi) {
+    const sec = li.querySelector('.tr-ask-q[data-q="' + qi + '"]');
+    const answer = answerFor(q, answers, e.questions.length);
+    let matched = false;
+    sec.querySelectorAll('.tr-ask-opt').forEach(function (b) {
+      b.disabled = !live;
+      const picked = mode === 'answered' && labelPicked(q, answer, q.options[Number(b.dataset.n) - 1].label);
+      matched = matched || picked;
+      b.classList.toggle('tr-ask-opt--picked', picked);
+      // Toggle semantics only where a tap selects rather than sends.
+      if (live && !simple) b.setAttribute('aria-pressed', 'false');
+      else b.removeAttribute('aria-pressed');
+    });
+    const other = sec.querySelector('.tr-ask-other');
+    if (other) other.hidden = !live;
+    const typed = sec.querySelector('.tr-ask-typed');
+    const freeText = mode === 'answered' && answer && !matched;
+    typed.hidden = !freeText;
+    typed.textContent = freeText ? 'Typed answer: “' + answer + '”' : '';
+  });
+  const submit = li.querySelector('.tr-ask-submit');
+  if (submit) submit.hidden = !live;
+  const status = li.querySelector('.tr-ask-status');
+  let text = statusText != null ? statusText : ASK_STATUS[mode];
+  if (mode === 'answered') text = 'Answered';
+  if (live) text = simple ? 'Tap an answer to send it to the agent' : 'Pick an answer for each question, then submit';
+  status.textContent = text || '';
+  if (live) paintDraft(li);
+}
+
+// The call id of the session's pending question, or null: the newest
+// question in what is loaded, still without a result, with no turn, tool
+// call or thinking after it (a later one means the agent moved on). Results
+// and harness plumbing after it don't count — they are not the agent
+// continuing.
+function currentQuestionId() {
+  if (!view || view.ended || !view.entries) return null;
+  const list = view.entries;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i];
+    if (e.sidechain || e.kind === 'system' || e.kind === 'tool_result') continue;
+    if (isQuestion(e)) return questionOutcome(e, list) ? null : (e.call_id || null);
+    return null;
+  }
+  return null;
+}
+
+// Re-derive every card's mode from what is loaded — after a page load, a
+// live tick, a Load older, and a send.
+function syncQuestions() {
+  if (!view) return;
+  const liveId = currentQuestionId();
+  const s = view.session;
+  els.transcriptList.querySelectorAll('.tr-ask-item').forEach(function (li) {
+    const e = li._trAsk;
+    const out = questionOutcome(e, view.entries);
+    if (out) {
+      if (view.askSent) delete view.askSent[e.call_id];
+      paintQuestion(li, out.answers ? 'answered' : 'closed', out);
+      return;
+    }
+    const sent = view.askSent && view.askSent[e.call_id];
+    if (sent) {
+      paintQuestion(li, 'sent', null, sent === true ? null : sent);
+      return;
+    }
+    const refused = view.askRefused && view.askRefused[e.call_id];
+    if (!li._trAnswering || !e.call_id || e.call_id !== liveId || refused) {
+      paintQuestion(li, li._trAnswering ? 'stale' : 'history', null);
+      return;
+    }
+    paintQuestion(li, detachedSendRefused(s) ? 'console' : 'live', null);
+  });
+}
+
+// Send the picks. Re-checks "still the pending question" at the tap — the
+// live refresh can trail reality by a tick — then leaves the card locked in
+// "sent" until the agent's result lands and closes it.
+async function submitAnswer(li, answers) {
+  if (!view || li.dataset.mode !== 'live') return;
+  const target = view;
+  const e = li._trAsk;
+  if (currentQuestionId() !== e.call_id) {
+    toast(ASK_NOT_WAITING, 'bad');
+    syncQuestions();
+    return;
+  }
+  target.askSent = target.askSent || {};
+  target.askSent[e.call_id] = true;
+  syncQuestions();
+  try {
+    const tt = await ensureTerminalToken();
+    await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/answer',
+      {
+        method: 'POST',
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+        body: JSON.stringify({ tool_use_id: e.call_id, answers: answers }),
+      }
+    );
+  } catch (exc) {
+    if (exc && exc.status === 502 && /partly sent/.test(exc.message || '')) {
+      // Some keys went in: the picker is mid-answer, so the card must not
+      // offer a retry that would type over it. It says where to look.
+      target.askSent[e.call_id] = exc.message;
+      toast(exc.message, 'error');
+    } else {
+      delete target.askSent[e.call_id];
+      if (exc && exc.status === 409) {
+        toast(exc.message || ASK_NOT_WAITING, 'bad');
+        target.askRefused = target.askRefused || {};
+        target.askRefused[e.call_id] = true;
+      } else {
+        apiFailToast('Answer failed', exc);
+      }
+    }
+    if (view === target) syncQuestions();
+    return;
+  }
+  toast('Answer sent', 'good', { icon: 'send-horizontal' });
+  if (view !== target) return;
+  window.clearTimeout(target.refreshTimer);
+  target.refreshTimer = window.setTimeout(function () {
+    if (view === target) scheduleLive(0);
+  }, SENT_REFRESH_MS);
+}
+
 function runLabel(run) {
   const n = { tool: 0, thinking: 0, system: 0 };
   run.forEach(function (e) {
@@ -633,7 +1068,7 @@ function syncRunSummary(li) {
 function appendSettled(entries, toolErrors) {
   entries.forEach(function (e) {
     const last = els.transcriptList.lastElementChild;
-    if (!isTurn(e) && last && last.classList.contains('tr-run')) {
+    if (!isTurn(e) && !isQuestion(e) && last && last.classList.contains('tr-run')) {
       const item = renderItem(e, toolErrors);
       tagKey(item, e);
       last.querySelector('.tr-group-body').appendChild(item);
@@ -641,14 +1076,14 @@ function appendSettled(entries, toolErrors) {
       syncRunSummary(last);
       return;
     }
-    els.transcriptList.appendChild(renderEntries([e], toolErrors));
+    els.transcriptList.appendChild(renderEntries([e], toolErrors, CHAT_ANSWERING));
   });
 }
 
 // Replace the provisional tail. `open` carries the disclosure state of
 // whatever was there before, including cards that have since settled.
 function renderPending(entries, toolErrors, open) {
-  const frag = renderEntries(entries, toolErrors);
+  const frag = renderEntries(entries, toolErrors, CHAT_ANSWERING);
   const nodes = Array.prototype.slice.call(frag.children);
   nodes.forEach(function (li) { li.dataset.trPending = '1'; });
   restoreOpen(frag, open);
@@ -688,6 +1123,7 @@ function applyLive(settled, pending, toolErrors) {
   view.pending = pending;
   view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
   view.entries = view.settled.concat(view.pending);
+  syncQuestions();
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
@@ -696,7 +1132,10 @@ function applyLive(settled, pending, toolErrors) {
 // (#979). Turn cards and run groups carry no reference to the live `view`,
 // except a truncated turn's copy upgrade, and a capture's turns are never
 // truncated.
-export function renderEntries(entries, toolErrors) {
+//
+// `answering` (#1149) is the Chat pane's own marker that a question card may
+// go live; the viewer passes nothing, so its cards stay read-only history.
+export function renderEntries(entries, toolErrors, answering) {
   const frag = document.createDocumentFragment();
   let run = [];
   function flush() {
@@ -707,6 +1146,9 @@ export function renderEntries(entries, toolErrors) {
     if (isTurn(e)) {
       flush();
       frag.appendChild(renderTurn(e));
+    } else if (isQuestion(e)) {
+      flush();
+      frag.appendChild(renderQuestion(e, toolErrors, answering));
     } else {
       run.push(e);
     }
@@ -915,10 +1357,11 @@ async function loadNewest() {
   // session — read from the newest page and reused when older pages are
   // prepended.
   view.toolErrors = body.tool_errors || 'reported';
-  els.transcriptList.appendChild(renderEntries(entries, view.toolErrors));
+  els.transcriptList.appendChild(renderEntries(entries, view.toolErrors, CHAT_ANSWERING));
   view.pendingNodes = pending.length
     ? renderPending(pending, view.toolErrors, null)
     : [];
+  syncQuestions();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
@@ -988,9 +1431,14 @@ async function loadOlder() {
   if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
   if (older.length) {
     els.transcriptList.insertBefore(
-      renderEntries(older, toolErrors || view.toolErrors || 'reported'),
+      renderEntries(older, toolErrors || view.toolErrors || 'reported', CHAT_ANSWERING),
       els.transcriptList.firstChild,
     );
+    // Older entries join `view.entries` too, so a question on an older page
+    // can find its result and never reads as the pending one.
+    view.settled = older.concat(view.settled || []);
+    view.entries = view.settled.concat(view.pending || []);
+    syncQuestions();
   }
   const foundTurn = older.some(isTurn);
   view.cursor = cursor;

@@ -810,6 +810,45 @@ def _pending_tool_use_names(tail: _ExchangeTail) -> Optional["set[str]"]:
     return {name for tid, name in launched.items() if tid not in completed}
 
 
+def pending_decision_call(transcript_path: Any) -> Optional[Dict[str, Any]]:
+    """The newest :data:`_PENDING_DECISION_TOOL_NAMES` ``tool_use`` still
+    unresolved at the tail's end, as ``{"id", "name", "input"}`` — the same
+    "pending decision" :func:`_refine_waiting_status` sorts a card into
+    ``awaiting-decision`` by, handed back whole so the Chat pane can answer
+    it (#1149).
+
+    ``None`` means *not established*, and covers both "nothing pending" and
+    "couldn't read the tail" on purpose: the one caller is a send-time gate
+    that types keystrokes into a live agent, where either answer must stop
+    the send. Sub-agent (sidechain) traffic is skipped — a question the user
+    is being asked is always the main thread's.
+    """
+    if not transcript_path:
+        return None
+    launched: List[Dict[str, Any]] = []
+    completed: "set[str]" = set()
+    for obj in _ExchangeTail(transcript_path).objects():
+        if obj.get("isSidechain") or obj.get("type") not in ("assistant", "user"):
+            continue
+        msg = obj.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use" and isinstance(block.get("id"), str):
+                launched.append(block)
+            elif block.get("type") == "tool_result" and isinstance(block.get("tool_use_id"), str):
+                completed.add(block["tool_use_id"])
+    for block in reversed(launched):
+        name = str(block.get("name") or "")
+        if name in _PENDING_DECISION_TOOL_NAMES and block["id"] not in completed:
+            raw = block.get("input")
+            return {"id": block["id"], "name": name, "input": raw if isinstance(raw, dict) else {}}
+    return None
+
+
 def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
     """Split the generic ``needs-you`` into a caller-actionable value (#608,
     sharpened by #813) without a caller ever needing to fetch the exchange to

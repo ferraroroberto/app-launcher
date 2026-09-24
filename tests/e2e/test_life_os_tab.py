@@ -1260,16 +1260,31 @@ def test_life_os_search_unavailable_is_not_an_error(
     expect(authed_page.locator("#toast")).to_be_hidden()
 
 
+# A capture carrying an AskUserQuestion call (#1149). Today's capture reader
+# drops tool calls upstream, so this pins the renderer's own guarantee: a
+# question card mounted here is history, never a control.
+_QUESTION_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=_FAKE_TRANSCRIPT["entries"] + [
+    {"kind": "tool_call", "name": "AskUserQuestion", "summary": "questions",
+     "call_id": "toolu_viewer", "result": None, "result_truncated": False,
+     "sidechain": False, "offset": 300, "timestamp": None,
+     "questions": [{"question": "Which sailing?", "header": "Ferry",
+                    "multiSelect": False, "options": [
+                        {"label": "07:40", "description": "first boat"},
+                        {"label": "11:15", "description": "late morning"}]}]},
+])
+
+
 def test_capture_opens_in_the_chat_transcript_view(
     authed_page: Page, base_url: str
 ) -> None:
     """#1119: the row's book icon opens the capture in the session overlay's
     own Chat renderer — real turn cards, the user's prompt as plain text and
     the reply through markdown — not the raw document viewer. One surface,
-    two mounts (#979), so the assertion is on that renderer's own classes."""
+    two mounts (#979), so the assertion is on that renderer's own classes.
+    #1149: a question card renders here too, and read-only."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page)
+    _mock_transcript(authed_page, _QUESTION_TRANSCRIPT)
     _open_conversations(authed_page, base_url)
 
     viewer_list = _open_viewer(authed_page, 0)
@@ -1283,6 +1298,18 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(turns.nth(1).locator(".tr-md strong")).to_have_text("07:40")
     # Read-only: no composer anywhere in this overlay.
     expect(authed_page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
+    # #1149: the question renders as its card, beside the turns rather than
+    # in a group, with no live control — not one enabled option, no text
+    # field — and says it holds no answer instead of offering one.
+    card = viewer_list.locator(".tr-ask-item")
+    expect(card).to_be_visible()
+    expect(card.locator(".tr-ask-question")).to_have_text("Which sailing?")
+    expect(card.locator(".tr-ask-label")).to_have_text(["07:40", "11:15"])
+    expect(card.locator(".tr-ask-desc").first).to_have_text("first boat")
+    expect(card).to_have_attribute("data-mode", "history")
+    expect(card.locator(".tr-ask-opt:enabled")).to_have_count(0)
+    expect(card.locator(".tr-ask-input")).to_be_hidden()
+    expect(card.locator(".tr-ask-status")).to_have_text("No answer recorded here")
     # #1140: a capture that fits on screen has no end to jump to.
     pill = authed_page.locator("#lifeOsViewerLatest")
     expect(pill).to_have_count(1)
