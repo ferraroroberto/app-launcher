@@ -344,9 +344,9 @@ class PtySession(InputProtocol):
     # Set by _submit_input_locked when it hands a submit to the watcher, read
     # (and cleared) by submit_input once the ``deferred`` verdict is recorded,
     # so the watcher can never record its own outcome first.
-    # ``(seq, mark, needles, chip_id)`` — chip_id is the paste-chip number
-    # pinned at ingest (#1075), or None when the composer echoed the payload
-    # verbatim instead of collapsing it into a chip.
+    # ``(seq, mark, needles, chip_id)`` — chip_id is the paste or image chip
+    # pinned at ingest (#1075, #1212), or None when the composer echoed the
+    # payload verbatim instead of collapsing it into a chip.
     _defer_args: Optional[Tuple[int, int, List[str], Optional[str]]] = None
 
     # ------------------------------------------------------------ lifecycle

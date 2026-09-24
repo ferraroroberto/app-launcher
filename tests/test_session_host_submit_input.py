@@ -583,7 +583,7 @@ def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(clock, monkeyp
 
     assert outcome.reason == INPUT_DEFERRED
     seq, mark, needles, chip_id = armed[0]
-    assert chip_id == "7"
+    assert chip_id == "[pastedtext#7"
 
     # The agent finishes; the composer still shows our chip, and goes quiet.
     clock.on_sleep(lambda c: None)
@@ -606,8 +606,171 @@ def test_a_pinned_chip_number_is_not_matched_by_a_longer_one(clock):
         "\x1b[2m> [Pasted text #12 +4 lines]\x1b[0m"
     )
 
-    assert session_host_input._chip_visible(normalized, "12") is True
-    assert session_host_input._chip_visible(normalized, "1") is False
+    assert session_host_input._chip_visible(normalized, "[pastedtext#12") is True
+    assert session_host_input._chip_visible(normalized, "[pastedtext#1") is False
+
+
+# ------------------------------------------------- image attachments (#1212)
+
+_IMAGE_PATH = r"C:\stub\.launcher-tmp\20260924-120000-abc123-shot.png"
+
+
+def _record_writes(session: PtySession, clock: _FakeClock) -> list:
+    """Capture every PTY write with the fake-clock time it landed at."""
+    writes: list = []
+    session._pty.write.side_effect = lambda data: writes.append((data, clock.now))
+    return writes
+
+
+def test_image_path_submits_only_after_the_chip_is_painted(clock):
+    """#1212's repro shape: a short prompt plus an attached image path.
+
+    Claude Code paints "Pasting…" at once, goes quiet while it converts the
+    path, and replaces it with the "[Image #N]" chip only when done. A CR in
+    that gap is absorbed and the prompt sits unsent — which is what the
+    instant short-send path did. The chip is also the only ingest evidence:
+    the path is never echoed and the text is too short to make a needle.
+    """
+    session = _make_session()
+    session._bracketed_paste_mode = True
+    payload = "reply with just the word ok\n\n" + _IMAGE_PATH
+    writes = _record_writes(session, clock)
+    sent_at = clock.now
+    chip_at: dict = {}
+
+    def _on_sleep(c: _FakeClock) -> None:
+        elapsed_ms = (c.now - sent_at) * 1000
+        if not session._ring:
+            _echo(session, "\x1b[2mPasting…\x1b[0m")
+            session._last_output_at = c.now
+        elif "t" not in chip_at and elapsed_ms >= 900:
+            _echo(session, "❯ [Image\x1b[1C#4]reply with just the word ok")
+            session._last_output_at = c.now
+            chip_at["t"] = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_OK
+    assert outcome.ingested is True
+    assert outcome.to_api()["submit_state"] == "confirmed"
+    assert outcome.delivered is True
+    assert writes[-1][0] == "\r"
+    assert writes[-1][1] > chip_at["t"]
+
+
+def test_image_conversion_in_flight_holds_the_cr_past_a_quiet_window(clock):
+    """The text half echoes at once, so the payload is ingested before the
+    chip — and the stream then sits quiet well past _BULK_QUIET_MS while the
+    image converts. Quiet alone must not count as settled while a "Pasting…"
+    has no chip after it (#1211's rule, ported)."""
+    session = _make_session()
+    session._bracketed_paste_mode = True
+    payload = "please describe what this screenshot shows\n\n" + _IMAGE_PATH
+    writes = _record_writes(session, clock)
+    sent_at = clock.now
+    chip_at: dict = {}
+
+    def _on_sleep(c: _FakeClock) -> None:
+        elapsed_ms = (c.now - sent_at) * 1000
+        if not session._ring:
+            _echo(session, "❯ please describe what this screenshot shows Pasting…")
+            session._last_output_at = c.now
+        elif "t" not in chip_at and elapsed_ms >= 2000:
+            _echo(session, "❯ [Image #2]please describe what this screenshot shows")
+            session._last_output_at = c.now
+            chip_at["t"] = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_OK
+    assert outcome.submit_confirmed is True
+    assert writes[-1][0] == "\r"
+    assert writes[-1][1] > chip_at["t"]
+
+
+def test_image_path_echoed_as_text_settles_on_the_plain_rule(clock):
+    """An agent that does not convert paths echoes the path verbatim: no
+    "Pasting…", no chip, and the echo-then-quiet rule confirms it."""
+    session = _make_session()
+    payload = "look at this\n\n" + _IMAGE_PATH
+    writes = _record_writes(session, clock)
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if not session._ring:
+            _echo(session, "> look at this\r\n  " + _IMAGE_PATH)
+            session._last_output_at = c.now
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_OK
+    assert outcome.submit_confirmed is True
+    assert writes[-1][0] == "\r"
+    assert sum(clock.sleep_calls) * 1000 < _BULK_CAP_MS
+
+
+def test_busy_agent_pins_the_image_chip_for_the_watcher(clock, monkeypatch):
+    """A busy agent still gets the deferred watcher, and the watcher knows
+    the "[Image #N]" chip as this payload — not any image chip."""
+    session = _make_session()
+    payload = "ok?\n\n" + _IMAGE_PATH
+    armed: list = []
+    monkeypatch.setattr(
+        PtySession, "_arm_deferred_submit", lambda self, *a, **kw: armed.append(a)
+    )
+
+    def _on_sleep(c: _FakeClock) -> None:
+        if not session._ring:
+            _echo(session, "Pasting…❯ [Image #4]ok?")
+        session._last_output_at = c.now  # spinner never stops
+
+    clock.on_sleep(_on_sleep)
+
+    outcome = session.submit_input(payload, True)
+
+    assert outcome.reason == INPUT_DEFERRED
+    assert outcome.submit_state == "pending"
+    seq, mark, needles, chip_id = armed[0]
+    assert chip_id == "[image#4"
+
+    # Another image chip alone is not ours: the watcher must not fire.
+    normalized = session_host_input._normalize_echo("❯ [Image #5]")
+    assert session._payload_still_visible(normalized, needles, chip_id) is False
+
+    # The agent finishes; our chip is still in the composer, and it goes quiet.
+    clock.on_sleep(lambda c: None)
+    session._last_output_at = clock.now
+    session._pty.write.reset_mock()
+
+    settled = session._await_deferred_submit(seq, mark, needles, chip_id)
+
+    assert settled is not None
+    assert settled.reason == INPUT_OK
+    assert settled.submitted is True
+    session._pty.write.assert_called_once_with("\r")
+
+
+@pytest.mark.parametrize(
+    "data, expected",
+    [
+        ("hello\n\n" + _IMAGE_PATH, True),
+        (_IMAGE_PATH.upper().replace(".PNG", ".JPEG"), True),
+        ("see /home/stub/.launcher-tmp/pic.webp", False),  # not its own line
+        ("hello\n\n/home/stub/.launcher-tmp/pic.webp", True),
+        ("hello\n\n" + r"C:\stub\.launcher-tmp\notes.pdf", False),
+        ("rename shot.png to final.png", False),
+        ("hello", False),
+    ],
+)
+def test_image_path_detection(data, expected):
+    """Only a line that is an absolute image path routes to the settle path;
+    short plain-text sends stay instant."""
+    assert session_host_input._carries_image_path(data) is expected
 
 
 @pytest.mark.parametrize(
