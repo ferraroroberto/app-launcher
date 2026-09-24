@@ -589,7 +589,7 @@ function renderQuestion(e, toolErrors, answering) {
   if (e.error === true) card.classList.add('tr-item-failed');
   const head = document.createElement('div');
   head.className = 'tr-ask-head';
-  head.innerHTML = icon('circle-help');
+  head.innerHTML = icon('messages-square');
   head.appendChild(meta('Agent asks', e.timestamp));
   if (e.error === true) {
     const chip = document.createElement('span');
