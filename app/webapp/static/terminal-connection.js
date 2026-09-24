@@ -58,6 +58,25 @@ function disarmPaintWatchdog(terminal) {
 const REPAINT_BATCH_QUIET_MS = 700;
 const REPAINT_BATCH_MAX_MS = 6000;
 
+// What Claude Code paints while it turns a pasted image path into an
+// attachment (#1211): a "Pasting…" hint first, then the "[Image #N]" chip in
+// place of the path. The space before "#N" is a cursor move in the raw
+// stream, so only the "[Image" prefix is matched.
+const ATTACH_START_MARK = 'Pasting…';
+const ATTACH_CHIP_MARK = '[Image';
+
+// Stamp one PTY output frame on the terminal for the composer's settle
+// watches (terminal-compose.js): #499's bulk watch reads `lastOutputAt`,
+// #1211's attachment watch also reads when the agent last started and last
+// finished converting a pasted image path.
+export function stampOutput(terminal, data) {
+  const now = Date.now();
+  terminal.lastOutputAt = now;
+  if (typeof data !== 'string') return;
+  if (data.indexOf(ATTACH_START_MARK) !== -1) terminal.attachStartAt = now;
+  if (data.indexOf(ATTACH_CHIP_MARK) !== -1) terminal.attachChipAt = now;
+}
+
 export function beginRepaintBatch(terminal) {
   if (!terminal || !terminal.isFullscreen) return;
   // Every caller (a fresh (re)connect's ws.onopen, or the first real size
@@ -239,8 +258,9 @@ export function connectTerminalWs(terminal) {
     if (route === 'swallow' || !terminal.term) return;
     // #499: stamp every PTY output frame so the compose bar's bulk-send
     // settle watch (terminal-compose.js) can tell "the agent echoed the
-    // paste and went quiet" from "the paste is still being ingested".
-    terminal.lastOutputAt = Date.now();
+    // paste and went quiet" from "the paste is still being ingested"; #1211
+    // adds whether a pasted image is still converting.
+    stampOutput(terminal, event.data);
     // Active repaint batch (#430): buffer the burst, flush on the first
     // quiet gap or at the hard deadline — one write, one render.
     if (terminal.batchBuf) {

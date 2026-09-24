@@ -18,6 +18,12 @@ instead of running the prompt. End-to-end delivery to the PTY is covered by
 ``test_paste_button.py`` / ``test_compose_bar.py``; lossless write delivery
 by ``test_session_host_pty_realpty.py``; the actual on-device
 byte-for-byte paste is the manual acceptance step.
+
+It also pins the attachment settle (#1211): a send carrying an attached
+image path holds the CR while Claude Code is still converting the path
+(its "Pasting…" hint painted, the "[Image #N]" chip not yet), however long
+that takes, where #450's fixed 350 ms defer let a large photo's conversion
+swallow the CR and strand the prompt unsent.
 """
 
 from __future__ import annotations
@@ -51,12 +57,36 @@ async () => {
     m.sendSubmit(t, 'hello world');
     return frames;
   }
+  // #1211: an image send against a stub terminal whose output is stamped
+  // the way terminal-connection.js stamps real frames: "Pasting…" at once,
+  // the chip only after the old 350 ms defer has long run out. The CR must
+  // wait for the chip, then follow it.
+  const compose = await import('/static/terminal-compose.js');
+  const conn = await import('/static/terminal-connection.js');
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const text = 'describe it\n\nC:\\p\\.launcher-tmp\\image.png';
+  const attach = [];
+  const t = { ws: { readyState: WebSocket.OPEN,
+                    send: (d) => attach.push(JSON.parse(d).data) } };
+  const t0 = Date.now();
+  m.sendSubmit(t, text, compose.submitOptions(text, { hasImage: true }));
+  await sleep(20);
+  conn.stampOutput(t, '\x1b[38;2;153;153;153mPasting…\x1b[39m');
+  await sleep(700);
+  const whileConverting = attach.slice();
+  conn.stampOutput(t, '\x1b[3A[Image\x1b[10G#1]describe it');
+  const chipAt = Date.now() - t0;
+  while (attach.length < 2 && Date.now() - t0 < 5000) await sleep(20);
   return {
     onPaste:   m.framePaste(on,  'hello world'),
     offPaste:  m.framePaste(off, 'hello world'),
     barePaste: m.framePaste(bare, 'hello world'),
     onSubmit:  submitFrames({ bracketedPasteMode: true }),
     offSubmit: submitFrames({ bracketedPasteMode: false }),
+    attach: { text, whileConverting, frames: attach, chipAt,
+              crAt: attach.length > 1 ? Date.now() - t0 : null },
+    shortOpts: compose.submitOptions('hi', { hasImage: false }) || null,
+    bulkOpts: compose.submitOptions('x'.repeat(600), { hasImage: false }),
   };
 }
 """
@@ -89,3 +119,15 @@ def test_frame_paste_brackets_only_when_mode_enabled(
     # With bracketed mode off there's no end marker, but the CR is still a
     # separate, final frame so the path stays uniform.
     assert res["offSubmit"] == ["hello world", "\r"]
+
+    # #1211: nothing but the text went out while the agent was converting
+    # the image, 700 ms in, twice the old fixed defer; the CR followed the
+    # chip, as its own frame, once the stream went quiet after it.
+    attach = res["attach"]
+    assert attach["whileConverting"] == [attach["text"]], attach
+    assert attach["frames"] == [attach["text"], "\r"], attach
+    assert attach["crAt"] >= attach["chipAt"], attach
+
+    # A short plain send stays instant; bulk text keeps #499's watch.
+    assert res["shortOpts"] is None
+    assert res["bulkOpts"] == {"bulkSettle": True}
