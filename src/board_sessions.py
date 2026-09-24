@@ -18,12 +18,14 @@ resolves to the same state row, and therefore the same title, on both tabs.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional
+from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional, Tuple
 
+from src import audit, plan_picker
 from src._log_once import log_once
 from src.active_issue_claims import CLAIM_DEAD
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
@@ -94,6 +96,65 @@ _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 # accumulate ids without limit.
 _LOGGED_SUPPRESSED_ROWS: set[str] = set()
 _SUPPRESSED_LOG_CAP = 512
+
+# Plan picker on screen (#1203). Claude Code can keep the pending
+# ``ExitPlanMode`` call off disk while its picker is up (#1151 measured 31 s;
+# the #1203 probe saw it still missing 90 s in), so the transcript tail reads
+# as "nothing pending" and the card lands in ``idle-finished`` /
+# ``awaiting-input``. The hook side is reliable: in both a plan-mode and a
+# skip-permissions session the picker fires a ``permission_prompt``
+# Notification ~6 s after it appears, which stamps ``needs-you``. So only the
+# outcomes of a ``needs-you`` split that found no pending decision get the
+# screen check — the same read Chat's plan card does (``src.plan_picker``).
+_SCREEN_CHECKED_STATUSES = frozenset({"idle-finished", "awaiting-input", "tool-pending"})
+
+# session id -> ((capture size, mtime_ns, rows, cols), picker showing). The
+# render is the cost (~55 ms for the 96 KB tail on the dev box, per card), and
+# a session sitting on a picker or at its prompt doesn't write to its capture
+# (probed: no change in 40 s and 60 s), so an unchanged file is answered from
+# this and a card renders once per change, not once per 5 s poll. Pruned to
+# the live list on each merge.
+_PICKER_SCREEN_CACHE: Dict[str, Tuple[Tuple[int, int, int, int], bool]] = {}
+
+
+def _plan_picker_on_screen(sess: Dict[str, Any]) -> bool:
+    """Whether a live launcher PTY running Claude shows the plan picker now.
+
+    ``False`` whenever it can't be read — a detached (``remote``) session has
+    no screen here, a dead one's last frame proves nothing, and an unreadable
+    capture is not a picker — so the caller keeps its transcript answer and
+    this check never forces one.
+    """
+    sid = str(sess.get("session_id") or "")
+    if (
+        not sid
+        or sess.get("kind") != "pty"
+        or str(sess.get("agent") or "claude").lower() != "claude"
+        or not sess.get("alive", True)
+    ):
+        return False
+    path = audit.transcript_path(sid)
+    rows = int(sess.get("rows") or 40)
+    cols = int(sess.get("cols") or 120)
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    key = (st.st_size, st.st_mtime_ns, rows, cols)
+    cached = _PICKER_SCREEN_CACHE.get(sid)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    text = plan_picker.read_capture_tail(path)
+    if text is None:
+        return False
+    showing = plan_picker.parse_picker(plan_picker.screen_lines(text, rows, cols)) is not None
+    if showing != (cached[1] if cached is not None else False):
+        logger.info(
+            "ℹ️ Board: plan picker %s on screen for %s",
+            "showing" if showing else "no longer", sid[:8],
+        )
+    _PICKER_SCREEN_CACHE[sid] = (key, showing)
+    return showing
 
 
 def _normalize_dir(raw: Any) -> str:
@@ -332,7 +393,13 @@ def merge_sessions(
     ``tool-pending`` / ``idle-finished`` / ``awaiting-input`` (#608, sharpened
     by #813's :func:`src.board_transcript._refine_waiting_status`) so a caller
     never has to fetch the exchange to tell those five apart. The raw
-    ``needs-you`` string itself never reaches a card's ``status`` field. The
+    ``needs-you`` string itself never reaches a card's ``status`` field.
+    When that split finds no pending decision, a live launcher PTY running
+    Claude gets one more check (#1203): the plan picker on its screen
+    (:func:`_plan_picker_on_screen`, cached by the capture's size and mtime)
+    makes it ``awaiting-decision`` — Claude can keep the ``ExitPlanMode``
+    call off disk while the picker is up. Detached and state-only cards have
+    no screen and keep the transcript's answer. The
     live session's ``last_output_at`` rides along with ``live_title`` to the
     matched-pairs call site only (#636) — a busy title with a genuinely
     stale PTY (no more raw output at all) falls through to this same
@@ -361,13 +428,18 @@ def merge_sessions(
 
     Blocking file IO (a transcript stat plus up to two bounded tail reads per
     waiting card — the activity window and one shared
-    :class:`src.board_transcript._ExchangeTail`) — callers wrap in
+    :class:`src.board_transcript._ExchangeTail` — and, for a screen-checked
+    card, a capture stat plus a render when the capture changed) — callers wrap in
     ``asyncio.to_thread`` (#881).
     """
     now = now or _now()
     active_repos = active_issue_repos or frozenset()
     cards: List[Dict[str, Any]] = []
     pairs, unmatched = _claim_walk(live, state_rows)
+    # Two Board polls can merge at once (each on its own worker thread), so
+    # the prune snapshots the keys and tolerates the other having got there.
+    for gone in set(_PICKER_SCREEN_CACHE) - {str(s.get("session_id")) for s in live}:
+        _PICKER_SCREEN_CACHE.pop(gone, None)
 
     for sess, row, sid in pairs:
         project_dir = sess.get("project_dir")
@@ -388,6 +460,8 @@ def merge_sessions(
             tail=tail,
         )
         status = _refine_waiting_status(status, tail)
+        if status in _SCREEN_CHECKED_STATUSES and _plan_picker_on_screen(sess):
+            status = "awaiting-decision"
         project = (row or {}).get("project") or Path(str(project_dir or "")).name
         if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
             status = "awaiting-input"
