@@ -194,6 +194,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "write power as /input.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/context"),
+        "passkey",
+        "Overlay context ring (#1223): reads a live terminal screen (the same read "
+        "as /plan-picker) — terminal-grade content, however small the answer.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/entry"),
         "passkey",
         "Coding-tab transcript copy (#985): one turn's uncapped text — the same "

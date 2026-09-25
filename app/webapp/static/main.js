@@ -199,6 +199,28 @@ async function boot() {
   await safe(fetchAgents);
   await safe(fetchApps);
   await safe(fetchSkills);
+
+  // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
+  // into the same session once boot finishes; only the former set
+  // state.isMirrorWindow above. ?board=<sid> (issue #301) lands a Slack ping
+  // on that session's Board card, drawer open — mutually exclusive with the
+  // session links by construction (each link carries one param).
+  const deepLinkSid = mirrorSid || sharedSessionSid;
+  const boardSid = deepLinkSid ? null : consumeUrlParam('board');
+  // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation link
+  // reopens that capture in the viewer, over the Life OS tab. It needs only
+  // the config and skills fetched above, so it opens here, not behind the
+  // rest of boot: the git-status fan-out below alone took 1–7 s on an idle
+  // box, which is what timed the link out (issue #1222).
+  const convo = deepLinkSid ? null : consumeUrlParam('convo');
+  const cut = convo ? convo.indexOf('/') : -1;
+  if (!boardSid && cut > 0) {
+    setTab('lifeos');
+    openConvoByLink(convo.slice(0, cut), convo.slice(cut + 1)).catch(function (exc) {
+      console.warn('boot: conversation link failed', exc);
+    });
+  }
+
   await safe(fetchSystemMapStatus);
   await safe(fetchSessions);
   await safe(fetchRateLimits);
@@ -212,30 +234,13 @@ async function boot() {
   // poll below keeps them current while a git-reading tab is visible.
   await safe(function () { return refreshGitStatus({ quiet: true }); });
 
-  // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
-  // into the same session; only the former set state.isMirrorWindow above.
-  const deepLinkSid = mirrorSid || sharedSessionSid;
   if (deepLinkSid) {
     const found = state.sessions.find(function (s) {
       return s.session_id === deepLinkSid;
     });
     openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
-  } else {
-    // ?board=<sid> (issue #301): a Slack ping lands on that session's
-    // Board card, drawer open. Mutually exclusive with ?terminal= by
-    // construction (each link carries one param).
-    const boardSid = consumeUrlParam('board');
-    if (boardSid) openBoardCard(boardSid).catch(function () {});
-    // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation
-    // link reopens that capture in the viewer, over the Life OS tab.
-    const convo = consumeUrlParam('convo');
-    const cut = convo ? convo.indexOf('/') : -1;
-    if (!boardSid && cut > 0) {
-      setTab('lifeos');
-      openConvoByLink(convo.slice(0, cut), convo.slice(cut + 1)).catch(function (exc) {
-        console.warn('boot: conversation link failed', exc);
-      });
-    }
+  } else if (boardSid) {
+    openBoardCard(boardSid).catch(function () {});
   }
   setInterval(function () {
     fetchApps().catch(function () {});

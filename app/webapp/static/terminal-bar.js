@@ -3,10 +3,11 @@
  *
  * The bar used to carry ✕ Kill and ↓ Jump as permanent controls. They
  * left the bar so it fits a 390px phone without scrolling: ‹ Back · title
- * · Terminal⇄Chat toggle (#982, session-overlay.js) · 🔊 · ⋮.
+ * · context ring (#1223, context-ring.js) · Terminal⇄Chat toggle (#982,
+ * session-overlay.js) · 🔊 · ⋮.
  *
  *   ⋮ menu — Rename · Copy link · [Show/Hide tool calls · Reload, Chat mode
- *   only] · Stop and kill. Copy link prefers the session's provider-native
+ *   only] · [Compact, Claude sessions only, #1218] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
  *   same resolution the Rename / link dialog uses (#1096 — see
  *   sessionCopyLink below). Built once on the shared row-menu.js component
@@ -23,7 +24,10 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
-import { openSessionRename, providerWebUrl, stopSession } from './sessions.js';
+import {
+  detachedSendRefused, openSessionRename, providerWebUrl, sendOutcome,
+  sendSessionMessage, stopSession,
+} from './sessions.js';
 import { createRowMenu } from './row-menu.js';
 import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
@@ -83,6 +87,13 @@ export function closeTerminalMenu() {
 
 function notInChat() {
   return !inChatMode();
+}
+
+// Whether ⋮ Compact applies (#1218): a Claude session (a missing agent reads
+// as Claude, as session-transcript.js's hasTranscriptReader does) whose input
+// route is open — a detached agent never probed for console input is not.
+function canCompact(s) {
+  return !!s && (s.agent || 'claude') === 'claude' && !detachedSendRefused(s);
 }
 
 // The shared ↓ Latest pill (latest-pill.js, #1140) over the xterm buffer,
@@ -146,6 +157,25 @@ export function wireTerminalMenu() {
       glyph: 'rotate-ccw', label: 'Reload transcript', text: 'Reload',
       hidden: notInChat,
       onTap: reloadNewest,
+    },
+    // Compact (#1218): sends Claude Code's /compact in one tap, in either
+    // mode, through the same verified /input route Chat's Send uses, so the
+    // toast says what actually happened. Claude only: /compact is its
+    // command, and other agents would take it as a prompt.
+    {
+      glyph: 'chevrons-down-up', label: 'Compact conversation', text: 'Compact',
+      hidden: function () { return !canCompact(currentSession()); },
+      onTap: function () {
+        const s = currentSession();
+        if (!canCompact(s)) return;
+        sendSessionMessage(s.session_id, '/compact').then(
+          function (verdict) {
+            const outcome = sendOutcome(verdict);
+            toast('Compact: ' + outcome.text, outcome.kind, { icon: 'chevrons-down-up' });
+          },
+          function (exc) { apiFailToast('Compact failed', exc); }
+        );
+      },
     },
     {
       className: 'action-stop-close', glyph: 'x', danger: true,

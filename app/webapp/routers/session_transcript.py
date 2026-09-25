@@ -59,6 +59,11 @@ The POST reads it again at send time and types only while the tapped digit
 still carries the tapped label. Full-control sessions only, and each route
 has its own ``_TERMINAL_GUARD_RULES`` row.
 
+``GET .../context`` reads the same screen for the session's context-window
+use (#1223): the ``NN%c`` the fleet statusline paints under Claude Code's
+prompt (``src.statusline_context``), which the overlay bar draws as a ring.
+Same screen read as the plan picker, same reasons, its own guard row.
+
 Unavailable sources are told apart on purpose (``reason``): a session the
 host doesn't know, an agent with no structured history, a history file that
 isn't there, and a file that *is* there but couldn't be read. Bodies are
@@ -94,6 +99,7 @@ from src.session_transcript import (
     transcript_page,
     transcript_tail,
 )
+from src.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
@@ -479,17 +485,19 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
     return {"ok": True, "delivered": "unconfirmed", "steps": len(keys), "kind": kind}
 
 
-# --- Plan picker (#1151) -----------------------------------------------------
+# --- The terminal's screen: plan picker (#1151), context use (#1223) --------
 #
 # The transcript can't say "this plan is waiting" (the pending ExitPlanMode
-# call can stay off disk until it is answered), so both routes read the
+# call can stay off disk until it is answered) or how full the context
+# window is (it never names the window's size), so these routes read the
 # terminal's screen instead: the session's PTY capture rendered at the PTY's
-# own size (src.plan_picker). Full-control sessions only — a detached one has
-# no screen here to read, so its plan is answered in the PC console.
+# own size (src.plan_picker). Full-control Claude sessions only — a detached
+# one has no screen here to read, so its plan is answered in the PC console.
 
-# The last picker state logged per session, so a poll every few seconds
-# leaves one line per change rather than one per tick.
+# The last state logged per session, one map per route, so a poll every few
+# seconds leaves one line per change rather than one per tick.
 _PICKER_SEEN: Dict[str, str] = {}
+_CONTEXT_SEEN: Dict[str, str] = {}
 
 
 def _no_picker(reason: str) -> Dict[str, Any]:
@@ -498,11 +506,12 @@ def _no_picker(reason: str) -> Dict[str, Any]:
             "plan": None, "plan_source": None, "plan_truncated": False}
 
 
-async def _read_picker(
+async def _read_screen(
     cfg: WebappConfig, sid: str
-) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """``(reason, session, picker)``: ``reason`` says why there is no screen
-    to read; otherwise ``picker`` is what it shows (``None``: no picker)."""
+) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[List[str]]]:
+    """``(reason, session, lines)``: ``reason`` says why there is no screen
+    to read (``session_not_found`` / ``unsupported_agent`` / ``detached`` /
+    ``no_screen``); otherwise ``lines`` is the screen as the PTY shows it."""
     live = await asyncio.to_thread(_safe_list_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
@@ -512,23 +521,40 @@ async def _read_picker(
     if str(session.get("kind") or "pty") == "remote":
         return "detached", session, None
 
-    def read() -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    def read() -> Optional[List[str]]:
         text = plan_picker.read_capture_tail(audit.transcript_path(sid))
         if text is None:
-            return "no_screen", None
+            return None
         rows = int(session.get("rows") or 40)
         cols = int(session.get("cols") or 120)
-        return None, plan_picker.parse_picker(plan_picker.screen_lines(text, rows, cols))
+        return plan_picker.screen_lines(text, rows, cols)
 
-    reason, picker = await asyncio.to_thread(read)
-    return reason, session, picker
+    lines = await asyncio.to_thread(read)
+    if lines is None:
+        return "no_screen", session, None
+    return None, session, lines
+
+
+async def _read_picker(
+    cfg: WebappConfig, sid: str
+) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """``(reason, session, picker)``: ``reason`` as :func:`_read_screen`;
+    otherwise ``picker`` is what the screen shows (``None``: no picker)."""
+    reason, session, lines = await _read_screen(cfg, sid)
+    if reason is not None:
+        return reason, session, None
+    return None, session, plan_picker.parse_picker(lines)
+
+
+def _log_screen(seen: Dict[str, str], what: str, sid: str, state: str, detail: str = "") -> None:
+    if seen.get(sid) == state:
+        return
+    seen[sid] = state
+    logger.info("ℹ️ %s %s: %s%s", what, sid[:8], state, f" ({detail})" if detail else "")
 
 
 def _log_picker(sid: str, state: str, detail: str = "") -> None:
-    if _PICKER_SEEN.get(sid) == state:
-        return
-    _PICKER_SEEN[sid] = state
-    logger.info("ℹ️ plan picker %s: %s%s", sid[:8], state, f" ({detail})" if detail else "")
+    _log_screen(_PICKER_SEEN, "plan picker", sid, state, detail)
 
 
 @router.get("/api/claude-code/sessions/{sid}/plan-picker")
@@ -628,3 +654,33 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
     )
     logger.info("⌨️ plan answer %s typed (%s, option %s)", sid[:8], kind, body.get("option"))
     return {"ok": True, "delivered": "unconfirmed", "answer": kind}
+
+
+@router.get("/api/claude-code/sessions/{sid}/context")
+async def session_context(sid: str, request: Request) -> Dict[str, Any]:
+    """How full the session's context window is, as its terminal's
+    statusline shows it now (Tailscale + passkey, #1223).
+
+    ``{"available", "percent", "reason"}``. ``percent`` is an int only when
+    the bottom-most statusline on screen shows ``NN%c``; ``reason`` tells
+    apart a session that is gone, a non-Claude agent, a detached one (no
+    screen to read), a capture that can't be read (``no_screen``), and a
+    screen whose footer shows no context figure (``not_showing``: no
+    statusline, or Claude Code's own null early on and right after
+    ``/compact``). The overlay bar polls it and draws nothing without a
+    number, so an unknown value is never shown as 0%.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, _session, lines = await _read_screen(cfg, sid)
+    if reason is not None:
+        if reason == "session_not_found":
+            _CONTEXT_SEEN.pop(sid, None)
+        else:
+            _log_screen(_CONTEXT_SEEN, "context", sid, reason)
+        return {"available": False, "percent": None, "reason": reason}
+    percent = context_percent(lines)
+    if percent is None:
+        _log_screen(_CONTEXT_SEEN, "context", sid, "not showing")
+        return {"available": True, "percent": None, "reason": "not_showing"}
+    _log_screen(_CONTEXT_SEEN, "context", sid, "showing", f"{percent}%")
+    return {"available": True, "percent": percent, "reason": None}

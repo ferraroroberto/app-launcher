@@ -1961,14 +1961,19 @@
   <!-- The session overlay (#982, Step 3 of #979): one shell, two render
        modes. `data-mode="terminal"` shows the live PTY (#terminalHost + the
        docked composer); `data-mode="chat"` shows the transcript's chat-style
-       cards (#chatPane). The bar is shared: ‹ Back · title · Terminal⇄Chat ·
-       🔊 · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
+       cards (#chatPane). The bar is shared: ‹ Back · title · context ring ·
+       Terminal⇄Chat · 🔊 · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
        terminal.js, the chat pane in session-transcript.js. -->
   <div id="terminalOverlay" class="terminal-overlay" hidden>
     <div class="terminal-bar">
       <button id="terminalBack" type="button" class="term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
       <div class="terminal-bar-actions">
+        <!-- Context ring (#1223): how full the session's context window is,
+             read off the terminal's statusline by the server. Hidden, not
+             drawn at 0%, whenever the number isn't known; a tap toasts it.
+             Driven by context-ring.js. -->
+        <button id="contextRing" type="button" class="term-btn context-ring" title="Context used" aria-label="Context used" hidden><svg class="context-ring-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="context-ring-track" cx="12" cy="12" r="9"></circle><circle class="context-ring-fill" cx="12" cy="12" r="9" transform="rotate(-90 12 12)"></circle></svg></button>
         <!-- Icon-only Terminal / Chat segmented toggle (#982). A segment the
              session can't offer (a detached session has no terminal; an
              agent without a transcript reader has no chat) is aria-disabled
@@ -2027,7 +2032,16 @@
          textarea + 2x2 grid (mic · keys / image · send), the image button's
          attach / OCR options menu, the OCR staging tray, the keys D-pad. -->
     <div id="terminalComposeBar" class="composer" hidden></div>
-    <div id="terminalStatus" class="terminal-status" hidden></div>
+    <!-- The bottom status strip (#1219): always laid out, in Terminal and
+         Chat mode alike, so the controls above it clear the phone's rounded
+         corners and never move when a message comes or goes. Blank when
+         idle; the one message (connection state, "Tap to reconnect") is
+         #terminalStatus inside it, centred, and only that child toggles
+         `hidden`. The live region is the strip, not the message, because a
+         region that appears together with its text is often not announced. -->
+    <div id="terminalStatusStrip" class="terminal-status-strip" role="status" aria-live="polite">
+      <div id="terminalStatus" class="terminal-status" hidden></div>
+    </div>
   </div>
 
   <!-- Read-aloud summary modal (issue #210): shows the hub summary text while

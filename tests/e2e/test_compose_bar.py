@@ -36,7 +36,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS
+from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_read
 
 # 1x1 transparent PNG — smallest valid image the session-host will accept.
 _PNG_1x1 = base64.b64decode(
@@ -61,6 +61,43 @@ SEND = f"{COMPOSER} .composer-send"
 ATTACH_INPUT = f"{COMPOSER} .composer-attach-input"
 
 pytestmark = pytest.mark.smoke
+
+# Drive the page's OWN setTerminalStatus (#1219) — the live module instance,
+# resolved from the resource timeline the way test_markdown_link_rendering.py
+# does, so the status goes through the real code path rather than a
+# hand-rolled DOM write. Even the unstamped fallback shares the live `els`:
+# the server stamps every served module's imports, so it imports the same
+# `state.js?v=` instance the page already holds.
+_SET_STATUS_JS = r"""
+async (message) => {
+  const url = performance.getEntriesByType('resource')
+    .map((r) => r.name)
+    .find((n) => n.includes('/static/terminal-connection.js?v='))
+    || '/static/terminal-connection.js';
+  const { setTerminalStatus } = await import(url);
+  setTerminalStatus(message, message ? { icon: 'lock' } : undefined);
+}
+"""
+
+# The strip's box, the message's alignment, and where the message's painted
+# content (icon + text, via a Range) actually sits inside the strip.
+_STATUS_STRIP_JS = r"""
+() => {
+  const strip = document.getElementById('terminalStatusStrip');
+  const msg = document.getElementById('terminalStatus');
+  if (!strip || !msg) return null;
+  const s = strip.getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(msg);
+  const c = range.getBoundingClientRect();
+  return {
+    top: s.top, height: s.height, left: s.left, right: s.right,
+    hidden: msg.hidden, text: msg.textContent,
+    textAlign: getComputedStyle(msg).textAlign,
+    contentLeft: c.left, contentRight: c.right, contentWidth: c.width,
+  };
+}
+"""
 
 
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
@@ -297,7 +334,11 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     whatever the growing textarea now covers, reading as "Send did nothing"
     or "the tap became a newline"). `align-items: flex-end` anchors every
     button to the row's one stable edge (the bar's bottom never moves; only
-    its top climbs), so only the textarea itself grows."""
+    its top climbs), so only the textarea itself grows.
+
+    Issue #1219 extends the same pin downward: a connection status message
+    appearing or clearing must not move them either, and it sits centred in
+    the reserved bottom strip."""
     sid = launched_pty_session
     _open_terminal(authed_page, base_url, sid)
     _show_composer(authed_page)
@@ -331,6 +372,57 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     )
     assert abs(attach_after["y"] - attach_before["y"]) < 1, (
         f"Attach button moved during autogrow: {attach_before} -> {attach_after}"
+    )
+
+    # #1219: a status message coming and going must not move them either.
+    # The status line used to be a `hidden` flex child under the composer, so
+    # every "Connecting…" pushed the whole grid up one line and every connect
+    # dropped it back — the same moving-target race as #447, from below. It
+    # is now the content of an always-laid-out bottom strip, so only the
+    # strip's content changes, and the message is centred in it.
+    #
+    # What this cannot prove: the strip also takes env(safe-area-inset-bottom)
+    # so the controls clear the iPhone's rounded corners, and that inset
+    # resolves to 0px in headless Chromium and in the WebKit/iPhone
+    # projection alike (the #1099 blind spot, .fleet.toml). A green run here
+    # means "no shift, centred" — the corner clearance is a device check.
+    idle = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    assert idle and idle["hidden"] is True, f"status not idle once connected: {idle}"
+    assert idle["height"] >= 30, (
+        f"the bottom status strip is not reserving its row while idle: {idle}"
+    )
+
+    authed_page.evaluate(_SET_STATUS_JS, "Passkey unlock required")
+    shown = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    send_status = stable_read(send.bounding_box)
+    attach_status = stable_read(attach.bounding_box)
+    assert shown and shown["hidden"] is False and "Passkey unlock required" in shown["text"], shown
+    assert abs(shown["height"] - idle["height"]) < 1 and abs(shown["top"] - idle["top"]) < 1, (
+        f"the status strip changed size when a message appeared: {idle} -> {shown}"
+    )
+    assert send_status and abs(send_status["y"] - send_after["y"]) < 1, (
+        f"Send button moved when a status message appeared: {send_after} -> {send_status}"
+    )
+    assert attach_status and abs(attach_status["y"] - attach_after["y"]) < 1, (
+        f"Attach button moved when a status message appeared: {attach_after} -> {attach_status}"
+    )
+    assert shown["textAlign"] == "center", shown
+    left_gap = shown["contentLeft"] - shown["left"]
+    right_gap = shown["right"] - shown["contentRight"]
+    assert shown["contentWidth"] > 0 and abs(left_gap - right_gap) <= 1, (
+        f"status message is not centred in the strip: {left_gap:.1f}px left vs "
+        f"{right_gap:.1f}px right ({shown})"
+    )
+
+    authed_page.evaluate(_SET_STATUS_JS, None)
+    cleared = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    send_cleared = stable_read(send.bounding_box)
+    assert cleared and cleared["hidden"] is True and cleared["text"] == "", cleared
+    assert abs(cleared["height"] - idle["height"]) < 1, (
+        f"the status strip changed size when the message cleared: {idle} -> {cleared}"
+    )
+    assert send_cleared and abs(send_cleared["y"] - send_after["y"]) < 1, (
+        f"Send button moved when the status message cleared: {send_after} -> {send_cleared}"
     )
 
 

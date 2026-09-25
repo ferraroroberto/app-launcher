@@ -302,6 +302,9 @@ def test_detached_reader_less_row_still_reaches_rename_and_stop(
     expect(menu).to_be_visible()
     expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
     expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
+    # /compact is Claude Code's command: a non-Claude agent gets no Compact
+    # item (#1218), where it would be sent as a prompt.
+    expect(menu.locator('button[aria-label="Compact conversation"]')).to_have_count(0)
 
 
 def test_transcript_shows_turns_folds_tools_and_loads_older(
@@ -320,12 +323,17 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     # The row's own menu exists (#1025) but stays closed behind the overlay:
     # opening a session is not what opens it.
     expect(row.locator(".session-menu")).to_be_hidden()
-    # The shared bar: Terminal / Chat segments first in the actions group,
-    # 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only bar buttons.
+    # The shared bar: the context ring's slot (#1223), then the Terminal /
+    # Chat segments, 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only
+    # bar buttons. The ring stays hidden here: this session's context use is
+    # unknown (the host has no such session), and unknown is never drawn.
     bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
         "els => els.map(e => e.id)"
     )
-    assert bar_ids == ["sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu"], bar_ids
+    assert bar_ids == [
+        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu",
+    ], bar_ids
+    expect(authed_page.locator("#contextRing")).to_be_hidden()
     expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
     # A full-control session has no detached note.
     expect(authed_page.locator("#chatNote")).to_be_hidden()
@@ -362,7 +370,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     menu = authed_page.locator("#terminalOverlay .terminal-menu")
     eye = _menu_item(authed_page, "Show tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Show tool calls", "Reload", "Stop and kill"]
+        ["Rename", "Copy link", "Show tool calls", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()
