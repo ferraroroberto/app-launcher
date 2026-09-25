@@ -192,20 +192,40 @@ try {
             # (#184).
             $verbosity = if ($env:CI -eq "true") { "-v" } else { "-q" }
             if ($env:CI -eq "true") { $env:PYTHONUNBUFFERED = "1" }
-            $e2eArgs = @($route.Targets) + @($verbosity) + @($workerPlan.Args)
+            $e2eBase = @($route.Targets) + @($verbosity)
+            $browserArgs = @()
             foreach ($b in @($route.Browsers)) {
-                $e2eArgs += @("--browser", $b)
+                $browserArgs += @("--browser", $b)
             }
+            $e2eArgs = $e2eBase + @($workerPlan.Args) + $browserArgs
             $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
             $workerLabel = if ($workerPlan.Workers -gt 1) { "$($workerPlan.Workers) workers" } else { "serial" }
             Phase "pytest e2e ($e2eTargetLabel, $projLabel, $workerLabel, auto-booted)..."
+            $serialExit = $null
             try {
                 & $python -m pytest @e2eArgs
                 $e2eExit = $LASTEXITCODE
+                # The load-sensitive `serial` tests, once the workers are gone
+                # (#1231). Runs even after a red parallel pass, so one gate
+                # run reports both.
+                if (@($workerPlan.SerialArgs).Count -gt 0) {
+                    Phase "pytest e2e serial pass (tests marked serial, after the workers)..."
+                    Log-Progress "e2e serial pass: tests marked serial"
+                    & $python -m pytest @($e2eBase + @($workerPlan.SerialArgs) + $browserArgs)
+                    $serialExit = $LASTEXITCODE
+                }
             }
             finally {
                 Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
                 if ($env:CI -eq "true") { Remove-Item Env:\PYTHONUNBUFFERED -ErrorAction SilentlyContinue }
+            }
+            if ($null -ne $serialExit) {
+                # Exit 5 is "no tests collected": a narrowed target can hold no
+                # serial test, or nothing but. One of the two passes must run.
+                if ($e2eExit -eq 5 -and $serialExit -eq 5) { Fail "Playwright e2e: neither pass collected a test." }
+                if ($e2eExit -eq 5) { $e2eExit = 0 }
+                if ($serialExit -eq 5) { $serialExit = 0 }
+                if ($serialExit -ne 0) { Fail "Playwright e2e serial pass failed." }
             }
             if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
         }

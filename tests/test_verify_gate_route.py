@@ -82,9 +82,11 @@ foreach ($w in ($env:E2E_WORKER_CASES | ConvertFrom-Json)) {
     $r = Get-E2ERoute -ClassifierOutput @($w.lines) -IsCI $false
     try {
         $plan = Get-E2EWorkerArgs -Route $r -Setting $w.setting
-        $workers[$w.name] = [pscustomobject]@{ Workers = $plan.Workers; Args = (@($plan.Args) -join ' '); Error = '' }
+        $workers[$w.name] = [pscustomobject]@{
+            Workers = $plan.Workers; Args = (@($plan.Args) -join ' ')
+            SerialArgs = (@($plan.SerialArgs) -join ' '); Error = '' }
     } catch {
-        $workers[$w.name] = [pscustomobject]@{ Workers = 0; Args = ''; Error = $_.Exception.Message }
+        $workers[$w.name] = [pscustomobject]@{ Workers = 0; Args = ''; SerialArgs = ''; Error = $_.Exception.Message }
     }
 }
 $out['__workers__'] = $workers
@@ -189,27 +191,30 @@ def test_gate_runs_the_helper_verdict() -> None:
     assert "@($route.Targets)" in gate
     assert "Get-E2EWorkerArgs -Route $route -Setting $env:E2E_WORKERS" in gate
     assert "@($workerPlan.Args)" in gate
+    assert "@($workerPlan.SerialArgs)" in gate
 
 
 def test_dual_projection_tiers_run_on_four_workers_by_default(routes: dict) -> None:
-    """#1231: full and surface runs spread over 4 xdist workers, loadgroup so
-    the real-agent module's xdist_group stays on one worker."""
+    """#1231: full and surface runs spread over 4 xdist workers, minus the
+    `serial` tests, which get their own pass once the workers are done."""
     for case in ("full-default", "surface-default"):
         plan = _WORKER_PLANS[case]
-        assert (plan["Workers"], plan["Args"], plan["Error"]) == (
-            4, "-n 4 --dist loadgroup", ""), (case, plan)
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"], plan["Error"]) == (
+            4, "-n 4 --dist load -m not serial", "-m serial", ""), (case, plan)
 
 
 def test_e2e_workers_overrides_the_count_and_one_or_zero_is_serial(routes: dict) -> None:
-    assert _WORKER_PLANS["full-six"]["Args"] == "-n 6 --dist loadgroup"
+    assert _WORKER_PLANS["full-six"]["Args"] == "-n 6 --dist load -m not serial"
     for case in ("full-one", "full-zero"):
-        assert (_WORKER_PLANS[case]["Workers"], _WORKER_PLANS[case]["Args"]) == (1, ""), case
+        plan = _WORKER_PLANS[case]
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"]) == (1, "", ""), case
 
 
 def test_single_projection_and_skipped_tiers_stay_serial(routes: dict) -> None:
     """The static Chromium smoke is too short to repay a worker's own boot."""
     for case in ("static-default", "skip-default"):
-        assert (_WORKER_PLANS[case]["Workers"], _WORKER_PLANS[case]["Args"]) == (1, ""), case
+        plan = _WORKER_PLANS[case]
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"]) == (1, "", ""), case
 
 
 def test_a_bad_worker_count_fails_loudly_instead_of_guessing(routes: dict) -> None:

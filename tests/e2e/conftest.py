@@ -40,6 +40,7 @@ import subprocess
 import sys
 import time
 import urllib3
+import warnings
 from pathlib import Path
 from typing import Callable, IO, Iterator, List, Optional, Tuple
 
@@ -873,6 +874,14 @@ def _seed_token_init_script(token: str) -> str:
     return f"window.localStorage.setItem({safe_key}, {safe});"
 
 
+def _loopback(method: str, url: str, **kwargs: object) -> requests.Response:
+    """One request to the disposable webapp's self-signed loopback cert,
+    without the InsecureRequestWarning pytest re-arms for every test."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+        return requests.request(method, url, timeout=10, verify=False, **kwargs)
+
+
 @pytest.fixture(autouse=True)
 def _restore_disposable_config(request: pytest.FixtureRequest) -> Iterator[None]:
     """Put back any server-side setting a test changed (#1231).
@@ -893,7 +902,7 @@ def _restore_disposable_config(request: pytest.FixtureRequest) -> Iterator[None]
 
     def _snapshot() -> Optional[dict]:
         try:
-            res = requests.get(f"{base}/api/config", timeout=10, verify=False)
+            res = _loopback("GET", f"{base}/api/config")
             res.raise_for_status()
             return res.json()
         except requests.RequestException as exc:
@@ -908,12 +917,10 @@ def _restore_disposable_config(request: pytest.FixtureRequest) -> Iterator[None]
     changed = {k: v for k, v in before.items() if after.get(k) != v}
     if changed:
         try:
-            requests.post(f"{base}/api/config", json=changed, timeout=10,
-                          verify=False).raise_for_status()
+            _loopback("POST", f"{base}/api/config", json=changed).raise_for_status()
         except requests.RequestException as exc:
             logger.warning("⚠️ could not restore the disposable config %s: %s",
                            sorted(changed), exc)
-
 
 @pytest.fixture
 def authed_page(
