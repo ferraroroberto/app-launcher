@@ -24,11 +24,17 @@ Timing (issue #493): the CR is sent only after the pasted text has visibly
 rendered in the composer, and the exit wait is a polled 15 s budget — a fixed
 3 s budget flaked ~2/20 under concurrent load (typical submit->exit is
 ~870 ms, but the full pre-ship gate can push it past 3 s).
+
+Readiness (issue #1232): the composer paints before the Codex session is
+configured, and a submit in that window is dropped.  The probe waits for the
+header's ``model:`` field to leave ``loading`` before pasting.  That replaced
+a fixed 2 s settle, which only covered the window on an idle host.
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -69,6 +75,12 @@ _UPDATE_MODAL_MARKER = "Press enter to continue"
 # ("Hooks need review" -> "N hooks need review"). "esc to close" dismisses it
 # without trusting anything.
 _HOOKS_MODAL_MARKER = "hooks need review"
+# Session-configured signal (issue #1232).  Codex 0.154 paints the header as
+# "model:     loading" until the session is configured, then swaps in the model
+# name.  A submit before then is dropped even though the paste renders:
+# measured under a CPU burn, all 20 swallowed Enters landed while the header
+# still said "loading", and waiting for this cleared it (20/20).
+_SESSION_CONFIGURED = re.compile(r"model:\s+(?!loading\b)\S")
 
 
 async def _reach_composer(session: PtySession) -> bool:
@@ -100,6 +112,22 @@ async def _reach_composer(session: PtySession) -> bool:
         and _HOOKS_MODAL_MARKER not in frame.lower()
         and _COMPOSER_MARKER in frame
     )
+
+
+async def _wait_for_session_configured(session: PtySession) -> bool:
+    """Poll until the Codex header shows a model instead of ``loading``.
+
+    Bounded at 30 s: unloaded this takes ~1 s, but a synthetic CPU burn on
+    this box pushed it to 33 s, and failing here names the real cause instead
+    of the swallowed-Enter symptom further down.
+    """
+    for _ in range(300):
+        if _SESSION_CONFIGURED.search(_rendered(session.snapshot_frame() or "")):
+            return True
+        if not session.alive:
+            return False
+        await asyncio.sleep(0.1)
+    return False
 
 
 async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
@@ -138,12 +166,17 @@ async def test_bracketed_prompt_plus_one_enter_semantically_submits_to_codex(
             "than the known hooks-review or update-available modals may be "
             "blocking input"
         )
-        # Let the composer finish settling before pasting.  The banner paints a
-        # beat before the input is ready to treat a trailing CR as Submit; on a
-        # loaded host (e.g. the full pre-ship suite) pasting immediately — most
-        # of all right after dismissing the modal — races that and the Enter is
-        # swallowed.  This is the settle the original fixed sleep provided.
-        await asyncio.sleep(2.0)
+        # The composer paints before the session is configured, and Codex drops
+        # a submit that arrives in that window (issue #1232): the pasted text
+        # still renders, but the Enter does nothing.  Wait for the signal Codex
+        # itself shows for it — the header's "model:" field replacing
+        # "loading" with a model name — instead of a fixed settle.
+        assert await _wait_for_session_configured(session), (
+            "Codex exited before its session finished configuring"
+            if not session.alive
+            else "Codex session never finished configuring within 30 s — the "
+            "header still reads 'model: loading', so a submit would be dropped"
+        )
 
         session.write("\x1b[200~/quit\x1b[201~")
         # Only send the CR once the composer has visibly rendered the paste
