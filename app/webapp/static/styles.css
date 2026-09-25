@@ -2385,6 +2385,10 @@ textarea.input-native { height: auto; }
   font-weight: 600;
   color: var(--muted);
 }
+/* On the user turn's accent tint the muted line fell to 4.17:1 light and
+   4.21:1 dark at caption size (the rendered design review's COLOR-02):
+   design.md's rule for text on a tinted fill is fg, never fg-muted. */
+.tr-user .tr-meta { color: var(--fg); }
 .tr-turn-hint {
   flex: 1;
   min-width: 0;
@@ -4397,8 +4401,11 @@ body.terminal-open {
   min-height: 44px;
   justify-content: center;
 }
+/* The user's side of a drawer exchange. fg, not muted: on the dark theme's
+   card-2 the muted text measured 4.08:1 (COLOR-02), and design.md puts text
+   on a tinted fill in fg. The left rule still marks it as the user's. */
 .board-exchange-user {
-  color: var(--muted);
+  color: var(--fg);
   font-size: var(--font-body-sm);
   white-space: pre-wrap;
   border-left: 2px solid var(--muted);

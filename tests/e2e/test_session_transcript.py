@@ -34,6 +34,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
     open_session_row,
@@ -625,11 +626,17 @@ def test_failed_tool_call_is_marked_in_both_themes(
     # `to_have_css` re-resolves the locator, so a re-render can't yield the
     # '' WebKit returns from a raw getComputedStyle read (#680).
     seen = {}
+    user_meta = authed_page.locator("#transcriptList .tr-user .tr-meta")
+    expect(user_meta.first).to_be_visible()
     for theme in ("light", "dark"):
         authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
         chip = bad.locator(".tr-fail-chip")
         expect(chip).not_to_have_css("color", "rgba(0, 0, 0, 0)")
         seen[theme] = chip.evaluate("el => getComputedStyle(el).color")
+        # The user turn's "You · time" line on its accent tint (#1238,
+        # COLOR-02): it measured 4.17:1 light / 4.21:1 dark in muted text.
+        ratio = stable_read(lambda: contrast_ratio(user_meta))
+        assert ratio >= 4.5, f"{theme}: user-turn meta at {ratio:.2f}:1, under 4.5:1"
     assert seen["light"] and seen["dark"], seen
     assert seen["light"] != seen["dark"], seen
 
