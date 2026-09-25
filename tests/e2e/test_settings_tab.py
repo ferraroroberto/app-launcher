@@ -139,6 +139,19 @@ def test_settings_pane_controls_and_theme_toggle(
     harnesses = authed_page.locator("#contextFilterHarnesses li")
     expect(harnesses).to_have_count(6)
 
+    # #1238 J-07: with every card open, the pane speaks plain language. None
+    # of the internal terms it used to show ("Harness support", "Fleet config
+    # folder", bearer/minted tokens, the hook's shadow/rewrite modes, issue
+    # numbers) may reach the rendered text.
+    _open_card(authed_page, "tokensPanel")
+    shown = authed_page.locator("#paneSettings").inner_text()
+    jargon = [m.group(0) for m in re.finditer(
+        r"\b(?:harness\w*|fleet config|bearer|minted|mint|telemetry|hook|"
+        r"shadow|rewrite|pretooluse|middleware)\b|#\d+",
+        shown, flags=re.IGNORECASE,
+    )]
+    assert not jargon, f"internal terms in the Settings pane: {sorted(set(jargon))}"
+
     # -- was test_settings_panel_absent_from_other_tabs (part 2) --
     authed_page.locator("#tabApps").click()
     expect(authed_page.locator("#settingsPanel")).to_be_hidden()

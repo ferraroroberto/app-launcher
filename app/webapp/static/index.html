@@ -1414,10 +1414,10 @@
         </label>
         <p id="lifeOsDirHelp" class="field-help">Your life-os copy, which the Life OS tab reads.</p>
         <label class="stacked">
-          <span>Fleet config folder</span>
+          <span>System map folder</span>
           <input id="claudeConfigDir" type="text" class="input-native" aria-describedby="claudeConfigDirHelp">
         </label>
-        <p id="claudeConfigDirHelp" class="field-help">Your fleet-config copy, where the system map on the Code tab comes from.</p>
+        <p id="claudeConfigDirHelp" class="field-help">The folder the Code tab's system map is read from (your fleet-config copy).</p>
         <label class="stacked">
           <span>Terminal history (lines)</span>
           <input id="terminalHistoryLines" type="number" class="input-native" aria-describedby="terminalHistoryLinesHelp" step="100">
@@ -1455,22 +1455,22 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-          <p class="muted small">Job-scoped bearer tokens (issue #72) — safe to bake into a Stream Deck button URL: each token can fire only its chosen job and nothing else, and revoking one never touches the main login.</p>
+          <p class="muted small">Tokens for running one job from a link, such as a Stream Deck button. A token can run only the job you pick, and revoking it never affects your main login.</p>
           <ul id="tokensList" class="card-list"></ul>
           <div id="tokensEmpty" class="empty-state" hidden>
             <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
-          <p class="empty-state-message">No tokens minted yet.</p>
+          <p class="empty-state-message">No tokens yet.</p>
           </div>
           <label class="stacked">
             <span>Label</span>
             <input id="tokenLabelInput" type="text" class="input-native" placeholder="Stream Deck — daily reporting">
           </label>
           <label class="stacked">
-            <span>Job it may fire</span>
+            <span>Job it can run</span>
             <select id="tokenJobSelect" class="select-native"></select>
           </label>
           <div class="row settings-actions">
-            <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Mint token</button>
+            <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Create token</button>
           </div>
           <div id="tokenMintResult" class="stacked" hidden>
             <span class="muted small">Copy it now — it is shown only once.</span>
@@ -1498,10 +1498,10 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-          <p class="muted small">Machine-wide token-reduction hook (fleet-config#392) — the mode you pick here takes effect immediately for every coding-agent session on this PC, no restart needed.</p>
+          <p class="muted small">Shortens long command output before coding agents read it, to save tokens. The mode applies right away to every coding-agent session on this PC. Measure only counts the savings without changing anything.</p>
           <div id="contextFilterMode" class="range-tabs" role="group" aria-label="Context filter mode"></div>
 
-          <h4 class="context-filter-subhead">Harness support</h4>
+          <h4 class="context-filter-subhead">Coding agents it covers</h4>
           <ul id="contextFilterHarnesses" class="card-list context-filter-harness-list" aria-label="Coding agents the filter reaches"></ul>
 
           <h4 class="context-filter-subhead">Savings</h4>
@@ -1511,7 +1511,7 @@
             <span id="contextFilterSavedTotal" class="context-filter-stat"></span>
             <ul id="contextFilterPerAgent" class="context-filter-per-agent" aria-label="Savings by agent"></ul>
           </div>
-          <p id="contextFilterStatsEmpty" class="empty muted small">No savings telemetry yet.</p>
+          <p id="contextFilterStatsEmpty" class="empty muted small">No savings recorded yet.</p>
         </div>
       </details>
     </section>

@@ -17,7 +17,9 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 
 const MODES = ['off', 'shadow', 'rewrite'];
-const MODE_LABELS = { off: 'Off', shadow: 'Shadow', rewrite: 'Rewrite' };
+// Plain words for the hook's modes (#1238 J-07): `shadow` measures what it
+// would save without changing output; `rewrite` shortens the output.
+const MODE_LABELS = { off: 'Off', shadow: 'Measure only', rewrite: 'Shorten output' };
 const STATUS_LABELS = { active: 'Active', unsupported: 'Unsupported', planned: 'Planned' };
 
 // Compact k/M abbreviation for a token count — 12300 -> "12.3k".
