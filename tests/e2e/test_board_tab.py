@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import stable_read
 
 pytestmark = pytest.mark.smoke
@@ -559,6 +560,13 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     expect(drawer.locator(".board-exchange")).to_have_attribute(
         "data-state", "ready"
     )
+    # The user's side of the exchange reads at 4.5:1 in both themes (#1238,
+    # COLOR-02: muted text measured 4.08:1 on the dark card).
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        ratio = stable_read(lambda: contrast_ratio(drawer.locator(".board-exchange-user")))
+        assert ratio >= 4.5, f"{theme}: drawer user text at {ratio:.2f}:1, under 4.5:1"
+    authed_page.evaluate("delete document.documentElement.dataset.theme")
 
     # The drawer stacks BELOW the card at (almost) full card width — never
     # splits it horizontally (phone feedback on #301). Raw Board geometry, so

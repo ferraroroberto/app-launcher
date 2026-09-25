@@ -2385,6 +2385,10 @@ textarea.input-native { height: auto; }
   font-weight: 600;
   color: var(--muted);
 }
+/* On the user turn's accent tint the muted line fell to 4.17:1 light and
+   4.21:1 dark at caption size (the rendered design review's COLOR-02):
+   design.md's rule for text on a tinted fill is fg, never fg-muted. */
+.tr-user .tr-meta { color: var(--fg); }
 .tr-turn-hint {
   flex: 1;
   min-width: 0;
@@ -3015,11 +3019,21 @@ body.terminal-open {
    icon-only touch target here, so match the shorter combo footprint
    instead of the icon-target minimum reasserted just above. */
 #lifeOsConvos .terminal-bar .term-btn {
+  position: relative;
   height: var(--control-h);
   min-height: var(--control-h);
   min-width: 0;
   padding: 0 12px;
   font-size: var(--font-caption);
+}
+/* Kept at the combo's 36px look, but tappable at 44: the same vertical-only
+   expansion the model combo beside them carries (#1124), so two neighbours in
+   this row can never share a pixel. Flagged 73x36 / 83x36 by the rendered
+   design review (TOUCH-01). */
+#lifeOsConvos .terminal-bar .term-btn::before {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
 }
 /* (#886) A fourth control pushed this bar past a 430px viewport. Two flex
    defaults then made that overflow ugly rather than scrollable: the title is
@@ -4406,8 +4420,11 @@ body.terminal-open {
   min-height: 44px;
   justify-content: center;
 }
+/* The user's side of a drawer exchange. fg, not muted: on the dark theme's
+   card-2 the muted text measured 4.08:1 (COLOR-02), and design.md puts text
+   on a tinted fill in fg. The left rule still marks it as the user's. */
 .board-exchange-user {
-  color: var(--muted);
+  color: var(--fg);
   font-size: var(--font-body-sm);
   white-space: pre-wrap;
   border-left: 2px solid var(--muted);
