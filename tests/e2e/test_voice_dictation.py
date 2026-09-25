@@ -23,7 +23,6 @@ mocked with ``page.route`` so no live voice-transcriber on :8443 is needed.
 from __future__ import annotations
 
 import re
-import time
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -61,6 +60,62 @@ _MEDIA_MOCK = """
   }
   FakeRecorder.isTypeSupported = () => true;
   window.MediaRecorder = FakeRecorder;
+})()
+"""
+
+# Streamed takes as the real recorder produces them (#1234): one chunk per
+# timeslice while recording (every 100 ms here, not the production 1 s, to
+# keep the test short), numbered so the server side can check none is lost,
+# plus the final flush on stop. Each chunk upload is held 400 ms in the page
+# before it leaves: Roberto's own takes on 2026-09-25 logged 3-5 s per 1 s
+# chunk in slow-requests.log, so the drain always ran behind the recording.
+_STREAMING_MEDIA_MOCK = """
+(() => {
+  window.__chunksEmitted = 0;
+  navigator.mediaDevices = navigator.mediaDevices || {};
+  navigator.mediaDevices.getUserMedia = async () => ({
+    getTracks: () => [{ stop: () => {} }],
+  });
+  class FakeRecorder {
+    constructor(stream, opts) {
+      this.stream = stream;
+      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
+      this.state = 'inactive';
+      this._listeners = {};
+    }
+    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+    _emit() {
+      const n = window.__chunksEmitted++;
+      const da = this._listeners['dataavailable'];
+      if (da) da({ data: new Blob(['chunk-' + n], { type: this.mimeType }) });
+    }
+    start(_timeslice) {
+      this.state = 'recording';
+      this._timer = setInterval(() => this._emit(), 100);
+    }
+    stop() {
+      this.state = 'inactive';
+      clearInterval(this._timer);
+      this._emit();
+      const st = this._listeners['stop'];
+      if (st) st();
+    }
+  }
+  FakeRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = FakeRecorder;
+  // Chunk labels travel as a header too: WebKit's Playwright does not expose
+  // a Blob request body to the route handler.
+  const realFetch = window.fetch.bind(window);
+  window.fetch = async (url, opts) => {
+    if (String(url).endsWith('/chunk') && opts && opts.body instanceof Blob) {
+      const label = await opts.body.text();
+      const headers = new Headers(opts.headers || {});
+      headers.set('x-e2e-chunk', label);
+      opts = Object.assign({}, opts, { headers });
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    return realFetch(url, opts);
+  };
 })()
 """
 
@@ -142,9 +197,17 @@ def test_record_button_lives_in_compose_bar(
 def test_streamed_partials_then_final(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """🎤 → live SSE partial appears, → stop settles the final transcript (#168)."""
+    """🎤 → live SSE partial appears, → stop settles the final transcript (#168).
+
+    #1234: and the take reaches the voice-transcriber whole. With chunk
+    uploads running behind the recording, /finish used to be POSTed while
+    chunks were still queued (``drainChunks`` returned at once when a drain
+    was already running), so the tail of the take was never sent: audio cut,
+    text lost. /finish must now arrive only after every chunk, in order."""
     sid = launched_pty_session
-    authed_page.add_init_script(_MEDIA_MOCK)
+    authed_page.add_init_script(_STREAMING_MEDIA_MOCK)
+    received: list = []
+    at_finish: list = []
     authed_page.route(
         "**/api/transcribe/sessions",
         lambda route: route.fulfill(
@@ -159,19 +222,19 @@ def test_streamed_partials_then_final(
             body='event: partial\ndata: {"version":1,"transcript":"%s"}\n\n' % _PARTIAL,
         ),
     )
-    authed_page.route(
-        "**/api/transcribe/sessions/vt-1/chunk",
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body='{"raw_bytes": 9}',
-        ),
-    )
-    authed_page.route(
-        "**/api/transcribe/sessions/vt-1/finish",
-        lambda route: route.fulfill(
+    def _chunk(route):
+        received.append(route.request.headers.get("x-e2e-chunk"))
+        route.fulfill(status=200, content_type="application/json", body='{"raw_bytes": 9}')
+
+    def _finish(route):
+        at_finish.append(list(received))
+        route.fulfill(
             status=200, content_type="application/json",
             body='{"transcript": "%s", "language": "en"}' % _FINAL,
-        ),
-    )
+        )
+
+    authed_page.route("**/api/transcribe/sessions/vt-1/chunk", _chunk)
+    authed_page.route("**/api/transcribe/sessions/vt-1/finish", _finish)
     _open_terminal(authed_page, base_url, sid)
     _open_compose_with_record(authed_page)
 
@@ -182,6 +245,8 @@ def test_streamed_partials_then_final(
     expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         re.compile(re.escape(_PARTIAL)), timeout=10_000
     )
+    # A take long enough that the delayed uploads fall several chunks behind.
+    authed_page.wait_for_function("window.__chunksEmitted >= 8")
 
     record.click()
     # finish() settles the canonical transcript into the same span.
@@ -189,6 +254,22 @@ def test_streamed_partials_then_final(
         _FINAL, timeout=10_000
     )
     expect(authed_page.locator("#terminalComposeBar")).to_be_visible()
+
+    # Uploads that fall behind carry every queued chunk in one POST (#1234),
+    # so compare the bytes that arrived, joined in arrival order: the whole
+    # take, nothing missing, nothing reordered, and all of it before /finish.
+    emitted = authed_page.evaluate("window.__chunksEmitted")
+    whole_take = "".join(f"chunk-{n}" for n in range(emitted))
+    assert emitted >= 8 and len(at_finish) == 1, (emitted, at_finish)
+    delivered = "".join(at_finish[0])
+    assert delivered == whole_take, (
+        f"/finish reached the server with {delivered.count('chunk-')} of "
+        f"{emitted} chunks: the tail of the take was never sent ({at_finish[0]})"
+    )
+    assert len(at_finish[0]) < emitted, (
+        f"every chunk went up in its own request ({len(at_finish[0])} POSTs "
+        f"for {emitted} chunks): a drain behind the recording must batch"
+    )
 
 
 def test_single_shot_fallback_when_no_session(
@@ -290,10 +371,14 @@ def test_send_refuses_while_dictation_still_finishing(
     )
     record.click()  # stop -> finishStreaming() begins; /finish is held pending
 
+    # wait_for_timeout, not time.sleep: route handlers only run while
+    # Playwright pumps events. /finish now waits for the last chunk upload
+    # (#1234), whose handler must run first; it used to fire at once, inside
+    # the click, which is the race #1234 fixed.
     for _ in range(100):
         if "route" in held_finish:
             break
-        time.sleep(0.05)
+        authed_page.wait_for_timeout(50)
     assert "route" in held_finish, "finishStreaming() never called /finish"
 
     # Tap Send while the finalize is still in flight.
