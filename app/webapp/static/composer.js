@@ -432,8 +432,16 @@ export function mountComposer(host, opts) {
   // The surface's gate is aria-disabled (see the module header, #1069) so a
   // phone tap still reaches the button and can say why. The in-flight hold
   // stays a real `disabled`: it lasts one request and has no reason to state.
+  // It must also *look* held (#1239): `disabled` alone left ➤ at full accent,
+  // so a send in progress read as a live button inviting a second tap.
   function syncSend() {
     el.send.disabled = sending;
+    if (el.send.classList.contains('is-sending') !== sending) {
+      el.send.classList.toggle('is-sending', sending);
+      el.send.innerHTML = icon(sending ? 'hourglass' : 'send-horizontal');
+    }
+    if (sending) el.send.setAttribute('aria-busy', 'true');
+    else el.send.removeAttribute('aria-busy');
     if (sendBlocked) el.send.setAttribute('aria-disabled', 'true');
     else el.send.removeAttribute('aria-disabled');
   }
