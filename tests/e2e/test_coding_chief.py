@@ -22,6 +22,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._geometry import assert_no_overlap
 from tests.e2e.conftest import OVERLAY_OPEN_MS, open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
@@ -196,6 +197,11 @@ def test_coding_tab_offers_manual_start_when_chief_down(
     )
     start_btn = authed_page.locator("#codingChiefStart")
     expect(start_btn).to_be_visible()
+    # Start's expanded target and the session row below it never share a
+    # pixel (TOUCH-02, #1238): the rows sat flush and the -5px expansion
+    # reached the row's launch button.
+    expect(authed_page.locator("#sessionsList .session-open")).to_have_count(1)
+    assert_no_overlap([start_btn, authed_page.locator("#sessionsList .session-open")])
 
     start_btn.click()
     authed_page.wait_for_timeout(400)
