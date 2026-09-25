@@ -81,6 +81,7 @@ _TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane
 # A control a tab renders only once its data arrives, which the sweep waits
 # for rather than racing the boot fetch.
 _DATA_CONTROL = {
+    "#tabJobs": "#jobsAgendaBody .empty-state-action",
     "#tabLifeOS": "#lifeOsRecapLaunch",
     ".pane:not([hidden]) .settings-open-btn": "#webauthnDevices .icon-btn",
 }
@@ -137,6 +138,15 @@ def test_every_control_meets_the_44px_floor(
             {"id": "d1", "label": "Synthetic phone", "added_at": "2026-01-01",
              "last_used": None},
         ],
+    })
+    # The Jobs agenda's empty state carries an Add job action (#1201) that
+    # sat at 38.6px (#1216). It renders only when the next 7 days hold no
+    # runs, which the unmocked agenda decided from the checkout's own
+    # jobs.json and the clock: a worktree (whose job paths are blanked, so it
+    # has no jobs) raced the 400ms settle below and a primary never showed
+    # it. Pinned empty, it is measured on every run.
+    _json_route(page, re.compile(r".*/api/jobs/agenda(\?.*)?$"), {
+        "days": 7, "generated_epoch": 0, "occurrences": [], "frequent": [],
     })
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
