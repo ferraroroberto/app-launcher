@@ -20,6 +20,7 @@ import re
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
+from tests.e2e._geometry import assert_min_target
 from tests.e2e.conftest import stable_read
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_overlay_standalone_scrollable import (
@@ -801,7 +802,11 @@ def test_life_os_convos_bar_buttons_match_model_selector(
 ) -> None:
     """#864: the "‹ Skills" back button and "All skills" toggle used to sit
     taller (44px, font-label) than the model selector (36px, font-caption)
-    in the same header row — all three must now share one height/font."""
+    in the same header row — all three must now share one height/font.
+
+    And each is still a 44px target: the rendered design review measured the
+    bar's text buttons at 73x36 and 83x36 (TOUCH-01), so they now carry the
+    combo's vertical-only expansion, and the sort button is held to it too."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _open_conversations(authed_page, base_url)
@@ -813,6 +818,10 @@ def test_life_os_convos_bar_buttons_match_model_selector(
     for locator in (back, scope, combo):
         expect(locator).to_have_css("height", "36px")
         expect(locator).to_have_css("font-size", "12.48px")
+    sort = authed_page.locator("#lifeOsConvosSort")
+    expect(sort).to_be_visible()
+    for locator in (back, scope, sort, combo):
+        assert_min_target(locator)
 
 
 def test_life_os_unresumable_row_says_so(
