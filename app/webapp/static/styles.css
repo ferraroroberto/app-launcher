@@ -3964,6 +3964,11 @@ body.terminal-open {
 }
 .board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
 .board-chief-status-text { flex: 1; min-width: 0; }
+/* On the Coding tab the chief row sits right on top of the running
+   sessions: Start / Resume's -5px hit expansion (#1124) reached into the
+   first session row (TOUCH-02 in the rendered design review). 8px, not
+   less, as for the Board's filter row (#1174). */
+#codingChiefStatus { margin-bottom: var(--space-sm); }
 /* The settings gear sits outside .board-dispatch-row, so it misses that
    row's .compose-record shrink rule and rendered at the base 44px size —
    visibly bigger than every other icon button in the bar (#547). Match the
