@@ -60,43 +60,53 @@ _stats_lock = Lock()
 # The harness applicability matrix — the Settings-tab panel's source of
 # truth for which coding agents the filter actually reaches, and why.
 # claude/codex are wired via fleet-config#544; the rest are tracked
-# fleet-config follow-ups filed after this issue was scoped.
+# fleet-config follow-ups filed after this issue was scoped. Each `note` is
+# shown to the user, so it is plain words (#1238 J-07); the mechanism lives in
+# the comment above each entry.
 HARNESS_SUPPORT: List[Dict[str, str]] = [
     {
         "id": "claude",
         "label": "Claude Code",
         "status": "active",
-        "note": "PreToolUse rewrite via ~/.claude wiring",
+        # PreToolUse rewrite via ~/.claude wiring.
+        "note": "Shortens command output before Claude reads it.",
     },
     {
         "id": "codex",
         "label": "Codex CLI",
         "status": "active",
-        "note": "same hook via codex-hooks.json; mode file reaches it",
+        # Same hook via codex-hooks.json; the mode file reaches it.
+        "note": "Same as Claude Code.",
     },
     {
         "id": "grok",
         "label": "Grok Build",
         "status": "unsupported",
-        "note": "PreToolUse can only allow/deny — cannot rewrite output",
+        # PreToolUse can only allow/deny, so it cannot rewrite output.
+        "note": "Can only allow or block a command, not shorten its output.",
     },
     {
         "id": "pi",
         "label": "Pi",
         "status": "active",
-        "note": "tool_result extension middleware (fleet-config#545) — compresses in place, no re-execution",
+        # tool_result extension middleware (fleet-config#545): compresses in
+        # place, no re-execution.
+        "note": "Shortens tool results in place.",
     },
     {
         "id": "copilot",
         "label": "GitHub Copilot CLI",
         "status": "active",
-        "note": "preToolUse+modifiedArgs (fleet-config#547) — non-interactive verified; TUI hook delivery upstream-unknown",
+        # preToolUse + modifiedArgs (fleet-config#547): verified non-interactive;
+        # whether the TUI delivers the hook is unknown upstream.
+        "note": "Works in one-shot runs; not yet confirmed in the interactive app.",
     },
     {
         "id": "antigravity",
         "label": "Antigravity CLI",
         "status": "active",
-        "note": "agy plugin, PreToolUse overwrite (fleet-config#546)",
+        # agy plugin, PreToolUse overwrite (fleet-config#546).
+        "note": "Shortens command output through its plugin.",
     },
 ]
 

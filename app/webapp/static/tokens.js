@@ -99,7 +99,7 @@ async function mintToken() {
     return;
   }
   if (!jobId) {
-    toast('Pick the job this token may fire.', 'error');
+    toast('Pick the job this token can run.', 'error');
     return;
   }
   try {
@@ -119,7 +119,7 @@ async function mintToken() {
         '/run?token=' + (body.token || '')
       : '';
     els.tokenLabelInput.value = '';
-    toast('Token minted — copy it now, it is shown only once.', 'good');
+    toast('Token created — copy it now, it is shown only once.', 'good');
     await fetchTokens();
   } catch (exc) {
     apiFailToast('Mint failed', exc);
