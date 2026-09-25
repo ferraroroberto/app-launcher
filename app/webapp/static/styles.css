@@ -3019,11 +3019,21 @@ body.terminal-open {
    icon-only touch target here, so match the shorter combo footprint
    instead of the icon-target minimum reasserted just above. */
 #lifeOsConvos .terminal-bar .term-btn {
+  position: relative;
   height: var(--control-h);
   min-height: var(--control-h);
   min-width: 0;
   padding: 0 12px;
   font-size: var(--font-caption);
+}
+/* Kept at the combo's 36px look, but tappable at 44: the same vertical-only
+   expansion the model combo beside them carries (#1124), so two neighbours in
+   this row can never share a pixel. Flagged 73x36 / 83x36 by the rendered
+   design review (TOUCH-01). */
+#lifeOsConvos .terminal-bar .term-btn::before {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
 }
 /* (#886) A fourth control pushed this bar past a 430px viewport. Two flex
    defaults then made that overflow ugly rather than scrollable: the title is
@@ -3324,15 +3334,19 @@ body.terminal-open {
 }
 /* A refused ➤ Send takes that same recipe — without it the button kept its
    full accent fill and read as perfectly usable (#1069). On aria-disabled,
-   not :disabled, so the tap still lands and toasts the reason. */
+   not :disabled, so the tap still lands and toasts the reason. A send in
+   flight takes it too (#1239), with an hourglass for the arrow: the hold is a
+   real `disabled`, and it used to look exactly like a live button. */
 .compose-tools .compose-send[aria-disabled="true"],
-.compose-tools .compose-send[aria-disabled="true"]:active {
+.compose-tools .compose-send[aria-disabled="true"]:active,
+.compose-tools .compose-send.is-sending {
   opacity: 1;
   color: var(--muted);
   background: var(--card-2);
   border-color: var(--line);
   cursor: default;
 }
+.compose-tools .compose-send.is-sending { cursor: progress; }
 .compose-input {
   flex: 1;
   min-width: 0;
