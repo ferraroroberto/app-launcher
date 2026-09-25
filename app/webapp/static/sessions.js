@@ -49,12 +49,17 @@ export function fmtAgo(epochSeconds) {
   return fmtDuration(epochSeconds, { fromEpoch: true, granular: true });
 }
 
-// Last path segment of a session's project dir, lowercased — the project
-// folder name, used to spot a live title that merely echoes it.
-function projectBasename(s) {
+// Last path segment of a session's project dir — the project folder name
+// the row's context line shows in place of the full path (#1238 J-10).
+function projectFolder(s) {
   const dir = String((s && s.project_dir) || '');
   const parts = dir.split(/[\\/]/).filter(Boolean);
-  return (parts.length ? parts[parts.length - 1] : '').toLowerCase();
+  return parts.length ? parts[parts.length - 1] : '';
+}
+
+// The folder name lowercased, used to spot a live title that merely echoes it.
+function projectBasename(s) {
+  return projectFolder(s).toLowerCase();
 }
 
 // Display title for a session, with smart precedence (issue #266, extended
@@ -210,7 +215,11 @@ export function renderSessions() {
     const meta = document.createElement('span');
     meta.className = 'meta';
     const ago = fmtAgo(s.started_at);
-    meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + s.project_dir;
+    // The folder name, not the full Windows path that wrapped to four lines
+    // on a phone (#1238 J-10). The full path is the row's hover hint and the
+    // row menu's Copy path.
+    meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + projectFolder(s);
+    if (s.project_dir) open.title = s.project_dir;
     open.appendChild(meta);
     open.addEventListener('click', function () { openSession(s); });
     main.appendChild(open);
@@ -232,6 +241,8 @@ export function renderSessions() {
     //     endpoint's flavour map): the same overlay in Chat mode. The reader
     //     uses the agent's native history, never the PTY capture a detached
     //     row lacks.
+    //   · Copy path (#1238 J-10) — the full project path the row's context
+    //     line now shortens to its folder name; the toast shows it on a phone.
     //   · Rename (issue #458) — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
@@ -261,6 +272,12 @@ export function renderSessions() {
         onTap: function () { openSession(s, 'chat'); },
       },
       {
+        className: 'session-copy-path-btn', glyph: 'copy',
+        label: 'Copy the project path', text: 'Copy path',
+        hidden: !s.project_dir,
+        onTap: function () { copyProjectPath(s.project_dir); },
+      },
+      {
         glyph: 'pencil', label: 'Rename session', text: 'Rename',
         onTap: function () { openSessionRename(s); },
       },
@@ -279,6 +296,17 @@ export function renderSessions() {
   });
   // The open menu's row is gone (session ended) — drop the stale state.
   sessionMenu.endRender();
+}
+
+// The row menu's Copy path: the toast names the path, so a phone (with no
+// hover) still sees the full path the row's context line now leaves out.
+async function copyProjectPath(path) {
+  try {
+    await navigator.clipboard.writeText(path);
+    toast('Copied ' + path, 'good');
+  } catch (exc) {
+    apiFailToast('Could not copy the path', exc);
+  }
 }
 
 // Open a session when its row (or its kebab's Terminal / Chat item) is

@@ -184,6 +184,16 @@ def test_pty_session_renders_with_both_stop_buttons(
         # Every row is a real button since #1025 — including a detached row
         # of an agent with no transcript reader, which used to render inert.
         expect(row.locator("button.session-open")).to_have_count(1)
+        # #1238 J-10: the context line names the project folder, not the full
+        # Windows path that wrapped to four lines on a phone; the full path is
+        # the row's hover hint and the menu's Copy path.
+        full = row.locator("button.session-open").get_attribute("title") or ""
+        folder = re.split(r"[\\/]", full.rstrip("\\/"))[-1]
+        meta = row.locator("button.session-open .meta").inner_text()
+        assert folder and meta.endswith(folder) and not re.search(r"[\\/]", meta), (
+            f"row {i} ({kind}): context line {meta!r} should end with the "
+            f"folder of {full!r} and carry no path"
+        )
         if "detached" in kind:
             pass
         elif "full control" in kind:
@@ -192,6 +202,13 @@ def test_pty_session_renders_with_both_stop_buttons(
             pytest.fail(f"row {i}: unrecognised session kind text {kind!r}")
 
     assert saw_pty, "launched PTY session did not surface as a 'full control' row"
+
+    launched = authed_page.locator(
+        f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
+    )
+    launched.locator(".session-kebab").click()
+    expect(launched.locator(".session-copy-path-btn")).to_be_visible()
+    authed_page.keyboard.press("Escape")
 
 
 def test_jobs_row_renders_sparkline_and_duration_chip(
