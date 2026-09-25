@@ -229,11 +229,25 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     )
 
 
+# Every /input held 1.5 s in the page before it leaves: a send that "takes a
+# moment" (#1239), long enough to look at the button mid-flight.
+_SLOW_INPUT = """
+(() => {
+  const realFetch = window.fetch.bind(window);
+  window.fetch = async (url, opts) => {
+    if (String(url).endsWith('/input')) await new Promise((r) => setTimeout(r, 1500));
+    return realFetch(url, opts);
+  };
+})()
+"""
+
+
 def test_chat_composer_sends_to_detached_session_and_refreshes(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     captured: dict = {}
     calls: list = []
+    authed_page.add_init_script(_SLOW_INPUT)
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, calls)
     _mock_input(authed_page, captured, [
@@ -274,7 +288,16 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     # The retry lands: box cleared, the unconfirmed wording (not a failure),
     # then one reload of the newest page.
     send.click()
+    # #1239: while it is in flight Send is held and *looks* held, so a second
+    # tap cannot send the message twice. It used to be disabled at full
+    # accent, indistinguishable from a live button.
+    expect(send).to_be_disabled()
+    expect(send).to_have_class(re.compile(r"\bis-sending\b"))
+    expect(send).to_have_attribute("aria-busy", "true")
+    send.click(force=True)
     expect(field).to_have_value("")
+    expect(send).not_to_have_class(re.compile(r"\bis-sending\b"))
+    expect(send).not_to_have_attribute("aria-busy", "true")
     assert captured["body"] == {"data": "continue", "submit": True}
     assert captured["calls"] == 2
     expect(toast).to_contain_text("Sent, not confirmed")
