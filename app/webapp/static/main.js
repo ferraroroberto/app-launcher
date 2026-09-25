@@ -6,7 +6,7 @@
  */
 
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
+import { AuthRequiredError, apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
 import { setTab, wireTabs } from './tabs.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
@@ -162,6 +162,33 @@ async function fetchVersion() {
 }
 
 // --------------------------------------------------------- boot
+// A transient /api/config failure (a dropped connection on the phone, or a
+// loopback socket error on a loaded box, #1243) used to end boot() for good:
+// no session list, and none of the polls armed at the end of boot(), so the
+// app stayed empty until a manual reload (issue #1230). Non-auth failures are
+// retried on this backoff before the toast. A 401 is not retried: it has
+// already raised the login overlay, whose success handler calls boot() again.
+const BOOT_CONFIG_RETRY_MS = [500, 1000, 2000, 4000];
+
+async function fetchConfigForBoot() {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fetchConfig();
+      return true;
+    } catch (exc) {
+      if (exc instanceof AuthRequiredError) return false;
+      if (attempt >= BOOT_CONFIG_RETRY_MS.length) {
+        apiFailToast('Boot failed', exc);
+        return false;
+      }
+      console.warn('boot: /api/config failed, retrying', exc);
+      await new Promise(function (resolve) {
+        setTimeout(resolve, BOOT_CONFIG_RETRY_MS[attempt]);
+      });
+    }
+  }
+}
+
 async function boot() {
   const fromUrl = consumeUrlParam('token');
   if (fromUrl) writeToken(fromUrl);
@@ -183,12 +210,7 @@ async function boot() {
   // (issue #940). ?session= links stay unmarked.
   if (mirrorSid) markMirrorWindowEarly(mirrorSid);
 
-  try {
-    await fetchConfig();
-  } catch (exc) {
-    apiFailToast('Boot failed', exc);
-    return;
-  }
+  if (!(await fetchConfigForBoot())) return;
   // Each remaining boot fetch fills one panel — none is load-bearing for
   // the rest of the app, so a single failure must not abort boot() and take
   // the deep-link branch below down with it: the PC mirror window's title

@@ -37,6 +37,21 @@ def test_page_loads_without_console_errors(authed_page: Page, base_url: str) -> 
 
 
 def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
+    # The first /api/config request fails at the network layer, the way a
+    # loopback socket error on a loaded box (#1243) or a dropped connection on
+    # the phone does. boot() used to stop there for good, so nothing that
+    # config feeds (these options, the session list, every poll) ever
+    # rendered (issue #1230). It must retry and populate the options anyway.
+    config_calls: list = []
+
+    def _fail_first_config(route) -> None:
+        config_calls.append(route.request.url)
+        if len(config_calls) == 1:
+            route.abort("failed")
+        else:
+            route.continue_()
+
+    authed_page.route(re.compile(r".*/api/config$"), _fail_first_config)
     _navigate_collecting_errors(authed_page, base_url)
     # The Coding options card is a <details> collapsed by default — expand
     # it so the segmented controls become visible. renderClaudeOptions()
@@ -62,6 +77,7 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     assert model_count >= 1, f"#claudeModel rendered no buttons (got {model_count})"
     assert effort_count >= 1, f"#claudeEffort rendered no options (got {effort_count})"
     assert perm_count == 2, f"#claudePermission expected 2 range-tab pills (got {perm_count})"
+    assert len(config_calls) >= 2, f"boot never retried /api/config: {config_calls}"
 
 
 def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:
