@@ -70,6 +70,10 @@ classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546
 static_pytest_target = "tests/e2e/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
+# The gate's per-test START/DONE/FAILED log (gitignored; written by
+# scripts/verify-before-ship.ps1 via tests/_progress_log.py). /e2e-audit reads
+# it for the browser leg's time (fleet-config#1018); no time_budget_s is set.
+progress_log          = "webapp/verify-progress.log"
 # Ratchet at the measured size (app-launcher#972, re-audited #1064): this
 # repo's dual-projection suite spans six tabs, so the scaffold's 15-test
 # target doesn't apply here. Lower this as the suite trims; /e2e-audit
