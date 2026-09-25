@@ -881,10 +881,17 @@ def test_life_os_convo_link_opens_that_conversation(
     """#1170: a copied ``?convo=<skill>/<file>`` link lands on the Life OS tab
     with that capture open in the viewer, and strips the param. A link that no
     longer resolves says so in the Conversations overlay — never a blank
-    pane."""
+    pane.
+
+    #1222: the link must not wait on the rest of boot. The git-status fan-out
+    that ran ahead of it took 1–7 s on an idle box and timed the link out
+    under load, so it is held pending here for the whole test — the viewer
+    has to open with it still in flight."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _mock_transcript(authed_page)
+    authed_page.route(re.compile(r".*/api/claude-code/git-status$"),
+                      lambda route: None)
     authed_page.goto(
         f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md",
         wait_until="domcontentloaded")
