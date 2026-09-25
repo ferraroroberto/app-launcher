@@ -18,6 +18,13 @@ which pytest fires only after ``pytest_runtest_makereport`` has returned — by
 then ``tests._credential_hygiene`` has already scrubbed the report, so the
 excerpt inherits its redaction whatever order the two plugins registered in.
 
+Parallel workers (#1231): under pytest-xdist only the controller writes. It
+already receives every worker's start and report hooks, so the log stays one
+writer with no interleaved half-lines, and each DONE / failure line names the
+worker (``[gw2]``) that ran it. Several tests are in flight at once, so a
+wedged run is diagnosed by *every* START without a matching DONE, not only
+the last START line.
+
 Inert for normal pytest runs (env var absent → every hook no-ops). Wired by
 re-export from ``tests/conftest.py``; loadable on its own with
 ``-p tests._progress_log``.
@@ -49,7 +56,8 @@ _excerpts_written = 0
 
 def _write(line: str, detail: Iterable[str] = ()) -> None:
     path = os.environ.get(PROGRESS_ENV, "").strip()
-    if not path:
+    # An xdist worker leaves the log to the controller, which sees its hooks.
+    if not path or os.environ.get("PYTEST_XDIST_WORKER"):
         return
     stamp = time.strftime("%H:%M:%S")
     elapsed = time.monotonic() - _t0
@@ -74,6 +82,13 @@ def failure_excerpt(report: pytest.TestReport) -> List[str]:
     ]
 
 
+def _worker_tag(report: pytest.TestReport) -> str:
+    """`` [gw2]`` for a report the xdist controller received, else ``""``."""
+    gateway = getattr(getattr(report, "node", None), "gateway", None)
+    worker = getattr(gateway, "id", None)
+    return f" [{worker}]" if worker else ""
+
+
 def pytest_runtest_logstart(nodeid, location) -> None:
     _write(f"START {nodeid}")
 
@@ -85,7 +100,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if report.when in ("setup", "call") and report.outcome != "passed":
         # skipped / failed / errored — name the phase so a fixture skip is
         # distinguishable from an assertion failure.
-        line = f"{report.outcome.upper()} ({report.when}) {report.nodeid}"
+        line = f"{report.outcome.upper()} ({report.when}) {report.nodeid}{_worker_tag(report)}"
         detail: List[str] = []
         if report.failed and os.environ.get(PROGRESS_ENV, "").strip():
             _excerpts_written += 1
@@ -100,7 +115,7 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
     if report.when == "teardown":
         _node_totals.pop(report.nodeid, None)
         _durations.append((total, report.nodeid))
-        _write(f"DONE  {report.nodeid} ({total:.1f}s)")
+        _write(f"DONE  {report.nodeid} ({total:.1f}s){_worker_tag(report)}")
 
 
 def write_session_summary(exitstatus: int) -> None:

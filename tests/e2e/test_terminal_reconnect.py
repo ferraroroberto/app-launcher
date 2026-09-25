@@ -29,7 +29,11 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+# serial (#1231): the gate runs these after its parallel workers finish, not
+# among them. They are the suite's most load-sensitive pins (#678: the #444
+# replay pin drives a real Claude process; #58: reconnect input delivery), and
+# at 4 workers the real agent's cold boot overran its budget.
+pytestmark = [pytest.mark.smoke, pytest.mark.serial]
 
 # How long to wait for a typed marker to echo back through a REAL Claude Code
 # process's composer (issue #678). Unlike the UI-transition budgets this is

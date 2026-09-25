@@ -53,6 +53,19 @@ _CASES: dict[str, dict] = {
     "repeated-key": {"lines": ["E2E_TIER=surface", "E2E_PYTEST_TARGET=tests/e2e/test_smoke.py", "E2E_TIER=skip"]},
 }
 
+# Worker plans (#1231): (route case, E2E_WORKERS value) -> Get-E2EWorkerArgs.
+_WORKER_CASES: dict[str, tuple[str, str]] = {
+    "full-default": ("full", ""),
+    "surface-default": ("surface", ""),
+    "full-six": ("full", "6"),
+    "full-one": ("full", "1"),
+    "full-zero": ("full", "0"),
+    "static-default": ("static", ""),
+    "skip-default": ("skip", ""),
+    "full-word": ("full", "four"),
+    "full-negative": ("full", "-2"),
+}
+
 _HARNESS = r"""
 $ErrorActionPreference = 'Stop'
 . $env:E2E_ROUTE_PS1
@@ -64,6 +77,19 @@ foreach ($case in ($env:E2E_FAKE_CASES | ConvertFrom-Json)) {
         Reason = $r.Reason; Serialize = $r.Serialize
     }
 }
+$workers = @{}
+foreach ($w in ($env:E2E_WORKER_CASES | ConvertFrom-Json)) {
+    $r = Get-E2ERoute -ClassifierOutput @($w.lines) -IsCI $false
+    try {
+        $plan = Get-E2EWorkerArgs -Route $r -Setting $w.setting
+        $workers[$w.name] = [pscustomobject]@{
+            Workers = $plan.Workers; Args = (@($plan.Args) -join ' ')
+            SerialArgs = (@($plan.SerialArgs) -join ' '); Error = '' }
+    } catch {
+        $workers[$w.name] = [pscustomobject]@{ Workers = 0; Args = ''; SerialArgs = ''; Error = $_.Exception.Message }
+    }
+}
+$out['__workers__'] = $workers
 $out | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -85,11 +111,15 @@ def routes() -> dict[str, dict]:
         [str(POWERSHELL), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
          "-EncodedCommand", base64.b64encode(_HARNESS.encode("utf-16-le")).decode("ascii")],
         capture_output=True, text=True, encoding="utf-8", errors="replace",
-        env=dict(os.environ, E2E_ROUTE_PS1=str(ROUTE_PS1), E2E_FAKE_CASES=json.dumps(cases)),
+        env=dict(os.environ, E2E_ROUTE_PS1=str(ROUTE_PS1), E2E_FAKE_CASES=json.dumps(cases),
+                 E2E_WORKER_CASES=json.dumps([
+                     {"name": name, "lines": _CASES[route]["lines"], "setting": setting}
+                     for name, (route, setting) in _WORKER_CASES.items()])),
         stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=120,
     )
     assert out.returncode == 0, out.stderr
     result = json.loads(out.stdout)
+    _WORKER_PLANS.update(result.pop("__workers__"))
     # ConvertTo-Json can flatten a one-element array in Windows PowerShell 5.1.
     for route in result.values():
         for key in ("Targets", "Browsers"):
@@ -98,6 +128,10 @@ def routes() -> dict[str, dict]:
             elif not isinstance(route[key], list):
                 route[key] = [route[key]]
     return result
+
+
+# Filled by the `routes` fixture from the same PowerShell run.
+_WORKER_PLANS: dict[str, dict] = {}
 
 
 def _shape(route: dict) -> tuple:
@@ -148,12 +182,45 @@ def test_real_classifier_surface_verdict_reaches_pytest_as_separate_targets(rout
 
 
 def test_gate_runs_the_helper_verdict() -> None:
-    """The gate must dot-source the helper and pass its targets and mutex flag through."""
+    """The gate must dot-source the helper and pass its targets, mutex flag
+    and worker arguments through."""
     gate = GATE_PS1.read_text(encoding="utf-8")
     assert "e2e-gate-route.ps1" in gate
     assert "Get-E2ERoute" in gate
     assert "$route.Serialize" in gate
     assert "@($route.Targets)" in gate
+    assert "Get-E2EWorkerArgs -Route $route -Setting $env:E2E_WORKERS" in gate
+    assert "@($workerPlan.Args)" in gate
+    assert "@($workerPlan.SerialArgs)" in gate
+
+
+def test_dual_projection_tiers_run_on_two_workers_by_default(routes: dict) -> None:
+    """#1231: full and surface runs spread over 2 xdist workers (the measured
+    trade-off against the live webapp's latency), minus the `serial` tests,
+    which get their own pass once the workers are done."""
+    for case in ("full-default", "surface-default"):
+        plan = _WORKER_PLANS[case]
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"], plan["Error"]) == (
+            2, "-n 2 --dist load -m not serial", "-m serial", ""), (case, plan)
+
+
+def test_e2e_workers_overrides_the_count_and_one_or_zero_is_serial(routes: dict) -> None:
+    assert _WORKER_PLANS["full-six"]["Args"] == "-n 6 --dist load -m not serial"
+    for case in ("full-one", "full-zero"):
+        plan = _WORKER_PLANS[case]
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"]) == (1, "", ""), case
+
+
+def test_single_projection_and_skipped_tiers_stay_serial(routes: dict) -> None:
+    """The static Chromium smoke is too short to repay a worker's own boot."""
+    for case in ("static-default", "skip-default"):
+        plan = _WORKER_PLANS[case]
+        assert (plan["Workers"], plan["Args"], plan["SerialArgs"]) == (1, "", ""), case
+
+
+def test_a_bad_worker_count_fails_loudly_instead_of_guessing(routes: dict) -> None:
+    for case in ("full-word", "full-negative"):
+        assert "E2E_WORKERS must be a whole number" in _WORKER_PLANS[case]["Error"], case
 
 
 def test_helper_is_ascii_for_windows_powershell_5_1() -> None:

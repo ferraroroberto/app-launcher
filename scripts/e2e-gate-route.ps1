@@ -2,9 +2,10 @@
 #
 # Turns scripts/classify_e2e.py's E2E_* lines into what the gate runs: the
 # tier, the pytest target arguments, the browsers, and whether the run must
-# hold the machine-wide dual-projection mutex. Dot-sourced by the gate and kept
-# free of side effects so tests/test_verify_gate_route.py can drive it with
-# fake classifier output.
+# hold the machine-wide dual-projection mutex -- plus, from Get-E2EWorkerArgs
+# at the bottom, how many parallel workers it runs on. Dot-sourced by the gate
+# and kept free of side effects so tests/test_verify_gate_route.py can drive it
+# with fake classifier output.
 #
 # Fail-safe: anything the gate can't use -- no verdict, an unknown tier, a
 # repeated E2E_* key, a static/full/surface verdict with no target -- runs the
@@ -93,5 +94,57 @@ function Get-E2ERoute {
         Browsers  = $browsers
         Reason    = $reason
         Serialize = ($tier -ne "static")
+    }
+}
+
+# Browser-suite parallelism (#1231, step 1 of #1220). THE one setting for how
+# many pytest-xdist workers a dual-projection run (full / surface) uses:
+# $E2EDefaultWorkers, overridable per run with the E2E_WORKERS env var. 0 or 1
+# runs serially, exactly as before #1231. Parallelism changes when tests run,
+# never which: every node still runs on both projections.
+#
+# The static tier (Chromium smoke, ~15 s) stays serial -- a worker boots its
+# own webapp + session-host (~4 s each), which would cost more than it saves.
+# --dist load spreads tests one at a time. Tests marked `serial`
+# (test_terminal_reconnect.py: the real-agent replay pin and the reconnect
+# pins, #678/#58) are excluded from that pass and run in a second, serial pass
+# once the workers are done: measured at n=4 they failed while the other
+# workers loaded the box (a real Claude cold boot overran its 90 s budget),
+# and keeping them on one worker did not help, because the load is the other
+# workers'. A narrowed target may hold no serial test, or only serial tests;
+# the gate treats "nothing collected" (pytest exit 5) in one pass as fine as
+# long as the other ran something. All of it runs inside the gate's one
+# machine-wide dual-projection mutex (#685), which serialises gates across
+# checkouts, not the workers within one.
+#
+# Why 2, not the 4 #1220 proposed (measured 2026-09-25, table in #1231's PR):
+# the workers share this box with the live webapp the phone uses. Serially the
+# live /api/board answered in 0.30 s (median); at 2 workers 3.0 s; at 3 or 4
+# about 10 s for the whole run. Below-normal process priority did not change
+# that. 2 workers cut the browser leg from ~30 to ~20 min without making the
+# live app sluggish; set E2E_WORKERS=4 (~13 min) when nobody is using it.
+$E2EDefaultWorkers = 2
+
+function Get-E2EWorkerArgs {
+    param(
+        [Parameter(Mandatory = $true)]$Route,
+        [AllowEmptyString()][AllowNull()][string]$Setting
+    )
+
+    $workers = $E2EDefaultWorkers
+    if ($Setting) {
+        $parsed = 0
+        if (-not [int]::TryParse($Setting.Trim(), [ref]$parsed) -or $parsed -lt 0) {
+            throw ("E2E_WORKERS must be a whole number of workers (0 or 1 = serial), got '{0}'" -f $Setting)
+        }
+        $workers = $parsed
+    }
+    if (-not $Route.Serialize -or $workers -le 1) {
+        return [pscustomobject]@{ Workers = 1; Args = @(); SerialArgs = @() }
+    }
+    return [pscustomobject]@{
+        Workers    = $workers
+        Args       = @("-n", [string]$workers, "--dist", "load", "-m", "not serial")
+        SerialArgs = @("-m", "serial")
     }
 }
