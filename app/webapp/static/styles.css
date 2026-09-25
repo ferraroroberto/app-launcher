@@ -3015,11 +3015,21 @@ body.terminal-open {
    icon-only touch target here, so match the shorter combo footprint
    instead of the icon-target minimum reasserted just above. */
 #lifeOsConvos .terminal-bar .term-btn {
+  position: relative;
   height: var(--control-h);
   min-height: var(--control-h);
   min-width: 0;
   padding: 0 12px;
   font-size: var(--font-caption);
+}
+/* Kept at the combo's 36px look, but tappable at 44: the same vertical-only
+   expansion the model combo beside them carries (#1124), so two neighbours in
+   this row can never share a pixel. Flagged 73x36 / 83x36 by the rendered
+   design review (TOUCH-01). */
+#lifeOsConvos .terminal-bar .term-btn::before {
+  content: "";
+  position: absolute;
+  inset: -5px 0;
 }
 /* (#886) A fourth control pushed this bar past a 430px viewport. Two flex
    defaults then made that overflow ugly rather than scrollable: the title is
