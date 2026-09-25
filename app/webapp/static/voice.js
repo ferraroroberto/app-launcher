@@ -13,12 +13,17 @@
  * the target textarea for review — never straight into a PTY or a dispatch.
  */
 
-import { apiFailToast, apiRaw, readToken, toast } from './api.js';
+import { AuthRequiredError, apiFailToast, apiRaw, readToken, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 
 const _CHUNK_MS = 1000;
+// A chunk upload that fails (network error or non-2xx) is retried this many
+// times in all, backing off _CHUNK_RETRY_MS x attempt, before it is counted
+// as lost (#1234). Chunks stay in order: the drain waits on each one.
+const _CHUNK_ATTEMPTS = 3;
+const _CHUNK_RETRY_MS = 500;
 
 // The mic-button availability gate shared by every dictation mount point
 // (compose bar, Board dispatch bar, Board drawer reply): the
@@ -127,7 +132,14 @@ export function createDictation(opts) {
   let _streaming = false;
   let _voiceEvents = null;
   let _chunkQueue = [];
-  let _chunkDraining = false;
+  // The drain in flight (#1234): one promise, settled only once the queue is
+  // empty, so /finish can wait for the whole take. It used to be a boolean,
+  // and a second caller — finishStreaming — returned at once while the
+  // first drain still had chunks queued, so /finish closed the session
+  // before the tail of the take was sent.
+  let _drain = null;
+  // Chunks that could not be delivered even after retries, this take.
+  let _chunksLost = 0;
   // The dictated span inside the textarea: [_dictStart, _dictStart+_dictLen].
   // Each partial replaces exactly that span, preserving text typed before it.
   let _dictStart = 0;
@@ -166,25 +178,59 @@ export function createDictation(opts) {
     }
   }
 
-  // Sequentially POST queued audio chunks so they reach the session-host in
-  // order (overlapping POSTs could interleave on the raw file).
-  async function drainChunks() {
-    if (_chunkDraining) return;
-    _chunkDraining = true;
-    try {
-      while (_chunkQueue.length && _voiceSession) {
-        const blob = _chunkQueue.shift();
-        try {
-          await apiRaw(
-            '/api/transcribe/sessions/' + encodeURIComponent(_voiceSession) +
-              '/chunk',
-            { method: 'POST', terminalToken: readTerminalToken(), body: blob }
-          );
-        } catch (_) { /* a dropped chunk is recoverable; finish reconciles */ }
+  // POST one chunk, retrying a failure. A non-2xx answer is a failure too:
+  // api() throws only on 401, so a 502 from a loaded proxy used to count as
+  // delivered. Resolves true once the server accepted the chunk.
+  async function sendChunk(sid, blob) {
+    for (let attempt = 1; attempt <= _CHUNK_ATTEMPTS; attempt++) {
+      try {
+        const res = await apiRaw(
+          '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/chunk',
+          { method: 'POST', terminalToken: readTerminalToken(), body: blob }
+        );
+        if (res.ok) return true;
+        console.warn('dictation: chunk upload answered HTTP ' + res.status +
+          ' (attempt ' + attempt + '/' + _CHUNK_ATTEMPTS + ')');
+      } catch (exc) {
+        if (exc instanceof AuthRequiredError) return false;
+        console.warn('dictation: chunk upload failed (attempt ' + attempt +
+          '/' + _CHUNK_ATTEMPTS + ')', exc);
       }
-    } finally {
-      _chunkDraining = false;
+      if (attempt < _CHUNK_ATTEMPTS) {
+        await new Promise(function (r) { setTimeout(r, _CHUNK_RETRY_MS * attempt); });
+      }
     }
+    return false;
+  }
+
+  // Sequentially POST queued audio chunks so they reach the session-host in
+  // order (overlapping POSTs could interleave on the raw file). Every caller
+  // gets the same promise, which settles only when the queue is empty.
+  //
+  // Each POST carries everything queued so far, not one chunk (#1234): the
+  // recorder's chunks are consecutive slices of one byte stream, so joined
+  // they are still valid audio, in order. On 2026-09-25 a 1 s chunk took
+  // 3-5 s to upload under load; one chunk per request then fell further
+  // behind every second of speech, and at stop the rest of the take was
+  // still queued. Batched, a slow request simply carries more audio.
+  function drainChunks() {
+    if (!_drain) {
+      _drain = (async function () {
+        try {
+          while (_chunkQueue.length && _voiceSession) {
+            const batch = _chunkQueue.slice();
+            const blob = batch.length === 1
+              ? batch[0]
+              : new Blob(batch, { type: batch[0].type });
+            if (!(await sendChunk(_voiceSession, blob))) _chunksLost += batch.length;
+            _chunkQueue.splice(0, batch.length);
+          }
+        } finally {
+          _drain = null;
+        }
+      })();
+    }
+    return _drain;
   }
 
   async function startRecording() {
@@ -235,6 +281,7 @@ export function createDictation(opts) {
     }
     _recordChunks = [];
     _chunkQueue = [];
+    _chunksLost = 0;
     _voiceSession = null;
     _streaming = false;
 
@@ -351,6 +398,8 @@ export function createDictation(opts) {
     button.disabled = true;
     const stopTimer = startWorkTimer(button, icon('mic'));
     try {
+      // The recorder's last dataavailable (the flush on stop) has just been
+      // queued; wait until it and every chunk before it reached the server.
       await drainChunks();
       const res = await apiRaw(
         '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/finish',
@@ -373,7 +422,14 @@ export function createDictation(opts) {
         toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
       } else if (body && typeof body.transcript === 'string') {
         renderDictation(body.transcript);
-        toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
+        if (_chunksLost) {
+          // Distinct from a failed transcription: the text is there, but
+          // part of the take never reached the transcriber.
+          toast('Transcribed, but ' + _chunksLost + ' s of audio could not be ' +
+            'uploaded — the text may be missing words.', 'error', { icon: 'mic' });
+        } else {
+          toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
+        }
       }
       if (!_aborted) getTextarea().focus();
     } catch (exc) {
