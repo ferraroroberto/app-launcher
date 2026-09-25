@@ -194,6 +194,7 @@ def test_coding_tab_rename_wins_over_launch_name(
     expect(row.locator(".name")).to_have_text("My custom title", timeout=10_000)
 
 
+@pytest.mark.iphone
 def test_full_control_rename_dialog_copies_session_link(
     authed_page: Page, base_url: str
 ) -> None:
@@ -323,6 +324,7 @@ def test_board_drawer_rename_patches_card_in_place(
     )
 
 
+@pytest.mark.iphone
 def test_rename_dialog_adopts_modal_contract(
     authed_page: Page, base_url: str
 ) -> None:
@@ -375,6 +377,7 @@ def test_rename_dialog_adopts_modal_contract(
     )
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("width", [700, 900, 1100])
 def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     authed_page: Page, base_url: str, width: int

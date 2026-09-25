@@ -85,6 +85,7 @@ def test_chief_row_shows_crown_worker_row_does_not(
     expect(worker_row.locator(".board-chief-crown")).to_have_count(0)
 
 
+@pytest.mark.iphone
 def test_chief_terminal_overlay_shows_crown_in_title(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:

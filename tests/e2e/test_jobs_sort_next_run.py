@@ -82,6 +82,7 @@ def _row_ids(page: Page):
     )
 
 
+@pytest.mark.iphone
 def test_jobs_default_to_next_run_order_with_countdown(
     authed_page: Page, base_url: str
 ) -> None:

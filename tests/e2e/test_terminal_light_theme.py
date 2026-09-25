@@ -27,7 +27,7 @@ from playwright.sync_api import Page
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
 def test_open_terminal_restyles_live_on_theme_flip(

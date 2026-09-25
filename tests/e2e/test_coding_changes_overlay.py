@@ -116,6 +116,7 @@ def _open_via_menu(page: Page, app_id: str = "alpha") -> None:
     page.locator(f'.coding-item[data-id="{app_id}"] .project-changes-btn').click()
 
 
+@pytest.mark.iphone
 def test_overlay_lists_files_and_expands_a_tinted_diff(
     authed_page: Page, base_url: str
 ) -> None:

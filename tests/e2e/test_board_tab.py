@@ -149,6 +149,7 @@ def _unfold(page: Page, *section_ids: str) -> None:
         expect(section).to_have_attribute("open", "")
 
 
+@pytest.mark.iphone
 def test_board_renders_columns_counts_and_cards(
     authed_page: Page, base_url: str
 ) -> None:
@@ -514,6 +515,7 @@ def _mock_exchange(
     )
 
 
+@pytest.mark.iphone
 def test_board_card_drawer_shows_exchange_and_posts_reply(
     authed_page: Page, base_url: str
 ) -> None:
@@ -724,6 +726,7 @@ def test_backlog_start_button_posts_issue_start(
     assert body.get("model") == "claude:fable"
 
 
+@pytest.mark.iphone
 def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     authed_page: Page, base_url: str
 ) -> None:
@@ -788,6 +791,7 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     )
 
 
+@pytest.mark.iphone
 def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     authed_page: Page, base_url: str
 ) -> None:
@@ -867,6 +871,7 @@ def test_backlog_issue_claim_states_stale_and_unverified(
     expect(unverified.locator(".board-issue-btn").first).to_be_disabled()
 
 
+@pytest.mark.iphone
 def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1189,6 +1194,7 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
     expect(drawer.locator(".composer-mic")).to_be_enabled()
 
 
+@pytest.mark.iphone
 def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
@@ -1480,6 +1486,7 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     expect(draft).to_have_value("half-typed reply")
 
 
+@pytest.mark.iphone
 def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1631,6 +1638,7 @@ def _status_with_ocr(route) -> None:
     route.fulfill(response=resp, json=body)
 
 
+@pytest.mark.iphone
 def test_drawer_image_menu_is_not_clipped_above_a_top_of_column_card(
     authed_page: Page, base_url: str
 ) -> None:

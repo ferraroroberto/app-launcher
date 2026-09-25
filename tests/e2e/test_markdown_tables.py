@@ -36,7 +36,7 @@ from tests.e2e.test_session_mode_toggle import (
     _session_row,
 )
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _SID = "sid-md-table-1141"
 

@@ -114,6 +114,7 @@ def _dot(page: Page, job_id: str):
     return page.locator(f"#jobsList li[data-id='{job_id}'] [data-role='status-dot']")
 
 
+@pytest.mark.iphone
 def test_three_outcomes_render_distinctly(
     authed_page: Page, base_url: str
 ) -> None:

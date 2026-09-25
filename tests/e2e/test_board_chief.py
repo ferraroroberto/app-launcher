@@ -161,6 +161,7 @@ def _enter_chat_mode(page: Page) -> None:
     expect(page.locator("#boardDispatchMode")).to_have_attribute("data-value", "chat")
 
 
+@pytest.mark.iphone
 def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     authed_page: Page, base_url: str
 ) -> None:

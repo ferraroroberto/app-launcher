@@ -253,6 +253,7 @@ def test_toggle_keeps_terminal_scrollback_and_socket(
     expect(authed_page.locator("#contextRing")).to_be_hidden()
 
 
+@pytest.mark.iphone
 def test_row_tap_reopens_last_mode(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:

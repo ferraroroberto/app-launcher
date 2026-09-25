@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
 def test_toast_is_body_level_and_renders_above_nav_bar(

@@ -140,6 +140,7 @@ def test_resume_with_detached_launches_remote_console(
     assert payload.get("agent") == "claude"
 
 
+@pytest.mark.iphone
 def test_checked_toggle_carries_no_accent_border_or_tint(
     authed_page: Page, base_url: str
 ) -> None:

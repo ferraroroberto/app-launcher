@@ -217,6 +217,7 @@ def test_agent_visibility_switch_identity_survives_successful_save(
     )
 
 
+@pytest.mark.iphone
 def test_brand_marks_are_sprite_symbols_with_no_chip(
     authed_page: Page, base_url: str
 ) -> None:

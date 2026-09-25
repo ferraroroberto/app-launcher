@@ -10,9 +10,10 @@ suite, and a module without it falls between them rather than failing loudly:
   guard in ``tests/e2e/conftest.py`` aborts the whole run with
   ``pytest.exit(returncode=2)``.
 
-Nothing re-marks these modules at collection time (there is no
-``pytest_collection_modifyitems`` in the tree), so each module's own
-``pytestmark`` is the only source of truth.
+Nothing re-marks these modules at collection time (the one
+``pytest_collection_modifyitems``, in ``tests/e2e/conftest.py``, only
+deselects WebKit nodes, #1220), so each module's own ``pytestmark`` is the
+only source of truth.
 
 The check parses the module with :mod:`ast` rather than importing it (no
 Playwright needed) and rather than matching a fixed line, because both

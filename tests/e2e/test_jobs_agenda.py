@@ -106,6 +106,7 @@ def _open_agenda(page: Page, base_url: str) -> None:
     page.wait_for_selector(".jobs-agenda-row", state="attached", timeout=5_000)
 
 
+@pytest.mark.iphone
 def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None:
     _wire(authed_page)
     _open_agenda(authed_page, base_url)

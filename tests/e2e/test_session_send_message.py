@@ -28,7 +28,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _SID = "s-send-967"
 

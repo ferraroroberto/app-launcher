@@ -25,7 +25,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import stable_read
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _PROJECT = "gitlab-to-github-migrator-for-the-closed-company-accounting-archive"
 _BRANCH = "feat/1126-a-rather-long-branch-name-for-the-tag"

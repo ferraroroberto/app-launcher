@@ -733,20 +733,37 @@ def browser_context_args(
     return args
 
 
-@pytest.fixture(scope="session")
-def chromium_projection_only(browser_name: str) -> None:
-    """Skip the WebKit projection for a check with no browser-dependent signal.
+def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
+    """Run the WebKit/iPhone projection only where engine or viewport matters.
 
-    Opt in per module with ``pytest.mark.usefixtures("chromium_projection_only")``:
-    server-side ``requests`` checks, and pure-JS helpers probed through
-    ``page.evaluate`` with no DOM geometry or CSS, give the same answer on both
-    engines, so a second projection only doubles the runtime (#954). Chromium is
-    the one kept because the diff-proportionate gate's narrow static tier
-    (#568) runs Chromium only. Session-scoped so the skip fires before any
-    function-scoped fixture (browser context, PTY launch) is built for nothing.
+    The one place that decides it (#1220). A browser test runs on Chromium,
+    and also on WebKit/iPhone only when it carries the ``iphone`` marker
+    (``pytest.ini``), on the test or in its module's ``pytestmark``. Keep
+    ``iphone`` for layout, geometry and computed style, touch targets, nav,
+    the composer and keyboard input, safe-area, and tests that branch on the
+    engine. Everything else gives the same answer on both engines, so its
+    WebKit node is *deselected* here rather than skipped: it is never built,
+    and never counted as a skip.
+
+    ``tests/test_e2e_iphone_projection.py`` keeps the marker honest: any test
+    that reads geometry or computed style, taps, or branches on the engine
+    must carry it. Measured basis (#1220): 0 WebKit-engine product bugs in
+    400 PRs, WebKit was 61% of browser time, and iOS-only bugs don't
+    reproduce in desktop WebKit either, so the real iPhone check stays on the
+    device. Chromium is the engine kept everywhere because the gate's narrow
+    static tier (#568) runs Chromium only.
     """
-    if browser_name != "chromium":
-        pytest.skip("no browser-dependent signal; runs once on the chromium projection")
+    kept, dropped = [], []
+    for item in items:
+        callspec = getattr(item, "callspec", None)
+        on_webkit = callspec is not None and callspec.params.get("browser_name") == "webkit"
+        if on_webkit and item.get_closest_marker("iphone") is None:
+            dropped.append(item)
+        else:
+            kept.append(item)
+    if dropped:
+        config.hook.pytest_deselected(items=dropped)
+        items[:] = kept
 
 
 # Bound the default Playwright action + navigation timeout (issue #186).
