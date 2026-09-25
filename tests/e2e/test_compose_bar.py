@@ -79,6 +79,22 @@ async (message) => {
 }
 """
 
+# The home-indicator inset of a Face ID iPhone in portrait, in CSS px (the
+# ~34px the #1099 note in .fleet.toml measures), and a probe of what
+# env(safe-area-inset-bottom) resolves to on the page right now.
+_IPHONE_BOTTOM_INSET = 34
+_RESOLVED_BOTTOM_INSET_JS = r"""
+() => {
+  const probe = document.createElement('div');
+  probe.style.cssText =
+    'position:fixed;visibility:hidden;height:0;padding-bottom:env(safe-area-inset-bottom,0px)';
+  document.body.appendChild(probe);
+  const px = probe.getBoundingClientRect().height;
+  probe.remove();
+  return px;
+}
+"""
+
 # The strip's box, the message's alignment, and where the message's painted
 # content (icon + text, via a Range) actually sits inside the strip.
 _STATUS_STRIP_JS = r"""
@@ -322,7 +338,7 @@ def test_compose_attach_multiple_images_in_one_pick(
 
 
 def test_compose_send_and_attach_stay_put_during_autogrow(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
     """Issue #447: the ➤ Send button (and the compose-tools grid, e.g. the
     image button) must not move when the textarea auto-grows on a dictation
@@ -338,7 +354,8 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
 
     Issue #1219 extends the same pin downward: a connection status message
     appearing or clearing must not move them either, and it sits centred in
-    the reserved bottom strip."""
+    the reserved bottom strip. Reopened, it pins how tall that strip gets
+    under an iPhone's home-indicator inset (emulated on Chromium)."""
     sid = launched_pty_session
     _open_terminal(authed_page, base_url, sid)
     _show_composer(authed_page)
@@ -381,11 +398,10 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     # is now the content of an always-laid-out bottom strip, so only the
     # strip's content changes, and the message is centred in it.
     #
-    # What this cannot prove: the strip also takes env(safe-area-inset-bottom)
-    # so the controls clear the iPhone's rounded corners, and that inset
-    # resolves to 0px in headless Chromium and in the WebKit/iPhone
-    # projection alike (the #1099 blind spot, .fleet.toml). A green run here
-    # means "no shift, centred" — the corner clearance is a device check.
+    # env(safe-area-inset-bottom) resolves to 0px in headless Chromium and in
+    # the WebKit/iPhone projection alike (the #1099 blind spot, .fleet.toml),
+    # so these checks run with no inset; the Chromium-only block at the end
+    # emulates one. Whether the corners actually clear is still a device check.
     idle = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
     assert idle and idle["hidden"] is True, f"status not idle once connected: {idle}"
     assert idle["height"] >= 30, (
@@ -424,6 +440,30 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
     assert send_cleared and abs(send_cleared["y"] - send_after["y"]) < 1, (
         f"Send button moved when the status message cleared: {send_after} -> {send_cleared}"
     )
+
+    # #1219 reopened: under the home-indicator inset the strip must be
+    # max(row, inset) tall, the inset overlapping the reserved row. The first
+    # cut stacked them (row + inset), about 70px of blank card under the
+    # composer on the owner's iPhone, twice the gap wanted. Chromium can
+    # emulate the inset over CDP, so its leg sees what only the device showed;
+    # WebKit has no such override. The probe proves env() really resolved,
+    # so a silently ignored override cannot pass as "no stacking".
+    if browser_name == "chromium":
+        cdp = authed_page.context.new_cdp_session(authed_page)
+        cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {
+            "bottom": _IPHONE_BOTTOM_INSET, "bottomMax": _IPHONE_BOTTOM_INSET}})
+        resolved = authed_page.evaluate(_RESOLVED_BOTTOM_INSET_JS)
+        assert resolved == _IPHONE_BOTTOM_INSET, (
+            f"the emulated safe-area inset did not reach env(): {resolved}px"
+        )
+        inset = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+        expected = max(idle["height"], _IPHONE_BOTTOM_INSET)
+        assert inset and abs(inset["height"] - expected) < 1, (
+            f"under a {_IPHONE_BOTTOM_INSET}px home-indicator inset the status strip "
+            f"is {inset and inset['height']:.1f}px tall, want max(row "
+            f"{idle['height']:.1f}px, inset) = {expected:.1f}px: the inset is "
+            "stacking under the reserved row instead of overlapping it"
+        )
 
 
 def test_terminal_composer_has_no_mod_enter_send(

@@ -2908,10 +2908,10 @@ body.terminal-open {
   /* No padding-bottom: the overlay itself runs to the physical bottom edge
      (no dead band of its own background above the iOS home indicator).
      The session overlay's bottom row is the status strip (#1219), and it
-     takes env(safe-area-inset-bottom) as its OWN padding-bottom — the same
-     shape as `.app` and the lightbox: the bottom-most surface carries the
-     inset, so its background reaches the glass while everything above it
-     clears the indicator and the rounded corners. Not here: that would put
+     takes env(safe-area-inset-bottom) into its OWN height — the same idea
+     as `.app` and the lightbox: the bottom-most surface carries the inset,
+     so its background reaches the glass while everything above it clears
+     the indicator and the rounded corners. Not here: that would put
      a band of the overlay's background under the strip and also move the
      two Life OS shells that share this class, which have no bottom row. */
   /* Containment + the iOS-supported `overscroll-behavior: contain`
@@ -3445,29 +3445,31 @@ body.terminal-open {
    composer up on every "Connecting…" and dropped it back on connect).
 
    env(safe-area-inset-bottom) enters here and nowhere else in the overlay,
-   as this bottom-most surface's own padding — the `.app` / lightbox shape:
-   the card background runs to the glass, the message row sits above the
-   home indicator. content-box, against the global border-box, so the
-   reserved row is the min-height itself and the inset is added below it
-   instead of eating into it.
+   and it OVERLAPS the reserved row instead of stacking under it: the strip
+   is max(row, inset) tall, not row + inset. On an iPhone the two are about
+   the same size (~36px row, ~34px home-indicator inset), so the first cut
+   stacked them into ~70px of blank card under the composer, twice the gap
+   the owner wanted (#1219 reopened). Overlapped, the controls still sit a
+   full row above the glass, clear of the rounded corners, and a device with
+   no inset keeps exactly the one row. The card background runs to the glass,
+   as on `.app` and the lightbox.
 
    No top hairline: blank, the strip reads as the composer's own bottom
    margin on the same card surface; the message is marked by its colour. */
 .terminal-status-strip {
+  --status-row: calc(var(--font-body-sm) * 1.45 + 16px);
   display: flex;
   flex-shrink: 0;
-  box-sizing: content-box;
-  min-height: calc(var(--font-body-sm) * 1.45 + 16px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  min-height: max(var(--status-row), env(safe-area-inset-bottom, 0px));
   background: var(--card);
 }
 /* While the on-screen keyboard is up the overlay is pinned to end at the
    keyboard's top edge (terminal.js applySize, #135), and the keyboard covers
-   the home indicator, so the inset would only be a ~34px dead band between
-   the composer and the keys. `data-keyboard` is set and cleared at exactly
-   the sites that apply and undo that pin. Only the inset goes: the reserved
-   status row stays, so a message appearing still moves nothing. */
-#terminalOverlay[data-keyboard] .terminal-status-strip { padding-bottom: 0; }
+   the home indicator, so the inset has nothing left to clear. `data-keyboard`
+   is set and cleared at exactly the sites that apply and undo that pin. Only
+   the inset goes: the reserved status row stays, so a message appearing
+   still moves nothing. */
+#terminalOverlay[data-keyboard] .terminal-status-strip { min-height: var(--status-row); }
 /* The message itself: stretched to fill the reserved row (so the tap-to-
    reconnect target is the whole row) and centred both ways, so a short
    message never runs into a rounded corner and the icon never grows the
