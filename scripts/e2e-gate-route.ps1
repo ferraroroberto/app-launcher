@@ -116,7 +116,14 @@ function Get-E2ERoute {
 # long as the other ran something. All of it runs inside the gate's one
 # machine-wide dual-projection mutex (#685), which serialises gates across
 # checkouts, not the workers within one.
-$E2EDefaultWorkers = 4
+#
+# Why 2, not the 4 #1220 proposed (measured 2026-09-25, table in #1231's PR):
+# the workers share this box with the live webapp the phone uses. Serially the
+# live /api/board answered in 0.30 s (median); at 2 workers 3.0 s; at 3 or 4
+# about 10 s for the whole run. Below-normal process priority did not change
+# that. 2 workers cut the browser leg from ~30 to ~20 min without making the
+# live app sluggish; set E2E_WORKERS=4 (~13 min) when nobody is using it.
+$E2EDefaultWorkers = 2
 
 function Get-E2EWorkerArgs {
     param(

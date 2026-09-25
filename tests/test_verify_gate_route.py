@@ -194,13 +194,14 @@ def test_gate_runs_the_helper_verdict() -> None:
     assert "@($workerPlan.SerialArgs)" in gate
 
 
-def test_dual_projection_tiers_run_on_four_workers_by_default(routes: dict) -> None:
-    """#1231: full and surface runs spread over 4 xdist workers, minus the
-    `serial` tests, which get their own pass once the workers are done."""
+def test_dual_projection_tiers_run_on_two_workers_by_default(routes: dict) -> None:
+    """#1231: full and surface runs spread over 2 xdist workers (the measured
+    trade-off against the live webapp's latency), minus the `serial` tests,
+    which get their own pass once the workers are done."""
     for case in ("full-default", "surface-default"):
         plan = _WORKER_PLANS[case]
         assert (plan["Workers"], plan["Args"], plan["SerialArgs"], plan["Error"]) == (
-            4, "-n 4 --dist load -m not serial", "-m serial", ""), (case, plan)
+            2, "-n 2 --dist load -m not serial", "-m serial", ""), (case, plan)
 
 
 def test_e2e_workers_overrides_the_count_and_one_or_zero_is_serial(routes: dict) -> None:
