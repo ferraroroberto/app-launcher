@@ -873,6 +873,48 @@ def _seed_token_init_script(token: str) -> str:
     return f"window.localStorage.setItem({safe_key}, {safe});"
 
 
+@pytest.fixture(autouse=True)
+def _restore_disposable_config(request: pytest.FixtureRequest) -> Iterator[None]:
+    """Put back any server-side setting a test changed (#1231).
+
+    Several tests POST /api/config (favourite agent, hidden agents, model)
+    and leave the value behind; run in file order, a sibling test in the same
+    module happened to reset it. Spread over parallel workers the sibling can
+    run on another worker's webapp, so the change leaked: a favourite set to
+    Codex left `test_resume_toggle` waiting for a Claude main button that no
+    longer existed. The webapp holds its config in memory (`app.state`), so
+    restoring means POSTing the changed keys back; the endpoint drops any key
+    it does not accept. Autoboot only — never touch the live tray's config.
+    """
+    if "base_url" not in request.fixturenames or not _autoboot_enabled(request.config):
+        yield
+        return
+    base = request.getfixturevalue("base_url")
+
+    def _snapshot() -> Optional[dict]:
+        try:
+            res = requests.get(f"{base}/api/config", timeout=10, verify=False)
+            res.raise_for_status()
+            return res.json()
+        except requests.RequestException as exc:
+            logger.warning("⚠️ could not snapshot the disposable config: %s", exc)
+            return None
+
+    before = _snapshot()
+    yield
+    after = _snapshot() if before is not None else None
+    if before is None or after is None:
+        return
+    changed = {k: v for k, v in before.items() if after.get(k) != v}
+    if changed:
+        try:
+            requests.post(f"{base}/api/config", json=changed, timeout=10,
+                          verify=False).raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("⚠️ could not restore the disposable config %s: %s",
+                           sorted(changed), exc)
+
+
 @pytest.fixture
 def authed_page(
     context: BrowserContext, base_url: str, auth_token: str
