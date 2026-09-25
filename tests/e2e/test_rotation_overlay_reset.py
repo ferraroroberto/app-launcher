@@ -31,7 +31,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # The SPA loads its modules cache-busted (`terminal.js?v=<asset_hash>`); see
 # test_warm_terminal_reopen.py for why a plain import() would test a second,

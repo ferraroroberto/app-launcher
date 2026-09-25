@@ -11,8 +11,8 @@ with a live pywinpty session running so a regression in the filter
 shows up as a real row in the API response, not just a unit-level
 failure inside ``src/diagnostics.py``.
 
-Non-browser: ``requests`` against the live tray. Skips on the duplicate
-projection so the suite total isn't inflated.
+Non-browser: ``requests`` against the live tray, so it runs on the
+Chromium projection only (#1220).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from __future__ import annotations
 import pytest
 import requests
 
-pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("chromium_projection_only")]
+pytestmark = pytest.mark.smoke
 
 # pywinpty opens its ephemerals in the dynamic/private range. The
 # diagnostics filter uses the same threshold (IANA dynamic ports start

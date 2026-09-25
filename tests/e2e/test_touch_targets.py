@@ -29,7 +29,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
 from tests.e2e.test_row_name_typography import _json_route, _mock
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # Everything a thumb can hit.
 _CONTROLS = (

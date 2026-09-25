@@ -29,7 +29,7 @@ from playwright.sync_api import Page
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # Settle window plus generous headroom for a loaded runner: long enough that a
 # settled frame has certainly gone out, still far below any test timeout.

@@ -31,7 +31,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
 def test_inpage_loopback_open_is_not_treated_as_mirror(

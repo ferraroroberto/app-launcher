@@ -324,6 +324,7 @@ def test_life_os_detached_resume_posts_remote_console(
     assert payload.get("resume") is True, payload
 
 
+@pytest.mark.iphone
 def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     authed_page: Page, base_url: str
 ) -> None:
@@ -685,6 +686,7 @@ def test_life_os_conversations_open_from_tile(
     expect(detail).to_contain_text("confirm the return leg")
 
 
+@pytest.mark.iphone
 def test_life_os_conversation_sort_toggle(
     authed_page: Page, base_url: str
 ) -> None:
@@ -797,6 +799,7 @@ def test_life_os_conversations_empty_state_when_no_index(
     expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(0)
 
 
+@pytest.mark.iphone
 def test_life_os_convos_bar_buttons_match_model_selector(
     authed_page: Page, base_url: str
 ) -> None:
@@ -921,6 +924,7 @@ def test_life_os_convo_link_opens_that_conversation(
         "no-such-skill", timeout=10_000)
 
 
+@pytest.mark.iphone
 def test_life_os_row_leads_with_resume(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1013,6 +1017,7 @@ def test_life_os_row_leads_with_resume(
     }], launches
 
 
+@pytest.mark.iphone
 def test_life_os_conversation_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1400,6 +1405,7 @@ _MEASURE_PILL = """
 """
 
 
+@pytest.mark.iphone
 def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
@@ -1482,6 +1488,7 @@ def test_unparseable_capture_falls_back_to_the_raw_view(
     expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:opus")])
 def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_url: str, source: str, target: str, browser_name: str) -> None:
     """Source-aware actions, now in the viewer menu (#1119); handoff is explicit.

@@ -31,7 +31,7 @@ MENU = f"{COMPOSER} .composer-menu"
 ATTACH_OPTION = f"{MENU} [aria-label='Attach image or file']"
 OCR_OPTION = f"{MENU} [aria-label='Extract text from screenshots']"
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
 def _open_composer(page: Page, base_url: str, sid: str) -> None:

@@ -39,6 +39,7 @@ def _open_card(page: Page, panel_id: str) -> None:
     expect(page.locator(f"#{panel_id}")).to_have_js_property("open", True)
 
 
+@pytest.mark.iphone
 def test_settings_pane_controls_and_theme_toggle(
     authed_page: Page, base_url: str
 ) -> None:

@@ -248,6 +248,7 @@ def test_speak_button_in_toolbar(
         assert gone not in order, f"{gone} is back in the bar (#980 / #981 removed it)"
 
 
+@pytest.mark.iphone
 def test_toast_sits_above_terminal_overlay(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:

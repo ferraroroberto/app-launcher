@@ -21,7 +21,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, Response, expect
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 TAB_ORDER = [
     "tabBoard",

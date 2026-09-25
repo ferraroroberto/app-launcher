@@ -261,6 +261,7 @@ def _boot(page: Page, base_url: str, alive: bool = True) -> _Transcript:
     return tr
 
 
+@pytest.mark.iphone
 def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) -> None:
     """The feature: the conversation refreshes by itself."""
     page = authed_page
@@ -461,6 +462,7 @@ def test_only_the_open_conversation_is_refreshed(
     assert other_calls == [], "a session nobody opened was polled"
 
 
+@pytest.mark.iphone
 def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
     authed_page: Page, base_url: str
 ) -> None:
@@ -553,6 +555,7 @@ def test_a_transient_unavailable_source_recovers_without_a_tap(
     expect(page.locator("#transcriptState")).to_be_hidden()
 
 
+@pytest.mark.iphone
 def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
     authed_page: Page, base_url: str
 ) -> None:

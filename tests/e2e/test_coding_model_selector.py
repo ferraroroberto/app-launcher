@@ -156,6 +156,7 @@ def _mock_config(page: Page) -> dict:
     return state
 
 
+@pytest.mark.iphone
 def test_coding_model_combo_syncs_with_settings_control(
     authed_page: Page, base_url: str
 ) -> None:
@@ -304,6 +305,7 @@ def test_coding_model_combo_syncs_with_settings_control(
     ).to_be_disabled()
 
 
+@pytest.mark.iphone
 def test_server_catalog_populates_shared_model_selectors(
     authed_page: Page, base_url: str
 ) -> None:
@@ -378,6 +380,7 @@ def _quota_lines(claude_5h=39, claude_1w=19, codex_5h=0, codex_1w=36) -> list[di
     ]
 
 
+@pytest.mark.iphone
 def test_quota_rows_show_both_agents_on_one_line_each(
     authed_page: Page, base_url: str
 ) -> None:

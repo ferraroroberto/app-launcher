@@ -70,6 +70,10 @@ classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546
 static_pytest_target = "tests/e2e/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
+# The gate's per-test START/DONE/FAILED log (gitignored; written by
+# scripts/verify-before-ship.ps1 via tests/_progress_log.py). /e2e-audit reads
+# it for the browser leg's time (fleet-config#1018); no time_budget_s is set.
+progress_log          = "webapp/verify-progress.log"
 # Ratchet at the measured size (app-launcher#972, re-audited #1064): this
 # repo's dual-projection suite spans six tabs, so the scaffold's 15-test
 # target doesn't apply here. Lower this as the suite trims; /e2e-audit
@@ -195,7 +199,22 @@ full_pytest_target    = "tests/e2e"
 # three readback modules, the compose bar, the keys popover), the phone
 # row-tap PTY merge (it would fold the #286 flaky kill leg into a larger
 # test), and the smoke-module merges (they would coarsen the static tier).
-test_budget = 620
+#
+# 2026-09-25 (#1220 step 2): 620 -> 436, and the "dropping the WebKit
+# projection is NOT available" note under #1064 is superseded by Roberto's
+# decision on #1220. WebKit/iPhone now runs only for tests carrying the
+# `iphone` marker (layout and geometry, touch targets, nav, the composer and
+# keyboard input, safe-area, engine branches); every other test's WebKit node
+# is deselected at collection (`tests/e2e/conftest.py`). No test function was
+# removed and Chromium coverage is unchanged: 620 = 310 Chromium + 310 WebKit
+# nodes before, 310 Chromium + 126 WebKit = 436 after, 184 WebKit nodes
+# deselected. The drift risk the old note named (a hand-kept single-engine
+# subset) is what `tests/test_e2e_iphone_projection.py` answers: a test that
+# measures layout, taps or reads `browser_name` without the marker fails the
+# build. Basis, from #1220's measurement: 0 WebKit-engine product bugs in 400
+# PRs, WebKit was 61% of browser time, and iOS-only bugs don't reproduce in
+# desktop WebKit either, so the real iPhone check stays on the device.
+test_budget = 436
 
 # --- static assets under the webapp's static dir -> Chromium smoke ----------
 [[e2e.rule]]

@@ -47,6 +47,7 @@ def _empty_everything(page: Page) -> None:
         "staleness": "fresh", "proposal_pending": False, "proposal_name": None})
 
 
+@pytest.mark.iphone
 def test_zero_item_lists_render_the_canonical_empty_state(
     authed_page: Page, base_url: str
 ) -> None:
@@ -136,6 +137,7 @@ def test_a_board_column_with_cards_hides_its_empty_state(
     expect(page.locator(".board-empty[data-col='backlog']")).to_be_hidden()
 
 
+@pytest.mark.iphone
 def test_selects_wear_the_vendored_control_recipe(
     authed_page: Page, base_url: str
 ) -> None:
@@ -169,6 +171,7 @@ def test_selects_wear_the_vendored_control_recipe(
     ) == 0, "a <select> is still wearing the text-input recipe"
 
 
+@pytest.mark.iphone
 def test_editor_dialogs_wear_the_vendored_modal_shell(
     authed_page: Page, base_url: str
 ) -> None:

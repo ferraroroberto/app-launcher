@@ -35,7 +35,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = pytest.mark.smoke
+# iPhone keyboard overlay, visualViewport and native touch-scroll probes.
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # The SPA loads its modules cache-busted (`state.js?v=<asset_hash>`). A bare
 # import('/static/state.js') would evaluate a SECOND module instance with its
@@ -311,8 +312,8 @@ def _probe_route_frame_classifies_shutdown_vs_output(page: Page) -> None:
     """Regression pin for #181 — the cooperative WS-shutdown close fallback.
 
     Formerly ``test_shutdown_frame.py::test_route_frame_classifies_shutdown_vs_output``
-    (Chromium-only there via ``chromium_projection_only``; it rides the
-    WebKit projection too now that it shares this page load).
+    (Chromium-only there; it rides the WebKit projection too now that it
+    shares this page load).
 
     The bug: the PC mirror window's "Stop & Close" had two documented close
     paths — a primary Win32 ``WM_CLOSE`` (issue #20) and a cooperative

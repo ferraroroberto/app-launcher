@@ -82,6 +82,7 @@ def test_below_1100px_keeps_the_top_control(
     assert nav["x"] > 0 and nav["height"] < 100, f"top control became a rail: {nav}"
 
 
+@pytest.mark.iphone
 def test_coarse_pointer_never_gets_the_rail(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:

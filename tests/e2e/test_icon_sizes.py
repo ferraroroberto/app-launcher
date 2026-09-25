@@ -18,7 +18,7 @@ from playwright.sync_api import Page
 
 from tests.e2e.test_row_name_typography import _mock
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _STEPS = (16, 18, 20, 24)
 

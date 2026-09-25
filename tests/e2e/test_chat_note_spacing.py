@@ -27,7 +27,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_read
 from tests.e2e.test_session_mode_toggle import _mock_git_status, _mock_sessions_list, _row, _session_row
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _SID = "sid-note-spacing-1098"
 

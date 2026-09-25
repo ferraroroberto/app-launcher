@@ -34,7 +34,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import stable_read
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # tab button -> (pane, header title)
 _TABS = {

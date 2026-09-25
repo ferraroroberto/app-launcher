@@ -29,7 +29,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # How long to wait for the terminal overlay to hide after a kill (issue #286).
 # stopSession() awaits the *entire* /stop POST, which on the host runs the

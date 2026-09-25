@@ -44,7 +44,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # Walk every parsed rule, at any nesting depth, whose selector is scoped to a
 # single composer mount (an id under the session overlay) AND which declares a

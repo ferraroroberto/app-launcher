@@ -60,7 +60,7 @@ INPUT = f"{COMPOSER} .composer-input"
 SEND = f"{COMPOSER} .composer-send"
 ATTACH_INPUT = f"{COMPOSER} .composer-attach-input"
 
-pytestmark = pytest.mark.smoke
+pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # Drive the page's OWN setTerminalStatus (#1219) — the live module instance,
 # resolved from the resource timeline the way test_markdown_link_rendering.py

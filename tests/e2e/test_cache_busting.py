@@ -28,7 +28,7 @@ import requests
 
 from src.static_versioning import compute_asset_hashes
 
-pytestmark = [pytest.mark.smoke, pytest.mark.usefixtures("chromium_projection_only")]
+pytestmark = pytest.mark.smoke
 
 _STATIC_DIR = Path(__file__).resolve().parents[2] / "app" / "webapp" / "static"
 _INDEX_HREF_RE = re.compile(

@@ -146,6 +146,7 @@ def _row_menu_item(page: Page, row, name: str):
     return menu.get_by_role("menuitem", name=name)
 
 
+@pytest.mark.iphone
 def test_row_carries_a_centred_kebab_and_no_chevron(
     authed_page: Page, base_url: str
 ) -> None:
@@ -581,6 +582,7 @@ def _open_tool_group(page: Page):
     return group
 
 
+@pytest.mark.iphone
 def test_failed_tool_call_is_marked_in_both_themes(
     authed_page: Page, base_url: str
 ) -> None:
@@ -644,6 +646,7 @@ def test_failed_tool_call_is_marked_in_both_themes(
     expect(bad).to_have_js_property("open", False)
 
 
+@pytest.mark.iphone
 def test_unreported_outcome_says_so_instead_of_reading_as_success(
     authed_page: Page, base_url: str
 ) -> None:
