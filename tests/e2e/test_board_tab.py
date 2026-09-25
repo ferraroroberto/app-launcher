@@ -151,9 +151,48 @@ def _unfold(page: Page, *section_ids: str) -> None:
 def test_board_renders_columns_counts_and_cards(
     authed_page: Page, base_url: str
 ) -> None:
+    """One render of the mocked board, checked top to bottom (#1215 merged
+    the section-structure and column-geometry tests in here): the section
+    cards and their default open state, counts, the Your-turn card, the
+    projection's column geometry — all before anything is unfolded — then
+    the GitHub-fed columns' cards, and last a fold that must survive a poll.
+    """
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
+    # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
+    # (structure + default open state) --
+    # #1198: the Board is built like every other tab. The first thing under
+    # the page header is a section card holding the dispatch bar, each column
+    # is a collapsible section card with its count in the summary, and the
+    # phone's column strip is gone. A section the user folds stays folded
+    # across the 5 s poll: renderBoard() re-renders the lists, never a
+    # section's open state (that half is the last step below).
+    first = authed_page.locator("#paneBoard > .page-head + *")
+    expect(first).to_have_id("boardDispatchCard")
+    expect(first).to_have_class(re.compile(r"\bcard--collapsible\b"))
+    expect(first.locator("> summary .collapse-title")).to_have_text("Dispatch")
+    expect(first.locator("#boardDispatch")).to_have_count(1)
+
+    sections = authed_page.locator("#boardColumns > details.card--collapsible")
+    expect(sections).to_have_count(5)
+    expect(
+        authed_page.locator("#boardColumns > details > summary .board-count")
+    ).to_have_count(5)
+    expect(authed_page.locator(".board-strip")).to_have_count(0)
+
+    # Phone: the live columns open, the GitHub-fed ones folded; the desktop
+    # grid opens all five.
+    viewport = authed_page.viewport_size or {"width": 0}
+    backlog_section = authed_page.locator("#boardColBacklog")
+    if viewport["width"] < 700:
+        expect(backlog_section).not_to_have_attribute("open", "")
+    else:
+        expect(backlog_section).to_have_attribute("open", "")
+    yours_section = authed_page.locator("#boardColYours")
+    expect(yours_section).to_have_attribute("open", "")
+
+    # -- counts, attention mark and the Your-turn card (this test's own) --
     # Per-column counts in each section's summary; Your turn (1) carries the
     # attention mark.
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
@@ -181,6 +220,38 @@ def test_board_renders_columns_counts_and_cards(
         re.compile(r"\bboard-card-meta\b")
     )
 
+    # -- was test_board_columns_layout_matches_projection (measured before any
+    # section is unfolded, as that test did) --
+    # Phone (WebKit / iPhone projection): the column sections stack like
+    # every other tab's cards — each spans ~the full container width, the next
+    # one below it (#1198). Desktop (Chromium, fine pointer ≥700px): the grid
+    # shows all five columns — each column is well under half the container.
+    # Same DOM, projection-dependent CSS.
+    container = authed_page.locator("#boardColumns")
+    first_col = authed_page.locator(".board-col").first
+    expect(first_col).to_be_attached()
+
+    box_container = stable_read(container.bounding_box)
+    box_col = stable_read(first_col.bounding_box)
+    box_next = stable_read(authed_page.locator(".board-col").nth(1).bounding_box)
+    assert box_container and box_col and box_next, "board columns not laid out"
+
+    if viewport["width"] < 700:
+        assert box_col["width"] >= box_container["width"] * 0.9, (
+            f"phone column should fill the viewport: col={box_col['width']}, "
+            f"container={box_container['width']}"
+        )
+        assert box_next["y"] >= box_col["y"] + box_col["height"], (
+            f"phone sections should stack: next y={box_next['y']}, "
+            f"first bottom={box_col['y'] + box_col['height']}"
+        )
+    else:
+        assert box_col["width"] <= box_container["width"] * 0.35, (
+            f"desktop column should sit in a 5-col grid: col={box_col['width']}, "
+            f"container={box_container['width']}"
+        )
+
+    # -- the GitHub-fed columns' cards (this test's own) --
     _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
 
     # Other holds the open PR + failed job, in that order.
@@ -197,30 +268,17 @@ def test_board_renders_columns_counts_and_cards(
     expect(done.first).to_contain_text("#87")
     expect(done.first).to_contain_text("closed")
 
-
-def test_board_refresh_button_posts_gh_refresh(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock_board(authed_page)
-
-    captured: dict = {}
-
-    def _capture(route):
-        captured["method"] = route.request.method
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"fetched_at": "2026-07-02T12:05:00Z", "error": None}),
-        )
-
-    authed_page.route(re.compile(r".*/api/board/github/refresh$"), _capture)
-
-    _open_board(authed_page, base_url)
-    authed_page.locator("#boardRefresh").click()
-    authed_page.wait_for_timeout(400)
-
-    assert captured.get("method") == "POST", (
-        "↻ never POSTed /api/board/github/refresh"
-    )
+    # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
+    # (the fold that must survive a poll; last: it changes section state) --
+    authed_page.locator("#boardColYours > summary").click()
+    expect(yours_section).not_to_have_attribute("open", "")
+    # Wait out one full poll: its response lands, then its render runs.
+    with authed_page.expect_response(
+        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
+    ):
+        pass
+    authed_page.wait_for_timeout(300)
+    expect(yours_section).not_to_have_attribute("open", "")
 
 
 @pytest.mark.parametrize("gh_age_seconds, expected_posts", [
@@ -233,7 +291,10 @@ def test_board_github_refresh_on_open_tracks_cache_age(
 ) -> None:
     """Opening the tab with a gh cache older than the client's staleness
     window (2 min) fires exactly one automatic refresh POST — no ↻ tap
-    needed; a fresh cache must NOT auto-refresh, so tab-open stays free."""
+    needed; a fresh cache must NOT auto-refresh, so tab-open stays free.
+
+    Then the ↻ tap (was test_board_refresh_button_posts_gh_refresh, merged
+    here in #1215) adds exactly one more POST, in both cache-age cases."""
     _mock_board(authed_page, _board_payload(gh_age_seconds=gh_age_seconds))
 
     posts: list[str] = []
@@ -255,6 +316,17 @@ def test_board_github_refresh_on_open_tracks_cache_age(
     assert posts == expected_posts, (
         f"gh cache aged {gh_age_seconds}s should auto-refresh {expected_posts} "
         f"on tab open, got {posts}"
+    )
+
+    # -- was test_board_refresh_button_posts_gh_refresh --
+    # ↻ is disabled while a refresh is in flight (refreshGithub()), so let
+    # the automatic one settle before tapping it.
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    authed_page.locator("#boardRefresh").click()
+    authed_page.wait_for_timeout(400)
+
+    assert posts == expected_posts + ["POST"], (
+        f"↻ never POSTed /api/board/github/refresh (got {posts})"
     )
 
 
@@ -417,53 +489,6 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
 
-def test_board_sections_are_collapsible_cards_that_survive_the_poll(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1198: the Board is built like every other tab. The first thing under
-    the page header is a section card holding the dispatch bar, each column
-    is a collapsible section card with its count in the summary, and the
-    phone's column strip is gone. A section the user folds stays folded
-    across the 5 s poll: renderBoard() re-renders the lists, never a
-    section's open state."""
-    _mock_board(authed_page)
-    _open_board(authed_page, base_url)
-
-    first = authed_page.locator("#paneBoard > .page-head + *")
-    expect(first).to_have_id("boardDispatchCard")
-    expect(first).to_have_class(re.compile(r"\bcard--collapsible\b"))
-    expect(first.locator("> summary .collapse-title")).to_have_text("Dispatch")
-    expect(first.locator("#boardDispatch")).to_have_count(1)
-
-    sections = authed_page.locator("#boardColumns > details.card--collapsible")
-    expect(sections).to_have_count(5)
-    expect(
-        authed_page.locator("#boardColumns > details > summary .board-count")
-    ).to_have_count(5)
-    expect(authed_page.locator(".board-strip")).to_have_count(0)
-
-    # Phone: the live columns open, the GitHub-fed ones folded; the desktop
-    # grid opens all five.
-    viewport = authed_page.viewport_size or {"width": 0}
-    backlog = authed_page.locator("#boardColBacklog")
-    if viewport["width"] < 700:
-        expect(backlog).not_to_have_attribute("open", "")
-    else:
-        expect(backlog).to_have_attribute("open", "")
-    yours = authed_page.locator("#boardColYours")
-    expect(yours).to_have_attribute("open", "")
-
-    authed_page.locator("#boardColYours > summary").click()
-    expect(yours).not_to_have_attribute("open", "")
-    # Wait out one full poll: its response lands, then its render runs.
-    with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
-    ):
-        pass
-    authed_page.wait_for_timeout(300)
-    expect(yours).not_to_have_attribute("open", "")
-
-
 _FAKE_EXCHANGE = {
     "available": True,
     "source": "native",
@@ -493,7 +518,13 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
 ) -> None:
     """#301: tapping a session card opens the drawer with the last exchange;
     the shared composer's ➤ (#984) posts the reply body {data, submit: true}
-    to the input proxy."""
+    to the input proxy.
+
+    Merged in #1215 — was test_board_reply_optimistically_moves_card_off_your_turn:
+    #461: sending a reply relocates the card into Claude's turn right
+    away — no waiting on the next poll, and no reverting back once it's
+    mocked ``/api/board`` (which, unaware of the reply, still reports the
+    session as needs-you) resolves."""
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
@@ -512,6 +543,10 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     )
 
     _open_board(authed_page, base_url)
+    # (#461, before the reply) the card starts in Your turn.
+    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
+    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
+
     card = authed_page.locator(
         '.board-list[data-col="your_turn"] li.board-item'
     ).first.locator("button.board-card")
@@ -526,9 +561,10 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     )
 
     # The drawer stacks BELOW the card at (almost) full card width — never
-    # splits it horizontally (phone feedback on #301).
-    box_card = card.bounding_box()
-    box_drawer = drawer.bounding_box()
+    # splits it horizontally (phone feedback on #301). Raw Board geometry, so
+    # read through stable_read (#680).
+    box_card = stable_read(card.bounding_box)
+    box_drawer = stable_read(drawer.bounding_box)
     assert box_card and box_drawer, "card/drawer not laid out"
     assert box_drawer["y"] >= box_card["y"] + box_card["height"] - 2, (
         "drawer must render below the card, not beside it"
@@ -539,39 +575,8 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
 
     drawer.locator(".composer-input").fill("go ahead")
     drawer.locator(".composer-send").click()
-    authed_page.wait_for_timeout(500)
 
-    assert captured.get("method") == "POST"
-    assert captured.get("body") == {"data": "go ahead", "submit": True}
-
-
-def test_board_reply_optimistically_moves_card_off_your_turn(
-    authed_page: Page, base_url: str
-) -> None:
-    """#461: sending a reply relocates the card into Claude's turn right
-    away — no waiting on the next poll, and no reverting back once it's
-    mocked ``/api/board`` (which, unaware of the reply, still reports the
-    session as needs-you) resolves."""
-    _mock_board(authed_page)
-    _mock_exchange(authed_page)
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-wait/input$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
-        ),
-    )
-
-    _open_board(authed_page, base_url)
-    expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
-    expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("1")
-
-    authed_page.locator(
-        '.board-list[data-col="your_turn"] li.board-item'
-    ).first.locator("button.board-card").click()
-    authed_page.locator(".board-drawer .composer-input").fill("go ahead")
-    authed_page.locator(".board-drawer .composer-send").click()
-
+    # -- was test_board_reply_optimistically_moves_card_off_your_turn --
     # Immediate — no fetchBoard() round trip needed to see this.
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("2")
@@ -581,11 +586,18 @@ def test_board_reply_optimistically_moves_card_off_your_turn(
     expect(moved_card).to_be_visible()
     expect(moved_card).to_have_class(re.compile(r"\bis-working\b"))
 
-    # Well under the 5 s poll interval, and the mocked /api/board still
-    # reports needs-you for s-wait — confirms nothing reverts the move.
+    # (#461, continued) Well under the 5 s poll interval, and the mocked
+    # /api/board still reports needs-you for s-wait — confirms nothing
+    # reverts the move. (This 1 s wait also covers the 500 ms the #301 half
+    # used to give the POST to land before reading `captured` below; the
+    # window after the send is kept as short as #461's own was.)
     authed_page.wait_for_timeout(1_000)
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("2")
+
+    # (#301) the reply rode the input proxy as {data, submit: true}.
+    assert captured.get("method") == "POST"
+    assert captured.get("body") == {"data": "go ahead", "submit": True}
 
 
 def test_board_codex_card_drawer_shows_agent_native_exchange(
@@ -977,84 +989,6 @@ def _mock_apps_with_app_launcher(page: Page) -> None:
     )
 
 
-def test_dispatch_bar_posts_repo_mode_goal_and_keeps_text(
-    authed_page: Page, base_url: str
-) -> None:
-    """#302: goal + repo + mode ride POST /api/board/dispatch; the goal text
-    survives the send (populated-but-clearable for rapid multi-dispatch)."""
-    _mock_apps_with_app_launcher(authed_page)
-    _mock_board(authed_page)
-
-    captured: dict = {}
-
-    def _capture_dispatch(route):
-        captured["method"] = route.request.method
-        captured["body"] = route.request.post_data_json
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "/issue-yolo ship the goal bar",
-                "repo": "app-launcher",
-                "session": {"session_id": "sD", "kind": "pty",
-                            "name": "app-launcher"},
-            }),
-        )
-
-    authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
-
-    _open_board(authed_page, base_url)
-    # The repo dropdown fills once boot's /api/apps fetch lands; the board
-    # render re-syncs it, so a full poll cycle is the worst case. It defaults
-    # to "All projects" (empty target), so the send needs an explicit pick.
-    expect(authed_page.locator("#boardDispatchRepoBtn")).to_be_visible(timeout=15_000)
-    authed_page.locator("#boardDispatchRepoBtn").click()
-    authed_page.locator('#boardDispatchRepoList li[data-repo="app-launcher"]').click()
-    expect(
-        authed_page.locator('#boardDispatchRepo')
-    ).to_have_value("app-launcher")
-    expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
-
-    authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
-    # Mode is the shared .model-combo since #869 — trigger + listbox, not a
-    # native <select>.
-    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
-    authed_page.locator("#boardDispatchModeMenu [data-value='yolo']").click()
-    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
-        "data-value", "yolo"
-    )
-    # Model selector (#500): defaults to Sonnet; pick a non-default value so
-    # the POST provably carries the selection, not a hardcoded default.
-    expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
-        "data-value", "claude:sonnet"
-    )
-    authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
-    authed_page.locator(
-        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-sol']"
-    ).click()
-    authed_page.locator("#boardDispatchSend").click()
-    authed_page.wait_for_timeout(500)
-
-    assert captured.get("method") == "POST"
-    body = captured.get("body") or {}
-    assert body.get("repo") == "app-launcher"
-    assert body.get("goal") == "ship the goal bar"
-    assert body.get("mode") == "yolo"
-    assert body.get("model") == "codex:gpt-5.6-sol"
-    # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
-    # streaming agent's first output is authored at the width the overlay
-    # will fit() to; a desktop client sends the mirror flag instead.
-    if body.get("desktop"):
-        assert "rows" not in body and "cols" not in body
-    else:
-        assert body.get("rows", 0) >= 10 and body.get("cols", 0) >= 20
-    # Populated-but-clearable: the goal stays after a successful send.
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value(
-        "ship the goal bar"
-    )
-    authed_page.locator("#boardDispatchClear").click()
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
-
-
 def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1063,7 +997,10 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     card visible), and picking a specific project filters every kanban
     column down to that project's cards (job cards, which carry no
     repo/project, drop out of any specific-project filter). #399: Your turn
-    and Other are now separate single-purpose columns."""
+    and Other are now separate single-purpose columns.
+
+    Then, last, the dispatch POST itself (#302 — merged in #1215 from
+    test_dispatch_bar_posts_repo_mode_goal_and_keeps_text)."""
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -1131,6 +1068,80 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(repo_btn).to_have_text("All projects")
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
+
+    # -- was test_dispatch_bar_posts_repo_mode_goal_and_keeps_text (last: it
+    # POSTs a dispatch) --
+    # #302: goal + repo + mode ride POST /api/board/dispatch; the goal text
+    # survives the send (populated-but-clearable for rapid multi-dispatch).
+    # Same app-launcher entry that test's _mock_apps_with_app_launcher served,
+    # among the four projects mocked above.
+    captured: dict = {}
+
+    def _capture_dispatch(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "/issue-yolo ship the goal bar",
+                "repo": "app-launcher",
+                "session": {"session_id": "sD", "kind": "pty",
+                            "name": "app-launcher"},
+            }),
+        )
+
+    authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
+
+    # The repo dropdown fills once boot's /api/apps fetch lands; the board
+    # render re-syncs it, so a full poll cycle is the worst case. It defaults
+    # to "All projects" (empty target), so the send needs an explicit pick.
+    expect(authed_page.locator("#boardDispatchRepoBtn")).to_be_visible(timeout=15_000)
+    authed_page.locator("#boardDispatchRepoBtn").click()
+    authed_page.locator('#boardDispatchRepoList li[data-repo="app-launcher"]').click()
+    expect(
+        authed_page.locator('#boardDispatchRepo')
+    ).to_have_value("app-launcher")
+    expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
+
+    authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
+    # Mode is the shared .model-combo since #869 — trigger + listbox, not a
+    # native <select>.
+    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
+    authed_page.locator("#boardDispatchModeMenu [data-value='yolo']").click()
+    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
+        "data-value", "yolo"
+    )
+    # Model selector (#500): defaults to Sonnet; pick a non-default value so
+    # the POST provably carries the selection, not a hardcoded default.
+    expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
+        "data-value", "claude:sonnet"
+    )
+    authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
+    authed_page.locator(
+        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-sol']"
+    ).click()
+    authed_page.locator("#boardDispatchSend").click()
+    authed_page.wait_for_timeout(500)
+
+    assert captured.get("method") == "POST"
+    body = captured.get("body") or {}
+    assert body.get("repo") == "app-launcher"
+    assert body.get("goal") == "ship the goal bar"
+    assert body.get("mode") == "yolo"
+    assert body.get("model") == "codex:gpt-5.6-sol"
+    # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
+    # streaming agent's first output is authored at the width the overlay
+    # will fit() to; a desktop client sends the mirror flag instead.
+    if body.get("desktop"):
+        assert "rows" not in body and "cols" not in body
+    else:
+        assert body.get("rows", 0) >= 10 and body.get("cols", 0) >= 20
+    # Populated-but-clearable: the goal stays after a successful send.
+    expect(authed_page.locator("#boardDispatchGoal")).to_have_value(
+        "ship the goal bar"
+    )
+    authed_page.locator("#boardDispatchClear").click()
+    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
 
 
 def test_dispatch_and_reply_mics_render_when_voice_available(
@@ -1461,65 +1472,6 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     expect(draft).to_have_value("half-typed reply")
 
 
-def test_dispatch_model_picker_matches_shared_button_shape(
-    authed_page: Page, base_url: str
-) -> None:
-    """#496/#851: Board uses the shared picker at both projections."""
-    _mock_board(authed_page)
-    _open_board(authed_page, base_url)
-
-    picker = authed_page.locator("#boardDispatchModel .model-combo-trigger")
-    clear = authed_page.locator("#boardDispatchClear")
-    expect(picker).to_be_visible()
-    box_select = picker.bounding_box()
-    box_clear = clear.bounding_box()
-    assert box_select and box_clear, "dispatch row not laid out"
-    assert abs(box_select["height"] - box_clear["height"]) <= 1, (
-        f"model select height {box_select['height']} != sibling button "
-        f"height {box_clear['height']}"
-    )
-    radius = picker.evaluate("el => getComputedStyle(el).borderRadius")
-    assert radius == "12px", f"model picker radius {radius!r} != 12px"
-    assert picker.evaluate("el => el.tagName") == "BUTTON"
-
-
-def test_board_columns_layout_matches_projection(
-    authed_page: Page, base_url: str
-) -> None:
-    """Phone (WebKit / iPhone projection): the column sections stack like
-    every other tab's cards — each spans ~the full container width, the next
-    one below it (#1198). Desktop (Chromium, fine pointer ≥700px): the grid
-    shows all five columns — each column is well under half the container.
-    Same DOM, projection-dependent CSS."""
-    _mock_board(authed_page)
-    _open_board(authed_page, base_url)
-
-    container = authed_page.locator("#boardColumns")
-    first_col = authed_page.locator(".board-col").first
-    expect(first_col).to_be_attached()
-
-    box_container = stable_read(container.bounding_box)
-    box_col = stable_read(first_col.bounding_box)
-    box_next = stable_read(authed_page.locator(".board-col").nth(1).bounding_box)
-    assert box_container and box_col and box_next, "board columns not laid out"
-
-    viewport = authed_page.viewport_size or {"width": 0}
-    if viewport["width"] < 700:
-        assert box_col["width"] >= box_container["width"] * 0.9, (
-            f"phone column should fill the viewport: col={box_col['width']}, "
-            f"container={box_container['width']}"
-        )
-        assert box_next["y"] >= box_col["y"] + box_col["height"], (
-            f"phone sections should stack: next y={box_next['y']}, "
-            f"first bottom={box_col['y'] + box_col['height']}"
-        )
-    else:
-        assert box_col["width"] <= box_container["width"] * 0.35, (
-            f"desktop column should sit in a 5-col grid: col={box_col['width']}, "
-            f"container={box_container['width']}"
-        )
-
-
 def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     authed_page: Page, base_url: str
 ) -> None:
@@ -1534,9 +1486,31 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     grid, beside the project filter on the phone (#1198).
     (4) The project filter leads the desktop line at the far left, and drops
     below the controls on the phone so it sits just above the columns.
+
+    (0) Merged in #1215 — was test_dispatch_model_picker_matches_shared_button_shape:
+    #496/#851: Board uses the shared picker at both projections. Checked
+    first, against the bar as it boots (🎤 still hidden).
     """
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
+
+    # (0) the model picker is the shared button shape. Raw Board geometry and
+    # computed style, so read through stable_read (#680).
+    picker = authed_page.locator("#boardDispatchModel .model-combo-trigger")
+    clear = authed_page.locator("#boardDispatchClear")
+    expect(picker).to_be_visible()
+    box_select = stable_read(picker.bounding_box)
+    box_clear = stable_read(clear.bounding_box)
+    assert box_select and box_clear, "dispatch row not laid out"
+    assert abs(box_select["height"] - box_clear["height"]) <= 1, (
+        f"model select height {box_select['height']} != sibling button "
+        f"height {box_clear['height']}"
+    )
+    radius = stable_read(
+        lambda: picker.evaluate("el => getComputedStyle(el).borderRadius")
+    )
+    assert radius == "12px", f"model picker radius {radius!r} != 12px"
+    assert picker.evaluate("el => el.tagName") == "BUTTON"
 
     # The disposable e2e webapp reports no dictation, so 🎤 stays hidden and
     # the row is one control narrower than on a real phone — where that extra

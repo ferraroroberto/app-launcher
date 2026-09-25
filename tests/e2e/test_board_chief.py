@@ -161,64 +161,6 @@ def _enter_chat_mode(page: Page) -> None:
     expect(page.locator("#boardDispatchMode")).to_have_attribute("data-value", "chat")
 
 
-def test_chat_mode_routes_message_to_chief_not_dispatch(
-    authed_page: Page, base_url: str
-) -> None:
-    """Chat mode send = ensure → input proxy ({data, submit:true}); the
-    one-shot /api/board/dispatch is never touched; the box clears
-    (conversation semantics, unlike dispatch's keep-for-multi-dispatch)."""
-    _mock_board(authed_page, _board_payload(with_chief=True))
-    _mock_exchange(authed_page)
-    ensured: dict = {}
-    _mock_ensure(authed_page, ensured)
-
-    captured_input: dict = {}
-
-    def _capture_input(route):
-        captured_input["method"] = route.request.method
-        captured_input["body"] = route.request.post_data_json
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
-        _capture_input,
-    )
-
-    dispatch_hits: list[str] = []
-    authed_page.route(
-        re.compile(r".*/api/board/dispatch$"),
-        lambda route: (dispatch_hits.append(route.request.method),
-                       route.fulfill(status=500, body="must not be called")),
-    )
-
-    _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
-
-    # Chat mode: the model select greys out (chief model is owned by chief
-    # settings) and the status row appears.
-    expect(
-        authed_page.locator("#boardDispatchModel .model-combo-trigger")
-    ).to_be_disabled()
-    expect(authed_page.locator("#boardChiefStatus")).to_be_visible()
-
-    authed_page.locator("#boardDispatchGoal").fill("what's open in app-launcher?")
-    authed_page.locator("#boardDispatchSend").click()
-    authed_page.wait_for_timeout(600)
-
-    assert ensured.get("method") == "POST", "send never ensured the chief"
-    assert captured_input.get("body") == {
-        "data": "what's open in app-launcher?", "submit": True,
-    }
-    assert dispatch_hits == [], "chat mode must never hit /api/board/dispatch"
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
-
-    # The chief's drawer opened so the reply has somewhere to land.
-    expect(authed_page.locator(".board-drawer")).to_be_visible()
-
-
 def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     authed_page: Page, base_url: str
 ) -> None:
@@ -509,7 +451,13 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     for hours with no sign it was stale. The poll must keep landing — a
     lane dispatched and an issue closed show up within one poll interval —
     while the open drawer's own node (reply box text, focus) survives the
-    re-render, which is the #301 typing guarantee the pause used to buy."""
+    re-render, which is the #301 typing guarantee the pause used to buy.
+
+    Merged in #1215 — was test_chat_mode_routes_message_to_chief_not_dispatch:
+    Chat mode send = ensure → input proxy ({data, submit:true}); the
+    one-shot /api/board/dispatch is never touched; the box clears
+    (conversation semantics, unlike dispatch's keep-for-multi-dispatch).
+    Its checks run right after the send, before the payload swap below."""
     board = {"body": _json.dumps(_board_payload(with_chief=True))}
     authed_page.route(
         re.compile(r".*/api/board(?:\?.*)?$"),
@@ -519,20 +467,59 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     )
     _mock_board_side_routes(authed_page)
     _mock_exchange(authed_page)
-    _mock_ensure(authed_page, {})
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
-        lambda route: route.fulfill(
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured)
+
+    captured_input: dict = {}
+
+    def _capture_input(route):
+        captured_input["method"] = route.request.method
+        captured_input["body"] = route.request.post_data_json
+        route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
-        ),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
+        _capture_input,
+    )
+
+    dispatch_hits: list[str] = []
+    authed_page.route(
+        re.compile(r".*/api/board/dispatch$"),
+        lambda route: (dispatch_hits.append(route.request.method),
+                       route.fulfill(status=500, body="must not be called")),
     )
 
     _open_board(authed_page, base_url)
     _enter_chat_mode(authed_page)
-    authed_page.locator("#boardDispatchGoal").fill("start the next lane")
-    authed_page.locator("#boardDispatchSend").click()
 
+    # -- was test_chat_mode_routes_message_to_chief_not_dispatch --
+    # Chat mode: the model select greys out (chief model is owned by chief
+    # settings) and the status row appears.
+    expect(
+        authed_page.locator("#boardDispatchModel .model-combo-trigger")
+    ).to_be_disabled()
+    expect(authed_page.locator("#boardChiefStatus")).to_be_visible()
+
+    # (The message text is that test's, so its input-body assertion stands
+    # verbatim; this test never asserted on its own send text.)
+    authed_page.locator("#boardDispatchGoal").fill("what's open in app-launcher?")
+    authed_page.locator("#boardDispatchSend").click()
+    authed_page.wait_for_timeout(600)
+
+    assert ensured.get("method") == "POST", "send never ensured the chief"
+    assert captured_input.get("body") == {
+        "data": "what's open in app-launcher?", "submit": True,
+    }
+    assert dispatch_hits == [], "chat mode must never hit /api/board/dispatch"
+    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
+
+    # The chief's drawer opened so the reply has somewhere to land.
+    expect(authed_page.locator(".board-drawer")).to_be_visible()
+
+    # -- #958: the poll keeps landing while the chief drawer stays open --
     drawer = authed_page.locator("li.board-item-chief .board-drawer")
     expect(drawer).to_be_visible()
     reply = drawer.locator(".board-drawer-composer .composer-input")

@@ -119,11 +119,31 @@ def _open_via_menu(page: Page, app_id: str = "alpha") -> None:
 def test_overlay_lists_files_and_expands_a_tinted_diff(
     authed_page: Page, base_url: str
 ) -> None:
+    """Merged in #1215 — the first step was
+    test_red_title_flags_the_row_and_changes_open_from_its_menu, on the same
+    dirty-tree mocks: since #1128 the row is one launch button, so the red
+    name can no longer be its own tap target into Show changes (#977). The
+    colour still flags the row; the ⋯ menu is the way in."""
     fetched = _install_routes(authed_page, dirty=True)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
     expect(authed_page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')).to_be_enabled(timeout=5_000)
+
+    # -- was test_red_title_flags_the_row_and_changes_open_from_its_menu --
+    title = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
+    expect(title).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=5_000)
+    expect(title).not_to_have_attribute("role", "button")
+    _open_via_menu(authed_page)
+    expect(authed_page.locator("#changesOverlay")).to_be_visible()
+    assert len(fetched["changes"]) == 1
+    authed_page.keyboard.press("Escape")
+    expect(authed_page.locator("#changesOverlay")).to_be_hidden()
+
+    clean = authed_page.locator('.coding-item[data-id="clean"] .action-row-title')
+    expect(clean).not_to_have_class(re.compile(r"\bgit-(dirty|off-main)\b"))
+
+    # -- the overlay's file list and lazy tinted diff (this test's own) --
     _open_via_menu(authed_page)
 
     overlay = authed_page.locator("#changesOverlay")
@@ -171,29 +191,6 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     authed_page.locator("#changesClose").click()
     expect(overlay).to_be_hidden()
     expect(authed_page.locator("#changesList .chg-file")).to_have_count(0)
-
-
-def test_red_title_flags_the_row_and_changes_open_from_its_menu(
-    authed_page: Page, base_url: str
-) -> None:
-    """Since #1128 the row is one launch button, so the red name can no
-    longer be its own tap target into Show changes (#977). The colour still
-    flags the row; the ⋯ menu is the way in."""
-    fetched = _install_routes(authed_page, dirty=True)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-
-    title = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
-    expect(title).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=5_000)
-    expect(title).not_to_have_attribute("role", "button")
-    _open_via_menu(authed_page)
-    expect(authed_page.locator("#changesOverlay")).to_be_visible()
-    assert len(fetched["changes"]) == 1
-    authed_page.keyboard.press("Escape")
-    expect(authed_page.locator("#changesOverlay")).to_be_hidden()
-
-    clean = authed_page.locator('.coding-item[data-id="clean"] .action-row-title')
-    expect(clean).not_to_have_class(re.compile(r"\bgit-(dirty|off-main)\b"))
 
 
 def test_clean_tree_shows_the_empty_state(authed_page: Page, base_url: str) -> None:

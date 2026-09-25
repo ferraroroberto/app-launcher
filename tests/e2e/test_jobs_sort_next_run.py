@@ -125,20 +125,8 @@ def test_jobs_default_to_next_run_order_with_countdown(
     assert all(xs), f"run buttons not laid out: {xs}"
     assert abs(xs[0]["x"] - xs[1]["x"]) <= 1, f"Run jumps sideways without a kebab: {xs}"
 
-
-def test_sort_toggle_switches_to_alphabetical(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.add_init_script(
-        "() => localStorage.removeItem('launcher.jobsSort')"
-    )
-    _wire_jobs(authed_page)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabJobs").click()
-    authed_page.wait_for_selector(
-        "#jobsList li.app-item[data-id]", state="attached", timeout=5_000
-    )
+    # -- was test_sort_toggle_switches_to_alphabetical (merged in #1215; last:
+    # it flips the persisted sort pref) --
     assert _row_ids(authed_page) == ["zeta", "alpha", "mango"]
 
     # Toggle → A–Z. The button lives in the summary; the click must flip the

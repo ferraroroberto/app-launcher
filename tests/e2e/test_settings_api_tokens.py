@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -117,19 +117,27 @@ def _open_settings(page: Page, base_url: str) -> None:
     expect(page.locator("#tokensPanel")).to_have_js_property("open", True)
 
 
-def test_mint_shows_token_once_and_lists_it(
-    authed_page: Page, base_url: str
-) -> None:
+def test_mint_list_and_revoke_a_token(authed_page: Page, base_url: str) -> None:
+    """The whole panel lifecycle on one page load (#1215): the empty-label
+    guard, a mint, then revoking the row that mint just listed."""
     state: Dict[str, Any] = {"rows": []}
     _wire(authed_page, state)
     _open_settings(authed_page, base_url)
 
+    # -- was test_mint_shows_token_once_and_lists_it (initial state) --
     expect(authed_page.locator("#tokensPanel")).to_be_visible()
     expect(authed_page.locator("#tokensEmpty")).to_be_visible()
     # The scope select filled from /api/jobs on first open.
     expect(authed_page.locator("#tokenJobSelect option")).to_have_count(1)
     expect(authed_page.locator("#tokenJobSelect")).to_have_value("demo-job")
 
+    # -- was test_mint_requires_label --
+    authed_page.locator("#tokenMintBtn").click()
+    # No POST fired; the panel surfaced a toast instead.
+    assert "mint_body" not in state
+    expect(authed_page.locator("#tokenMintResult")).to_be_hidden()
+
+    # -- was test_mint_shows_token_once_and_lists_it (mint) --
     authed_page.locator("#tokenLabelInput").fill("Deck btn")
     authed_page.locator("#tokenMintBtn").click()
 
@@ -146,24 +154,8 @@ def test_mint_shows_token_once_and_lists_it(
     expect(authed_page.locator("#tokensList")).to_contain_text("job: demo-job")
     expect(authed_page.locator("#tokensEmpty")).to_be_hidden()
 
-
-def test_mint_requires_label(authed_page: Page, base_url: str) -> None:
-    state: Dict[str, Any] = {"rows": []}
-    _wire(authed_page, state)
-    _open_settings(authed_page, base_url)
-
-    authed_page.locator("#tokenMintBtn").click()
-    # No POST fired; the panel surfaced a toast instead.
-    assert "mint_body" not in state
-    expect(authed_page.locator("#tokenMintResult")).to_be_hidden()
-
-
-def test_revoke_removes_row(authed_page: Page, base_url: str) -> None:
-    rows: List[Dict[str, Any]] = [dict(_MINTED)]
-    state: Dict[str, Any] = {"rows": rows}
-    _wire(authed_page, state)
-    _open_settings(authed_page, base_url)
-
+    # -- was test_revoke_removes_row (revokes the row just minted, id
+    # tok-abc123 — the same _MINTED row that test seeded) --
     expect(authed_page.locator("#tokensList .token-row")).to_have_count(1)
     authed_page.locator("#tokensList .token-row button", has_text="Revoke").click()
     assert_revoked = authed_page.locator("#tokensList .token-row")

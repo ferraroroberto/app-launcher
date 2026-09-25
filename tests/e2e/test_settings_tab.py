@@ -39,14 +39,31 @@ def _open_card(page: Page, panel_id: str) -> None:
     expect(page.locator(f"#{panel_id}")).to_have_js_property("open", True)
 
 
-def test_settings_tab_opens_pane_with_controls(
+def test_settings_pane_controls_and_theme_toggle(
     authed_page: Page, base_url: str
 ) -> None:
+    """Every read-only Settings-pane check on one page load (#1215).
+
+    Merged from six tests that each did the same goto: pane routing, the
+    panel's absence from the other tabs, the switch shape, the status readout,
+    the context-filter card, and — last, since it is the only step that
+    mutates page state — the Coding-tab theme toggle's flip.
+    """
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=10_000
     )
 
+    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 1) --
+    toggle = authed_page.locator("#themeToggle")
+    # Lives in the home-head card on the Coding tab (#496) — visible on load.
+    expect(toggle).to_be_visible()
+
+    # -- was test_settings_panel_absent_from_other_tabs (part 1) --
+    # Default tab is Coding — the settings panel must not bleed through.
+    expect(authed_page.locator("#settingsPanel")).to_be_hidden()
+
+    # -- was test_settings_tab_opens_pane_with_controls --
     authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     expect(authed_page.locator("#paneClaude")).to_be_hidden()
@@ -54,6 +71,11 @@ def test_settings_tab_opens_pane_with_controls(
     expect(authed_page.locator("nav.tabs .tab[aria-selected='true']")).to_have_count(0)
     expect(authed_page.locator("nav.tabs")).to_have_attribute("data-active-tab", "settings")
 
+    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 2) --
+    # Not duplicated into the Settings pane.
+    expect(toggle).to_be_hidden()
+
+    # (test_settings_tab_opens_pane_with_controls, continued)
     # The Settings card is a disclosure, closed by default (issue #719) — its
     # body fields are hidden until the summary is tapped.
     expect(authed_page.locator("#projectsDir")).to_be_hidden()
@@ -61,27 +83,67 @@ def test_settings_tab_opens_pane_with_controls(
     expect(authed_page.locator("#projectsDir")).to_be_visible()
     expect(authed_page.locator("#saveSettings")).to_be_visible()
 
+    # -- was test_settings_boolean_controls_use_vendored_switch --
+    # Settings booleans use the fleet switch track + sliding thumb. The
+    # #settingsPanel card was opened just above (tapping its summary again
+    # would close it), so assert it is still open instead of re-opening.
+    expect(authed_page.locator("#settingsPanel")).to_have_js_property("open", True)
+    for selector in ("#bootAutostartToggle",):
+        switch = authed_page.locator(selector)
+        expect(switch).to_have_class(re.compile(r"(?:^|\s)toggle(?:\s|$)"))
+        expect(switch.locator(".knob")).to_have_count(1)
+        box = switch.bounding_box()
+        assert box is not None
+        assert round(box["width"]) == 44
+        assert round(box["height"]) == 26
 
-def test_settings_panel_absent_from_other_tabs(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    # Default tab is Coding — the settings panel must not bleed through.
-    expect(authed_page.locator("#settingsPanel")).to_be_hidden()
+    # -- was test_settings_status_readout_has_no_tls_or_tunnel_url --
+    # The TLS badge + tunnel-URL status line was removed (issue #435
+    # follow-up) — needless exposure of the tunnel hostname in the UI. Any
+    # reachability warning may still render; TLS/tunnel text must not.
+    readout = authed_page.locator("#statusReadout")
+    text = (readout.text_content() or "").lower()
+    assert "tls" not in text
+    assert "tunnel" not in text
+    assert "http" not in text
+
+    # -- was test_context_filter_card_renders_and_reflects_api_mode --
+    # Context filter Settings card (issue #713) — segmented off/shadow/
+    # rewrite control and harness matrix render from live server data.
+    #
+    # Deliberately **read-only**: ``context_filter_mode_file`` defaults to
+    # ``~/.fleet-context-filter/mode.json`` (fleet-config#544), and the e2e
+    # autoboot's disposable webapp config is a byte-copy of the real
+    # ``config/webapp_config.json`` with no isolation for that Path.home()
+    # default — so clicking a mode button here would flip the *real*,
+    # machine-wide filter switch every live coding-agent session on this box
+    # reads. The write path is already covered against isolated tmp paths in
+    # tests/test_webapp_api_context_filter.py; this step only asserts the
+    # control renders with exactly one active button (impossible unless it
+    # read a real mode string back from GET /api/context-filter, since no
+    # button is marked active for a null/unknown value).
+    _open_card(authed_page, "contextFilterPanel")
+
+    panel = authed_page.locator("#contextFilterPanel")
+    expect(panel).to_be_visible()
+
+    control = authed_page.locator("#contextFilterMode")
+    expect(control.locator("button")).to_have_count(3)
+    active = control.locator("button.active")
+    expect(active).to_have_count(1)
+    expect(active).to_have_attribute(
+        "data-value", re.compile(r"^(off|shadow|rewrite)$")
+    )
+
+    harnesses = authed_page.locator("#contextFilterHarnesses li")
+    expect(harnesses).to_have_count(6)
+
+    # -- was test_settings_panel_absent_from_other_tabs (part 2) --
     authed_page.locator("#tabApps").click()
     expect(authed_page.locator("#settingsPanel")).to_be_hidden()
 
-
-def test_theme_toggle_lives_on_coding_tab_and_flips_theme(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    toggle = authed_page.locator("#themeToggle")
-    # Lives in the home-head card on the Coding tab (#496) — visible on load.
-    expect(toggle).to_be_visible()
-    # Not duplicated into the Settings pane.
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    expect(toggle).to_be_hidden()
+    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 3, last:
+    # the only step that mutates page state) --
     authed_page.locator("#tabClaude").click()
     expect(toggle).to_be_visible()
 
@@ -194,72 +256,3 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
 
 
-def test_settings_boolean_controls_use_vendored_switch(
-    authed_page: Page, base_url: str
-) -> None:
-    """Settings booleans use the fleet switch track + sliding thumb."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    _open_card(authed_page, "settingsPanel")
-
-    for selector in ("#bootAutostartToggle",):
-        toggle = authed_page.locator(selector)
-        expect(toggle).to_have_class(re.compile(r"(?:^|\s)toggle(?:\s|$)"))
-        expect(toggle.locator(".knob")).to_have_count(1)
-        box = toggle.bounding_box()
-        assert box is not None
-        assert round(box["width"]) == 44
-        assert round(box["height"]) == 26
-
-
-def test_settings_status_readout_has_no_tls_or_tunnel_url(
-    authed_page: Page, base_url: str
-) -> None:
-    """The TLS badge + tunnel-URL status line was removed (issue #435
-    follow-up) — needless exposure of the tunnel hostname in the UI. Any
-    reachability warning may still render; TLS/tunnel text must not."""
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    _open_card(authed_page, "settingsPanel")
-    readout = authed_page.locator("#statusReadout")
-    text = (readout.text_content() or "").lower()
-    assert "tls" not in text
-    assert "tunnel" not in text
-    assert "http" not in text
-
-
-def test_context_filter_card_renders_and_reflects_api_mode(
-    authed_page: Page, base_url: str
-) -> None:
-    """Context filter Settings card (issue #713) — segmented off/shadow/
-    rewrite control and harness matrix render from live server data.
-
-    Deliberately **read-only**: ``context_filter_mode_file`` defaults to
-    ``~/.fleet-context-filter/mode.json`` (fleet-config#544), and the e2e
-    autoboot's disposable webapp config is a byte-copy of the real
-    ``config/webapp_config.json`` with no isolation for that Path.home()
-    default — so clicking a mode button here would flip the *real*,
-    machine-wide filter switch every live coding-agent session on this box
-    reads. The write path is already covered against isolated tmp paths in
-    tests/test_webapp_api_context_filter.py; this test only asserts the
-    control renders with exactly one active button (impossible unless it
-    read a real mode string back from GET /api/context-filter, since no
-    button is marked active for a null/unknown value).
-    """
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    _open_card(authed_page, "contextFilterPanel")
-
-    panel = authed_page.locator("#contextFilterPanel")
-    expect(panel).to_be_visible()
-
-    control = authed_page.locator("#contextFilterMode")
-    expect(control.locator("button")).to_have_count(3)
-    active = control.locator("button.active")
-    expect(active).to_have_count(1)
-    expect(active).to_have_attribute(
-        "data-value", re.compile(r"^(off|shadow|rewrite)$")
-    )
-
-    harnesses = authed_page.locator("#contextFilterHarnesses li")
-    expect(harnesses).to_have_count(6)

@@ -96,9 +96,43 @@ def _parent_row(page: Page):
     return page.locator("#listenersList .listener-row.expandable")
 
 
-def test_parent_collapsed_by_default_and_toggles(listeners_page: Page) -> None:
+def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
+    """Every listener-row check on one canned probe render (#1215).
+
+    Read-only steps first; the kill (the only step that fires the API) last.
+    """
     page = listeners_page
 
+    # -- was test_childless_listener_keeps_flat_row --
+    flat = page.locator(
+        "#listenersList .listener-row:not(.child):not(.expandable)"
+    )
+    expect(flat).to_have_count(1)
+    expect(flat.locator(".listener-chevron")).to_have_count(0)
+
+    # -- was test_no_visible_kill_and_the_menu_puts_danger_last --
+    # #1129: nine stacked red Kill buttons were the loudest thing in the app.
+    # A destructive action is the least prominent control on a row: the row
+    # menu's last item, after a divider, in the danger text colour, and still
+    # confirmed (the kill step below accepts that dialog).
+    expect(page.locator("#listenersList .button-tint.danger")).to_have_count(0)
+
+    row = page.locator("#listenersList .listener-row").first
+    row.locator(".action-row-kebab").click()
+    menu = row.locator(".row-menu")
+    expect(menu).to_be_visible()
+    last = menu.locator(":scope > *").last
+    expect(last).to_have_class(re.compile(r"\brow-menu-danger\b"))
+    expect(last).to_have_class(re.compile(r"\blistener-kill\b"))
+    expect(menu.locator(":scope > .row-menu-divider")).to_have_count(1)
+    assert menu.evaluate(
+        "m => m.lastElementChild.previousElementSibling.classList.contains('row-menu-divider')"
+    ), "the destructive item is not separated from the rest by the divider"
+    # Close the menu so the collapse steps below start from a clean row.
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()
+
+    # -- was test_parent_collapsed_by_default_and_toggles --
     # Only the grouped parent gets the affordance; children start hidden.
     parent = _parent_row(page)
     expect(parent).to_have_count(1)
@@ -116,21 +150,8 @@ def test_parent_collapsed_by_default_and_toggles(listeners_page: Page) -> None:
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     expect(_parent_row(page)).to_have_attribute("aria-expanded", "false")
 
-
-def test_childless_listener_keeps_flat_row(listeners_page: Page) -> None:
-    page = listeners_page
-
-    flat = page.locator(
-        "#listenersList .listener-row:not(.child):not(.expandable)"
-    )
-    expect(flat).to_have_count(1)
-    expect(flat.locator(".listener-chevron")).to_have_count(0)
-
-
-def test_kill_works_collapsed_parent_and_expanded_child(
-    listeners_page: Page,
-) -> None:
-    page = listeners_page
+    # -- was test_kill_works_collapsed_parent_and_expanded_child (last: fires
+    # the kill API) --
     killed_ports: list = []
 
     def _capture_kill(route) -> None:
@@ -159,24 +180,3 @@ def test_kill_works_collapsed_parent_and_expanded_child(
     child.locator(".action-row-kebab").click()
     child.locator(".listener-kill").click()
     assert killed_ports == ["8000", "8081"], f"child kill hit {killed_ports!r}"
-
-
-def test_no_visible_kill_and_the_menu_puts_danger_last(listeners_page: Page) -> None:
-    """#1129: nine stacked red Kill buttons were the loudest thing in the app.
-    A destructive action is the least prominent control on a row: the row
-    menu's last item, after a divider, in the danger text colour, and still
-    confirmed (the other kill test accepts that dialog)."""
-    page = listeners_page
-    expect(page.locator("#listenersList .button-tint.danger")).to_have_count(0)
-
-    row = page.locator("#listenersList .listener-row").first
-    row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
-    expect(menu).to_be_visible()
-    last = menu.locator(":scope > *").last
-    expect(last).to_have_class(re.compile(r"\brow-menu-danger\b"))
-    expect(last).to_have_class(re.compile(r"\blistener-kill\b"))
-    expect(menu.locator(":scope > .row-menu-divider")).to_have_count(1)
-    assert menu.evaluate(
-        "m => m.lastElementChild.previousElementSibling.classList.contains('row-menu-divider')"
-    ), "the destructive item is not separated from the rest by the divider"

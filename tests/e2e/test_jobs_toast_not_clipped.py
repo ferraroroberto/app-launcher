@@ -20,10 +20,15 @@ from playwright.sync_api import Page, expect
 pytestmark = pytest.mark.smoke
 
 
-def test_toast_is_body_level_sibling_of_app(authed_page: Page, base_url: str) -> None:
+def test_toast_is_body_level_and_renders_above_nav_bar(
+    authed_page: Page, base_url: str
+) -> None:
+    """Both halves on one page load (#1215): the structural pin first, then
+    the paint-order check that switches tab and shows a toast."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
 
+    # -- was test_toast_is_body_level_sibling_of_app --
     is_nested_in_app = authed_page.evaluate(
         "() => !!document.querySelector('main.app #toast')"
     )
@@ -38,10 +43,7 @@ def test_toast_is_body_level_sibling_of_app(authed_page: Page, base_url: str) ->
     )
     assert toast_parent_is_body, "#toast's parent should be <body> directly."
 
-
-def test_toast_renders_above_nav_bar(authed_page: Page, base_url: str) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
+    # -- was test_toast_renders_above_nav_bar --
     authed_page.locator("#tabJobs").click()
 
     authed_page.evaluate(

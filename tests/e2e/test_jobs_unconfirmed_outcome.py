@@ -114,37 +114,48 @@ def _dot(page: Page, job_id: str):
     return page.locator(f"#jobsList li[data-id='{job_id}'] [data-role='status-dot']")
 
 
-def test_unconfirmed_row_is_not_rendered_as_failed(
+def test_three_outcomes_render_distinctly(
     authed_page: Page, base_url: str
 ) -> None:
-    """The defect itself: exit 122 got the same red dot as a real failure."""
+    """All three terminal outcomes on one render of the Jobs list (#916).
+
+    One page load for every check (#1215): the dot-class pins, the pairwise
+    colour fact, and last the detail block the unconfirmed row opens.
+    """
     _open_jobs(authed_page, base_url)
+
+    # -- was test_unconfirmed_row_is_not_rendered_as_failed --
+    # The defect itself: exit 122 got the same red dot as a real failure.
     expect(_dot(authed_page, "truncated")).to_have_class(
         re.compile(r"\bunconfirmed\b")
     )
     # And specifically *not* the failure class it used to get.
     expect(_dot(authed_page, "truncated")).not_to_have_class(re.compile(r"\bdown\b"))
 
-
-def test_genuine_failure_still_renders_as_failed(
-    authed_page: Page, base_url: str
-) -> None:
-    """The over-correction guard. Exit 123 is the run reporting it delivered
-    no work; replacing false alarms with false comfort would be worse than the
-    bug."""
-    _open_jobs(authed_page, base_url)
+    # -- was test_genuine_failure_still_renders_as_failed --
+    # The over-correction guard. Exit 123 is the run reporting it delivered
+    # no work; replacing false alarms with false comfort would be worse than the
+    # bug.
     expect(_dot(authed_page, "broken")).to_have_class(re.compile(r"\bdown\b"))
     expect(_dot(authed_page, "clean")).to_have_class(re.compile(r"\bup\b"))
 
+    # -- was test_sparkline_dot_follows_the_outcome_not_the_status --
+    # The 7-run sparkline reads the same classification, so a healthy job's
+    # history does not show a wall of red beside a corrected row.
+    spark = authed_page.locator(
+        "#jobsList li[data-id='truncated'] [data-role='sparkline'] .job-spark-dot"
+    ).first
+    expect(spark).to_have_class(re.compile(r"\bunconfirmed\b"))
+    expect(
+        authed_page.locator(
+            "#jobsList li[data-id='broken'] [data-role='sparkline'] .job-spark-dot"
+        ).first
+    ).to_have_class(re.compile(r"\bdown\b"))
 
-def test_three_outcomes_are_three_distinct_colours(
-    authed_page: Page, base_url: str
-) -> None:
-    """"Visually distinct from both success and failure" — asserted as the
-    pairwise fact rather than against hardcoded token values, so a future
-    palette change cannot make this pass while the states look alike.
-    """
-    _open_jobs(authed_page, base_url)
+    # -- was test_three_outcomes_are_three_distinct_colours --
+    # "Visually distinct from both success and failure" — asserted as the
+    # pairwise fact rather than against hardcoded token values, so a future
+    # palette change cannot make this pass while the states look alike.
     colours = {}
     for job_id in ("clean", "truncated", "broken"):
         expect(_dot(authed_page, job_id)).to_be_visible()
@@ -159,14 +170,11 @@ def test_three_outcomes_are_three_distinct_colours(
         f"got {colours}"
     )
 
-
-def test_unconfirmed_row_says_not_confirmed_and_explains_itself(
-    authed_page: Page, base_url: str
-) -> None:
-    """The word on the row matters as much as the colour: "failed" is the
-    claim that was wrong. The exit code's own one-liner rides on the dot's
-    tooltip so the row is actionable without opening the log."""
-    _open_jobs(authed_page, base_url)
+    # -- was test_unconfirmed_row_says_not_confirmed_and_explains_itself --
+    # (last: it opens the row's detail block.)
+    # The word on the row matters as much as the colour: "failed" is the
+    # claim that was wrong. The exit code's own one-liner rides on the dot's
+    # tooltip so the row is actionable without opening the log.
     # The last-run sentence moved into the detail block the row opens (#1130).
     authed_page.locator(
         "#jobsList li[data-id='truncated'] button[aria-label^='View run history']"
@@ -177,20 +185,3 @@ def test_unconfirmed_row_says_not_confirmed_and_explains_itself(
     expect(_dot(authed_page, "truncated")).to_have_attribute(
         "title", re.compile("never verified")
     )
-
-
-def test_sparkline_dot_follows_the_outcome_not_the_status(
-    authed_page: Page, base_url: str
-) -> None:
-    """The 7-run sparkline reads the same classification, so a healthy job's
-    history does not show a wall of red beside a corrected row."""
-    _open_jobs(authed_page, base_url)
-    spark = authed_page.locator(
-        "#jobsList li[data-id='truncated'] [data-role='sparkline'] .job-spark-dot"
-    ).first
-    expect(spark).to_have_class(re.compile(r"\bunconfirmed\b"))
-    expect(
-        authed_page.locator(
-            "#jobsList li[data-id='broken'] [data-role='sparkline'] .job-spark-dot"
-        ).first
-    ).to_have_class(re.compile(r"\bdown\b"))

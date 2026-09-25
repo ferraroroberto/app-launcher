@@ -49,30 +49,6 @@ def _route_map(page: Page, *, available: bool = True) -> None:
     )
 
 
-def test_section_sits_between_projects_and_settings(
-    authed_page: Page, base_url: str
-) -> None:
-    _route_map(authed_page, available=True)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    card = authed_page.locator("details.system-map-card#systemMapCard")
-    expect(card).to_be_visible()
-
-    # Document order: Projects → System map → Settings. compareDocumentPosition
-    # returns DOCUMENT_POSITION_FOLLOWING (4) when the argument follows `this`.
-    order_ok = authed_page.evaluate(
-        """() => {
-            const projects = document.querySelector('details.projects-card');
-            const map = document.querySelector('#systemMapCard');
-            const settings = document.querySelector('#settingsPanel');
-            const after = (a, b) =>
-                !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
-            return after(projects, map) && after(map, settings);
-        }"""
-    )
-    assert order_ok, "System map must sit after Projects and before Settings"
-
-
 def test_section_hidden_when_unavailable(
     authed_page: Page, base_url: str
 ) -> None:
@@ -89,6 +65,26 @@ def test_map_loads_on_expand_and_zooms(
 
     card = authed_page.locator("#systemMapCard")
     expect(card).to_be_visible()
+
+    # -- was test_section_sits_between_projects_and_settings (merged in #1215;
+    # same mocks and page load, read-only, so it runs first) --
+    expect(authed_page.locator("details.system-map-card#systemMapCard")).to_be_visible()
+
+    # Document order: Projects → System map → Settings. compareDocumentPosition
+    # returns DOCUMENT_POSITION_FOLLOWING (4) when the argument follows `this`.
+    order_ok = authed_page.evaluate(
+        """() => {
+            const projects = document.querySelector('details.projects-card');
+            const map = document.querySelector('#systemMapCard');
+            const settings = document.querySelector('#settingsPanel');
+            const after = (a, b) =>
+                !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+            return after(projects, map) && after(map, settings);
+        }"""
+    )
+    assert order_ok, "System map must sit after Projects and before Settings"
+
+    # -- lazy-load + lightbox (this test's own) --
     img = authed_page.locator("#systemMapImage")
 
     # Lazy-load: the image only fetches once the panel is expanded.

@@ -50,29 +50,6 @@ def _navigate(page: Page, base_url: str) -> None:
         summary.click()
 
 
-def test_only_tray_kind_rows_appear_in_registered_trays_panel(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.route(
-        "**/api/apps",
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps(_apps_payload()),
-        ),
-    )
-    _navigate(authed_page, base_url)
-
-    tray_rows = authed_page.locator("#registeredTraysList li.action-row")
-    expect(tray_rows).to_have_count(1, timeout=5_000)
-    expect(tray_rows.first).to_contain_text("Home Automation")
-
-    # The streamlit row must land in Registered apps, not here.
-    other_rows = authed_page.locator("#appsList li.action-row")
-    expect(other_rows).to_have_count(1)
-    expect(other_rows.first).to_contain_text("Photo OCR")
-
-
 def test_empty_state_shown_with_no_tray_rows(
     authed_page: Page, base_url: str
 ) -> None:
@@ -117,6 +94,19 @@ def test_autostart_toggle_reflects_state_and_patches(
     authed_page.route("**/api/apps/home-automation-tray", _patch_handler)
     _navigate(authed_page, base_url)
 
+    # -- was test_only_tray_kind_rows_appear_in_registered_trays_panel (merged
+    # in #1215; the handler above serves that test's exact _apps_payload()
+    # until the first toggle PATCHes it) --
+    tray_rows = authed_page.locator("#registeredTraysList li.action-row")
+    expect(tray_rows).to_have_count(1, timeout=5_000)
+    expect(tray_rows.first).to_contain_text("Home Automation")
+
+    # The streamlit row must land in Registered apps, not here.
+    other_rows = authed_page.locator("#appsList li.action-row")
+    expect(other_rows).to_have_count(1)
+    expect(other_rows.first).to_contain_text("Photo OCR")
+
+    # -- the autostart toggle (this test's own; last: it PATCHes) --
     # #790 dropped the switch's visible label — the panel is called Trays
     # and it is the row's only toggle; since #1128 it is the action-row's
     # one leading toggle.

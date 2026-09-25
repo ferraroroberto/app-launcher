@@ -93,7 +93,10 @@ def _open_projects(page: Page) -> None:
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
 
 
-def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> None:
+def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) -> None:
+    """Every favourites check on one canned /api/apps render (#1215): the
+    pin + filter, the filter button's shape, and last the star toggles that
+    mutate the shared mock state."""
     # Routes must be live before boot's first /api/apps fetch.
     _install_routes(authed_page)
     # Start with the filter OFF regardless of any persisted pref from a
@@ -104,6 +107,7 @@ def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> N
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
+    # -- was test_favorites_pin_to_top_then_filter --
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
 
     # Default view: the one favorite (bravo) is pinned above the alphabetical
@@ -129,58 +133,14 @@ def test_favorites_pin_to_top_then_filter(authed_page: Page, base_url: str) -> N
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
     assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
 
-
-def test_star_toggle_reorders_and_persists(authed_page: Page, base_url: str) -> None:
-    _install_routes(authed_page)
-    authed_page.add_init_script(
-        "window.localStorage.setItem('launcher.codingFavFilter', '0');"
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-
-    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
-    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
-
-    # Star "delta" — the POST persists it and the SPA re-fetches, so delta
-    # both gains the filled star and jumps into the favorites group (alpha-
-    # sorted: bravo then delta), above the now-shorter rest.
-    authed_page.locator('.coding-item[data-id="delta"] .star-btn').click()
-
-    # Wait for the reorder to settle, then assert the new order.
-    expect(
-        authed_page.locator("#claudeList .coding-item").first
-    ).to_have_attribute("data-id", "bravo")
-    delta_star = authed_page.locator('.coding-item[data-id="delta"] .star-btn')
-    expect(delta_star).to_have_attribute("aria-pressed", "true")
-    assert _order(authed_page) == ["bravo", "delta", "alpha", "charlie"]
-
-    # Unstar "bravo" → it drops out of the favorites group, back into the
-    # alphabetical rest (alpha, bravo, charlie); delta is the sole favorite.
-    authed_page.locator('.coding-item[data-id="bravo"] .star-btn').click()
-    expect(
-        authed_page.locator("#claudeList .coding-item").first
-    ).to_have_attribute("data-id", "delta")
-    assert _order(authed_page) == ["delta", "alpha", "bravo", "charlie"]
-
-
-def test_favorites_filter_is_icon_only_beside_labelled_toggles(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1194 (the decision on #1176): the favourites star is icon only.
-
-    #1176 gave Detached, Resume and the star a visible word each; the star
-    goes back to the bare glyph while its neighbours keep theirs. The markup
-    and every syncFavFilterBtn() re-render must agree, the accessible name
-    keeps saying what the filter does, and its height still matches the
-    Detached toggle beside it.
-    """
-    _install_routes(authed_page)
-    authed_page.add_init_script(
-        "window.localStorage.setItem('launcher.codingFavFilter', '0');"
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-
+    # -- was test_favorites_filter_is_icon_only_beside_labelled_toggles --
+    # #1194 (the decision on #1176): the favourites star is icon only.
+    #
+    # #1176 gave Detached, Resume and the star a visible word each; the star
+    # goes back to the bare glyph while its neighbours keep theirs. The markup
+    # and every syncFavFilterBtn() re-render must agree, the accessible name
+    # keeps saying what the filter does, and its height still matches the
+    # Detached toggle beside it.
     btn = authed_page.locator("#favFilterBtn")
     expect(btn).to_be_visible()
     # The glyph alone: no stray word, after the Coding render has run.
@@ -207,3 +167,33 @@ def test_favorites_filter_is_icon_only_beside_labelled_toggles(
     btn.click()
     expect(btn).to_have_attribute("aria-pressed", "true")
     expect(btn).to_have_class(re.compile(r"\bactive\b"))
+
+    # Filter back OFF so the star-toggle step below sees the full list.
+    btn.click()
+    expect(btn).to_have_attribute("aria-pressed", "false")
+
+    # -- was test_star_toggle_reorders_and_persists (last: mutates the
+    # favourites mock state) --
+    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
+    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
+
+    # Star "delta" — the POST persists it and the SPA re-fetches, so delta
+    # both gains the filled star and jumps into the favorites group (alpha-
+    # sorted: bravo then delta), above the now-shorter rest.
+    authed_page.locator('.coding-item[data-id="delta"] .star-btn').click()
+
+    # Wait for the reorder to settle, then assert the new order.
+    expect(
+        authed_page.locator("#claudeList .coding-item").first
+    ).to_have_attribute("data-id", "bravo")
+    delta_star = authed_page.locator('.coding-item[data-id="delta"] .star-btn')
+    expect(delta_star).to_have_attribute("aria-pressed", "true")
+    assert _order(authed_page) == ["bravo", "delta", "alpha", "charlie"]
+
+    # Unstar "bravo" → it drops out of the favorites group, back into the
+    # alphabetical rest (alpha, bravo, charlie); delta is the sole favorite.
+    authed_page.locator('.coding-item[data-id="bravo"] .star-btn').click()
+    expect(
+        authed_page.locator("#claudeList .coding-item").first
+    ).to_have_attribute("data-id", "delta")
+    assert _order(authed_page) == ["delta", "alpha", "bravo", "charlie"]
