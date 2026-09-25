@@ -141,8 +141,18 @@ try {
         Write-Host "    reason: $routeReason" -ForegroundColor DarkGray
         Log-Progress "e2e routing: tier=skip reason=$routeReason"
     } else {
+        # Parallel workers for the dual-projection tiers (#1231): the one
+        # setting is $E2EDefaultWorkers in e2e-gate-route.ps1, overridable
+        # with E2E_WORKERS. Resolved before the mutex so a bad value fails
+        # fast instead of after queueing.
+        try {
+            $workerPlan = Get-E2EWorkerArgs -Route $route -Setting $env:E2E_WORKERS
+        }
+        catch {
+            Fail $_.Exception.Message
+        }
         Phase "e2e routing: $tier ($routeReason)"
-        Log-Progress "e2e routing: tier=$tier target=$e2eTargetLabel browsers=$e2eBrowsers reason=$routeReason"
+        Log-Progress "e2e routing: tier=$tier target=$e2eTargetLabel browsers=$e2eBrowsers workers=$($workerPlan.Workers) reason=$routeReason"
 
         # Serialize dual-projection e2e legs across concurrent primary/worktree
         # gate runs on this machine (issue #685). Two overlapping runs -- a
@@ -182,12 +192,13 @@ try {
             # (#184).
             $verbosity = if ($env:CI -eq "true") { "-v" } else { "-q" }
             if ($env:CI -eq "true") { $env:PYTHONUNBUFFERED = "1" }
-            $e2eArgs = @($route.Targets) + @($verbosity)
+            $e2eArgs = @($route.Targets) + @($verbosity) + @($workerPlan.Args)
             foreach ($b in @($route.Browsers)) {
                 $e2eArgs += @("--browser", $b)
             }
             $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
-            Phase "pytest e2e ($e2eTargetLabel, $projLabel, auto-booted)..."
+            $workerLabel = if ($workerPlan.Workers -gt 1) { "$($workerPlan.Workers) workers" } else { "serial" }
+            Phase "pytest e2e ($e2eTargetLabel, $projLabel, $workerLabel, auto-booted)..."
             try {
                 & $python -m pytest @e2eArgs
                 $e2eExit = $LASTEXITCODE

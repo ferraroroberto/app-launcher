@@ -8,6 +8,7 @@ real ``webapp/verify-progress.log``. Every credential below is an obvious fake.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -19,7 +20,8 @@ from tests import _progress_log as progress
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
-def _run_inner_pytest(test_dir: Path, source: str, *plugins: str) -> str:
+def _run_inner_pytest(test_dir: Path, source: str, *plugins: str,
+                      extra_args: tuple = ()) -> str:
     """Run ``source`` as a test file under ``plugins``; return the progress log."""
     test_dir.mkdir(parents=True, exist_ok=True)
     (test_dir / "test_inner.py").write_text(textwrap.dedent(source), encoding="utf-8")
@@ -34,7 +36,8 @@ def _run_inner_pytest(test_dir: Path, source: str, *plugins: str) -> str:
     }
     args = [arg for plugin in plugins for arg in ("-p", plugin)]
     proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args, "test_inner.py"],
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *args, *extra_args,
+         "test_inner.py"],
         cwd=test_dir,
         env=env,
         capture_output=True,
@@ -145,3 +148,37 @@ def test_progress_log_excerpt_carries_no_credential(tmp_path: Path) -> None:
     assert "FAILED (call)" in scrubbed
     assert credential not in scrubbed
     assert "Bearer " + hygiene.REDACTED in scrubbed
+
+
+def test_parallel_workers_log_each_test_once_with_its_worker(tmp_path: Path) -> None:
+    """#1231: under pytest-xdist the controller alone writes the log.
+
+    Workers inherit LAUNCHER_VERIFY_PROGRESS_LOG, so without the guard every
+    START / DONE line would land twice (worker + controller), interleaved
+    across processes. Each DONE and failure line names the worker, which is
+    what lets a wedge be traced once several tests are in flight.
+    """
+    log = _run_inner_pytest(tmp_path, """
+        import pytest
+
+        @pytest.mark.parametrize("n", range(6))
+        def test_passes(n):
+            pass
+
+        def test_fails():
+            assert False, "parallel-marker-1231"
+    """, "xdist.plugin", "tests._progress_log", extra_args=("-n", "2"))
+
+    events = [ln for ln in log.splitlines() if not ln.startswith(progress.EXCERPT_PREFIX)]
+    nodeids = [f"test_inner.py::test_passes[{n}]" for n in range(6)] + ["test_inner.py::test_fails"]
+    for nodeid in nodeids:
+        starts = [ln for ln in events if ln.endswith(f"START {nodeid}")]
+        dones = [ln for ln in events if f"DONE  {nodeid} (" in ln]
+        assert len(starts) == 1, (nodeid, events)
+        assert len(dones) == 1, (nodeid, events)
+        assert re.search(r"\[gw[01]\]$", dones[0]), dones[0]
+    failed = next(ln for ln in events if "FAILED (call) test_inner.py::test_fails" in ln)
+    assert re.search(r"\[gw[01]\]$", failed), failed
+    excerpt = _excerpt_after(log, "FAILED (call) test_inner.py::test_fails")
+    assert any("parallel-marker-1231" in line for line in excerpt), excerpt
+

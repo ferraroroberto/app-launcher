@@ -43,6 +43,7 @@ import urllib3
 from pathlib import Path
 from typing import Callable, IO, Iterator, List, Optional, Tuple
 
+import psutil
 import pytest
 import requests
 from playwright.sync_api import BrowserContext, Page, expect
@@ -243,26 +244,94 @@ def _terminate(proc: Optional[subprocess.Popen]) -> None:
         logger.warning("⚠️  autoboot: process teardown failed: %s", exc)
 
 
-def _wait_port(port: int, timeout: float) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if _port_listening(port):
-            return True
-        time.sleep(0.3)
-    return False
+# Parallel workers (#1231): under pytest-xdist every worker is its own pytest
+# process booting its own disposable webapp + session-host, so what was one
+# run's private state — a fixed log name, a port picked and then released —
+# is now shared between workers. "" when the run is not distributed.
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER", "")
+# How many fresh ports a disposable server gets before autoboot gives up. A
+# retry only follows a lost port race, never a slow boot.
+_BOOT_PORT_ATTEMPTS = 3
 
 
-def _wait_healthz(base: str, timeout: float) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            res = requests.get(f"{base}/healthz", timeout=2, verify=False)
-            if res.status_code == 200:
-                return True
-        except requests.RequestException:
-            pass
-        time.sleep(0.4)
-    return False
+def _autoboot_log_name(stem: str) -> str:
+    """``webapp/<stem>.log``, suffixed with the xdist worker id when there is
+    one, so parallel workers never truncate each other's boot log."""
+    return f"{stem}-{_XDIST_WORKER}.log" if _XDIST_WORKER else f"{stem}.log"
+
+
+def _owns_listener(proc: subprocess.Popen, port: int) -> bool:
+    """True when ``proc`` itself, or a descendant, listens on ``port``.
+
+    A descendant counts because the venv's ``python.exe`` is a launcher stub
+    that runs the real interpreter as its child. Anything else holding the
+    port — another worker's server that won the race for it — does not.
+    """
+    try:
+        family = {proc.pid} | {
+            child.pid for child in psutil.Process(proc.pid).children(recursive=True)
+        }
+    except psutil.Error:
+        return False
+    return any(
+        conn.status == psutil.CONN_LISTEN and conn.laddr and conn.laddr.port == port
+        and conn.pid in family
+        for conn in psutil.net_connections(kind="tcp")
+    )
+
+
+def _boot_on_free_port(
+    what: str,
+    log_name: str,
+    spawn: Callable[[int], subprocess.Popen],
+    ready: Callable[[int], bool],
+    timeout: float,
+) -> Tuple[subprocess.Popen, int]:
+    """Spawn ``what`` on a free port and wait until *it* answers there.
+
+    ``_free_tcp_port`` releases the port before the child binds it, so another
+    process can take it first — rare with one pytest process, a real race
+    with several workers booting at once (#1231). ``ready`` alone cannot tell
+    that apart from success: a port that listens, or a /healthz that answers,
+    may be the other process. So readiness also requires the listener to be
+    ours, and a lost race (the child exits, or someone else holds its port)
+    retries on a fresh port. A child still alive at ``timeout`` with its port
+    held by itself or by nobody is a slow or broken boot, not a race, and
+    fails at once with its own message.
+    """
+    for attempt in range(1, _BOOT_PORT_ATTEMPTS + 1):
+        port = _free_tcp_port()
+        proc = spawn(port)
+        deadline = time.time() + timeout
+        while time.time() < deadline and proc.poll() is None:
+            if ready(port) and _owns_listener(proc, port):
+                return proc, port
+            time.sleep(0.3)
+        alive = proc.poll() is None
+        if alive and (_owns_listener(proc, port) or not _port_listening(port)):
+            _terminate(proc)
+            pytest.fail(
+                f"autoboot: {what} did not come up on :{port} within "
+                f"{timeout:.0f}s — see webapp/{log_name}"
+            )
+        _terminate(proc)
+        logger.warning(
+            "⚠️ autoboot: %s lost the race for :%d (attempt %d/%d, %s) — retrying on a new port",
+            what, port, attempt, _BOOT_PORT_ATTEMPTS,
+            "another process holds it" if alive else "it exited",
+        )
+    pytest.fail(
+        f"autoboot: {what} could not get a port of its own in {_BOOT_PORT_ATTEMPTS} "
+        f"attempts — each time it exited or another process held the port; "
+        f"see webapp/{log_name}"
+    )
+
+
+def _healthz_ok(base: str) -> bool:
+    try:
+        return requests.get(f"{base}/healthz", timeout=2, verify=False).status_code == 200
+    except requests.RequestException:
+        return False
 
 
 def _leaked_stub_sessions(
@@ -437,81 +506,70 @@ def _autoboot_server(
         # host starts empty, so the destructive e2e tests can only ever touch
         # sessions this run launched. The disposable webapp is pointed at it
         # via LAUNCHER_SESSION_HOST_PORT below.
-        sh_port = _free_tcp_port()
-        sh_cmd = [
-            sys.executable,
-            str(_REPO_ROOT / "launcher.py"),
-            "session-host",
-            "--port",
-            str(sh_port),
-        ]
         # Lightweight-child shim (issue #534): only the DISPOSABLE
         # session-host gets the shim on PATH — the pytest process and the
         # live tray keep the real resolution, so `shutil.which("claude")`
         # in the fixtures below still faithfully predicts the real CLI.
         shim_dir = tmp_path_factory.mktemp("claude-shim")
         _write_claude_shim(shim_dir)
-        sh_proc = _spawn(
-            sh_cmd,
-            _open_log("e2e-autoboot-session-host.log"),
-            extra_env={
-                "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
-                _AUDIT_DIR_ENV: str(audit_dir),
-                _UPLOAD_ROOT_ENV: str(uploads_root),
-            },
+        sh_log_name = _autoboot_log_name("e2e-autoboot-session-host")
+        sh_log = _open_log(sh_log_name)
+
+        def _spawn_session_host(port: int) -> subprocess.Popen:
+            return _spawn(
+                [sys.executable, str(_REPO_ROOT / "launcher.py"),
+                 "session-host", "--port", str(port)],
+                sh_log,
+                extra_env={
+                    "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+                    _AUDIT_DIR_ENV: str(audit_dir),
+                    _UPLOAD_ROOT_ENV: str(uploads_root),
+                },
+            )
+
+        sh_proc, sh_port = _boot_on_free_port(
+            "session-host", sh_log_name, _spawn_session_host, _port_listening,
+            timeout=15,
         )
         _AUTOBOOT_STATE["session_host_port"] = sh_port
-        if not _wait_port(sh_port, timeout=15):
-            _teardown()
-            pytest.fail(
-                f"autoboot: session-host did not listen on :{sh_port} "
-                "within 15s — see webapp/e2e-autoboot-session-host.log"
-            )
 
         # Webapp on a free port. HTTPS when the cert pair exists (mirrors the
         # real phone path); plain HTTP otherwise so a cert-less checkout still
         # runs the gate.
-        port = _free_tcp_port()
         certs = cert_paths()
         scheme = "https" if certs else "http"
-        wa_cmd = [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "app.webapp.server:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-            "--log-level",
-            "warning",
-            "--loop",
-            LOOP_FACTORY,
-        ]
-        if certs:
-            cert, key = certs
-            wa_cmd += ["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)]
-        # Point the disposable webapp at our disposable session-host, not the
-        # config's :8446, and at the temp config copy, not the real file —
-        # the two env injections that isolate the gate (issues #260, #441).
-        wa_proc = _spawn(
-            wa_cmd,
-            _open_log("e2e-autoboot-webapp.log"),
-            extra_env={
-                _SESSION_HOST_PORT_ENV: str(sh_port),
-                _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
-                _STARTUP_DIR_ENV: str(startup_dir),
-                _AUDIT_DIR_ENV: str(audit_dir),
-            },
-        )
+        wa_log_name = _autoboot_log_name("e2e-autoboot-webapp")
+        wa_log = _open_log(wa_log_name)
 
-        base = f"{scheme}://127.0.0.1:{port}"
-        if not _wait_healthz(base, timeout=20):
-            _teardown()
-            pytest.fail(
-                f"autoboot: webapp did not answer /healthz at {base} within 20s "
-                "— see webapp/e2e-autoboot-webapp.log"
+        def _spawn_webapp(port: int) -> subprocess.Popen:
+            wa_cmd = [
+                sys.executable, "-m", "uvicorn", "app.webapp.server:app",
+                "--host", "127.0.0.1", "--port", str(port),
+                "--log-level", "warning", "--loop", LOOP_FACTORY,
+            ]
+            if certs:
+                cert, key = certs
+                wa_cmd += ["--ssl-keyfile", str(key), "--ssl-certfile", str(cert)]
+            # Point the disposable webapp at our disposable session-host, not
+            # the config's :8446, and at the temp config copy, not the real
+            # file — the two env injections that isolate the gate (issues
+            # #260, #441).
+            return _spawn(
+                wa_cmd,
+                wa_log,
+                extra_env={
+                    _SESSION_HOST_PORT_ENV: str(sh_port),
+                    _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
+                    _STARTUP_DIR_ENV: str(startup_dir),
+                    _AUDIT_DIR_ENV: str(audit_dir),
+                },
             )
+
+        wa_proc, port = _boot_on_free_port(
+            "webapp", wa_log_name, _spawn_webapp,
+            lambda p: _healthz_ok(f"{scheme}://127.0.0.1:{p}"), timeout=20,
+        )
+        base = f"{scheme}://127.0.0.1:{port}"
         logger.info("✅ autoboot: webapp ready at %s", base)
         yield base
     finally:

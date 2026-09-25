@@ -2,9 +2,10 @@
 #
 # Turns scripts/classify_e2e.py's E2E_* lines into what the gate runs: the
 # tier, the pytest target arguments, the browsers, and whether the run must
-# hold the machine-wide dual-projection mutex. Dot-sourced by the gate and kept
-# free of side effects so tests/test_verify_gate_route.py can drive it with
-# fake classifier output.
+# hold the machine-wide dual-projection mutex -- plus, from Get-E2EWorkerArgs
+# at the bottom, how many parallel workers it runs on. Dot-sourced by the gate
+# and kept free of side effects so tests/test_verify_gate_route.py can drive it
+# with fake classifier output.
 #
 # Fail-safe: anything the gate can't use -- no verdict, an unknown tier, a
 # repeated E2E_* key, a static/full/surface verdict with no target -- runs the
@@ -93,5 +94,43 @@ function Get-E2ERoute {
         Browsers  = $browsers
         Reason    = $reason
         Serialize = ($tier -ne "static")
+    }
+}
+
+# Browser-suite parallelism (#1231, step 1 of #1220). THE one setting for how
+# many pytest-xdist workers a dual-projection run (full / surface) uses:
+# $E2EDefaultWorkers, overridable per run with the E2E_WORKERS env var. 0 or 1
+# runs serially, exactly as before #1231. Parallelism changes when tests run,
+# never which: every node still runs on both projections.
+#
+# The static tier (Chromium smoke, ~15 s) stays serial -- a worker boots its
+# own webapp + session-host (~4 s each), which would cost more than it saves.
+# --dist loadgroup spreads tests one at a time, except that a module marked
+# xdist_group (test_terminal_reconnect.py: the real-agent and reconnect pins)
+# keeps its tests on one worker so they never overlap each other. All the
+# workers run inside the gate's one machine-wide dual-projection mutex (#685),
+# which serialises gates across checkouts, not the workers within one.
+$E2EDefaultWorkers = 4
+
+function Get-E2EWorkerArgs {
+    param(
+        [Parameter(Mandatory = $true)]$Route,
+        [AllowEmptyString()][AllowNull()][string]$Setting
+    )
+
+    $workers = $E2EDefaultWorkers
+    if ($Setting) {
+        $parsed = 0
+        if (-not [int]::TryParse($Setting.Trim(), [ref]$parsed) -or $parsed -lt 0) {
+            throw ("E2E_WORKERS must be a whole number of workers (0 or 1 = serial), got '{0}'" -f $Setting)
+        }
+        $workers = $parsed
+    }
+    if (-not $Route.Serialize -or $workers -le 1) {
+        return [pscustomobject]@{ Workers = 1; Args = @() }
+    }
+    return [pscustomobject]@{
+        Workers = $workers
+        Args    = @("-n", [string]$workers, "--dist", "loadgroup")
     }
 }

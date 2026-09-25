@@ -60,6 +60,9 @@ httpx>=0.27
 # Per-test wall-clock cap so a hung test (e.g. a wedged PTY/WS e2e op on a slow
 # CI runner) aborts with a traceback dump instead of stalling the suite (#184).
 pytest-timeout>=2.3
+# Runs the pre-ship gate's dual-projection browser suite on parallel workers
+# (#1231, #1220); the count is E2E_WORKERS, see scripts/e2e-gate-route.ps1.
+pytest-xdist>=3.6
 
 # End-to-end browser smoke tests (tests/e2e). After install:
 #   .venv\Scripts\python.exe -m playwright install chromium webkit
