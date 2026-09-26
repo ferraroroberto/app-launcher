@@ -425,7 +425,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     menu = authed_page.locator("#terminalOverlay .terminal-menu")
     eye = _menu_item(authed_page, "Show tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Show tool calls", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Show tool calls", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()

@@ -2311,6 +2311,13 @@ textarea.input-native { height: auto; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
+/* A forced read's status line under the list (#1292): quiet, like the
+   start-of-transcript marker. */
+.transcript-newer {
+  text-align: center;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
 /* Where a Load older that found only tool calls ran out (#1120). */
 .tr-start {
   text-align: center;

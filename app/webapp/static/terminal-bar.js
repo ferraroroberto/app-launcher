@@ -31,7 +31,7 @@ import {
 import { createRowMenu } from './row-menu.js';
 import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
-import { groupsAreHidden, reloadNewest, toggleGroups } from './session-transcript.js';
+import { groupsAreHidden, loadNew, reloadNewest, toggleGroups } from './session-transcript.js';
 import { inChatMode } from './session-overlay.js';
 
 const terminalMenu = createRowMenu('terminal-menu');
@@ -152,6 +152,13 @@ export function wireTerminalMenu() {
       text: function () { return groupsAreHidden() ? 'Show tool calls' : 'Hide tool calls'; },
       hidden: notInChat,
       onTap: toggleGroups,
+    },
+    // Load new (#1292): only what came after the newest turn shown, the
+    // live tick's own read, forced now. Reload stays as the full escape hatch.
+    {
+      glyph: 'arrow-down', label: 'Load new messages', text: 'Load new',
+      hidden: notInChat,
+      onTap: loadNew,
     },
     {
       glyph: 'rotate-ccw', label: 'Reload transcript', text: 'Reload',
