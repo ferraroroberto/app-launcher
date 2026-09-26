@@ -83,6 +83,10 @@ def test_git_status_auto_annotates_tiles_without_tap(
             body=json.dumps(canned),
         ),
     )
+    # Boot's panel fetches run concurrently (#1258): one that never answers
+    # (the ports probe, held open for the whole test) must not hold back the
+    # git flags, which used to wait behind every fetch ahead of them.
+    authed_page.route("**/api/ports/probe", lambda route: None)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     # Projects is collapsed by default (#383 review round) — expand it so

@@ -821,6 +821,13 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     })
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
+    # The issue actions key on the registered projects, and the project list
+    # can land after the Board drew (#1258): /api/agents, which it is
+    # chained on, is held until the Board is up, and git-status, whose
+    # redraw used to cover this by coming last, never answers.
+    held: dict = {}
+    authed_page.route(re.compile(r".*/api/agents$"), lambda route: held.__setitem__("route", route))
+    authed_page.route(re.compile(r".*/api/claude-code/git-status$"), lambda route: None)
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
 
@@ -831,6 +838,12 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
         '.board-list[data-col="backlog"] li.board-item', has_text="#302"
     )
     expect(active).to_be_visible(timeout=15_000)
+    for _ in range(100):
+        if "route" in held:
+            break
+        authed_page.wait_for_timeout(50)
+    assert "route" in held, "boot never fetched /api/agents"
+    held["route"].continue_()
     expect(active).to_have_class(re.compile(r"\bis-in-progress\b"))
     expect(active.locator(".board-card-meta-inline")).to_contain_text("in progress")
 

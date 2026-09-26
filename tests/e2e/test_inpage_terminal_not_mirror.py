@@ -56,19 +56,19 @@ def test_inpage_loopback_open_is_not_treated_as_mirror(
     # browser sits on the launcher. boot() then sets state.isMirrorWindow
     # false, so even though the e2e harness connects from loopback the page
     # must not enter mirror mode.
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-
+    #
     # CRITICAL precondition: isMirror reads state.status.terminal.reason, and
     # over loopback that is 'loopback' — the exact signal the old code keyed
     # off. The terminal must be opened *after* /api/status has resolved, or
     # both old and new code see a null status and compute isMirror=false,
     # making this test pass vacuously (it would no longer fail on the bug).
-    # fetchVersion() runs immediately after fetchStatus() in boot(), so the
-    # build line carrying text proves the status (and its loopback reason) is
-    # loaded.
-    expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
-    )
+    # boot() fetches its panels concurrently (#1258), so no other panel's
+    # arrival proves the status is in: wait on /api/status itself.
+    with authed_page.expect_response(
+        lambda r: r.url.endswith("/api/status"), timeout=10_000
+    ) as status:
+        authed_page.goto(base_url, wait_until="domcontentloaded")
+    status.value.finished()
 
     # Open the live terminal the in-app way: tap the running session's row
     # (sessions.js wires .session-open → openTerminal), not a deep-link.
