@@ -203,7 +203,13 @@ function renderSessionCard(card, openItem) {
       renderBoard();
       if (!state.boardExpanded) fetchBoard().catch(function () {});
     });
-    if (state.boardExpanded === card.session_id) {
+    // The header is a disclosure for the drawer (#1259, WAI-ARIA disclosure
+    // pattern): every render rebuilds it, so its state is set here, and a
+    // kept drawer's fresh header below carries it too.
+    const expanded = state.boardExpanded === card.session_id;
+    shell.btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (expanded) shell.btn.setAttribute('aria-controls', drawerId(card));
+    if (expanded) {
       if (openItem) {
         // The header button is always the <li>'s first child, the drawer
         // after it — only the header is replaced.
@@ -309,9 +315,15 @@ function drawerAction(cls, glyph, label, title, reason, onTap) {
   return btn;
 }
 
+// The open drawer's id, which its card header's aria-controls names (#1259).
+function drawerId(card) {
+  return 'board-drawer-' + card.session_id;
+}
+
 function buildDrawer(card) {
   const drawer = document.createElement('div');
   drawer.className = 'board-drawer';
+  drawer.id = drawerId(card);
 
   const exchange = document.createElement('div');
   exchange.className = 'board-exchange';
