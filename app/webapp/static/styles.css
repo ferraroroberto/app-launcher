@@ -2514,6 +2514,17 @@ textarea.input-native { height: auto; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A plain-word run title (#1266) is often wider than a phone, and a nowrap
+   title's full width was the summary's minimum: the pane scrolled sideways
+   (#1292). The title column may shrink to nothing, the cluster fills it
+   instead of fitting its content, and only the title gives way: the failed
+   chip and the item count stay whole, inside the card. */
+.tr-group.card--collapsible > .collapse-summary { grid-template-columns: minmax(0, 1fr) auto; }
+.tr-group .collapse-main { justify-self: stretch; overflow: hidden; }
+.tr-group .collapse-title { flex: 0 1 auto; min-width: 0; }
+.tr-group .collapse-main .icon,
+.tr-group .collapse-count,
+.tr-group .tr-fail-count { flex-shrink: 0; }
 /* Items are the shared list-row contract: flat full-bleed rows on a
    hairline, 12px 0 row padding — the same 12px the cards sit apart. */
 .tr-group-body { padding: 0 14px 2px; }
@@ -2744,6 +2755,9 @@ textarea.input-native { height: auto; }
    size in the image overlay. The frame holds its size while the bytes load,
    so the list doesn't jump. */
 .tr-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+/* In a turn card the row sits beside the text, not inside it, so it takes the
+   text's own inset, left and bottom (#1292), as .tr-trunc does. */
+.tr-turn > .tr-thumbs { margin: 0; padding: 0 14px 14px; }
 .tr-thumb {
   width: 96px;
   height: 96px;
