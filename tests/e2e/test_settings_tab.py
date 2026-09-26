@@ -50,10 +50,23 @@ def test_settings_pane_controls_and_theme_toggle(
     the context-filter card, and — last, since it is the only step that
     mutates page state — the Coding-tab theme toggle's flip.
     """
+    # #1287: the build readout survives a transient /api/version failure.
+    # The first two requests fail; the retry's third fills the readout.
+    version_calls = []
+
+    def _flaky_version(route) -> None:
+        version_calls.append(route.request.url)
+        if len(version_calls) <= 2:
+            route.abort("connectionreset")
+        else:
+            route.continue_()
+
+    authed_page.route(re.compile(r".*/api/version$"), _flaky_version)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=10_000
     )
+    assert len(version_calls) == 3, version_calls
 
     # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 1) --
     toggle = authed_page.locator("#themeToggle")
