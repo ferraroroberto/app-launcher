@@ -149,28 +149,30 @@ def test_one_tap_chains_past_turnless_pages_to_the_next_turn(
     expect(older).to_have_text("Load older")
     expect(older).to_be_enabled()
 
-    # #1292: a pull down at the top loads the next older page too: the path
-    # for a list too short to scroll, where no scroll event ever fires.
-    # The list fits the pane here, so no scroll event can be what loads it.
-    assert page.evaluate(
-        "(() => { const b = document.getElementById('transcriptBody');"
-        " return b.scrollHeight <= b.clientHeight && b.scrollTop === 0; })()"
-    )
-    _pull(page, 120)
-    expect(turns.first).to_contain_text("oldest prompt")
-    assert any(u.endswith("before=6000") for u in calls), calls
 
 
+@pytest.mark.iphone
 def test_only_tool_calls_to_the_file_start_says_so(
     authed_page: Page, base_url: str
 ) -> None:
+    """Reached by a pull down at the top (#1292) rather than the button: the
+    path for a list too short to scroll, where no scroll event ever fires."""
     page = authed_page
     _boot(page, base_url, {
         None: _NEWEST,
         9000: _page_body([_tool(1), _tool(2)], 8000),
         8000: _page_body([_tool(3)], None),
     })
-    page.locator("#transcriptOlder").click()
+    # The list fits the pane, so no scroll event can be what loads it.
+    assert page.evaluate(
+        "(() => { const b = document.getElementById('transcriptBody');"
+        " return b.scrollHeight <= b.clientHeight && b.scrollTop === 0; })()"
+    )
+    # A drag too short to be a pull loads nothing.
+    _pull(page, 20)
+    page.wait_for_timeout(300)
+    expect(page.locator("#transcriptList .tr-start")).to_have_count(0)
+    _pull(page, 120)
     expect(page.locator("#transcriptList .tr-start")).to_have_text(
         "Start of transcript — no older messages"
     )
