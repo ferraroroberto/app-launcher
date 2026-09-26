@@ -10,6 +10,7 @@ spawn or track a PTY session.
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict
 
@@ -161,6 +162,13 @@ async def claude_flags(request: Request) -> Dict[str, Any]:
     return claude_flags_payload(cfg)
 
 
+# The git-status fan-out's own threads (#1264). One git_status per repo on the
+# loop's default executor filled it, so every other to_thread caller
+# (/api/version, sessions, config writes) queued behind a fleet-wide scan.
+# Bounded: a large fleet takes a little longer, and nothing else waits on it.
+_GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-status")
+
+
 @router.get("/api/claude-code/git-status")
 async def claude_git_status(request: Request) -> Dict[str, Any]:
     """Per-project git state for the Coding tiles + Board backlog flags.
@@ -175,8 +183,9 @@ async def claude_git_status(request: Request) -> Dict[str, Any]:
     """
     cfg: WebappConfig = request.app.state.webapp_config
     projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+    loop = asyncio.get_running_loop()
     statuses = await asyncio.gather(
-        *(asyncio.to_thread(git_status, p.project_dir) for p in projects)
+        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
     )
     return {
         "projects": [
