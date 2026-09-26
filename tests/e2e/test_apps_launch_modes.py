@@ -161,31 +161,35 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     authed_page.keyboard.press("Escape")
 
     # -- was test_row_launches_visible_and_menu_launches_hidden --
-    # #1128: tapping the row is the primary action (the visible-window
-    # launch, #790's ⚡); Launch hidden (🚫👁) is in the ⋯ menu.
+    # #1269: tapping the row launches hidden, the windowless spawn (#790's
+    # 🚫👁) the unattended PC wants; Launch visible is in the ⋯ menu.
     expect(row).to_be_visible(timeout=5_000)
+    expect(row.locator(".action-row-main")).to_have_attribute(
+        "aria-label", "Launch Photo OCR hidden, with no window")
+
+    # Hidden: the row tap opts in to the windowless spawn.
+    row.locator(".action-row-main").click()
+    expect(authed_page.locator("#toast")).to_contain_text("(stealth)")
+    assert launches == [{"stealth": True}], f"row launch sent {launches}"
 
     # Visible: no `stealth` key at all, so the server keeps its default.
-    row.locator(".action-row-main").click()
-    expect(authed_page.locator("#toast")).to_contain_text("Launched Photo OCR")
-    assert launches == [{}], f"visible launch sent {launches}"
-
-    # Hidden: explicit opt-in to the windowless spawn.
     row.locator(".action-row-kebab").click()
-    row.locator(".app-stealth-btn").click()
-    expect(authed_page.locator("#toast")).to_contain_text("(stealth)")
-    assert launches == [{}, {"stealth": True}], f"stealth launch sent {launches}"
+    expect(row.locator(".app-visible-btn")).to_have_text("Launch visible")
+    expect(row.locator(".app-stealth-btn")).to_have_count(0)
+    row.locator(".app-visible-btn").click()
+    expect(authed_page.locator("#toast")).not_to_contain_text("(stealth)")
+    assert launches == [{"stealth": True}, {}], f"visible launch sent {launches}"
 
     # -- was test_tray_rows_launch_the_same_way --
-    # #790 applies to both bat-launching panels, not just Registered apps.
+    # #790 applies to both bat-launching panels, not just Registered apps:
+    # a tray row shares the renderer, so its tap launches hidden too.
     tray = authed_page.locator("#registeredTraysList li.action-row").first
     expect(tray).to_be_visible(timeout=5_000)
 
-    tray.locator(".action-row-kebab").click()
-    tray.locator(".app-stealth-btn").click()
-    # Cumulative: the tray's stealth launch is the one entry this step adds.
-    assert launches == [{}, {"stealth": True}, {"stealth": True}], (
-        f"tray stealth launch sent {launches[2:]}"
+    tray.locator(".action-row-main").click()
+    # Cumulative: the tray's hidden launch is the one entry this step adds.
+    assert launches == [{"stealth": True}, {}, {"stealth": True}], (
+        f"tray row launch sent {launches[2:]}"
     )
 
     # The autostart switch is the row's one leading toggle and carries no

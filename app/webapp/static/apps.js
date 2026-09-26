@@ -84,8 +84,9 @@ function appMeta(a) {
 }
 
 // Apps and Trays rows on the vendored action-row (#1128). Tapping the row
-// launches the bat in a visible window (#790's ⚡: watch a Streamlit boot,
-// read a traceback); every other action rides the one kebab. A tray row
+// launches the bat hidden, with no console window (#790's 🚫👁): the
+// phone-first case, the PC unattended (#1269). Launch visible (watch a
+// Streamlit boot, read a traceback) and every other action ride the kebab. A tray row
 // keeps its autostart switch as the row's one leading toggle — it is state
 // read at a glance, unlabelled because the panel is called Trays; screen
 // readers still get "Autostart <name> at boot".
@@ -97,8 +98,8 @@ function renderList(host, items) {
       className: 'app-row',
       title: a.name,
       meta: appMeta(a),
-      label: 'Launch ' + a.name + ' in a visible window',
-      onMain: function () { launchApp(a, undefined, false); },
+      label: 'Launch ' + a.name + ' hidden, with no window',
+      onMain: function () { launchApp(a, undefined, true); },
       kebabClass: 'app-menu-anchor',
       kebabLabel: a.name + ' actions',
     });
@@ -116,11 +117,11 @@ function renderList(host, items) {
     const tunnel = a.kind === 'tunnel';
     row.li.appendChild(appMenu.attach(a.id, row.kebab, [
       {
-        // 🚫👁 (#790): the same bat with no console window at all — the
-        // phone-first case, PC unattended.
-        className: 'app-stealth-btn', glyph: 'eye-off',
-        label: 'Launch ' + a.name + ' in stealth', text: 'Launch hidden',
-        onTap: function () { launchApp(a, undefined, true); },
+        // The same bat in a console window you can watch (#790's ⚡); the
+        // row tap is the hidden launch (#1269).
+        className: 'app-visible-btn', glyph: 'monitor',
+        label: 'Launch ' + a.name + ' in a visible window', text: 'Launch visible',
+        onTap: function () { launchApp(a, undefined, false); },
       },
       {
         // A tunnel's URL is tapped, never read: a cloudflared URL with a
