@@ -636,6 +636,35 @@ def _outcome_page(*, tool_errors: str, failed: bool) -> dict:
     }
 
 
+def _long_run_page() -> dict:
+    """A user turn holding an image, then one run whose plain-word title
+    (#1266) is far wider than a phone: the #1292 layout fixture."""
+    def call(ts, action, name="Bash"):
+        return {"kind": "tool_call", "timestamp": ts, "name": name, "summary": "",
+                "result": "ok", "result_truncated": False, "sidechain": False,
+                "action": action}
+
+    run = [call("2026-09-14T10:02:%02d" % i, {"verb": "ran", "command": "npm run build -- --stage %d" % i})
+           for i in range(1, 4)]
+    run.append(call("2026-09-14T10:02:05", {"verb": "edited", "path": "src/stage-orchestrator-pipeline.js",
+                                            "added": 350, "removed": 0}, name="Edit"))
+    run += [call("2026-09-14T10:02:%02d" % i, {"verb": "read", "path": "docs/part-%d.md" % i}, name="Read")
+            for i in (6, 7)]
+    run.append({"kind": "thinking", "timestamp": "2026-09-14T10:02:08Z", "text": "planning",
+                "truncated": False, "sidechain": False})
+    return {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None, "tool_errors": "reported",
+        "entries": [
+            {"kind": "user", "timestamp": "2026-09-14T10:02:00Z", "text": "build the stage",
+             "truncated": False, "sidechain": False, "images": [{"offset": 100, "n": 0}]},
+            *run,
+            {"kind": "assistant", "timestamp": "2026-09-14T10:02:09Z",
+             "text": "built", "truncated": False, "sidechain": False},
+        ],
+    }
+
+
 def _open_tool_group(page: Page):
     """Chat open, tool calls revealed, the group still closed."""
     row = _row(page)
@@ -660,12 +689,10 @@ def test_failed_tool_call_is_marked_in_both_themes(
     themes because ``--danger`` is redefined for dark.
     """
     calls: list = []
+    pages = {None: _outcome_page(tool_errors="reported", failed=True)}
     _mock_sessions_list(authed_page)
-    _mock_transcript(
-        authed_page,
-        {None: _outcome_page(tool_errors="reported", failed=True)},
-        calls,
-    )
+    _mock_transcript(authed_page, pages, calls)
+    _mock_transcript_images(authed_page, [])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     group = _open_tool_group(authed_page)
 
@@ -709,6 +736,46 @@ def test_failed_tool_call_is_marked_in_both_themes(
 
     # Folded calls stay folded: marking one never opens it.
     expect(bad).to_have_js_property("open", False)
+
+    # -- #1292: a run title wider than the phone stays inside its card --
+    # The whole pane scrolled sideways once #1266's plain-word titles grew:
+    # the nowrap title kept its full width as a flex item's minimum.
+    pages[None] = _long_run_page()
+    _menu_item(authed_page, "Reload transcript").click()
+    long_group = authed_page.locator("#transcriptList .tr-group")
+    expect(long_group.locator(".collapse-title")).to_contain_text("stage-orchestrator-pipeline.js")
+    fit = stable_read(lambda: authed_page.evaluate("""() => {
+        const box = document.getElementById('transcriptBody');
+        const list = document.getElementById('transcriptList');
+        const card = document.querySelector('#transcriptList .tr-group');
+        const title = card.querySelector('.collapse-title');
+        const count = card.querySelector('.collapse-count').getBoundingClientRect();
+        const r = card.getBoundingClientRect();
+        if (!r.width) return null;
+        return {box: [box.scrollWidth, box.clientWidth], list: [list.scrollWidth, list.clientWidth],
+                ellipsed: title.scrollWidth > title.clientWidth,
+                countInside: count.left >= r.left && count.right <= r.right};
+    }"""))
+    assert fit["box"][0] <= fit["box"][1] and fit["list"][0] <= fit["list"][1], fit
+    assert fit["ellipsed"] and fit["countInside"], fit
+
+    # -- #1292: the turn's thumbnail row sits on the text's inset (#1265) --
+    thumb = authed_page.locator("#transcriptList .tr-user .tr-thumb").first
+    expect(thumb).to_be_visible()
+    inset = stable_read(lambda: authed_page.evaluate("""() => {
+        const turn = document.querySelector('#transcriptList .tr-turn.tr-user');
+        const text = turn.querySelector('.tr-text');
+        const thumb = turn.querySelector('.tr-thumb').getBoundingClientRect();
+        const t = text.getBoundingClientRect();
+        const card = turn.getBoundingClientRect();
+        const cs = getComputedStyle(text), ts = getComputedStyle(turn);
+        if (!thumb.width) return null;
+        return {textLeft: t.left + parseFloat(cs.paddingLeft), thumbLeft: thumb.left,
+                textBottomPad: parseFloat(cs.paddingBottom),
+                thumbBottomGap: card.bottom - parseFloat(ts.borderBottomWidth) - thumb.bottom};
+    }"""))
+    assert abs(inset["thumbLeft"] - inset["textLeft"]) < 1, inset
+    assert abs(inset["thumbBottomGap"] - inset["textBottomPad"]) < 1, inset
 
 
 @pytest.mark.iphone
