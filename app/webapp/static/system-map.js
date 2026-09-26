@@ -65,9 +65,19 @@ async function loadImage() {
 }
 
 // --------------------------------------------------------- lightbox
+const MAP_ALT = 'Fleet system map (full screen)';
+
 function openLightbox() {
-  if (!state.systemMapObjectUrl || !els.systemMapLightbox) return;
-  els.systemMapLightboxImage.src = state.systemMapObjectUrl;
+  if (!state.systemMapObjectUrl) return;
+  openImageLightbox(state.systemMapObjectUrl, MAP_ALT);
+}
+
+// The same full-screen overlay for any image the app already holds as a
+// URL: a transcript thumbnail's full size (#1265). The caller owns the URL.
+export function openImageLightbox(url, alt) {
+  if (!url || !els.systemMapLightbox) return;
+  els.systemMapLightboxImage.src = url;
+  els.systemMapLightboxImage.alt = alt;
   els.systemMapLightbox.hidden = false;
 }
 

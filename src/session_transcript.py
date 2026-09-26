@@ -34,6 +34,8 @@ Deliberately **not** on the session-host import closure (CLAUDE.md
 
 from __future__ import annotations
 
+import base64
+import binascii
 import difflib
 import json
 import re
@@ -643,6 +645,115 @@ def _with_action(entry: Entry, action: Optional[Dict[str, Any]]) -> Entry:
     return entry
 
 
+# ------------------------------------------------------ transcript images (#1265)
+#
+# An image block rides the transcript as base64. The page never carries the
+# bytes: an entry lists where its images are, ``{"offset": <line offset>,
+# "n": <index>}``, and the image route re-reads that one line and decodes
+# block ``n`` on demand. ``n`` counts the line's image blocks in a fixed walk
+# order (its content list, with a Claude ``tool_result``'s own content in
+# place), so it is stable for as long as the line is. A block with no data
+# keeps the ``[image]`` placeholder, as does every harness whose transcript
+# records none.
+
+IMAGE_LINE_CAP = 32 * 1024 * 1024      # a raw line holding an image, base64 and all
+IMAGE_BYTE_CAP = 16 * 1024 * 1024      # one decoded image
+_IMAGE_FLAVORS = frozenset({"claude", "pi"})
+_IMAGE_MAGIC = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+
+
+def _line_image_blocks(content: Any) -> List[Dict[str, Any]]:
+    """Every image block of one line's content list, in walk order."""
+    blocks: List[Dict[str, Any]] = []
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "image":
+            blocks.append(block)
+        elif block.get("type") == "tool_result" and isinstance(block.get("content"), list):
+            blocks.extend(b for b in block["content"] if isinstance(b, dict) and b.get("type") == "image")
+    return blocks
+
+
+def _image_data(block: Dict[str, Any]) -> Optional[str]:
+    """The base64 payload of an image block (Claude ``source.data``, Pi ``data``)."""
+    source = block.get("source")
+    if isinstance(source, dict):
+        data = source.get("data") if source.get("type") == "base64" else None
+    else:
+        data = block.get("data")
+    return data if isinstance(data, str) and data else None
+
+
+def _image_refs(blocks: List[Dict[str, Any]], offset: int, start: int) -> Tuple[List[Dict[str, int]], int]:
+    """``(refs, placeholders)`` for image ``blocks`` numbered from ``start``."""
+    refs: List[Dict[str, int]] = []
+    missing = 0
+    for n, block in enumerate(blocks, start):
+        if _image_data(block):
+            refs.append({"offset": offset, "n": n})
+        else:
+            missing += 1
+    return refs, missing
+
+
+def _with_placeholders(text: str, missing: int) -> str:
+    return (text + "\n\n" if text else "") + " ".join(["[image]"] * missing) if missing else text
+
+
+def _sniff_image(data: bytes) -> Optional[str]:
+    """The media type of an allowlisted image format, from its own bytes."""
+    for magic, media in _IMAGE_MAGIC:
+        if data.startswith(magic):
+            return media
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[Tuple[bytes, str]]:
+    """``(bytes, media type)`` of image ``n`` on the line starting at ``offset``.
+
+    None when the flavour records no images, ``offset`` doesn't start a line
+    (or the file moved on), the line is over :data:`IMAGE_LINE_CAP`, block
+    ``n`` isn't there or carries no data, it doesn't decode, it is over
+    :data:`IMAGE_BYTE_CAP`, or its bytes aren't an allowlisted image format.
+    The declared media type is never trusted. Raises OSError on a read failure.
+    """
+    if flavor not in _IMAGE_FLAVORS or offset < 0 or n < 0:
+        return None
+    with path.open("rb") as fh:
+        if offset > 0:
+            fh.seek(offset - 1)
+            if fh.read(1) != b"\n":
+                return None
+        raw = fh.read(IMAGE_LINE_CAP + 1)
+    end = raw.find(b"\n")
+    if end < 0:
+        if len(raw) > IMAGE_LINE_CAP:
+            return None
+        end = len(raw)
+    obj = _loads(raw[:end].decode("utf-8", "replace"))
+    msg = obj.get("message") if obj and isinstance(obj.get("message"), dict) else {}
+    blocks = _line_image_blocks(msg.get("content"))
+    if n >= len(blocks):
+        return None
+    data = _image_data(blocks[n])
+    if not data or len(data) > IMAGE_BYTE_CAP * 4 // 3 + 4:
+        return None
+    try:
+        decoded = base64.b64decode(data, validate=False)
+    except (binascii.Error, ValueError):
+        return None
+    media = _sniff_image(decoded)
+    return (decoded, media) if media and len(decoded) <= IMAGE_BYTE_CAP else None
+
+
 def _blocks_text(content: Any, *, types: Tuple[str, ...] = ("text",), key: str = "text") -> str:
     """Join the ``text`` of the content blocks whose type is in ``types``;
     a plain string is returned as-is."""
@@ -673,7 +784,8 @@ def _text_entry(kind: str, offset: int, timestamp: Any, text: str, cap: int, **f
 def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
                    text: str, offset: int, timestamp: Any, sidechain: bool,
                    error: bool = False,
-                   decision: Optional[Dict[str, Any]] = None) -> None:
+                   decision: Optional[Dict[str, Any]] = None,
+                   images: Optional[List[Dict[str, int]]] = None) -> None:
     """Pair one tool result with its call (#1020 adds ``error``).
 
     ``error`` is written onto the entry **only when true** — the single
@@ -699,11 +811,15 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
         call["result_truncated"] = truncated
         if error:
             call["error"] = True
+        if images:
+            call["result_images"] = images
         call.update(decision or {})
         return
     # A result whose call fell off this page (or an unknown id): stands alone
     # so it is neither lost nor mis-paired.
     fields: Dict[str, Any] = {"error": True} if error else {}
+    if images:
+        fields["images"] = images
     fields.update(decision or {})
     entries.append(_entry(
         "tool_result", offset, timestamp, text=body, truncated=truncated,
@@ -818,9 +934,22 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
                 if results:
                     tool_use_result = obj.get("toolUseResult")
-                    for block in results:
+                    # Image numbering walks the whole line (#1265), so each
+                    # result's images start after the ones before it.
+                    image_n = 0
+                    for block in content:
+                        if not isinstance(block, dict):
+                            continue
+                        if block.get("type") == "image":
+                            image_n += 1
+                            continue
+                        if block.get("type") != "tool_result":
+                            continue
                         call = open_calls.get(str(block.get("tool_use_id")))
-                        result_text = _blocks_text(block.get("content"))
+                        result_images = _line_image_blocks([block])
+                        refs, missing = _image_refs(result_images, offset, image_n)
+                        image_n += len(result_images)
+                        result_text = _with_placeholders(_blocks_text(block.get("content")), missing)
                         # A decision card's answer rides on the *line*
                         # (`toolUseResult`) or in the rejection text — #1149's
                         # picks, #1151's plan outcome; empty for other tools.
@@ -841,18 +970,17 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                             # `is_error` beside the error text (#1020).
                             error=bool(block.get("is_error")),
                             decision=decision,
+                            images=refs,
                         )
                     continue
-                text = _blocks_text(content)
-                images = sum(1 for b in content if isinstance(b, dict) and b.get("type") == "image")
-                if images:
-                    text = (text + "\n\n" if text else "") + " ".join(["[image]"] * images)
+                refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
+                text = _with_placeholders(_blocks_text(content), missing)
             elif isinstance(content, str):
-                text = content
+                text, refs = content, []
             else:
                 continue
             stripped = text.strip()
-            if not stripped:
+            if not stripped and not refs:
                 continue
             if obj.get("isMeta"):
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
@@ -861,7 +989,10 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                            label=_harness_label(stripped), sidechain=sidechain))
             else:
-                entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=sidechain))
+                user = _text_entry("user", offset, ts, stripped, user_cap, sidechain=sidechain)
+                if refs:
+                    user["images"] = refs
+                entries.append(user)
             continue
 
         if kind == "system":
@@ -1301,29 +1432,31 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             continue
 
         if role == "toolResult":
-            text, images = _pi_blocks(content)
-            if images:
-                text = (text + "\n\n" if text else "") + " ".join(["[image]"] * images)
+            text, _count = _pi_blocks(content)
+            refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
+            text = _with_placeholders(text, missing)
             # Pi writes `isError` on every `toolResult`, both polarities
             # (`tests/fixtures/pi_session.jsonl` carries one of each) — #1020.
             _attach_result(entries, open_calls, msg.get("toolCallId"), text,
-                           offset, ts, False, error=bool(msg.get("isError")))
+                           offset, ts, False, error=bool(msg.get("isError")), images=refs)
             continue
 
         if role == "user":
-            text, images = _pi_blocks(content)
-            if images:
-                text = (text + "\n\n" if text else "") + " ".join(["[image]"] * images)
+            text, _count = _pi_blocks(content)
+            refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
+            text = _with_placeholders(text, missing)
             stripped = text.strip()
-            if not stripped:
+            if not stripped and not refs:
                 continue
             if any(stripped.startswith(p) for p in _PI_SKIP_USER_PREFIXES):
                 label = "skill" if stripped.startswith("<skill name=") else _harness_label(stripped)
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                            label=label, sidechain=False))
             else:
-                entries.append(_text_entry("user", offset, ts, stripped, user_cap,
-                                           sidechain=False))
+                user = _text_entry("user", offset, ts, stripped, user_cap, sidechain=False)
+                if refs:
+                    user["images"] = refs
+                entries.append(user)
     return entries
 
 
