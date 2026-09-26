@@ -685,7 +685,11 @@
           <button id="codingChiefResume" type="button" class="board-chief-start" title="Reattach the most recent chief conversation" aria-label="Resume chief">Resume</button>
         </div>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
-        <p id="sessionsEmpty" class="muted small">No sessions launched from here yet — tap a project below to start one.</p>
+        <div id="sessionsEmpty" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
+          <p class="empty-state-message">No sessions launched from here yet.</p>
+          <button type="button" id="sessionsEmptyAction" class="empty-state-action">Show projects</button>
+        </div>
         <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
         </div>
       </details>
@@ -740,10 +744,12 @@
         <div id="claudeFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No projects match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
         </div>
         <div id="claudeEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
           <p class="empty-state-message">No projects found — point <strong>Projects folder</strong> in Settings at a folder that has project subdirectories.</p>
+          <button type="button" id="claudeEmptyAction" class="empty-state-action">Open Settings</button>
         </div>
         <p id="gitStatusLegend" class="muted small git-legend" hidden>
           <span class="git-swatch off-main"></span> not on main ·
@@ -927,7 +933,11 @@
         </summary>
         <div class="collapse-body">
         <ul id="runningAppsList" class="card-list action-rows" aria-label="Running apps"></ul>
-        <p id="runningAppsEmpty" class="muted small">Nothing running. (A webapp restart forgets running apps — check Port listeners for orphans.)</p>
+        <div id="runningAppsEmpty" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
+          <p class="empty-state-message">Nothing running. A webapp restart forgets running apps, so orphans show under Port listeners.</p>
+          <button type="button" id="runningAppsEmptyAction" class="empty-state-action">Check port listeners</button>
+        </div>
         <p class="launcher-note">Only apps launched from here appear — tap a registered app below to start one, or use Launch hidden in its menu.</p>
         </div>
       </details>
@@ -944,7 +954,11 @@
         </summary>
         <div class="collapse-body">
         <ul id="listenersList" class="card-list action-rows" aria-label="Port listeners"></ul>
-        <p id="listenersEmpty" class="muted small">Nothing running on common app ports.</p>
+        <div id="listenersEmpty" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
+          <p class="empty-state-message">Nothing running on common app ports.</p>
+          <button type="button" id="listenersEmptyAction" class="empty-state-action">Check again</button>
+        </div>
         <p class="launcher-note">The launcher itself isn't listed — it can't kill its own process.</p>
         </div>
       </details>
@@ -966,10 +980,12 @@
         <div id="appsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No apps match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
         </div>
         <div id="appsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
-          <p class="empty-state-message">No apps registered yet — tap Scan to search your projects root.</p>
+          <p class="empty-state-message">No apps registered yet.</p>
+          <button type="button" id="appsEmptyAction" class="empty-state-action">Scan for apps</button>
         </div>
         </div>
       </details>
@@ -988,7 +1004,8 @@
         <ul id="registeredTraysList" class="card-list action-rows" aria-label="Trays"></ul>
         <div id="registeredTraysEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
-          <p class="empty-state-message">No sister trays discovered yet — tap Scan in Settings to look for <code>tray.bat</code> files.</p>
+          <p class="empty-state-message">No sister trays found yet. Scan looks for <code>tray.bat</code> files.</p>
+          <button type="button" id="registeredTraysEmptyAction" class="empty-state-action">Scan for trays</button>
         </div>
         <p class="launcher-note">Autostart-enabled trays launch one at a time, in order, once app-launcher's own webapp is up.</p>
         </div>
@@ -1064,6 +1081,7 @@
         <div id="jobsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No jobs or run output match the search.</p>
+          <button type="button" id="jobsFilterEmptyAction" class="empty-state-action">Clear search</button>
         </div>
         <div id="jobsLoading" class="empty-state">
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
@@ -1071,7 +1089,8 @@
         </div>
         <div id="jobsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
-          <p class="empty-state-message">No jobs registered yet — turn on Edit above, then Add to register one.</p>
+          <p class="empty-state-message">No jobs registered yet.</p>
+          <button type="button" id="jobsEmptyAction" class="empty-state-action">Add job</button>
         </div>
         </div>
       </details>
@@ -1159,6 +1178,7 @@
         <div id="lifeOsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
           <p class="empty-state-message">No life-os skills found — point <strong>Life OS folder</strong> in Settings at a life-os checkout.</p>
+          <button type="button" id="lifeOsEmptyAction" class="empty-state-action">Open Settings</button>
         </div>
         </div>
       </details>
@@ -1459,7 +1479,8 @@
           <ul id="tokensList" class="card-list"></ul>
           <div id="tokensEmpty" class="empty-state" hidden>
             <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
-          <p class="empty-state-message">No tokens yet.</p>
+            <p class="empty-state-message">No tokens yet.</p>
+            <button type="button" id="tokensEmptyAction" class="empty-state-action">Create a token</button>
           </div>
           <label class="stacked">
             <span>Label</span>

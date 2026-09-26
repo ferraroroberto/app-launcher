@@ -30,7 +30,7 @@ import { renderHomeHead } from './home-head.js';
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, isChiefSession, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, isChiefSession, renderQuotaLines, revealInCard } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
@@ -568,6 +568,13 @@ function wireSessionRenameDialog() {
 }
 
 export function wireSessions() {
+  // No sessions yet: a session starts from a project (#1238 J-09).
+  const sessionsEmptyAction = document.getElementById('sessionsEmptyAction');
+  if (sessionsEmptyAction) {
+    sessionsEmptyAction.addEventListener('click', function () {
+      revealInCard(document.querySelector('details.projects-card'));
+    });
+  }
   // Manual Start-chief (#547) — same ensure endpoint as the Board's chat
   // mode, so a chief killed while the Coding tab was open (or via a
   // deliberate tray/session-host restart) can be brought back without

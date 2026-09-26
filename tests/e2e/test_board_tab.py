@@ -374,9 +374,11 @@ def test_board_unfetched_github_renders_unknown_not_zero(
     for section in ("#boardColBacklog", "#boardColDone"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("1")
-    expect(
-        authed_page.locator('.board-empty[data-col="backlog"]')
-    ).to_have_text("Not loaded from GitHub yet — tap Refresh.")
+    backlog_empty = authed_page.locator('.board-empty[data-col="backlog"]')
+    expect(backlog_empty.locator(".empty-state-message")).to_have_text(
+        "Not loaded from GitHub yet.")
+    # The lane's one next action is a real control now (#1238 J-09).
+    expect(backlog_empty.locator(".empty-state-action")).to_have_text("Refresh")
 
     loaded_empty = _unfetched_payload()
     loaded_empty["github"] = {
@@ -392,12 +394,11 @@ def test_board_unfetched_github_renders_unknown_not_zero(
 
     for section in ("#boardColBacklog", "#boardColDone"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("0")
+    expect(backlog_empty.locator(".empty-state-message")).to_have_text(
+        "No open issues on GitHub.")
     expect(
-        authed_page.locator('.board-empty[data-col="backlog"]')
-    ).to_have_text("No open issues — tap Refresh to check GitHub again.")
-    expect(
-        authed_page.locator('.board-empty[data-col="done"]')
-    ).to_have_text("Nothing closed today yet — tap Refresh to check GitHub again.")
+        authed_page.locator('.board-empty[data-col="done"] .empty-state-message')
+    ).to_have_text("Nothing closed today yet.")
 
 
 def test_board_poll_heals_github_emptied_by_restart(
@@ -450,9 +451,10 @@ def test_board_unreadable_sources_render_unknown_not_zero(
 
     for section in ("#boardColClaude", "#boardColYours"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
-    expect(
-        authed_page.locator('.board-empty[data-col="your_turn"]')
-    ).to_have_text("Session-host unreachable — sessions unknown.")
+    yours_empty = authed_page.locator('.board-empty[data-col="your_turn"]')
+    expect(yours_empty.locator(".empty-state-message")).to_have_text(
+        "Session-host unreachable — sessions unknown.")
+    expect(yours_empty.locator(".empty-state-action")).to_have_text("Retry")
     expect(authed_page.locator("#boardColYours")).not_to_have_class(
         re.compile(r"\battention\b")
     )
@@ -477,14 +479,14 @@ def test_board_unreadable_sources_render_unknown_not_zero(
 
     for section in ("#boardColClaude", "#boardColYours"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("0")
+    expect(yours_empty.locator(".empty-state-message")).to_have_text(
+        "Nothing needs you right now.")
     expect(
-        authed_page.locator('.board-empty[data-col="your_turn"]')
-    ).to_have_text(
-        "Nothing needs you right now — start work from the dispatch bar above.")
-    expect(
-        authed_page.locator('.board-empty[data-col="claude_turn"]')
-    ).to_have_text(
-        "No sessions on Claude’s side — start one from the dispatch bar above.")
+        authed_page.locator('.board-empty[data-col="claude_turn"] .empty-state-message')
+    ).to_have_text("No sessions on Claude’s side.")
+    # Start work lands in the dispatch bar, ready to type (#1238 J-09).
+    yours_empty.locator(".empty-state-action").click()
+    expect(authed_page.locator("#boardDispatchGoal")).to_be_focused()
     expect(authed_page.locator("#boardStatus")).not_to_contain_text(
         "session-host unreachable"
     )

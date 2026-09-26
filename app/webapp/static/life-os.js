@@ -20,6 +20,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { actionRow } from './action-rows.js';
+import { openSettingsAt } from './tabs.js';
 import { createRowMenu } from './row-menu.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
@@ -1064,6 +1065,13 @@ async function resumeConversation(r, action) {
 
 // --------------------------------------------------------------- wire
 export function wireLifeOs() {
+  // No skills found: its fix is the Life OS folder (#1238 J-09).
+  const lifeOsEmptyAction = document.getElementById('lifeOsEmptyAction');
+  if (lifeOsEmptyAction) {
+    lifeOsEmptyAction.addEventListener('click', function () {
+      openSettingsAt('lifeOsDir');
+    });
+  }
   if (els.lifeOsBrowserBack) {
     els.lifeOsBrowserBack.addEventListener('click', closeBrowser);
   }

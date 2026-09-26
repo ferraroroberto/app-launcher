@@ -15,6 +15,7 @@
  * label changed (issue #45). Jobs added by issue #47; Board by #300;
  * Settings by #383. */
 
+import { revealInCard } from './dom-utils.js';
 import { state } from './state.js';
 import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
@@ -52,6 +53,13 @@ export function openSettings() {
   const scroller = document.querySelector('.app');
   if (scroller) scroller.scrollTop = 0;
   window.scrollTo(0, 0);
+}
+
+// Settings, opened at one field (#1238 J-09): an empty state whose fix is a
+// Settings folder ("No projects found", "No life-os skills") lands on it.
+export function openSettingsAt(fieldId) {
+  openSettings();
+  revealInCard(document.getElementById(fieldId));
 }
 
 export function wireTabs() {

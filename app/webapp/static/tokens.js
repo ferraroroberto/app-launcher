@@ -10,6 +10,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
+import { revealInCard } from './dom-utils.js';
 
 let loaded = false;
 
@@ -143,6 +144,13 @@ async function copyMinted() {
 
 export function wireTokens() {
   if (!els.tokensList) return;
+  // No tokens yet: the create form sits right below (#1238 J-09).
+  const tokensEmptyAction = document.getElementById('tokensEmptyAction');
+  if (tokensEmptyAction) {
+    tokensEmptyAction.addEventListener('click', function () {
+      revealInCard(els.tokenLabelInput);
+    });
+  }
   // Load the token list when Settings opens (#1131: from any header's gear).
   document.querySelectorAll('.settings-open-btn').forEach(function (btn) {
     btn.addEventListener('click', ensureLoaded);

@@ -42,6 +42,9 @@ def _empty_everything(page: Page) -> None:
     })
     _json_route(page, r".*/api/life-os/skills(\?.*)?$", {
         "available": True, "life_os_dir": "", "skills": []})
+    _json_route(page, r".*/api/claude-code/sessions$", {"sessions": []})
+    _json_route(page, r".*/api/apps/running$", {"running": []})
+    _json_route(page, r".*/api/ports/probe$", {"listeners": []})
     _json_route(page, r".*/api/life-os/recap-status$", {
         "available": False, "ledger_exists": False, "age_days": None,
         "staleness": "fresh", "proposal_pending": False, "proposal_name": None})
@@ -78,8 +81,12 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     expect(page.locator("#jobsLoading")).to_be_hidden()
 
     for tab, empty_id in (
+        ("#tabClaude", "#sessionsEmpty"),
         ("#tabClaude", "#claudeEmpty"),
+        ("#tabApps", "#runningAppsEmpty"),
+        ("#tabApps", "#listenersEmpty"),
         ("#tabApps", "#appsEmpty"),
+        ("#tabApps", "#registeredTraysEmpty"),
         ("#tabJobs", "#jobsEmpty"),
         ("#tabLifeOS", "#lifeOsEmpty"),
     ):
@@ -94,6 +101,21 @@ def test_zero_item_lists_render_the_canonical_empty_state(
         assert block.locator(".empty-state-icon").bounding_box()["width"] == 24, (
             f"{empty_id}'s glyph is not at the feature size"
         )
+        # Every empty state offers its one next action (#1238 J-09).
+        expect(block.locator(".empty-state-action")).to_have_count(1)
+        expect(block.locator(".empty-state-action")).to_have_text(re.compile(r"\w"))
+
+    # The actions reuse the app's own flows: Add job opens the job dialog,
+    # and a missing folder opens Settings at that field.
+    page.locator("#tabJobs").click()
+    page.locator("#jobsEmptyAction").click()
+    expect(page.locator("#jobDialog")).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(page.locator("#jobDialog")).to_be_hidden()
+    page.locator("#tabClaude").click()
+    page.locator("#claudeEmptyAction").click()
+    expect(page.locator("#paneSettings")).to_be_visible()
+    expect(page.locator("#projectsDir")).to_be_focused()
 
     # Every Board column renders one too. Formerly
     # test_every_board_column_renders_one_when_empty, folded in by #1215:
@@ -102,9 +124,11 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     columns = ("backlog", "claude_turn", "your_turn", "other", "done")
     for key in columns:
         block = page.locator(f".board-empty[data-col='{key}'] .empty-state")
-        # Why it is empty, and the control that fills it (#1176).
-        expect(block.locator(".empty-state-message")).to_contain_text(
-            re.compile(r"Refresh|dispatch bar"))
+        # Why it is empty (#1176), and the control that fills it, as a
+        # button in the block itself (#1238 J-09).
+        expect(block.locator(".empty-state-message")).to_have_text(re.compile(r"\w"))
+        expect(block.locator(".empty-state-action")).to_have_text(
+            re.compile(r"^(Refresh|Start work)$"))
         expect(block.locator(".empty-state-icon")).to_have_count(1)
 
 

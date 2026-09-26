@@ -96,8 +96,9 @@ def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:
           const empty = document.getElementById('sessionsEmpty');
           if (!list || !empty) return false;
           if (list.querySelectorAll('li.session-item').length > 0) return true;
-          return !empty.hidden && empty.textContent.trim() ===
-            'No sessions launched from here yet — tap a project below to start one.';
+          const msg = empty.querySelector('.empty-state-message');
+          return !empty.hidden && !!msg &&
+            msg.textContent.trim() === 'No sessions launched from here yet.';
         }""",
         timeout=10_000,
     )

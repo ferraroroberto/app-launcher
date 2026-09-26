@@ -21,6 +21,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 import { patchConfig } from './claude-options.js';
 import { fetchApps, launchApp, renderApps } from './apps.js';
+import { openSettingsAt } from './tabs.js';
 
 // ------------------------------------------- Coding row button visibility
 // The row strip grew to one button per registered agent plus GitHub plus the
@@ -548,6 +549,13 @@ function openGitSummary() {
 // The two Coding-tab header controls, wired from apps.js::wireApps so this
 // module owns every listener that reads its own state.
 export function wireCoding() {
+  // No projects found: its fix is the Projects folder (#1238 J-09).
+  const claudeEmptyAction = document.getElementById('claudeEmptyAction');
+  if (claudeEmptyAction) {
+    claudeEmptyAction.addEventListener('click', function () {
+      openSettingsAt('projectsDir');
+    });
+  }
   if (els.gitStatusBtn) {
     els.gitStatusBtn.addEventListener('click', function () {
       // Toggle: a second tap closes the summary; otherwise re-fetch fresh

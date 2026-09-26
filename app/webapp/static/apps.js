@@ -23,7 +23,8 @@ import {
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
 import { actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
-import { nameLabel } from './dom-utils.js';
+import { nameLabel, revealInCard } from './dom-utils.js';
+import { fetchListeners } from './apps-listeners.js';
 import { createRowMenu } from './row-menu.js';
 
 // The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
@@ -397,6 +398,22 @@ export function wireApps() {
   els.tabApps.addEventListener('click', function () {
     fetchRunningApps().catch(function () {});
   });
+  // Empty-state actions (#1238 J-09): nothing running points at the port
+  // listeners (where a restart's orphans show), and an empty listener list
+  // re-probes.
+  const runningAppsEmptyAction = document.getElementById('runningAppsEmptyAction');
+  if (runningAppsEmptyAction) {
+    runningAppsEmptyAction.addEventListener('click', function () {
+      revealInCard(els.listenersList.closest('details'));
+      fetchListeners().catch(function () {});
+    });
+  }
+  const listenersEmptyAction = document.getElementById('listenersEmptyAction');
+  if (listenersEmptyAction) {
+    listenersEmptyAction.addEventListener('click', function () {
+      fetchListeners().catch(function () {});
+    });
+  }
   wireCoding();
   wireFavoriteAgent();
   wireRenameDialog();

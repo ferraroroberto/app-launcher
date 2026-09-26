@@ -572,3 +572,15 @@ export function renderQuotaLines(container, lines) {
     slot.hidden = false;
   });
 }
+
+// Bring `el` into view for an empty state's action (#1238 J-09): open every
+// disclosure it sits in (itself included), scroll it to the middle of the
+// screen, and focus it when it takes focus.
+export function revealInCard(el) {
+  if (!el) return;
+  for (let d = el.closest('details'); d; d = d.parentElement && d.parentElement.closest('details')) {
+    d.open = true;
+  }
+  el.scrollIntoView({ block: 'center' });
+  if (typeof el.focus === 'function') el.focus({ preventScroll: true });
+}
