@@ -119,7 +119,7 @@ function renderList(host, items) {
       {
         // The same bat in a console window you can watch (#790's ⚡); the
         // row tap is the hidden launch (#1269).
-        className: 'app-visible-btn', glyph: 'monitor',
+        className: 'app-visible-btn', glyph: 'eye',
         label: 'Launch ' + a.name + ' in a visible window', text: 'Launch visible',
         onTap: function () { launchApp(a, undefined, false); },
       },

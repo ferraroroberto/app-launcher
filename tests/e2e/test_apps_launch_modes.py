@@ -175,6 +175,14 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     # Visible: no `stealth` key at all, so the server keeps its default.
     row.locator(".action-row-kebab").click()
     expect(row.locator(".app-visible-btn")).to_have_text("Launch visible")
+    # #1278: its icon is the eye (the pair to the row's eye-off), and the
+    # <use> must resolve to a symbol in the page's inline sprite — a glyph
+    # the per-app trim lacks renders as nothing.
+    use = row.locator(".app-visible-btn svg use")
+    expect(use).to_have_attribute("href", "#i-eye")
+    assert use.evaluate(
+        "u => !!document.querySelector('symbol' + u.getAttribute('href'))"
+    ), "Launch visible's icon names a symbol the sprite does not have"
     expect(row.locator(".app-stealth-btn")).to_have_count(0)
     row.locator(".app-visible-btn").click()
     expect(authed_page.locator("#toast")).not_to_contain_text("(stealth)")
