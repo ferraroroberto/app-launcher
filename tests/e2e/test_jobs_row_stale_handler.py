@@ -40,8 +40,9 @@ pytestmark = pytest.mark.smoke
 
 # Ceiling, not a sleep: the wait returns as soon as the polls land. It must
 # cover a slow boot as well as the interval itself — main.js registers the
-# poll's setInterval only after boot() has awaited its ~13 serial fetches,
-# and the test clicks the Jobs tab long before that finishes (#1138).
+# poll's setInterval only after every boot fetch has settled (run
+# concurrently since #1258, the slowest one sets the pace), and the test
+# clicks the Jobs tab long before that finishes (#1138).
 _POLL_WAIT_BUDGET_MS = 30_000
 
 

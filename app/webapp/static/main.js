@@ -218,52 +218,64 @@ async function boot() {
   const safe = function (fn) { return fn().catch(function (exc) {
     console.warn('boot: non-critical fetch failed', exc);
   }); };
-  await safe(fetchAgents);
-  await safe(fetchApps);
-  await safe(fetchSkills);
 
   // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
-  // into the same session once boot finishes; only the former set
-  // state.isMirrorWindow above. ?board=<sid> (issue #301) lands a Slack ping
-  // on that session's Board card, drawer open — mutually exclusive with the
-  // session links by construction (each link carries one param).
+  // into the same session; only the former set state.isMirrorWindow above.
+  // ?board=<sid> (issue #301) lands a Slack ping on that session's Board
+  // card, drawer open — mutually exclusive with the session links by
+  // construction (each link carries one param).
   const deepLinkSid = mirrorSid || sharedSessionSid;
   const boardSid = deepLinkSid ? null : consumeUrlParam('board');
-  // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation link
-  // reopens that capture in the viewer, over the Life OS tab. It needs only
-  // the config and skills fetched above, so it opens here, not behind the
-  // rest of boot: the git-status fan-out below alone took 1–7 s on an idle
-  // box, which is what timed the link out (issue #1222).
   const convo = deepLinkSid ? null : consumeUrlParam('convo');
   const cut = convo ? convo.indexOf('/') : -1;
-  if (!boardSid && cut > 0) {
+
+  // Every panel fetch starts at once (#1258): awaited one by one they cost
+  // the phone ~13 serial round trips over the tunnel before the git flags
+  // (last in line) painted. Only real reads are chained. The session and
+  // project lists render agent icons from state.agents, and fetchAgents
+  // re-renders neither, so both wait for it.
+  const lists = safe(fetchAgents).then(function () {
+    return Promise.all([safe(fetchApps), safe(fetchSessions)]);
+  });
+  // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation link
+  // reopens that capture in the viewer, over the Life OS tab. It needs only
+  // the skills, so it opens as soon as they land, never behind the rest of
+  // boot: the git-status fan-out alone took 1–7 s on an idle box, which is
+  // what timed the link out (issue #1222).
+  const skills = safe(fetchSkills).then(function () {
+    if (boardSid || cut <= 0) return;
     setTab('lifeos');
     openConvoByLink(convo.slice(0, cut), convo.slice(cut + 1)).catch(function (exc) {
       console.warn('boot: conversation link failed', exc);
     });
-  }
-
-  await safe(fetchSystemMapStatus);
-  await safe(fetchSessions);
-  await safe(fetchRateLimits);
-  await safe(fetchContextFilter);
-  await safe(fetchListeners);
-  await safe(fetchRunningApps);
-  await safe(fetchStatus);
-  await safe(fetchVersion);
-  await safe(fetchWebauthnStatus);
-  // Git flags fill without a tap (#496): one fetch at boot, then the slow
-  // poll below keeps them current while a git-reading tab is visible.
-  await safe(function () { return refreshGitStatus({ quiet: true }); });
+  });
+  // The terminal deep link reads both: reachability and the passkey gate.
+  const status = safe(fetchStatus);
+  const webauthn = safe(fetchWebauthnStatus);
+  const panels = [
+    // Git flags fill without a tap (#496): one fetch at boot, then the slow
+    // poll below keeps them current while a git-reading tab is visible.
+    safe(function () { return refreshGitStatus({ quiet: true }); }),
+    safe(fetchSystemMapStatus),
+    safe(fetchRateLimits),
+    safe(fetchContextFilter),
+    safe(fetchListeners),
+    safe(fetchRunningApps),
+    safe(fetchVersion),
+  ];
+  // The Board card link fetches the Board itself, so it needs none of these.
+  if (boardSid) openBoardCard(boardSid).catch(function () {});
 
   if (deepLinkSid) {
+    await Promise.all([lists, status, webauthn]);
     const found = state.sessions.find(function (s) {
       return s.session_id === deepLinkSid;
     });
     openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
-  } else if (boardSid) {
-    openBoardCard(boardSid).catch(function () {});
   }
+  // The polls arm once every boot fetch has settled, so none overlaps its
+  // own first fetch. safe() never rejects, so neither does this.
+  await Promise.all([lists, skills, status, webauthn].concat(panels));
   setInterval(function () {
     fetchApps().catch(function () {});
   }, TUNNEL_POLL_MS);
