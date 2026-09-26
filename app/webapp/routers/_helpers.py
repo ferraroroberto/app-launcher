@@ -444,6 +444,7 @@ async def audit_session_start_and_maybe_mirror(
     kind: str = "pty",
     resume_sid: Optional[str] = None,
     brief_chars: Optional[int] = None,
+    mirror: bool = True,
 ) -> None:
     """Audit a freshly spawned PTY session, then mirror it to a PC terminal
     window if appropriate (issue #241) — the shared tail every PTY-launch
@@ -498,10 +499,12 @@ async def audit_session_start_and_maybe_mirror(
     )
     # Mirror the session into a dedicated interactive terminal window on the
     # PC — the default for every caller (issue #241, widened by #609); only
-    # an explicit in-page loopback browser skips it (see should_mirror_to_pc).
+    # an explicit in-page loopback browser skips it (see should_mirror_to_pc),
+    # and a caller passing ``mirror=False`` — the fleet chief's own Board
+    # dispatch (#1283), which runs unwatched until Roberto opens it.
     # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
     # credentials, keyed on the active cert (#356).
-    if kind == "pty" and should_mirror_to_pc(
+    if mirror and kind == "pty" and should_mirror_to_pc(
         cfg.claude_show_local_window, request, body
     ):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &

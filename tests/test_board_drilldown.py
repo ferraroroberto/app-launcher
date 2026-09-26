@@ -1396,8 +1396,21 @@ class TestChiefManagedMarking:
     def _set_live_sessions(self, overrides, sessions):
         overrides["session"].list_sessions.return_value = sessions
 
+    @pytest.fixture
+    def _mirror_asked(self, monkeypatch):
+        """Each launch that got as far as the PC-window decision (#1283).
+        The probe answers no, so no window is ever spawned by a test."""
+        from app.webapp.routers import _helpers
+        asked: list = []
+        monkeypatch.setattr(
+            _helpers, "should_mirror_to_pc",
+            lambda show, request, body: asked.append(dict(body)) or False,
+        )
+        return asked
+
     def test_marks_when_chief_alive_and_loopback(
         self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo, _fake_run,
+        _mirror_asked,
     ):
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
@@ -1414,9 +1427,19 @@ class TestChiefManagedMarking:
         assert cmd[2:] == ["mark", "spawned-1", "myrepo", "42"]
         assert cmd[0].endswith("python.exe")
         assert cmd[1].endswith("chief_managed.py")
+        # #1283: `chief_ops.py dispatch` lands here, and opens no PC window.
+        assert _mirror_asked == []
+        # Roberto's own ▶ from a browser still gets the usual rule.
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 43, "mode": "start", "in_page": True},
+        )
+        assert resp.status_code == 200
+        assert [b.get("in_page") for b in _mirror_asked] == [True]
 
     def test_does_not_mark_without_a_live_chief_session(
         self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo, _fake_run,
+        _mirror_asked,
     ):
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir()
@@ -1427,6 +1450,8 @@ class TestChiefManagedMarking:
         )
         assert resp.status_code == 200
         assert _fake_run == []
+        # No chief behind it: the usual PC-window rule still decides.
+        assert len(_mirror_asked) == 1
 
     def test_marking_failure_does_not_fail_the_launch(
         self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo, monkeypatch,
