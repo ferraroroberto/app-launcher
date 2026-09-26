@@ -26,7 +26,7 @@ import pytest
 
 from app.webapp.routers import board as board_router
 from app.webapp.routers import board_spawn
-from src import active_issue_claims, board, board_transcript, github_client, quota_usage
+from src import active_issue_claims, board, board_transcript, chief_plan, github_client, quota_usage
 
 
 def _iso(moment: datetime) -> str:
@@ -2380,6 +2380,70 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     assert all(l["state"] != "available" for l in body["quota_lines"])
     assert body["columns"]["backlog"] == []
     assert body["generated_at"]
+
+
+# ------------------------------------------------ chief's plan (#1279)
+
+_PLAN_V1 = {
+    "version": 1,
+    "updated_at": "2026-09-26T14:40:00Z",
+    "future_field": {"ignored": True},
+    "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate", "extra": 1}],
+    "queue": [
+        {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": ""},
+        "not a row",
+        {"repo": "automation", "ref": "#135", "title": "parking burst\ttrial", "status": "someday",
+         "note": ["not", "text"]},
+    ],
+    "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
+}
+
+
+def test_chief_plan_reader_is_tolerant(tmp_path: Path):
+    """Format v1 read by contract: unknown fields dropped, a non-row skipped,
+    an unknown status passed through for the neutral chip; missing or an
+    empty queue is empty; anything untrustworthy is unreadable, never raised."""
+    f = tmp_path / "chief-plan.json"
+    assert chief_plan.read_chief_plan(f) == {"state": "empty"}
+
+    f.write_text(json.dumps(_PLAN_V1), encoding="utf-8")
+    plan = chief_plan.read_chief_plan(f)
+    assert plan == {
+        "state": "ok",
+        "updated_at": "2026-09-26T14:40:00Z",
+        "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate"}],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": ""},
+            {"repo": "automation", "ref": "#135", "title": "parking burst trial", "status": "someday",
+             "note": ""},
+        ],
+        "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
+    }
+
+    f.write_text(json.dumps({"version": 1, "queue": [], "lanes": _PLAN_V1["lanes"]}), encoding="utf-8")
+    assert chief_plan.read_chief_plan(f) == {"state": "empty"}
+    for bad in ("{", "", "[]", json.dumps({**_PLAN_V1, "version": 2}), json.dumps({"queue": _PLAN_V1["queue"]})):
+        f.write_text(bad, encoding="utf-8")
+        assert chief_plan.read_chief_plan(f) == {"state": "unreadable"}, bad
+    f.write_bytes(b"\xff\xfe not utf-8")
+    assert chief_plan.read_chief_plan(f) == {"state": "unreadable"}
+
+
+def test_api_board_chief_plan_reads_the_configured_file_behind_board_auth(webapp_client):
+    client, app, _overrides = webapp_client
+    plan_file = Path(app.state.webapp_config.chief_plan_file)
+    # The fixture points at a temp file, never the real hook state.
+    assert "hooks" not in plan_file.parts
+    assert client.get("/api/board/chief-plan").json() == {"state": "empty"}
+    plan_file.write_text(json.dumps(_PLAN_V1), encoding="utf-8")
+    body = client.get("/api/board/chief-plan").json()
+    assert body["state"] == "ok" and [q["ref"] for q in body["queue"]] == ["#1273", "#135"]
+
+    app.state.webapp_config.auth_token = "secret-token"
+    for path in ("/api/board", "/api/board/chief-plan"):
+        assert client.get(path).status_code == 401, path
+    ok = client.get("/api/board/chief-plan", headers={"Authorization": "Bearer secret-token"})
+    assert ok.status_code == 200 and ok.json()["state"] == "ok"
 
 
 def test_api_board_marks_active_backlog_issue(

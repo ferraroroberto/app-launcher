@@ -88,9 +88,23 @@ def _mock_board(page: Page, payload: dict) -> None:
     _mock_board_side_routes(page)
 
 
+_PLAN = {
+    "state": "ok", "updated_at": "", "lanes": [], "waiting_on_roberto": [],
+    "queue": [{"repo": "app-launcher", "ref": "#1279", "title": "chief's plan card",
+               "status": "building", "note": ""}],
+}
+
+
 def _mock_board_side_routes(page: Page) -> None:
     """Everything _mock_board stubs besides /api/board itself, for a test
     that serves a payload it changes mid-test."""
+    # The chief's plan (#1279), which rides the Board poll.
+    page.route(
+        re.compile(r".*/api/board/chief-plan$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(_PLAN),
+        ),
+    )
     page.route(
         re.compile(r".*/api/board/github/refresh$"),
         lambda route: route.fulfill(
@@ -172,6 +186,12 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     chief_li = authed_page.locator("li.board-item-chief")
     expect(chief_li).to_be_visible()
     expect(chief_li).to_contain_text("chief")
+    # With the chief running its plan reads as current (#1279): the rows,
+    # and no "not running" line. An absent updated_at is said, not hidden.
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body.locator("li.board-plan-row")).to_contain_text("#1279 chief's plan card")
+    expect(plan_body.locator(".board-plan-age")).to_have_text("Update time unknown")
+    expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
     # Crown glyph marks the card (accent tint is the .board-item-chief class).
     assert chief_li.locator(
         '.board-chief-crown use[href="#i-crown"]'

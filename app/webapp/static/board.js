@@ -811,6 +811,138 @@ function renderStatusLine(body) {
 // is the one for the agent you have *not* selected. Rendering is shared with
 // the Coding tab — see dom-utils.js::renderQuotaLines.
 
+// ------------------------------------------------------- chief's plan (#1279)
+//
+// The fleet chief records its lanes, its queue and what waits on Roberto in a
+// plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
+// it tolerantly (src/chief_plan.py) and this card shows it under Claude's
+// turn. No plan, the card stays blank. A plan the server could not trust adds
+// one quiet note, never a toast. Whether the chief is running comes from the
+// session cards /api/board already carries, and is said on its own line: a
+// plan with no chief behind it must not read as current.
+
+// Status -> chip tone. Anything unlisted (an unknown status included) is the
+// neutral chip.
+const PLAN_TONES = {
+  building: 'active', gate: 'active',
+  waiting: 'attention', 'waiting-roberto': 'attention',
+  merged: 'done',
+};
+
+function planAge(updatedAt) {
+  const t = Date.parse(updatedAt || '');
+  if (isNaN(t)) return 'Update time unknown';
+  const min = Math.floor((Date.now() - t) / 60000);
+  if (min < 1) return 'Updated just now';
+  if (min < 60) return 'Updated ' + min + ' min ago';
+  const h = Math.floor(min / 60);
+  if (h < 48) return 'Updated ' + h + ' h ago';
+  return 'Updated ' + Math.floor(h / 24) + ' d ago';
+}
+
+// Running / not running / unknown are three answers: an unreadable
+// session-host can't prove the chief is gone.
+function chiefRunState(body, liveRead) {
+  const columns = (body && body.columns) || {};
+  const running = Object.keys(columns).some(function (key) {
+    return (columns[key] || []).some(function (c) {
+      return isChiefCard(c) && c.alive !== false;
+    });
+  });
+  if (running) return 'running';
+  return liveRead ? 'stopped' : 'unknown';
+}
+
+function planLine(cls, text) {
+  const p = document.createElement('p');
+  p.className = 'board-plan-line muted small' + (cls ? ' ' + cls : '');
+  p.textContent = text;
+  return p;
+}
+
+function planGroup(heading, rows, cls) {
+  const wrap = document.createElement('div');
+  wrap.className = 'board-plan-group' + (cls ? ' ' + cls : '');
+  const h = document.createElement('h4');
+  h.className = 'board-plan-heading';
+  h.textContent = heading;
+  const list = document.createElement('ul');
+  list.className = 'card-list board-list';
+  rows.forEach(function (row) { list.appendChild(row); });
+  wrap.append(h, list);
+  return wrap;
+}
+
+function planRow(title, meta, status, cls) {
+  const li = document.createElement('li');
+  li.className = 'app-item board-item board-plan-row' + (cls ? ' ' + cls : '');
+  const body = document.createElement('div');
+  body.className = 'launch-btn board-card board-card-flat inert';
+  const textCol = document.createElement('span');
+  textCol.className = 'board-card-text';
+  textCol.appendChild(cardTitleEl('board-card-title-compact', title));
+  if (meta) {
+    const m = document.createElement('span');
+    m.className = 'board-card-meta-inline';
+    m.textContent = meta;
+    textCol.appendChild(m);
+  }
+  body.appendChild(textCol);
+  if (status) {
+    const chip = document.createElement('span');
+    chip.className = 'kind-pill board-plan-chip';
+    chip.dataset.tone = PLAN_TONES[status] || 'neutral';
+    chip.textContent = status;
+    body.appendChild(chip);
+  }
+  li.appendChild(body);
+  return li;
+}
+
+function renderChiefPlan(body, liveRead) {
+  const host = els.boardColumns && els.boardColumns.querySelector('.board-plan-body');
+  if (!host) return;
+  const plan = state.chiefPlan || { state: 'empty' };
+  const run = plan.state === 'ok' ? chiefRunState(body, liveRead) : '';
+  const age = plan.state === 'ok' ? planAge(plan.updated_at) : '';
+  // Rebuilt only when what it shows changes, not on every 5 s poll.
+  const sig = JSON.stringify([plan, run, age]);
+  if (host.dataset.sig === sig) return;
+  host.dataset.sig = sig;
+  host.dataset.state = plan.state;
+  const nodes = [];
+  if (plan.state === 'unreadable') {
+    nodes.push(planLine('board-plan-note', 'Plan unreadable.'));
+  } else if (plan.state === 'unavailable') {
+    nodes.push(planLine('board-plan-note', 'Plan not loaded — the webapp did not answer.'));
+  } else if (plan.state === 'ok') {
+    if (run === 'stopped') {
+      nodes.push(planLine('board-plan-chief', 'Chief not running — this plan may be out of date.'));
+    } else if (run === 'unknown') {
+      nodes.push(planLine('board-plan-chief', 'Chief status unknown — session-host unreachable.'));
+    }
+    nodes.push(planLine('board-plan-age', age));
+    const waiting = plan.waiting_on_roberto || [];
+    if (waiting.length) {
+      nodes.push(planGroup('Waiting on you', waiting.map(function (w) {
+        return planRow(w.text || w.ref, w.text ? w.ref : '', '', 'board-plan-waiting');
+      }), 'board-plan-group-waiting'));
+    }
+    const lanes = plan.lanes || [];
+    if (lanes.length) {
+      nodes.push(planGroup('Lanes', lanes.map(function (l) {
+        return planRow(l.repo || 'lane', l.item, l.status);
+      })));
+    }
+    nodes.push(planGroup('Queue', (plan.queue || []).map(function (q) {
+      const title = [q.ref, q.title].filter(Boolean).join(' ');
+      const meta = [q.repo, q.note].filter(Boolean).join(' · ');
+      return planRow(title || q.repo, meta, q.status);
+    })));
+  }
+  host.replaceChildren.apply(host, nodes);
+}
+
 export function renderBoard() {
   const body = state.board;
   const columns = (body && body.columns) || {};
@@ -921,6 +1053,7 @@ export function renderBoard() {
     activeEl.focus({ preventScroll: true });
   }
 
+  renderChiefPlan(body, liveRead);
   renderStatusLine(body);
   renderQuotaLines(els.boardUsage, body.quota_lines);
   // Keep the dispatch bar's repo list + mic visibility in step with state
@@ -936,7 +1069,14 @@ export async function fetchBoard() {
   // pausing on it froze the whole Board silently. renderBoard() keeps the
   // open drawer's node instead, so a poll can't wipe a reply being typed.
   if (state.tab !== 'board') return;
-  state.board = await jsonApi('/api/board');
+  // The chief's plan rides the same poll (#1279). Its failure is the card's
+  // own quiet note, never the Board's error.
+  const [board, plan] = await Promise.all([
+    jsonApi('/api/board'),
+    jsonApi('/api/board/chief-plan').catch(function () { return { state: 'unavailable' }; }),
+  ]);
+  state.board = board;
+  state.chiefPlan = plan;
   renderBoard();
   // A never-fetched cache (the webapp restarted since the last refresh) heals
   // on the poll too, not only on tab activation — a Board left open across a

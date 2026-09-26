@@ -166,6 +166,16 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
 
     _write(p.transcript, "".join(json.dumps(line) + "\n" for line in _transcript_lines(p.project, now)))
     _json(p.state_file, {})
+    # A chief's plan (#1279), so the Board's card has rows to review. No chief runs here, so the card
+    # also shows its "chief not running" line.
+    _json(data / "state" / "chief-plan.json", {
+        "version": 1, "updated_at": _iso(now - _dt.timedelta(minutes=12)),
+        "lanes": [{"repo": PROJECT_NAME, "session": "", "item": "#12", "status": "building"}],
+        "queue": [
+            {"repo": PROJECT_NAME, "ref": "#12", "title": "Synthetic item in progress", "status": "building", "note": ""},
+            {"repo": PROJECT_NAME, "ref": "#13", "title": "Synthetic item queued next", "status": "queued",
+             "note": "after #12"}],
+        "waiting_on_roberto": [{"text": "A synthetic decision", "ref": f"{PROJECT_NAME}#14"}]})
 
     # A schedule so the row shows its Pause item, hence its ⋮ menu. Display only: a Windows task is
     # registered only by the jobs API's write routes (`sync_schtasks`), which the walk never calls.
@@ -183,6 +193,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
         "projects_dir": str(data / "projects"), "apps_scan_root": str(data / "projects"), "projects_ignore": [],
         "life_os_dir": str(p.life_os), "claude_config_dir": str(p.home / ".claude"),
         "sessions_state_file": str(p.state_file), "rate_limits_file": str(data / "state" / "rate-limits.json"),
+        "chief_plan_file": str(data / "state" / "chief-plan.json"),
         "context_filter_mode_file": str(data / "state" / "context-filter-mode.json"),
         "context_filter_log_file": str(data / "state" / "context-filter-shadow.jsonl"),
         "voice_transcriber_url": CLOSED_URL, "photo_ocr_url": CLOSED_URL, "llm_hub_url": CLOSED_URL,

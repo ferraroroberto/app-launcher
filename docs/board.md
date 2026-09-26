@@ -216,6 +216,33 @@ The chief's card is **visually distinct** (accent tint + crown) and **kill-prote
 
 **Settings** (gear in the chat-mode status row → editor dialog): model (sonnet/opus/fable) and the **worker cap** (1-10, ceiling raised 8→10 in #547) — persisted as `chief_*` fields in `config/webapp_config.json` via `GET/PUT /api/board/chief/settings`. The worker cap is deliberately server-side state: the `/chief` skill reads it over loopback as its dispatch rail, so it stays phone-tunable without a fleet-config commit. All safety rails (start-verb default, the literal-"yolo" gate, deterministic issue lists, the cap) live in the skill — app-launcher ships plumbing only. (A daily-respawn on/off + time pair lived here too until #616 retired it alongside the job above.)
 
+## The chief's plan card (#1279)
+
+A card directly under *Claude's turn* (not a column; `index.html` wraps the two in one `.board-col-stack`, so it sits in the same desktop grid cell and next in the phone's stack) shows what the fleet chief is doing and intends to do next. The chief records it in a plan file, and the app only reads it.
+
+**File and contract (format v1, shared with fleet-config).** `chief_plan_file`, default `~/.claude/hooks/state/chief-plan.json`, next to `chief-handover.md` in the gitignored hook state dir. The chief writes it only through fleet-config's `chief_ops.py plan …` helper, which validates it and replaces the file atomically:
+
+```json
+{
+  "version": 1,
+  "updated_at": "2026-09-26T14:40:00Z",
+  "lanes": [{"repo": "app-launcher", "session": "<session id>", "item": "#1273", "status": "gate"}],
+  "queue": [
+    {"repo": "app-launcher", "ref": "#1273", "title": "Code tab: Chat by default on desktop", "status": "gate", "note": ""},
+    {"repo": "automation", "ref": "#135", "title": "parking burst trial", "status": "queued", "note": "before Thu 1 Oct 16:00"}
+  ],
+  "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}]
+}
+```
+
+`lanes[].status` is `building` | `gate` | `idle` | `waiting`; `queue[].status` is `queued` | `building` | `gate` | `merged` | `parked` | `waiting-roberto`; `queue` is in the chief's intended order; `note` is optional, one short line; `ref` is `#N` within `repo`, or `repo#N` in `waiting_on_roberto`.
+
+**The reader is tolerant** (`src/chief_plan.py::read_chief_plan`, served read-only by `GET /api/board/chief-plan` under the same auth as `/api/board`). It answers `{"state": "ok", "updated_at", "lanes", "queue", "waiting_on_roberto"}` with every row cut down to the fields above, and anything that is not a row skipped. A missing file or an empty `queue` is `{"state": "empty"}`, and the card stays blank. A file that can't be read, isn't JSON or a JSON object, or names another `version` is `{"state": "unreadable"}`, and the card shows only a quiet *Plan unreadable.* note, never a toast. Status values are not validated: the card shows an unknown one as it is, on the neutral chip.
+
+**Rendering** (`board.js::renderChiefPlan`). The card rides the Board's 5 s poll (`fetchBoard()` fetches the plan beside `/api/board`, and a failed plan fetch is its own quiet note, never the Board's error). It rebuilds only when what it shows changes. Order: *Waiting on you* first, marked like an attention item; then *Lanes* (repo, current item, status); then *Queue* (ref and title, repo and note, status chip). Chip tones: `building`/`gate` accent, `waiting`/`waiting-roberto` attention, `merged` success, everything else neutral. *Updated N min ago* comes from `updated_at`, and *Update time unknown* when it is missing or unparseable.
+
+**Chief not running is its own state.** Whether the chief runs comes from the session cards `/api/board` already carries (a live card that `isChiefCard` matches), not from the plan. That gives three answers, and each is said. Running shows no line. *Chief not running — this plan may be out of date.* shows when the session list was read and holds no live chief. *Chief status unknown — session-host unreachable.* shows when the list could not be read, which can't prove the chief is gone. So an old plan never reads as current.
+
 ## The drill-down drawer and its PTY-write path (#301)
 
 Tapping a live session card opens an **inline drill-down drawer** on the card (`board.js::buildDrawer`). It shows the last user↔assistant exchange, the shared composer (`composer.js`, the same component the session overlay mounts — #984) and four equal actions: Rename · Stop · Chat · Terminal — one row while the drawer fits four 44px columns, else 2×2, else one column; a container query on the drawer's own width decides (#1174). The **5 s poll keeps running** while a drawer is open — the chief chat holds its drawer open for a whole conversation, and an earlier pause on any open drawer froze the card list for hours with no sign it was stale (#958). Instead `renderBoard()` keeps the open drawer's own `<li>` in place and swaps in only its fresh card header, so a half-typed reply, the composer's focus (the phone keyboard), a live dictation and the chief's exchange poll all survive every re-render. A drawer that is *not* kept has its composer `reset()` first, which disposes the mic so a recording can never outlive its DOM node (#755). A drawer whose card leaves the payload (session ended) or the repo filter collapses.

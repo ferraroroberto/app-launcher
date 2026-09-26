@@ -101,6 +101,8 @@ export const state = {
   // GitHub data inside it comes from the server-side gh cache and is only
   // refreshed on demand (the ↻ button / first activation), never per poll.
   board: null,
+  // GET /api/board/chief-plan's last answer (#1279), fetched with `board`.
+  chiefPlan: null,
   // Session id whose drawer is open (#301). The board poll keeps running;
   // renderBoard() keeps this drawer's node so a reply being typed survives
   // (#958).
