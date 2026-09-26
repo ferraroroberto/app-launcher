@@ -17,7 +17,7 @@ import { refreshGitStatus } from './apps-coding.js';
 import { fetchListeners } from './apps-listeners.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
-import { fetchBoard, openBoardCard, wireBoard } from './board.js';
+import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
 import { openTerminal, wireTerminal } from './terminal.js';
@@ -236,6 +236,11 @@ async function boot() {
   // re-renders neither, so both wait for it.
   const lists = safe(fetchAgents).then(function () {
     return Promise.all([safe(fetchApps), safe(fetchSessions)]);
+  }).then(function () {
+    // A Board opened before the project list landed drew its issue actions
+    // without it (they key on the registered projects). git-status used to
+    // redraw it by coming last in the serial chain; now nothing else would.
+    if (state.tab === 'board') renderBoard();
   });
   // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation link
   // reopens that capture in the viewer, over the Life OS tab. It needs only
@@ -252,19 +257,72 @@ async function boot() {
   // The terminal deep link reads both: reachability and the passkey gate.
   const status = safe(fetchStatus);
   const webauthn = safe(fetchWebauthnStatus);
-  const panels = [
-    // Git flags fill without a tap (#496): one fetch at boot, then the slow
-    // poll below keeps them current while a git-reading tab is visible.
-    safe(function () { return refreshGitStatus({ quiet: true }); }),
-    safe(fetchSystemMapStatus),
-    safe(fetchRateLimits),
-    safe(fetchContextFilter),
-    safe(fetchListeners),
-    safe(fetchRunningApps),
-    safe(fetchVersion),
-  ];
+  // Git flags fill without a tap (#496): one fetch at boot, then the slow
+  // poll below keeps them current while a git-reading tab is visible.
+  const git = safe(function () { return refreshGitStatus({ quiet: true }); });
+  const usage = Promise.all([safe(fetchRateLimits), safe(fetchContextFilter)]);
+  const listeners = safe(fetchListeners);
+  const running = safe(fetchRunningApps);
+  const others = [safe(fetchSystemMapStatus), safe(fetchVersion)];
   // The Board card link fetches the Board itself, so it needs none of these.
   if (boardSid) openBoardCard(boardSid).catch(function () {});
+
+  // Each poll arms once its own first fetch has settled, so it never
+  // overlaps it, and never waits on a slower, unrelated one: a git scan
+  // still running must not hold back the Jobs poll (#1258).
+  const noop = function () {};
+  lists.then(function () {
+    setInterval(function () {
+      fetchApps().catch(noop);
+    }, TUNNEL_POLL_MS);
+    setInterval(function () {
+      // Pause the session poll while the session overlay is open (either
+      // mode, #982) — it would re-render the list under the overlay for no
+      // reason. The open terminal keeps its own title poll (terminal.js).
+      if (!state.sessionView) fetchSessions().catch(noop);
+    }, SESSIONS_POLL_MS);
+  });
+  usage.then(function () {
+    setInterval(function () {
+      fetchRateLimits().catch(noop);
+      // Context filter (issue #713) rides the same cadence as the usage
+      // badges above — no dedicated timer for one more lightweight GET.
+      fetchContextFilter().catch(noop);
+    }, SESSIONS_POLL_MS);
+  });
+  listeners.then(function () {
+    setInterval(function () {
+      fetchListeners().catch(noop);
+    }, LISTENERS_POLL_MS);
+  });
+  running.then(function () {
+    setInterval(function () {
+      // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
+      fetchRunningApps().catch(noop);
+    }, RUNNING_APPS_POLL_MS);
+  });
+  webauthn.then(function () {
+    setInterval(function () {
+      fetchWebauthnStatus().catch(noop);
+    }, WEBAUTHN_POLL_MS);
+  });
+  git.then(function () {
+    setInterval(function () {
+      // Always-on git flags (#496): refresh only while a tab that shows them
+      // is visible (Coding tiles / Board backlog) and the page is foreground —
+      // a backgrounded PWA must not keep spawning git subprocesses.
+      if (document.hidden) return;
+      if (state.tab !== 'claude' && state.tab !== 'board') return;
+      refreshGitStatus({ quiet: true }).catch(noop);
+    }, GIT_STATUS_POLL_MS);
+  });
+  // No boot fetch of their own: both self-gate to their tab.
+  setInterval(function () {
+    fetchJobs().catch(noop);
+  }, JOBS_POLL_MS);
+  setInterval(function () {
+    fetchBoard().catch(noop);
+  }, BOARD_POLL_MS);
 
   if (deepLinkSid) {
     await Promise.all([lists, status, webauthn]);
@@ -273,50 +331,9 @@ async function boot() {
     });
     openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
   }
-  // The polls arm once every boot fetch has settled, so none overlaps its
-  // own first fetch. safe() never rejects, so neither does this.
-  await Promise.all([lists, skills, status, webauthn].concat(panels));
-  setInterval(function () {
-    fetchApps().catch(function () {});
-  }, TUNNEL_POLL_MS);
-  setInterval(function () {
-    // Pause the session poll while the session overlay is open (either
-    // mode, #982) — it would re-render the list under the overlay for no
-    // reason. The open terminal keeps its own title poll (terminal.js).
-    if (!state.sessionView) fetchSessions().catch(function () {});
-  }, SESSIONS_POLL_MS);
-  setInterval(function () {
-    fetchRateLimits().catch(function () {});
-    // Context filter (issue #713) rides the same cadence as the usage
-    // badges above — no dedicated timer for one more lightweight GET.
-    fetchContextFilter().catch(function () {});
-  }, SESSIONS_POLL_MS);
-  setInterval(function () {
-    fetchListeners().catch(function () {});
-  }, LISTENERS_POLL_MS);
-  setInterval(function () {
-    // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
-    fetchRunningApps().catch(function () {});
-  }, RUNNING_APPS_POLL_MS);
-  setInterval(function () {
-    // fetchJobs() self-gates: only polls while the Jobs tab is visible.
-    fetchJobs().catch(function () {});
-  }, JOBS_POLL_MS);
-  setInterval(function () {
-    // fetchBoard() self-gates: only polls while the Board tab is visible.
-    fetchBoard().catch(function () {});
-  }, BOARD_POLL_MS);
-  setInterval(function () {
-    fetchWebauthnStatus().catch(function () {});
-  }, WEBAUTHN_POLL_MS);
-  setInterval(function () {
-    // Always-on git flags (#496): refresh only while a tab that shows them
-    // is visible (Coding tiles / Board backlog) and the page is foreground —
-    // a backgrounded PWA must not keep spawning git subprocesses.
-    if (document.hidden) return;
-    if (state.tab !== 'claude' && state.tab !== 'board') return;
-    refreshGitStatus({ quiet: true }).catch(function () {});
-  }, GIT_STATUS_POLL_MS);
+  // safe() never rejects, so neither does this: boot() resolves once every
+  // boot fetch has settled.
+  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running].concat(others));
 }
 
 // --------------------------------------------------------- wire + go

@@ -87,6 +87,10 @@ def _wire(page: Page, runs: list, state: dict) -> None:
 
     page.route(re.compile(r".*/api/jobs/demo/run(\?.*)?$"), _run)
     page.route(re.compile(r".*/api/jobs(\?.*)?$"), _jobs)
+    # A boot fetch that never answers (git-status, a fleet-wide scan) must
+    # not hold the Jobs poll back: each poll arms on its own first fetch,
+    # and Jobs has none at boot (#1258).
+    page.route(re.compile(r".*/api/claude-code/git-status$"), lambda route: None)
 
 
 def _wait_for_polls(page: Page, state: dict, target: int) -> None:
