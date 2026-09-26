@@ -61,6 +61,14 @@ def test_every_icon_reference_resolves_to_a_sprite_symbol():
 # components' own sample markup (`_vendored/**`) never renders, so it is
 # excluded here.
 _INDEX_PATH = _STATIC_DIR / "index.html"
+# Names also travel indirectly, as a toast's `{ icon: 'x' }` or a menu item's
+# `glyph: 'x'`: #1278's `glyph: 'monitor'` and #1288's two toast icons
+# rendered blank because only icon() calls and hrefs were scanned. Only this
+# inline check takes them: an app-local glyph (`eye`, `sparkle`, ...) lives in
+# the inline copy alone, so the vendored check above keeps its narrower scan.
+_RENDERED_REFERENCE_RE = re.compile(
+    r"icon\(\s*['\"]([\w-]+)['\"]|#i-([\w-]+)|\b(?:glyph|icon)\s*:\s*['\"]([\w-]+)['\"]"
+)
 
 
 def test_every_rendered_icon_reference_resolves_in_the_inline_sprite():
@@ -68,8 +76,8 @@ def test_every_rendered_icon_reference_resolves_in_the_inline_sprite():
     for path in list(_STATIC_DIR.rglob("*.js")) + list(_STATIC_DIR.rglob("*.html")):
         if "_vendored" in path.parts:
             continue
-        for call_name, href_name in _ICON_REFERENCE_RE.findall(path.read_text(encoding="utf-8")):
-            referenced.add(call_name or href_name)
+        for groups in _RENDERED_REFERENCE_RE.findall(path.read_text(encoding="utf-8")):
+            referenced.add(next(name for name in groups if name))
     inline = set(_SYMBOL_ID_RE.findall(_INDEX_PATH.read_text(encoding="utf-8")))
     missing = sorted(referenced - inline)
     assert not missing, (
