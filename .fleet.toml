@@ -72,8 +72,15 @@ static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
 # The gate's per-test START/DONE/FAILED log (gitignored; written by
 # scripts/verify-before-ship.ps1 via tests/_progress_log.py). /e2e-audit reads
-# it for the browser leg's time (fleet-config#1018); no time_budget_s is set.
+# it for the browser leg's time (fleet-config#1018).
 progress_log          = "webapp/verify-progress.log"
+# Budget for that browser leg, in seconds (#1255): the parallel plus serial
+# e2e passes of the latest quiet full-tier run in progress_log, not the whole
+# gate. 20 min against ~12.5 min measured 2026-09-26 (gate total ~16 min).
+# Over it, /e2e fires /e2e-audit; a narrow-routed or overlapped run is
+# `unknown`, never `within`. Same rule as test_budget: move it only with a
+# written reason.
+time_budget_s         = 1200
 # Ratchet at the measured size (app-launcher#972, re-audited #1064): this
 # repo's dual-projection suite spans six tabs, so the scaffold's 15-test
 # target doesn't apply here. Lower this as the suite trims; /e2e-audit
