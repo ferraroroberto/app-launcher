@@ -413,6 +413,11 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
+    # Where a link tapped in Chat or a transcript opens when the page runs on
+    # the PC itself (#1274): "chrome" (found through the registry's App
+    # Paths, falling back to the default when absent) or "system" (the
+    # Windows default browser, which is how the links opened before).
+    desktop_browser: str = "chrome"
     # Bounded scrollback (issue #435 follow-up): how many lines of a
     # full-screen (ratatui) agent's history the session-host retains and
     # replays on a (re)connect. See DEFAULT_TERMINAL_HISTORY_LINES for the

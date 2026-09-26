@@ -615,6 +615,7 @@ UI prefs + secrets, authored from the web UI:
 | `session_host_port` | `8446` | Loopback port the PTY session-host binds. Never network-reachable; must differ from `port`. |
 | `tailnet_allowlist` | `[]` | Extra IPs / CIDRs allowed to reach the terminal endpoints, on top of loopback + `100.64.0.0/10`. |
 | `claude_show_local_window` | `true` | Open an interactive terminal window on the PC when a session is launched from the phone. |
+| `desktop_browser` | `"chrome"` | Where a link tapped in Chat or a transcript opens when the page runs on the PC itself (a loopback page or a session's mirror window): `"chrome"` opens it in Chrome, found through the registry's App Paths and falling back to the Windows default when Chrome isn't installed; `"system"` uses the Windows default. A phone or laptop over the tailnet always opens links itself (issue #1274). |
 | `webauthn_rp_id` | `""` | Passkey relying-party ID — the bare tailnet hostname. Empty disables the passkey gate. |
 | `webauthn_rp_name` | `"Launcher"` | Display name shown in the passkey prompt. |
 | `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,15 +19,17 @@ from fastapi.responses import HTMLResponse
 from src import session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_deployed_sha, resolve_git_sha
+from src.desktop_browser import is_web_url, open_url
 from src.diagnostics import detect_local_scheme, find_pids_on_port, kill_pids, list_app_listeners
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.vscode_workspace import is_vscode_installed
-from src.webapp_config import WebappConfig
+from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
-from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR
+from app.webapp.middleware import is_pc_itself
+from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
 
 _log = logging.getLogger(__name__)
 
@@ -224,6 +227,34 @@ async def _listener_url(tailnet_host: str, pid: int, port: int) -> Optional[str]
         scheme = await asyncio.to_thread(detect_local_scheme, port)
         _LISTENER_SCHEMES[key] = scheme
     return f"{scheme}://{tailnet_host}:{port}/"
+
+
+@router.post("/api/open-url")
+async def open_link_on_pc(request: Request) -> Dict[str, Any]:
+    """Open a link from Chat or a transcript in the PC's browser (#1274).
+
+    Only the PC itself may ask: the page calls this when it is running on the
+    PC (a loopback connection, or a session's mirror window), so the link
+    lands in Chrome rather than in Edge, the browser hosting the page. A
+    laptop or the phone over the tailnet keeps opening links itself; opening
+    them on the PC would put the page in front of nobody. ``http``/``https``
+    only.
+    """
+    host = request.client.host if request.client else ""
+    if not is_pc_itself(host, request.headers):
+        raise HTTPException(status_code=403, detail="links open on the PC only for the PC itself")
+    body = await maybe_json(request)
+    url = str((body or {}).get("url") or "").strip()
+    if not is_web_url(url):
+        raise HTTPException(status_code=400, detail="only http(s) links")
+    # A disposable e2e / verify instance never opens anything on the desktop,
+    # the rule the mirror window follows (#278, #938).
+    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+        _log.info("ℹ️ open-url: disposable instance, not opening a browser")
+        return {"opened": False, "browser": "none"}
+    cfg: WebappConfig = request.app.state.webapp_config
+    browser = await asyncio.to_thread(open_url, url, cfg.desktop_browser)
+    return {"opened": True, "browser": browser}
 
 
 @router.get("/api/ports/probe")

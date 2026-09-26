@@ -18,7 +18,7 @@
 import { els } from './state.js';
 import { jsonApi } from './api.js';
 import { createRowMenu } from './row-menu.js';
-import { isDecisionCard, renderEntries } from './session-transcript.js';
+import { isDecisionCard, openLinksOnThePc, renderEntries } from './session-transcript.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 
@@ -159,6 +159,7 @@ function stateOf() {
 export function wireConvoViewer() {
   if (!els.lifeOsConvoViewer) return;
   els.lifeOsViewerBack.addEventListener('click', closeConvoViewer);
+  openLinksOnThePc(els.lifeOsViewerList);
   // Opening at the top (a finished conversation reads from its start), the
   // shared ↓ Latest pill (#1140) shows whenever the end is off screen.
   mountScrollerPill(els.lifeOsViewerLatest, els.lifeOsViewerBody);
