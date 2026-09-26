@@ -237,7 +237,10 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
     carries the ``url`` its row's Open uses (#1129).
     """
     dir_names = _registered_dir_names()
-    owners = list_app_listeners()
+    # psutil's socket + process scan takes ~1 s. On the event loop it stalled
+    # every other request the webapp was serving, and the Apps tab polls
+    # this route every 5 s (#1262).
+    owners = await asyncio.to_thread(list_app_listeners)
     pid_to_port = {o.pid: o.port for o in owners}
     tailnet_host = (request.app.state.app_config.tailnet_host or "").strip()
     live = {(o.pid, o.port) for o in owners}
@@ -269,10 +272,11 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
 async def kill_port(port: int) -> Dict[str, Any]:
     if port < 1 or port > 65535:
         raise HTTPException(status_code=400, detail="port out of range")
-    pids = find_pids_on_port(port)
+    # The same psutil scan as the probe, plus the kills: off the loop (#1262).
+    pids = await asyncio.to_thread(find_pids_on_port, port)
     if not pids:
         return {"port": port, "killed": [], "detail": "nothing was listening"}
-    killed, errors = kill_pids(pids)
+    killed, errors = await asyncio.to_thread(kill_pids, pids)
     return {"port": port, "killed": killed, "errors": errors}
 
 
