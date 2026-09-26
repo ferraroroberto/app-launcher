@@ -591,3 +591,18 @@ tab = "board"
 id = "session-overlay-menu"
 clicks = [".board-item[data-session-id] .board-card", ".board-open-terminal", "#terminalMenu"]
 synthetic = true
+
+# [[design.accepted]] -- /design-review rubric findings examined and accepted
+# for this repo (fleet-config#974; schema in fleet-config's
+# architecture/README.md). Each suppresses one rule in the managed
+# design-review issue, listed under "## Accepted" instead of "## Findings".
+# Roberto's #1238 decisions, 2026-09-25.
+[[design.accepted]]
+rule   = "LAYOUT-02"
+reason = "the Board's repo filter in the dispatch bar covers the long list, and Backlog starts folded on the phone"
+record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecomment-5837905876"
+
+[[design.accepted]]
+rule   = "LAYOUT-05"
+reason = "the Chat turn header's copy button stops propagation, and moving it into the body would force opening a turn to copy it"
+record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecomment-5837905876"
