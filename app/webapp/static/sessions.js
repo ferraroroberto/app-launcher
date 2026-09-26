@@ -29,7 +29,7 @@ import { renderHomeHead } from './home-head.js';
 // The session overlay's two modes (#982). Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
-import { closeSessionOverlay, openSessionOverlay } from './session-overlay.js';
+import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
 import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, isChiefSession, renderQuotaLines, revealInCard } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -313,15 +313,17 @@ async function copyProjectPath(path) {
 // tapped — the Board drawer's Chat / Terminal button calls this too.
 // `mode` forces 'terminal' or 'chat'; without it the session opens
 // in the mode it was last viewed in (#982, session-overlay.js), a detached
-// session always in Chat. On a desktop browser a full-control session's
-// terminal is a dedicated PC Edge --app window (issue #282) — the same
-// window a new-session launch opens — instead of rendering the terminal
-// inside the user's own browser, so it can be closed without fear while
-// the session keeps running headless. A second tap focuses that window
-// rather than spawning a duplicate. Chat is in-page everywhere; the phone
-// (and a desktop with mirroring disabled) streams the terminal in-page.
+// session always in Chat, and a first open on a desktop browser in Chat
+// (#1273). On a desktop browser a full-control session's terminal is a
+// dedicated PC Edge --app window (issue #282) — the same window a
+// new-session launch opens — instead of rendering the terminal inside the
+// user's own browser, so it can be closed without fear while the session
+// keeps running headless. A second tap focuses that window rather than
+// spawning a duplicate. Chat is in-page everywhere; the phone (and a
+// desktop with mirroring disabled) streams the terminal in-page.
 export async function openSession(s, mode) {
-  if (isDesktopClient() && s.kind !== 'remote' && mode !== 'chat') {
+  const resolved = resolveSessionMode(s, mode);
+  if (isDesktopClient() && s.kind !== 'remote' && resolved === 'terminal') {
     try {
       const r = await jsonApi(
         '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
@@ -343,7 +345,7 @@ export async function openSession(s, mode) {
       return;
     }
   }
-  openSessionOverlay(s, mode);
+  openSessionOverlay(s, resolved);
 }
 
 export async function stopSession(s) {

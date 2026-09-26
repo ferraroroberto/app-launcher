@@ -25,7 +25,7 @@
  */
 
 import { els, state } from './state.js';
-import { toast } from './api.js';
+import { isDesktopClient, toast } from './api.js';
 import {
   attachTerminalPane,
   hideTerminal,
@@ -204,22 +204,32 @@ export function markSelectedSession(sid) {
   });
 }
 
+// The mode a session opens in: an explicit choice, else the one it was last
+// viewed in (per session, remembered), else Chat on a desktop browser (#1273)
+// and Terminal on the phone — clamped to the panes this session has. The
+// row-tap's desktop mirror gate (sessions.js) resolves through this too, so
+// only a session that resolves to Terminal leaves for the PC window.
+export function resolveSessionMode(session, wantMode) {
+  const termOK = terminalAvailable(session);
+  const chatOK = chatAvailable(session);
+  let mode = wantMode || lastMode(session.session_id) ||
+    (chatOK && isDesktopClient() ? 'chat' : (termOK ? 'terminal' : 'chat'));
+  if (mode === 'chat' && !chatOK) mode = 'terminal';
+  if (mode === 'terminal' && !termOK) mode = 'chat';
+  return mode;
+}
+
 export function openSessionOverlay(session, wantMode) {
   if (!session || !session.session_id) return;
   // On a wide window the view is the Code tab's detail pane, so a session
   // opened from elsewhere (the Board drawer) lands on the Code tab.
   if (isWideLayout() && state.tab !== 'claude') setTab('claude');
-  const termOK = terminalAvailable(session);
-  const chatOK = chatAvailable(session);
   // A session that can offer neither pane still opens (#1025): both segments
   // render aria-disabled and the chat pane shows the reader's own reason
   // line, which beats an unexplained dead row. That shape — detached, agent
   // with no reader — is the only way Rename and Stop stay reachable for it
   // now that the row gear is gone, and they live in the bar's ⋮ menu.
-  let mode = wantMode || lastMode(session.session_id) ||
-    (termOK ? 'terminal' : 'chat');
-  if (mode === 'chat' && !chatOK) mode = 'terminal';
-  if (mode === 'terminal' && !termOK) mode = 'chat';
+  const mode = resolveSessionMode(session, wantMode);
   // Panes left showing another session are stale for this one: the chat
   // pane is closed, and an active terminal is stashed warm (#430) so its
   // title poll can't keep writing the old title over this session's bar
