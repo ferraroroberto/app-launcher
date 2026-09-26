@@ -250,6 +250,30 @@ def _open_chat(page: Page, sid: str = _SID) -> None:
     open_session_row(page, _row(page, sid), mode="chat")
 
 
+def _pull(page: Page, dy: int) -> None:
+    """Drag one finger ``dy`` px on the Chat list (+ down, - up), as #1292's
+    pull gestures read it: a touchstart, then a touchend ``dy`` further on."""
+    page.evaluate("""(dy) => {
+        const box = document.getElementById('transcriptBody');
+        const fire = (type, y) => {
+            const ev = new Event(type, {bubbles: true});
+            const pt = [{clientX: 20, clientY: y}];
+            Object.defineProperty(ev, 'touches', {value: type === 'touchend' ? [] : pt});
+            Object.defineProperty(ev, 'changedTouches', {value: pt});
+            box.dispatchEvent(ev);
+        };
+        fire('touchstart', 300);
+        fire('touchend', 300 + dy);
+    }""", dy)
+
+
+def _menu_item(page: Page, name: str):
+    page.locator("#terminalMenu").click()
+    menu = page.locator("#terminalOverlay .terminal-menu")
+    expect(menu).to_be_visible()
+    return menu.get_by_role("menuitem", name=name)
+
+
 def _boot(page: Page, base_url: str, alive: bool = True) -> _Transcript:
     _mock_sessions_list(page, alive=alive)
     tr = _Transcript(page)
@@ -275,6 +299,40 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
         "found it — a missing await", timeout=OVERLAY_OPEN_MS
     )
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(3)
+
+    # -- #1292: forcing a read, for when polling seems stuck --
+    # ⋮ Load new with nothing new says so, briefly, and rebuilds nothing.
+    newer = page.locator("#transcriptNewer")
+    page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept = 1")
+    _menu_item(page, "Load new messages").click()
+    expect(newer).to_have_text("No new messages")
+    expect(newer).to_be_hidden(timeout=5_000)
+
+    # Timed against the poll: right after a tick's read lands, the next is a
+    # full LIVE_POLL_MS (3 s) away, so a turn that shows within 1.5 s of the
+    # tap came from the forced read, not the timer.
+    with page.expect_response(lambda r: "after=" in r.url, timeout=OVERLAY_OPEN_MS):
+        pass
+    tr.append(_turn("user", "and the second flake?", 350))
+    before = tr.tail_calls()
+    _menu_item(page, "Load new messages").click()
+    expect(page.locator("#transcriptList")).to_contain_text("and the second flake?", timeout=1_500)
+    assert tr.tail_calls() > before
+    # Appended, never rebuilt: the first turn is the same node.
+    assert page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept") == 1
+
+    # A pull up past the bottom is the same read.
+    with page.expect_response(lambda r: "after=" in r.url, timeout=OVERLAY_OPEN_MS):
+        pass
+    tr.append(_turn("assistant", "same cause, same fix", 380))
+    page.evaluate("const b = document.getElementById('transcriptBody'); b.scrollTop = b.scrollHeight")
+    _pull(page, -120)
+    expect(page.locator("#transcriptList")).to_contain_text("same cause, same fix", timeout=1_500)
+    # A drag too short to be a pull does nothing.
+    calls = tr.tail_calls()
+    _pull(page, -20)
+    page.wait_for_timeout(300)
+    assert tr.tail_calls() == calls
 
     # #1149 — a question the agent asks arrives the same way, as its own
     # card: visible with tool calls hidden (the default), never folded. An

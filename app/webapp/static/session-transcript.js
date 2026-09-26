@@ -131,6 +131,11 @@ const LIVE_BACKOFF_MAX_MS = 30000;
 // Before #1050 this was a full `loadNewest()`, which rebuilt the whole pane
 // (losing scroll position and every open disclosure) after every message.
 const SENT_REFRESH_MS = 3000;
+// A forced read's "No new messages" stays this long (#1292).
+const NEWER_NOTE_MS = 2000;
+// How far a finger must drag past an edge before it counts as a pull, well
+// beyond a tap's jitter and short of a deliberate scroll (#1292).
+const PULL_PX = 64;
 
 // The chat pane's composer handle (composer.js), mounted once by
 // wireChatPane() and re-bound to the open session by openChatPane().
@@ -596,6 +601,51 @@ export function toggleGroups() {
 // so it earns its slot as the escape hatch, not as the refresh button.
 export function reloadNewest() {
   if (view) loadNewest();
+}
+
+// ⋮ menu — "Load new" (#1292), and a pull up past the bottom of the list:
+// one forward read now, the same one the live tick makes (#1050), so what
+// arrives is appended without rebuilding the list. For when polling seems
+// stuck: it runs whether or not a tick is due, and says what it found. A
+// tick already in flight is waited out first, never raced.
+export async function loadNew() {
+  if (!view || view.forcing) return;
+  const target = view;
+  target.forcing = true;
+  stopLiveTimer();
+  newerNote('Checking for new messages…');
+  try {
+    if (target.ticking && target.inflight) await target.inflight;
+    if (view !== target) return;
+    target.inflight = forwardRead(target, true);
+    const found = await target.inflight;
+    if (view !== target) return;
+    newerNote(found === 'unchanged' ? 'No new messages' : null, NEWER_NOTE_MS);
+  } finally {
+    target.forcing = false;
+  }
+}
+
+// The status line under the list for a forced read. Null hides it; `ms`
+// hides it again after that long. Kept in view when the reader is at the
+// bottom, which is where a pull up leaves them.
+function newerNote(text, ms) {
+  const el = els.transcriptNewer;
+  if (!el || !view) return;
+  window.clearTimeout(view.newerTimer);
+  if (!text) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+  const box = els.transcriptBody;
+  const pinned = !scrollerIsAway(box);
+  el.textContent = text;
+  el.hidden = false;
+  if (pinned) box.scrollTop = box.scrollHeight;
+  if (ms) {
+    view.newerTimer = window.setTimeout(function () { newerNote(null); }, ms);
+  }
 }
 
 // One folded item inside a run group — its own <details>, so a single
@@ -1827,8 +1877,17 @@ function liveUnavailable(reason) {
 
 async function liveTick() {
   if (!view || !liveAllowed()) return;
-  const target = view;
-  const seq = view.seq;
+  view.inflight = forwardRead(view, false);
+  await view.inflight;
+}
+
+// One forward-cursor read (#1050), the background tick's or a forced one
+// (#1292). Resolves to what it found — 'changed', 'unchanged',
+// 'unavailable', 'reset', 'failed', or 'stale' when the pane moved on — so
+// a forced read can say it. A failed forced read toasts, as a tapped action
+// does; a failed tick backs off quietly, as it always has.
+async function forwardRead(target, manual) {
+  const seq = target.seq;
   target.liveTimer = null;
   target.ticking = true;
   // Not awaited: the screen read is independent of the transcript, and a
@@ -1844,7 +1903,12 @@ async function liveTick() {
     );
   } catch (exc) {
     target.ticking = false;
-    if (view !== target || view.seq !== seq) return;
+    if (view !== target || view.seq !== seq) return 'stale';
+    if (manual) {
+      apiFailToast('Load new failed', exc);
+      scheduleLive(target.backoff || LIVE_POLL_MS);
+      return 'failed';
+    }
     // Quietly, and slower each time: a tick is background work the reader
     // did not ask for, so a failing one must not toast over the pane the way
     // a tapped Reload does.
@@ -1852,20 +1916,20 @@ async function liveTick() {
       LIVE_BACKOFF_MAX_MS, (target.backoff || LIVE_POLL_MS) * 2
     );
     scheduleLive(target.backoff);
-    return;
+    return 'failed';
   }
   target.ticking = false;
-  if (view !== target || view.seq !== seq) return;
+  if (view !== target || view.seq !== seq) return 'stale';
   target.backoff = 0;
   if (!body.available) {
     liveUnavailable(body.reason);
-    return;
+    return 'unavailable';
   }
   if (body.reset) {
     // The file was rotated, or this view fell further behind than one
     // request may read. Either way the newest turns are what it wants.
     loadNewest();
-    return;
+    return 'reset';
   }
   // A tick that got an answer clears any reason line an earlier failed one
   // left on screen, so a condition that cleared by itself looks like it.
@@ -1881,6 +1945,7 @@ async function liveTick() {
     target.size = body.size;
   }
   scheduleLive(LIVE_POLL_MS);
+  return body.changed ? 'changed' : 'unchanged';
 }
 
 function fetchPage(before) {
@@ -1901,6 +1966,7 @@ async function loadNewest() {
   els.transcriptOlder.textContent = OLDER_LABEL;
   view.cursor = null;
   view.pendingNodes = [];
+  newerNote(null);
   clearPicker();
   view.picker = null;
   view.pickerSig = null;
@@ -2182,6 +2248,9 @@ export function openChatPane(s) {
     // session is gone so no timer is ever rescheduled for it.
     tail: 0, size: null, liveTimer: null, ticking: false, backoff: 0,
     ended: false, reasonShown: false,
+    // A forced read (#1292): the read in flight (either kind), whether a
+    // forced one is running, and the status line's hide timer.
+    inflight: null, forcing: false, newerTimer: null,
     settled: [], pending: [], pendingNodes: [],
     // The plan panel (#1151): the last screen read, its render signature,
     // and when an answer was sent from it.
@@ -2197,6 +2266,7 @@ export function openChatPane(s) {
 export function closeChatPane() {
   dropThumbs();
   if (view) {
+    newerNote(null);
     view.seq += 1;  // any in-flight page lands nowhere
     window.clearTimeout(view.refreshTimer);
     stopLiveTimer();  // a closed overlay fetches nothing (#1050)
@@ -2243,4 +2313,41 @@ export function wireChatPane() {
       loadOlder();
     }
   });
+  wirePullGestures(els.transcriptBody);
+}
+
+// Pull gestures (#1292): a drag that starts and ends at one edge of the list
+// forces a fetch there — down at the top for older turns (which also covers
+// a list too short to scroll, where the scroll listener above never fires),
+// up past the bottom for new ones, the same read as ⋮ Load new. The
+// listeners are passive and only read the drag, so native scrolling, iOS
+// rubber-banding and the Latest pill are untouched; a drag that scrolled the
+// list ends away from the edge it started at and does nothing.
+function wirePullGestures(box) {
+  let startY = null;
+  let fromTop = false;
+  let fromBottom = false;
+  const atTop = function () { return box.scrollTop <= 0; };
+  const atBottom = function () {
+    return box.scrollTop + box.clientHeight >= box.scrollHeight - 2;
+  };
+  box.addEventListener('touchstart', function (ev) {
+    if (!view || !ev.touches || ev.touches.length !== 1) {
+      startY = null;
+      return;
+    }
+    startY = ev.touches[0].clientY;
+    fromTop = atTop();
+    fromBottom = atBottom();
+  }, { passive: true });
+  box.addEventListener('touchend', function (ev) {
+    if (startY == null || !view || !ev.changedTouches || !ev.changedTouches.length) return;
+    const dy = ev.changedTouches[0].clientY - startY;
+    startY = null;
+    if (dy >= PULL_PX && fromTop && atTop()) {
+      if (view.cursor != null) loadOlder();
+    } else if (dy <= -PULL_PX && fromBottom && atBottom()) {
+      loadNew();
+    }
+  }, { passive: true });
 }

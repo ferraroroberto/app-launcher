@@ -178,7 +178,7 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
     # link and Stop, and nothing named Send appears for either kind. Compact
     # (#1218) sits last in the safe group, above the destructive divider.
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Show tool calls", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Show tool calls", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 

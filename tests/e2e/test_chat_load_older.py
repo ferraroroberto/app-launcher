@@ -97,6 +97,23 @@ def _boot(page: Page, base_url: str, pages: dict) -> list:
     return calls
 
 
+def _pull(page: Page, dy: int) -> None:
+    """Drag one finger ``dy`` px on the Chat list (+ down, - up), as #1292's
+    pull gestures read it: a touchstart, then a touchend ``dy`` further on."""
+    page.evaluate("""(dy) => {
+        const box = document.getElementById('transcriptBody');
+        const fire = (type, y) => {
+            const ev = new Event(type, {bubbles: true});
+            const pt = [{clientX: 20, clientY: y}];
+            Object.defineProperty(ev, 'touches', {value: type === 'touchend' ? [] : pt});
+            Object.defineProperty(ev, 'changedTouches', {value: pt});
+            box.dispatchEvent(ev);
+        };
+        fire('touchstart', 300);
+        fire('touchend', 300 + dy);
+    }""", dy)
+
+
 _NEWEST = _page_body([_turn("user", "newest prompt"), _tool(0), _turn("assistant", "newest reply")], 9000)
 
 
@@ -131,6 +148,17 @@ def test_one_tap_chains_past_turnless_pages_to_the_next_turn(
     expect(older).to_be_visible()
     expect(older).to_have_text("Load older")
     expect(older).to_be_enabled()
+
+    # #1292: a pull down at the top loads the next older page too: the path
+    # for a list too short to scroll, where no scroll event ever fires.
+    # The list fits the pane here, so no scroll event can be what loads it.
+    assert page.evaluate(
+        "(() => { const b = document.getElementById('transcriptBody');"
+        " return b.scrollHeight <= b.clientHeight && b.scrollTop === 0; })()"
+    )
+    _pull(page, 120)
+    expect(turns.first).to_contain_text("oldest prompt")
+    assert any(u.endswith("before=6000") for u in calls), calls
 
 
 def test_only_tool_calls_to_the_file_start_says_so(
