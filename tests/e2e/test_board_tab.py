@@ -555,10 +555,22 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     card = authed_page.locator(
         '.board-list[data-col="your_turn"] li.board-item'
     ).first.locator("button.board-card")
+    # The header is a declared disclosure (#1259): aria-expanded follows the
+    # drawer through open, close and reopen, and aria-controls names it.
+    expect(card).to_have_attribute("aria-expanded", "false")
     card.click()
 
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
+    expect(card).to_have_attribute("aria-expanded", "true")
+    expect(drawer).to_have_attribute("id", "board-drawer-s-wait")
+    expect(card).to_have_attribute("aria-controls", "board-drawer-s-wait")
+    card.click()
+    expect(drawer).to_be_hidden()
+    expect(card).to_have_attribute("aria-expanded", "false")
+    card.click()
+    expect(drawer).to_be_visible()
+    expect(card).to_have_attribute("aria-expanded", "true")
     expect(drawer).to_contain_text("please fix the merge")
     expect(drawer).to_contain_text("Merge fixed — tests green. Ship it?")
     expect(drawer.locator(".board-exchange")).to_have_attribute(
@@ -1486,6 +1498,11 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     expect(drawer).to_be_visible()
     expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
     expect(draft).to_have_value("half-typed reply")
+    # The kept drawer gets a fresh header (#958); it still declares the
+    # disclosure open (#1259).
+    header = authed_page.locator("li.board-item.expanded > button.board-card")
+    expect(header).to_have_attribute("aria-expanded", "true")
+    expect(header).to_have_attribute("aria-controls", "board-drawer-s-wait")
 
 
 @pytest.mark.iphone
