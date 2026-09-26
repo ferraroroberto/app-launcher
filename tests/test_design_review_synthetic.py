@@ -21,7 +21,8 @@ from pathlib import Path
 import pytest
 
 from scripts import design_review_synthetic as syn
-from src import board_sessions
+from scripts import synthetic_gh
+from src import board_sessions, github_client
 from src.jobs_config import load_jobs
 from src.scanner import scan_skills
 from src.session_transcript import claude_entries
@@ -61,6 +62,10 @@ def test_every_data_path_is_under_the_temp_root(tmp_path: Path) -> None:
                 "LAUNCHER_STARTUP_DIR", "LAUNCHER_WEBAPP_CONFIG"):
         assert root in Path(env[key]).resolve().parents, f"{key} escapes the temp root: {env[key]}"
     assert env["LAUNCHER_SESSION_HOST_PORT"] == "50001"  # marks the instance disposable (src/instance_role.py)
+    # #1286: the Board's GitHub refresh runs the synthetic gh out of the copy, never the real CLI.
+    gh = json.loads(env[github_client.GH_CMD_ENV])
+    assert gh[1:] == [str(p.app / "scripts" / "synthetic_gh.py")] and root in Path(env["GH_CONFIG_DIR"]).resolve().parents
+    assert cfg["github_owner"] == synthetic_gh.OWNER
     jobs = json.loads((p.app / "config" / "jobs.json").read_text(encoding="utf-8"))["jobs"]
     apps = json.loads((p.app / "config" / "apps.json").read_text(encoding="utf-8"))["apps"]
     assert all(root in Path(j["script_path"]).resolve().parents for j in jobs)
@@ -108,6 +113,13 @@ def test_launcher_contract_end_to_end() -> None:
             "user", "assistant", "tool_call", "assistant"]
         assert sid in json.dumps(get("/api/board"))
         assert [s["name"] for s in get("/api/life-os/skills")["skills"]] == [syn.SKILL_NAME]
+        # #1286: the Board's GitHub refresh reads the synthetic gh, so no real repo reaches a walk.
+        req = urllib.request.Request(lines["URL"] + "/api/board/github/refresh", data=b"", method="POST")
+        with urllib.request.urlopen(req, timeout=60) as res:
+            assert json.loads(res.read().decode("utf-8"))["error"] is None
+        board = get("/api/board")
+        github_cards = [c for col in ("backlog", "other", "done") for c in board["columns"][col] if c.get("kind") != "job"]
+        assert github_cards and {c["repo"] for c in github_cards} == {synthetic_gh.REPO}, sorted({c["repo"] for c in github_cards})
         assert [j["id"] for j in get("/api/jobs")["jobs"]] == ["synthetic-weekly-report"]
     finally:
         proc.stdin.close()

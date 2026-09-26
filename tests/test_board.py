@@ -2193,6 +2193,18 @@ def test_github_refresh_and_snapshot(monkeypatch):
     calls_before = len(fake.calls)
     assert github_client.snapshot()["issues"] == snap["issues"]
     assert len(fake.calls) == calls_before
+    assert all(argv[0] == "gh" for argv in fake.calls)
+
+    # #1286: a throwaway instance swaps in its own gh through the env ...
+    monkeypatch.setenv(github_client.GH_CMD_ENV, json.dumps(["py.exe", "fake_gh.py"]))
+    fake.calls.clear()
+    assert github_client.refresh("demo-owner")["error"] is None
+    assert fake.calls and all(argv[:3] == ["py.exe", "fake_gh.py", "search"] for argv in fake.calls)
+    # ... and a malformed value is an error, never a fall-back to the real gh.
+    monkeypatch.setenv(github_client.GH_CMD_ENV, "gh")
+    fake.calls.clear()
+    assert github_client.refresh("demo-owner")["error"]
+    assert fake.calls == []
 
 
 def test_search_open_issues_filters_audit_meta_label(monkeypatch):
