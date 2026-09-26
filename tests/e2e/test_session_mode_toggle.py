@@ -270,6 +270,21 @@ def test_row_tap_reopens_last_mode(
     row.locator(".session-open").click()
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
     expect(overlay).to_have_attribute("data-mode", "terminal")
+    # #1238 J-05: the phone has no hover, so holding the Chat segment names it
+    # (the long-press hint) and the hold's closing click never switches mode.
+    authed_page.evaluate("""() => {
+      const b = document.getElementById('sessionModeChat');
+      const r = b.getBoundingClientRect();
+      const at = {pointerType: 'touch', bubbles: true, clientX: r.x + 5, clientY: r.y + 5};
+      b.dispatchEvent(new PointerEvent('pointerdown', at));
+      return new Promise(done => setTimeout(() => {
+        b.dispatchEvent(new PointerEvent('pointerup', at));
+        b.click();
+        done();
+      }, 700));
+    }""")
+    expect(authed_page.locator("#toast")).to_contain_text("Show the chat")
+    expect(overlay).to_have_attribute("data-mode", "terminal")
     authed_page.locator("#sessionModeChat").click()
     expect(overlay).to_have_attribute("data-mode", "chat")
     authed_page.locator("#terminalBack").click()

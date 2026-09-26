@@ -22,6 +22,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, readToken, showLogin, toast } from './api.js';
 import { bindOutsideClickToClose } from './dom-utils.js';
+import { bindLongPressHint } from './long-press-hint.js';
 import { readTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { inChatMode } from './session-overlay.js';
@@ -231,6 +232,7 @@ async function summarizeAndReadLastReply() {
 }
 
 function wireSpeakMenu() {
+  bindLongPressHint(els.terminalSpeak);
   // Idle press: open the action menu when summarize is available, else read
   // aloud directly (preserve the original single-tap behaviour). Press while
   // reading: stop. The tap is the user gesture iOS speech needs, so the read

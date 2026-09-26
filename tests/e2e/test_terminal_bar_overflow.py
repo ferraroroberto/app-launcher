@@ -76,7 +76,7 @@ def test_terminal_bar_buttons_stay_within_viewport(
     # route has answered, and says what it shows.
     ring = authed_page.locator("#contextRing")
     expect(ring).to_be_visible()
-    expect(ring).to_have_attribute("aria-label", "Context 42% used")
+    expect(ring).to_have_attribute("aria-label", "Context window 42% used")
     authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
     boxes = authed_page.eval_on_selector_all(
         "#terminalOverlay .terminal-bar-actions .term-btn, #sessionMode",
