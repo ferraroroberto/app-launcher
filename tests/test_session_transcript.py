@@ -178,6 +178,7 @@ def test_claude_entries_types_every_shape(tmp_path: Path):
     call = entries[6]
     assert call["name"] == "Bash"
     assert call["summary"] == "pytest -q"          # first string-valued input
+    assert call["action"] == {"verb": "ran", "command": "pytest -q"}   # plain words (#1266)
     assert call["result"] == "3 passed"
     assert call["result_truncated"] is False
     sidechain = entries[7]
@@ -623,6 +624,7 @@ def test_grok_entries_grammar_from_capture():
     # result text recovered although this tool emitted no ACP `content`.
     assert entries[3]["name"] == "list_dir"
     assert entries[3]["summary"].endswith("docs")
+    assert "action" not in entries[3]      # not a command/edit/read tool: rendered as before (#1266)
     assert "architecture.mmd" in entries[3]["result"]
     # `hook_execution` and `turn_completed` carry no text and are dropped.
     assert len(entries) == 9
@@ -873,6 +875,8 @@ def test_pi_entries_grammar_from_capture():
     # attached from the separate `toolResult` message via `toolCallId`.
     assert entries[4]["name"] == "bash"
     assert entries[4]["summary"].startswith("find docs")
+    assert entries[4]["action"]["verb"] == "ran"
+    assert entries[4]["action"]["command"].startswith("find docs")
     assert "architecture.mmd" in entries[4]["result"]
     assert entries[6]["text"].count("\n\n") >= 2         # the multi-paragraph reply
 
@@ -1179,6 +1183,7 @@ def test_antigravity_flat_file_truncation_and_double_encoded_args():
     assert [e["kind"] for e in entries] == ["thinking", "assistant", "tool_call"]
     assert entries[0]["truncated"] is True and entries[1]["truncated"] is True
     assert entries[2]["summary"] == "dir C:\\tmp"
+    assert entries[2]["action"] == {"verb": "ran", "command": "dir C:\\tmp"}
     # A call whose only string arguments are UI labels falls back to them.
     labels_only = st.antigravity_entries([(0, json.dumps(_agy(
         0, "MODEL", "PLANNER_RESPONSE",
@@ -1444,6 +1449,7 @@ def test_copilot_entries_grammar_from_capture():
     # result is paired back by its exact id.
     assert entries[2]["name"] == "powershell"
     assert entries[2]["summary"] == "git rev-parse --short HEAD"
+    assert entries[2]["action"] == {"verb": "ran", "command": "git rev-parse --short HEAD"}
     assert entries[2]["result"].startswith("d9580a3")
     assert entries[3]["text"] == "d9580a3"
     # A tool call always precedes the reply that reports it: the call is
@@ -2689,3 +2695,36 @@ class TestTranscriptTailEndpoint:
                     f"?after={page['tail']}&size={page['size']}"
                 )
         assert caplog.records == []
+
+
+# ------------------------------------------------ plain-words actions (#1266)
+
+
+def test_tool_action_covers_the_probed_tools_of_every_harness():
+    """The command, edit, write and read tools probed from each harness's
+    real transcripts (key names only) read in plain words; +N -M is a line
+    diff of the edit's own old and new text."""
+    act = st._tool_action
+    # Commands keep their line breaks: Chat shows the first line folded and
+    # the whole command in the opened block.
+    assert act("Bash", {"command": "cd x\npytest -q"}) == {"verb": "ran", "command": "cd x\npytest -q"}
+    assert act("run_terminal_command", {"command": "ls"}) == {"verb": "ran", "command": "ls"}
+    assert act("run_command", {"CommandLine": "dir", "Cwd": "C:/"}) == {"verb": "ran", "command": "dir"}
+    assert act("exec", "git status", raw_text=True) == {"verb": "ran", "command": "git status"}
+    # A JSON argument string is never mistaken for a raw command.
+    assert act("exec", '{"cmd": "ls"}') is None
+    assert act("Edit", {"file_path": "a/b.py", "old_string": "x\ny", "new_string": "x\nz\nw"}) == {
+        "verb": "edited", "path": "a/b.py", "added": 2, "removed": 1}
+    assert act("edit", {"path": "c.md", "edits": [
+        {"oldText": "a", "newText": "a\nb"}, {"oldText": "q\nr", "newText": ""}]}) == {
+        "verb": "edited", "path": "c.md", "added": 1, "removed": 2}
+    assert act("Write", {"file_path": "n.txt", "content": "1\n2\n3"}) == {
+        "verb": "wrote", "path": "n.txt", "added": 3, "removed": 0}
+    assert act("write_to_file", {"TargetFile": "m.txt", "CodeContent": "x"})["added"] == 1
+    for name, key in (("Read", "file_path"), ("read", "path"), ("read_file", "target_file"),
+                      ("view_file", "AbsolutePath"), ("view", "path")):
+        assert act(name, {key: "f.py"}) == {"verb": "read", "path": "f.py"}
+    # Unknown tools and inputs missing their key keep today's rendering.
+    assert act("Grep", {"pattern": "x"}) is None
+    assert act("Edit", {"file_path": "a.py"}) is None
+    assert act("Bash", {"command": "   "}) is None

@@ -77,11 +77,18 @@ _NEWEST = {
         {"kind": "thinking", "timestamp": "2026-09-14T10:01:01Z",
          "text": "Let me look at conftest first", "truncated": False, "sidechain": False},
         {"kind": "tool_call", "timestamp": "2026-09-14T10:01:02Z", "name": "Bash",
-         "summary": "pytest tests/e2e -q", "result": "3 passed in 1.2s",
-         "result_truncated": False, "sidechain": False},
+         "summary": "pytest tests/e2e -q echo done", "result": "3 passed in 1.2s",
+         "result_truncated": False, "sidechain": False,
+         "action": {"verb": "ran", "command": "pytest tests/e2e -q\necho done"}},
+        {"kind": "tool_call", "timestamp": "2026-09-14T10:01:02Z", "name": "Edit",
+         "summary": "tests/e2e/test_git_status_flags.py", "result": "updated",
+         "result_truncated": False, "sidechain": False,
+         "action": {"verb": "edited", "path": "tests/e2e/test_git_status_flags.py",
+                    "added": 4, "removed": 0}},
         {"kind": "tool_call", "timestamp": "2026-09-14T10:01:03Z", "name": "Read",
          "summary": "tests/e2e/conftest.py", "result": "def stable_read(...)",
-         "result_truncated": True, "sidechain": False},
+         "result_truncated": True, "sidechain": False,
+         "action": {"verb": "read", "path": "tests/e2e/conftest.py"}},
         {"kind": "system", "timestamp": "2026-09-14T10:01:04Z", "label": "system-reminder",
          "text": "<system-reminder>ctx</system-reminder>", "truncated": False, "sidechain": False},
         {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z",
@@ -382,26 +389,38 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(_menu_item(authed_page, "Hide tool calls and system entries")).to_be_visible()
     authed_page.locator("#terminalMenu").click()  # close it again
     expect(menu).to_be_hidden()
-    expect(group.locator(".collapse-title")).to_have_text("2 tool calls · 1 thinking · 1 system")
+    # The run reads in plain words (#1266): what ran, what was edited with
+    # its +N −M, what was read; entries without an action are still counted.
+    expect(group.locator(".collapse-title")).to_have_text(
+        "Ran a command, edited test_git_status_flags.py +4 \u22120, read conftest.py, "
+        "1 thinking, 1 system")
     items = group.locator(".tr-item")
-    expect(items).to_have_count(4)
+    expect(items).to_have_count(5)
     # Closed-ness is asserted on the <details> `open` property, not on child
     # visibility: WebKit reports a closed details' children as visible.
     expect(group).to_have_js_property("open", False)
     group.locator("summary.collapse-summary").click()
     expect(group).to_have_js_property("open", True)
     expect(items.first).to_be_visible()
-    # Each item is still closed until tapped; the second one is the Bash call.
+    # Each item is still closed until tapped; the second one is the Bash call,
+    # labelled by its command's first line. Opened, it reads as a terminal:
+    # the whole command, then the output below it.
     bash = items.nth(1)
-    expect(bash.locator(".tr-item-name")).to_have_text("Bash")
-    expect(bash.locator(".tr-pre")).to_have_count(2)
+    expect(bash.locator(".tr-item-name")).to_have_text("pytest tests/e2e -q")
+    expect(bash.locator(".tr-pre.tr-term")).to_have_count(2)
     expect(bash).to_have_js_property("open", False)
     bash.locator("summary").click()
     expect(bash).to_have_js_property("open", True)
+    expect(bash.locator(".tr-term").first).to_have_text("$ pytest tests/e2e -q\necho done")
     expect(bash.locator(".tr-pre").last).to_be_visible()
     expect(bash.locator(".tr-pre").last).to_contain_text("3 passed in 1.2s")
+    # The edit is its file's name and line counts; the read, its file's name.
+    edit = items.nth(2)
+    expect(edit.locator(".tr-item-name")).to_have_text("test_git_status_flags.py")
+    expect(edit.locator(".tr-item-hint")).to_have_text("+4 \u22120")
     # The Read result was capped server-side and says so.
-    read = items.nth(2)
+    read = items.nth(3)
+    expect(read.locator(".tr-item-name")).to_have_text("conftest.py")
     read.locator("summary").click()
     expect(read.locator(".tr-trunc")).to_contain_text("(truncated)")
 

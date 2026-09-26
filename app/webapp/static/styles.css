@@ -2730,6 +2730,14 @@ textarea.input-native { height: auto; }
    vertically. A chat fence does not: the whole turn is already collapsible,
    and a nested scroller inside a scrolling transcript is a phone trap. */
 .tr-pre { max-height: 40vh; overflow-y: auto; }
+/* An opened command reads as a terminal (#1266): `$ command`, then its
+   output, on the terminal's own screen colours (which follow the theme). */
+.tr-pre.tr-term {
+  background: var(--term-bg);
+  color: var(--term-fg);
+  border: 1px solid var(--line);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
 
 /* ---------- Show changes overlay (#977) ---------- */
 /* GitHub "Files changed" on the phone: a summary line, then flat list-row

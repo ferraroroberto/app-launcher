@@ -273,6 +273,22 @@ function firstLine(text, max) {
   return line.length > max ? line.slice(0, max) + '…' : line;
 }
 
+// The last segment of a POSIX or Windows path.
+function baseName(path) {
+  const parts = String(path || '').split(/[\\/]/);
+  return parts[parts.length - 1] || String(path || '');
+}
+
+// An edit's line counts, "+4 −0" (a true minus sign, as the Claude Code app).
+function lineDelta(a) {
+  return '+' + (a.added || 0) + ' \u2212' + (a.removed || 0);
+}
+
+function term(el) {
+  el.classList.add('tr-term');
+  return el;
+}
+
 function copyLabel(kind) {
   return kind === 'user' ? 'Prompt' : 'Reply';
 }
@@ -467,8 +483,20 @@ function renderItem(e, toolErrors) {
   const hint = document.createElement('span');
   hint.className = 'tr-item-hint';
   if (e.kind === 'tool_call') {
-    name.textContent = e.name || 'tool';
-    hint.textContent = e.summary || '';
+    // Plain words where the server knows the tool (#1266): the command's
+    // first line, the edited file's name with its +N −M, or the file read.
+    const a = e.action;
+    if (a && a.verb === 'ran') {
+      name.textContent = firstLine(a.command, 80);
+    } else if (a && (a.verb === 'edited' || a.verb === 'wrote')) {
+      name.textContent = baseName(a.path);
+      hint.textContent = lineDelta(a);
+    } else if (a && a.verb === 'read') {
+      name.textContent = baseName(a.path);
+    } else {
+      name.textContent = e.name || 'tool';
+      hint.textContent = e.summary || '';
+    }
   } else if (e.kind === 'tool_result') {
     name.textContent = 'result';
     hint.textContent = firstLine(e.text, 80);
@@ -494,9 +522,13 @@ function renderItem(e, toolErrors) {
   const body = document.createElement('div');
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
-    if (e.summary) body.appendChild(pre(e.summary, false));
+    // A command opens as a terminal: `$ command`, then its output (#1266).
+    const ran = e.action && e.action.verb === 'ran';
+    if (ran) body.appendChild(term(pre('$ ' + e.action.command, false)));
+    else if (e.summary) body.appendChild(pre(e.summary, false));
     if (e.result != null) {
-      body.appendChild(pre(e.result, e.result_truncated));
+      const out = pre(e.result, e.result_truncated);
+      body.appendChild(ran ? term(out) : out);
     } else {
       const none = document.createElement('div');
       none.className = 'tr-trunc';
@@ -1334,18 +1366,54 @@ async function sendPlanAnswer(o, feedback) {
   }, SENT_REFRESH_MS);
 }
 
+// A run's title in plain words (#1266): "Ran 2 commands, edited main.js
+// +4 −0, read 3 files". Built from each call's server-side `action`; a call
+// without one is counted as before, and a run with none reads as it did.
 function runLabel(run) {
-  const n = { tool: 0, thinking: 0, system: 0 };
+  let ran = 0;
+  let other = 0;
+  let thinking = 0;
+  let system = 0;
+  const edited = {};
+  const read = {};
   run.forEach(function (e) {
-    if (e.kind === 'tool_call' || e.kind === 'tool_result') n.tool += 1;
-    else if (e.kind === 'thinking') n.thinking += 1;
-    else n.system += 1;
+    const a = e.kind === 'tool_call' ? e.action : null;
+    if (a && a.verb === 'ran') {
+      ran += 1;
+    } else if (a && (a.verb === 'edited' || a.verb === 'wrote')) {
+      const sum = edited[a.path] || (edited[a.path] = { added: 0, removed: 0 });
+      sum.added += a.added || 0;
+      sum.removed += a.removed || 0;
+    } else if (a && a.verb === 'read') {
+      read[a.path] = true;
+    } else if (e.kind === 'tool_call' || e.kind === 'tool_result') {
+      other += 1;
+    } else if (e.kind === 'thinking') {
+      thinking += 1;
+    } else {
+      system += 1;
+    }
   });
   const parts = [];
-  if (n.tool) parts.push(n.tool + (n.tool === 1 ? ' tool call' : ' tool calls'));
-  if (n.thinking) parts.push(n.thinking + ' thinking');
-  if (n.system) parts.push(n.system + ' system');
-  return parts.join(' · ');
+  if (ran) parts.push(ran === 1 ? 'ran a command' : 'ran ' + ran + ' commands');
+  const edits = Object.keys(edited);
+  if (edits.length) {
+    const total = edits.reduce(function (s, path) {
+      return { added: s.added + edited[path].added, removed: s.removed + edited[path].removed };
+    }, { added: 0, removed: 0 });
+    parts.push('edited ' + (edits.length === 1 ? baseName(edits[0]) : edits.length + ' files') +
+      ' ' + lineDelta(total));
+  }
+  const reads = Object.keys(read);
+  if (reads.length) parts.push('read ' + (reads.length === 1 ? baseName(reads[0]) : reads.length + ' files'));
+  if (other) {
+    const word = parts.length ? ' other tool call' : ' tool call';
+    parts.push(other + word + (other === 1 ? '' : 's'));
+  }
+  if (thinking) parts.push(thinking + ' thinking');
+  if (system) parts.push(system + ' system');
+  const label = parts.join(', ');
+  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function failedCount(run) {
