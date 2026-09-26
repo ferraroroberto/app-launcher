@@ -385,6 +385,40 @@ function dropThumbs() {
   thumbUrls.clear();
 }
 
+// --- links open in the PC's browser (#1274) --------------------------------
+//
+// A transcript link is a plain target=_blank anchor, so it opens in the
+// browser hosting the page — on the PC that is Edge (the tray's default
+// browser, or a session's mirror window). When this page runs on the PC
+// itself, the tap goes to the webapp instead, which opens it in Chrome. A
+// laptop or phone over the tailnet keeps the anchor: the PC's browser would
+// open in front of nobody. Any failure falls back to the anchor.
+
+function onThePc() {
+  return !!state.isMirrorWindow ||
+    !!(state.status && state.status.terminal && state.status.terminal.reason === 'loopback');
+}
+
+export function openLinksOnThePc(root) {
+  if (!root || root._trLinks) return;
+  root._trLinks = true;
+  root.addEventListener('click', function (ev) {
+    const a = ev.target.closest && ev.target.closest('a[href]');
+    if (!a || !root.contains(a) || !onThePc()) return;
+    if (!/^https?:/i.test(a.href)) return;
+    if (ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    ev.preventDefault();
+    jsonApi('/api/open-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: a.href }),
+    }).catch(function (exc) {
+      console.warn('open on the PC failed, opening here', exc);
+      window.open(a.href, '_blank', 'noopener');
+    });
+  });
+}
+
 function copyLabel(kind) {
   return kind === 'user' ? 'Prompt' : 'Reply';
 }
@@ -2180,6 +2214,7 @@ export function closeChatPane() {
 export function wireChatPane() {
   if (!els.chatPane) return;
   syncGroups();
+  openLinksOnThePc(els.transcriptList);
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
   mountScrollerPill(els.chatLatest, els.transcriptBody);
   chatComposer = mountComposer(els.chatComposeBar, {

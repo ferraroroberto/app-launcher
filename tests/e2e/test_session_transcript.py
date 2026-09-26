@@ -393,6 +393,18 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     link = turns_agent.first.locator("a")
     expect(link).to_have_attribute("href", "https://tower.example.ts.net:8953/?token=abc")
     expect(link).to_have_attribute("target", "_blank")
+    # On the PC itself (this harness reaches the webapp over loopback) a tap
+    # hands the link to the webapp, which opens it in the PC's Chrome instead
+    # of a tab in the browser hosting the page (#1274). The disposable
+    # instance opens nothing, so no tab appears either way.
+    pages_before = len(authed_page.context.pages)
+    with authed_page.expect_request(
+        lambda r: r.method == "POST" and r.url.endswith("/api/open-url")
+    ) as opened:
+        link.click()
+    assert opened.value.post_data_json == {"url": "https://tower.example.ts.net:8953/?token=abc"}
+    authed_page.wait_for_timeout(300)
+    assert len(authed_page.context.pages) == pages_before, "the link also opened a tab"
 
     # Turns are collapsible cards, open by default; a single turn collapses
     # on its own summary while the tool group stays closed.

@@ -65,6 +65,7 @@
   "session_host_port": 8446,
   "tailnet_allowlist": [],
   "claude_show_local_window": true,
+  "desktop_browser": "chrome",
   "terminal_history_lines": 10000,
   "webauthn_rp_id": "",
   "webauthn_rp_name": "Launcher",
