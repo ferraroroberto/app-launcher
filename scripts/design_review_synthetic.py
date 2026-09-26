@@ -21,6 +21,11 @@ What makes it throwaway, and synthetic only:
   notifies. ``USERPROFILE``/``HOME`` and ``CLAUDE_CONFIG_DIR`` point at a temp
   home, so no home-relative reader (``~/.claude/projects``, other agents'
   session folders) sees real content.
+* **GitHub is synthetic too (#1286).** ``LAUNCHER_GH_CMD`` points the Board's
+  GitHub refresh at ``scripts/synthetic_gh.py``, whose rows name only the
+  synthetic repo, and ``github_owner`` is a synthetic owner. The real ``gh``
+  keeps its login under ``%APPDATA%``, beyond the ``HOME`` redirect, so
+  without this a walk's report carried the real fleet's issue titles.
 * **The instance is disposable.** ``LAUNCHER_SESSION_HOST_PORT`` marks it
   non-canonical (``src/instance_role.py``), so alerts and machine-wide sweeps
   stand down, exactly as for the e2e gate's autoboot webapp.
@@ -58,6 +63,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
+from scripts import synthetic_gh  # noqa: E402
+from src.github_client import GH_CMD_ENV  # noqa: E402
 from src.git_utils import run_git  # noqa: E402
 from src.subprocess_flags import NO_WINDOW  # noqa: E402
 from tests.e2e.stub_session import STUB_FLAG, write_claude_shim  # noqa: E402
@@ -197,7 +204,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
         "context_filter_mode_file": str(data / "state" / "context-filter-mode.json"),
         "context_filter_log_file": str(data / "state" / "context-filter-shadow.jsonl"),
         "voice_transcriber_url": CLOSED_URL, "photo_ocr_url": CLOSED_URL, "llm_hub_url": CLOSED_URL,
-        "claude_show_local_window": False, "notify_on_failure": False,
+        "claude_show_local_window": False, "notify_on_failure": False, "github_owner": synthetic_gh.OWNER,
         "telegram_bot_token": "", "telegram_chat_id": "", "pushover_api_token": "", "pushover_user_key": "",
     })
     write_claude_shim(p.shim_dir)
@@ -220,6 +227,11 @@ def isolated_env(p: Paths, session_host_port: int) -> Dict[str, str]:
         "LAUNCHER_SESSION_HOST_PORT": str(session_host_port), "LAUNCHER_WEBAPP_CONFIG": str(p.webapp_config),
         "LAUNCHER_AUDIT_DIR": str(p.root / "audit"), "LAUNCHER_UPLOAD_ROOT": str(p.root / "uploads"),
         "LAUNCHER_STARTUP_DIR": str(p.root / "startup"), "PYTHONUTF8": "1",
+        # The Board's GitHub refresh runs the fake gh, never the real one (#1286): the real CLI's login lives
+        # under %APPDATA%, which the HOME redirect above does not reach, so it read the real fleet's backlog.
+        # GH_CONFIG_DIR is the second guard: a real gh reached any other way finds no login here.
+        GH_CMD_ENV: json.dumps([sys.executable, str(p.app / "scripts" / "synthetic_gh.py")]),
+        "GH_CONFIG_DIR": str(p.home / "gh"),
     })
     return env
 

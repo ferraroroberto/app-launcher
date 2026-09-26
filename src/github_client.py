@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import threading
 from datetime import date, datetime, timezone
@@ -34,6 +35,10 @@ from src.subprocess_flags import NO_WINDOW
 logger = logging.getLogger(__name__)
 
 _GH_TIMEOUT_SECONDS = 20.0
+# The command a throwaway instance runs instead of the real ``gh`` (#1286):
+# a JSON list of argv, e.g. the design-review synthetic instance's fake
+# (``scripts/synthetic_gh.py``). Unset everywhere real.
+GH_CMD_ENV = "LAUNCHER_GH_CMD"
 _ISSUE_LIMIT = 100
 _PR_LIMIT = 50
 
@@ -45,11 +50,30 @@ class GhError(RuntimeError):
     """``gh`` missing, timed out, unauthenticated, or non-zero exit."""
 
 
+def _gh_argv() -> List[str]:
+    """``["gh"]``, or the argv :data:`GH_CMD_ENV` names.
+
+    A malformed value is a :class:`GhError`, never a quiet fall-back to the
+    real ``gh``: the instance that set it meant to stay off real GitHub.
+    """
+    raw = os.environ.get(GH_CMD_ENV, "").strip()
+    if not raw:
+        return ["gh"]
+    try:
+        argv = json.loads(raw)
+    except ValueError:
+        argv = None
+    if not (isinstance(argv, list) and argv and all(isinstance(a, str) and a for a in argv)):
+        raise GhError(f"{GH_CMD_ENV} must be a JSON list of strings")
+    return argv
+
+
 def _run_gh(args: Sequence[str], *, timeout: float = _GH_TIMEOUT_SECONDS) -> str:
     """Run ``gh <args>`` and return stdout; :class:`GhError` on any failure."""
+    argv = _gh_argv()
     try:
         proc = subprocess.run(
-            ["gh", *args],
+            [*argv, *args],
             capture_output=True,
             text=True,
             encoding="utf-8",
