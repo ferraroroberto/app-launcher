@@ -151,13 +151,24 @@ async function fetchVersion() {
   // Visible proof of which build the PWA is running. Catches stale-cache
   // confusion before it costs a debugging session. Uses jsonApi so the
   // bearer token is attached — /api/version is auth-gated like the rest.
-  try {
-    const body = await jsonApi('/api/version');
-    const sha = body.git_sha || 'unknown';
-    const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
-    els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
-  } catch (_) {
-    els.buildReadout.textContent = '';
+  // A transient failure is retried on boot's backoff (#1287): one dropped
+  // request used to leave the readout blank until a reload. No toast — it is
+  // a readout; after the last attempt it stays blank.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const body = await jsonApi('/api/version');
+      const sha = body.git_sha || 'unknown';
+      const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
+      els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
+      return;
+    } catch (exc) {
+      els.buildReadout.textContent = '';
+      if (exc instanceof AuthRequiredError || attempt >= BOOT_RETRY_MS.length) return;
+      console.warn('boot: /api/version failed, retrying', exc);
+      await new Promise(function (resolve) {
+        setTimeout(resolve, BOOT_RETRY_MS[attempt]);
+      });
+    }
   }
 }
 
@@ -168,7 +179,8 @@ async function fetchVersion() {
 // app stayed empty until a manual reload (issue #1230). Non-auth failures are
 // retried on this backoff before the toast. A 401 is not retried: it has
 // already raised the login overlay, whose success handler calls boot() again.
-const BOOT_CONFIG_RETRY_MS = [500, 1000, 2000, 4000];
+// fetchVersion() above retries on the same backoff (#1287).
+const BOOT_RETRY_MS = [500, 1000, 2000, 4000];
 
 async function fetchConfigForBoot() {
   for (let attempt = 0; ; attempt++) {
@@ -177,13 +189,13 @@ async function fetchConfigForBoot() {
       return true;
     } catch (exc) {
       if (exc instanceof AuthRequiredError) return false;
-      if (attempt >= BOOT_CONFIG_RETRY_MS.length) {
+      if (attempt >= BOOT_RETRY_MS.length) {
         apiFailToast('Boot failed', exc);
         return false;
       }
       console.warn('boot: /api/config failed, retrying', exc);
       await new Promise(function (resolve) {
-        setTimeout(resolve, BOOT_CONFIG_RETRY_MS[attempt]);
+        setTimeout(resolve, BOOT_RETRY_MS[attempt]);
       });
     }
   }
