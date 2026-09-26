@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -169,6 +169,26 @@ async def claude_flags(request: Request) -> Dict[str, Any]:
 _GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-status")
 
 
+# Callers that overlap a scan in flight share it (#1268): every page load's
+# boot fetches git-status, and one scan per call queued them behind each
+# other without bound. Dropped the moment the scan ends, so nothing is ever
+# served from a scan that finished before the call arrived.
+_GIT_STATUS_INFLIGHT: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
+
+
+async def _scan_git_status(projects_dir: str, ignore: Tuple[str, ...]) -> Dict[str, Any]:
+    projects = scan_project_dirs(Path(projects_dir), list(ignore))
+    loop = asyncio.get_running_loop()
+    statuses = await asyncio.gather(
+        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
+    )
+    return {
+        "projects": [
+            {"id": p.id, **gs.to_dict()} for p, gs in zip(projects, statuses)
+        ]
+    }
+
+
 @router.get("/api/claude-code/git-status")
 async def claude_git_status(request: Request) -> Dict[str, Any]:
     """Per-project git state for the Coding tiles + Board backlog flags.
@@ -179,16 +199,21 @@ async def claude_git_status(request: Request) -> Dict[str, Any]:
     #115's tap-only contract): the SPA calls this once at boot and on a
     slow (~45 s) poll while the Coding or Board tab is visible in a
     foreground page, plus a fresh fetch when the header status button
-    opens the off-main popover (#139).
+    opens the off-main popover (#139). A call that overlaps a scan already
+    running awaits that one (#1268); ``shield`` keeps one caller's
+    disconnect from cancelling it for the rest.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+    key = (str(cfg.projects_dir), tuple(cfg.projects_ignore))
     loop = asyncio.get_running_loop()
-    statuses = await asyncio.gather(
-        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
-    )
-    return {
-        "projects": [
-            {"id": p.id, **gs.to_dict()} for p, gs in zip(projects, statuses)
-        ]
-    }
+    scan = _GIT_STATUS_INFLIGHT.get(key)
+    if scan is None or scan.done() or scan.get_loop() is not loop:
+        scan = asyncio.ensure_future(_scan_git_status(*key))
+        _GIT_STATUS_INFLIGHT[key] = scan
+
+        def _forget(done: "asyncio.Future[Dict[str, Any]]", k=key) -> None:
+            if _GIT_STATUS_INFLIGHT.get(k) is done:
+                del _GIT_STATUS_INFLIGHT[k]
+
+        scan.add_done_callback(_forget)
+    return await asyncio.shield(scan)

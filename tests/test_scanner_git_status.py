@@ -139,3 +139,40 @@ def test_route_fan_out_leaves_the_default_thread_pool_free(webapp_client, monkey
         f"a to_thread call waited {waited:.2f}s behind the git-status fan-out: "
         "it is occupying the shared default thread pool"
     )
+
+
+def test_route_concurrent_callers_share_one_scan(webapp_client, monkeypatch):
+    """#1268: every page load's boot fetches git-status, and each call used to
+    run its own fleet-wide scan, so concurrent callers queued behind N scans.
+    Callers that overlap a scan in flight share it; a call after it finished
+    starts a fresh one (no stale cache)."""
+    import asyncio
+    import time
+
+    import httpx
+
+    from app.webapp.routers import claude_code
+    from src.scanner import ProjectDir
+
+    _, app, _ = webapp_client
+    repos = [ProjectDir(id=f"p{i}", name=f"p{i}", project_dir=f"C:/fake/p{i}") for i in range(5)]
+    monkeypatch.setattr(claude_code, "scan_project_dirs", lambda *a, **k: repos)
+    scanned: list = []
+
+    def slow_status(path):
+        scanned.append(path)
+        time.sleep(0.3)
+        return GitStatus(is_git=False, branch=None, default_branch=None, dirty=False)
+
+    monkeypatch.setattr(claude_code, "git_status", slow_status)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            together = await asyncio.gather(*(client.get("/api/claude-code/git-status") for _ in range(4)))
+            after = await client.get("/api/claude-code/git-status")
+            return [r.json()["projects"] for r in together], after.json()["projects"]
+
+    together, after = asyncio.run(run())
+    assert all(len(p) == 5 for p in together) and len(after) == 5
+    assert len(scanned) == 10, f"{len(scanned)} repo scans for 4 overlapping calls + 1 later one, wanted 5 + 5"
