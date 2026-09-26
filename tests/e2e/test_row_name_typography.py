@@ -63,6 +63,17 @@ def _json_route(page: Page, pattern, body: dict) -> None:
 
 
 def _mock(page: Page) -> None:
+    # Every boot() fetch ahead of git-status, which fills the Coding row's
+    # context line and is the last in its serial chain: unmocked, a loaded
+    # worker delivered that line after the 5 s expect default (#1247). Only
+    # /api/config stays real. Mocked before goto, per the #510 convention.
+    _json_route(page, re.compile(r".*/api/system-map/status$"), {"available": False})
+    _json_route(page, re.compile(r".*/api/claude-code/sessions$"), {"sessions": []})
+    _json_route(page, re.compile(r".*/api/rate-limits$"), {"quota_lines": []})
+    _json_route(page, re.compile(r".*/api/ports/probe$"), {"listeners": []})
+    _json_route(page, re.compile(r".*/api/status$"), {})
+    _json_route(page, re.compile(r".*/api/version$"), {"git_sha": "e2e"})
+    _json_route(page, re.compile(r".*/api/webauthn/status$"), {"configured": False})
     _json_route(page, "**/api/apps", {"scan_root": "", "apps": [
         {"id": "longproj", "name": _PROJECT, "kind": "claude-code",
          "project_dir": "", "added_at": "", "is_favorite": False, "repo_url": None},
