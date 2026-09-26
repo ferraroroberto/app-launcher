@@ -34,6 +34,7 @@ Deliberately **not** on the session-host import closure (CLAUDE.md
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from datetime import datetime, timezone
@@ -553,6 +554,95 @@ def _tool_summary(inputs: Any) -> str:
     return _cap(text, TOOL_SUMMARY_CAP)[0]
 
 
+# What a tool call did, in plain words for Chat's runs (#1266). The tool names
+# and argument keys were probed from real transcripts of every harness (key
+# names only); a tool not listed, or an input missing its key, gets no action
+# and renders exactly as before.
+_COMMAND_TOOLS = {
+    "Bash": "command", "PowerShell": "command",      # Claude
+    "bash": "command", "powershell": "command",      # Pi, Copilot
+    "run_terminal_command": "command",               # Grok
+    "run_command": "CommandLine",                    # Antigravity
+}
+_RAW_COMMAND_TOOLS = frozenset({"exec"})             # Codex custom tool: the input is the command
+_READ_TOOLS = {
+    "Read": "file_path", "read": "path", "read_file": "target_file",
+    "view_file": "AbsolutePath", "view": "path",
+}
+_WRITE_TOOLS = {
+    "Write": ("file_path", "content"), "write": ("path", "content"),
+    "write_to_file": ("TargetFile", "CodeContent"),
+}
+_EDIT_TOOLS = {
+    "Edit": ("file_path", "old_string", "new_string"),
+    "edit": ("path", "oldText", "newText"),           # Pi: one pair, or a list under `edits`
+}
+ACTION_COMMAND_CAP = 2_000
+
+
+def _line_delta(old: str, new: str) -> Tuple[int, int]:
+    """``(added, removed)`` lines between an edit's own old and new text."""
+    added = removed = 0
+    matcher = difflib.SequenceMatcher(None, old.splitlines(), new.splitlines(), autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("replace", "delete"):
+            removed += i2 - i1
+        if tag in ("replace", "insert"):
+            added += j2 - j1
+    return added, removed
+
+
+def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[Dict[str, Any]]:
+    """``{"verb": "ran" | "edited" | "wrote" | "read", ...}`` for a known tool, else None.
+
+    ``raw_text`` marks an input that is the command itself (Codex's ``exec``
+    custom tool), never a JSON argument string.
+    """
+    if raw_text:
+        command = inputs.strip() if name in _RAW_COMMAND_TOOLS and isinstance(inputs, str) else ""
+        return {"verb": "ran", "command": _cap(command, ACTION_COMMAND_CAP)[0]} if command else None
+    if not isinstance(inputs, dict):
+        return None
+
+    def text(key: str) -> Optional[str]:
+        value = inputs.get(key)
+        return value if isinstance(value, str) and value.strip() else None
+
+    if name in _COMMAND_TOOLS:
+        command = text(_COMMAND_TOOLS[name])
+        return {"verb": "ran", "command": _cap(command.strip(), ACTION_COMMAND_CAP)[0]} if command else None
+    if name in _READ_TOOLS:
+        path = text(_READ_TOOLS[name])
+        return {"verb": "read", "path": path} if path else None
+    if name in _WRITE_TOOLS:
+        path_key, body_key = _WRITE_TOOLS[name]
+        path, body = text(path_key), inputs.get(body_key)
+        if not path or not isinstance(body, str):
+            return None
+        return {"verb": "wrote", "path": path, "added": len(body.splitlines()), "removed": 0}
+    if name in _EDIT_TOOLS:
+        path_key, old_key, new_key = _EDIT_TOOLS[name]
+        path = text(path_key)
+        edits = [inputs] if old_key in inputs else [e for e in inputs.get("edits") or [] if isinstance(e, dict)]
+        pairs = [(e.get(old_key), e.get(new_key)) for e in edits]
+        pairs = [(o, n) for o, n in pairs if isinstance(o, str) and isinstance(n, str)]
+        if not path or not pairs:
+            return None
+        added = removed = 0
+        for old, new in pairs:
+            a, r = _line_delta(old, new)
+            added, removed = added + a, removed + r
+        return {"verb": "edited", "path": path, "added": added, "removed": removed}
+    return None
+
+
+def _with_action(entry: Entry, action: Optional[Dict[str, Any]]) -> Entry:
+    """Attach :func:`_tool_action`'s result to a ``tool_call`` entry, when there is one."""
+    if action:
+        entry["action"] = action
+    return entry
+
+
 def _blocks_text(content: Any, *, types: Tuple[str, ...] = ("text",), key: str = "text") -> str:
     """Join the ``text`` of the content blocks whose type is in ``types``;
     a plain string is returned as-is."""
@@ -696,12 +786,12 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                     if text:
                         entries.append(_text_entry("thinking", offset, ts, text, THINKING_TEXT_CAP, sidechain=sidechain))
                 elif bt == "tool_use":
-                    e = _entry(
+                    e = _with_action(_entry(
                         "tool_call", offset, ts,
                         name=str(block.get("name") or "tool"),
                         summary=_tool_summary(block.get("input")),
                         result=None, result_truncated=False, sidechain=sidechain,
-                    )
+                    ), _tool_action(str(block.get("name") or ""), block.get("input")))
                     if e["name"] == ASK_TOOL_NAME:
                         # The Chat pane's question card (#1149): the one tool
                         # whose structured input is forwarded, plus the id
@@ -831,12 +921,13 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 else:
                     entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=False))
         elif pt in ("function_call", "custom_tool_call"):
-            e = _entry(
+            e = _with_action(_entry(
                 "tool_call", offset, ts,
                 name=str(payload.get("name") or "tool"),
                 summary=_tool_summary(payload.get("arguments") if pt == "function_call" else payload.get("input")),
                 result=None, result_truncated=False, sidechain=False,
-            )
+            ), _tool_action(str(payload.get("name") or ""), payload.get("input"), raw_text=True)
+                if pt == "custom_tool_call" else None)
             entries.append(e)
             if payload.get("call_id"):
                 open_calls[str(payload["call_id"])] = e
@@ -1028,12 +1119,12 @@ def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
         last_chunk = None
 
         if kind == "tool_call":
-            entry = _entry(
+            entry = _with_action(_entry(
                 "tool_call", offset, ts,
                 name=str(update.get("title") or "tool"),
                 summary=_tool_summary(update.get("rawInput")),
                 result=None, result_truncated=False, sidechain=False,
-            )
+            ), _tool_action(str(update.get("title") or ""), update.get("rawInput")))
             entries.append(entry)
             if update.get("toolCallId"):
                 open_calls[str(update["toolCallId"])] = entry
@@ -1198,12 +1289,12 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         entries.append(_text_entry("thinking", offset, ts, text,
                                                    THINKING_TEXT_CAP, sidechain=False))
                 elif bt == "toolCall":
-                    call = _entry(
+                    call = _with_action(_entry(
                         "tool_call", offset, ts,
                         name=str(block.get("name") or "tool"),
                         summary=_tool_summary(block.get("arguments")),
                         result=None, result_truncated=False, sidechain=False,
-                    )
+                    ), _tool_action(str(block.get("name") or ""), block.get("arguments")))
                     entries.append(call)
                     if block.get("id"):
                         open_calls[str(block["id"])] = call
@@ -1399,12 +1490,16 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
                 if not isinstance(call, dict):
                     continue
                 key = f"{offset}:{index}"
-                entry = _entry(
+                args = call.get("args")
+                entry = _with_action(_entry(
                     "tool_call", offset, ts,
                     name=str(_agy_arg(call.get("name")) or "tool"),
-                    summary=_agy_tool_summary(call.get("args")),
+                    summary=_agy_tool_summary(args),
                     result=None, result_truncated=False, sidechain=False,
-                )
+                ), _tool_action(
+                    str(_agy_arg(call.get("name")) or ""),
+                    {k: _agy_arg(v) for k, v in args.items()} if isinstance(args, dict) else args,
+                ))
                 entries.append(entry)
                 open_calls[key] = entry
                 unanswered.append(key)
@@ -1606,12 +1701,12 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
 
         if kind == "tool.execution_start":
             call_id = str(data.get("toolCallId") or "")
-            entry = _entry(
+            entry = _with_action(_entry(
                 "tool_call", offset, ts,
                 name=str(data.get("toolName") or "tool"),
                 summary=_tool_summary(data.get("arguments")),
                 result=None, result_truncated=False, sidechain=False,
-            )
+            ), _tool_action(str(data.get("toolName") or ""), data.get("arguments")))
             entries.append(entry)
             if call_id:
                 open_calls[call_id] = entry
