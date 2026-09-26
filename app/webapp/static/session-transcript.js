@@ -73,12 +73,13 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
+import { api, apiFailToast, authHeaders, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './markdown.js';
 import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
 import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
+import { openImageLightbox } from './system-map.js';
 import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
@@ -289,6 +290,101 @@ function term(el) {
   return el;
 }
 
+// --- image thumbnails (#1265) ---------------------------------------------
+//
+// An entry lists where its images are ({offset, n}); the bytes come from the
+// image route, fetched through the authenticated API (an <img src> can carry
+// neither the bearer nor the passkey token) once the thumbnail scrolls into
+// view, and kept as object URLs for as long as this session's Chat is open —
+// so a re-render or a live tick never fetches the same image twice. Only the
+// Chat pane has a session to ask; the Life OS viewer's captures hold no image
+// data and keep their `[image]` text.
+
+const thumbUrls = new Map();
+let thumbObserver = null;
+
+function imageUrl(sid, ref) {
+  return '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+    '/transcript/image?offset=' + ref.offset + '&n=' + ref.n;
+}
+
+async function loadThumb(btn) {
+  const sid = btn.dataset.sid;
+  const url = imageUrl(sid, btn._trImage);
+  let objectUrl = thumbUrls.get(url);
+  if (!objectUrl) {
+    try {
+      const tt = await ensureTerminalToken();
+      const res = await api(url, { headers: authHeaders({ terminalToken: tt }) });
+      if (!res.ok) throw new Error('status ' + res.status);
+      objectUrl = URL.createObjectURL(await res.blob());
+    } catch (exc) {
+      console.warn('transcript image failed', exc);
+      btn.classList.add('tr-thumb-failed');
+      return;
+    }
+    // A view that closed meanwhile has already dropped its URLs.
+    if (!view || view.session.session_id !== sid) {
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    thumbUrls.set(url, objectUrl);
+  }
+  btn.querySelector('img').src = objectUrl;
+  btn.disabled = false;
+}
+
+function observeThumb(btn) {
+  if (!('IntersectionObserver' in window)) {
+    loadThumb(btn);
+    return;
+  }
+  if (!thumbObserver) {
+    thumbObserver = new IntersectionObserver(function (seen) {
+      seen.forEach(function (hit) {
+        if (!hit.isIntersecting) return;
+        thumbObserver.unobserve(hit.target);
+        loadThumb(hit.target);
+      });
+    }, { rootMargin: '200px' });
+  }
+  thumbObserver.observe(btn);
+}
+
+// Small lazy thumbnails for an entry's images; a tap opens the full size in
+// the app's image overlay. Null outside the Chat pane (no session to ask).
+function thumbs(refs) {
+  if (!refs || !refs.length || !view) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'tr-thumbs';
+  refs.forEach(function (ref, i) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tr-thumb';
+    btn.disabled = true;
+    btn.dataset.sid = view.session.session_id;
+    btn._trImage = ref;
+    btn.setAttribute('aria-label', 'Open image ' + (i + 1) + ' full size');
+    const img = document.createElement('img');
+    img.alt = 'Image ' + (i + 1);
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    btn.appendChild(img);
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      if (img.src) openImageLightbox(img.src, img.alt);
+    });
+    wrap.appendChild(btn);
+    observeThumb(btn);
+  });
+  return wrap;
+}
+
+function dropThumbs() {
+  thumbUrls.forEach(function (objectUrl) { URL.revokeObjectURL(objectUrl); });
+  thumbUrls.clear();
+}
+
 function copyLabel(kind) {
   return kind === 'user' ? 'Prompt' : 'Reply';
 }
@@ -399,7 +495,7 @@ function renderTurn(e) {
   s.appendChild(meta(e.kind === 'user' ? 'You' : 'Agent', e.timestamp));
   const hint = document.createElement('span');
   hint.className = 'tr-turn-hint';
-  hint.textContent = firstLine(e.text, 80);
+  hint.textContent = firstLine(e.text, 80) || (e.images && e.images.length ? 'Image' : '');
   s.appendChild(hint);
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
@@ -428,6 +524,8 @@ function renderTurn(e) {
   }
   linkify(body);
   d.appendChild(body);
+  const shots = thumbs(e.images);
+  if (shots) d.appendChild(shots);
   if (e.truncated) {
     const mark = document.createElement('div');
     mark.className = 'tr-trunc';
@@ -529,6 +627,8 @@ function renderItem(e, toolErrors) {
     if (e.result != null) {
       const out = pre(e.result, e.result_truncated);
       body.appendChild(ran ? term(out) : out);
+      const shots = thumbs(e.result_images);
+      if (shots) body.appendChild(shots);
     } else {
       const none = document.createElement('div');
       none.className = 'tr-trunc';
@@ -537,6 +637,8 @@ function renderItem(e, toolErrors) {
     }
   } else {
     body.appendChild(pre(e.text, e.truncated));
+    const shots = thumbs(e.images);
+    if (shots) body.appendChild(shots);
   }
   // The honest third state: this harness cannot say whether the call
   // failed. Said here, in the body, rather than as a marker on every row —
@@ -2037,6 +2139,7 @@ export function openChatPane(s) {
     window.clearTimeout(view.refreshTimer);
     stopLiveTimer();
   }
+  dropThumbs();
   view = {
     session: s, cursor: null, loading: false, seq: 0, refreshTimer: null,
     entries: null, toolErrors: 'reported',
@@ -2058,6 +2161,7 @@ export function openChatPane(s) {
 }
 
 export function closeChatPane() {
+  dropThumbs();
   if (view) {
     view.seq += 1;  // any in-flight page lands nowhere
     window.clearTimeout(view.refreshTimer);

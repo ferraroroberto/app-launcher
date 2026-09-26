@@ -78,7 +78,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
@@ -96,6 +96,7 @@ from src.session_transcript import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
     entry_full_text,
+    transcript_image,
     transcript_page,
     transcript_tail,
 )
@@ -357,6 +358,45 @@ async def session_transcript_entry(
         "available": True, "reason": None, "session_id": sid,
         "text": entry["text"], "truncated": entry["truncated"],
     }
+
+
+@router.get("/api/claude-code/sessions/{sid}/transcript/image")
+async def session_transcript_image(
+    sid: str,
+    request: Request,
+    offset: int = Query(ge=0),
+    n: int = Query(ge=0, le=999),
+) -> Response:
+    """One transcript image's bytes, decoded on demand (Tailscale + passkey, #1265).
+
+    ``offset`` and ``n`` are an entry's ``images``/``result_images`` ref:
+    the line the image lives on and its index among that line's images. The
+    page never carries image bytes; the thumbnails fetch this, lazily. A
+    session's images can be private captures, so nothing may store them:
+    ``no-store``, and the type is sniffed from the bytes, never taken from
+    the block. 404 covers a bad ref, a file that moved on, and a block that
+    isn't an allowlisted image alike: the client's answer (no thumbnail) is
+    the same.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    if reason is not None:
+        raise HTTPException(status_code=404, detail=reason)
+    try:
+        found = await asyncio.to_thread(transcript_image, path, offset, n, flavor)
+    except OSError as exc:
+        logger.warning(
+            "⚠️ transcript image %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
+        )
+        raise HTTPException(status_code=404, detail="read_failed") from exc
+    if found is None:
+        logger.info("ℹ️ transcript image %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
+        raise HTTPException(status_code=404, detail="image_not_found")
+    data, media = found
+    return Response(
+        content=data, media_type=media,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 # The gap between two keystrokes of one answer. The picker takes one key per

@@ -28,6 +28,7 @@ collapses on its own summary):
 
 from __future__ import annotations
 
+import base64
 import json as _json
 import re
 
@@ -73,7 +74,8 @@ _NEWEST = {
     "next_cursor": 4096,
     "entries": [
         {"kind": "user", "timestamp": "2026-09-14T10:01:00Z",
-         "text": "Please fix the flaky test", "truncated": False, "sidechain": False},
+         "text": "Please fix the flaky test", "truncated": False, "sidechain": False,
+         "images": [{"offset": 100, "n": 0}]},
         {"kind": "thinking", "timestamp": "2026-09-14T10:01:01Z",
          "text": "Let me look at conftest first", "truncated": False, "sidechain": False},
         {"kind": "tool_call", "timestamp": "2026-09-14T10:01:02Z", "name": "Bash",
@@ -107,6 +109,22 @@ _OLDER = {
          "text": "older reply", "truncated": False, "sidechain": False},
     ],
 }
+
+
+# A real 1x1 PNG: synthetic image bytes only (#1265).
+_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk"
+    "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+def _mock_transcript_images(page: Page, calls: list) -> None:
+    """The image route (#1265): every fetch recorded, each answered with _PNG."""
+    def _handler(route):
+        calls.append(route.request.url)
+        route.fulfill(status=200, content_type="image/png", body=_PNG)
+
+    page.route(re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript/image\?.*"), _handler)
 
 
 def _mock_transcript(page: Page, pages: dict, calls: list) -> None:
@@ -322,8 +340,10 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     authed_page: Page, base_url: str
 ) -> None:
     calls: list = []
+    image_calls: list = []
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, {None: _NEWEST, 4096: _OLDER}, calls)
+    _mock_transcript_images(authed_page, image_calls)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)
@@ -353,6 +373,18 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     turns_agent = authed_page.locator("#transcriptList .tr-assistant")
     expect(turns_user).to_have_count(1)
     expect(turns_user.first).to_contain_text("Please fix the flaky test")
+    # A pasted image is a lazy thumbnail fetched from the image route, never
+    # base64 in the page; a tap opens it full size in the image overlay (#1265).
+    thumb = turns_user.first.locator(".tr-thumb")
+    expect(thumb).to_have_count(1)
+    expect(thumb.locator("img")).to_have_attribute("src", re.compile(r"^blob:"))
+    assert len(image_calls) == 1 and image_calls[0].endswith("offset=100&n=0"), image_calls
+    thumb.click()
+    lightbox = authed_page.locator("#systemMapLightbox")
+    expect(lightbox).to_be_visible()
+    expect(lightbox.locator("img")).to_have_attribute("src", re.compile(r"^blob:"))
+    authed_page.locator("#systemMapLightboxClose").click()
+    expect(lightbox).to_be_hidden()
     expect(turns_agent).to_have_count(1)
     expect(turns_agent.first).to_contain_text("Fixed it.")
     # Markdown rendered, not shown raw.

@@ -951,19 +951,40 @@ def test_pi_custom_tool_watch_records_are_dropped(tmp_path: Path):
     assert entries[0]["result"] == "main"
 
 
-def test_pi_image_tool_result_is_a_placeholder(tmp_path: Path):
+def _png_b64() -> str:
+    """A real 2x2 PNG, generated: synthetic image bytes only (#1265)."""
+    import base64
+    import struct
+    import zlib
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+    raw = b"".join(b"\x00" + b"\xff\x00\x00" * 2 for _ in range(2))
+    png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 2, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+    return base64.b64encode(png).decode("ascii")
+
+
+def test_pi_image_tool_result_is_a_thumbnail_ref(tmp_path: Path):
     """An ``image`` block carries raw base64 in ``data`` (35 of them in the
-    corpus, from screenshot tools) — counted, never decoded into text."""
-    blob = "iVBORw0KGgoAAAANSUhEUg" * 200
+    corpus, from screenshot tools). The page never carries the bytes: the
+    result lists where the image is (#1265), and the image route decodes it
+    on demand, sniffing its type because Pi records none."""
+    blob = _png_b64()
     path = _write_jsonl(tmp_path / "pi.jsonl", [
         _pi_msg("assistant", [{"type": "toolCall", "id": "t1", "name": "screenshot",
                                "arguments": {"path": "shot.png"}}]),
         _pi_msg("toolResult", [_pi_text("captured"), {"type": "image", "data": blob}],
                 mid="m2", toolCallId="t1", toolName="screenshot", isError=False),
     ])
-    result = _parse_whole(path, st.pi_entries)[0]["result"]
-    assert result == "captured\n\n[image]"
-    assert "iVBORw0" not in result
+    call = _parse_whole(path, st.pi_entries)[0]
+    assert call["result"] == "captured"
+    assert blob[:12] not in json.dumps(call)
+    [ref] = call["result_images"]
+    assert ref["n"] == 0
+    data, media = st.transcript_image(path, ref["offset"], ref["n"], "pi")
+    assert media == "image/png" and data.startswith(b"\x89PNG")
 
 
 def test_pi_skill_injection_and_compaction_fold_as_system(tmp_path: Path):
@@ -2171,6 +2192,34 @@ class TestTranscriptEndpoint:
         assert full["available"] is True
         assert full["text"].startswith("The `docs` folder")
 
+    def test_image_route_serves_a_transcript_image_unstored(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        """#1265: an entry's image ref fetches the decoded bytes, typed from
+        the bytes themselves and never stored (``no-store``); a ref that
+        isn't an image is a 404, like a bad offset."""
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_live(agent="claude")]
+        png = _png_b64()
+        path = _write_jsonl(tmp_path / "c.jsonl", [_user([
+            {"type": "text", "text": "Look"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": png}},
+        ])])
+        monkeypatch.setattr(
+            board, "state_row_for_session",
+            lambda live, rows, sid: {"transcript_path": str(path)},
+        )
+        entry = client.get("/api/claude-code/sessions/s1/transcript").json()["entries"][0]
+        assert png[:12] not in json.dumps(entry)
+        ref = entry["images"][0]
+        res = client.get(f"/api/claude-code/sessions/s1/transcript/image?offset={ref['offset']}&n={ref['n']}")
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "image/png"          # sniffed, not the declared jpeg
+        assert res.headers["cache-control"] == "no-store"
+        assert res.content.startswith(b"\x89PNG")
+        missing = client.get(f"/api/claude-code/sessions/s1/transcript/image?offset={ref['offset']}&n=1")
+        assert missing.status_code == 404
+
     def test_grok_unclaimed_row_is_no_transcript_not_a_stale_neighbour(
         self, webapp_client, _bypass_gate, monkeypatch
     ):
@@ -2728,3 +2777,41 @@ def test_tool_action_covers_the_probed_tools_of_every_harness():
     assert act("Grep", {"pattern": "x"}) is None
     assert act("Edit", {"file_path": "a.py"}) is None
     assert act("Bash", {"command": "   "}) is None
+
+
+def test_claude_images_are_refs_numbered_across_the_line(tmp_path: Path):
+    """A pasted image and a screenshot read back through a tool result both
+    become refs (#1265); a block with no data keeps ``[image]``. ``n`` walks
+    the line, a ``tool_result``'s own content in place, so two results on one
+    line never share a number. The route refuses anything that isn't an
+    allowlisted image at exactly that spot."""
+    png = _png_b64()
+
+    def img(data):
+        return {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": data}}
+
+    path = _write_jsonl(tmp_path / "c.jsonl", [
+        _user([{"type": "text", "text": "Look"}, img(png), {"type": "image", "source": {}}]),
+        _assistant([_tool_use("Read", {"file_path": "a.png"}, "t1"),
+                    _tool_use("Read", {"file_path": "b.png"}, "t2")], "m1"),
+        _user([_tool_result("t1", [img(png)]), _tool_result("t2", [{"type": "text", "text": "b"}, img(png)])]),
+    ])
+    entries = _parse_whole(path)
+    prompt = entries[0]
+    assert prompt["text"] == "Look\n\n[image]"          # the data-less block keeps its placeholder
+    assert prompt["images"] == [{"offset": 0, "n": 0}]
+    first, second = [e for e in entries if e["kind"] == "tool_call"]
+    assert [r["n"] for r in first["result_images"]] == [0]
+    assert [r["n"] for r in second["result_images"]] == [1]
+    assert first["result_images"][0]["offset"] == second["result_images"][0]["offset"] > 0
+
+    ref = second["result_images"][0]
+    assert st.transcript_image(path, ref["offset"], 1, "claude")[1] == "image/png"
+    assert st.transcript_image(path, ref["offset"], 2, "claude") is None      # no such block
+    assert st.transcript_image(path, ref["offset"] + 1, 0, "claude") is None  # not a line start
+    assert st.transcript_image(path, 0, 1, "claude") is None                  # data-less block
+    assert st.transcript_image(path, 0, 0, "codex") is None                   # records no images
+
+    # Bytes that aren't an allowlisted image are refused, whatever the block says.
+    bad = _write_jsonl(tmp_path / "bad.jsonl", [_user([img("PHN2Zz48L3N2Zz4=")])])   # "<svg></svg>"
+    assert st.transcript_image(bad, 0, 0, "claude") is None
