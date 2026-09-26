@@ -305,14 +305,6 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
   inset: -7px 0;
 }
 
-/* The vendored empty state's optional action (the Jobs agenda's Add job,
-   #1201) is padding plus one label line with no min-height: 38.6px (#1216).
-   A real 44px, not a hit-area expansion — it is the block's one standalone
-   button. App-side only because `_vendored/empty-state/` is byte-verbatim
-   from project-scaffolding; drop this rule once the scaffold's own
-   `min-height` lands there and is re-vendored. */
-.empty-state-action { min-height: 44px; }
-
 /* The Board dispatch row's record/send pair is short on both axes (38x36).
    Scoped to that row by the child combinator on purpose: the same classes in
    the docked composer's grid are already real 44px squares, and expanding

@@ -40,6 +40,18 @@ Tiers:
                 keeps the whole-suite ``full``. Without ``[[e2e.surface]]``
                 routing is exactly the three tiers above.
 
+Two narrowings feed ``surface`` (project-scaffolding#289):
+
+  * a declared **shared stylesheet** (``[e2e] shared_stylesheets``) is owned,
+    for this diff only, by the one surface whose ``selectors`` prefixes claim
+    every CSS rule the diff changes. A token or ``:root`` change, any at-rule
+    (``@media``, ``@import``, ``@font-face``...), a nested rule, a selector no
+    surface or two surfaces claim, a line the scanner can't attribute, or a
+    sheet whose old/new text is unavailable keeps the whole suite;
+  * an edited **e2e test module** (``test_*.py`` / ``*_test.py`` in the suite)
+    that no surface owns and no other suite file imports runs only itself.
+    Shared helpers (``conftest.py``, ``_*.py``) still run the whole suite.
+
 CLI: prints ``E2E_*=`` key/value lines (parsed by the PowerShell gate) plus a
 human summary on stderr. Run standalone to see how the current branch would
 route:
@@ -50,6 +62,7 @@ route:
 
 from __future__ import annotations
 
+import difflib
 import re
 import subprocess
 import sys
@@ -103,9 +116,14 @@ class Surface:
     pytest_targets: tuple[str, ...]
     prefixes: tuple[str, ...] = ()
     paths: tuple[str, ...] = ()
+    # CSS selector prefixes this surface owns in a shared stylesheet (#289).
+    selectors: tuple[str, ...] = ()
 
     def matches(self, path: str) -> bool:
         return path in self.paths or any(path.startswith(p) for p in self.prefixes)
+
+    def owns_selector(self, selector: str) -> bool:
+        return any(selector.startswith(p) for p in self.selectors)
 
 
 @dataclass
@@ -120,6 +138,10 @@ class E2EConfig:
     surfaces: list[Surface] = field(default_factory=list)
     # Why declared surfaces were disabled ("" when none declared or all usable).
     surfaces_note: str = ""
+    # Stylesheets shared across surfaces, narrowed by the rules a diff changes (#289).
+    shared_stylesheets: tuple[str, ...] = ()
+    # Where the suite lives on disk; a self-only e2e module must exist there (#289).
+    repo_root: Path = REPO_ROOT
 
 
 def _str_list(raw: object) -> tuple[str, ...] | None:
@@ -180,9 +202,11 @@ def load_surfaces(
         targets = _str_list(entry.get("pytest_targets"))
         prefixes = _str_list(entry.get("prefixes", []))
         paths = _str_list(entry.get("paths", []))
+        selectors = _str_list(entry.get("selectors", []))
         if (not isinstance(name, str) or not _SURFACE_NAME.fullmatch(name) or not targets
                 or prefixes is None or paths is None or not (prefixes or paths)
-                or not all(p.endswith("/") for p in prefixes)):
+                or not all(p.endswith("/") for p in prefixes)
+                or selectors is None or any(sel.startswith(":root") for sel in selectors)):
             return [], bad
         if any(s.name == name for s in surfaces):
             return [], f"[[e2e.surface]] name {name!r} declared twice -- surfaces disabled"
@@ -190,7 +214,8 @@ def load_surfaces(
             problem = _target_problem(target, repo_root, suite_dir)
             if problem:
                 return [], f"surface {name!r} target {target} {problem} -- surfaces disabled"
-        surfaces.append(Surface(name=name, pytest_targets=targets, prefixes=prefixes, paths=paths))
+        surfaces.append(Surface(name=name, pytest_targets=targets, prefixes=prefixes,
+                                paths=paths, selectors=selectors))
     return surfaces, ""
 
 
@@ -237,6 +262,8 @@ def load_config(fleet_toml: Path = FLEET_TOML) -> E2EConfig:
     surfaces, surfaces_note = load_surfaces(
         e2e.get("surface"), fleet_toml.parent, full_pytest_target
     )
+    # Malformed -> no shared stylesheet, so a sheet edit keeps the whole suite.
+    sheets = _str_list(e2e.get("shared_stylesheets", [])) or ()
     return E2EConfig(
         rules=rules,
         static_pytest_target=str(e2e.get("static_pytest_target", "tests/e2e")),
@@ -245,6 +272,8 @@ def load_config(fleet_toml: Path = FLEET_TOML) -> E2EConfig:
         source="declared",
         surfaces=surfaces,
         surfaces_note=surfaces_note,
+        shared_stylesheets=sheets,
+        repo_root=fleet_toml.parent,
     )
 
 
@@ -262,6 +291,162 @@ def _classify_one(path: str, rules: list[Rule]) -> tuple[Category, str]:
     return Category.FULL, "unclassified"
 
 
+# ------------------------------------------------------ shared stylesheets (#289)
+# A changed line is attributed to the CSS rule whose selector or declarations
+# it holds. Anything that can reach past one rule's selectors -- a token
+# (`--x:`), `:root`, an at-rule and everything inside one, a nested rule, text
+# outside every rule -- is an "unsafe" attribution and keeps the whole suite.
+
+_UNSAFE = "unsafe"
+
+
+def _split_selectors(prelude: str) -> list[str]:
+    """A selector list split on its top-level commas, whitespace-normalised."""
+    parts, depth, cur = [], 0, ""
+    for ch in prelude:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    parts.append(cur)
+    return [" ".join(p.split()) for p in parts if p.strip()]
+
+
+def css_line_attributions(text: str) -> dict[int, set[str]] | None:
+    """`{line: {selector | "unsafe"}}` for every line holding CSS, or None.
+
+    None means the scanner could not follow the sheet (an unclosed block,
+    comment or string, or a stray `}`); the caller treats that as unsafe.
+    Lines holding only whitespace or comments are absent: they can't render.
+    """
+    out: dict[int, set[str]] = {}
+    stack: list[set[str]] = []      # per open block: what its lines attribute to
+    buf, buf_lines = "", set()
+    line, i, n = 1, 0, len(text)
+
+    def mark(lines: set[int], attrs: set[str]) -> None:
+        for ln in lines:
+            out.setdefault(ln, set()).update(attrs)
+
+    while i < n:
+        ch = text[i]
+        if text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            if end < 0:
+                return None
+            line += text.count("\n", i, end)
+            i = end + 2
+            continue
+        if ch in "\"'":
+            end = i + 1
+            while end < n and text[end] != ch and text[end] != "\n":
+                end += 2 if text[end] == "\\" else 1
+            if end >= n or text[end] != ch:
+                return None
+            buf += text[i:end + 1]
+            buf_lines.add(line)
+            i = end + 1
+            continue
+        if ch == "\n":
+            line += 1
+            buf += ch
+        elif ch == "{":
+            prelude = buf.strip()
+            if stack or prelude.startswith("@") or not prelude:
+                attrs = {_UNSAFE}  # an at-rule, anything inside one, a nested rule
+            else:
+                sels = _split_selectors(prelude)
+                attrs = {_UNSAFE} if any(s.startswith(":root") for s in sels) else set(sels)
+            mark(buf_lines | {line}, attrs)
+            stack.append(attrs)
+            buf, buf_lines = "", set()
+        elif ch in ";}":
+            if buf.strip():
+                attrs = stack[-1] if stack else {_UNSAFE}
+                if buf.split(":", 1)[0].strip().startswith("--"):
+                    attrs = {_UNSAFE}  # a custom property: a token other rules read
+                mark(buf_lines | ({line} if ch == ";" else set()), attrs)
+            buf, buf_lines = "", set()
+            if ch == "}":
+                if not stack:
+                    return None
+                mark({line}, stack.pop())
+        else:
+            buf += ch
+            if not ch.isspace():
+                buf_lines.add(line)
+        i += 1
+    if stack or buf.strip():
+        return None
+    return out
+
+
+def changed_selectors(old: str | None, new: str | None) -> set[str] | None:
+    """The selectors of every CSS rule changed between two texts of one sheet.
+
+    None when the change can reach past those rules (see `_UNSAFE`), when
+    either text is unavailable, or when the scanner can't follow one of them.
+    """
+    if old is None or new is None:
+        return None
+    old_attr, new_attr = css_line_attributions(old), css_line_attributions(new)
+    if old_attr is None or new_attr is None:
+        return None
+    sels: set[str] = set()
+    matcher = difflib.SequenceMatcher(None, old.splitlines(), new.splitlines(), autojunk=False)
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            continue
+        for ln in range(i1 + 1, i2 + 1):
+            sels |= old_attr.get(ln, set())
+        for ln in range(j1 + 1, j2 + 1):
+            sels |= new_attr.get(ln, set())
+    return None if _UNSAFE in sels else sels
+
+
+def _sheet_owner(
+    path: str, sheet_changes: dict[str, set[str] | None], surfaces: list[Surface],
+) -> Surface | None:
+    """The one surface owning every rule the diff changes in *path*, or None."""
+    sels = sheet_changes.get(path)
+    if not sels:
+        return None  # unknown, unsafe, or nothing but comments changed
+    owner: Surface | None = None
+    for sel in sels:
+        owners = [s for s in surfaces if s.owns_selector(sel)]
+        if len(owners) != 1 or (owner is not None and owners[0] is not owner):
+            return None
+        owner = owners[0]
+    return owner
+
+
+def _self_only_module(path: str, config: E2EConfig) -> bool:
+    """An e2e test module that only its own run can break (#289).
+
+    `test_*.py` / `*_test.py` inside the suite, present on disk (a deleted
+    module has nothing to run), and imported by no other suite file.
+    """
+    suite = config.full_pytest_target.rstrip("/") + "/"
+    name = path.rsplit("/", 1)[-1]
+    if not path.startswith(suite) or not name.endswith(".py"):
+        return False
+    if not (name.startswith("test_") or name.endswith("_test.py")):
+        return False
+    module = config.repo_root / path
+    if not module.is_file():
+        return False
+    imports = re.compile(rf"^\s*(?:from|import)\s.*\b{re.escape(name[:-3])}\b", re.MULTILINE)
+    for other in (config.repo_root / suite).rglob("*.py"):
+        if other != module and imports.search(other.read_text(encoding="utf-8", errors="replace")):
+            return False
+    return True
+
+
 @dataclass
 class Routing:
     tier: str                       # "skip" | "static" | "full" | "surface"
@@ -273,6 +458,7 @@ class Routing:
 
 def _narrow_to_surface(
     classified: list[tuple[str, Category, str]], config: E2EConfig,
+    sheet_changes: dict[str, set[str] | None],
 ) -> Routing | None:
     """The `surface` routing for a would-be-full diff, or None to keep whole `full`.
 
@@ -281,6 +467,8 @@ def _narrow_to_surface(
     in the winning surface too: "inert" markup can still be the page another
     harness drives (this repo's component gallery), so a static path no
     surface owns keeps the whole suite rather than riding along on a smoke run.
+    A shared stylesheet takes the one surface owning every rule it changes, and
+    a self-only e2e module adds just itself (#289).
     """
     if any(label == "unclassified" for _, _, label in classified):
         return None
@@ -290,31 +478,49 @@ def _narrow_to_surface(
         return None
     hit: Surface | None = None
     example = ""
+    modules: list[str] = []
     for path, cat, _label in classified:
         if cat == Category.NONE:
             continue
-        owners = [s for s in config.surfaces if s.matches(path)]
+        if path in config.shared_stylesheets:
+            owner = _sheet_owner(path, sheet_changes, config.surfaces)
+            owners = [owner] if owner else []
+            if not owners:
+                return None
+        else:
+            owners = [s for s in config.surfaces if s.matches(path)]
+        if not owners and cat == Category.FULL and _self_only_module(path, config):
+            modules.append(path)
+            continue
         if len(owners) != 1:
             return None  # outside every surface (incl. no surfaces declared), or inside two
         if hit is not None and owners[0].name != hit.name:
             return None  # the diff spans two surfaces
         if hit is None:
             hit, example = owners[0], path
-    if hit is None:  # unreachable when the diff's top tier is FULL; narrows the type
+    if hit is None and not modules:
         return None
-    targets = list(hit.pytest_targets)
+    targets = list(hit.pytest_targets) if hit else []
     has_static = any(cat == Category.STATIC for _, cat, _ in classified)
     if has_static and config.static_pytest_target and config.static_pytest_target not in targets:
         targets.append(config.static_pytest_target)
-    return Routing("surface", [], " ".join(targets), [f"surface {hit.name}: {example}"], hit.name)
+    targets += [m for m in modules if m not in targets]
+    reasons = [f"surface {hit.name}: {example}"] if hit else []
+    reasons += [f"e2e module runs itself: {m}" for m in modules]
+    return Routing("surface", [], " ".join(targets), reasons, hit.name if hit else "self")
 
 
-def classify(paths: list[str], config: E2EConfig) -> Routing:
+def classify(
+    paths: list[str], config: E2EConfig,
+    sheet_changes: dict[str, set[str] | None] | None = None,
+) -> Routing:
     """Route a set of changed paths to an e2e tier per *config*.
 
     Fail-safe to FULL whenever: the project has no usable `[e2e]`
     declaration, the diff is empty, or any changed path matches no declared
     rule. Uncertainty always escalates to full coverage, never narrows it.
+    *sheet_changes* maps a changed shared stylesheet to `changed_selectors()`;
+    a sheet missing from it keeps the whole suite.
     """
     if config.source != "declared":
         reason = {
@@ -349,7 +555,7 @@ def classify(paths: list[str], config: E2EConfig) -> Routing:
         return Routing("full", [], config.full_pytest_target, ["empty-diff: no changed files"])
 
     if top == Category.FULL:
-        narrowed = _narrow_to_surface(classified, config)
+        narrowed = _narrow_to_surface(classified, config, sheet_changes or {})
         if narrowed is not None:
             return narrowed
         reasons = reasons_for(Category.FULL)
@@ -416,10 +622,50 @@ def changed_files() -> list[str]:
     return sorted(files)
 
 
+def _git_text(args: list[str]) -> str | None:
+    """Stdout of a git command verbatim, or None when it fails."""
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
+        )
+    except OSError:
+        return None
+    return out.stdout if out.returncode == 0 else None
+
+
+def sheet_changes_from_git(
+    paths: list[str], config: E2EConfig,
+) -> dict[str, set[str] | None]:
+    """`changed_selectors()` per changed shared stylesheet: merge-base vs working tree.
+
+    A sheet new since the merge-base diffs against the empty text; a deleted
+    or unreadable one is None, which keeps the whole suite.
+    """
+    out: dict[str, set[str] | None] = {}
+    wanted = [p for p in paths if p in config.shared_stylesheets]
+    base = _run_git(["merge-base", _main_ref(), "HEAD"]) if wanted else []
+    for path in wanted:
+        old = None
+        if base:
+            old = _git_text(["show", f"{base[0]}:{path}"])
+            if old is None and _git_text(["cat-file", "-e", f"{base[0]}:{path}"]) is None:
+                old = ""  # absent at the merge-base: a new sheet
+        try:
+            new = (config.repo_root / path).read_text(encoding="utf-8")
+        except OSError:
+            new = None
+        out[path] = changed_selectors(old, new)
+    return out
+
+
 def main(argv: list[str]) -> int:
-    paths = argv[1:] if len(argv) > 1 else changed_files()
+    explicit = len(argv) > 1
+    paths = [p.replace("\\", "/") for p in (argv[1:] if explicit else changed_files())]
     config = load_config()
-    routing = classify(paths, config)
+    # An explicit file list carries no diff text, so its sheets keep the whole suite.
+    routing = classify(paths, config, {} if explicit else sheet_changes_from_git(paths, config))
 
     # Machine-readable block the PowerShell gate parses (^E2E_ lines only).
     print(f"E2E_TIER={routing.tier}")
