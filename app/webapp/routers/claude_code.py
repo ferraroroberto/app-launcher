@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -169,6 +169,58 @@ async def claude_flags(request: Request) -> Dict[str, Any]:
 _GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-status")
 
 
+# Overlapping calls share scans (#1268), and never a stale one: a call that
+# arrives while a scan runs waits for the NEXT scan, which every call from
+# that window shares, so each caller sees git state from at or after its own
+# arrival. At most two scans per key exist: the running one and one queued.
+# (Joining the running scan instead served a scan begun before the caller's
+# change: a repo dirtied just before a page load read as clean.)
+_GIT_STATUS_RUNNING: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
+_GIT_STATUS_NEXT: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
+
+
+def _start_scan(key: Tuple[str, Tuple[str, ...]]) -> "asyncio.Future[Dict[str, Any]]":
+    """Start the scan for ``key`` now; when it ends, start the queued one, if any."""
+    scan = asyncio.ensure_future(_scan_git_status(*key))
+    _GIT_STATUS_RUNNING[key] = scan
+
+    def _done(finished: "asyncio.Future[Dict[str, Any]]") -> None:
+        if _GIT_STATUS_RUNNING.get(key) is not finished:
+            return
+        del _GIT_STATUS_RUNNING[key]
+        queued = _GIT_STATUS_NEXT.pop(key, None)
+        if queued is not None and not queued.done():
+            follow_up = _start_scan(key)
+            follow_up.add_done_callback(lambda f: _settle(queued, f))
+
+    scan.add_done_callback(_done)
+    return scan
+
+
+def _settle(target: "asyncio.Future[Dict[str, Any]]", source: "asyncio.Future[Dict[str, Any]]") -> None:
+    if target.done():
+        return
+    if source.cancelled():
+        target.cancel()
+    elif source.exception() is not None:
+        target.set_exception(source.exception())
+    else:
+        target.set_result(source.result())
+
+
+async def _scan_git_status(projects_dir: str, ignore: Tuple[str, ...]) -> Dict[str, Any]:
+    projects = scan_project_dirs(Path(projects_dir), list(ignore))
+    loop = asyncio.get_running_loop()
+    statuses = await asyncio.gather(
+        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
+    )
+    return {
+        "projects": [
+            {"id": p.id, **gs.to_dict()} for p, gs in zip(projects, statuses)
+        ]
+    }
+
+
 @router.get("/api/claude-code/git-status")
 async def claude_git_status(request: Request) -> Dict[str, Any]:
     """Per-project git state for the Coding tiles + Board backlog flags.
@@ -179,16 +231,19 @@ async def claude_git_status(request: Request) -> Dict[str, Any]:
     #115's tap-only contract): the SPA calls this once at boot and on a
     slow (~45 s) poll while the Coding or Board tab is visible in a
     foreground page, plus a fresh fetch when the header status button
-    opens the off-main popover (#139).
+    opens the off-main popover (#139). A call that overlaps a running scan
+    waits for the next one, shared with every call from that window
+    (#1268); ``shield`` keeps one caller's disconnect from cancelling it
+    for the rest.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    projects = scan_project_dirs(Path(cfg.projects_dir), list(cfg.projects_ignore))
+    key = (str(cfg.projects_dir), tuple(cfg.projects_ignore))
     loop = asyncio.get_running_loop()
-    statuses = await asyncio.gather(
-        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
-    )
-    return {
-        "projects": [
-            {"id": p.id, **gs.to_dict()} for p, gs in zip(projects, statuses)
-        ]
-    }
+    running = _GIT_STATUS_RUNNING.get(key)
+    if running is None or running.done() or running.get_loop() is not loop:
+        return await asyncio.shield(_start_scan(key))
+    queued = _GIT_STATUS_NEXT.get(key)
+    if queued is None or queued.done() or queued.get_loop() is not loop:
+        queued = loop.create_future()
+        _GIT_STATUS_NEXT[key] = queued
+    return await asyncio.shield(queued)
