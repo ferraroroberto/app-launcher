@@ -44,5 +44,15 @@ export function listFilter(opts) {
     save(opts.storageKey, input.value.trim());
     apply();
   });
+  // The no-match empty state's one action (#1238 J-09): clear the filter.
+  const clear = opts.empty && opts.empty.querySelector('.empty-state-action');
+  if (clear) {
+    clear.addEventListener('click', function () {
+      input.value = '';
+      save(opts.storageKey, '');
+      apply();
+      input.focus();
+    });
+  }
   return { apply: apply };
 }

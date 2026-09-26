@@ -101,6 +101,12 @@ function renderScanResults() {
 
 export function wireScanDialog() {
   els.rescanBtn.addEventListener('click', runScan);
+  // The Apps tab's empty registries scan straight from their empty state
+  // (#1238 J-09) instead of pointing at Settings.
+  ['appsEmptyAction', 'registeredTraysEmptyAction'].forEach(function (id) {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener('click', runScan);
+  });
   els.scanCancel.addEventListener('click', function () {
     if (els.scanDialog.close) els.scanDialog.close();
   });

@@ -943,6 +943,20 @@ export async function fetchJobs() {
 
 export function wireJobs() {
   if (!els.tabJobs) return;
+  // Empty-state actions (#1238 J-09): the Schedule panel's Add job flow,
+  // and the search field's own clear.
+  const jobsEmptyAction = document.getElementById('jobsEmptyAction');
+  if (jobsEmptyAction) {
+    jobsEmptyAction.addEventListener('click', function () {
+      openJobDialog(null);
+    });
+  }
+  const jobsFilterEmptyAction = document.getElementById('jobsFilterEmptyAction');
+  if (jobsFilterEmptyAction) {
+    jobsFilterEmptyAction.addEventListener('click', function () {
+      if (els.jobsSearchClear) els.jobsSearchClear.click();
+    });
+  }
   els.tabJobs.addEventListener('click', function () {
     fetchJobs().catch(function () {});
   });

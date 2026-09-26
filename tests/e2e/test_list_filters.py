@@ -96,7 +96,9 @@ def test_projects_and_apps_filters_narrow_restore_and_empty(
     box.fill("zzz")
     expect(page.locator(f"{rows}:visible")).to_have_count(0)
     expect(page.locator("#claudeFilterEmpty")).to_be_visible()
-    box.fill("")
+    # The no-match state's own action clears the filter (#1238 J-09).
+    page.locator("#claudeFilterEmpty .empty-state-action").click()
+    expect(box).to_have_value("")
     expect(page.locator(f"{rows}:visible")).to_have_count(len(_PROJECTS))
     expect(page.locator("#claudeFilterEmpty")).to_be_hidden()
 
@@ -116,6 +118,8 @@ def test_projects_and_apps_filters_narrow_restore_and_empty(
     assert _visible_titles(page, apps) == ["Voice Transcriber"]
     page.locator("#appsFilterInput").fill("qqq")
     expect(page.locator("#appsFilterEmpty")).to_be_visible()
+    page.locator("#appsFilterEmpty .empty-state-action").click()
+    expect(page.locator(f"{apps}:visible")).to_have_count(len(_APPS))
 
 
 def test_jobs_search_matches_job_names(authed_page: Page, base_url: str) -> None:
@@ -138,3 +142,6 @@ def test_jobs_search_matches_job_names(authed_page: Page, base_url: str) -> None
     page.locator("#jobsSearchInput").fill("nothing-matches")
     expect(page.locator("#jobsFilterEmpty")).to_be_visible(timeout=5_000)
     expect(page.locator("#jobsList li.app-item[data-id]")).to_have_count(0)
+    page.locator("#jobsFilterEmptyAction").click()
+    expect(page.locator("#jobsSearchInput")).to_have_value("")
+    expect(page.locator("#jobsFilterEmpty")).to_be_hidden()

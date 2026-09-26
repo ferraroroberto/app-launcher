@@ -56,7 +56,7 @@ import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, renderQuotaLines } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, renderQuotaLines, revealInCard } from './dom-utils.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -72,12 +72,14 @@ import {
 // `live` columns are built from the session-host list, so an unreachable
 // session-host makes them unknown too (#915).
 const COLUMNS = [
-  // Each empty sentence names the control that fills its lane (#1176).
-  { key: 'backlog', section: 'boardColBacklog', empty: 'No open issues — tap Refresh to check GitHub again.', glyph: 'git-branch', gh: 'all' },
-  { key: 'claude_turn', section: 'boardColClaude', empty: 'No sessions on Claude’s side — start one from the dispatch bar above.', glyph: 'hourglass', live: true },
-  { key: 'your_turn', section: 'boardColYours', empty: 'Nothing needs you right now — start work from the dispatch bar above.', glyph: 'circle-check', live: true },
-  { key: 'other', section: 'boardColOther', empty: 'No open PRs or stuck jobs — tap Refresh to check GitHub again.', glyph: 'git-pull-request', gh: 'part' },
-  { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet — tap Refresh to check GitHub again.', glyph: 'square-check', gh: 'all' },
+  // Each empty lane says why, and its empty state carries the one control
+  // that fills it (#1176, as a button since #1238 J-09): Refresh for the
+  // GitHub lanes, Start work (the dispatch bar) for the session lanes.
+  { key: 'backlog', section: 'boardColBacklog', empty: 'No open issues on GitHub.', glyph: 'git-branch', gh: 'all' },
+  { key: 'claude_turn', section: 'boardColClaude', empty: 'No sessions on Claude’s side.', glyph: 'hourglass', live: true },
+  { key: 'your_turn', section: 'boardColYours', empty: 'Nothing needs you right now.', glyph: 'circle-check', live: true },
+  { key: 'other', section: 'boardColOther', empty: 'No open PRs or stuck jobs.', glyph: 'git-pull-request', gh: 'part' },
+  { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'square-check', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
@@ -747,8 +749,27 @@ function emptyText(col, body, ghLoaded, liveRead) {
     return failed ? 'No stuck jobs — open PRs unavailable (GitHub fetch failed).'
       : 'No stuck jobs — open PRs not loaded yet.';
   }
-  return failed ? 'GitHub fetch failed — tap Refresh to retry.'
-    : 'Not loaded from GitHub yet — tap Refresh.';
+  return failed ? 'GitHub fetch failed.' : 'Not loaded from GitHub yet.';
+}
+
+// The lane's one next action (#1238 J-09), reusing the Board's own flows:
+// a session lane starts work from the dispatch bar (or re-reads the
+// session-host it couldn't reach); a GitHub lane refreshes.
+function emptyAction(col, liveRead) {
+  if (col.live && !liveRead) {
+    return { actionLabel: 'Retry', onAction: function () { fetchBoard().catch(function () {}); } };
+  }
+  if (col.live) return { actionLabel: 'Start work', onAction: focusDispatch };
+  return {
+    actionLabel: 'Refresh',
+    onAction: function () {
+      refreshGithub().catch(function (exc) { apiFailToast('GitHub refresh failed', exc); });
+    },
+  };
+}
+
+function focusDispatch() {
+  revealInCard(els.boardDispatchGoal);
 }
 
 function renderStatusLine(body) {
@@ -869,9 +890,15 @@ export function renderBoard() {
       // muted glyph over the one-line reason, instead of a bare sentence in
       // a dashed box. `empty` stays the hidden/shown container the poll
       // toggles, so nothing else about the column changes.
-      empty.replaceChildren(
-        emptyStateEl(col.glyph, emptyText(col, body, ghLoaded, liveRead))
-      );
+      // Rebuilt only when its words change: the 5 s poll would otherwise
+      // replace the action button under a keyboard user's focus.
+      const text = emptyText(col, body, ghLoaded, liveRead);
+      const action = emptyAction(col, liveRead);
+      const sig = text + '|' + action.actionLabel;
+      if (empty.dataset.sig !== sig) {
+        empty.dataset.sig = sig;
+        empty.replaceChildren(emptyStateEl(col.glyph, text, action));
+      }
       empty.hidden = cards.length > 0;
     }
   });
