@@ -4215,6 +4215,35 @@ body.terminal-open {
    other tab's cards; the desktop block below lays them side by side. */
 .board-col { min-width: 0; }
 
+/* The chief's plan (#1279) sits under Claude's turn: the two share one
+   wrapper, a grid cell on the desktop and plain stacked cards on the phone.
+   Its rows are the Board's flat card rows, not tappable, each with a
+   kind-pill status chip; an unknown status keeps the neutral pill. */
+.board-col-stack { min-width: 0; }
+.board-plan-line { margin: 0 0 6px; }
+.board-plan-heading {
+  margin: 12px 0 2px;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.board-plan-row .board-card-flat { gap: 8px; }
+.launch-btn .kind-pill.board-plan-chip {
+  flex: 0 0 auto;
+  margin-right: 0;
+  white-space: nowrap;
+}
+.launch-btn .kind-pill.board-plan-chip[data-tone="active"] {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.launch-btn .kind-pill.board-plan-chip[data-tone="attention"] { color: var(--attention-text); }
+.launch-btn .kind-pill.board-plan-chip[data-tone="done"] { color: var(--success-text); }
+/* What waits on Roberto leads the card, marked like an attention item. */
+.board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
+.board-plan-waiting { box-shadow: inset 3px 0 0 var(--attention); }
+.board-plan-waiting .board-card-flat { padding-left: 12px; }
+
 .board-list { list-style: none; margin: 0; padding: 0; }
 /* Column, not the shared .app-item row: the drawer and the issue-action
    buttons must land BELOW the card, never split it horizontally (#301
@@ -4564,6 +4593,12 @@ body.terminal-open {
     gap: 20px;
   }
   .board-col { margin: 0; }
+  .board-col-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .board-chief-plan { margin: 0; }
   /* A fifth of the pane is narrow: the body's 14px sides on top of each
      row's own 14px inset left the drawer's four actions too little room for
      one row. The rows carry that inset already, level with the summary's

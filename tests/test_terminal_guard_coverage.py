@@ -82,6 +82,12 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "The terminal-grade drill-downs beside it (/exchange, /dispatch, "
         "/issues/start, /chief/*) each carry their own passkey row."
     ),
+    "/api/board/chief-plan": (
+        "The chief's plan (#1279): repo names, issue refs and titles, and "
+        "one-line notes the board already shows beside it, read from a file "
+        "the chief writes. No session, transcript or terminal access, so the "
+        "same token as /api/board."
+    ),
     "/api/board/github/refresh": (
         "Forces a refresh of the cached GitHub issue/PR metadata the board "
         "already serves token-gated — no session or transcript access."

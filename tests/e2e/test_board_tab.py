@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
+from src import chief_plan
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import stable_read
 
@@ -93,7 +94,42 @@ def _board_payload(gh_age_seconds: int = 0) -> dict:
     return payload
 
 
-def _mock_board(page: Page, payload: dict | None = None) -> None:
+# The chief's plan file (#1279, format v1) as the chief's helper writes it.
+# Tests serve what the real reader (src/chief_plan.py) makes of it, so the
+# card is proven against the server's own output, not a hand-written copy.
+_PLAN_FILE_V1 = {
+    "version": 1,
+    "lanes": [{"repo": "app-launcher", "session": "s-work", "item": "#1273", "status": "gate"}],
+    "queue": [
+        {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default on desktop",
+         "status": "gate", "note": ""},
+        {"repo": "automation", "ref": "#135", "title": "parking burst trial",
+         "status": "someday", "note": "before Thu 1 Oct 16:00"},
+    ],
+    "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
+}
+
+
+def _plan(tmp_path, minutes_ago: int = 12) -> dict:
+    """The /api/board/chief-plan body for _PLAN_FILE_V1, stamped N min ago."""
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({**_PLAN_FILE_V1, "updated_at": _iso_utc(
+        datetime.now(timezone.utc) - timedelta(minutes=minutes_ago))}), encoding="utf-8")
+    return chief_plan.read_chief_plan(f)
+
+
+def _route_plan_from(page: Page, current: dict) -> None:
+    """Serve ``current["plan"]`` from the chief-plan endpoint at request time."""
+    page.route(
+        re.compile(r".*/api/board/chief-plan$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps(current["plan"]),
+        ),
+    )
+
+
+def _mock_board(page: Page, payload: dict | None = None, plan: dict | None = None) -> None:
     body = _json.dumps(payload or _board_payload())
     page.route(
         re.compile(r".*/api/board(?:\?.*)?$"),
@@ -101,6 +137,9 @@ def _mock_board(page: Page, payload: dict | None = None) -> None:
             status=200, content_type="application/json", body=body,
         ),
     )
+    # The chief's plan rides the Board poll (#1279); no plan unless a test
+    # serves one, so the real server's file never reaches a test.
+    _route_plan_from(page, {"plan": plan or {"state": "empty"}})
     # Default stub for the gh-refresh POST so an auto-refresh can never
     # escape to the real server (and its real gh subprocess). Tests that
     # care about the POST register their own capturing route *after* this
@@ -151,7 +190,7 @@ def _unfold(page: Page, *section_ids: str) -> None:
 
 @pytest.mark.iphone
 def test_board_renders_columns_counts_and_cards(
-    authed_page: Page, base_url: str
+    authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """One render of the mocked board, checked top to bottom (#1215 merged
     the section-structure and column-geometry tests in here): the section
@@ -159,7 +198,7 @@ def test_board_renders_columns_counts_and_cards(
     projection's column geometry — all before anything is unfolded — then
     the GitHub-fed columns' cards, and last a fold that must survive a poll.
     """
-    _mock_board(authed_page)
+    _mock_board(authed_page, plan=_plan(tmp_path))
     _open_board(authed_page, base_url)
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
@@ -176,10 +215,10 @@ def test_board_renders_columns_counts_and_cards(
     expect(first.locator("> summary .collapse-title")).to_have_text("Dispatch")
     expect(first.locator("#boardDispatch")).to_have_count(1)
 
-    sections = authed_page.locator("#boardColumns > details.card--collapsible")
+    sections = authed_page.locator("#boardColumns details.board-col")
     expect(sections).to_have_count(5)
     expect(
-        authed_page.locator("#boardColumns > details > summary .board-count")
+        authed_page.locator("#boardColumns details.board-col > summary .board-count")
     ).to_have_count(5)
     expect(authed_page.locator(".board-strip")).to_have_count(0)
 
@@ -252,6 +291,47 @@ def test_board_renders_columns_counts_and_cards(
             f"desktop column should sit in a 5-col grid: col={box_col['width']}, "
             f"container={box_container['width']}"
         )
+
+    # -- the chief's plan (#1279): a card, not a column, directly under
+    # Claude's turn in both projections --
+    expect(authed_page.locator("#boardColClaude + #boardChiefPlan")).to_have_count(1)
+    plan_card = authed_page.locator("#boardChiefPlan")
+    expect(plan_card).to_have_class(re.compile(r"\bcard\b"))
+    expect(plan_card).not_to_have_class(re.compile(r"\bboard-col\b"))
+    box_claude = stable_read(authed_page.locator("#boardColClaude").bounding_box)
+    box_plan = stable_read(plan_card.bounding_box)
+    assert box_claude and box_plan, "Claude's turn / chief's plan not laid out"
+    assert abs(box_plan["x"] - box_claude["x"]) < 2, (box_plan, box_claude)
+    assert 0 <= box_plan["y"] - (box_claude["y"] + box_claude["height"]) <= 32, (
+        f"plan should sit right under Claude's turn: {box_plan} vs {box_claude}")
+
+    plan_body = plan_card.locator(".board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    # No chief card in this board, and the session list was read: said
+    # plainly, so a stale plan never reads as current.
+    expect(plan_body.locator(".board-plan-chief")).to_have_text(
+        "Chief not running — this plan may be out of date.")
+    expect(plan_body.locator(".board-plan-age")).to_have_text("Updated 12 min ago")
+    waiting = plan_body.locator(".board-plan-group-waiting")
+    expect(waiting.locator(".board-plan-heading")).to_have_text("Waiting on you")
+    expect(waiting.locator("li.board-plan-waiting")).to_contain_text("Remember the last tab?")
+    expect(waiting.locator("li.board-plan-waiting")).to_contain_text("app-launcher#1131")
+    groups = plan_body.locator(".board-plan-heading")
+    expect(groups).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    lane = plan_body.locator(".board-plan-group").nth(1).locator("li.board-plan-row")
+    expect(lane).to_have_count(1)
+    expect(lane).to_contain_text("app-launcher")
+    expect(lane).to_contain_text("#1273")
+    expect(lane.locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
+    queue = plan_body.locator(".board-plan-group").nth(2).locator("li.board-plan-row")
+    expect(queue).to_have_count(2)
+    expect(queue.nth(0)).to_contain_text("#1273 Chat by default on desktop")
+    expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
+    expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
+    expect(queue.nth(1)).to_contain_text("automation · before Thu 1 Oct 16:00")
+    # An unknown status is shown as it is, on the neutral chip.
+    expect(queue.nth(1).locator(".board-plan-chip")).to_have_text("someday")
+    expect(queue.nth(1).locator(".board-plan-chip")).to_have_attribute("data-tone", "neutral")
 
     # -- the GitHub-fed columns' cards (this test's own) --
     _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
@@ -437,17 +517,27 @@ def _blind_payload() -> dict:
 
 
 def test_board_unreadable_sources_render_unknown_not_zero(
-    authed_page: Page, base_url: str
+    authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#915: an unreachable session-host must not read as "Nothing needs you
     right now." — the live columns show an unknown count, a distinct message
     and a status line; a job with unreadable history shows as a card, not as
     nothing. Once the list is read and genuinely empty, the same columns show
-    a plain 0 and today's text — a real zero must not look like a failure."""
+    a plain 0 and today's text — a real zero must not look like a failure.
+
+    The chief's plan card (#1279) follows the same rule: with the session
+    list unread, whether the chief runs is unknown, not "not running"; an
+    unreadable plan is a quiet note and no toast; a missing one is blank."""
     _mock_board(authed_page)
-    current = {"body": _blind_payload()}
+    current = {"body": _blind_payload(), "plan": _plan(tmp_path)}
     _route_board_from(authed_page, current)
+    _route_plan_from(authed_page, current)
     _open_board(authed_page, base_url)
+
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body.locator(".board-plan-chief")).to_have_text(
+        "Chief status unknown — session-host unreachable.")
+    expect(plan_body.locator("li.board-plan-row")).to_have_count(4)
 
     for section in ("#boardColClaude", "#boardColYours"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
@@ -475,7 +565,14 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     read_empty["columns"]["your_turn"] = []
     expect(authed_page.locator("#boardRefresh")).to_be_enabled()
     current["body"] = read_empty
+    current["plan"] = {"state": "unreadable"}
     authed_page.locator("#boardRefresh").click()
+
+    expect(plan_body).to_have_attribute("data-state", "unreadable")
+    expect(plan_body.locator(".board-plan-note")).to_have_text("Plan unreadable.")
+    expect(plan_body.locator("li.board-plan-row")).to_have_count(0)
+    expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
+    expect(authed_page.locator("#toast")).not_to_contain_text(re.compile("plan", re.I))
 
     for section in ("#boardColClaude", "#boardColYours"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("0")
@@ -491,6 +588,13 @@ def test_board_unreadable_sources_render_unknown_not_zero(
         "session-host unreachable"
     )
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
+
+    # No plan file: the card stays blank, no note, no line.
+    current["plan"] = {"state": "empty"}
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    authed_page.locator("#boardRefresh").click()
+    expect(plan_body).to_have_attribute("data-state", "empty")
+    expect(plan_body.locator("> *")).to_have_count(0)
 
 
 _FAKE_EXCHANGE = {

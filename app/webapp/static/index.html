@@ -1317,20 +1317,37 @@
             <div class="board-empty" data-col="backlog" hidden></div>
           </div>
         </details>
-        <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
-          <summary class="collapse-summary">
-            <span class="collapse-main">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
-              <h3 class="collapse-title">Claude's turn</h3>
-              <span class="collapse-count board-count" data-col="claude_turn">0</span>
-            </span>
-            <span class="collapse-chevron" aria-hidden="true">›</span>
-          </summary>
-          <div class="collapse-body">
-            <ul class="card-list board-list" data-col="claude_turn"></ul>
-            <div class="board-empty" data-col="claude_turn" hidden></div>
-          </div>
-        </details>
+        <!-- Claude's turn and the chief's plan share one grid cell (#1279), so
+             the plan sits directly under the section on the desktop grid as
+             it does in the phone's stack. -->
+        <div class="board-col-stack">
+          <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
+            <summary class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+                <h3 class="collapse-title">Claude's turn</h3>
+                <span class="collapse-count board-count" data-col="claude_turn">0</span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <ul class="card-list board-list" data-col="claude_turn"></ul>
+              <div class="board-empty" data-col="claude_turn" hidden></div>
+            </div>
+          </details>
+          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
+            <summary class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
+                <h3 class="collapse-title">Chief's plan</h3>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="board-plan-body"></div>
+            </div>
+          </details>
+        </div>
         <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
           <summary class="collapse-summary">
             <span class="collapse-main">

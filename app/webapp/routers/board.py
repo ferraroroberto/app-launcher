@@ -68,6 +68,7 @@ from src import (
     agents,
     audit,
     board,
+    chief_plan,
     dispatch_brief,
     github_client,
     quota_usage,
@@ -277,6 +278,19 @@ async def get_board(request: Request) -> Dict[str, Any]:
         },
         "quota_lines": quota_lines,
     }
+
+
+@router.get("/api/board/chief-plan")
+async def get_chief_plan(request: Request) -> Dict[str, Any]:
+    """The chief's plan for the Board's "Chief's plan" card (#1279).
+
+    Read-only, polled alongside ``/api/board``: ``state`` is ``ok`` (with
+    ``updated_at``, ``lanes``, ``queue``, ``waiting_on_roberto``), ``empty``
+    or ``unreadable``. Whether the chief is running is the client's to say,
+    from the session cards ``/api/board`` already carries.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    return await asyncio.to_thread(chief_plan.read_chief_plan, Path(cfg.chief_plan_file))
 
 
 @router.get("/api/rate-limits")

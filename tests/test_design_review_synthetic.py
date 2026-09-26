@@ -29,7 +29,7 @@ from src.subprocess_flags import NO_WINDOW
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PATH_FIELDS = ("projects_dir", "apps_scan_root", "life_os_dir", "claude_config_dir", "sessions_state_file",
-               "rate_limits_file", "context_filter_mode_file", "context_filter_log_file")
+               "rate_limits_file", "chief_plan_file", "context_filter_mode_file", "context_filter_log_file")
 
 
 def _seed(tmp_path: Path) -> syn.Paths:

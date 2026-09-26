@@ -303,6 +303,8 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
                 # Same reasoning for the rate-limits cache (issue #326): never
                 # let a test touch ~/.claude/hooks/state/rate-limits.json.
                 "rate_limits_file": str(tmp_path / "rate-limits.json"),
+                # ...and for the chief's plan (#1279).
+                "chief_plan_file": str(tmp_path / "chief-plan.json"),
                 # Context filter (issue #713): never let a test touch the
                 # real machine-wide ~/.fleet-context-filter/{mode.json,
                 # shadow.jsonl} — same isolation reasoning as the two files

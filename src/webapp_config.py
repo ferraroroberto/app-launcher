@@ -252,6 +252,11 @@ def _default_sessions_state_file() -> str:
     return str(Path.home() / ".claude" / "hooks" / "state" / "sessions-state.json")
 
 
+def _default_chief_plan_file() -> str:
+    """Where fleet-config's ``chief_ops.py plan`` writes the chief's plan (#1279)."""
+    return str(Path.home() / ".claude" / "hooks" / "state" / "chief-plan.json")
+
+
 def _default_rate_limits_file() -> str:
     """Where fleet-config's statusline writer caches 5h/7d usage % (issue #326)."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
@@ -334,6 +339,10 @@ class WebappConfig:
     # Read defensively like sessions_state_file: absent/corrupt/stale hides
     # the Board's usage badges, never an error.
     rate_limits_file: str = field(default_factory=_default_rate_limits_file)
+    # The fleet chief's plan (#1279): lanes, queue, what waits on Roberto.
+    # Read defensively like sessions_state_file: absent/corrupt/unsupported
+    # leaves the Board's "Chief's plan" card blank, never an error.
+    chief_plan_file: str = field(default_factory=_default_chief_plan_file)
     # --- Context filter (issue #713, fleet-config#392/#541/#544) ---------
     # The machine-wide mode switch (off/shadow/rewrite) and telemetry log the
     # fleet's PreToolUse context-filter hook reads/writes. The mode itself is
