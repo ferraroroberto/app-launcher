@@ -1241,7 +1241,9 @@ summary + .opt-group { border-top: 0; }
 .jobs-agenda-time {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  color: var(--accent);
+  /* The accent TEXT role, not the link accent: dark --accent read 4.21:1 on
+     the row's hover wash, which a tap leaves stuck on a phone (#1175). */
+  color: var(--accent-text);
   min-width: 42px;
 }
 .jobs-agenda-name {

@@ -21,6 +21,9 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._contrast import contrast_ratio
+from tests.e2e.conftest import stable_read
+
 pytestmark = pytest.mark.smoke
 
 # One anchor for both sides of the comparison (#918). `_dayHeader` in
@@ -124,6 +127,16 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     heights = authed_page.eval_on_selector_all(
         ".jobs-agenda-row", "els => els.map(e => e.getBoundingClientRect().height)")
     assert all(h >= 43.99 for h in heights), f"agenda rows under 44px: {heights}"
+    # The accent time reads at 4.5:1 in both themes, on the row's hover wash
+    # too: a tap leaves :hover stuck on a phone (#1175, COLOR-02: the dark
+    # theme's link accent measured 4.21:1 there).
+    row = authed_page.locator(".jobs-agenda-row").first
+    row.hover()
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        ratio = stable_read(lambda: contrast_ratio(row.locator(".jobs-agenda-time")))
+        assert ratio >= 4.5, f"{theme}: agenda time at {ratio:.2f}:1, under 4.5:1"
+    authed_page.evaluate("delete document.documentElement.dataset.theme")
 
     # Dense cadences are summarised, not expanded into the list.
     expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")
