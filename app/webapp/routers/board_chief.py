@@ -97,7 +97,7 @@ _CHIEF_PROJECT_DIR_NAME = "fleet-config"
 
 async def _mark_chief_managed(
     cfg: WebappConfig, request: Request, sid: str, repo: str, number: int
-) -> None:
+) -> bool:
     """Best-effort: record a launcher-dispatched worker as chief-managed
     (fleet-config#474) so `hooks/notify_on_idle.py` and
     `hooks/block_askuserquestion_chief.py` route it like one dispatched
@@ -116,6 +116,10 @@ async def _mark_chief_managed(
     notifications to chief. Never raises; a marking failure must never fail
     an otherwise-successful dispatch (mirrors `chief_ops.py cmd_dispatch`'s
     own best-effort mark).
+
+    Returns whether both signals held — a loopback caller while a chief is
+    alive — whatever became of the mark itself: the caller decides the PC
+    window from it (#1283). False when either can't be established.
     """
     # Imported here, not at module load, so a test's `monkeypatch.setattr
     # (middleware, "LOOPBACK_HOSTS", ...)` is actually observed -- a
@@ -124,22 +128,22 @@ async def _mark_chief_managed(
     from app.webapp.middleware import LOOPBACK_HOSTS
 
     if not sid or client_ip(request) not in LOOPBACK_HOSTS:
-        return
+        return False
     try:
         live, _ = await _live_sessions_with_chief_label(cfg)
     except Exception as exc:  # noqa: BLE001 -- best-effort, never fail the dispatch
         logger.debug("chief-managed mark: could not read live sessions: %s", exc)
-        return
+        return False
     if not _find_chief(live):
-        return
+        return False
     try:
         fleet_config = _resolve_repo_entry(cfg, _CHIEF_REPO)
     except HTTPException:
-        return
+        return True
     venv_python = Path(fleet_config.project_dir) / ".venv" / "Scripts" / "python.exe"
     script = Path(fleet_config.project_dir) / "skills" / "_lib" / "chief_managed.py"
     if not venv_python.exists() or not script.exists():
-        return
+        return True
     try:
         await asyncio.to_thread(
             subprocess.run,
@@ -152,6 +156,7 @@ async def _mark_chief_managed(
         logger.warning(
             "⚠️ chief-managed mark failed for session %s: %s", sid[:8], exc
         )
+    return True
 
 
 def _live_title_names_chief(sess: Dict[str, Any]) -> bool:

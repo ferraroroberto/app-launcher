@@ -340,11 +340,23 @@ class TestChiefManagedMarking:
         monkeypatch.setattr(board_chief.subprocess, "run", fake_run)
         return calls
 
+    @pytest.fixture
+    def _mirror_asked(self, monkeypatch):
+        """Each launch that got as far as the PC-window decision (#1283).
+        The probe answers no, so no window is ever spawned by a test."""
+        from app.webapp.routers import _helpers
+        asked: list = []
+        monkeypatch.setattr(
+            _helpers, "should_mirror_to_pc",
+            lambda show, request, body: asked.append(dict(body)) or False,
+        )
+        return asked
+
     def test_marks_when_chief_alive_and_loopback(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session,
-        _fleet_config_repo, _fake_run,
+        _fleet_config_repo, _fake_run, _mirror_asked, monkeypatch,
     ):
-        client, _, overrides = webapp_client
+        client, app, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [
             {"session_id": "chief-1", "kind": "pty", "alive": True, "label": "chief"},
         ]
@@ -352,13 +364,29 @@ class TestChiefManagedMarking:
         assert resp.status_code == 200
         assert len(_fake_run) == 1
         assert _fake_run[0][2:] == ["mark", "disp-1", "myrepo", "0"]
+        # #1283: the chief's own dispatch opens no PC window at all...
+        assert _mirror_asked == []
+        # ...until Roberto opens the session himself: the mirror action the
+        # Code tab's row tap calls still opens it.
+        from app.webapp.routers import sessions as sessions_router
+        app.state.webapp_config.claude_show_local_window = True
+        opened = MagicMock(return_value="opened")
+        monkeypatch.setattr(sessions_router.launcher, "open_or_focus_mirror_window", opened)
+        manual = client.post("/api/claude-code/sessions/disp-1/mirror")
+        assert manual.json() == {"mirrored": True, "action": "opened"}
+        assert opened.call_args.args[1] == "disp-1"
+        # A browser's Board tap keeps today's rule, chief running or not.
+        assert _dispatch(client, overrides, desktop=True).status_code == 200
+        assert [b.get("desktop") for b in _mirror_asked] == [True]
 
     def test_does_not_mark_without_a_live_chief_session(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn, _ready_session,
-        _fleet_config_repo, _fake_run,
+        _fleet_config_repo, _fake_run, _mirror_asked,
     ):
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = []
         resp = _dispatch(client, overrides)
         assert resp.status_code == 200
         assert _fake_run == []
+        # No chief behind it: the usual PC-window rule still decides.
+        assert len(_mirror_asked) == 1

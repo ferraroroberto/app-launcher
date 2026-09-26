@@ -384,6 +384,19 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     return result
 
 
+def _opens_pc_window(chief_dispatch: bool, body: Dict[str, Any]) -> bool:
+    """Whether a Board launch may open the PC mirror window (#1283).
+
+    The fleet chief dispatches over loopback with no browser flag, and its
+    workers run unwatched: a window per dispatch put its whole queue on
+    Roberto's desktop. Such a launch opens none; the window comes when he
+    opens the session himself (the Code tab's row, or the mirror action).
+    A browser's own Board tap (``desktop`` or ``in_page`` set) keeps the
+    usual rule, chief running or not.
+    """
+    return not chief_dispatch or bool(body.get("desktop")) or bool(body.get("in_page"))
+
+
 @router.post("/api/board/issues/start")
 async def start_issue(request: Request) -> Dict[str, Any]:
     """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey, #301).
@@ -463,12 +476,14 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         if brief_path is not None:
             await asyncio.to_thread(dispatch_brief.discard_brief, brief_path)
         raise
-    await board_chief._mark_chief_managed(cfg, request, sid, entry.name, number)
+    chief_dispatch = await board_chief._mark_chief_managed(
+        cfg, request, sid, entry.name, number)
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
         sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
         skill=prompt, audit_mod=audit, mirror_fn=open_local_terminal_window,
         brief_chars=len(brief) if brief is not None else None,
+        mirror=_opens_pc_window(chief_dispatch, body),
     )
     # Auto-name the session after the issue title (#467): a Board-started
     # session is then recognizable in the Coding tab immediately, instead of
@@ -539,11 +554,13 @@ async def dispatch_goal(request: Request) -> Dict[str, Any]:
     )
     command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
     await _type_into_session(cfg.session_host_port, sid, command)
-    await board_chief._mark_chief_managed(cfg, request, sid, entry.name, 0)
+    chief_dispatch = await board_chief._mark_chief_managed(
+        cfg, request, sid, entry.name, 0)
 
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
         sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
         skill=command, audit_mod=audit, mirror_fn=open_local_terminal_window,
+        mirror=_opens_pc_window(chief_dispatch, body),
     )
     return {"launched": command, "repo": entry.name, "session": session}
