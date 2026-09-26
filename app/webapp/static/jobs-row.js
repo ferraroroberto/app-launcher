@@ -217,8 +217,12 @@ export function toEpoch(isoString) {
 
 function setRunBtnState(button, job) {
   button.innerHTML = job.running ? icon('hourglass') : icon('play');
-  button.title = job.running ? 'A run is in progress' : 'Run ' + job.name + ' now';
-  button.setAttribute('aria-label', 'Run now');
+  // Icon-only on purpose (#1238 J-01), so the accessible name carries the
+  // job: a bare "Run now" on every row left a screen reader unable to say
+  // which job each one runs.
+  const label = job.running ? job.name + ' is running' : 'Run ' + job.name + ' now';
+  button.title = label;
+  button.setAttribute('aria-label', label);
   button.disabled = !!job.running;
 }
 

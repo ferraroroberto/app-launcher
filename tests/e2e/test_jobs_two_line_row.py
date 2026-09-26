@@ -133,6 +133,9 @@ def test_row_is_two_lines_with_one_action_and_a_menu(
     expect(run).to_be_visible()
     assert run.bounding_box()["height"] >= 44, run.bounding_box()
     expect(run).to_have_class(re.compile(r"\bbutton-tint\b"))
+    # Icon-only by decision (#1238 J-01); its accessible name names the job,
+    # so a screen reader tells one row's Run from the next.
+    expect(run).to_have_attribute("aria-label", "Run Nightly reconciliation now")
     expect(row.locator("[data-role='job-menu']")).to_have_count(1)
     # Nothing else is a visible action on the row itself.
     expect(row.locator(".row-actions > button")).to_have_count(2)
