@@ -36,7 +36,7 @@ disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "da39e1b175
 home_head = { src = "app/webapp/static/_vendored/home-head", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "a16c9aab845a97499406284107e62e8ae3a5a9ec", dest = "app/webapp/static/_vendored/nav" }
 select_native = { src = "app/webapp/static/_vendored/select-native", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/select-native" }
-empty_state = { src = "app/webapp/static/_vendored/empty-state", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/empty-state" }
+empty_state = { src = "app/webapp/static/_vendored/empty-state", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "app/webapp/static/_vendored/empty-state" }
 range_tab = { src = "app/webapp/static/_vendored/range-tab", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/range-tab" }
 modal = { src = "app/webapp/static/_vendored/modal", sha = "a16c9aab845a97499406284107e62e8ae3a5a9ec", dest = "app/webapp/static/_vendored/modal" }
 text_size = { src = "app/webapp/static/_vendored/text-size", sha = "ad963f3010f7fb012959527fdf893a7041004ced", dest = "app/webapp/static/_vendored/text-size" }
@@ -53,7 +53,7 @@ action_row = { src = "app/webapp/static/_vendored/action-row", sha = "6204cbc79f
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
 geometry = { src = "tests/e2e/_geometry.py", sha = "05f3e6b2a8dc5a39f46be955055ccc3fe20b23a0", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
-classify_e2e = { src = "scripts/classify_e2e.py", sha = "16741c3610bc57dccc75546fd55bc869acf07dab", dest = "scripts/classify_e2e.py" }
+classify_e2e = { src = "scripts/classify_e2e.py", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "scripts/classify_e2e.py" }
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
