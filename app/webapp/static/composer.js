@@ -87,6 +87,7 @@ import { apiFailToast, apiRaw, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { createRowMenu } from './row-menu.js';
+import { bindLongPressHint } from './long-press-hint.js';
 import { mountKeysPopover } from './terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
 
@@ -185,6 +186,8 @@ function setButtonState(btn, enabled, titleOn, titleOff) {
 
 export function mountComposer(host, opts) {
   const el = render(host, opts.placeholder || 'Message for the agent');
+  // The terminal-keys glyph isn't a conventional icon (#1238 J-05).
+  bindLongPressHint(el.keys);
   let keysOpts = opts.keys || null;
   let ocrOn = false;
   // Fixed for the life of the mount: the surface opts into the shortcut at

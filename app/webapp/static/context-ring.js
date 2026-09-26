@@ -22,6 +22,7 @@
 import { els, state } from './state.js';
 import { jsonApi, toast } from './api.js';
 import { usageTier } from './dom-utils.js';
+import { bindLongPressHint } from './long-press-hint.js';
 
 const CONTEXT_POLL_MS = 10000;
 // Matches the <circle r="9"> in index.html. The dash length is computed
@@ -71,7 +72,7 @@ function render(percent) {
   const tier = usageTier(percent);
   btn.dataset.tier = tier === 'warn' || tier === 'danger' ? tier : 'normal';
   btn.dataset.percent = String(percent);
-  const label = 'Context ' + percent + '% used';
+  const label = 'Context window ' + percent + '% used';
   btn.title = label;
   btn.setAttribute('aria-label', label);
   btn.hidden = false;
@@ -132,6 +133,7 @@ export function syncContextRing() {
 
 export function wireContextRing() {
   if (!els.contextRing) return;
+  bindLongPressHint(els.contextRing);
   els.contextRing.addEventListener('click', function () {
     const pct = els.contextRing.dataset.percent;
     if (pct == null) return;

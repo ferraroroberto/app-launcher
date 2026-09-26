@@ -48,6 +48,7 @@ import { closeSpeakPopover, revealReadAloudButton } from './terminal-readaloud.j
 import { terminalComposer } from './terminal-compose.js';
 import { isWideLayout } from './layout.js';
 import { setTab } from './tabs.js';
+import { bindLongPressHint } from './long-press-hint.js';
 
 // Last-viewed mode per session id — one JSON map under one key rather than
 // a key per session, capped so ended sessions don't accumulate forever.
@@ -116,7 +117,8 @@ function syncSegment(mode, session) {
   const label = mode === 'chat' ? 'Chat' : 'Terminal';
   if (ok) {
     btn.removeAttribute('aria-disabled');
-    btn.title = label;
+    // What the long-press hint (#1238 J-05) and a desktop hover say.
+    btn.title = mode === 'chat' ? 'Show the chat' : 'Show the terminal';
     btn.setAttribute('aria-label', label);
   } else {
     btn.setAttribute('aria-disabled', 'true');
@@ -252,6 +254,8 @@ export function wireSessionModeToggle() {
   });
   wireContextRing();
   if (!els.sessionMode) return;
+  bindLongPressHint(els.sessionModeTerminal);
+  bindLongPressHint(els.sessionModeChat);
   els.sessionMode.addEventListener('click', function (ev) {
     const btn = ev.target.closest('.session-mode-btn');
     if (!btn || !state.sessionView) return;
