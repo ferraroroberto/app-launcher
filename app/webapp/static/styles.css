@@ -4377,7 +4377,10 @@ span.chief-answer-ref { color: var(--muted); }
   text-align: left;
   background: none;
   border: none;
-  padding: 12px 14px;
+  /* The text's left inset inside a column, one source for every card kind
+     (#1303: the Backlog row reads it too). */
+  --board-card-inset: 14px;
+  padding: 12px var(--board-card-inset);
   color: var(--fg);
   cursor: pointer;
 }
@@ -4497,6 +4500,11 @@ span.chief-answer-ref { color: var(--muted); }
   width: auto;
   padding: 10px 4px;
 }
+/* A Backlog row's text starts where the other columns' cards' does (#1303);
+   the right side stays tight so the action rail keeps its edge. The
+   Chief's-plan rows keep the small inset that lines them up with the plan
+   card's own headings. */
+.board-item-issue .board-card-flat { padding-left: var(--board-card-inset); }
 .board-card-text {
   display: flex;
   flex-direction: column;
