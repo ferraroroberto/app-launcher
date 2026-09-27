@@ -361,7 +361,6 @@ html, body {
 .app {
   max-width: var(--layout-measure);
   margin: 0 auto;
-  padding-top: env(safe-area-inset-top, 0);
   padding-left: var(--gap);
   padding-right: var(--gap);
 }
