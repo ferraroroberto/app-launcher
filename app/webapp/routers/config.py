@@ -28,7 +28,9 @@ from src.model_catalog import (
     catalog_payload,
 )
 from src.webapp_config import (
+    MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
     MAX_TERMINAL_HISTORY_LINES,
+    MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
     MIN_TERMINAL_HISTORY_LINES,
     VALID_CODEX_PERMISSION_MODES,
     VALID_GROK_EFFORTS,
@@ -71,6 +73,10 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "terminal_history_lines": cfg.terminal_history_lines,
         "terminal_history_lines_min": MIN_TERMINAL_HISTORY_LINES,
         "terminal_history_lines_max": MAX_TERMINAL_HISTORY_LINES,
+        # The chief's auto-compact threshold (#1298): percent, 0 = off.
+        "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
+        "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
+        "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
         "claude": claude_flags_payload(cfg),
         "codex": {
             "model": cfg.codex_model,
@@ -144,6 +150,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "life_os_dir",
         "claude_config_dir",
         "terminal_history_lines",
+        "chief_auto_compact_threshold",
         "claude_model",
         "claude_effort",
         "claude_verbose",
@@ -176,6 +183,16 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
+    # The threshold (#1298) is a whole percent. A bool is an int in Python
+    # and a float would be silently truncated, so both are refused here;
+    # the range itself is _validate's, which words the 400.
+    if "chief_auto_compact_threshold" in patch:
+        value = patch["chief_auto_compact_threshold"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise HTTPException(
+                status_code=400,
+                detail="chief_auto_compact_threshold must be an integer percent",
+            )
     # The favourite agent (#1070) must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
     # coerced to DEFAULT_AGENT rather than stored, because the row renders

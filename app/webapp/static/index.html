@@ -1491,6 +1491,34 @@
         </div>
       </details>
 
+      <!-- Chief (#1298): the fleet chief's auto-compact threshold, which
+           fleet-config#1052's chief reads from GET /api/board/chief-settings.
+           The switch saves at once like every other Settings switch (off
+           stores 0); the percent saves with the card's Save. -->
+      <details id="chiefSettingsPanel" class="card card--collapsible settings-card">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
+            <h3 class="collapse-title">Chief</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <div class="switch-row settings-switch-row">
+          <span>Auto-compact</span>
+          <button type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
+        </div>
+        <label class="stacked">
+          <span>Compact at context use (%)</span>
+          <input id="chiefAutoCompactThreshold" type="number" class="input-native" inputmode="numeric" min="10" max="90" step="5" aria-describedby="chiefAutoCompactHelp">
+        </label>
+        <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
+        <div class="row settings-actions">
+          <button id="saveChiefSettings" type="button" class="button-primary"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-save"></use></svg> Save</button>
+        </div>
+        </div>
+      </details>
+
       <details id="tokensPanel" class="card card--collapsible settings-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
