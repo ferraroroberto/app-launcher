@@ -1855,12 +1855,13 @@ export function syncLiveRefresh() {
   if (!view.liveTimer && !view.ticking) liveTick();
 }
 
-// The source went unavailable. Say which, and stop only for the one reason
-// that is actually terminal.
+// The source went unavailable. Say which, and stop only for the reasons
+// that are actually terminal.
 //
 // `session_not_found` means the session exited: latch off, because nothing
 // will bring it back and polling a dead session forever is the thing the
-// acceptance criterion forbids. Every other reason is a condition that can
+// acceptance criterion forbids. `unsupported_agent` never changes for a
+// session either. Every other reason is a condition that can
 // clear on its own — most sharply `no_transcript`, which a *live* Claude
 // session reports for as long as its hook row is deleted and the filesystem
 // fallback can't name the file (#1023) — so those keep ticking, backed off,
@@ -1870,7 +1871,7 @@ export function syncLiveRefresh() {
 function liveUnavailable(reason) {
   showState(REASON_COPY[reason] || 'Transcript unavailable');
   view.reasonShown = true;
-  if (reason === 'session_not_found') {
+  if (reason === 'session_not_found' || reason === 'unsupported_agent') {
     view.ended = true;   // the list stays on screen: what was read is still worth reading
     stopLiveTimer();
     return;
@@ -1935,18 +1936,21 @@ async function forwardRead(target, manual) {
     loadNewest();
     return 'reset';
   }
-  // A tick that got an answer clears any reason line an earlier failed one
-  // left on screen, so a condition that cleared by itself looks like it.
-  if (target.reasonShown) {
-    target.reasonShown = false;
-    if (view.entries && view.entries.length) hideState();
-  }
   if (body.changed) {
     target.tail = body.tail;
     target.size = body.size;
     applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors);
   } else if (body.size != null) {
     target.size = body.size;
+  }
+  // A tick that got an answer clears any reason line an earlier failed one
+  // left on screen, so a condition that cleared by itself looks like it.
+  // Checked after this tick's turns land: a view that opened unavailable
+  // (#1300) has none until then.
+  if (target.reasonShown) {
+    target.reasonShown = false;
+    if (view.entries && view.entries.length) hideState();
+    else showState('Nothing in the transcript yet');
   }
   scheduleLive(LIVE_POLL_MS);
   return body.changed ? 'changed' : 'unchanged';
@@ -1990,8 +1994,12 @@ async function loadNewest() {
   }
   if (!view || view.seq !== seq) return;
   if (!body.available) {
-    showState(REASON_COPY[body.reason] || 'Transcript unavailable');
-    view.ended = true;
+    // Only an ending ends the view, as on a live tick. A `claude --resume`
+    // launch sits here from the start, with no transcript yet and the resume
+    // picker on its screen, so the screen is asked about now rather than
+    // after the first backed-off tick (#1300).
+    liveUnavailable(body.reason);
+    pollPicker();
     return;
   }
   // The page is one complete list, as it has always been. #1050 adds `tail`

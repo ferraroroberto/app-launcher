@@ -697,6 +697,45 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
 
 
 @pytest.mark.iphone
+def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty_state(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1300, reopened: a session launched with `--resume` has no transcript
+    yet, and its screen shows the resume picker from the start. The first
+    load's `no_transcript` used to end the view, so the screen was never
+    asked about and Chat showed only "No transcript found". The card must
+    come up in that line's place, and the line comes back once it is ✕'d."""
+    page = authed_page
+    picker = _Picker(page)
+    picker.resume_up = True
+    _Resume(page)
+    tr = _boot(page, base_url)
+    tr.unavailable = "no_transcript"
+    _open_chat(page)
+
+    card = page.locator("#transcriptResumeLive")
+    state = page.locator("#transcriptState")
+    expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
+    expect(card.locator(".tr-resume-opt")).to_have_count(3)
+    expect(state).to_be_hidden()
+    box = stable_read(card.bounding_box)
+    viewport = page.viewport_size
+    assert box and box["x"] >= 0 and box["x"] + box["width"] <= viewport["width"] + 1, box
+
+    card.locator(".tr-resume-close").click()
+    expect(card).to_be_hidden()
+    expect(state).to_contain_text("No transcript found")
+
+    # The view stayed live: once a transcript appears, its turns land by
+    # themselves and the reason line goes with them.
+    tr.unavailable = None
+    expect(page.locator("#transcriptList")).to_contain_text(
+        "opening conftest now", timeout=OVERLAY_OPEN_MS
+    )
+    expect(state).to_be_hidden()
+
+
+@pytest.mark.iphone
 def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_composer(
     authed_page: Page, base_url: str
 ) -> None:

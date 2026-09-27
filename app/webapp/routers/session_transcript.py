@@ -707,29 +707,46 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
 #
 # Claude Code's /resume picker is a long scrolling TUI list; the Chat pane
 # offers the project's conversations as a searchable card instead
-# (src.resume_picker). A pick is typed as `/resume <id>` + Enter, which the
-# probe on #1300 showed resumes exactly that conversation: first Escape when
-# the picker is up (re-read until it has closed), then the command. The list
-# and the id are checked again at send time, and the result is read back off
-# the terminal rather than assumed.
+# (src.resume_picker). With no picker on screen a pick is typed as
+# `/resume <id>` + Enter, which the probe on #1300 showed resumes exactly that
+# conversation. With the picker up it is never left with Escape, which exits
+# a `claude --resume` launch outright: the highlight is stepped down one row
+# at a time, re-read after each, and Enter goes in only once the highlighted
+# row can be nothing but the pick. The list and the id are checked again at
+# send time, and the result is read back off the terminal rather than assumed.
 
 # How long a pick waits for the terminal to say what happened, and how often
 # it looks. Resuming a long conversation takes a few seconds to repaint.
 _RESUME_CONFIRM_S = 10.0
 _RESUME_POLL_S = 0.5
-# How long Escape gets to close the picker before the command is typed.
-_RESUME_ESCAPE_S = 3.0
+# How long one Down gets to repaint the picker before it is read anyway (two
+# neighbouring rows can look alike, so an unchanged screen is no failure).
+_RESUME_STEP_S = 1.5
+# Steering re-reads far more often than a read-back: a long list takes one
+# step per row, and each step waits on this.
+_RESUME_STEP_POLL_S = 0.1
 _RESUME_VIA = ("picker", "composer")
-# The failure detail when Escape leaves the picker up, so no command is typed.
-_PICKER_STAYED = "the resume picker did not close after Escape"
+# Why a steered pick stopped short of Enter: nothing was selected, and the
+# only keys sent moved the highlight.
+_STEER_REFUSALS = {
+    "closed": "The resume picker closed on the terminal: nothing was selected",
+    "ambiguous": "The picker shows too little of that title to tell it from another session: "
+                 "pick it on the terminal. Nothing was selected",
+    "missing": "That session isn't in the terminal's picker list: nothing was selected",
+    "unreadable": "Chat lost sight of the terminal's screen while finding that session: "
+                  "nothing was selected",
+}
 
 
 def _normalize_title(text: Any) -> str:
     return " ".join(str(text or "").split()).casefold()
 
 
-async def _wait_for_screen(cfg: WebappConfig, sid: str, check, timeout: float) -> Any:
-    """Re-read the terminal until ``check(lines, session)`` answers something
+async def _wait_for_screen(
+    cfg: WebappConfig, sid: str, check, timeout: float, poll: Optional[float] = None
+) -> Any:
+    """Re-read the terminal every ``poll`` seconds (default
+    :data:`_RESUME_POLL_S`) until ``check(lines, session)`` answers something
     truthy, or ``timeout`` passes (then ``None``)."""
     loop = asyncio.get_running_loop()
     end = loop.time() + timeout
@@ -741,7 +758,46 @@ async def _wait_for_screen(cfg: WebappConfig, sid: str, check, timeout: float) -
                 return found
         if loop.time() >= end:
             return None
-        await asyncio.sleep(_RESUME_POLL_S)
+        await asyncio.sleep(_RESUME_POLL_S if poll is None else poll)
+
+
+async def _steer_picker(
+    cfg: WebappConfig, sid: str, lines: List[str], sessions: List[Dict[str, Any]], target: str
+) -> Tuple[str, int]:
+    """Move the ``/resume`` picker's highlight onto ``target``: ``(verdict,
+    downs_sent)``, the verdict ``"target"`` (Enter is safe) or a key of
+    :data:`_STEER_REFUSALS`.
+
+    One Down per step, the screen re-read after each. Down wraps from the
+    last row to the first, so the list's length plus one steps visit every
+    row from any start (the search box included). Only arrow keys are sent.
+    A socket failure raises :class:`_PartialAnswer` counting every Down sent.
+    """
+    total = resume_picker.picker_total(lines)
+    budget = min(max(total or 0, len(sessions)) + 1, resume_picker.LIST_CAP + 1)
+    downs = 0
+    ambiguous = False
+    while True:
+        verdict = resume_picker.cursor_on(lines, sessions, target) if lines is not None else "unreadable"
+        if verdict in ("target", "closed", "unreadable"):
+            return verdict, downs
+        ambiguous = ambiguous or verdict == "ambiguous"
+        if downs >= budget:
+            return ("ambiguous" if ambiguous else "missing"), downs
+        try:
+            await _type_into_pty(cfg.session_host_port, sid, [(resume_picker.DOWN, False)])
+        except _PartialAnswer as exc:
+            # Count the Downs that did go in, so the caller never says
+            # "nothing reached the terminal" about a moved highlight.
+            raise _PartialAnswer(downs + exc.sent, budget, exc.detail) from exc
+        downs += 1
+        before = lines
+        lines = await _wait_for_screen(
+            cfg, sid, lambda ls, _s: ls if ls != before else None, _RESUME_STEP_S,
+            poll=_RESUME_STEP_POLL_S,
+        )
+        if lines is None:
+            _reason, _session, lines = await _read_screen(cfg, sid)
 
 
 @router.get("/api/claude-code/sessions/{sid}/resume-sessions")
@@ -814,36 +870,48 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     )
     target = body.get("session_id")
     try:
-        keys = resume_picker.resume_keys(sessions, target)
+        if showing:
+            title = resume_picker.steer_check(sessions, target)["title"]
+            keys = [(resume_picker.ENTER, False)]
+        else:
+            title = resume_picker.pick_session(sessions, target)["title"]
+            keys = resume_picker.resume_keys(sessions, target)
     except resume_picker.ResumeRefused as exc:
         logger.info("ℹ️ resume %s refused: %s", sid[:8], exc)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    title = next(s["title"] for s in sessions if s["id"] == target)
-    steps = len(keys) + (1 if showing else 0)
+    downs = 0
+    steering = showing
     try:
         if showing:
-            await _type_into_pty(cfg.session_host_port, sid, [(resume_picker.ESCAPE, False)])
-            closed = await _wait_for_screen(
-                cfg, sid, lambda ls, _s: not resume_picker.parse_resume_picker(ls), _RESUME_ESCAPE_S
-            )
-            if not closed:
-                raise _PartialAnswer(1, steps, _PICKER_STAYED)
+            verdict, downs = await _steer_picker(cfg, sid, lines, sessions, target)
+            steering = False
+            if verdict != "target":
+                await audit_off_loop(
+                    audit.session_log, sid, "resume", via=via, steps=downs, reason=f"steer_{verdict}",
+                )
+                logger.info("⚠️ resume %s: picker not steered onto the pick (%s, %d downs)",
+                            sid[:8], verdict, downs)
+                raise HTTPException(status_code=409, detail=_STEER_REFUSALS[verdict])
         await _type_into_pty(cfg.session_host_port, sid, keys)
     except _PartialAnswer as exc:
+        # A failure while steering already counts its Downs; one on the final
+        # write adds to the Downs that went in before it.
+        sent = exc.sent if steering else downs + exc.sent
         await audit_off_loop(
-            audit.session_log, sid, "resume", via=via, steps=steps,
-            reason="error", sent=exc.sent, detail=exc.detail[:200],
+            audit.session_log, sid, "resume", via=via, steps=downs + len(keys),
+            reason="error", sent=sent, detail=exc.detail[:200],
         )
-        logger.info("⚠️ resume %s failed after %d/%d writes: %s", sid[:8], exc.sent, exc.total, exc.detail[:200])
-        if exc.sent == 0:
+        logger.info("⚠️ resume %s failed after %d writes: %s", sid[:8], sent, exc.detail[:200])
+        if sent == 0:
             detail = "Resume not sent: nothing reached the terminal"
-        elif exc.detail == _PICKER_STAYED:
-            detail = "Resume not sent: the picker did not close, check the terminal"
+        elif showing:
+            detail = "Resume not sent: the picker was moved but nothing was selected, check the terminal"
         else:
-            detail = "Resume not sent: the picker closed but the command did not go in, check the terminal"
+            detail = "Resume not sent: the command did not go in completely, check the terminal"
         raise HTTPException(status_code=502, detail=detail) from exc
+    steps = downs + len(keys)
 
     want = _normalize_title(title)
 

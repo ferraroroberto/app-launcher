@@ -2740,6 +2740,10 @@ textarea.input-native { height: auto; }
    so a project with many sessions never pushes the composer away. */
 .tr-resume-live { margin-top: 12px; }
 .tr-resume-live[hidden] { display: none; }
+/* The card takes the empty state's place while it is up: a `--resume` launch
+   has no transcript yet, and "No transcript found" under the very card that
+   resumes one reads as a failure. */
+.tr-resume-live:not([hidden]) + #transcriptState { display: none; }
 .tr-resume-close { margin-left: auto; width: 44px; height: 44px; }
 .tr-resume-search { margin-top: 8px; }
 .tr-resume-list { max-height: 50vh; overflow-y: auto; }
