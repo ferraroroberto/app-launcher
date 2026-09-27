@@ -24,7 +24,17 @@
      installed PWAs can capture fixed-position descendants of scroll containers
      and anchor them to scrolled content instead of the physical viewport. The
      mobile stylesheet reserves bottom padding on `.app` so the fixed bar never
-     occludes content. -->
+     occludes content.
+
+     REQUIRED PAGE HEAD: put these two tags in your index.html <head>. The
+     installed-app (standalone) anchoring in nav-tabs.css assumes the web view
+     spans the whole screen, and iOS only does that with the translucent status
+     bar. Without it the app starts below an opaque status bar and the pill
+     lands one status-bar height (about 59pt) too low, mostly off-screen
+     (project-scaffolding#287, parking-manager#24):
+
+       <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+       <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> -->
 
 <nav class="tabs" role="tablist" aria-label="Sections" data-active-tab="home">
   <button id="tabHome" type="button" class="tab active" data-tab="home"

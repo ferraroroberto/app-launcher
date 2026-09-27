@@ -21,7 +21,17 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
    ```css
    /* No tab-count variable is required: the mobile grid auto-fits 4–6 tabs. */
    ```
-4. Wire up the switcher once the DOM is ready:
+4. **Put the standalone page head in your `index.html` `<head>`** (#287). The installed-app anchoring below assumes the web view spans the whole screen, and iOS gives an installed app the whole screen only with the translucent status bar:
+   ```html
+   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   ```
+   Without `apple-mobile-web-app-status-bar-style: black-translucent` plus `viewport-fit=cover`, the app starts below an opaque status bar and the pill lands one status-bar height (about 59pt) too low, mostly off-screen (parking-manager#24). Desktop browsers and Playwright's WebKit don't reproduce it, so assert the pair in your e2e smoke test rather than waiting for a phone to show it:
+   ```python
+   assert page.locator('meta[name="apple-mobile-web-app-status-bar-style"]').get_attribute("content") == "black-translucent"
+   assert "viewport-fit=cover" in page.locator('meta[name="viewport"]').get_attribute("content")
+   ```
+5. Wire up the switcher once the DOM is ready:
    ```js
    import { initNavTabs } from '/static/_vendored/nav/nav-tabs.js';
    const nav = initNavTabs({
@@ -70,7 +80,7 @@ At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-c
 | `--muted` | `#656d76` | inactive-tab text |
 | `--line` | `#d1d9e0` | bar border, active-tab border (mobile) |
 | `--space-xs` | `4px` | bar padding / gap (desktop) |
-| `--gap` | `12px` | bottom-padding reserve |
+| `--gap` | `12px` | bottom-padding reserve; phone `.app` side padding (the phone top padding is `env(safe-area-inset-top)` alone, #288) |
 | `--font-label` | `0.92rem` | tab label (desktop) |
 | `--font-caption` | `0.78rem` | tab label (narrow desktop) |
 | `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
@@ -108,6 +118,7 @@ Hard-won contract, validated extensively on a real iPhone (`home-automation` #20
 - **Browser tab → minimal transform.** Only in a real browser tab (where the toolbar genuinely collapses) does it translate the bar up by the hidden slice — clamped to a toolbar's height (~160px) and suppressed while the soft keyboard is up (a focused field, or a viewport shrink past a toolbar's worth). Desktop's sticky top control is untouched; feature-detected on `window.visualViewport`.
 - **Force the page scrollable (browser tab).** `nav-tabs.css` sets `.app { min-height: calc(100dvh + 1px) }`. iOS standalone can anchor a `position: fixed` bar to the *content* bottom on a non-scrolling page, so a short tab may float the bar up; the extra 1px keeps the page technically scrollable, which helps iOS anchor fixed elements at the screen bottom. (Cost: a barely-perceptible scroll on short tabs.)
 - **Standalone → the fixed-inset `.app` scroller is the contract (home-automation#303), not normal document scroll.** Document scroll is the **browser-tab** behavior above. In an *installed* standalone PWA the home-screen WKWebView's native scroll bounce moves the visual viewport itself (home-automation#300), dragging every `position: fixed` element with it — `overscroll-behavior: none` doesn't govern that native bounce the way it does in a Safari tab. So in standalone the document must never scroll at all: `nav-tabs.css` makes `.app` a `position: fixed; inset: 0` element scroller (sized `height: 100vh` → `100lvh` so it has its final geometry from the first frame of iOS's cold-launch viewport-expansion animation, `overflow-y: auto`, `overscroll-behavior: none`), and an inert `body::after` spacer (`calc(100dvh + 1px)`) keeps the *document* technically scrollable — which keeps iOS's layout viewport expanded to the full physical screen — while no touch gesture can ever reach that 1px, so nothing meaningfully unlocked is left for the bounce to move. The `.tabs` bar anchors from the stable **top** edge via `100lvh` (a bottom anchor visibly floats down for ~2s during the cold-launch expansion) and refuses pan gestures (`touch-action: none`) since it's the one fixed surface a drag could still reach the 1px-scrollable document through. This revives the inner-scroller shell an earlier fleet round (home-automation#232) rejected for leaving an unusable bottom safe-area dead band — the `100lvh` sizing (large-viewport unit, stable from the first frame while iOS animates the layout-viewport expansion) is what resolves that dead band, which is why the shell is now the accepted standalone contract rather than a fallback of last resort. `design_lint.py`'s nav-contract check (`fleet-config#282`) keys on exactly this block, so a verbatim adopter of this file passes it automatically.
+- **Standalone geometry needs the full-screen web view (#287).** Both the `100lvh` shell and the `100lvh` top anchor assume the installed app's web view spans the whole physical screen, status bar included. iOS does that only when the page sets `apple-mobile-web-app-status-bar-style: black-translucent` plus `viewport-fit=cover` (How to vendor, step 4). Without them the web view starts below an opaque status bar while `100lvh` still measures the full screen, so the pill lands one status-bar height too low. home-automation and app-launcher always set the pair; parking-manager didn't, and hit it (parking-manager#24).
 
 **Recommended app-level hardening:**
 
