@@ -1968,11 +1968,12 @@
           </button>
         </div>
         <div id="chiefAnswersList" class="chief-answers-list"></div>
-        <label class="chief-answers-also">
+        <!-- Anything else is the shared composer (composer.js) as a field:
+             dictation and image paste as in Chat, Done its one send. -->
+        <div class="chief-answers-also">
           <span>Anything else</span>
-          <textarea id="chiefAnswersAlso" class="tr-ask-input" rows="3" maxlength="2000"
-                    placeholder="Anything else for the chief"></textarea>
-        </label>
+          <div id="chiefAnswersAlso"></div>
+        </div>
         <div class="detail-actions">
           <p id="chiefAnswersNote" class="muted small chief-answers-note" role="status" hidden></p>
           <button type="button" id="chiefAnswersDone" class="detail-save-btn">Done</button>

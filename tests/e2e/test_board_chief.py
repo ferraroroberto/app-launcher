@@ -19,6 +19,7 @@ validation) is covered by tests/test_chief_ensure.py.
 
 from __future__ import annotations
 
+import base64
 import copy
 import json as _json
 import re
@@ -587,7 +588,8 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
 
 # The chief's questions as its plan writer records them (additive plan v1),
 # served as the real reader (src/chief_plan.py) makes of them: one full
-# single-select, one multi-select with no ref, one old-style text-only item.
+# single-select, one multi-select with no ref whose recommendation marks no
+# option, one old-style text-only item.
 _QUESTIONS = [
     {"id": "q-plans", "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
      "question": "Approve the four plans?", "detail": "Each plan ships as its own PR.",
@@ -598,7 +600,8 @@ _QUESTIONS = [
          {"label": "Hold them"},
      ]},
     {"id": "q-days", "text": "Which days?", "repo": "life-os", "question": "Which days work?",
-     "multi": True, "options": [{"label": "Mon"}, {"label": "Wed"}, {"label": "Fri"}]},
+     "multi": True, "recommendation": "Mon and Wed suit the gym.",
+     "options": [{"label": "Mon"}, {"label": "Wed"}, {"label": "Fri"}]},
     {"text": "Remember the last tab?", "ref": "app-launcher#1131"},
 ]
 
@@ -621,6 +624,47 @@ def _route_plan_from(page: Page, current: dict) -> None:
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(current["plan"]),
         ),
+    )
+
+
+# A 1x1 PNG, named `e2e-stub-...` for the conftest upload-leak check (#922).
+_PNG_1x1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk"
+    "YAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+)
+_CHIEF_UPLOAD = "E:/automation/fleet-config/.launcher-tmp/e2e-stub-paste.png"
+
+
+def _mock_chief_upload(page: Page) -> list:
+    """Stub the chief session's attachment route, as Chat's composer uploads
+    to its session's; return the requested URLs."""
+    uploads: list = []
+
+    def _capture(route):
+        uploads.append(route.request.url)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"path": _CHIEF_UPLOAD}),
+        )
+
+    page.route(re.compile(r".*/api/claude-code/sessions/s-chief/image(?:\?.*)?$"), _capture)
+    return uploads
+
+
+def _paste_image(page: Page, target: str) -> bool:
+    """Fire a synthetic image paste on ``target``, as the Chat composer's
+    #1206 test does; return whether the page took it (defaultPrevented)."""
+    return page.evaluate(
+        """([b64, target]) => {
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const dt = new DataTransfer();
+          dt.items.add(new File([bytes], 'e2e-stub-paste.png', {type: 'image/png'}));
+          const ev = new Event('paste', {bubbles: true, cancelable: true});
+          Object.defineProperty(ev, 'clipboardData', {value: dt});
+          document.querySelector(target).dispatchEvent(ev);
+          return ev.defaultPrevented;
+        }""",
+        [base64.b64encode(_PNG_1x1).decode(), target],
     )
 
 
@@ -668,17 +712,22 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#1295: the sheet shows each question in file order (repo, linked ref,
-    question, detail, the marked recommendation, the options with the
-    recommended one labelled but not picked, Other on every item, an old
-    text-only item as a free-text question) plus Anything else. Done sends
-    exactly one message, composed from every answer, through the chat bar's
-    ensure → input path; the sheet closes, a toast says so, and the card
-    marks what this viewer answered."""
+    question, detail, the options with the recommended one labelled but not
+    picked, Other on every item, an old text-only item as a free-text
+    question) plus Anything else. The recommendation is no card and no star:
+    the labelled option carries it, and an item whose recommendation marks
+    no option keeps it as one quiet line. Anything else is the shared
+    composer (mic + image, no Send of its own), and a pasted image uploads to
+    the chief's session and rides the message as its path, as a Chat send
+    carries it. Done sends exactly one message, composed from every answer,
+    through the chat bar's ensure → input path; the sheet closes, a toast
+    says so, and the card marks what this viewer answered."""
     _mock_board(authed_page, _board_payload(with_chief=True))
     _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
     ensured: dict = {}
     _mock_ensure(authed_page, ensured)
     posts = _capture_chief_input(authed_page)
+    uploads = _mock_chief_upload(authed_page)
     _open_board(authed_page, base_url)
 
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
@@ -693,8 +742,9 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
         "href", "https://github.com/octo/fleet-config/issues/959")
     expect(first.locator(".tr-ask-question")).to_have_text("Approve the four plans?")
     expect(first.locator(".chief-answer-detail")).to_have_text("Each plan ships as its own PR.")
-    expect(first.locator(".chief-answer-rec")).to_contain_text(
-        "Recommended: Yes: all four are small and independent.")
+    # The recommended option says so itself: no separate block, no star.
+    expect(first.locator(".chief-answer-rec")).to_have_count(0)
+    expect(dialog.locator('use[href="#i-star"]')).to_have_count(0)
     options = first.locator(".tr-ask-opt")
     expect(options).to_have_count(3)
     expect(options.nth(0)).to_contain_text("Yes, all four (Recommended)")
@@ -703,7 +753,12 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
 
     second = blocks.nth(1)
     expect(second.locator(".chief-answer-ref")).to_have_count(0)
-    expect(second.locator(".tr-ask-hint")).to_have_text("Pick any number")
+    expect(second.get_by_text("Pick any number")).to_be_visible()
+    # A recommendation no option carries stays, as one quiet line of text.
+    rec = second.locator(".chief-answer-rec")
+    expect(rec).to_have_text("Recommended: Mon and Wed suit the gym.")
+    expect(rec).to_have_class(re.compile(r"\btr-ask-hint\b"))
+    expect(rec.locator("svg")).to_have_count(0)
 
     third = blocks.nth(2)
     expect(third.locator(".tr-ask-question")).to_have_text("Remember the last tab?")
@@ -711,9 +766,17 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     expect(third.locator("a.chief-answer-ref")).to_have_attribute(
         "href", "https://github.com/octo/app-launcher/issues/1131")
 
-    expect(dialog.locator(".tr-ask-input")).to_have_count(4)  # Other x3 + Anything else
+    expect(dialog.locator(".tr-ask-input")).to_have_count(3)  # Other on every item
     expect(third.locator(".tr-ask-input")).to_have_attribute("placeholder", "Your answer")
-    expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
+    # Anything else is the shared composer Chat and Terminal mount: its mic
+    # and image controls, but not its Send (Done is the one send) or keys.
+    also = dialog.locator("#chiefAnswersAlso")
+    expect(also).to_have_class(re.compile(r"\bcomposer\b"))
+    expect(also.locator(".composer-input")).to_be_visible()
+    expect(also.locator(".composer-mic")).to_be_visible()
+    expect(also.locator(".composer-image")).to_be_visible()
+    expect(also.locator(".composer-send")).to_be_hidden()
+    expect(also.locator(".composer-keys")).to_be_hidden()
 
     # Nothing answered yet: Done waits, and says why.
     done = dialog.locator("#chiefAnswersDone")
@@ -730,8 +793,14 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     second.locator(".tr-ask-opt").nth(1).click()
     second.locator(".tr-ask-input").fill("not   Friday")
     # The third is skipped.
-    dialog.locator("#chiefAnswersAlso").fill("ship it tonight")
+    also_text = also.locator(".composer-input")
+    also_text.fill("ship it tonight")
     expect(done).to_be_enabled()
+    # A pasted image uploads to the chief's session, and its path lands in
+    # the box as its own paragraph, exactly as the Chat composer appends it.
+    assert _paste_image(authed_page, "#chiefAnswersAlso .composer-input")
+    expect(also_text).to_have_value("ship it tonight\n\n" + _CHIEF_UPLOAD)
+    assert len(uploads) == 1 and "inline=1" in uploads[0], uploads
 
     viewport = authed_page.viewport_size
     box = dialog.bounding_box()
@@ -752,7 +821,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
             "1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}\n"
             "2. [life-os] Which days work? → Mon, Wed; Other: not Friday {id: q-days}\n"
             "Skipped: 3\n"
-            "Also: ship it tonight"
+            "Also: ship it tonight\n\n" + _CHIEF_UPLOAD
         ),
         "submit": True,
     }], posts
