@@ -65,9 +65,16 @@ export function openSettingsAt(fieldId) {
 export function wireTabs() {
   nav = initNavTabs({
     // Board leads the visual workflow, but Coding remains the first-launch
-    // default. Without this explicit default the vendored controller selects
-    // the first DOM tab, coupling presentation order to startup behavior.
+    // default (nothing stored yet). Without this explicit default the
+    // vendored controller selects the first DOM tab, coupling presentation
+    // order to startup behavior.
     defaultTab: 'claude',
+    // The chosen tab survives a reload and a PWA relaunch (#1131, design.md).
+    // The vendored controller wraps every storage access in try/catch and
+    // ignores an unknown stored name, so blocked storage means the default
+    // above. Settings is no tab and never writes it (openSettings bypasses
+    // the controller), so a reload from Settings reopens the last real tab.
+    storageKey: 'app-launcher.tab',
     onChange: function (tab) {
       state.tab = tab;
       const settings = document.getElementById('paneSettings');
