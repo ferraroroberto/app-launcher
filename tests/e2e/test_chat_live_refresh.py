@@ -117,6 +117,8 @@ class _Picker:
     def __init__(self, page: Page, sid: str = _SID) -> None:
         self.showing: dict | None = None
         self.answers: list = []
+        # Whether the same screen read sees Claude Code's /resume picker (#1300).
+        self.resume_up = False
         base = r".*/api/claude-code/sessions/" + sid
         page.route(re.compile(base + r"/plan-picker$"), self._read)
         page.route(re.compile(base + r"/plan-answer$"), self._answer)
@@ -139,12 +141,47 @@ class _Picker:
             "reason": "not_showing", "options": [], "cursor": None,
             "plan": None, "plan_source": None, "plan_truncated": False,
         }
+        body = {**body, "resume_picker": self.resume_up}
         route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
 
     def _answer(self, route) -> None:
         self.answers.append(route.request.post_data_json)
         route.fulfill(status=200, content_type="application/json",
                       body=_json.dumps({"ok": True, "delivered": "unconfirmed", "answer": "approve"}))
+
+
+# The project's resumable conversations as the server lists them (#1300):
+# newest first, titles and times only.
+_RESUMABLE = [
+    {"id": "00000001-0000-4000-8000-000000000001", "title": "Fix the login redirect",
+     "updated_at": "2026-09-19T09:58:00Z"},
+    {"id": "00000002-0000-4000-8000-000000000002", "title": "Add a dark theme",
+     "updated_at": "2026-09-19T09:30:00Z"},
+    {"id": "00000003-0000-4000-8000-000000000003", "title": "Tidy the flaky test",
+     "updated_at": "2026-09-18T17:00:00Z"},
+]
+
+
+class _Resume:
+    """A stub of the resume routes (#1300): the list, and every pick posted."""
+
+    def __init__(self, page: Page, sid: str = _SID) -> None:
+        self.picks: list = []
+        base = r".*/api/claude-code/sessions/" + sid
+        page.route(re.compile(base + r"/resume-sessions$"), self._list)
+        page.route(re.compile(base + r"/resume$"), self._pick)
+
+    def _list(self, route) -> None:
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "available": True, "reason": None, "picker": True, "sessions": _RESUMABLE,
+        }))
+
+    def _pick(self, route) -> None:
+        body = route.request.post_data_json
+        self.picks.append(body)
+        title = next(r["title"] for r in _RESUMABLE if r["id"] == body["session_id"])
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps({"ok": True, "outcome": "resumed", "title": title}))
 
 
 def _turn(kind: str, text: str, offset: int) -> dict:
@@ -657,3 +694,61 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
         listing.locator(".tr-turn", has_text="and one more after the jump")
     ).to_be_in_viewport(timeout=OVERLAY_OPEN_MS)
     expect(pill).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_composer(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1300: while the terminal shows Claude Code's /resume picker, Chat
+    offers the project's sessions as a searchable card, newest first; a pick
+    posts that session with via=picker and the card goes. Typing /resume in
+    the composer opens the same card instead of sending anything to the
+    terminal, and a pick from it posts via=composer."""
+    page = authed_page
+    _boot(page, base_url)
+    picker = _Picker(page)
+    resume = _Resume(page)
+    typed: list = []
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
+        lambda route: (typed.append(route.request.post_data_json),
+                       route.fulfill(status=200, content_type="application/json",
+                                     body=_json.dumps({"ok": True, "submit_state": "confirmed"}))),
+    )
+    _open_chat(page)
+    card = page.locator("#transcriptResumeLive")
+    expect(card).to_be_hidden()
+
+    picker.resume_up = True
+    expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
+    rows = card.locator(".tr-resume-opt")
+    expect(rows).to_have_count(3)
+    expect(rows.locator(".tr-ask-label")).to_have_text(
+        ["Fix the login redirect", "Add a dark theme", "Tidy the flaky test"])
+    card.locator(".tr-resume-search").fill("THEME dark")
+    shown = card.locator(".tr-resume-opt:not([hidden])")
+    expect(shown).to_have_count(1)
+    expect(shown).to_contain_text("Add a dark theme")
+    card.locator(".tr-resume-search").fill("nothing like this")
+    expect(shown).to_have_count(0)
+    expect(card.locator(".tr-resume-none")).to_be_visible()
+    card.locator(".tr-resume-search").fill("theme")
+    box = stable_read(card.locator(".tr-resume-close").bounding_box)
+    assert box and box["height"] >= 44 and box["width"] >= 44, box
+    shown.first.click()
+    expect(page.locator("#toast")).to_contain_text("Resumed: Add a dark theme")
+    assert resume.picks == [{"session_id": _RESUMABLE[1]["id"], "via": "picker"}], resume.picks
+    expect(card).to_be_hidden()
+
+    # The picker closed on the terminal; /resume typed in Chat opens the card.
+    picker.resume_up = False
+    composer = page.locator("#chatComposeBar")
+    composer.locator(".composer-input").fill("/resume")
+    composer.locator(".composer-send").click()
+    expect(card).to_be_visible()
+    expect(composer.locator(".composer-input")).to_have_value("")
+    card.locator(".tr-resume-opt").first.click()
+    expect(page.locator("#toast")).to_contain_text("Resumed: Fix the login redirect")
+    assert resume.picks[-1] == {"session_id": _RESUMABLE[0]["id"], "via": "composer"}, resume.picks
+    assert typed == [], "the bare /resume must never reach the terminal"

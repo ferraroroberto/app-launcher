@@ -2112,6 +2112,10 @@
           <!-- The plan picker read off the terminal (#1151), answerable from
                here while it is up. Driven by session-transcript.js. -->
           <div id="transcriptPlanLive" class="tr-plan-live" hidden></div>
+          <!-- The resume card (#1300): the project's sessions, searchable,
+               while the terminal shows the /resume picker or after /resume
+               is typed here. Driven by chat-resume.js. -->
+          <div id="transcriptResumeLive" class="tr-resume-live" hidden></div>
           <div id="transcriptState" class="empty" role="status" aria-live="polite" hidden></div>
         </div>
         <button id="chatLatest" type="button" class="latest-pill" title="Jump to the latest message" aria-label="Jump to the latest message" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg> Latest</button>

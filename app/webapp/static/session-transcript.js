@@ -85,6 +85,7 @@ import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
+import { closeResumeCard, openResumeCard, syncResumePicker, wireResumeCard } from './chat-resume.js';
 
 // Agents whose native history the server-side reader understands — the
 // same set as the endpoint's flavour map (app/webapp/routers/
@@ -1358,6 +1359,9 @@ async function pollPicker() {
   target.pickerBusy = false;
   if (view !== target) return;
   applyPicker(body && body.showing ? body : null);
+  // The same read says whether the /resume picker is up (#1300). A failed
+  // read says nothing, so it leaves the resume card as it is.
+  if (body) syncResumePicker(!!body.resume_picker);
 }
 
 function applyPicker(p) {
@@ -2150,6 +2154,12 @@ export function pinChatToKeyboard() {
 // but leaves that session's composer and list alone.
 async function sendFromChat(text) {
   if (!view) return false;
+  // `/resume` opens the searchable resume card (#1300) instead of Claude
+  // Code's scrolling picker, where Chat can read the terminal's screen.
+  if (text.trim() === '/resume' && pickerAllowed(view.session)) {
+    openResumeCard('composer');
+    return true;
+  }
   const target = view;
   let verdict;
   try {
@@ -2235,6 +2245,7 @@ export function closeChatComposerPopovers() {
 // the disabled Terminal segment (mockup screen 6).
 export function openChatPane(s) {
   if (!els.chatPane) return;
+  closeResumeCard();
   if (view) {
     window.clearTimeout(view.refreshTimer);
     stopLiveTimer();
@@ -2275,6 +2286,7 @@ export function closeChatPane() {
   if (!els.chatPane) return;
   els.transcriptList.innerHTML = '';
   clearPicker();
+  closeResumeCard();
   els.chatNote.hidden = true;
   if (chatComposer) chatComposer.reset();
   pinChatToKeyboard();
@@ -2283,6 +2295,11 @@ export function closeChatPane() {
 
 export function wireChatPane() {
   if (!els.chatPane) return;
+  wireResumeCard({
+    session: function () { return view ? view.session : null; },
+    // A resume swaps the conversation under the pane: load it afresh.
+    onResumed: function () { if (view) openChatPane(view.session); },
+  });
   syncGroups();
   openLinksOnThePc(els.transcriptList);
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });

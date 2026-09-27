@@ -234,6 +234,7 @@ export const els = {
   transcriptList: document.getElementById('transcriptList'),
   transcriptNewer: document.getElementById('transcriptNewer'),
   transcriptPlanLive: document.getElementById('transcriptPlanLive'),
+  transcriptResumeLive: document.getElementById('transcriptResumeLive'),
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),
 

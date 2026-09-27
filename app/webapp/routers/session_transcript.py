@@ -82,7 +82,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from src import audit, board, plan_picker, session_client
+from src import audit, board, plan_picker, resume_picker, session_client
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
 from src.board_transcript import pending_decision_call
 from src.board_exchange import (
@@ -540,10 +540,11 @@ _PICKER_SEEN: Dict[str, str] = {}
 _CONTEXT_SEEN: Dict[str, str] = {}
 
 
-def _no_picker(reason: str) -> Dict[str, Any]:
+def _no_picker(reason: str, resume_showing: bool = False) -> Dict[str, Any]:
     return {"available": False, "showing": False, "answerable": False,
             "reason": reason, "options": [], "cursor": None,
-            "plan": None, "plan_source": None, "plan_truncated": False}
+            "plan": None, "plan_source": None, "plan_truncated": False,
+            "resume_picker": resume_showing}
 
 
 async def _read_screen(
@@ -605,18 +606,23 @@ async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
     Polled by the Chat pane while a full-control Claude session is open.
     ``reason`` tells apart a session that is gone, a detached one (no screen
     to read), a capture that can't be read, and a screen with no picker.
+    The same screen read also says whether the ``/resume`` picker is up
+    (``resume_picker``, #1300), so the Chat pane needs no second poll to
+    offer its resume card.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, _session, picker = await _read_picker(cfg, sid)
+    reason, _session, lines = await _read_screen(cfg, sid)
     if reason is not None:
         if reason == "session_not_found":
             _PICKER_SEEN.pop(sid, None)
         else:
             _log_picker(sid, reason)
         return _no_picker(reason)
+    picker = plan_picker.parse_picker(lines)
     if picker is None:
-        _log_picker(sid, "not showing")
-        return {**_no_picker("not_showing"), "available": True}
+        resume_showing = resume_picker.parse_resume_picker(lines)
+        _log_picker(sid, "resume picker showing" if resume_showing else "not showing")
+        return {**_no_picker("not_showing", resume_showing), "available": True}
     plan = await asyncio.to_thread(plan_picker.read_plan_file, picker["plan_file"])
     source = "file" if plan else ("screen" if picker["plan_excerpt"] else None)
     text, truncated = plan if plan else (picker["plan_excerpt"] or None, False)
@@ -628,6 +634,7 @@ async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
         "available": True, "showing": True, "answerable": picker["answerable"],
         "reason": None, "options": picker["options"], "cursor": picker["cursor"],
         "plan": text, "plan_source": source, "plan_truncated": truncated,
+        "resume_picker": False,
     }
 
 
@@ -694,6 +701,164 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
     )
     logger.info("⌨️ plan answer %s typed (%s, option %s)", sid[:8], kind, body.get("option"))
     return {"ok": True, "delivered": "unconfirmed", "answer": kind}
+
+
+# --- Resuming a conversation from a Chat card (#1300) ------------------------
+#
+# Claude Code's /resume picker is a long scrolling TUI list; the Chat pane
+# offers the project's conversations as a searchable card instead
+# (src.resume_picker). A pick is typed as `/resume <id>` + Enter, which the
+# probe on #1300 showed resumes exactly that conversation: first Escape when
+# the picker is up (re-read until it has closed), then the command. The list
+# and the id are checked again at send time, and the result is read back off
+# the terminal rather than assumed.
+
+# How long a pick waits for the terminal to say what happened, and how often
+# it looks. Resuming a long conversation takes a few seconds to repaint.
+_RESUME_CONFIRM_S = 10.0
+_RESUME_POLL_S = 0.5
+# How long Escape gets to close the picker before the command is typed.
+_RESUME_ESCAPE_S = 3.0
+_RESUME_VIA = ("picker", "composer")
+# The failure detail when Escape leaves the picker up, so no command is typed.
+_PICKER_STAYED = "the resume picker did not close after Escape"
+
+
+def _normalize_title(text: Any) -> str:
+    return " ".join(str(text or "").split()).casefold()
+
+
+async def _wait_for_screen(cfg: WebappConfig, sid: str, check, timeout: float) -> Any:
+    """Re-read the terminal until ``check(lines, session)`` answers something
+    truthy, or ``timeout`` passes (then ``None``)."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while True:
+        reason, session, lines = await _read_screen(cfg, sid)
+        if reason is None:
+            found = check(lines, session)
+            if found:
+                return found
+        if loop.time() >= end:
+            return None
+        await asyncio.sleep(_RESUME_POLL_S)
+
+
+@router.get("/api/claude-code/sessions/{sid}/resume-sessions")
+async def session_resume_sessions(sid: str, request: Request) -> Dict[str, Any]:
+    """The conversations ``/resume`` offers for this session's project,
+    newest first (``[{"id", "title", "updated_at"}]``), and whether the
+    ``/resume`` picker is on its screen now (Tailscale + passkey: the titles
+    come from the transcripts). Full-control Claude sessions only, like the
+    plan card: a pick has to be typed and read back on this screen."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, session, lines = await _read_screen(cfg, sid)
+    if reason is not None:
+        return {"available": False, "reason": reason, "picker": False, "sessions": []}
+    project_dir = str(session.get("project_dir") or "")
+    sessions = await asyncio.to_thread(resume_picker.list_sessions, project_dir)
+    if sessions is None:
+        logger.info("⚠️ resume list %s: projects folder unreadable", sid[:8])
+        return {"available": False, "reason": "no_sessions_folder", "picker": False, "sessions": []}
+    return {
+        "available": True, "reason": None,
+        "picker": resume_picker.parse_resume_picker(lines), "sessions": sessions,
+    }
+
+
+@router.post("/api/claude-code/sessions/{sid}/resume")
+async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
+    """Resume one of the project's conversations on this session's terminal.
+
+    Body: ``{"session_id": str, "via": "picker" | "composer"}``. ``picker``:
+    the card was offered because the ``/resume`` picker is up, and it must
+    still be up now, or nothing is typed. ``composer``: the user typed
+    ``/resume`` in Chat; refused while the plan picker holds the terminal.
+    Either way the id must be one ``/resume`` offers here right now
+    (:func:`src.resume_picker.resume_keys`).
+
+    ``outcome``, read back off the terminal: ``resumed`` (the window title
+    switched to the picked conversation's), ``not_found`` / ``cancelled``
+    (Claude Code answered the command with that line), or ``unconfirmed``
+    (neither within the wait: a conversation with no title of its own
+    never renames the window).
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    via = body.get("via")
+    if via not in _RESUME_VIA:
+        raise HTTPException(status_code=400, detail="via must be 'picker' or 'composer'")
+    reason, session, lines = await _read_screen(cfg, sid)
+    if reason == "session_not_found":
+        raise HTTPException(status_code=409, detail="This session is no longer running")
+    if reason == "detached":
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't see a detached session's screen: resume it in the PC console",
+        )
+    if reason is not None:
+        raise HTTPException(
+            status_code=409, detail="Chat can't see the terminal's screen, so nothing was sent"
+        )
+    showing = resume_picker.parse_resume_picker(lines)
+    if via == "picker" and not showing:
+        raise HTTPException(
+            status_code=409, detail="The resume picker closed on the terminal: nothing was sent"
+        )
+    if not showing and plan_picker.parse_picker(lines) is not None:
+        raise HTTPException(
+            status_code=409, detail="The terminal is waiting on a plan: answer it first"
+        )
+    sessions = await asyncio.to_thread(
+        resume_picker.list_sessions, str(session.get("project_dir") or "")
+    )
+    target = body.get("session_id")
+    try:
+        keys = resume_picker.resume_keys(sessions, target)
+    except resume_picker.ResumeRefused as exc:
+        logger.info("ℹ️ resume %s refused: %s", sid[:8], exc)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    title = next(s["title"] for s in sessions if s["id"] == target)
+    steps = len(keys) + (1 if showing else 0)
+    try:
+        if showing:
+            await _type_into_pty(cfg.session_host_port, sid, [(resume_picker.ESCAPE, False)])
+            closed = await _wait_for_screen(
+                cfg, sid, lambda ls, _s: not resume_picker.parse_resume_picker(ls), _RESUME_ESCAPE_S
+            )
+            if not closed:
+                raise _PartialAnswer(1, steps, _PICKER_STAYED)
+        await _type_into_pty(cfg.session_host_port, sid, keys)
+    except _PartialAnswer as exc:
+        await audit_off_loop(
+            audit.session_log, sid, "resume", via=via, steps=steps,
+            reason="error", sent=exc.sent, detail=exc.detail[:200],
+        )
+        logger.info("⚠️ resume %s failed after %d/%d writes: %s", sid[:8], exc.sent, exc.total, exc.detail[:200])
+        if exc.sent == 0:
+            detail = "Resume not sent: nothing reached the terminal"
+        elif exc.detail == _PICKER_STAYED:
+            detail = "Resume not sent: the picker did not close, check the terminal"
+        else:
+            detail = "Resume not sent: the picker closed but the command did not go in, check the terminal"
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    want = _normalize_title(title)
+
+    def read_back(ls: List[str], live: Optional[Dict[str, Any]]) -> Optional[str]:
+        said = resume_picker.resume_outcome(ls, target)
+        if said:
+            return said
+        live_title = _normalize_title((live or {}).get("live_title"))
+        return "resumed" if want and want in live_title else None
+
+    outcome = await _wait_for_screen(cfg, sid, read_back, _RESUME_CONFIRM_S) or "unconfirmed"
+    await audit_off_loop(audit.session_log, sid, "resume", via=via, steps=steps, reason=outcome)
+    logger.info("⌨️ resume %s typed (%s, %d steps): %s", sid[:8], via, steps, outcome)
+    return {"ok": True, "outcome": outcome, "title": title}
+
 
 
 @router.get("/api/claude-code/sessions/{sid}/context")
