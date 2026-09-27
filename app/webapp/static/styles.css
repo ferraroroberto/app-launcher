@@ -1209,6 +1209,17 @@ summary + .opt-group { border-top: 0; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* An ellipsized title clips at its padding box, and the vendored disclosure
+   sets line-height: 1, so the box was a font-size tall and cut the glyphs'
+   descenders ("g", "j") off, at every text size (#1134's no-clipped-rows
+   check). A little vertical padding widens the clip box and the equal
+   negative margin gives the space back, so the summary's layout is
+   unchanged. */
+.jobs-card .collapse-title,
+.tr-group .collapse-title {
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
 /* Agenda panel (issue #230) — foldable 🗓️ Schedule list above Registered
    jobs. Day headers separate time-ordered rows; tapping a row reveals that
    job in the list below. */
