@@ -194,6 +194,18 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "write power as /input.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/resume-sessions"),
+        "passkey",
+        "Chat resume card (#1300): lists the project's conversations by title "
+        "and first prompt, read from the transcripts: terminal-grade content.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/resume"),
+        "passkey",
+        "Chat resume card (#1300): types `/resume <id>` into a live PTY, the "
+        "same write power as /input.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/context"),
         "passkey",
         "Overlay context ring (#1223): reads a live terminal screen (the same read "

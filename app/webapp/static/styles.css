@@ -2735,6 +2735,15 @@ textarea.input-native { height: auto; }
 .tr-plan-live[hidden] { display: none; }
 .tr-plan-live-card .tr-pre.tr-plan-body { margin-top: 8px; }
 .tr-plan-feedback-row > .tr-ask-opt { cursor: default; }
+/* The resume card (#1300, chat-resume.js): the AskUserQuestion card's parts,
+   a search field, and a list that scrolls inside the card past a screenful
+   so a project with many sessions never pushes the composer away. */
+.tr-resume-live { margin-top: 12px; }
+.tr-resume-live[hidden] { display: none; }
+.tr-resume-close { margin-left: auto; width: 44px; height: 44px; }
+.tr-resume-search { margin-top: 8px; }
+.tr-resume-list { max-height: 50vh; overflow-y: auto; }
+.tr-resume-opt[hidden] { display: none; }
 /* The transcript's one preformatted surface, shared by a tool result
    (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
    #1100) rather than declared twice -- they had become the same ten
