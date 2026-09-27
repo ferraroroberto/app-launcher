@@ -2425,9 +2425,10 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
         "updated_at": "2026-09-26T14:40:00Z",
         "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate"}],
         "queue": [
-            {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": ""},
+            {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": "",
+             "ref_url": ""},
             {"repo": "automation", "ref": "#135", "title": "parking burst trial", "status": "someday",
-             "note": ""},
+             "note": "", "ref_url": ""},
         ],
         # An old text-only item reads as a free-text question (#1295).
         "waiting_on_roberto": [{
@@ -2471,7 +2472,13 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
         {"text": "Pick any", "multi": True, "options": [{"label": "A"}, {"label": "B"}], "ref": "#12",
          "repo": "life-os"},
     ]}), encoding="utf-8")
-    first, second, third = chief_plan.read_chief_plan(f, "octo")["waiting_on_roberto"]
+    plan = chief_plan.read_chief_plan(f, "octo")
+    # Queue rows link the same way (#1297): a `#N` ref beside its repo.
+    assert [q["ref_url"] for q in plan["queue"]] == [
+        "https://github.com/octo/app-launcher/issues/1273",
+        "https://github.com/octo/automation/issues/135",
+    ]
+    first, second, third = plan["waiting_on_roberto"]
     assert first == {
         "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
         "detail": "Each one ships alone.", "recommendation": "Yes, all four", "id": "q-plans",

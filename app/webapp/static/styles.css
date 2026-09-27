@@ -4252,6 +4252,8 @@ body.terminal-open {
   color: var(--muted);
 }
 .board-plan-row .board-card-flat { gap: 8px; }
+/* A queue row's repo#N (#1297): the secondary line, linked to the issue. */
+.board-plan-ref { color: var(--accent-text); }
 .launch-btn .kind-pill.board-plan-chip {
   flex: 0 0 auto;
   margin-right: 0;

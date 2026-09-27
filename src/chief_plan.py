@@ -15,6 +15,8 @@ additive fields ``id``, ``repo``, ``question``, ``detail``, ``recommendation``,
 never failing the item, and an old text-only item reads as a free-text
 question. A ``ref`` shaped ``repo#N`` (or ``#N`` beside a ``repo``) gains a
 ``ref_url`` on the configured GitHub owner; any other ref stays plain text.
+Queue rows gain a ``ref_url`` the same way, for the card's title-first rows
+(#1297), where the repo and number are the secondary, linked text.
 """
 
 from __future__ import annotations
@@ -104,8 +106,8 @@ def _waiting(value: Any, owner: str) -> List[Dict[str, Any]]:
 
 def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
     """The plan as ``{"state": "ok", ...}``, or ``{"state": "empty"}`` /
-    ``{"state": "unreadable"}``. ``github_owner`` resolves question refs to
-    links; without it they stay plain text.
+    ``{"state": "unreadable"}``. ``github_owner`` resolves question and
+    queue-row refs to links; without it they stay plain text.
 
     ``empty``: no file, or a queue with no rows. ``unreadable``: the file
     exists but can't be read, isn't JSON, isn't an object, or names a
@@ -129,6 +131,8 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
     queue = _rows(data.get("queue"), _QUEUE_FIELDS)
     if not queue:
         return {"state": "empty"}
+    for row in queue:
+        row["ref_url"] = _ref_url(row["ref"], row["repo"], github_owner)
     return {
         "state": "ok",
         "updated_at": _text(data.get("updated_at")),

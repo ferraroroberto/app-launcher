@@ -103,7 +103,9 @@ _PLAN_FILE_V1 = {
     "queue": [
         {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default on desktop",
          "status": "gate", "note": ""},
-        {"repo": "automation", "ref": "#135", "title": "parking burst trial",
+        {"repo": "automation", "ref": "#135",
+         "title": "parking burst trial across every garage in town, with the long tail of the "
+                  "October permits and the fallback plan if the city portal is down again",
          "status": "someday", "note": "before Thu 1 Oct 16:00"},
     ],
     "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
@@ -115,7 +117,7 @@ def _plan(tmp_path, minutes_ago: int = 12) -> dict:
     f = tmp_path / "chief-plan.json"
     f.write_text(_json.dumps({**_PLAN_FILE_V1, "updated_at": _iso_utc(
         datetime.now(timezone.utc) - timedelta(minutes=minutes_ago))}), encoding="utf-8")
-    return chief_plan.read_chief_plan(f)
+    return chief_plan.read_chief_plan(f, "octo")
 
 
 def _route_plan_from(page: Page, current: dict) -> None:
@@ -325,13 +327,34 @@ def test_board_renders_columns_counts_and_cards(
     expect(lane.locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
     queue = plan_body.locator(".board-plan-group").nth(2).locator("li.board-plan-row")
     expect(queue).to_have_count(2)
-    expect(queue.nth(0)).to_contain_text("#1273 Chat by default on desktop")
+    # Title first (#1297): the repo and number follow as secondary text, a
+    # link to the issue.
+    first_title = queue.nth(0).locator(".board-card-text > *").first
+    expect(first_title).to_have_class(re.compile(r"\bboard-card-title-compact\b"))
+    expect(first_title).to_have_text("Chat by default on desktop")
+    first_ref = queue.nth(0).locator(".board-card-meta-inline a.board-plan-ref")
+    expect(first_ref).to_have_text("app-launcher#1273")
+    expect(first_ref).to_have_attribute("href", "https://github.com/octo/app-launcher/issues/1273")
+    expect(queue.nth(0).locator(".board-card-meta-inline")).to_have_text("app-launcher#1273")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
-    expect(queue.nth(1)).to_contain_text("automation · before Thu 1 Oct 16:00")
+    expect(queue.nth(1).locator(".board-card-meta-inline")).to_have_text(
+        "automation#135 · before Thu 1 Oct 16:00")
     # An unknown status is shown as it is, on the neutral chip.
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_text("someday")
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_attribute("data-tone", "neutral")
+    if viewport["width"] < 700:
+        # At the narrowest phone a long title ellipsizes at the shared
+        # two-line cap and nothing scrolls sideways (#1297).
+        authed_page.set_viewport_size({"width": 320, "height": viewport["height"]})
+        long_title = queue.nth(1).locator(".board-card-title-compact")
+        clipped = stable_read(lambda: long_title.evaluate(
+            "el => el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0"))
+        assert clipped, "long queue title should be clamped with an ellipsis at 320px"
+        overflow = stable_read(lambda: authed_page.evaluate(
+            "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"))
+        assert overflow <= 0, f"page scrolls sideways at 320px by {overflow}px"
+        authed_page.set_viewport_size(viewport)
 
     # -- the GitHub-fed columns' cards (this test's own) --
     _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
