@@ -153,6 +153,51 @@ _LEAK_MEDIA_MOCK = """
 """
 
 
+# Arming mock (#1295 follow-up): getUserMedia is held until the test calls
+# window.__gumRelease(), then grants a stream or, with __gumDeny set, rejects
+# as a denied permission prompt does. Counts every getUserMedia call and every
+# recorder start, so repeated taps while arming can be shown to start one.
+_ARMING_MEDIA_MOCK = """
+(() => {
+  window.__gumCalls = 0;
+  window.__recorderStarts = 0;
+  window.__gumDeny = false;
+  navigator.mediaDevices = navigator.mediaDevices || {};
+  navigator.mediaDevices.getUserMedia = () => {
+    window.__gumCalls++;
+    return new Promise((resolve, reject) => {
+      window.__gumRelease = () => {
+        if (window.__gumDeny) {
+          const err = new Error('Permission denied');
+          err.name = 'NotAllowedError';
+          reject(err);
+        } else {
+          resolve({ getTracks: () => [{ stop: () => {} }] });
+        }
+      };
+    });
+  };
+  class FakeRecorder {
+    constructor(stream, opts) {
+      this.stream = stream;
+      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
+      this.state = 'inactive';
+      this._listeners = {};
+    }
+    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+    start(_timeslice) { this.state = 'recording'; window.__recorderStarts++; }
+    stop() {
+      this.state = 'inactive';
+      const st = this._listeners['stop'];
+      if (st) st();
+    }
+  }
+  FakeRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = FakeRecorder;
+})()
+"""
+
+
 def _skip_unless_phone(browser_name: str) -> None:
     # The leak-regression test below needs an in-page terminal it can leave
     # and reopen via row-tap WITHOUT a full page reload (so the module-level
@@ -295,11 +340,64 @@ def test_single_shot_fallback_when_no_session(
 
     record = authed_page.locator("#terminalComposeBar .composer-mic")
     record.click()
+    # A tap while the mic is still arming is ignored (#1295 follow-up), so
+    # the stop tap waits for the recording state.
+    expect(record).to_have_class(re.compile(r"\brecording\b"))
     record.click()  # stop → buffered blob → single-shot POST
 
     expect(authed_page.locator("#terminalComposeBar .composer-input")).to_have_value(
         _FINAL, timeout=10_000
     )
+
+
+def test_mic_shows_arming_then_recording_and_ignores_taps_meanwhile(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """The shared composer's mic shows it is arming (#1295 follow-up).
+
+    Recording takes a moment to start, and a tap used to give no feedback, so
+    the operator tapped again, and a second tap in that window started a
+    second recorder. Now a tap switches the button at once to a pending
+    hourglass "Starting…" state that ignores further taps, turns red when the
+    recorder is actually capturing, and on a failed start (a denied prompt)
+    returns to idle with the existing error toast, never stuck on pending."""
+    sid = launched_pty_session
+    authed_page.add_init_script(_ARMING_MEDIA_MOCK)
+    authed_page.route(
+        "**/api/transcribe/sessions",
+        lambda route: route.fulfill(status=503, body="nope"),
+    )
+    _open_terminal(authed_page, base_url, sid)
+    _open_compose_with_record(authed_page)
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
+    idle_label = record.get_attribute("aria-label")
+
+    record.click()
+    expect(record).to_have_class(re.compile(r"\barming\b"))
+    expect(record).to_have_attribute("aria-label", "Starting…")
+    expect(record).to_have_attribute("aria-busy", "true")
+    expect(record.locator('use[href="#i-hourglass"]')).to_have_count(1)
+    # More taps while arming change nothing and start nothing.
+    record.click()
+    record.click()
+    expect(record).to_have_class(re.compile(r"\barming\b"))
+    authed_page.evaluate("() => window.__gumRelease()")
+    expect(record).to_have_class(re.compile(r"\brecording\b"))
+    expect(record).not_to_have_class(re.compile(r"\barming\b"))
+    expect(record).not_to_have_attribute("aria-busy", "true")
+    assert authed_page.evaluate("() => [window.__gumCalls, window.__recorderStarts]") == [1, 1]
+    record.click()  # stop
+    expect(record).not_to_have_class(re.compile(r"\brecording\b"))
+
+    # A failed start: pending, then idle again with the error toast.
+    authed_page.evaluate("() => { window.__gumDeny = true; }")
+    record.click()
+    expect(record).to_have_class(re.compile(r"\barming\b"))
+    authed_page.evaluate("() => window.__gumRelease()")
+    expect(authed_page.locator("#toast")).to_contain_text("Microphone unavailable")
+    expect(record).not_to_have_class(re.compile(r"\b(arming|recording)\b"))
+    expect(record).to_have_attribute("aria-label", idle_label or "")
+    expect(record.locator('use[href="#i-mic"]')).to_have_count(1)
 
 
 def test_send_refuses_while_dictation_still_finishing(
