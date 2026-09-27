@@ -588,6 +588,14 @@ html, body {
 /* The vendored filter field above a long list (#1132): flush with the card
    body's own padding rather than the component's gutter margin. */
 .action-row-filter.list-filter { margin: 0 0 12px; }
+/* Full-bleed action-row lists (#1128): Projects, Skills, Apps and Trays
+   carry the component contract's `.card.action-list`, so their rows run
+   edge to edge with the hairlines at the card's width. The rows sit in a
+   disclosure body, and the contract asks that host's side padding at zero
+   too; the body's other children (toolbar, filter, empty states) keep the
+   disclosure's 14px inset (disclosure.bodyPadding). */
+.card.action-list > .collapse-body { padding-inline: 0; }
+.card.action-list > .collapse-body > :not(.action-rows) { margin-inline: 14px; }
 /* The Coding-options card keeps its .opt-group children as direct body
    content (they bring their own padding + dividers); the [open] summary
    hairline is the only divider under the header. */
