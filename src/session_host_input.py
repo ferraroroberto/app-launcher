@@ -179,6 +179,51 @@ _DEFER_FRAME_SAMPLES = max(2, int(_DEFER_FRAME_LOOKBACK_MS / 1000 / _DEFER_POLL_
 # stranded and honestly reported — never a CR into a dialog.
 _DEFER_DIALOG_MARKERS = ("doyouwanttoproceed", "❯1.", "❯2.")
 
+# Idle at the prompt while background agents run (issue #1319). When the main
+# agent ends its turn with background sub-agents still working, Claude Code
+# paints "✻ Waiting for N background agents to finish" once, then keeps a
+# live row per agent below the prompt whose timer and token counter tick
+# about once a second each, and animates the window title. The main agent is
+# idle and a CR submits normally (a human typing into that terminal gets an
+# answer), but the stream never has a _DEFER_QUIET_MS gap, so the watcher
+# above waited until the agents finished or _DEFER_CAP_MS ran out.
+#
+# So that state is recognised from the screen, not from timing. Two markers,
+# matched on _normalize_echo'd output (escapes and whitespace gone):
+#
+# - The wait line. Only its "Waiting for <N>" prefix is matched reliably:
+#   Claude Code's differential renderer skips cells that already hold the
+#   right character, and real sessions paint "backgrou\x1b[26Gd", "backg
+#   \x1b[23Gou", "to\x1b[38Gfini\x1b[43Gh" and so on. The tail is loose
+#   ("backg", or some letters then "agent") so a model's prose saying
+#   "waiting for 2 minutes" is not taken for it.
+# - A main-turn spinner: one of the spinner glyphs, repainted several times a
+#   second for as long as a main turn runs, and painted first when a turn
+#   starts ("✢ Topsy-turvying… (0s)"). "·" and "*" are spinner frames too but
+#   are left out, being ordinary text; the other glyphs arrive within a
+#   second anyway. The wait line's own glyph is the one exception.
+#
+# Whichever of the two came last decides: waiting means idle-with-agents,
+# a spinner means a main turn. Checked against a live Opus session's
+# transcript (27 transitions over ~50k frames, none spurious, idle stretches
+# of 2k+ timer-only frames with no flip) and a throwaway probe session. The
+# failure direction is safe: a missed wait line, or a spinner glyph that
+# isn't one, leaves the watcher on the quiet-window rule it had before.
+_BG_WAIT_RE = re.compile(r"waitingfor\d+(?:backg|[a-z]{0,10}agent)")
+_MAIN_SPINNER_RE = re.compile(r"[✢✳✶✻✽](?!waitingfor)")
+# Cheap pre-filter on the raw chunk: the reader thread sees every byte of
+# every session, and most chunks (timer ticks, echoes, titles) carry neither.
+_TURN_MARKER_HINTS = ("Waiting", "✢", "✳", "✶", "✻", "✽")
+# An OSC (window title) cut off at the end of a read: _normalize_echo only
+# strips terminated ones, and Claude Code's idle title starts with "✳".
+_OSC_TAIL_RE = re.compile(r"\x1b\][^\x07\x1b]*$")
+# How long to wait after a background-wait submit for the main turn to start,
+# which is what confirms the CR was taken as Submit. Sized from a live
+# session in this state: Claude Code went silent for ~5 s after taking the
+# paste and again after the CR, and painted the turn's first spinner frame
+# 4.7 s after it. The wait runs on the watcher thread, never on a caller.
+_BG_SUBMIT_CONFIRM_MS = 15000
+
 # Outcome reasons for a server-initiated write (issue #760). Distinct
 # conditions get distinct reasons — "couldn't establish delivery" is never
 # folded into the success state.
@@ -379,6 +424,24 @@ def _chip_id_in(normalized: str, image: bool = False) -> Optional[str]:
     return marker + max(ids, key=int) if ids else None
 
 
+def _scan_turn_state(chunk: str) -> Optional[bool]:
+    """What a chunk of raw PTY output says about the main agent (#1319).
+
+    ``True`` when the last status marker in ``chunk`` is the "Waiting for N
+    background agents" line (idle at the prompt, agents running), ``False``
+    when it is a main-turn spinner, ``None`` when it carries neither, which
+    leaves the previous verdict standing. See ``_BG_WAIT_RE``.
+    """
+    if not any(hint in chunk for hint in _TURN_MARKER_HINTS):
+        return None
+    normalized = _normalize_echo(_OSC_TAIL_RE.sub("", chunk))
+    wait_at = max((m.start() for m in _BG_WAIT_RE.finditer(normalized)), default=-1)
+    spin_at = max((m.start() for m in _MAIN_SPINNER_RE.finditer(normalized)), default=-1)
+    if wait_at == spin_at:  # both -1: a hint matched, no marker did
+        return None
+    return wait_at > spin_at
+
+
 def _chip_visible(normalized: str, chip_id: str) -> bool:
     """Is *this* chip (a :func:`_chip_id_in` token) showing in ``normalized``
     terminal output?
@@ -401,6 +464,22 @@ class InputProtocol:
     fields, so ``PtySession(InputProtocol)`` picks it up unchanged for every
     existing caller (``session.submit_input(...)`` etc.).
     """
+
+    def _track_turn_state(self, chunk: str) -> None:
+        """Reader-thread hook: fold one output chunk into the turn state.
+
+        Called with every chunk after it is counted into ``_output_total``,
+        so ``_main_turn_at`` is a position a CR's own mark can be compared
+        against (#1319). State rather than a scan of recent output, because
+        the wait line is painted once and then scrolls out of any window
+        while the agent rows tick on for as long as the agents run.
+        """
+        state = _scan_turn_state(chunk)
+        if state is None:
+            return
+        self._bg_waiting = state
+        if not state:
+            self._main_turn_at = self._output_total
 
     def _normalized_since(self, mark: int) -> str:
         """Normalized form of everything the PTY has painted since ``mark``.
@@ -778,6 +857,15 @@ class InputProtocol:
            a bare CR into a permission or AskUserQuestion modal picks an
            option instead of submitting.
 
+        Condition 1 has one alternative (#1319): the screen says the main
+        agent is idle at its prompt with background agents running
+        (``_bg_waiting``), a state whose agent rows repaint every second
+        forever. Conditions 2 and 3 still apply to it, an image still being
+        converted still holds it, and because it rests on reading the screen
+        rather than on silence its CR is confirmed afterwards: the main turn
+        has to start (:meth:`_confirm_bg_submit`), or the outcome says the
+        submit is unconfirmed rather than ``ok``.
+
         Returns ``None`` when a newer write superseded this watcher; the
         caller then leaves ``last_input`` alone, since it now describes that
         newer write.
@@ -790,6 +878,7 @@ class InputProtocol:
         # ages out of the deque within _DEFER_FRAME_LOOKBACK_MS, after which
         # only fresh repaints count.
         frames: "deque[int]" = deque([mark], maxlen=_DEFER_FRAME_SAMPLES)
+        bg_waiting = False
         while True:
             if self._defer_seq != seq:
                 return None
@@ -803,6 +892,9 @@ class InputProtocol:
                 )
             last_out = self._last_output_at
             if last_out and (now - last_out) >= quiet_s:
+                break
+            if self._bg_waiting and not _attach_converting(self._normalized_since(mark)):
+                bg_waiting = True
                 break
             if now >= deadline:
                 return InputOutcome(
@@ -846,6 +938,16 @@ class InputProtocol:
                     submit_confirmed=False,
                     waited_ms=waited_ms,
                 )
+            if bg_waiting:
+                # Breadcrumb for the next occurrence (#1319): the state is
+                # recognised from screen markers that drift across Claude
+                # Code versions, so say when it was the reason for a CR.
+                logger.info(
+                    f"🧵 PTY {self.session_id[:8]} idle at its prompt with "
+                    f"background agents running — submitting without a quiet "
+                    f"window (waited {waited_ms}ms)"
+                )
+            cr_mark = self._output_total
             if not self._write_locked("\r"):
                 return InputOutcome(
                     reason=INPUT_DROPPED,
@@ -853,6 +955,54 @@ class InputProtocol:
                     deferred=True,
                     waited_ms=waited_ms,
                 )
+        if bg_waiting:
+            return self._confirm_bg_submit(seq, cr_mark, waited_ms)
+        return InputOutcome(
+            reason=INPUT_OK,
+            ingested=True,
+            submitted=True,
+            submit_confirmed=True,
+            deferred=True,
+            waited_ms=waited_ms,
+        )
+
+    def _confirm_bg_submit(
+        self, seq: int, cr_mark: int, waited_ms: int
+    ) -> Optional["InputOutcome"]:
+        """Did the CR a background-wait submit wrote start a main turn? (#1319)
+
+        The quiet-window path earns its ``submit_confirmed=True`` from the
+        agent having gone silent. This path fires into a screen that is still
+        painting, on the strength of reading that screen, so it checks the
+        result instead: Claude Code paints a main-turn spinner as soon as a
+        submit starts a turn. No spinner within ``_BG_SUBMIT_CONFIRM_MS``
+        means the CR went in and nothing showed it was taken, which is
+        reported as exactly that (unverified, submit unconfirmed) rather
+        than ``ok``. Runs outside ``_write_lock``, so a keyboard writer is
+        never held up by the wait. ``waited_ms`` stays the wait before the CR,
+        as on the quiet-window path.
+
+        ``None`` when a newer write superseded the watcher during the wait:
+        ``last_input`` describes that write by then and is left alone, as
+        everywhere else in the watcher.
+        """
+        confirm_by = time.time() + _BG_SUBMIT_CONFIRM_MS / 1000
+        while self._main_turn_at <= cr_mark:
+            if self._defer_seq != seq:
+                return None
+            if self._exited or time.time() >= confirm_by:
+                logger.info(
+                    f"⚠️ PTY {self.session_id[:8]} background-wait submit sent, "
+                    f"but no main turn started within {_BG_SUBMIT_CONFIRM_MS}ms"
+                )
+                return InputOutcome(
+                    reason=INPUT_UNVERIFIED,
+                    ingested=True,
+                    submitted=True,
+                    deferred=True,
+                    waited_ms=waited_ms,
+                )
+            time.sleep(_BULK_POLL_S)
         return InputOutcome(
             reason=INPUT_OK,
             ingested=True,

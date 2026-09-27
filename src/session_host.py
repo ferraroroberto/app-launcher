@@ -348,6 +348,15 @@ class PtySession(InputProtocol):
     # pinned at ingest (#1075, #1212), or None when the composer echoed the
     # payload verbatim instead of collapsing it into a chip.
     _defer_args: Optional[Tuple[int, int, List[str], Optional[str]]] = None
+    # Turn state read off the agent's own screen (issue #1319), kept by the
+    # reader thread (``InputProtocol._track_turn_state``). ``_bg_waiting`` is
+    # True while the main agent sits idle at its prompt with background
+    # agents running — the one state that is ready for a submit yet never
+    # goes quiet. ``_main_turn_at`` is the ``_output_total`` reading at the
+    # last main-turn spinner, which is how the deferred watcher confirms its
+    # CR started a turn.
+    _bg_waiting: bool = False
+    _main_turn_at: int = 0
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -415,6 +424,7 @@ class PtySession(InputProtocol):
                 if len(self._ring) > _RING_MAX_CHARS:
                     self._ring = _trim_ring_head(self._ring[-_RING_MAX_CHARS:])
                 subscribers = list(self._subscribers)
+            self._track_turn_state(chunk)
             if self._transcript is not None:
                 try:
                     self._transcript.write(chunk)

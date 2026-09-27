@@ -351,11 +351,14 @@ Lengthening it is only safe because check 2 now identifies *which* payload is si
 
 What remains is a liveness bound, not a safety one — a watcher that never gives up is worse than one that does, so `defer_timeout` stays reachable and keeps reporting honestly.
 
-The watcher's own verdict is recorded onto `last_input` in the same shape as an immediate write, with `deferred: true`. Only `ok` is a delivery; every other verdict is `delivered: false`, `submit_state: not_submitted` (#929):
+**Idle at the prompt with background agents (#1319).** One state is ready for a submit yet never goes quiet. When the main agent ends its turn with background sub-agents still running, Claude Code paints `✻ Waiting for N background agents to finish` once, then ticks a timer and token counter on each agent's row about once a second, and animates the window title. A human typing into that terminal gets an answer, but check 1 never holds, so a steer or a Chat message waited until the agents finished or until `defer_timeout`. The session-host now reads the turn state off the screen: the reader thread folds every output chunk into `_bg_waiting` (`_scan_turn_state`), set by the wait line and cleared by any main-turn spinner glyph (`✢✳✶✻✽`), whichever came last. Only the wait line's `Waiting for <N>` prefix is matched reliably, because Claude Code's differential renderer skips cells that already hold the right character (live sessions paint `backgrou\x1b[26Gd`). While `_bg_waiting` holds, it stands in for check 1; checks 2 and 3 still apply, and so does an image conversion still in flight. Because this rests on reading the screen rather than on silence, the CR is confirmed afterwards: the main turn's spinner has to appear within `_BG_SUBMIT_CONFIRM_MS` (15 s, measured: a live session painted it 4.7 s after the CR), or the verdict is `unverified` rather than `ok`. A running main turn still defers exactly as before. Each such submit leaves a `🧵 … idle at its prompt with background agents running` breadcrumb in the session-host log, since the markers can drift across Claude Code versions; a missed marker only puts the watcher back on the quiet-window rule.
+
+The watcher's own verdict is recorded onto `last_input` in the same shape as an immediate write, with `deferred: true`. `ok` is a confirmed delivery, and `unverified` a sent but unconfirmed one (`submit_state: unconfirmed`). Every other verdict is `delivered: false`, `submit_state: not_submitted` (#929):
 
 | `reason` | Meaning |
 |---|---|
-| `ok` | Quiet window reached, payload re-verified, CR sent — `submit_confirmed: true`, `submit_state: confirmed`. |
+| `ok` | Quiet window reached (or the background-agent wait recognised and the main turn seen to start, #1319), payload re-verified, CR sent — `submit_confirmed: true`, `submit_state: confirmed`. |
+| `unverified` | Background-agent wait recognised and the CR sent, but no main turn started within `_BG_SUBMIT_CONFIRM_MS` — `submit_state: unconfirmed` (#1319). |
 | `defer_timeout` | Never went quiet within `_DEFER_CAP_MS`. Nothing written — the paste is left in the composer, unsent. |
 | `defer_vanished` | Quiet, but the payload is no longer visible — it either already went, or the terminal moved on. Nothing written. |
 | `defer_unclear` | Quiet and the payload is there, but so is a dialog. Nothing written. |
