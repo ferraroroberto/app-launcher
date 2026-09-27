@@ -2429,7 +2429,12 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
             {"repo": "automation", "ref": "#135", "title": "parking burst trial", "status": "someday",
              "note": ""},
         ],
-        "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
+        # An old text-only item reads as a free-text question (#1295).
+        "waiting_on_roberto": [{
+            "text": "Remember the last tab?", "ref": "app-launcher#1131", "repo": "", "detail": "",
+            "recommendation": "", "id": "", "question": "Remember the last tab?", "options": [],
+            "multi": False, "ref_url": "",
+        }],
     }
 
     f.write_text(json.dumps({"version": 1, "queue": [], "lanes": _PLAN_V1["lanes"]}), encoding="utf-8")
@@ -2441,6 +2446,53 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
     assert chief_plan.read_chief_plan(f) == {"state": "unreadable"}
 
 
+def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: Path):
+    """#1295: a waiting item's answer-sheet fields are read one by one — a
+    bad type drops that field alone, never the item or the card; options are
+    capped at four and need a label; question falls back to the text and a
+    missing id stays blank; a ``repo#N`` ref links on the given owner."""
+    f = tmp_path / "chief-plan.json"
+    f.write_text(json.dumps({**_PLAN_V1, "waiting_on_roberto": [
+        {
+            "id": "q-plans", "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
+            "question": "Approve the four plans?", "detail": "Each one\nships alone.",
+            "recommendation": "Yes, all four", "multi": False, "future": 1,
+            "options": [
+                {"label": "Yes, all four", "description": "Ship them in order", "recommended": True},
+                {"label": "Only the first"},
+                {"label": ""}, "not an option", {"description": "no label"},
+                {"label": "Hold them", "recommended": "yes"},
+                {"label": "Ask me later"}, {"label": "Fifth one dropped"},
+            ],
+        },
+        "not an item",
+        {"text": "Which days?", "multi": "true", "options": {"label": "not a list"}, "id": ["bad"],
+         "question": 7, "detail": None},
+        {"text": "Pick any", "multi": True, "options": [{"label": "A"}, {"label": "B"}], "ref": "#12",
+         "repo": "life-os"},
+    ]}), encoding="utf-8")
+    first, second, third = chief_plan.read_chief_plan(f, "octo")["waiting_on_roberto"]
+    assert first == {
+        "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
+        "detail": "Each one ships alone.", "recommendation": "Yes, all four", "id": "q-plans",
+        "question": "Approve the four plans?", "multi": False,
+        "ref_url": "https://github.com/octo/fleet-config/issues/959",
+        "options": [
+            {"label": "Yes, all four", "description": "Ship them in order", "recommended": True},
+            {"label": "Only the first", "description": "", "recommended": False},
+            {"label": "Hold them", "description": "", "recommended": False},
+            {"label": "Ask me later", "description": "", "recommended": False},
+        ],
+    }
+    assert second == {
+        "text": "Which days?", "ref": "", "repo": "", "detail": "", "recommendation": "",
+        "id": "", "question": "7", "options": [], "multi": False, "ref_url": "",
+    }
+    assert third["id"] == "" and third["multi"] is True
+    assert third["ref_url"] == "https://github.com/octo/life-os/issues/12"
+    assert [o["label"] for o in third["options"]] == ["A", "B"]
+
+
 def test_api_board_chief_plan_reads_the_configured_file_behind_board_auth(webapp_client):
     client, app, _overrides = webapp_client
     plan_file = Path(app.state.webapp_config.chief_plan_file)
@@ -2450,6 +2502,8 @@ def test_api_board_chief_plan_reads_the_configured_file_behind_board_auth(webapp
     plan_file.write_text(json.dumps(_PLAN_V1), encoding="utf-8")
     body = client.get("/api/board/chief-plan").json()
     assert body["state"] == "ok" and [q["ref"] for q in body["queue"]] == ["#1273", "#135"]
+    owner = app.state.webapp_config.github_owner
+    assert body["waiting_on_roberto"][0]["ref_url"] == f"https://github.com/{owner}/app-launcher/issues/1131"
 
     app.state.webapp_config.auth_token = "secret-token"
     for path in ("/api/board", "/api/board/chief-plan"):

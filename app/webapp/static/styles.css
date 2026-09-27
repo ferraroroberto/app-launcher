@@ -4264,6 +4264,85 @@ body.terminal-open {
 .board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
 .board-plan-waiting { box-shadow: inset 3px 0 0 var(--attention); }
 .board-plan-waiting .board-card-flat { padding-left: 12px; }
+.board-plan-waiting.is-answered { box-shadow: inset 3px 0 0 var(--line); }
+.board-plan-answer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-block: 0;
+}
+
+/* The chief's answer sheet (#1295): the modal shell, full-screen on the
+   phone. Each question borrows the transcript AskUserQuestion card's parts
+   (.tr-ask-*), so options, marks and the Other field look as they do in
+   Chat — but as a flat list row on the modal's top hairline (design.md
+   list-row), never a card nested in the modal's card. */
+.chief-answers-list { display: flex; flex-direction: column; }
+.chief-answers-list .tr-ask.chief-answer {
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.chief-answer-head { flex-wrap: wrap; }
+.chief-answer-num {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.chief-answer-ref {
+  font-size: var(--font-body-sm);
+  color: var(--accent-text);
+  overflow-wrap: anywhere;
+}
+span.chief-answer-ref { color: var(--muted); }
+.chief-answer-rec {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.chief-answer-rec .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--accent-text); }
+.chief-answer-rec-label { font-weight: 600; color: var(--accent-text); }
+.chief-answer-sent { color: var(--success-text); }
+.chief-answers-also {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+.chief-answers-also .tr-ask-input { height: auto; min-height: 88px; padding: 10px 12px; resize: vertical; }
+.chief-answers-note { margin: 0; text-align: center; }
+@media (max-width: 520px) {
+  .chief-answers-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .chief-answers-dialog .detail-card {
+    min-height: 100%;
+    border-radius: 0;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  }
+}
 
 .board-list { list-style: none; margin: 0; padding: 0; }
 /* Column, not the shared .app-item row: the drawer and the issue-action

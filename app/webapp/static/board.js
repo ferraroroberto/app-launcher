@@ -65,6 +65,9 @@ import {
   syncDispatchBar,
   wireDispatch,
 } from './board-dispatch.js';
+import {
+  answeredKeys, itemKey, openChiefAnswers, syncChiefAnswers, wireChiefAnswers,
+} from './board-answers.js';
 
 // `gh` marks where a column's cards come from (#910): 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -819,7 +822,9 @@ function renderStatusLine(body) {
 // turn. No plan, the card stays blank. A plan the server could not trust adds
 // one quiet note, never a toast. Whether the chief is running comes from the
 // session cards /api/board already carries, and is said on its own line: a
-// plan with no chief behind it must not read as current.
+// plan with no chief behind it must not read as current. What waits on
+// Roberto carries an "Answer N questions" button into the one-shot answer
+// sheet (#1295, board-answers.js).
 
 // Status -> chip tone. Anything unlisted (an unknown status included) is the
 // neutral chip.
@@ -873,6 +878,17 @@ function planGroup(heading, rows, cls) {
   return wrap;
 }
 
+function answerButton(plan, run) {
+  const n = plan.waiting_on_roberto.length;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'button-tint board-plan-answer';
+  btn.innerHTML = icon('messages-square') + ' ';
+  btn.appendChild(document.createTextNode('Answer ' + n + (n === 1 ? ' question' : ' questions')));
+  btn.addEventListener('click', function () { openChiefAnswers(plan, run); });
+  return btn;
+}
+
 function planRow(title, meta, status, cls) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-plan-row' + (cls ? ' ' + cls : '');
@@ -905,8 +921,12 @@ function renderChiefPlan(body, liveRead) {
   const plan = state.chiefPlan || { state: 'empty' };
   const run = plan.state === 'ok' ? chiefRunState(body, liveRead) : '';
   const age = plan.state === 'ok' ? planAge(plan.updated_at) : '';
+  // An open answer sheet follows whether the chief runs, every poll — read
+  // from the sessions, whatever state the plan itself is in.
+  syncChiefAnswers(chiefRunState(body, liveRead));
+  const answered = plan.state === 'ok' ? answeredKeys(plan) : [];
   // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age]);
+  const sig = JSON.stringify([plan, run, age, answered]);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.dataset.state = plan.state;
@@ -924,9 +944,15 @@ function renderChiefPlan(body, liveRead) {
     nodes.push(planLine('board-plan-age', age));
     const waiting = plan.waiting_on_roberto || [];
     if (waiting.length) {
-      nodes.push(planGroup('Waiting on you', waiting.map(function (w) {
-        return planRow(w.text || w.ref, w.text ? w.ref : '', '', 'board-plan-waiting');
-      }), 'board-plan-group-waiting'));
+      const group = planGroup('Waiting on you', waiting.map(function (w, i) {
+        const sent = answered.indexOf(itemKey(w, i)) !== -1;
+        const meta = [w.text ? w.ref : '', sent ? 'answered, waiting for the chief' : '']
+          .filter(Boolean).join(' · ');
+        return planRow(w.text || w.question || w.ref, meta, '',
+          'board-plan-waiting' + (sent ? ' is-answered' : ''));
+      }), 'board-plan-group-waiting');
+      group.appendChild(answerButton(plan, run));
+      nodes.push(group);
     }
     const lanes = plan.lanes || [];
     if (lanes.length) {
@@ -1219,6 +1245,7 @@ export function wireBoard() {
     }).catch(function () {});
   });
   wireDispatch();
+  wireChiefAnswers();
   dockRefresh();
   openDesktopColumns();
   els.boardRefresh.addEventListener('click', function () {
