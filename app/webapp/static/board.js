@@ -921,8 +921,9 @@ function renderChiefPlan(body, liveRead) {
   const plan = state.chiefPlan || { state: 'empty' };
   const run = plan.state === 'ok' ? chiefRunState(body, liveRead) : '';
   const age = plan.state === 'ok' ? planAge(plan.updated_at) : '';
-  // An open answer sheet follows whether the chief runs, every poll.
-  syncChiefAnswers(run);
+  // An open answer sheet follows whether the chief runs, every poll — read
+  // from the sessions, whatever state the plan itself is in.
+  syncChiefAnswers(chiefRunState(body, liveRead));
   const answered = plan.state === 'ok' ? answeredKeys(plan) : [];
   // Rebuilt only when what it shows changes, not on every 5 s poll.
   const sig = JSON.stringify([plan, run, age, answered]);
