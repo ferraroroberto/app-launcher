@@ -1,6 +1,7 @@
 /* The shared composer (#980, Step 1 of #979): the one input surface every
  * session view mounts — the terminal overlay, Chat mode (#983) and the Board
- * drawer (#984). Owns its own markup so a second mount is one
+ * drawer (#984) — plus the chief answer sheet's Anything else as a field
+ * (#1295). Owns its own markup so a second mount is one
  * call, not a second copy of the HTML:
  *
  *   ┌ OCR staging tray (hidden until a screenshot is staged) ┐
@@ -42,13 +43,23 @@
  *     sendOnModEnter:    optional — bind Ctrl+Enter / Cmd+Enter in the
  *                        textarea to Send (#1072). Off by default; only
  *                        Chat mode asks for it.
+ *     field:             optional — mount as a form field (#1295: the chief
+ *                        answer sheet's Anything else). No ➤ Send and no ⌨
+ *                        keys: the host's own primary action reads the
+ *                        text, so `send` and `keys` are not used and the
+ *                        tools column is mic over image.
+ *     onChange:          optional — fires whenever the text changes, typed
+ *                        or not (a dictated transcript, an appended path,
+ *                        extracted OCR text), so a field host can re-gate.
  *   }) → handle
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
  * image button, the composer's own paste and drop (#1206) and the terminal
  * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
- * `setPlaceholder(text)`, `setSendable(enabled, reason)`.
+ * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
+ * stopped dictation is still finalizing — a field host's own send waits it
+ * out, as ➤ does, #489).
  *
  * `setSendable(false, reason)` gates ➤ Send alone (#983: a detached session
  * whose agent the console-input probe never proved) — the textarea, mic,
@@ -202,8 +213,16 @@ export function mountComposer(host, opts) {
   let sendBlocked = false;
   let sendReason = '';
   let sending = false;
+  if (opts.field) {
+    host.classList.add('composer-field');
+    el.send.hidden = true;
+    el.keys.hidden = true;
+  }
 
-  function grow() { growTextarea(el.textarea); }
+  function grow() {
+    growTextarea(el.textarea);
+    if (opts.onChange) opts.onChange();
+  }
 
   // ---- dictation -------------------------------------------------------
   const dictation = createDictation({
@@ -580,5 +599,6 @@ export function mountComposer(host, opts) {
     setKeys: setKeys,
     setPlaceholder: setPlaceholder,
     setSendable: setSendable,
+    isBusy: function () { return dictation.isBusy(); },
   };
 }

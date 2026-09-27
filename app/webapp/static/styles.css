@@ -3387,6 +3387,9 @@ body.terminal-open {
   cursor: default;
 }
 .compose-tools .compose-send.is-sending { cursor: progress; }
+/* A field mount (#1295, composer.js `field`) has no Send and no keys: the
+   remaining mic and image stack in one column, the same 44px cells. */
+.composer-field .compose-tools { grid-template-columns: 44px; }
 .compose-input {
   flex: 1;
   min-width: 0;
@@ -4299,21 +4302,6 @@ body.terminal-open {
   overflow-wrap: anywhere;
 }
 span.chief-answer-ref { color: var(--muted); }
-.chief-answer-rec {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 8px 0 0;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-  color: var(--fg);
-  font-size: var(--font-body-sm);
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-.chief-answer-rec .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--accent-text); }
-.chief-answer-rec-label { font-weight: 600; color: var(--accent-text); }
 .chief-answer-sent { color: var(--success-text); }
 .chief-answers-also {
   display: flex;
@@ -4321,9 +4309,15 @@ span.chief-answer-ref { color: var(--muted); }
   gap: 6px;
   padding: 12px 0;
   border-top: 1px solid var(--line);
-  font-weight: 600;
 }
-.chief-answers-also .tr-ask-input { height: auto; min-height: 88px; padding: 10px 12px; resize: vertical; }
+.chief-answers-also > span { font-weight: 600; }
+/* The composer mount sits on the sheet's own surface, as the Board drawer's
+   does: no docked bar padding, hairline or card fill. */
+.chief-answers-also .compose-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
 .chief-answers-note { margin: 0; text-align: center; }
 @media (max-width: 520px) {
   .chief-answers-dialog {

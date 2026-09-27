@@ -70,6 +70,13 @@ function findChiefCard() {
   return found;
 }
 
+// The running chief's session id, or '' — where the answer sheet's Anything
+// else stores an attachment (#1295), as Chat stores one on its session's.
+export function chiefSessionId() {
+  const chief = findChiefCard();
+  return chief && chief.alive ? chief.session_id : '';
+}
+
 // Exported (#547) so the Coding tab's manual Start-chief affordance
 // (sessions.js) can call the same ensure endpoint the Board's chat mode
 // uses.

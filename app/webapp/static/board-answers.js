@@ -4,11 +4,16 @@
  * module is the one-shot way to answer all of it: a sheet in the style of the
  * transcript's AskUserQuestion card (#1149, the same `.tr-ask-*` rows) with
  * one block per waiting item, in file order: the repo and ref, the question,
- * the detail, the chief's recommendation, the options (single- or
- * multi-select), an Other field on every item, and an "Anything else" box
- * under them all. Done composes one plain-text message and sends it through
- * the path the chat bar already uses (board-dispatch.js::sendToChief), so the
- * sheet adds no second way into the chief's PTY.
+ * the detail, the options (single- or multi-select, the recommended one
+ * labelled "(Recommended)"), an Other field on every item, and an "Anything
+ * else" box under them all. The chief's recommendation shows as its own
+ * quiet line only when it marks no option — the label already says it.
+ * Anything else is the shared composer (composer.js, as a field): dictation
+ * and image paste as in Chat, an attachment stored on the chief's session
+ * and appended as its path, exactly as a Chat send carries it. Done composes
+ * one plain-text message and sends it through the path the chat bar already
+ * uses (board-dispatch.js::sendToChief), so the sheet adds no second way into
+ * the chief's PTY.
  *
  * The app never writes the plan file: the chief removes the items it has
  * taken. Until the plan's `updated_at` moves, this viewer's browser marks the
@@ -20,11 +25,13 @@
  * (syncChiefAnswers) on whether the chief is running.
  */
 
-import { els } from './state.js';
+import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
-import { startWorkTimer } from './voice.js';
-import { sendToChief } from './board-dispatch.js';
+import { startWorkTimer, voiceDictationAvailable } from './voice.js';
+import { growTextarea, mountComposer } from './composer.js';
+import { uploadSessionFile } from './terminal-compose.js';
+import { chiefSessionId, sendToChief } from './board-dispatch.js';
 import { renderBoard } from './board.js';
 
 const ANSWERED_KEY = 'launcher.chiefAnswered';
@@ -34,9 +41,12 @@ const DONE_LABEL = 'Done';
 // escape (the #1127 no-glyph guard reads raw source).
 const ANSWER_SEP = ' \u2192 ';
 
-// The open sheet: the plan it was built from, and one draft per item
-// ({ picks: [option index], other: '' }).
+// The open sheet: the plan it was built from, one draft per item
+// ({ picks: [option index], other: '' }), and Anything else's text while the
+// sheet is closed (the composer drops its own on close).
 let sheet = null;
+// Anything else: the shared composer, mounted once.
+let also = null;
 // Whether the chief is running, as the Board last read it.
 let chiefRun = '';
 let sending = false;
@@ -105,7 +115,9 @@ function answerText(item, draft) {
 //   2. [life-os#171] Blank the old passwords? → Other: only the transcripts
 //   Skipped: 3
 //   Also: <anything-else text>
-export function composeAnswers(items, drafts, also) {
+// Anything else goes as typed (trimmed), not folded to one line: an attached
+// file is its own paragraph, as a Chat send carries it.
+export function composeAnswers(items, drafts, extra) {
   const lines = [];
   const skipped = [];
   items.forEach(function (item, i) {
@@ -121,9 +133,13 @@ export function composeAnswers(items, drafts, also) {
   });
   const out = ['Answers from the Board (' + lines.length + ' of ' + items.length + '):'].concat(lines);
   if (skipped.length) out.push('Skipped: ' + skipped.join(', '));
-  const extra = oneLine(also);
-  if (extra) out.push('Also: ' + extra);
+  const also = String(extra || '').trim();
+  if (also) out.push('Also: ' + also);
   return out.join('\n');
+}
+
+function alsoText() {
+  return also ? also.textarea.value : '';
 }
 
 function answeredCount() {
@@ -171,15 +187,13 @@ function renderItem(item, index, answered) {
   const question = item.question || item.text;
   block.appendChild(el('p', 'tr-ask-question', question));
   if (item.detail) block.appendChild(el('p', 'tr-ask-hint chief-answer-detail', item.detail));
-  if (item.recommendation) {
-    const rec = el('p', 'chief-answer-rec');
-    rec.innerHTML = icon('star');
-    rec.appendChild(el('span', 'chief-answer-rec-label', 'Recommended: '));
-    rec.appendChild(document.createTextNode(item.recommendation));
-    block.appendChild(rec);
+  const options = item.options || [];
+  // A recommended option says so in its own label; only a recommendation
+  // that marks none needs a line of its own — quiet text, not a card.
+  if (item.recommendation && !options.some(function (o) { return o.recommended; })) {
+    block.appendChild(el('p', 'tr-ask-hint chief-answer-rec', 'Recommended: ' + item.recommendation));
   }
 
-  const options = item.options || [];
   // Other, on every item; an item with no options is answered here alone.
   const input = el('input', 'tr-ask-input');
   input.type = 'text';
@@ -256,7 +270,7 @@ function syncDone() {
   let why = '';
   if (chiefRun !== 'running') {
     why = chiefRun === 'unknown' ? 'Chief status unknown — session-host unreachable.' : 'Chief not running.';
-  } else if (!answeredCount() && !els.chiefAnswersAlso.value.trim()) {
+  } else if (!answeredCount() && !alsoText().trim()) {
     why = 'Pick or type an answer first. Unanswered questions are sent as skipped.';
   }
   done.disabled = sending || !!why;
@@ -286,8 +300,14 @@ export function openChiefAnswers(plan, run) {
     plan: plan,
     items: items,
     drafts: same ? sheet.drafts : items.map(function () { return { picks: [], other: '' }; }),
+    also: same ? sheet.also : '',
   };
-  if (!same) els.chiefAnswersAlso.value = '';
+  also.textarea.value = sheet.also;
+  growTextarea(also.textarea);
+  also.setAvailability({
+    dictate: voiceDictationAvailable(),
+    ocr: !!(state.status && state.status.screenshot_ocr),
+  });
   const answered = answeredKeys(plan);
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, items.map(function (item, i) {
     return renderItem(item, i, answered.indexOf(itemKey(item, i)) !== -1);
@@ -298,7 +318,13 @@ export function openChiefAnswers(plan, run) {
 
 async function submitAnswers() {
   if (!sheet || sending) return;
-  const text = composeAnswers(sheet.items, sheet.drafts, els.chiefAnswersAlso.value);
+  // A stopped dictation is still settling into the box (#489): wait for it,
+  // as the composer's own Send does.
+  if (also.isBusy()) {
+    toast('Still transcribing — wait for the transcript, then tap Done', 'error', { icon: 'mic' });
+    return;
+  }
+  const text = composeAnswers(sheet.items, sheet.drafts, alsoText());
   const done = els.chiefAnswersDone;
   sending = true;
   syncDone();
@@ -310,7 +336,6 @@ async function submitAnswers() {
       .filter(function (k) { return k !== null; }));
     // Sent: the drafts are done with, so the next open starts clean.
     sheet = null;
-    els.chiefAnswersAlso.value = '';
     els.chiefAnswersDialog.close();
     toast('Sent to chief', 'good', { icon: 'crown' });
     renderBoard();
@@ -324,11 +349,35 @@ async function submitAnswers() {
   }
 }
 
+// An attachment is stored on the running chief's session, as Chat stores one
+// on its session's; with no chief there is nowhere to put it.
+function uploadToChief(file) {
+  const sid = chiefSessionId();
+  if (!sid) {
+    toast('Start the chief to attach a file', 'error', { icon: 'paperclip' });
+    return Promise.resolve(null);
+  }
+  return uploadSessionFile(sid, file);
+}
+
 export function wireChiefAnswers() {
   if (!els.chiefAnswersDialog) return;
+  also = mountComposer(els.chiefAnswersAlso, {
+    placeholder: 'Anything else for the chief',
+    field: true,
+    upload: uploadToChief,
+    onChange: syncDone,
+  });
+  also.setPlaceholder('Anything else for the chief');
   els.chiefAnswersClose.addEventListener('click', function () {
     els.chiefAnswersDialog.close();
   });
-  els.chiefAnswersAlso.addEventListener('input', syncDone);
+  // However it closes (the X, Esc, a send): keep the text for a reopen of
+  // the same plan, then reset the composer so a recording or a staged
+  // screenshot never outlives the sheet (#755).
+  els.chiefAnswersDialog.addEventListener('close', function () {
+    if (sheet) sheet.also = alsoText();
+    also.reset();
+  });
   els.chiefAnswersDone.addEventListener('click', submitAnswers);
 }
