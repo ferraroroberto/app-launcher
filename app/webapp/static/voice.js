@@ -152,9 +152,37 @@ export function createDictation(opts) {
   // ``setRangeText`` — on an already-cleared textarea that clamps to offset
   // 0, so the final transcript landed unsent instead of Send ever seeing it.
   let _finishing = false;
+  // True from the tap until the recorder is actually capturing (#1295
+  // follow-up): the permission prompt and the streamed-session POST take a
+  // moment, and a tap used to give no feedback, so the operator tapped
+  // again — and that second tap started a second recorder, since the
+  // mutex below only refuses *another* instance. While arming the button
+  // shows a pending hourglass and toggle() ignores taps.
+  let _arming = false;
+  // The button's own accessible label, put back when arming ends.
+  let _idleLabel = null;
+
+  function setArmingUI() {
+    _arming = true;
+    if (!button) return;
+    _idleLabel = button.getAttribute('aria-label');
+    button.classList.add('arming');
+    button.setAttribute('aria-busy', 'true');
+    button.setAttribute('aria-label', 'Starting…');
+    button.title = 'Starting…';
+    button.innerHTML = icon('hourglass');
+  }
 
   function setRecordingUI(on) {
+    _arming = false;
     if (!button) return;
+    if (button.classList.contains('arming')) {
+      button.classList.remove('arming');
+      button.removeAttribute('aria-busy');
+      if (_idleLabel === null) button.removeAttribute('aria-label');
+      else button.setAttribute('aria-label', _idleLabel);
+      _idleLabel = null;
+    }
     button.classList.toggle('recording', on);
     button.setAttribute('aria-pressed', on ? 'true' : 'false');
     button.innerHTML = on ? icon('square') : icon('mic');
@@ -250,12 +278,14 @@ export function createDictation(opts) {
     // below; the 'stop' listener clears it on the normal path.
     _activeInstance = api;
     _aborted = false;
+    setArmingUI();
     onStart();
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (exc) {
       _activeInstance = null;
+      setRecordingUI(false);
       apiFailToast('Microphone unavailable', exc);
       return;
     }
@@ -264,6 +294,7 @@ export function createDictation(opts) {
       // immediately, nothing else was ever claimed.
       stream.getTracks().forEach(function (tr) { tr.stop(); });
       _activeInstance = null;
+      setRecordingUI(false);
       return;
     }
     _stream = stream;
@@ -276,6 +307,7 @@ export function createDictation(opts) {
       _activeInstance = null;
       _stream = null;
       stream.getTracks().forEach(function (tr) { tr.stop(); });
+      setRecordingUI(false);
       apiFailToast('Recorder failed', exc);
       return;
     }
@@ -311,6 +343,7 @@ export function createDictation(opts) {
       closeVoiceEvents();
       _voiceSession = null;
       _streaming = false;
+      setRecordingUI(false);
       return;
     }
 
@@ -527,6 +560,7 @@ export function createDictation(opts) {
 
   const api = {
     toggle: function () {
+      if (_arming) return;
       if (_recorder && _recorder.state === 'recording') stopRecording();
       else startRecording();
     },

@@ -3437,6 +3437,9 @@ body.terminal-open {
 /* Background work in progress (OCR / transcribe) — keep the ticking timer
    legible despite the disabled dim, and tint it so it reads as "busy". */
 .compose-record.working { opacity: 1; color: var(--accent); font-size: var(--font-label); }
+/* Arming (#1295 follow-up): the tap landed and the mic is starting — an
+   hourglass in the accent, so a second tap is not needed to find out. */
+.compose-record.arming { color: var(--accent-text); cursor: progress; }
 /* Recording in progress — red pulse so the state is unmistakable. */
 .compose-record.recording {
   background: var(--danger, #d9534f);
