@@ -43,6 +43,63 @@ _RECORD_FIRST_STAMP = """
 """
 
 
+# Every element in the open pane that clips its own content vertically
+# (overflow-y hidden or clip) with text cut off at its inner edge: a row cut
+# off at Large. It measures the text's own line boxes against the element's
+# inner box, not scrollHeight, which also counts a ::before hit-area
+# expansion (#1124's `inset: -5px 0` on the compact controls) that clips
+# nothing. Only text whose nearest clipping ancestor is this element counts,
+# so a scroller nested inside is not read as clipped. Intentional clamps are
+# left out: a -webkit-line-clamp title (the Board's two-line cap) ends in an
+# ellipsis by design, and a box with no height is a collapsed disclosure.
+# xterm keeps its own font size (#1134) and is skipped. Returns how many
+# clipping boxes were inspected and the offenders, named by tag, id, classes.
+_CLIPPED_ROWS = """
+() => {
+  const pane = document.querySelector(
+    'main.app > section.pane:not([hidden])') || document.body;
+  const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
+    + Array.from(el.classList).map((c) => '.' + c).join('');
+  const clips = (el) => {
+    const y = getComputedStyle(el).overflowY;
+    return y !== 'visible';
+  };
+  let inspected = 0;
+  const clipped = [];
+  pane.querySelectorAll('*').forEach((el) => {
+    if (el.closest('.xterm') || !el.getClientRects().length) return;
+    const cs = getComputedStyle(el);
+    if (cs.overflowY !== 'hidden' && cs.overflowY !== 'clip') return;
+    if (cs.webkitLineClamp && cs.webkitLineClamp !== 'none') return;
+    if (el.clientHeight === 0) return;
+    const box = el.getBoundingClientRect();
+    const top = box.top + el.clientTop;
+    const bottom = top + el.clientHeight;
+    let over = 0;
+    let texts = 0;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent.trim()) continue;
+      let owner = node.parentElement;
+      while (owner !== el && !clips(owner)) owner = owner.parentElement;
+      if (owner !== el) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) {
+        if (!r.width || !r.height) continue;
+        texts++;
+        over = Math.max(over, top - r.top, r.bottom - bottom);
+      }
+    }
+    if (!texts) return;
+    inspected++;
+    if (over > 1) clipped.push(name(el) + ' +' + Math.round(over) + 'px');
+  });
+  return { inspected, clipped };
+}
+"""
+
+
 def _open_settings(page: Page) -> None:
     page.locator(".settings-open-btn:visible").first.click()
     expect(page.locator("#paneSettings")).to_be_visible()
@@ -58,10 +115,12 @@ def _assert_small_and_default_steps(page: Page) -> None:
     assert page.evaluate("localStorage.getItem('app-launcher.textsize')") == "default"
 
 
-def _assert_large_at_320px_never_scrolls_sideways(page: Page) -> None:
+def _assert_large_at_320px_never_scrolls_or_clips(page: Page) -> None:
     """Formerly ``test_large_at_320px_never_scrolls_sideways``, which seeded
     Large through an init script; here the stored step is the Large this
-    test just chose, and it reloads at 320px."""
+    test just chose, and it reloads at 320px. Acceptance criterion 1 in
+    full: no sideways scroll, and no row cut off vertically, on any tab or
+    in Settings."""
     page.set_viewport_size({"width": 320, "height": 700})
     page.reload(wait_until="domcontentloaded")
     expect(page.locator("body")).to_have_css("font-size", "18px")
@@ -72,15 +131,26 @@ def _assert_large_at_320px_never_scrolls_sideways(page: Page) -> None:
             " return el.scrollWidth > 0 ? el.scrollWidth - el.clientWidth : null; }"
         )
 
+    def clipped(where: str) -> int:
+        found = stable_read(lambda: page.evaluate(_CLIPPED_ROWS))
+        assert not found["clipped"], (
+            f"{where} at Large/320px cuts off rows: {found['clipped']}")
+        return found["inspected"]
+
+    inspected = 0
     for tab in _TABS:
         page.locator(tab).click()
         page.wait_for_timeout(300)
         spill = stable_read(overflow)
         assert spill <= 0, f"{tab} at Large/320px scrolls sideways by {spill}px"
+        inspected += clipped(tab)
 
     _open_settings(page)
     spill = stable_read(overflow)
     assert spill <= 0, f"Settings at Large/320px scrolls sideways by {spill}px"
+    inspected += clipped("Settings")
+    # The scan found real clipping boxes to check, so a pass means something.
+    assert inspected > 0, "no clipping boxes found on any tab: the scan checked nothing"
 
 
 def test_large_sets_18px_body_and_survives_reload(
@@ -88,7 +158,8 @@ def test_large_sets_18px_body_and_survives_reload(
 ) -> None:
     """The whole #1134 control on one page load (merged by #1215): the
     default step, Small and Default, Large surviving a reload with a no-flash
-    first stamp, and Large at 320px never scrolling sideways."""
+    first stamp, and Large at 320px never scrolling sideways or clipping a
+    row."""
     page = authed_page
     page.add_init_script(_RECORD_FIRST_STAMP)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -119,4 +190,4 @@ def test_large_sets_18px_body_and_survives_reload(
     expect(page.locator("body")).to_have_css("font-size", "18px")
 
     # Last: resizes and reloads the page.
-    _assert_large_at_320px_never_scrolls_sideways(page)
+    _assert_large_at_320px_never_scrolls_or_clips(page)
