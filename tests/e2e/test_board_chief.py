@@ -195,7 +195,11 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     # With the chief running its plan reads as current (#1279): the rows,
     # and no "not running" line. An absent updated_at is said, not hidden.
     plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
-    expect(plan_body.locator("li.board-plan-row")).to_contain_text("#1279 chief's plan card")
+    row = plan_body.locator("li.board-plan-row")
+    expect(row.locator(".board-card-title-compact")).to_have_text("chief's plan card")
+    # No ref_url in this plan: the ref stays plain text, never a dead link.
+    expect(row.locator(".board-card-meta-inline")).to_have_text("app-launcher#1279")
+    expect(row.locator("a")).to_have_count(0)
     expect(plan_body.locator(".board-plan-age")).to_have_text("Update time unknown")
     expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
     # Crown glyph marks the card (accent tint is the .board-item-chief class).

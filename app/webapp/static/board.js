@@ -889,6 +889,32 @@ function answerButton(plan, run) {
   return btn;
 }
 
+// A queue row's secondary text (#1297): the repo and number (`repo#N`, a
+// link when the reader resolved one), then the chief's note. The title leads
+// the row, so an item without one is named by this label and keeps just the
+// note here.
+function queueRow(q) {
+  const ref = q.ref && q.ref.charAt(0) === '#' && q.repo ? q.repo + q.ref : q.ref;
+  const label = ref || q.repo;
+  const meta = [];
+  if (q.title && label) {
+    if (q.ref_url) {
+      const a = document.createElement('a');
+      a.className = 'board-plan-ref';
+      a.href = q.ref_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = label;
+      meta.push(a);
+    } else {
+      meta.push(label);
+    }
+  }
+  if (q.note) meta.push((meta.length ? ' · ' : '') + q.note);
+  return planRow(q.title || label, meta, q.status);
+}
+
+// `meta` is a line of text, or a list of text and nodes (a queue row's link).
 function planRow(title, meta, status, cls) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-plan-row' + (cls ? ' ' + cls : '');
@@ -897,10 +923,10 @@ function planRow(title, meta, status, cls) {
   const textCol = document.createElement('span');
   textCol.className = 'board-card-text';
   textCol.appendChild(cardTitleEl('board-card-title-compact', title));
-  if (meta) {
+  if (meta && meta.length) {
     const m = document.createElement('span');
     m.className = 'board-card-meta-inline';
-    m.textContent = meta;
+    m.append.apply(m, Array.isArray(meta) ? meta : [meta]);
     textCol.appendChild(m);
   }
   body.appendChild(textCol);
@@ -960,11 +986,7 @@ function renderChiefPlan(body, liveRead) {
         return planRow(l.repo || 'lane', l.item, l.status);
       })));
     }
-    nodes.push(planGroup('Queue', (plan.queue || []).map(function (q) {
-      const title = [q.ref, q.title].filter(Boolean).join(' ');
-      const meta = [q.repo, q.note].filter(Boolean).join(' · ');
-      return planRow(title || q.repo, meta, q.status);
-    })));
+    nodes.push(planGroup('Queue', (plan.queue || []).map(queueRow)));
   }
   host.replaceChildren.apply(host, nodes);
 }
