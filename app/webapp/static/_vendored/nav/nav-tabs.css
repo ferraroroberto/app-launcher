@@ -173,7 +173,9 @@
        tabs technically scrollable so iOS anchors fixed to the screen bottom. */
     min-height: calc(100vh + 1px);
     min-height: calc(100dvh + 1px);
-    padding: calc(env(safe-area-inset-top, 0px) + var(--gap)) var(--gap) calc(
+    /* Top is the safe area alone (#288): the first card starts directly under
+       the status bar, as in app-launcher. Sides and bottom keep --gap. */
+    padding: env(safe-area-inset-top, 0px) var(--gap) calc(
       env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
       var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
     );
@@ -209,7 +211,15 @@
      fixed .app scroller (its overscroll-behavior: none stops chaining), and
      the nav declines pan gestures outright — so the WKWebView bounce that
      moves `visualViewport.offsetTop` (home-automation#300) still has no entry
-     point. */
+     point.
+
+     Page-head dependency (#287): this shell and the `.tabs` anchor below
+     assume the web view spans the WHOLE screen, which iOS gives an installed
+     app only when the page sets
+     `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
+     plus `viewport-fit=cover` in its viewport meta. Without them the app starts
+     below an opaque status bar and the pill lands one status-bar height
+     (about 59pt) too low, mostly off-screen (parking-manager#24). */
   @media (display-mode: standalone) {
     .app {
       position: fixed;
