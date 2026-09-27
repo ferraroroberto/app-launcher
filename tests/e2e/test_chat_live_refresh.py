@@ -697,7 +697,6 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
 
 
 @pytest.mark.iphone
-@pytest.mark.iphone
 def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty_state(
     authed_page: Page, base_url: str
 ) -> None:
@@ -736,6 +735,7 @@ def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty
     expect(state).to_be_hidden()
 
 
+@pytest.mark.iphone
 def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_composer(
     authed_page: Page, base_url: str
 ) -> None:
