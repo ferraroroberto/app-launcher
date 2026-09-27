@@ -99,6 +99,46 @@ function wireSettings() {
     await fetchSystemMapStatus();
     toast('Settings saved.', 'good');
   });
+  wireChiefSettings();
+}
+
+// The Chief card (#1298). The percent is checked here first so a typo gets a
+// plain message rather than a server 400; the server enforces the same range.
+function chiefThresholdFromField() {
+  const field = els.chiefAutoCompactThreshold;
+  const min = Number(field.min) || 10;
+  const max = Number(field.max) || 90;
+  const value = Number(field.value);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    toast('Auto-compact threshold must be a whole percent between ' + min + ' and ' + max + '.', 'error');
+    return null;
+  }
+  return value;
+}
+
+function wireChiefSettings() {
+  if (!els.chiefAutoCompactToggle) return;
+  // The switch saves at once, like every other Settings switch: off stores
+  // 0, on stores the percent in the field.
+  els.chiefAutoCompactToggle.addEventListener('click', async function () {
+    const on = els.chiefAutoCompactToggle.getAttribute('aria-checked') !== 'true';
+    const value = on ? chiefThresholdFromField() : 0;
+    if (value === null) return;
+    if (await patchConfig({ chief_auto_compact_threshold: value })) {
+      toast(on ? 'Chief auto-compact on at ' + value + '%.' : 'Chief auto-compact off.', 'good');
+    }
+  });
+  els.saveChiefSettings.addEventListener('click', async function () {
+    if (els.chiefAutoCompactToggle.getAttribute('aria-checked') !== 'true') {
+      toast('Auto-compact is off: turn it on to set a threshold.', '');
+      return;
+    }
+    const value = chiefThresholdFromField();
+    if (value === null) return;
+    if (await patchConfig({ chief_auto_compact_threshold: value })) {
+      toast('Chief settings saved.', 'good');
+    }
+  });
 }
 
 // --------------------------------------------------------- theme toggle

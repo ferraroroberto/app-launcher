@@ -117,6 +117,13 @@ DEFAULT_CHIEF_MODEL = "fable"
 DEFAULT_CHIEF_WORKER_CAP = 3
 MIN_CHIEF_WORKER_CAP = 1
 MAX_CHIEF_WORKER_CAP = 10
+# The context-use percent at which the chief compacts itself (#1298, read by
+# fleet-config#1052's `chief_ops.py self-compact` from
+# GET /api/board/chief-settings). 0 turns it off; otherwise it must sit in
+# the range. The app only stores the number and never compacts anything.
+DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD = 30
+MIN_CHIEF_AUTO_COMPACT_THRESHOLD = 10
+MAX_CHIEF_AUTO_COMPACT_THRESHOLD = 90
 
 # Derived from the catalog like the Codex/Pi/chief sets (#883), so a model
 # refresh makes a tier pickable, savable and launchable in one edit. Haiku
@@ -405,6 +412,9 @@ class WebappConfig:
     # cap is also read by the /chief skill over loopback.
     chief_model: str = DEFAULT_CHIEF_MODEL
     chief_worker_cap: int = DEFAULT_CHIEF_WORKER_CAP
+    # Auto-compact threshold in percent, 0 = off (#1298). Set in Settings'
+    # Chief card; served to the chief by GET /api/board/chief-settings.
+    chief_auto_compact_threshold: int = DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
@@ -884,4 +894,13 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"chief_worker_cap must be between {MIN_CHIEF_WORKER_CAP} and "
             f"{MAX_CHIEF_WORKER_CAP}; got {cfg.chief_worker_cap}"
+        )
+    threshold = cfg.chief_auto_compact_threshold
+    if threshold != 0 and not (
+        MIN_CHIEF_AUTO_COMPACT_THRESHOLD <= threshold <= MAX_CHIEF_AUTO_COMPACT_THRESHOLD
+    ):
+        raise ValueError(
+            "chief_auto_compact_threshold must be 0 (off) or between "
+            f"{MIN_CHIEF_AUTO_COMPACT_THRESHOLD} and "
+            f"{MAX_CHIEF_AUTO_COMPACT_THRESHOLD} percent; got {threshold}"
         )

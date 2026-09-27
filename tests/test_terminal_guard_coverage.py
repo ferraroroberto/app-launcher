@@ -88,6 +88,11 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "the chief writes. No session, transcript or terminal access, so the "
         "same token as /api/board."
     ),
+    "/api/board/chief-settings": (
+        "The chief's auto-compact threshold (#1298): one integer the chief "
+        "reads over loopback. No session, transcript or terminal access, "
+        "and the issue asks for the same auth as the rest of /api/board."
+    ),
     "/api/board/github/refresh": (
         "Forces a refresh of the cached GitHub issue/PR metadata the board "
         "already serves token-gated — no session or transcript access."

@@ -107,8 +107,24 @@ export async function fetchConfig(shouldApply) {
   if (els.bootAutostartToggle) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
+  renderChiefAutoCompact(body);
   renderClaudeOptions();
   return true;
+}
+
+// The Chief card (#1298): 0 is off, shown as the switch off and the percent
+// field disabled at the default, since 0 keeps no earlier percent.
+const _DEFAULT_CHIEF_AUTO_COMPACT = 30;
+
+function renderChiefAutoCompact(body) {
+  if (!els.chiefAutoCompactToggle) return;
+  const field = els.chiefAutoCompactThreshold;
+  const value = Number(body.chief_auto_compact_threshold) || 0;
+  if (body.chief_auto_compact_threshold_min != null) field.min = body.chief_auto_compact_threshold_min;
+  if (body.chief_auto_compact_threshold_max != null) field.max = body.chief_auto_compact_threshold_max;
+  setSwitch(els.chiefAutoCompactToggle, value > 0);
+  field.value = String(value > 0 ? value : _DEFAULT_CHIEF_AUTO_COMPACT);
+  field.disabled = value === 0;
 }
 
 export function renderClaudeOptions() {

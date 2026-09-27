@@ -602,6 +602,7 @@ UI prefs + secrets, authored from the web UI:
 | `github_owner` | `"ferraroroberto"` | GitHub owner whose repos the Board tab's `gh` searches span (Backlog / PRs / Done-today). |
 | `chief_model` | `"fable"` | Model the fleet chief spawns on (issue #245; `sonnet`/`opus`/`fable`). Edited from the Board's chief-settings dialog. |
 | `chief_worker_cap` | `3` | Max concurrent worker sessions the `/chief` skill may keep running (1-10, issue #245; ceiling raised 8→10 in #547). Read by the skill over loopback via `GET /api/board/chief/settings` — its dispatch rail, phone-tunable. |
+| `chief_auto_compact_threshold` | `30` | The context-use percent at which the fleet chief compacts itself (issue #1298, fleet-config#1052): `0` is off, otherwise 10-90. Set from Settings' **Chief** card (its switch turns it off) through `POST /api/config`; the chief reads it from `GET /api/board/chief-settings` → `{"auto_compact_threshold": <int>}` (board token, the default when nothing is stored). The app only stores the number and never compacts anything itself. |
 | `claude_model` | `"opus"` | Default `--model` for `claude` (Claude Code button only) |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
 | `claude_verbose` | `true` | Pass `--verbose` |

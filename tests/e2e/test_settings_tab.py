@@ -283,3 +283,61 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
 
 
+
+
+@pytest.mark.iphone
+def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1298: Settings' Chief card sets the chief's auto-compact threshold
+    (fleet-config#1052), through the ordinary /api/config save. It loads the
+    default 30, refuses a value outside 10-90 with a plain message and saves
+    nothing, saves and reloads a valid one, and its switch turns the
+    feature off by storing 0 (the field then disabled)."""
+    page = authed_page
+    posts: list = []
+    page.on("request", lambda req: posts.append(req.post_data_json)
+            if req.method == "POST" and req.url.endswith("/api/config") else None)
+
+    def open_card() -> None:
+        page.goto(base_url, wait_until="domcontentloaded")
+        page.locator(".pane:not([hidden]) .settings-open-btn").click()
+        _open_card(page, "chiefSettingsPanel")
+
+    open_card()
+    field = page.locator("#chiefAutoCompactThreshold")
+    switch = page.locator("#chiefAutoCompactToggle")
+    save = page.locator("#saveChiefSettings")
+    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(field).to_have_value("30")
+    expect(field).to_be_enabled()
+
+    field.fill("5")
+    save.click()
+    expect(page.locator("#toast")).to_contain_text("between 10 and 90")
+    assert posts == [], posts
+
+    field.fill("45")
+    save.click()
+    expect(page.locator("#toast")).to_contain_text("Chief settings saved")
+    assert posts[-1] == {"chief_auto_compact_threshold": 45}, posts
+
+    open_card()
+    expect(field).to_have_value("45")
+    expect(switch).to_have_attribute("aria-checked", "true")
+
+    switch.click()
+    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(field).to_be_disabled()
+    expect(page.locator("#toast")).to_contain_text("Chief auto-compact off")
+    assert posts[-1] == {"chief_auto_compact_threshold": 0}, posts
+
+    open_card()
+    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(field).to_be_disabled()
+
+    # Back on at the default, so the shared webapp is left as found.
+    switch.click()
+    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(field).to_be_enabled()
+    assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts

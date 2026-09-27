@@ -9,6 +9,9 @@
     GET  /api/board/chief/settings  → chief settings block (also read by the
                                       /chief skill over loopback)
     PUT  /api/board/chief/settings  → persist chief settings
+    GET  /api/board/chief-settings  → {"auto_compact_threshold": <int>}, the
+                                      chief's self-compact threshold (#1298,
+                                      fleet-config#1052); board token only
 
 Split off ``app/webapp/routers/board.py`` (issue #691, a `/codebase-audit`
 maintainability finding) — the same god-router split ``jobs.py`` and
@@ -567,6 +570,17 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
         "model": cfg.chief_model,
         "worker_cap": cfg.chief_worker_cap,
     }
+
+
+@router.get("/api/board/chief-settings")
+async def get_chief_auto_compact(request: Request) -> Dict[str, Any]:
+    """The chief's auto-compact threshold (#1298), the contract
+    fleet-config#1052's ``chief_ops.py self-compact`` reads: percent of
+    context use, 0 = off, the default when nothing is stored. Set through
+    Settings (POST /api/config); the app never compacts anything itself.
+    Same bearer token as /api/board — a number, no session or terminal."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    return {"auto_compact_threshold": cfg.chief_auto_compact_threshold}
 
 
 @router.get("/api/board/chief/settings")
