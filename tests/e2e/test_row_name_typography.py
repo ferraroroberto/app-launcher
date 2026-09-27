@@ -159,6 +159,9 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
 
     authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # The first half left the Apps tab open, and the tab now survives a
+    # reload (#1131), so choose Code rather than assume it is the default.
+    authed_page.locator("#tabClaude").click()
 
     # The Code tab's chips say what they are, whole words, on one line (#1191).
     for sel, text in (("#gitStatusBtn", "Git status"),

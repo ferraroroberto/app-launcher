@@ -154,5 +154,34 @@ def test_every_pane_opens_with_its_header_and_a_settings_gear(
         expect(page.locator(pane)).to_be_visible()
         expect(page.locator(tab)).to_have_attribute("aria-selected", "true")
 
+    # Settings is no tab, so a reload from it reopens the last real tab
+    # (#1131: the tab persists; Settings never overwrites it).
+    last_tab, (last_pane, _title) = list(_TABS.items())[-1]
+    page.locator(f"{last_pane} > .home-head .settings-open-btn").click()
+    expect(page.locator("#paneSettings")).to_be_visible()
+    page.reload(wait_until="domcontentloaded")
+    expect(page.locator(last_pane)).to_be_visible()
+    expect(page.locator(last_tab)).to_have_attribute("aria-selected", "true")
+    expect(page.locator("#paneSettings")).to_be_hidden()
+
+    # With storage unavailable (private mode, blocked site data) the app
+    # still boots, on the default tab.
+    page.add_init_script(
+        """(() => {
+          const get = Storage.prototype.getItem, set = Storage.prototype.setItem;
+          Storage.prototype.getItem = function (k) {
+            if (k === 'app-launcher.tab') throw new Error('storage blocked');
+            return get.apply(this, arguments);
+          };
+          Storage.prototype.setItem = function (k) {
+            if (k === 'app-launcher.tab') throw new Error('storage blocked');
+            return set.apply(this, arguments);
+          };
+        })()"""
+    )
+    page.reload(wait_until="domcontentloaded")
+    expect(page.locator("#paneClaude")).to_be_visible()
+    expect(page.locator("#tabClaude")).to_have_attribute("aria-selected", "true")
+
     # Last: resizes and reloads the page.
     _assert_five_tabs_with_labels_at_320px(page)

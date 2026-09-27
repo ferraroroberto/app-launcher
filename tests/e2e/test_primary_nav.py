@@ -235,6 +235,16 @@ def test_primary_nav_is_responsive_and_accessible(
     )
     expect(tabs).to_have_attribute("data-active-tab", "jobs")
 
+    # The chosen tab survives a reload (#1131, design.md: localStorage), so
+    # an installed PWA reopens where it was left, not always on Code.
+    authed_page.reload(wait_until="domcontentloaded")
+    expect(authed_page.locator("#paneJobs")).to_be_visible()
+    expect(authed_page.locator("#paneClaude")).to_be_hidden()
+    expect(authed_page.locator("#tabJobs")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(tabs).to_have_attribute("data-active-tab", "jobs")
+
     metrics = authed_page.evaluate(
         """() => {
           const nav = document.querySelector('nav.tabs');
