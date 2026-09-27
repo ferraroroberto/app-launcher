@@ -7,7 +7,9 @@ a mocked chief reply renders through the drawer's exchange surface, the
 chief card is visually distinct and confirm-protected against the one-tap
 stop every other card keeps, the manual Start affordance shows when no
 chief is alive (Restart when one is, #617), and the settings dialog
-round-trips GET → edit → PUT.
+round-trips GET → edit → PUT. The Chief's-plan card's answer sheet
+(#1295) renders the chief's questions and sends every answer as one message
+down that same input path.
 Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
@@ -24,6 +26,9 @@ from datetime import datetime, timezone
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from src import chief_plan
+from tests.e2e.conftest import stable_read
 
 pytestmark = pytest.mark.smoke
 
@@ -576,3 +581,204 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     expect(drawer).to_have_attribute("data-e2e-tag", "pre-poll")
     expect(reply).to_have_value("half-typed follow-up")
     expect(reply).to_be_focused()
+
+
+# ------------------------------------------- chief's answer sheet (#1295)
+
+# The chief's questions as its plan writer records them (additive plan v1),
+# served as the real reader (src/chief_plan.py) makes of them: one full
+# single-select, one multi-select with no ref, one old-style text-only item.
+_QUESTIONS = [
+    {"id": "q-plans", "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
+     "question": "Approve the four plans?", "detail": "Each plan ships as its own PR.",
+     "recommendation": "Yes: all four are small and independent.",
+     "options": [
+         {"label": "Yes, all four", "description": "Ship them in order", "recommended": True},
+         {"label": "Only the first"},
+         {"label": "Hold them"},
+     ]},
+    {"id": "q-days", "text": "Which days?", "repo": "life-os", "question": "Which days work?",
+     "multi": True, "options": [{"label": "Mon"}, {"label": "Wed"}, {"label": "Fri"}]},
+    {"text": "Remember the last tab?", "ref": "app-launcher#1131"},
+]
+
+
+def _plan_with(tmp_path, waiting: list) -> dict:
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z", "lanes": [],
+        "queue": [{"repo": "app-launcher", "ref": "#1295", "title": "answer sheet", "status": "building"}],
+        "waiting_on_roberto": waiting,
+    }), encoding="utf-8")
+    return chief_plan.read_chief_plan(f, "octo")
+
+
+def _route_plan_from(page: Page, current: dict) -> None:
+    """Serve ``current["plan"]`` from the chief-plan endpoint at request time
+    (registered after _mock_board, so it wins over that helper's fixed plan)."""
+    page.route(
+        re.compile(r".*/api/board/chief-plan$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(current["plan"]),
+        ),
+    )
+
+
+def _capture_chief_input(page: Page) -> list:
+    posts: list = []
+
+    def _capture(route):
+        posts.append(route.request.post_data_json)
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        )
+
+    page.route(re.compile(r".*/api/claude-code/sessions/s-chief/input$"), _capture)
+    return posts
+
+
+@pytest.mark.iphone
+def test_answer_button_shows_only_with_questions(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1295: the Chief's-plan card offers "Answer N questions" only when
+    something waits on Roberto; with nothing waiting there is no button."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    current = {"plan": _plan_with(tmp_path, [])}
+    _route_plan_from(authed_page, current)
+    _open_board(authed_page, base_url)
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    expect(plan_body.locator(".board-plan-answer")).to_have_count(0)
+
+    current["plan"] = _plan_with(tmp_path, _QUESTIONS)
+    authed_page.locator("#boardRefresh").click()
+    button = plan_body.locator(".board-plan-answer")
+    expect(button).to_have_text("Answer 3 questions")
+    # The card lists every item, an old text-only one included.
+    expect(plan_body.locator("li.board-plan-waiting")).to_have_count(3)
+    expect(plan_body.locator("li.board-plan-waiting").nth(2)).to_contain_text("Remember the last tab?")
+    box = stable_read(button.bounding_box)
+    assert box and box["height"] >= 44, f"answer button under the 44px tap floor: {box}"
+
+
+@pytest.mark.iphone
+def test_answer_sheet_renders_questions_and_done_sends_one_message(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1295: the sheet shows each question in file order (repo, linked ref,
+    question, detail, the marked recommendation, the options with the
+    recommended one labelled but not picked, Other on every item, an old
+    text-only item as a free-text question) plus Anything else. Done sends
+    exactly one message, composed from every answer, through the chat bar's
+    ensure → input path; the sheet closes, a toast says so, and the card
+    marks what this viewer answered."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured)
+    posts = _capture_chief_input(authed_page)
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog).to_be_visible()
+    blocks = dialog.locator(".chief-answer")
+    expect(blocks).to_have_count(3)
+
+    first = blocks.nth(0)
+    expect(first.locator(".chief-answer-repo")).to_have_text("fleet-config")
+    expect(first.locator("a.chief-answer-ref")).to_have_attribute(
+        "href", "https://github.com/octo/fleet-config/issues/959")
+    expect(first.locator(".tr-ask-question")).to_have_text("Approve the four plans?")
+    expect(first.locator(".chief-answer-detail")).to_have_text("Each plan ships as its own PR.")
+    expect(first.locator(".chief-answer-rec")).to_contain_text(
+        "Recommended: Yes: all four are small and independent.")
+    options = first.locator(".tr-ask-opt")
+    expect(options).to_have_count(3)
+    expect(options.nth(0)).to_contain_text("Yes, all four (Recommended)")
+    expect(options.nth(0)).to_contain_text("Ship them in order")
+    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
+
+    second = blocks.nth(1)
+    expect(second.locator(".chief-answer-ref")).to_have_count(0)
+    expect(second.locator(".tr-ask-hint")).to_have_text("Pick any number")
+
+    third = blocks.nth(2)
+    expect(third.locator(".tr-ask-question")).to_have_text("Remember the last tab?")
+    expect(third.locator(".tr-ask-opt")).to_have_count(0)
+    expect(third.locator("a.chief-answer-ref")).to_have_attribute(
+        "href", "https://github.com/octo/app-launcher/issues/1131")
+
+    expect(dialog.locator(".tr-ask-input")).to_have_count(4)  # Other x3 + Anything else
+    expect(third.locator(".tr-ask-input")).to_have_attribute("placeholder", "Your answer")
+    expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
+
+    # Nothing answered yet: Done waits, and says why.
+    done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_disabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_contain_text("Pick or type an answer first")
+
+    # Single-select: typing Other then tapping an option keeps only the pick.
+    first.locator(".tr-ask-input").fill("maybe later")
+    options.nth(0).click()
+    expect(options.nth(0)).to_have_attribute("aria-pressed", "true")
+    expect(first.locator(".tr-ask-input")).to_have_value("")
+    # Multi-select: any number of picks, plus Other.
+    second.locator(".tr-ask-opt").nth(0).click()
+    second.locator(".tr-ask-opt").nth(1).click()
+    second.locator(".tr-ask-input").fill("not   Friday")
+    # The third is skipped.
+    dialog.locator("#chiefAnswersAlso").fill("ship it tonight")
+    expect(done).to_be_enabled()
+
+    viewport = authed_page.viewport_size
+    box = dialog.bounding_box()
+    assert box, "answer sheet not laid out"
+    if viewport["width"] <= 520:
+        assert abs(box["width"] - viewport["width"]) < 2 and box["height"] >= viewport["height"] - 2, (
+            f"phone sheet should be full-screen: {box} vs {viewport}")
+    else:
+        assert box["width"] <= 440, f"desktop sheet should stay a centred dialog: {box}"
+
+    done.click()
+    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
+    expect(dialog).to_be_hidden()
+    assert ensured.get("body", {}).get("fresh") is not True, "answers must never restart the chief"
+    assert posts == [{
+        "data": (
+            "Answers from the Board (2 of 3):\n"
+            "1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}\n"
+            "2. [life-os] Which days work? → Mon, Wed; Other: not Friday {id: q-days}\n"
+            "Skipped: 3\n"
+            "Also: ship it tonight"
+        ),
+        "submit": True,
+    }], posts
+
+    rows = authed_page.locator("#boardChiefPlan li.board-plan-waiting")
+    expect(rows.nth(0)).to_contain_text("answered, waiting for the chief")
+    expect(rows.nth(1)).to_contain_text("answered, waiting for the chief")
+    expect(rows.nth(2)).not_to_contain_text("answered")
+
+
+@pytest.mark.iphone
+def test_answer_sheet_done_disabled_when_no_chief(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1295: with no chief running there is nobody to send to — Done is
+    disabled with a plain note, answers typed or not, and nothing is sent."""
+    _mock_board(authed_page, _board_payload(with_chief=False))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    posts = _capture_chief_input(authed_page)
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    dialog.locator(".chief-answer").nth(2).locator(".tr-ask-input").fill("yes")
+    expect(dialog.locator("#chiefAnswersDone")).to_be_disabled()
+    expect(dialog.locator("#chiefAnswersNote")).to_have_text("Chief not running.")
+    dialog.locator("#chiefAnswersClose").click()
+    expect(dialog).to_be_hidden()
+    assert posts == []

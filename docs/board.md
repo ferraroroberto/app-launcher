@@ -245,6 +245,26 @@ A card directly under *Claude's turn* (not a column; `index.html` wraps the two 
 
 **Chief not running is its own state.** Whether the chief runs comes from the session cards `/api/board` already carries (a live card that `isChiefCard` matches), not from the plan. That gives three answers, and each is said. Running shows no line. *Chief not running — this plan may be out of date.* shows when the session list was read and holds no live chief. *Chief status unknown — session-host unreachable.* shows when the list could not be read, which can't prove the chief is gone. So an old plan never reads as current.
 
+### The answer sheet (#1295)
+
+When anything waits on Roberto, the *Waiting on you* group ends in an **Answer N questions** button. It opens a sheet (`board-answers.js`; full-screen on the phone, the centred modal on desktop) with one block per item, in file order, built from the transcript's AskUserQuestion card styles (`.tr-ask-*`, #1149). Each block shows the repo, the ref (linked when it is `repo#N` or `#N` beside a `repo`), the question, the detail, the chief's recommendation (marked), and the options: single-select, or multi-select when `multi` is true. The recommended option is labelled *(Recommended)* but not pre-selected. Every item has an *Other* field; an item with no options has only that field. Any item can be left unanswered. An *Anything else* box sits under them all.
+
+**Additive plan-v1 fields.** Each `waiting_on_roberto` item keeps `text` (required) and `ref`, and may add `id` (a stable string), `repo`, `question` (falls back to `text`), `detail`, `recommendation`, `options` (0–4 items of `{"label", "description"?, "recommended"?}`) and `multi` (default false). The reader takes each field on its own: a wrong type drops that field, never the item or the card; an option without a label is skipped, and past four are cut. Every item comes back with all of these keys, plus `ref_url` (blank when the ref isn't a GitHub ref); a missing `id` stays blank.
+
+**Done** composes one plain-text message and sends it through `board-dispatch.js::sendToChief`, the same ensure → `/input` path the chat bar uses. The format, for the chief to parse:
+
+```
+Answers from the Board (2 of 3):
+1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}
+2. [life-os] Which days work? → Mon, Wed; Other: not Friday {id: q-days}
+Skipped: 3
+Also: ship it tonight
+```
+
+Numbers are positions in the plan's `waiting_on_roberto` list. The tag is the item's `ref`, else its `repo`, else nothing. `{id: …}` appears only when the chief gave the item an id. An answer is the picked labels (`, `-joined, each recommended one suffixed `(recommended)`), then `; Other: <text>` when Other was typed. For a single-select item, picking and typing replace each other. Whitespace in every answer and in *Also* is collapsed to single spaces, so each answer is one line. `Skipped:` and `Also:` appear only when they have something to say.
+
+Done is disabled, with a note saying why, while the chief isn't running (or its status is unknown), and while nothing has been answered and *Anything else* is empty. After a send the sheet closes with a *Sent to chief* toast, and this viewer's browser marks the answered items *answered, waiting for the chief* on the card until the plan's `updated_at` changes. The marks are kept in `localStorage` (`launcher.chiefAnswered`) when it is available, and otherwise in memory. A failed send keeps the sheet open with every answer still in it. The app never writes the plan file: the chief removes the items it has taken.
+
 ## The drill-down drawer and its PTY-write path (#301)
 
 Tapping a live session card opens an **inline drill-down drawer** on the card (`board.js::buildDrawer`). It shows the last user↔assistant exchange, the shared composer (`composer.js`, the same component the session overlay mounts — #984) and four equal actions: Rename · Stop · Chat · Terminal — one row while the drawer fits four 44px columns, else 2×2, else one column; a container query on the drawer's own width decides (#1174). The **5 s poll keeps running** while a drawer is open — the chief chat holds its drawer open for a whole conversation, and an earlier pause on any open drawer froze the card list for hours with no sign it was stale (#958). Instead `renderBoard()` keeps the open drawer's own `<li>` in place and swaps in only its fresh card header, so a half-typed reply, the composer's focus (the phone keyboard), a live dictation and the chief's exchange poll all survive every re-render. A drawer that is *not* kept has its composer `reset()` first, which disposes the mic so a recording can never outlive its DOM node (#755). A drawer whose card leaves the payload (session ended) or the repo filter collapses.

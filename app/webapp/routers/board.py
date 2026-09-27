@@ -290,7 +290,9 @@ async def get_chief_plan(request: Request) -> Dict[str, Any]:
     from the session cards ``/api/board`` already carries.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    return await asyncio.to_thread(chief_plan.read_chief_plan, Path(cfg.chief_plan_file))
+    return await asyncio.to_thread(
+        chief_plan.read_chief_plan, Path(cfg.chief_plan_file), cfg.github_owner,
+    )
 
 
 @router.get("/api/rate-limits")

@@ -414,7 +414,8 @@ label      = "repo-meta"
 # surface module is in that surface's targets.
 
 # The Board tab: kanban + drawer (board.js), the dispatch bar and fleet-chief
-# lifecycle (board-dispatch.js), and their routers. test_coding_chief drives the
+# lifecycle (board-dispatch.js), the chief's answer sheet (board-answers.js),
+# and their routers. test_coding_chief drives the
 # chief from the Coding tab through board-dispatch.js; test_session_rename and
 # test_shared_session_title render board cards.
 [[e2e.surface]]
@@ -422,6 +423,7 @@ name     = "board"
 paths    = [
     "app/webapp/static/board.js",
     "app/webapp/static/board-dispatch.js",
+    "app/webapp/static/board-answers.js",
     "app/webapp/routers/board.py",
     "app/webapp/routers/board_chief.py",
     "app/webapp/routers/board_spawn.py",

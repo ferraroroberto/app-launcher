@@ -291,6 +291,28 @@ function renderChiefStatus() {
     : 'chief: not running';
 }
 
+// The one path a message takes into the chief's PTY: ensure, then type it
+// through the kind-agnostic /input route. The chat bar and the answer sheet
+// (#1295, board-answers.js) both send through here. Returns ensure's body.
+export async function sendToChief(text) {
+  // resume=true (#651): the lazy first-send ensure used to always spawn a
+  // blank chief, silently discarding a resumable conversation exactly like
+  // Restart did before #649/#650 — this is in fact the most likely path a
+  // user takes after a session-host restart, since chat mode reads as
+  // conversational and the Start/Resume status row is easy to not notice.
+  const ensured = await ensureChief(false, true);
+  const tt = await ensureTerminalToken();
+  await jsonApi(
+    '/api/claude-code/sessions/' + encodeURIComponent(ensured.session_id) + '/input',
+    {
+      method: 'POST',
+      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+      body: JSON.stringify({ data: text, submit: true }),
+    }
+  );
+  return ensured;
+}
+
 async function dispatchChat() {
   const text = els.boardDispatchGoal.value.trim();
   if (!text) {
@@ -303,22 +325,8 @@ async function dispatchChat() {
   // this legitimately takes seconds — tick like dispatchGoal does.
   const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
   try {
-    // resume=true (#651): the lazy first-send ensure used to always spawn a
-    // blank chief, silently discarding a resumable conversation exactly like
-    // Restart did before #649/#650 — this is in fact the most likely path a
-    // user takes after a session-host restart, since chat mode reads as
-    // conversational and the Start/Resume status row is easy to not notice.
-    const ensured = await ensureChief(false, true);
+    const ensured = await sendToChief(text);
     const sid = ensured.session_id;
-    const tt = await ensureTerminalToken();
-    await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify({ data: text, submit: true }),
-      }
-    );
     // Conversation semantics: unlike dispatch's keep-for-multi-dispatch,
     // a sent chat message clears — the reply is the next thing you want.
     els.boardDispatchGoal.value = '';

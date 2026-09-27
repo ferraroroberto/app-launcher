@@ -178,6 +178,12 @@ export const els = {
   chiefModelSelect: document.getElementById('chiefModelSelect'),
   chiefWorkerCap: document.getElementById('chiefWorkerCap'),
   chiefSettingsCancel: document.getElementById('chiefSettingsCancel'),
+  chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
+  chiefAnswersClose: document.getElementById('chiefAnswersClose'),
+  chiefAnswersList: document.getElementById('chiefAnswersList'),
+  chiefAnswersAlso: document.getElementById('chiefAnswersAlso'),
+  chiefAnswersNote: document.getElementById('chiefAnswersNote'),
+  chiefAnswersDone: document.getElementById('chiefAnswersDone'),
 
   lifeOsDetached: document.getElementById('lifeOsDetached'),
   lifeOsResume: document.getElementById('lifeOsResume'),
