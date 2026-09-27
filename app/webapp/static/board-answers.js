@@ -29,6 +29,10 @@ import { renderBoard } from './board.js';
 
 const ANSWERED_KEY = 'launcher.chiefAnswered';
 const DONE_LABEL = 'Done';
+// Question and answer are joined by an arrow in the message the chief
+// parses. It is message text, never a rendered glyph, so it is spelled as an
+// escape (the #1127 no-glyph guard reads raw source).
+const ANSWER_SEP = ' \u2192 ';
 
 // The open sheet: the plan it was built from, and one draft per item
 // ({ picks: [option index], other: '' }).
@@ -112,7 +116,7 @@ export function composeAnswers(items, drafts, also) {
     }
     const tag = item.ref || item.repo;
     lines.push((i + 1) + '. ' + (tag ? '[' + tag + '] ' : '')
-      + oneLine(item.question || item.text) + ' → ' + answer
+      + oneLine(item.question || item.text) + ANSWER_SEP + answer
       + (item.id ? ' {id: ' + item.id + '}' : ''));
   });
   const out = ['Answers from the Board (' + lines.length + ' of ' + items.length + '):'].concat(lines);
@@ -169,7 +173,7 @@ function renderItem(item, index, answered) {
   if (item.detail) block.appendChild(el('p', 'tr-ask-hint chief-answer-detail', item.detail));
   if (item.recommendation) {
     const rec = el('p', 'chief-answer-rec');
-    rec.innerHTML = icon('sparkle');
+    rec.innerHTML = icon('star');
     rec.appendChild(el('span', 'chief-answer-rec-label', 'Recommended: '));
     rec.appendChild(document.createTextNode(item.recommendation));
     block.appendChild(rec);
