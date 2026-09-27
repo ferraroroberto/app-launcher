@@ -369,6 +369,22 @@ def test_board_renders_columns_counts_and_cards(
     # Backlog card is repo · #N · title; done card is a closed issue.
     backlog = authed_page.locator('.board-list[data-col="backlog"] li.board-item')
     expect(backlog.first).to_contain_text("app-launcher #301")
+    # A Backlog row's text sits at the same inset inside its column as a
+    # Claude's-turn card's (#1303: the flat row had 4px, the cards 14px).
+    # A card's status accent is a 3px left border, a marker rather than
+    # inset, so it is taken off the card's side.
+    inset = """(li) => {
+      const list = li.closest('.board-list').getBoundingClientRect();
+      const btn = li.querySelector('.board-card');
+      const title = btn.querySelector('.board-card-title, .board-card-title-compact');
+      const accent = parseFloat(getComputedStyle(btn).borderLeftWidth) || 0;
+      return title.getBoundingClientRect().left - list.left - accent;
+    }"""
+    claude_card = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item').first
+    backlog_inset = stable_read(lambda: backlog.first.evaluate(inset))
+    card_inset = stable_read(lambda: claude_card.evaluate(inset))
+    assert abs(backlog_inset - card_inset) <= 1, (
+        f"Backlog row text inset {backlog_inset}px vs Claude's-turn card {card_inset}px")
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
     expect(done.first).to_contain_text("#87")
     expect(done.first).to_contain_text("closed")
