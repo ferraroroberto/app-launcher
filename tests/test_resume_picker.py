@@ -1,7 +1,9 @@
 """The /resume picker reader and session list (#1300, src/resume_picker.py).
 
 Screens are the picker as probed on Claude Code 2.1.283 (the probe is on
-#1300), at 140 and 52 columns; transcripts are synthetic.
+#1300): after ``/resume`` at 140 and 52 columns, and as a ``claude --resume``
+launch opens it at 51 columns, with the titles swapped for synthetic ones.
+Transcripts are synthetic.
 """
 
 from __future__ import annotations
@@ -62,6 +64,44 @@ _PICKER_52 = [
     "    cancel",
 ]
 
+# A `claude --resume` launch at 51 columns (the #1300 reopen): a counted
+# heading, a "folder \u00b7 folder" group row, a row whose metadata wraps, the
+# scroll marker on the last row, and the footer wrapped over four rows.
+_RULE_51 = "\u2500" * 51
+_PICKER_51 = [
+    _RULE_51,
+    "  Resume session (1 of 50)",
+    "  \u256d" + "\u2500" * 45 + "\u256e",
+    "  \u2502 \u2315 Search\u2026" + " " * 35 + "\u2502",
+    "  \u2570" + "\u2500" * 45 + "\u256f",
+    "    my-project \u00b7 my-project",
+    "",
+    "  \u276f Fix the login redirect",
+    "    14 seconds ago \u00b7 main \u00b7 554.6KB",
+    "",
+    "    Add a dark theme",
+    "    25 minutes ago \u00b7 main \u00b7 5.8MB \u00b7",
+    "    example/my-project#12",
+    "",
+    "    /remote-control is active \u00b7 Continue here,\u2026",
+    "    2 hours ago \u00b7 main \u00b7 1012 bytes",
+    "",
+    "  \u2193 /remote-control is active \u00b7 Continue here,\u2026",
+    "    Ctrl+A to show all projects \u00b7 Ctrl+B to only",
+    "    show current branch \u00b7 Ctrl+W to show all",
+    "    worktrees \u00b7 Space to preview \u00b7 Ctrl+R to",
+    "    rename \u00b7 Type to search \u00b7 Esc to cancel",
+    "",
+]
+
+# The same picker with its search box focused (Up from the first row): no
+# row is highlighted and the footer says Escape clears the search.
+_PICKER_51_SEARCHING = [row.replace("\u276f", " ") for row in _PICKER_51[:17]] + [
+    "    Type to Search \u00b7 Enter to select \u00b7 Esc to",
+    "    clear",
+    "",
+]
+
 _AFTER_ESC = [
     "\u276f /resume",
     "  \u23bf  Resume cancelled",
@@ -76,6 +116,62 @@ _AFTER_ESC = [
 def test_the_probed_picker_reads_as_showing_at_both_widths():
     assert resume_picker.parse_resume_picker(_PICKER_140) is True
     assert resume_picker.parse_resume_picker(_PICKER_52) is True
+
+
+def test_the_resume_launch_picker_reads_at_51_columns_with_its_count_and_wrapped_footer():
+    """The reopened #1300 case: a `claude --resume` launch's picker carries a
+    "(1 of 50)" count in its heading, which an exact-heading match missed."""
+    assert resume_picker.parse_resume_picker(_PICKER_51) is True
+    assert resume_picker.picker_total(_PICKER_51) == 50
+    assert resume_picker.highlighted_title(_PICKER_51) == "Fix the login redirect"
+    assert resume_picker.picker_total(_PICKER_52) is None
+    assert resume_picker.highlighted_title(_PICKER_52) == "/exit"
+
+
+def test_the_picker_with_its_search_box_focused_is_still_up_with_no_row_highlighted():
+    assert resume_picker.parse_resume_picker(_PICKER_51_SEARCHING) is True
+    assert resume_picker.highlighted_title(_PICKER_51_SEARCHING) is None
+    assert resume_picker.highlighted_title(_AFTER_ESC) is None
+
+
+@pytest.mark.parametrize("shown,title,expected", [
+    ("Fix the login redirect", "fix  the LOGIN redirect", True),
+    ("Fix the login redirect", "Fix the login", False),
+    # The screen cuts a title short with an ellipsis at its width.
+    ("/remote-control is active \u00b7 Continue here,\u2026",
+     "/remote-control is active \u00b7 Continue here, or on your phone", True),
+    ("Continue here,\u2026", "Something else", False),
+    # The list caps a title at TITLE_CAP; the screen may show more of it.
+    ("x" * 130, "x" * 120, True),
+    ("\u2026", "anything", False),
+])
+def test_a_row_matches_a_title_either_side_may_have_cut_short(shown, title, expected):
+    assert resume_picker.title_shows(shown, title) is expected
+
+
+def test_the_cursor_verdict_is_target_only_when_the_row_can_be_nothing_else():
+    one = [{"id": _IDS[0], "title": "Fix the login redirect"},
+           {"id": _IDS[1], "title": "Add a dark theme"}]
+    assert resume_picker.cursor_on(_PICKER_51, one, _IDS[0]) == "target"
+    assert resume_picker.cursor_on(_PICKER_51, one, _IDS[1]) == "other"
+    assert resume_picker.cursor_on(_PICKER_51_SEARCHING, one, _IDS[0]) == "other"
+    assert resume_picker.cursor_on(_AFTER_ESC, one, _IDS[0]) == "closed"
+    # A cut-short row two listed titles both fit: never "target".
+    cut = [row.replace("Fix the login redirect", "Fix the login\u2026") for row in _PICKER_51]
+    two = one + [{"id": _IDS[2], "title": "Fix the login page styles"}]
+    assert resume_picker.cursor_on(cut, two, _IDS[0]) == "ambiguous"
+
+
+def test_a_picker_pick_is_refused_up_front_when_another_session_has_its_title():
+    same = [{"id": _IDS[0], "title": "Continue here"}, {"id": _IDS[1], "title": "continue  HERE"},
+            {"id": _IDS[2], "title": "Add a dark theme"}]
+    with pytest.raises(resume_picker.ResumeRefused, match="same title"):
+        resume_picker.steer_check(same, _IDS[0])
+    assert resume_picker.steer_check(same, _IDS[2])["title"] == "Add a dark theme"
+    with pytest.raises(resume_picker.ResumeRefused, match="not in this project"):
+        resume_picker.steer_check(same, _IDS[3])
+    with pytest.raises(ValueError):
+        resume_picker.steer_check(same, "nope")
 
 
 @pytest.mark.parametrize("screen", [
@@ -197,13 +293,33 @@ from tests.test_plan_picker import PLAN_MODE, _live, _screen, picker_client  # n
 _PROJ_SLUG = "E--automation-proj"  # _live()'s project_dir, as Claude files it
 
 
+def _picker_screen(rows: list, cursor: int) -> list:
+    """The 52-column picker listing ``rows`` (titles, in the picker's own
+    order) with row ``cursor`` highlighted; ``-1`` is the search box."""
+    lines = ["\u2500" * 52, "  Resume session",
+             "  \u256d" + "\u2500" * 46 + "\u256e",
+             "  \u2502 \u2315 Search\u2026" + " " * 34 + "\u2502",
+             "  \u2570" + "\u2500" * 46 + "\u256f", "    proj", ""]
+    for i, title in enumerate(rows):
+        lines += [("  \u276f " if i == cursor else "    ") + title,
+                  "    1 minute ago \u00b7 HEAD \u00b7 3.5KB", ""]
+    if cursor < 0:
+        return lines + ["    Type to Search \u00b7 Enter to select \u00b7 Esc to", "    clear"]
+    return lines + ["    Ctrl+A to show all projects \u00b7 Ctrl+B to only",
+                    "    show current branch \u00b7 Space to preview \u00b7",
+                    "    Ctrl+R to rename \u00b7 Type to search \u00b7 Esc to", "    cancel"]
+
+
 @pytest.fixture
 def resume_client(picker_client, monkeypatch, tmp_path):
     """picker_client plus a projects folder holding two resumable sessions,
     short waits, and a PTY recorder that repaints the capture the way the
-    terminal would: Escape closes the picker, /resume paints ``after``.
-    ``_live()`` is a 60-column PTY and the reader renders at the PTY's size,
-    so these tests paint the 52-column picker."""
+    terminal would. The picker is a model of the probed one: Down moves the
+    highlight one row and wraps from the last to the first, Enter on a row
+    resumes it (paints ``after``). It lists ``state["rows"]`` in its own
+    order, which is not the card's. With no picker up, ``/resume <id>``
+    paints ``after``. ``_live()`` is a 60-column PTY and the reader renders
+    at the PTY's size, so these tests paint the 52-column picker."""
     from app.webapp.routers import session_transcript as router
 
     client, session, show, typed = picker_client
@@ -216,23 +332,37 @@ def resume_client(picker_client, monkeypatch, tmp_path):
     _write(folder, _IDS[1], [_user("dark theme please")], now - 30)
     monkeypatch.setattr(router, "_RESUME_CONFIRM_S", 0.6)
     monkeypatch.setattr(router, "_RESUME_POLL_S", 0.05)
-    monkeypatch.setattr(router, "_RESUME_ESCAPE_S", 0.3)
+    monkeypatch.setattr(router, "_RESUME_STEP_S", 0.2)
+    monkeypatch.setattr(router, "_RESUME_STEP_POLL_S", 0.02)
     capture = tmp_path / "s1.transcript"
-    state = {"after": None, "escape_closes": True, "live_title": ""}
+    state = {"after": None, "live_title": "", "rows": ["Fix login redirect", "dark theme please"],
+             "cursor": None}
 
     def paint(lines):
+        state["cursor"] = None
         capture.write_text("\r\n".join(lines), encoding="utf-8")
 
-    async def fake_pty(port, sid, keys):
-        typed.append((sid, keys))
-        if keys == [(resume_picker.ESCAPE, False)] and state["escape_closes"]:
-            paint(_AFTER_ESC)
-        elif keys and keys[0][0].startswith("/resume ") and state["after"] is not None:
+    def paint_picker(cursor=0):
+        paint(_picker_screen(state["rows"], cursor))
+        state["cursor"] = cursor
+
+    def resumed():
+        if state["after"] is not None:
             paint(state["after"])
             session.list_sessions.return_value = [{**_live(), "live_title": state["live_title"]}]
 
+    async def fake_pty(port, sid, keys):
+        typed.append((sid, keys))
+        if state["cursor"] is None:
+            if keys and keys[0][0].startswith("/resume "):
+                resumed()
+        elif keys == [(resume_picker.DOWN, False)]:
+            paint_picker((state["cursor"] + 1) % len(state["rows"]))
+        elif keys == [(resume_picker.ENTER, False)] and state["cursor"] >= 0:
+            resumed()
+
     monkeypatch.setattr(router, "_type_into_pty", fake_pty)
-    return client, session, paint, typed, state
+    return client, session, paint, typed, state, paint_picker
 
 
 def test_resume_routes_are_passkey_gated_and_scoped_to_sessions():
@@ -243,7 +373,7 @@ def test_resume_routes_are_passkey_gated_and_scoped_to_sessions():
 
 
 def test_the_picker_poll_reports_the_resume_picker_from_the_same_read(resume_client):
-    client, _, paint, _, _ = resume_client
+    client, _, paint, _, _, _ = resume_client
     paint(_PICKER_52)
     body = client.get("/api/claude-code/sessions/s1/plan-picker").json()
     assert body["showing"] is False and body["resume_picker"] is True
@@ -252,7 +382,7 @@ def test_the_picker_poll_reports_the_resume_picker_from_the_same_read(resume_cli
 
 
 def test_the_list_route_serves_the_projects_sessions_and_the_picker_state(resume_client):
-    client, session, paint, _, _ = resume_client
+    client, session, paint, _, _, _ = resume_client
     paint(_PICKER_52)
     body = client.get("/api/claude-code/sessions/s1/resume-sessions").json()
     assert body["available"] is True and body["picker"] is True
@@ -264,24 +394,81 @@ def test_the_list_route_serves_the_projects_sessions_and_the_picker_state(resume
     assert body == {"available": False, "reason": "detached", "picker": False, "sessions": []}
 
 
-def test_a_pick_from_the_picker_escapes_it_then_types_the_command_and_reads_it_back(resume_client):
-    client, _, paint, typed, state = resume_client
-    paint(_PICKER_52)
-    state["after"] = ["❯ /resume " + _IDS[0], "", "❯ fix login", "● done"]
-    state["live_title"] = "✳ Fix login redirect"
+_DOWN = [(resume_picker.DOWN, False)]
+_ENTER = [(resume_picker.ENTER, False)]
+
+
+def test_a_pick_from_the_picker_steers_to_its_row_then_selects_it_never_escaping(resume_client):
+    """A `claude --resume` launch exits on Escape (probed on #1300), so a
+    pick made on the picker moves the highlight to the row and presses Enter
+    there. The picker's order is not the card's: the row is found by title."""
+    client, _, _, typed, state, paint_picker = resume_client
+    paint_picker(0)  # "Fix login redirect" highlighted; the pick is the other row
+    state["after"] = ["\u276f dark theme please", "\u25cf done"]
+    state["live_title"] = "\u2733 dark theme please"
+    r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "picker"})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"ok": True, "outcome": "resumed", "title": "dark theme please"}
+    assert typed == [("s1", _DOWN), ("s1", _ENTER)]
+
+
+def test_steering_starts_from_the_search_box_and_wraps_past_the_last_row(resume_client):
+    client, _, _, typed, state, paint_picker = resume_client
+    state["rows"] = ["dark theme please", "Some other session", "Fix login redirect"]
+    paint_picker(-1)  # the search box has focus: no row highlighted
+    state["after"] = ["\u276f fix login", "\u25cf done"]
     r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[0], "via": "picker"})
     assert r.status_code == 200, r.text
-    assert r.json() == {"ok": True, "outcome": "resumed", "title": "Fix login redirect"}
-    assert typed == [("s1", [("\x1b", False)]), ("s1", [(f"/resume {_IDS[0]}", True)])]
+    assert typed == [("s1", _DOWN)] * 3 + [("s1", _ENTER)]
+    typed.clear()
+    paint_picker(2)  # on the last row, the pick is the first: one Down wraps
+    r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "picker"})
+    assert r.status_code == 200, r.text
+    assert typed == [("s1", _DOWN), ("s1", _ENTER)]
+
+
+def test_no_enter_goes_in_when_the_row_is_never_found_or_never_certain(resume_client):
+    client, _, _, typed, state, paint_picker = resume_client
+
+    def post():
+        return client.post("/api/claude-code/sessions/s1/resume",
+                           json={"session_id": _IDS[1], "via": "picker"})
+
+    # The picker does not list it (filtered in the terminal, say): one full
+    # lap of Downs, then a refusal.
+    state["rows"] = ["Fix login redirect", "Unlisted one"]
+    paint_picker(0)
+    r = post()
+    assert r.status_code == 409 and "isn't in the terminal's picker" in r.json()["detail"]
+    assert typed and all(keys == _DOWN for _sid, keys in typed)
+    # Its row shows too little of the title to tell it from another.
+    typed.clear()
+    state["rows"] = ["Fix login redirect", "dark\u2026"]
+    _write(board_exchange._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
+           [_user("dark mode for settings")], time.time() - 90)
+    paint_picker(0)
+    r = post()
+    assert r.status_code == 409 and "too little of that title" in r.json()["detail"]
+    assert typed and all(keys == _DOWN for _sid, keys in typed)
+
+
+def test_a_title_shared_with_another_session_is_refused_before_any_key(resume_client):
+    client, _, _, typed, _, paint_picker = resume_client
+    _write(board_exchange._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
+           [_user("Dark theme  PLEASE")], time.time() - 90)
+    paint_picker(0)
+    r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "picker"})
+    assert r.status_code == 409 and "same title" in r.json()["detail"]
+    assert typed == []
 
 
 def test_the_outcome_says_not_found_or_unconfirmed_as_the_screen_does(resume_client):
-    client, _, paint, typed, state = resume_client
+    client, _, paint, typed, state, _ = resume_client
     paint(_AFTER_ESC)
     state["after"] = ["❯ /resume " + _IDS[1], "  ⎿  No conversations found to resume."]
     r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "composer"})
     assert r.status_code == 200 and r.json()["outcome"] == "not_found"
-    # No Escape from the composer with no picker up: the command alone.
+    # From the composer with no picker up: the command alone.
     assert typed == [("s1", [(f"/resume {_IDS[1]}", True)])]
     state["after"] = ["❯ /resume " + _IDS[1], "", "❯ dark theme please"]
     r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "composer"})
@@ -289,7 +476,7 @@ def test_the_outcome_says_not_found_or_unconfirmed_as_the_screen_does(resume_cli
 
 
 def test_nothing_is_typed_when_the_screen_or_the_list_no_longer_backs_the_pick(resume_client):
-    client, session, paint, typed, _ = resume_client
+    client, session, paint, typed, _, _ = resume_client
     post = lambda body: client.post("/api/claude-code/sessions/s1/resume", json=body)  # noqa: E731
     paint(_AFTER_ESC)  # the picker closed
     r = post({"session_id": _IDS[0], "via": "picker"})
@@ -307,12 +494,3 @@ def test_nothing_is_typed_when_the_screen_or_the_list_no_longer_backs_the_pick(r
     r = post({"session_id": _IDS[0], "via": "composer"})
     assert r.status_code == 409 and "PC console" in r.json()["detail"]
     assert typed == []
-
-
-def test_a_picker_that_stays_up_after_escape_gets_no_command(resume_client):
-    client, _, paint, typed, state = resume_client
-    paint(_PICKER_52)
-    state["escape_closes"] = False
-    r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[0], "via": "picker"})
-    assert r.status_code == 502 and "did not close" in r.json()["detail"]
-    assert typed == [("s1", [("\x1b", False)])]
