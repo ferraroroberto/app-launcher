@@ -492,22 +492,14 @@ const QUOTA_RESET_ICON =
   '<svg class="icon" aria-hidden="true" focusable="false">' +
   '<use href="#i-refresh-cw"></use></svg>';
 
-// Local so the module stays import-free (same reason as the markup above).
-function escapeQuota(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
 function quotaWindowText(windowData, label, fmtReset) {
   if (!windowData || typeof windowData.used_percentage !== 'number') return null;
   const head = label + ' ' + Math.round(windowData.used_percentage) + '%';
   const reset = fmtReset(windowData.resets_at);
-  if (!reset) return { text: head, html: escapeQuota(head) };
+  if (!reset) return { text: head, html: escapeHtml(head) };
   return {
     text: head + ' resets ' + reset,
-    html: escapeQuota(head) + ' ' + QUOTA_RESET_ICON + ' ' + escapeQuota(reset),
+    html: escapeHtml(head) + ' ' + QUOTA_RESET_ICON + ' ' + escapeHtml(reset),
   };
 }
 
@@ -565,8 +557,8 @@ export function renderQuotaLines(container, lines) {
     const suffix = note ? [texts.length ? note : 'quota ' + note] : [];
     const label = line.label || nameLabel(harness);
     const plain = [label].concat(texts.map(function (t) { return t.text; }), suffix);
-    const markup = [escapeQuota(label)]
-      .concat(texts.map(function (t) { return t.html; }), suffix.map(escapeQuota));
+    const markup = [escapeHtml(label)]
+      .concat(texts.map(function (t) { return t.html; }), suffix.map(function (t) { return escapeHtml(t); }));
     slot.innerHTML = markup.join(' · ');
     slot.title = plain.join(' · ');
     slot.hidden = false;
