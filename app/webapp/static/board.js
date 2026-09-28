@@ -423,6 +423,7 @@ async function loadExchange(card, el) {
       const reasons = {
         no_exchange: 'No exchange yet.',
         session_not_found: 'Session ended — refresh the Board.',
+        session_host_unreachable: 'Can’t reach the session host — try again.',
         native_unavailable: 'Conversation preview unavailable — open the terminal.',
         capture_unparseable: 'Conversation preview unavailable — open the terminal.',
       };

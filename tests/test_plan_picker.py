@@ -312,6 +312,20 @@ def test_the_picker_route_says_why_there_is_nothing_to_answer(picker_client):
     assert _get(client).json()["reason"] == "session_not_found"
 
 
+def test_an_unreachable_session_host_is_not_a_gone_session(picker_client):
+    """#1308: the picker and context polls, and a tap, tell an unreadable
+    session list apart from a session that is not in it."""
+    from src.session_client import SessionHostError
+
+    client, session, _, typed = picker_client
+    session.list_sessions.side_effect = SessionHostError("timed out")
+    assert _get(client).json()["reason"] == "session_host_unreachable"
+    assert _get_context(client).json()["reason"] == "session_host_unreachable"
+    r = _post(client, {"option": 1, "label": "Yes, auto-accept edits"})
+    assert r.status_code == 503 and "unreachable" in r.json()["detail"]
+    assert typed == []
+
+
 def test_a_tap_types_the_keys_the_screen_still_backs(picker_client):
     client, _, show, typed = picker_client
     show(BYPASS_NARROW)

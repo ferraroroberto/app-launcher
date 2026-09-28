@@ -88,10 +88,10 @@ from app.webapp.routers._helpers import (
     spawn_launcher_session,
 )
 from app.webapp.routers.board_spawn import (
+    SESSION_HOST_UNREACHABLE,
     _agent_and_flags,
     _read_live_sessions,
     _resolve_repo_entry,
-    _safe_list_sessions,
     _type_into_session,
 )
 
@@ -344,15 +344,19 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     agreement. See ``board_exchange._disprove_by_live_title``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    live, state = await asyncio.gather(
-        asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
+    (live, host_error), state = await asyncio.gather(
+        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     session = next(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
     )
     if session is None:
-        return unavailable("session_not_found")
+        # An unreadable session list is not "the session ended" (#1308): the
+        # session may be alive behind a session-host that timed out once.
+        return unavailable(
+            SESSION_HOST_UNREACHABLE if host_error else "session_not_found"
+        )
     row = board.state_row_for_session(live, state["rows"], sid)
     transcript = (row or {}).get("transcript_path")
     result = await asyncio.to_thread(

@@ -372,6 +372,21 @@ def test_resume_routes_are_passkey_gated_and_scoped_to_sessions():
     assert _terminal_guard_level("/api/jobs/nightly/resume") != "passkey"
 
 
+def test_an_unreachable_session_host_refuses_a_resume_with_503(resume_client):
+    """#1308: not the 409 "no longer running" a gone session gets."""
+    from src.session_client import SessionHostError
+
+    client, session, _, typed, _, _ = resume_client
+    session.list_sessions.side_effect = SessionHostError("timed out")
+    r = client.post(
+        "/api/claude-code/sessions/s1/resume", json={"session_id": "x", "via": "composer"}
+    )
+    assert r.status_code == 503 and "unreachable" in r.json()["detail"]
+    listing = client.get("/api/claude-code/sessions/s1/resume-sessions").json()
+    assert listing["reason"] == "session_host_unreachable"
+    assert typed == []
+
+
 def test_the_picker_poll_reports_the_resume_picker_from_the_same_read(resume_client):
     client, _, paint, _, _, _ = resume_client
     paint(_PICKER_52)

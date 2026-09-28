@@ -71,8 +71,8 @@ from app.webapp.routers.board_spawn import (
     _agent_and_flags,
     _await_dispatch_ready,
     _await_pty_quiescent,
+    _read_live_sessions,
     _resolve_repo_entry,
-    _safe_list_sessions,
     _type_into_session,
 )
 
@@ -133,9 +133,13 @@ async def _mark_chief_managed(
     if not sid or client_ip(request) not in LOOPBACK_HOSTS:
         return False
     try:
-        live, _ = await _live_sessions_with_chief_label(cfg)
+        live, _, host_error = await _live_sessions_with_chief_label(cfg)
     except Exception as exc:  # noqa: BLE001 -- best-effort, never fail the dispatch
         logger.debug("chief-managed mark: could not read live sessions: %s", exc)
+        return False
+    if host_error:
+        # Unknown, not "no chief": nothing is marked on a guess (#1308).
+        logger.debug("chief-managed mark: live sessions unknown: %s", host_error)
         return False
     if not _find_chief(live):
         return False
@@ -264,7 +268,7 @@ def _reconcile_chief_labels(
 
     Needs both the live list and the hook state rows together (``shared_name``
     only exists after the state-row join), so this can't live inside
-    ``board_spawn._safe_list_sessions`` (``port``-only) — callers that need a
+    ``board_spawn._read_live_sessions`` (``port``-only) — callers that need a
     chief-reconciled live list fetch both and call this, or go through
     :func:`_live_sessions_with_chief_label`.
 
@@ -292,19 +296,20 @@ def _reconcile_chief_labels(
 
 async def _live_sessions_with_chief_label(
     cfg: WebappConfig,
-) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Optional[str]]:
     """Live sessions + hook state, fetched together and chief-reconciled (#617).
 
-    Returns ``(live, state)`` so a caller that also needs ``state["rows"]``
-    for its own purposes (``get_board`` builds cards from it) doesn't fetch
-    the state file twice.
+    Returns ``(live, state, host_error)`` so a caller that also needs
+    ``state["rows"]`` for its own purposes doesn't fetch the state file twice.
+    ``host_error`` set means ``live`` is *unknown*, not empty (#1308): a caller
+    that acts on "no chief in the list" must not act on it then.
     """
-    live, state = await asyncio.gather(
-        asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
+    (live, host_error), state = await asyncio.gather(
+        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     reconciled = _reconcile_chief_labels(live, state["rows"])
-    return reconciled, state
+    return reconciled, state, host_error
 
 
 def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -682,7 +687,18 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     cols = safe_int(body, "cols", 120)
 
     async with _CHIEF_ENSURE_LOCK:
-        live, state = await _live_sessions_with_chief_label(cfg)
+        live, state, host_error = await _live_sessions_with_chief_label(cfg)
+        if host_error:
+            # An unreadable list is not "no chief" (#1308): spawning on it
+            # could double-spawn a chief that is alive behind a host that
+            # timed out once, or stop-and-respawn one it never saw.
+            logger.warning(
+                "⚠️ chief ensure refused: session-host list unreadable: %s", host_error
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="The session host is unreachable, so the chief was not started",
+            )
         chief = _find_chief(live)
         preferred_sid = ""
         if chief:
