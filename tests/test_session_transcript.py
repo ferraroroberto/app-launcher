@@ -2073,6 +2073,30 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
 
 class TestTranscriptEndpoint:
 
+    def test_an_unreachable_session_host_is_not_a_missing_session(
+        self, webapp_client, _bypass_gate
+    ):
+        """#1308: a list the host would not answer says nothing about the
+        session, so it must not be reported as the terminal
+        `session_not_found` the client latches off on."""
+        from src.session_client import SessionHostError
+
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.side_effect = SessionHostError("timed out")
+        for query in ("", "?after=0&size=0"):
+            body = client.get(f"/api/claude-code/sessions/s1/transcript{query}").json()
+            assert body["available"] is False, query
+            assert body["reason"] == "session_host_unreachable", query
+        entry = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").json()
+        assert entry["reason"] == "session_host_unreachable"
+        image = client.get("/api/claude-code/sessions/s1/transcript/image?offset=0&n=0")
+        assert image.status_code == 503
+        # Once the host answers again, an absent session is absent again.
+        overrides["session"].list_sessions.side_effect = None
+        overrides["session"].list_sessions.return_value = []
+        body = client.get("/api/claude-code/sessions/s1/transcript").json()
+        assert body["reason"] == "session_not_found"
+
     def test_unknown_session(self, webapp_client, _bypass_gate):
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = []

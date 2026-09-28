@@ -146,6 +146,9 @@ let chatComposer = null;
 // "couldn't read it" (and vice versa).
 const REASON_COPY = {
   session_not_found: 'This session is no longer running',
+  // Not an ending (#1308): the session list could not be read, so nothing is
+  // known about the session; the live tick keeps asking, backed off.
+  session_host_unreachable: 'Can’t reach the session host — retrying',
   unsupported_agent: 'Transcript not supported for this agent yet',
   no_transcript: 'No transcript found for this session',
   read_failed: 'Couldn’t read the transcript',

@@ -1504,6 +1504,18 @@ class TestExchangeEndpoint:
         assert body["assistant"]["text"] == "All green."
         assert body["user"]["text"] == "status?"
 
+    def test_unreachable_session_host_is_not_session_ended(
+        self, webapp_client, _bypass_gate
+    ):
+        """#1308: an unreadable list must not say "Session ended"."""
+        from src.session_client import SessionHostError
+
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.side_effect = SessionHostError("down")
+        body = client.get("/api/board/sessions/ghost/exchange").json()
+        assert body["available"] is False
+        assert body["reason"] == "session_host_unreachable"
+
     def test_unknown_session_degrades(self, webapp_client, _bypass_gate):
         client, _, _ = webapp_client
         body = client.get("/api/board/sessions/ghost/exchange").json()

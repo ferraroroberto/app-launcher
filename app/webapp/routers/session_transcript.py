@@ -104,7 +104,7 @@ from src.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
-from app.webapp.routers.board_spawn import _safe_list_sessions
+from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -183,17 +183,20 @@ async def _resolve_source(
     respond ``_unavailable(sid, reason)`` instead of reading the source.
     ``why`` is how the path was resolved or, for ``no_transcript``, which
     guard refused (``""`` where a flavour has nothing to add). ``session``
-    is the session-host's row, ``None`` only for ``session_not_found``.
+    is the session-host's row, ``None`` only for ``session_not_found`` and
+    ``session_host_unreachable`` (the list could not be read, #1308: not the
+    same fact as "the session is not in it").
     """
-    live, state = await asyncio.gather(
-        asyncio.to_thread(_safe_list_sessions, cfg.session_host_port),
+    (live, host_error), state = await asyncio.gather(
+        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     session = next(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
     )
     if session is None:
-        return "session_not_found", None, None, "", "", None
+        reason = SESSION_HOST_UNREACHABLE if host_error else "session_not_found"
+        return reason, None, None, "", "", None
     agent = str(session.get("agent") or "claude").lower()
     # A detached row resolves exactly like a full-control one (#966): neither
     # source reads the launcher's PTY capture.
@@ -250,7 +253,9 @@ async def session_transcript(
         )
     reason, flavor, path, agent, why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
-        if reason != "session_not_found":
+        # Neither of these is a source problem, and the live tick asks every
+        # few seconds: the unreachable one is already latched by the list read.
+        if reason not in ("session_not_found", SESSION_HOST_UNREACHABLE):
             logger.info(
                 "ℹ️ transcript %s (%s) unavailable: %s%s",
                 sid[:8], agent, reason, f" (refused: {why})" if why else "",
@@ -380,6 +385,8 @@ async def session_transcript_image(
     """
     cfg: WebappConfig = request.app.state.webapp_config
     reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    if reason == SESSION_HOST_UNREACHABLE:
+        raise HTTPException(status_code=503, detail=reason)
     if reason is not None:
         raise HTTPException(status_code=404, detail=reason)
     try:
@@ -407,6 +414,16 @@ _ANSWER_KEY_GAP_S = 0.35
 
 # The card shows the refusal as-is, so it is worded for the reader.
 _NOT_WAITING = "This question is no longer waiting for an answer"
+
+
+def _refuse_if_host_unreachable(reason: Optional[str]) -> None:
+    """503 for a POST whose session lookup could not reach the session-host
+    (#1308) — not the 409 "no longer running" a session that is gone gets,
+    since this one may well be alive and the caller should retry."""
+    if reason == SESSION_HOST_UNREACHABLE:
+        raise HTTPException(
+            status_code=503, detail="The session host is unreachable, so nothing was sent"
+        )
 
 
 class _PartialAnswer(Exception):
@@ -483,6 +500,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
     if not isinstance(call_id, str) or not call_id:
         raise HTTPException(status_code=400, detail="tool_use_id must be a string")
     reason, flavor, path, _agent, _why, session = await _resolve_source(sid, cfg)
+    _refuse_if_host_unreachable(reason)
     if reason == "session_not_found":
         raise HTTPException(status_code=409, detail="This session is no longer running")
     if flavor != "claude" or session is None:
@@ -551,12 +569,13 @@ async def _read_screen(
     cfg: WebappConfig, sid: str
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[List[str]]]:
     """``(reason, session, lines)``: ``reason`` says why there is no screen
-    to read (``session_not_found`` / ``unsupported_agent`` / ``detached`` /
-    ``no_screen``); otherwise ``lines`` is the screen as the PTY shows it."""
-    live = await asyncio.to_thread(_safe_list_sessions, cfg.session_host_port)
+    to read (``session_not_found`` / ``session_host_unreachable`` (#1308) /
+    ``unsupported_agent`` / ``detached`` / ``no_screen``); otherwise ``lines``
+    is the screen as the PTY shows it."""
+    live, host_error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
-        return "session_not_found", None, None
+        return (SESSION_HOST_UNREACHABLE if host_error else "session_not_found"), None, None
     if str(session.get("agent") or "claude").lower() != "claude":
         return "unsupported_agent", session, None
     if str(session.get("kind") or "pty") == "remote":
@@ -655,6 +674,7 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     reason, session, picker = await _read_picker(cfg, sid)
+    _refuse_if_host_unreachable(reason)
     if reason == "session_not_found":
         raise HTTPException(status_code=409, detail="This session is no longer running")
     if reason == "detached":
@@ -845,6 +865,7 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     if via not in _RESUME_VIA:
         raise HTTPException(status_code=400, detail="via must be 'picker' or 'composer'")
     reason, session, lines = await _read_screen(cfg, sid)
+    _refuse_if_host_unreachable(reason)
     if reason == "session_not_found":
         raise HTTPException(status_code=409, detail="This session is no longer running")
     if reason == "detached":

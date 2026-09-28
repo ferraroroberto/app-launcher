@@ -5,8 +5,8 @@ maintainability finding), the same way ``jobs_run.py`` was split off
 ``jobs.py``. This module owns the parts of the Board's launch path that are
 reused across *both* route modules:
 
-* :func:`_read_live_sessions` / :func:`_safe_list_sessions` — the
-  degradation-safe live-session read, with and without its unknown state.
+* :func:`_read_live_sessions` — the degradation-safe live-session read,
+  carrying its unknown state (#915) so no caller reads a failed list as empty.
 * :func:`_resolve_repo_entry` — bare repo name → live projects-folder entry.
 * :func:`_agent_and_flags` — the Board's per-launch model selector (#500/#505).
 * :func:`_await_dispatch_ready` / :func:`_await_pty_quiescent` /
@@ -42,6 +42,12 @@ from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 logger = logging.getLogger(__name__)
 
 
+# The reason a per-session route reports when the session-host's list could
+# not be read (#1308): distinct from ``session_not_found``, which means the
+# list *was* read and the session is not in it. Clients treat the first as
+# transient (keep polling, backed off) and the second as terminal.
+SESSION_HOST_UNREACHABLE = "session_host_unreachable"
+
 # Latched so a session-host that stays down leaves one warning, not one per
 # 5 s Board poll; the recovery gets its own breadcrumb (#915).
 _session_host_down = False
@@ -71,13 +77,6 @@ def _read_live_sessions(port: int) -> Tuple[List[Dict[str, Any]], Optional[str]]
         logger.info("✅ board: session-host list readable again")
         _session_host_down = False
     return sessions, None
-
-
-def _safe_list_sessions(port: int) -> List[Dict[str, Any]]:
-    """Live sessions, or [] when the session-host is down — for callers that
-    only look a session up; the Board's columns use
-    :func:`_read_live_sessions` so they can tell the two apart."""
-    return _read_live_sessions(port)[0]
 
 
 def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:

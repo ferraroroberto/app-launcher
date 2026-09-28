@@ -270,6 +270,18 @@ def test_an_ended_session_and_a_bad_answer_are_refused(answer_client):
     assert typed == []
 
 
+def test_an_unreachable_session_host_is_a_503_not_an_ended_session(answer_client):
+    """#1308: the session may be alive; the caller should retry, not give up."""
+    from src.session_client import SessionHostError
+
+    client, session, path, typed = answer_client
+    _jsonl(path, [_ask("t1", [COLOUR])])
+    session.list_sessions.side_effect = SessionHostError("timed out")
+    r = _post(client, {"tool_use_id": "t1", "answers": [{"option": 1}]})
+    assert r.status_code == 503 and "unreachable" in r.json()["detail"]
+    assert typed == []
+
+
 def test_detached_answer_is_one_console_send_per_step(answer_client):
     client, session, path, typed = answer_client
     session.list_sessions.return_value = [_live(kind="remote")]

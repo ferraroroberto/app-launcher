@@ -268,6 +268,21 @@ class TestChiefGate:
 
 class TestEnsureSpawn:
 
+    def test_unreadable_session_list_is_not_an_absent_chief(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        """#1308: a list the host would not answer must not be read as "no
+        chief", or a live chief gets a duplicate spawned beside it."""
+        from src.session_client import SessionHostError
+
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.side_effect = SessionHostError("timed out")
+        resp = client.post("/api/board/chief/ensure", json={})
+        assert resp.status_code == 503
+        assert "unreachable" in resp.json()["detail"]
+        assert _spawn == {}
+
     def test_absent_chief_spawns_with_label_and_types_only_chief(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _fleet_config_dir, _ready_session,
