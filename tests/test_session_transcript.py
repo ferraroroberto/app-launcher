@@ -34,7 +34,7 @@
     correlation: the harness's newest-conversation-per-folder cache, refused
     when a second live session shares the folder or nothing was written
     since this session started.
-  * ``board_exchange.find_claude_transcript`` — the Claude fallback for a
+  * ``board_exchange.resolve_claude_transcript`` — the Claude fallback for a
     live session the hook left no row for (#1023): the newest conversation
     in the cwd's own project folder, matched case-insensitively, refused on
     the same two guards.
@@ -1845,7 +1845,7 @@ def _claude_session(**extra: Any) -> Dict[str, Any]:
     return row
 
 
-def test_find_claude_transcript_takes_the_newest_in_the_cwd_folder(
+def test_resolve_claude_transcript_takes_the_newest_in_the_cwd_folder(
     tmp_path: Path, monkeypatch
 ):
     """The fallback for a live session the hook left no row for (#1023):
@@ -1858,18 +1858,18 @@ def test_find_claude_transcript_takes_the_newest_in_the_cwd_folder(
         tmp_path, "E--work-project", ("old", 1_000_100.0), ("new", 1_000_200.0)
     )
     session = _claude_session()
-    assert board_exchange.find_claude_transcript(session, [session]) == folder / "new.jsonl"
+    assert board_exchange.resolve_claude_transcript(session, [session])[0] == folder / "new.jsonl"
     # The session's own spelling of the directory need not match the folder's.
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(project_dir="e:/work/project/"), []
-    ) == folder / "new.jsonl"
+    )[0] == folder / "new.jsonl"
     # A different working directory is a different session's conversation.
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(project_dir=r"E:\work\other"), []
-    ) is None
+    )[0] is None
 
 
-def test_find_claude_transcript_matches_a_lowercased_legacy_folder(
+def test_resolve_claude_transcript_matches_a_lowercased_legacy_folder(
     tmp_path: Path, monkeypatch
 ):
     """Older Claude Code versions lowercased the folder name as well as
@@ -1880,12 +1880,12 @@ def test_find_claude_transcript_matches_a_lowercased_legacy_folder(
 
     monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "e--work-project", ("conv", 1_000_100.0))
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(), []
-    ) == folder / "conv.jsonl"
+    )[0] == folder / "conv.jsonl"
 
 
-def test_find_claude_transcript_fails_safe_on_ambiguity_and_staleness(
+def test_resolve_claude_transcript_fails_safe_on_ambiguity_and_staleness(
     tmp_path: Path, monkeypatch
 ):
     """Two guards, both answering None rather than a confident wrong file:
@@ -1897,7 +1897,7 @@ def test_find_claude_transcript_fails_safe_on_ambiguity_and_staleness(
     monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
     sibling = _claude_session(session_id="s2")
-    assert board_exchange.find_claude_transcript(_claude_session(), [sibling]) is None
+    assert board_exchange.resolve_claude_transcript(_claude_session(), [sibling])[0] is None
     # A dead sibling, one in another folder, or another agent's, all leave
     # exactly one live claimant here.
     for other in (
@@ -1905,25 +1905,25 @@ def test_find_claude_transcript_fails_safe_on_ambiguity_and_staleness(
         _claude_session(session_id="s2", project_dir=r"E:\work\other"),
         _claude_session(session_id="s2", agent="codex"),
     ):
-        assert board_exchange.find_claude_transcript(_claude_session(), [other]) is not None
+        assert board_exchange.resolve_claude_transcript(_claude_session(), [other])[0] is not None
     # Nothing written since this session started: refuse, and "no transcript
     # yet" is also the honest answer.
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(started_at=1_000_200.0), []
-    ) is None
+    )[0] is None
     # ...but only outside the slop that covers spawn-to-first-write.
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(started_at=1_000_140.0), []
-    ) is not None
+    )[0] is not None
 
 
-def test_find_claude_transcript_keeps_its_two_guard_shape_for_transcript(
+def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     tmp_path: Path, monkeypatch
 ):
     """#1034 criterion 4. The disproof is opt-in, and ``/transcript`` does
     not opt in.
 
-    ``find_claude_transcript`` is shared verbatim by the Board drawer and
+    ``resolve_claude_transcript`` is shared verbatim by the Board drawer and
     ``/transcript`` (#1023), so #1034 parameterised it rather than forking
     it. This pins the un-opted-in shape: a PTY title that flatly disagrees
     with the conversation's declared name still resolves, because on that
@@ -1942,9 +1942,9 @@ def test_find_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     )
     session = _claude_session(live_title="◐ Issue 1034")
 
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         session, [session]
-    ) == folder / "conv.jsonl"
+    )[0] == folder / "conv.jsonl"
 
     # The same inputs through the drawer's opted-in view do refuse.
     path, verdict = board_exchange._scan_claude_transcript(
@@ -1954,7 +1954,7 @@ def test_find_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     assert verdict == "disproved"
 
 
-def test_find_claude_transcript_needs_a_dir_a_start_and_a_folder(
+def test_resolve_claude_transcript_needs_a_dir_a_start_and_a_folder(
     tmp_path: Path, monkeypatch
 ):
     """Half a correlation, an empty folder or no projects directory at all
@@ -1963,18 +1963,18 @@ def test_find_claude_transcript_needs_a_dir_a_start_and_a_folder(
 
     monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
-    assert board_exchange.find_claude_transcript(_claude_session(project_dir=""), []) is None
-    assert board_exchange.find_claude_transcript(_claude_session(started_at=None), []) is None
+    assert board_exchange.resolve_claude_transcript(_claude_session(project_dir=""), [])[0] is None
+    assert board_exchange.resolve_claude_transcript(_claude_session(started_at=None), [])[0] is None
     # An ISO `started_at` (a row read back from JSON state) works too.
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(started_at="1970-01-12T13:46:40Z"), []
-    ) is not None
+    )[0] is not None
     _claude_folder(tmp_path, "E--work-empty")
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         _claude_session(project_dir=r"E:\work\empty"), []
-    ) is None
+    )[0] is None
     monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path / "gone")
-    assert board_exchange.find_claude_transcript(_claude_session(), []) is None
+    assert board_exchange.resolve_claude_transcript(_claude_session(), [])[0] is None
 
 
 # A conversation id as `build_resume_flags(..., session_id=...)` splices it.
@@ -2010,9 +2010,9 @@ def test_resumed_claude_session_reads_its_conversation_before_the_first_prompt(
     )
     # Busy folder: the folder guard refused; the id still answers, and it is
     # the resumed conversation, not the folder's newest (_OTHER).
-    assert board_exchange.find_claude_transcript(
+    assert board_exchange.resolve_claude_transcript(
         resumed, [resumed, neighbour]
-    ) == folder / f"{_RESUMED}.jsonl"
+    )[0] == folder / f"{_RESUMED}.jsonl"
     # The neighbour is fresh and never borrows the resumed session's file.
     assert board_exchange.resolve_claude_transcript(
         neighbour, [resumed, neighbour]
@@ -2039,7 +2039,7 @@ def test_fresh_and_bare_resume_sessions_keep_both_guards(
     elsewhere = _claude_session(
         flags=f"--resume {_OTHER}", started_at=2_000_000.0
     )
-    assert board_exchange.find_claude_transcript(elsewhere, [elsewhere]) is None
+    assert board_exchange.resolve_claude_transcript(elsewhere, [elsewhere])[0] is None
 
 
 def test_resumed_session_that_moved_on_is_refused_by_its_title(
@@ -2068,7 +2068,7 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
     # Agreeing, or no title at all (a detached session), still answers.
     for title in ("✳ Fix the backup job", ""):
         same = _claude_session(live_title=title, **base)
-        assert board_exchange.find_claude_transcript(same, [same]) == path, title
+        assert board_exchange.resolve_claude_transcript(same, [same])[0] == path, title
 
 
 class TestTranscriptEndpoint:

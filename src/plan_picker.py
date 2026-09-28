@@ -58,7 +58,6 @@ LABEL_CAP = 200
 
 QUESTION = "Would you like to proceed?"
 PLAN_HEADING = "Here is Claude's plan:"
-FEEDBACK_HINT = "shift+tab to approve with this feedback"
 # The feedback option's own label while its field is empty. Once text is
 # typed into it the label *is* that text, and a send from Chat would append
 # to it, so any other label on that option makes it untappable.
