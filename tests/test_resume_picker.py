@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from src import board_exchange, resume_picker
+from src import resume_picker, transcript_locate
 
 _RULE_140 = "\u2500" * 140
 _PICKER_140 = [
@@ -207,7 +207,7 @@ def _user(text, entrypoint="cli", **extra):
 
 @pytest.fixture
 def projects(tmp_path, monkeypatch):
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = tmp_path / "E--work-my-project"
     folder.mkdir()
     return folder
@@ -253,9 +253,9 @@ def test_a_long_title_is_capped_and_no_transcript_text_leaves(projects):
 
 
 def test_an_unreadable_projects_folder_is_none_and_an_empty_one_is_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path / "missing")
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path / "missing")
     assert resume_picker.list_sessions(_CWD) is None
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     assert resume_picker.list_sessions(_CWD) == []
 
 
@@ -326,7 +326,7 @@ def resume_client(picker_client, monkeypatch, tmp_path):
     root = tmp_path / "claude-projects"
     folder = root / _PROJ_SLUG
     folder.mkdir(parents=True)
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", root)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", root)
     now = time.time()
     _write(folder, _IDS[0], [_user("fix login"), {"type": "ai-title", "aiTitle": "Fix login redirect"}], now - 60)
     _write(folder, _IDS[1], [_user("dark theme please")], now - 30)
@@ -459,7 +459,7 @@ def test_no_enter_goes_in_when_the_row_is_never_found_or_never_certain(resume_cl
     # Its row shows too little of the title to tell it from another.
     typed.clear()
     state["rows"] = ["Fix login redirect", "dark\u2026"]
-    _write(board_exchange._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
+    _write(transcript_locate._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
            [_user("dark mode for settings")], time.time() - 90)
     paint_picker(0)
     r = post()
@@ -469,7 +469,7 @@ def test_no_enter_goes_in_when_the_row_is_never_found_or_never_certain(resume_cl
 
 def test_a_title_shared_with_another_session_is_refused_before_any_key(resume_client):
     client, _, _, typed, _, paint_picker = resume_client
-    _write(board_exchange._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
+    _write(transcript_locate._CLAUDE_PROJECTS_DIR / _PROJ_SLUG, _IDS[2],
            [_user("Dark theme  PLEASE")], time.time() - 90)
     paint_picker(0)
     r = client.post("/api/claude-code/sessions/s1/resume", json={"session_id": _IDS[1], "via": "picker"})

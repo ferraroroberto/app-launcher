@@ -341,7 +341,7 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     title can *disprove* a scanned conversation — refusing it in favour of
     the capture when the two name different conversations — and says
     ``unknown`` when it cannot settle the question rather than passing for
-    agreement. See ``board_exchange._disprove_by_live_title``.
+    agreement. See ``transcript_locate._disprove_by_live_title``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     (live, host_error), state = await asyncio.gather(

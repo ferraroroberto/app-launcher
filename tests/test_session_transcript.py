@@ -28,13 +28,13 @@
     header dropped, the ``<USER_REQUEST>`` wrapper unwrapped, harness
     plumbing folded, and the flat file's self-truncation and
     double-encoded arguments undone.
-  * ``board_exchange.find_pi_transcript`` — the Pi source correlation: the
+  * ``transcript_locate.find_pi_transcript`` — the Pi source correlation: the
     state row's own key names the file, ambiguity answers ``None``.
-  * ``board_exchange.find_antigravity_transcript`` — the Antigravity source
+  * ``transcript_locate.find_antigravity_transcript`` — the Antigravity source
     correlation: the harness's newest-conversation-per-folder cache, refused
     when a second live session shares the folder or nothing was written
     since this session started.
-  * ``board_exchange.resolve_claude_transcript`` — the Claude fallback for a
+  * ``transcript_locate.resolve_claude_transcript`` — the Claude fallback for a
     live session the hook left no row for (#1023): the newest conversation
     in the cwd's own project folder, matched case-insensitively, refused on
     the same two guards.
@@ -53,6 +53,7 @@ from typing import Any, Dict, List, Tuple
 import pytest
 
 from src import board, session_transcript as st
+from src.transcript_flavors import _shared as tf_shared
 
 
 # ------------------------------------------------------------ fixtures
@@ -188,8 +189,8 @@ def test_claude_entries_types_every_shape(tmp_path: Path):
 
 
 def test_claude_entries_caps_long_bodies(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 20)
-    monkeypatch.setattr(st, "TOOL_RESULT_CAP", 5)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 20)
+    monkeypatch.setattr(tf_shared, "TOOL_RESULT_CAP", 5)
     path = _write_jsonl(tmp_path / "t.jsonl", [
         _assistant([{"type": "text", "text": "x" * 15}], "m1"),
         _assistant([{"type": "text", "text": "y" * 15}], "m1"),
@@ -490,7 +491,7 @@ def test_page_exposes_offset_on_turns_only(tmp_path: Path):
 
 
 def test_entry_full_text_user_is_uncapped(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(st, "USER_TEXT_CAP", 5)
+    monkeypatch.setattr(tf_shared, "USER_TEXT_CAP", 5)
     path = _write_jsonl(tmp_path / "t.jsonl", [_user("a long prompt that would be capped")])
     page = st.transcript_page(path)
     entry = page["entries"][0]
@@ -504,7 +505,7 @@ def test_entry_full_text_merges_assistant_blocks_across_lines(tmp_path: Path, mo
     full-text route reconstructs both merged text blocks — with a tool call
     and its result (different lines, different kinds) sitting between them,
     same shape :func:`_drop_partial_leading_message` documents."""
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 20)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 20)
     path = _write_jsonl(tmp_path / "t.jsonl", [
         _assistant([{"type": "text", "text": "x" * 15}], "m1"),
         _assistant([_tool_use("Bash", {"command": "ls"}, "t1")], "m1"),
@@ -519,7 +520,7 @@ def test_entry_full_text_merges_assistant_blocks_across_lines(tmp_path: Path, mo
 
 
 def test_entry_full_text_codex_assistant(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 5)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 5)
     path = _write_jsonl(tmp_path / "rollout.jsonl", [
         _codex({"type": "message", "role": "assistant",
                "content": [{"type": "output_text", "text": "a whole answer"}]}),
@@ -816,7 +817,7 @@ def test_grok_pages_concatenate_across_window_boundaries(tmp_path: Path, monkeyp
 def test_grok_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     """A truncated turn reads back whole — what Chat's copy (#985) and
     read-aloud (#988) call when a page entry came back ``truncated``."""
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 40)
     long_reply = "paragraph one. " * 40
     path = _write_jsonl(tmp_path / "updates.jsonl", [
         _grok_chunk("user_message_chunk", "ask"),
@@ -1038,7 +1039,7 @@ def test_pi_pages_concatenate_across_window_boundaries(tmp_path: Path, monkeypat
 def test_pi_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     """A truncated turn reads back whole — what Chat's copy (#985) and
     read-aloud (#988) call when a page entry came back ``truncated``."""
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 40)
     long_reply = "paragraph one. " * 40
     path = _write_jsonl(tmp_path / "pi.jsonl", [
         _pi_msg("user", [_pi_text("ask")]),
@@ -1240,7 +1241,7 @@ def test_antigravity_pages_concatenate_across_window_boundaries(tmp_path: Path, 
 def test_antigravity_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     """A truncated turn reads back whole — what Chat's copy (#985) and
     read-aloud (#988) call when a page entry came back ``truncated``."""
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 40)
     long_reply = "paragraph one. " * 40
     path = _write_jsonl(tmp_path / "agy.jsonl", [
         _agy_prompt("ask"),
@@ -1285,20 +1286,20 @@ def test_find_antigravity_transcript_uses_the_newest_conversation_cache(
     omits `conversationId` on a conversation's first history row — so the
     correlation is its own ``workspace → newest conversation`` cache, which
     *is* written the moment the first prompt lands (#1014 probe)."""
-    from src import board_exchange
+    from src import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
-    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_AGY_ROOT", tmp_path)
     session = _agy_session()
-    assert board_exchange.find_antigravity_transcript(session, [session]) == wanted
+    assert transcript_locate.find_antigravity_transcript(session, [session]) == wanted
     # The path separator and case of the cache key need not match the
     # session's own spelling.
-    assert board_exchange.find_antigravity_transcript(
+    assert transcript_locate.find_antigravity_transcript(
         _agy_session(project_dir="e:/work/project/"), []
     ) == wanted
     # A different folder is not this session's conversation.
-    assert board_exchange.find_antigravity_transcript(
+    assert transcript_locate.find_antigravity_transcript(
         _agy_session(project_dir=r"E:\work\other"), []
     ) is None
 
@@ -1307,15 +1308,15 @@ def test_find_antigravity_transcript_falls_back_to_the_flat_file(tmp_path: Path,
     """``transcript_full.jsonl`` is preferred — it alone can serve
     ``entry_full_text`` uncapped — but 55 of 265 conversations on this box
     have only the flat file, so its absence is a fallback, not an error."""
-    from src import board_exchange
+    from src import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     flat = _agy_tree(tmp_path, r"E:\work\project", uuid, full=False)
-    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
-    assert board_exchange.find_antigravity_transcript(_agy_session(), []) == flat
+    monkeypatch.setattr(transcript_locate, "_AGY_ROOT", tmp_path)
+    assert transcript_locate.find_antigravity_transcript(_agy_session(), []) == flat
     full = flat.with_name("transcript_full.jsonl")
     full.write_text("{}\n", encoding="utf-8")
-    assert board_exchange.find_antigravity_transcript(_agy_session(), []) == full
+    assert transcript_locate.find_antigravity_transcript(_agy_session(), []) == full
 
 
 def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
@@ -1323,44 +1324,44 @@ def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
 ):
     """The cache answers "the newest conversation in this folder", not "this
     session's" — so two guards keep it from showing another session's text,
-    the rule ``_find_codex_transcript`` follows.
+    the rule ``find_codex_transcript`` follows.
     """
-    from src import board_exchange
+    from src import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
-    monkeypatch.setattr(board_exchange, "_AGY_ROOT", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_AGY_ROOT", tmp_path)
 
     # A second live Antigravity session in the same folder: the cache cannot
     # say which of the two the uuid belongs to.
     sibling = _agy_session(session_id="s2")
-    assert board_exchange.find_antigravity_transcript(_agy_session(), [sibling]) is None
+    assert transcript_locate.find_antigravity_transcript(_agy_session(), [sibling]) is None
     # Not a sibling: a dead one, another agent, another folder.
     for other in (
         _agy_session(session_id="s2", alive=False),
         _agy_session(session_id="s2", agent="claude"),
         _agy_session(session_id="s2", project_dir=r"E:\work\other"),
     ):
-        assert board_exchange.find_antigravity_transcript(_agy_session(), [other]) == wanted
+        assert transcript_locate.find_antigravity_transcript(_agy_session(), [other]) == wanted
 
     # Nothing written since this session started: the cache is pointing at
     # whatever ran in the folder before it, and there is no transcript yet.
     import os
 
-    stamp = 1_000_000.0 - board_exchange._AGY_MTIME_SLOP_SECONDS - 1
+    stamp = 1_000_000.0 - transcript_locate._AGY_MTIME_SLOP_SECONDS - 1
     os.utime(wanted, (stamp, stamp))
-    assert board_exchange.find_antigravity_transcript(_agy_session(), []) is None
+    assert transcript_locate.find_antigravity_transcript(_agy_session(), []) is None
 
     # A session with no usable launch time, and a cache value that is not a
     # conversation uuid, are both refused before any path is built.
     os.utime(wanted, (2_000_000.0, 2_000_000.0))
-    assert board_exchange.find_antigravity_transcript(
+    assert transcript_locate.find_antigravity_transcript(
         _agy_session(started_at="not a time"), []
     ) is None
     (tmp_path / "cache" / "last_conversations.json").write_text(
         json.dumps({r"E:\work\project": "../../../etc"}), encoding="utf-8"
     )
-    assert board_exchange.find_antigravity_transcript(_agy_session(), []) is None
+    assert transcript_locate.find_antigravity_transcript(_agy_session(), []) is None
 
 
 # --------------------------------------------------- pi source correlation
@@ -1369,7 +1370,7 @@ def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
 def test_find_pi_transcript_matches_the_state_row_key(tmp_path: Path, monkeypatch):
     """Pi's state row is keyed by Pi's own session uuid and carries no
     ``transcript_path``; the file is named after that same uuid (#1013)."""
-    from src import board_exchange
+    from src import transcript_locate
 
     sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
     folder = tmp_path / "--E--work-project--"
@@ -1379,28 +1380,28 @@ def test_find_pi_transcript_matches_the_state_row_key(tmp_path: Path, monkeypatc
     (folder / "2026-09-06T12-14-59-246Z_01a076a4-aeae-789e-80fb-39494a6844c9.jsonl").write_text(
         "{}\n", encoding="utf-8"
     )
-    monkeypatch.setattr(board_exchange, "_PI_SESSIONS_DIR", tmp_path)
-    assert board_exchange.find_pi_transcript(sid) == wanted
-    assert board_exchange.find_pi_transcript("01a076a4-0000-0000-0000-000000000000") is None
+    monkeypatch.setattr(transcript_locate, "_PI_SESSIONS_DIR", tmp_path)
+    assert transcript_locate.find_pi_transcript(sid) == wanted
+    assert transcript_locate.find_pi_transcript("01a076a4-0000-0000-0000-000000000000") is None
 
 
 def test_find_pi_transcript_refuses_ambiguity_and_glob_syntax(tmp_path: Path, monkeypatch):
-    """Fail safe, the rule ``_find_codex_transcript`` follows: anything but
+    """Fail safe, the rule ``find_codex_transcript`` follows: anything but
     exactly one match answers ``None`` so the route says "no transcript"
     rather than risking a neighbouring session's text. A key carrying glob
     metacharacters is refused before it can match anything at all."""
-    from src import board_exchange
+    from src import transcript_locate
 
     sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
     for name in ("--E--work-a--", "--E--work-b--"):
         folder = tmp_path / name
         folder.mkdir()
         (folder / f"2026-09-17T19-40-30-292Z_{sid}.jsonl").write_text("{}\n", encoding="utf-8")
-    monkeypatch.setattr(board_exchange, "_PI_SESSIONS_DIR", tmp_path)
-    assert board_exchange.find_pi_transcript(sid) is None      # two candidates
-    assert board_exchange.find_pi_transcript("*") is None      # would match every file
-    assert board_exchange.find_pi_transcript("") is None
-    assert board_exchange.find_pi_transcript("../../etc") is None
+    monkeypatch.setattr(transcript_locate, "_PI_SESSIONS_DIR", tmp_path)
+    assert transcript_locate.find_pi_transcript(sid) is None      # two candidates
+    assert transcript_locate.find_pi_transcript("*") is None      # would match every file
+    assert transcript_locate.find_pi_transcript("") is None
+    assert transcript_locate.find_pi_transcript("../../etc") is None
 
 
 # --------------------------------------------------------------- router
@@ -1652,7 +1653,7 @@ def test_copilot_pages_concatenate_across_window_boundaries(tmp_path: Path, monk
 def test_copilot_entry_full_text_is_uncapped(tmp_path: Path, monkeypatch):
     """A truncated turn reads back whole — what Chat's copy (#985) and
     read-aloud (#988) call when a page entry came back ``truncated``."""
-    monkeypatch.setattr(st, "ASSISTANT_TEXT_CAP", 40)
+    monkeypatch.setattr(tf_shared, "ASSISTANT_TEXT_CAP", 40)
     long_reply = "paragraph one. " * 40
     path = _write_jsonl(tmp_path / "cop.jsonl", [
         _cop("user.message", {"content": "ask"}),
@@ -1715,30 +1716,30 @@ def test_find_copilot_transcript_matches_cwd_and_launch_window(tmp_path: Path, m
     its ``workspace.yaml`` sidecar: this folder's ``cwd``, created inside the
     launch window. Measured on two real launches: 3.71 s and 3.72 s after
     ``started_at`` (#1015 capture)."""
-    from src import board_exchange
+    from src import transcript_locate
 
     wanted = _copilot_session_dir(
         tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
         r"E:\work\project", "2026-09-17T21:57:34.176Z",
     )
-    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
-    assert board_exchange.find_copilot_transcript(_copilot_session()) == wanted
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) == wanted
     # Neither the separator nor the case of the harness's own spelling has
     # to match the session's.
-    assert board_exchange.find_copilot_transcript(
+    assert transcript_locate.find_copilot_transcript(
         _copilot_session(project_dir="e:/work/project/")
     ) == wanted
     # A different folder is not this session's conversation.
-    assert board_exchange.find_copilot_transcript(
+    assert transcript_locate.find_copilot_transcript(
         _copilot_session(project_dir=r"E:\work\other")
     ) is None
     # A session launched long before this folder existed is not its owner.
-    assert board_exchange.find_copilot_transcript(
+    assert transcript_locate.find_copilot_transcript(
         _copilot_session(started_at=1_789_600_000.0)
     ) is None
     # Nor one launched *after* it: the folder is created at launch, so a
     # later session's folder is a different one.
-    assert board_exchange.find_copilot_transcript(
+    assert transcript_locate.find_copilot_transcript(
         _copilot_session(started_at=1_789_682_400.0)
     ) is None
 
@@ -1749,25 +1750,25 @@ def test_find_copilot_transcript_refuses_two_candidates_in_one_window(
     """Two sessions started in one folder inside the window are ambiguous by
     construction — the sidecar says which folder, never which session — so
     both refuse rather than risk showing the other's conversation, the rule
-    ``_find_codex_transcript`` follows."""
-    from src import board_exchange
+    ``find_codex_transcript`` follows."""
+    from src import transcript_locate
 
     _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000001",
                        r"E:\work\project", "2026-09-17T21:57:34.176Z")
-    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
-    assert board_exchange.find_copilot_transcript(_copilot_session()) is not None
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) is not None
     # A second launch in the same folder, 20 s later — still inside the
     # window, so neither folder can be claimed.
     _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000002",
                        r"E:\work\project", "2026-09-17T21:57:54.176Z")
-    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) is None
     # A same-folder session outside the window does not make the first
     # ambiguous — which is what keeps the ordinary case answerable.
     for stale in tmp_path.glob("aaaaaaaa-0000-0000-0000-000000000002/*"):
         stale.unlink()
     _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000003",
                        r"E:\work\project", "2026-09-17T22:05:00.000Z")
-    assert board_exchange.find_copilot_transcript(_copilot_session()) is not None
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) is not None
 
 
 def test_find_copilot_transcript_needs_an_events_file(tmp_path: Path, monkeypatch):
@@ -1775,51 +1776,51 @@ def test_find_copilot_transcript_needs_an_events_file(tmp_path: Path, monkeypatc
     only at the first prompt — so a session nobody has typed into has no
     transcript, and neither do the 28 of 71 older sessions here that kept a
     ``session.db`` instead."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     events = _copilot_session_dir(
         tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
         r"E:\work\project", "2026-09-17T21:57:34.176Z", events=False,
     )
-    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) is None
     events.write_text("{}\n", encoding="utf-8")
-    assert board_exchange.find_copilot_transcript(_copilot_session()) == events
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) == events
 
 
 def test_find_copilot_transcript_survives_a_damaged_sidecar(tmp_path: Path, monkeypatch):
     """A folder whose ``workspace.yaml`` is missing, unparseable or lacks the
     two keys matches nothing — it must not raise, and must not swallow the
     real match sitting beside it."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     (tmp_path / "broken").mkdir()
     (tmp_path / "broken" / "workspace.yaml").write_text(
         "cwd: E:\\work\\project\ncreated_at: not-a-timestamp\n", encoding="utf-8"
     )
     (tmp_path / "keyless").mkdir()
     (tmp_path / "keyless" / "workspace.yaml").write_text("id: x\n", encoding="utf-8")
-    assert board_exchange.find_copilot_transcript(_copilot_session()) is None
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) is None
     wanted = _copilot_session_dir(
         tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
         r"E:\work\project", "2026-09-17T21:57:34.176Z",
     )
-    assert board_exchange.find_copilot_transcript(_copilot_session()) == wanted
+    assert transcript_locate.find_copilot_transcript(_copilot_session()) == wanted
 
 
 def test_find_copilot_transcript_needs_a_dir_and_a_start(tmp_path: Path, monkeypatch):
     """A session row missing either half of the correlation answers None
     rather than scanning for a best guess."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_COPILOT_STATE_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     _copilot_session_dir(tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
                        r"E:\work\project", "2026-09-17T21:57:34.176Z")
-    assert board_exchange.find_copilot_transcript(_copilot_session(project_dir="")) is None
-    assert board_exchange.find_copilot_transcript(_copilot_session(started_at=None)) is None
+    assert transcript_locate.find_copilot_transcript(_copilot_session(project_dir="")) is None
+    assert transcript_locate.find_copilot_transcript(_copilot_session(started_at=None)) is None
     # An ISO `started_at` (a row read back from JSON state) works too.
-    assert board_exchange.find_copilot_transcript(
+    assert transcript_locate.find_copilot_transcript(
         _copilot_session(started_at="2026-09-17T21:57:30.465Z")
     ) is not None
 
@@ -1851,20 +1852,20 @@ def test_resolve_claude_transcript_takes_the_newest_in_the_cwd_folder(
     """The fallback for a live session the hook left no row for (#1023):
     Claude files a conversation under the cwd with every non-alphanumeric
     character replaced by `-`, and the newest one there is this session's."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(
         tmp_path, "E--work-project", ("old", 1_000_100.0), ("new", 1_000_200.0)
     )
     session = _claude_session()
-    assert board_exchange.resolve_claude_transcript(session, [session])[0] == folder / "new.jsonl"
+    assert transcript_locate.resolve_claude_transcript(session, [session])[0] == folder / "new.jsonl"
     # The session's own spelling of the directory need not match the folder's.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(project_dir="e:/work/project/"), []
     )[0] == folder / "new.jsonl"
     # A different working directory is a different session's conversation.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(project_dir=r"E:\work\other"), []
     )[0] is None
 
@@ -1876,11 +1877,11 @@ def test_resolve_claude_transcript_matches_a_lowercased_legacy_folder(
     replacing the separators — 4 of the 107 folders on this box that record
     their own cwd are spelled that way, so the lookup is case-insensitive
     rather than one constructed name."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "e--work-project", ("conv", 1_000_100.0))
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(), []
     )[0] == folder / "conv.jsonl"
 
@@ -1892,12 +1893,12 @@ def test_resolve_claude_transcript_fails_safe_on_ambiguity_and_staleness(
     a second live Claude session in the same folder makes "newest here"
     meaningless (#537), and a folder untouched since this session started
     holds only what ran there before it."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
     sibling = _claude_session(session_id="s2")
-    assert board_exchange.resolve_claude_transcript(_claude_session(), [sibling])[0] is None
+    assert transcript_locate.resolve_claude_transcript(_claude_session(), [sibling])[0] is None
     # A dead sibling, one in another folder, or another agent's, all leave
     # exactly one live claimant here.
     for other in (
@@ -1905,14 +1906,14 @@ def test_resolve_claude_transcript_fails_safe_on_ambiguity_and_staleness(
         _claude_session(session_id="s2", project_dir=r"E:\work\other"),
         _claude_session(session_id="s2", agent="codex"),
     ):
-        assert board_exchange.resolve_claude_transcript(_claude_session(), [other])[0] is not None
+        assert transcript_locate.resolve_claude_transcript(_claude_session(), [other])[0] is not None
     # Nothing written since this session started: refuse, and "no transcript
     # yet" is also the honest answer.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(started_at=1_000_200.0), []
     )[0] is None
     # ...but only outside the slop that covers spawn-to-first-write.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(started_at=1_000_140.0), []
     )[0] is not None
 
@@ -1931,9 +1932,9 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     turn a rough answer into no answer at all, and its ``source``
     vocabulary would have to grow a case it never had.
     """
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
     (folder / "conv.jsonl").write_text(
         json.dumps({"type": "ai-title", "aiTitle": "A totally different name"})
@@ -1942,12 +1943,12 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     )
     session = _claude_session(live_title="◐ Issue 1034")
 
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         session, [session]
     )[0] == folder / "conv.jsonl"
 
     # The same inputs through the drawer's opted-in view do refuse.
-    path, verdict = board_exchange._scan_claude_transcript(
+    path, verdict = transcript_locate._scan_claude_transcript(
         session, [session], disprove=True
     )
     assert path is None
@@ -1959,22 +1960,22 @@ def test_resolve_claude_transcript_needs_a_dir_a_start_and_a_folder(
 ):
     """Half a correlation, an empty folder or no projects directory at all
     answer None rather than scanning for a best guess."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
-    assert board_exchange.resolve_claude_transcript(_claude_session(project_dir=""), [])[0] is None
-    assert board_exchange.resolve_claude_transcript(_claude_session(started_at=None), [])[0] is None
+    assert transcript_locate.resolve_claude_transcript(_claude_session(project_dir=""), [])[0] is None
+    assert transcript_locate.resolve_claude_transcript(_claude_session(started_at=None), [])[0] is None
     # An ISO `started_at` (a row read back from JSON state) works too.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(started_at="1970-01-12T13:46:40Z"), []
     )[0] is not None
     _claude_folder(tmp_path, "E--work-empty")
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         _claude_session(project_dir=r"E:\work\empty"), []
     )[0] is None
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path / "gone")
-    assert board_exchange.resolve_claude_transcript(_claude_session(), [])[0] is None
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path / "gone")
+    assert transcript_locate.resolve_claude_transcript(_claude_session(), [])[0] is None
 
 
 # A conversation id as `build_resume_flags(..., session_id=...)` splices it.
@@ -1991,9 +1992,9 @@ def test_resumed_claude_session_reads_its_conversation_before_the_first_prompt(
     both of the scan's guards refuse. The id names the file exactly; Claude
     Code appends a resumed turn to that same `<id>.jsonl` (probed on
     2.1.280), so it is this session's conversation from spawn onwards."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(
         tmp_path, "E--work-project",
         (_RESUMED, 1_000_100.0), (_OTHER, 1_000_150.0),
@@ -2005,16 +2006,16 @@ def test_resumed_claude_session_reads_its_conversation_before_the_first_prompt(
     neighbour = _claude_session(session_id="s2", **fresh_start)
 
     # Stale folder, alone in it: the mtime guard refused; the id answers.
-    assert board_exchange.resolve_claude_transcript(resumed, [resumed]) == (
+    assert transcript_locate.resolve_claude_transcript(resumed, [resumed]) == (
         folder / f"{_RESUMED}.jsonl", "resume_id"
     )
     # Busy folder: the folder guard refused; the id still answers, and it is
     # the resumed conversation, not the folder's newest (_OTHER).
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         resumed, [resumed, neighbour]
     )[0] == folder / f"{_RESUMED}.jsonl"
     # The neighbour is fresh and never borrows the resumed session's file.
-    assert board_exchange.resolve_claude_transcript(
+    assert transcript_locate.resolve_claude_transcript(
         neighbour, [resumed, neighbour]
     ) == (None, "folder_shared")
 
@@ -2026,20 +2027,20 @@ def test_fresh_and_bare_resume_sessions_keep_both_guards(
     fresh launch in a folder of older conversations, and a bare `--resume`
     (the picker, whose choice nothing on the session records), both still
     answer no_transcript until they write, and say which guard refused."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
     for flags in ("--model opus", "--resume --model opus", "--resume"):
         session = _claude_session(flags=flags, started_at=2_000_000.0)
-        assert board_exchange.resolve_claude_transcript(session, [session]) == (
+        assert transcript_locate.resolve_claude_transcript(session, [session]) == (
             None, "not_written_since_start"
         ), flags
     # An id with no file in this cwd's folder is not a correlation either.
     elsewhere = _claude_session(
         flags=f"--resume {_OTHER}", started_at=2_000_000.0
     )
-    assert board_exchange.resolve_claude_transcript(elsewhere, [elsewhere])[0] is None
+    assert transcript_locate.resolve_claude_transcript(elsewhere, [elsewhere])[0] is None
 
 
 def test_resumed_session_that_moved_on_is_refused_by_its_title(
@@ -2049,9 +2050,9 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
     its launch flags keep the old id. The live-title disproof (#1034) covers
     that: a title that genuinely conflicts with the resumed file's own name
     refuses it rather than showing the conversation the user left."""
-    from src import board_exchange
+    from src import transcript_locate
 
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
     path = folder / f"{_RESUMED}.jsonl"
     path.write_text(
@@ -2062,13 +2063,13 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
     base = {"flags": f"--resume {_RESUMED}", "started_at": 2_000_000.0}
 
     moved = _claude_session(live_title="✳ Plan the garden", **base)
-    refused_path, why = board_exchange.resolve_claude_transcript(moved, [moved])
+    refused_path, why = transcript_locate.resolve_claude_transcript(moved, [moved])
     assert refused_path is None
     assert why == "not_written_since_start; resume_id title_disproved"
     # Agreeing, or no title at all (a detached session), still answers.
     for title in ("✳ Fix the backup job", ""):
         same = _claude_session(live_title=title, **base)
-        assert board_exchange.resolve_claude_transcript(same, [same])[0] == path, title
+        assert transcript_locate.resolve_claude_transcript(same, [same])[0] == path, title
 
 
 class TestTranscriptEndpoint:
@@ -2125,13 +2126,13 @@ class TestTranscriptEndpoint:
         Before the filesystem fallback that answered `no_transcript` over a
         conversation sitting readable on disk, while Terminal mode showed
         it. The row stays first when there is one."""
-        from src import board_exchange
+        from src import transcript_locate
 
         client, _, overrides = webapp_client
         session = _live(project_dir=r"E:\work\project", started_at=1_000_000.0)
         overrides["session"].list_sessions.return_value = [session]
         monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
-        monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+        monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
         folder = tmp_path / "E--work-project"
         folder.mkdir()
         path = _write_jsonl(folder / "conv.jsonl", _conversation(2))
@@ -2155,7 +2156,7 @@ class TestTranscriptEndpoint:
         and sharing its folder with another live session, reads its
         conversation; a fresh neighbour still answers no_transcript, and the
         log line names the guard that refused."""
-        from src import board_exchange
+        from src import transcript_locate
 
         client, _, overrides = webapp_client
         resumed = _live(
@@ -2165,7 +2166,7 @@ class TestTranscriptEndpoint:
         neighbour = _live(sid="s2", project_dir=r"E:\work\project", started_at=2_000_000.0)
         overrides["session"].list_sessions.return_value = [resumed, neighbour]
         monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
-        monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", tmp_path)
+        monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
         folder = tmp_path / "E--work-project"
         folder.mkdir()
         path = _write_jsonl(folder / f"{_RESUMED}.jsonl", _conversation(2))
@@ -2187,10 +2188,10 @@ class TestTranscriptEndpoint:
         path = _write_jsonl(tmp_path / "rollout.jsonl", [
             _codex({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hey"}]}),
         ])
-        monkeypatch.setattr(router_mod, "_find_codex_transcript", lambda session: path)
+        monkeypatch.setattr(router_mod, "find_codex_transcript", lambda session: path)
         body = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert body["available"] is True and body["source"] == "codex"
-        monkeypatch.setattr(router_mod, "_find_codex_transcript", lambda session: None)
+        monkeypatch.setattr(router_mod, "find_codex_transcript", lambda session: None)
         assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "no_transcript"
 
     def test_grok_row_reads_its_updates_stream(self, webapp_client, _bypass_gate, monkeypatch):
@@ -2394,7 +2395,7 @@ class TestTranscriptEndpoint:
             _codex({"type": "message", "role": "user", "content": [{"type": "input_text", "text": "hey"}]}),
             _codex({"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "yo"}]}),
         ])
-        monkeypatch.setattr(router_mod, "_find_codex_transcript", lambda session: path)
+        monkeypatch.setattr(router_mod, "find_codex_transcript", lambda session: path)
         body = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert body["source"] == "codex" and _kinds(body["entries"]) == ["user", "assistant"]
 
@@ -2437,7 +2438,7 @@ class TestTranscriptEntryEndpoint:
     def test_happy_path_returns_uncapped_text_and_never_logs_body(
         self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
     ):
-        monkeypatch.setattr(st, "USER_TEXT_CAP", 5)
+        monkeypatch.setattr(tf_shared, "USER_TEXT_CAP", 5)
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_live()]
         path = _write_jsonl(tmp_path / "t.jsonl", [_user("a much longer prompt than the cap")])
@@ -2832,7 +2833,7 @@ def test_tool_action_covers_the_probed_tools_of_every_harness():
     """The command, edit, write and read tools probed from each harness's
     real transcripts (key names only) read in plain words; +N -M is a line
     diff of the edit's own old and new text."""
-    act = st._tool_action
+    act = tf_shared._tool_action
     # Commands keep their line breaks: Chat shows the first line folded and
     # the whole command in the opened block.
     assert act("Bash", {"command": "cd x\npytest -q"}) == {"verb": "ran", "command": "cd x\npytest -q"}
