@@ -69,21 +69,10 @@ def _request(method: str, port: int, path: str, *, timeout: float = _TIMEOUT, **
     )
 
 
-def health(port: int) -> bool:
-    try:
-        resp = _loopback_http.pooled_request(
-            "GET", base_url(port) + "/healthz", timeout=2.0
-        )
-        return resp.status_code == 200
-    except requests.RequestException:
-        return False
-
-
 def identity(port: int) -> Optional[Dict[str, Any]]:
     """The session-host's ``/healthz`` body (``git_sha``/``started_at``, #615),
-    or ``None`` when unreachable — the build-identity companion to
-    :func:`health`'s plain up/down check, used by ``/api/version`` to report
-    whether the session-host is running current code."""
+    or ``None`` when unreachable — the build identity ``/api/version`` uses to
+    report whether the session-host is running current code."""
     try:
         resp = _loopback_http.pooled_request(
             "GET", base_url(port) + "/healthz", timeout=2.0
@@ -167,15 +156,6 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
     return _request(
         "POST", port, f"/sessions/{session_id}/input",
         json={"data": data, "submit": submit}, timeout=_INPUT_TIMEOUT,
-    )
-
-
-def resize(port: int, session_id: str, rows: int, cols: int) -> Dict[str, Any]:
-    return _request(
-        "POST",
-        port,
-        f"/sessions/{session_id}/resize",
-        json={"rows": rows, "cols": cols},
     )
 
 

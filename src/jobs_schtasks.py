@@ -671,9 +671,6 @@ def sync_schtasks(
     return created
 
 
-_NEXT_RUN_RE = re.compile(
-    r"^Next Run Time:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
-)
 _TASK_NAME_RE = re.compile(
     r"^TaskName:\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE
 )

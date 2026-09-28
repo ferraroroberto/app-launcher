@@ -192,8 +192,9 @@ def resolve_exchange(
     """Resolve one live session's exchange through the source hierarchy.
 
     The row-declared ``native_path`` is exact and always wins. When no row
-    names one and the agent is Claude, :func:`find_claude_transcript`
-    (#1023, shared verbatim with the ``/transcript`` route) correlates the
+    names one and the agent is Claude, :func:`_scan_claude_transcript`
+    (#1023, the scan ``/transcript`` shares via
+    :func:`resolve_claude_transcript`) correlates the
     conversation from the filesystem — the fallback for the window where
     the hook has deleted the row out from under a still-live session.
 
@@ -204,7 +205,7 @@ def resolve_exchange(
     rather than replayed terminal output, and a *detached* session has no
     capture at all, so for a ``RemoteSession`` it is the difference between
     an exchange and ``no_exchange``. The capture is kept for when the scan
-    refuses — either of :func:`find_claude_transcript`'s two guards — so an
+    refuses — either of :func:`_scan_claude_transcript`'s two guards — so an
     ambiguous folder still degrades to the rougher-but-honest answer rather
     than to a neighbour's text.
 
@@ -717,7 +718,7 @@ def _claude_scan(
     the scan has no competing source to outrank, so refusing would turn a
     rough answer into no answer at all. The verdict is returned alongside
     the path so the caller can report it;
-    :func:`find_claude_transcript` is the unchanged two-state view for
+    :func:`resolve_claude_transcript` is the unchanged two-state view for
     every caller that does not want the third guard.
 
     The third element names the guard that refused (``""`` on success), so
@@ -827,21 +828,6 @@ def resolve_claude_transcript(
     if _disprove_by_live_title(resumed, session) == _TITLE_CHECK_DISPROVED:
         return None, f"{refused}; resume_id {_CLAUDE_REFUSED_TITLE}"
     return resumed, "resume_id"
-
-
-def find_claude_transcript(
-    session: Dict[str, Any], live: Iterable[Dict[str, Any]]
-) -> Optional[Path]:
-    """:func:`resolve_claude_transcript` without the reason.
-
-    The shape every caller had before #1034: the two original guards only
-    (plus, since #1155, a ``--resume <id>`` launch's own conversation when
-    they refuse), answering a path or ``None``. Parameterised rather than
-    forked — a second copy of this correlation drifting from the first is
-    exactly what the six-flavour reader in ``session_transcript.py`` has
-    avoided so far.
-    """
-    return resolve_claude_transcript(session, live)[0]
 
 
 def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
