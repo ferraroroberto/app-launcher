@@ -25,6 +25,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pyte
 
+from src import plan_picker
 from src._log_once import log_once
 from src.board_transcript import (
     _read_tail_bytes,
@@ -269,7 +270,7 @@ def resolve_exchange(
         launcher_capture_path,
         launcher_input_path=launcher_input_path,
         prompt_fallback=str(session.get("prompt_title") or "").strip(),
-        rows=int(session.get("rows") or 42),
+        rows=int(session.get("rows") or 40),
         cols=int(session.get("cols") or 120),
     )
     if fallback.get("available"):
@@ -967,11 +968,17 @@ def launcher_last_exchange(
     *,
     launcher_input_path: Optional[Path] = None,
     prompt_fallback: str = "",
-    rows: int = 42,
+    rows: int = 40,
     cols: int = 120,
 ) -> Dict[str, Any]:
-    """Extract the latest reply from an exact-id PTY capture tail."""
-    raw = _read_tail(capture_path, _CAPTURE_TAIL_BYTES)
+    """Extract the latest reply from an exact-id PTY capture tail.
+
+    The tail is read through :func:`plan_picker.read_capture_tail`, which undoes
+    the session-host's text-mode CRLF expansion and starts the render after the
+    first newline; only the scrollback-aware, colour-reading render below is
+    local, because the shared ``screen_lines`` keeps neither history nor cells.
+    """
+    raw = plan_picker.read_capture_tail(capture_path, _CAPTURE_TAIL_BYTES)
     if not raw:
         return unavailable("no_exchange")
 
