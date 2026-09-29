@@ -30,6 +30,17 @@ land here silently as a generic failure — the drift the issue asked to prevent
 ``test_exit_code_outcomes_match_scheduled_runner_verdicts`` goes one further and
 pins each row's outcome against the ``❓``/``❌`` verdict the adapter prints for
 that code (#959).
+
+**Job-declared codes (#1316).** That table is global and belongs to the
+adapter. A job's *own* child can also exit non-zero on purpose: life-os's
+nightly email sweep exits 3 when it has mail to sweep but no desktop to start
+Outlook on. A job declares that in its config entry
+(``"exit_outcomes": {"3": "deferred"}``), and :func:`run_outcome` takes the
+declaration as an argument. It is per job, never global, because reading
+"3 = deferred" into every job would soften other jobs' plain failures.
+``deferred`` is neither success nor failure. It raises no failure alert, stays
+out of the success-rate denominator and off the Board's attention column, and
+the job card draws it as its own muted state.
 """
 
 from __future__ import annotations
@@ -42,6 +53,13 @@ OUTCOME_SUCCESS = "success"
 OUTCOME_FAILED = "failed"
 #: A run whose delivery nobody established — it may well have succeeded.
 OUTCOME_UNCONFIRMED = "unconfirmed"
+#: A run whose child declined the work on purpose, signalled by an exit code
+#: its job declared (#1316). Neither success nor failure.
+OUTCOME_DEFERRED = "deferred"
+
+#: The outcomes a job may declare for its own exit codes. ``success`` is left
+#: out on purpose: a child that succeeded should exit 0.
+DECLARABLE_OUTCOMES = frozenset({OUTCOME_DEFERRED})
 
 # exit code -> (outcome, one-line reason). Wording condensed from the verdict
 # strings ``ProgressFormatter.finish`` prints beside each code, so a job card
@@ -128,21 +146,48 @@ def classify_exit_code(exit_code: Optional[int]) -> Optional[Tuple[str, str]]:
     return _EXIT_CODES.get(exit_code)
 
 
-def run_outcome(record: Mapping[str, Any]) -> Tuple[Optional[str], Optional[str]]:
+def _declared_outcome(
+    exit_code: Any, exit_outcomes: Optional[Mapping[int, str]]
+) -> Optional[str]:
+    """The outcome ``exit_outcomes`` declares for ``exit_code``, else ``None``."""
+    if not exit_outcomes:
+        return None
+    if not isinstance(exit_code, int) or isinstance(exit_code, bool):
+        return None
+    declared = exit_outcomes.get(exit_code)
+    return declared if declared in DECLARABLE_OUTCOMES else None
+
+
+def run_outcome(
+    record: Mapping[str, Any],
+    exit_outcomes: Optional[Mapping[int, str]] = None,
+) -> Tuple[Optional[str], Optional[str]]:
     """``(outcome, reason)`` for one run record.
 
     ``outcome`` is a superset of ``status``: it equals ``status`` for every
     record except a ``failed`` one whose exit code says the adapter never
-    established delivery, which becomes :data:`OUTCOME_UNCONFIRMED`. Non-terminal
-    statuses (``running`` / ``pending`` / ``queued``) pass straight through, so
-    a run in flight is never re-labelled.
+    established delivery, which becomes :data:`OUTCOME_UNCONFIRMED`, or whose
+    exit code the run's own job declares in ``exit_outcomes`` (#1316), which
+    becomes the declared outcome. Non-terminal statuses (``running`` /
+    ``pending`` / ``queued``) pass straight through, so a run in flight is
+    never re-labelled.
 
     ``reason`` is the exit code's one-liner whenever the code is a known one —
     including for codes that stay ``failed``, because "stalled" and "invoked no
     tools" are worth naming on the card rather than leaving to a log dive.
     """
     status = record.get("status")
-    classified = classify_exit_code(record.get("exit_code"))
+    exit_code = record.get("exit_code")
+    declared = _declared_outcome(exit_code, exit_outcomes)
+    if declared is not None and status == OUTCOME_FAILED and not any(
+        record.get(field) for field in _LAUNCHER_TERMINATED_FIELDS
+    ):
+        # The job's declaration wins over the adapter's table because it is
+        # the more specific statement about this child's code. A run the
+        # launcher killed, watchdogged or reaped is still a failure: its code
+        # came from a torn-down tree, not from the child's own choice.
+        return declared, f"exit {exit_code} is declared {declared} by this job"
+    classified = classify_exit_code(exit_code)
     if classified is None:
         return status, None
     outcome, reason = classified

@@ -874,6 +874,13 @@ summary + .opt-group { border-top: 0; }
 /* A run whose delivery was never established (#916) — attention, not danger.
    It may well have succeeded; what is certain is only that nobody checked. */
 .app-item .health-dot.unconfirmed { background: var(--attention); }
+/* A deferral the job declared by exit code (#1316) is neither success nor
+   failure: a muted hollow ring, so it cannot be read as the solid muted dot
+   of a job that has never run. */
+.app-item .health-dot.deferred {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
 
 /* Jobs tab action rail (issue #232): job tiles use the shared .app-item
    layout — info block on the left, a compact vertical action rail on the
@@ -975,6 +982,12 @@ summary + .opt-group { border-top: 0; }
 .job-spark-dot.down { color: var(--danger); }
 .job-spark-dot.live { color: var(--attention); }
 .job-spark-dot.unconfirmed { color: var(--attention); }
+/* Deferred (#1316): the same muted hollow ring as the status dot. */
+.job-spark-dot.deferred {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
 /* `unknown` is a run with no real outcome at all (skipped, dry run); an
    unconfirmed one above did run and is worth a look, so it is not grey. */
 .job-spark-dot.unknown { color: var(--muted); }
@@ -1419,6 +1432,7 @@ summary + .opt-group { border-top: 0; }
 .jobs-run-btn .jobs-run-success { color: var(--success); }
 .jobs-run-btn .jobs-run-failed { color: var(--danger); }
 .jobs-run-btn .jobs-run-unconfirmed { color: var(--attention); }
+.jobs-run-btn .jobs-run-deferred { color: var(--muted); }
 .jobs-run-btn .jobs-run-meta {
   flex: 1;
   min-width: 0;

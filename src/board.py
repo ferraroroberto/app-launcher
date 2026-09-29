@@ -74,7 +74,7 @@ from src.board_transcript import (  # noqa: F401 — re-exported
     has_typed_user_prompt,
     last_exchange,
 )
-from src.jobs_outcome import OUTCOME_UNCONFIRMED
+from src.jobs_outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     well have delivered, but the scheduled-run adapter could not establish it),
     ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
     one-liner when it has one, so the card can say *why* without a log dive.
+    A run whose job declares its exit code ``deferred`` (#1316) gets no card.
 
     Blocking file IO (one ``list_runs`` walk per job) — callers wrap in
     ``asyncio.to_thread``. Job timestamps are naive local ISO strings
@@ -152,7 +153,12 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
                 "age_seconds": _age_seconds(started, now_local),
             })
             continue
-        if latest.get("status") == "failed":
+        # A deferral the job itself declared (#1316) is by design, so nothing
+        # here needs a human. Its state is shown on the job card, not here.
+        if (
+            latest.get("status") == "failed"
+            and latest.get("outcome") != OUTCOME_DEFERRED
+        ):
             finished = _parse_iso(latest.get("finished_at"))
             if finished is not None and finished.astimezone().date() == today:
                 # A run whose delivery the adapter could not establish still

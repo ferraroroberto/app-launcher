@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
 from src._json_io import atomic_write_json, file_lock
+from src.jobs_config import exit_outcomes_for
 from src.jobs_outcome import run_outcome
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,9 @@ def read_webhook_payload(run_dir: Path) -> Optional[Dict[str, Any]]:
         return None
 
 
-def read_run(run_dir: Path) -> Dict[str, Any]:
+def read_run(
+    run_dir: Path, exit_outcomes: Optional[Dict[int, str]] = None
+) -> Dict[str, Any]:
     """Read ``run.json`` from ``run_dir``, decorated with its outcome.
 
     Missing/malformed file → empty dict.
@@ -183,13 +186,19 @@ def read_run(run_dir: Path) -> Dict[str, Any]:
 
     * ``outcome`` — ``status`` widened with ``"unconfirmed"`` for the exit codes
       fleet-config's scheduled-run adapter uses to say "this may well have
-      delivered, but nobody established that". See :mod:`src.jobs_outcome`.
+      delivered, but nobody established that", and with ``"deferred"`` for
+      an exit code the job itself declares a designed deferral (#1316). See
+      :mod:`src.jobs_outcome`.
     * ``outcome_reason`` — the code's one-line meaning, or ``None`` for an exit
       code the adapter does not define.
 
     Derived on read rather than persisted on write: the records already on disk
     showing a false red re-render correctly with no migration, and ``status``
     on disk keeps its original meaning.
+
+    ``exit_outcomes`` is the owning job's own exit-code declaration (#1316);
+    omitted, it is looked up from the registry by the run dir's parent name
+    (``webapp/jobs/<job_id>/<run_id>``), so every caller gets it for free.
     """
     target = run_dir / "run.json"
     if not target.exists():
@@ -200,7 +209,9 @@ def read_run(run_dir: Path) -> Dict[str, Any]:
         return {}
     if not isinstance(record, dict):
         return {}
-    outcome, reason = run_outcome(record)
+    if exit_outcomes is None:
+        exit_outcomes = exit_outcomes_for(run_dir.parent.name)
+    outcome, reason = run_outcome(record, exit_outcomes)
     record["outcome"] = outcome
     record["outcome_reason"] = reason
     return record
@@ -211,11 +222,12 @@ def list_runs(job_id: str) -> List[Dict[str, Any]]:
     base = runs_dir(job_id)
     if not base.is_dir():
         return []
+    exit_outcomes = exit_outcomes_for(job_id)
     runs: List[Dict[str, Any]] = []
     for child in sorted(base.iterdir(), reverse=True):
         if not child.is_dir():
             continue
-        run = read_run(child)
+        run = read_run(child, exit_outcomes)
         run.setdefault("run_id", child.name)
         runs.append(run)
     return runs
