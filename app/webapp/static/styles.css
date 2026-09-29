@@ -4312,6 +4312,9 @@ body.terminal-open {
 .quota-line.warn { color: var(--attention); }
 .quota-line.danger { color: var(--danger); }
 .quota-line.stale { opacity: 0.6; }
+/* The weekly linear pace (#1330): a reference number, not a reading, so it
+   stays muted whatever the line's tier colour. */
+.quota-line .quota-pace { color: var(--muted); }
 
 /* Context-filter "saved" badge (issue #713) — the last consumer of the
    dotted badge row the quota rows above used to share. */
