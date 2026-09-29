@@ -197,7 +197,12 @@ class TestListJobs:
         client, _, _ = webapp_client
         resp = client.get("/api/jobs")
         assert resp.status_code == 200
-        assert resp.json() == {"jobs": []}
+        body = resp.json()
+        assert body["jobs"] == []
+        # The runtime snapshot's age rides every answer (#1324), so a stale
+        # one can never pass for current.
+        assert set(body) == {"jobs", "snapshot"}
+        assert set(body["snapshot"]) == {"built_at", "age_seconds"}
 
     def test_lists_after_create(self, webapp_client, mocked_jobs_side_effects):
         client, _, _ = webapp_client

@@ -35,6 +35,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
 from src import jobs_index
+from src import jobs_snapshot
 from src.diagnostics import kill_process_tree
 from src.jobs_argv import compose_argv
 from src.jobs_preflight import has_errors, preflight
@@ -98,7 +99,9 @@ def _truthy(value: Optional[str]) -> bool:
 
 
 def _decorate_job(
-    job: Job, run_counts: Optional[tuple[int, int]] = None
+    job: Job,
+    run_counts: Optional[tuple[int, int]] = None,
+    runtime: Optional[jobs_snapshot.JobRuntime] = None,
 ) -> Dict[str, Any]:
     """API shape for one job — base fields plus runtime decoration.
 
@@ -115,7 +118,10 @@ def _decorate_job(
     an elapsed slot with no run record, read from one cached scan per poll.
 
     Blocking (a ``schtasks`` query plus a run-history disk walk) — async
-    callers wrap it in ``asyncio.to_thread`` (issue #881).
+    callers wrap it in ``asyncio.to_thread`` (issue #881). The ``/api/jobs``
+    poll passes ``runtime`` from the in-memory snapshot (#1324), so it skips
+    the walk; a single-job route, or a job whose snapshot entry holds a read
+    error, walks inline as before (and raises as before).
     """
     payload = job.to_dict()
     # Paused jobs render with a "paused — was X" chip so the user sees
@@ -152,11 +158,11 @@ def _decorate_job(
     payload["next_run_iso"] = (
         nf.isoformat(timespec="seconds") if nf is not None else None
     )
-    # A run stranded "running" by a dead executor (issue #591) is reconciled
-    # opportunistically here, on every poll, before it's decorated for the
-    # client — mirrors src.app_runtime.prune_dead's lazy-on-read pattern.
-    jobs_mod.reap_stranded_runs(job)
-    latest = jobs_mod.latest_run(job.id)
+    if runtime is None or runtime.error is not None:
+        runtime = jobs_snapshot.compute_job(job)
+        if runtime.error is not None:
+            raise runtime.error
+    latest = runtime.latest
     if latest is not None:
         payload["last_run"] = {
             "run_id": latest.get("run_id"),
@@ -175,11 +181,11 @@ def _decorate_job(
     else:
         payload["last_run"] = None
     payload["running"] = bool(latest and latest.get("status") == "running")
-    payload["stats"] = jobs_mod.run_stats(job.id)
-    payload["stuck"] = jobs_mod.is_stuck(job.id, latest=latest)
+    payload["stats"] = runtime.stats
+    payload["stuck"] = runtime.stuck
     # Missed-fire coverage (issue #697). Reads a process-local cached scan —
     # the schtasks half rides the same 30 s bulk-query cache `next_run` uses,
-    # so this adds no shell-out to the poll path.
+    # and the snapshot tick refreshes both before they expire (#1324).
     payload["coverage"] = jobs_mod.coverage_for_job(job.id)
     payload["queue_depth"] = (
         len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
@@ -233,12 +239,17 @@ async def get_jobs(request: Request) -> Dict[str, Any]:
     # it transparently before the first decorated row queries its counts.
     await asyncio.to_thread(jobs_index.ensure_index)
     counts = await asyncio.to_thread(jobs_index.run_counts_by_job)
-    # query_next_run shells out to schtasks per job — offload the whole
-    # decoration to a worker thread so the event loop doesn't block.
+    # The run-history walk comes from the in-memory snapshot (#1324); what is
+    # left per job is cheap, but query_next_run can still shell out to
+    # schtasks on a cache miss, so the decoration stays off the event loop.
+    snap = await asyncio.to_thread(jobs_snapshot.current, cfg.jobs)
     decorated = await asyncio.to_thread(
-        lambda: [_decorate_job(j, counts.get(j.id, (0, 0))) for j in cfg.jobs]
+        lambda: [
+            _decorate_job(j, counts.get(j.id, (0, 0)), runtime=snap.jobs.get(j.id))
+            for j in cfg.jobs
+        ]
     )
-    return {"jobs": decorated}
+    return {"jobs": decorated, "snapshot": jobs_snapshot.describe(snap)}
 
 
 @router.get("/api/jobs/agenda")

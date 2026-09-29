@@ -121,6 +121,11 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
         sync_run(run_dir, existing)
     except Exception as exc:  # noqa: BLE001 — derived mirror never blocks canonical I/O
         logger.warning("⚠️ Jobs index sync failed for %s: %s", run_dir, exc)
+    # The polls' in-memory snapshot (#1324) recomputes this job on its next
+    # read rather than waiting for a tick. Same local-import reason as above.
+    from src.jobs_snapshot import mark_dirty
+
+    mark_dirty(run_dir.parent.name)
 
 
 # Header names safe to persist verbatim alongside a webhook run — never the

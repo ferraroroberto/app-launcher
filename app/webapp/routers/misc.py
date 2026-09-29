@@ -8,13 +8,14 @@ listener→app label mapping uses the registry but doesn't mutate it.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from src import session_client
 from src.agents import detect_agents
@@ -41,23 +42,48 @@ _BUILT_AT = _IDENTITY["captured_at"]
 _CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
 
 
-@router.get("/")
-async def index(request: Request) -> HTMLResponse:
+def _stamped_index(app: Any) -> Tuple[str, str]:
+    """The hash-stamped index.html and its ETag, re-rendered only on change.
+
+    Every page load used to re-read the 135 KB file and regex-rewrite its
+    asset hashes (#1324). The rendered body is cached on the app, keyed on
+    the file's mtime and size, so an edit on disk is still picked up on the
+    next load without a restart; the asset hashes are fixed per process.
+    """
     index_path = STATIC_DIR / "index.html"
-    if not index_path.exists():
+    try:
+        st = index_path.stat()
+    except OSError:
         raise HTTPException(status_code=500, detail="index.html missing")
-    asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
-    body = index_path.read_text(encoding="utf-8")
-    stamped = rewrite_index_html(body, asset_hashes)
+    key = (st.st_mtime_ns, st.st_size)
+    cached = getattr(app.state, "index_cache", None)
+    if cached is not None and cached[0] == key:
+        return cached[1], cached[2]
+    asset_hashes = getattr(app.state, "asset_hashes", {}) or {}
+    stamped = rewrite_index_html(index_path.read_text(encoding="utf-8"), asset_hashes)
+    etag = '"' + hashlib.sha256(stamped.encode("utf-8")).hexdigest()[:20] + '"'
+    app.state.index_cache = (key, stamped, etag)
+    return stamped, etag
+
+
+def _etag_matches(header: str, etag: str) -> bool:
+    return any(
+        tag.strip().removeprefix("W/") in (etag, "*") for tag in header.split(",")
+    )
+
+
+@router.get("/")
+async def index(request: Request) -> Response:
+    stamped, etag = _stamped_index(request.app)
     # Force Safari (iPhone PWA especially) to revalidate the HTML on every
     # load. Without this, a stale cached index.html keeps pointing at a
     # `?v=<old hash>` script that no longer exists after a refactor — the
-    # page renders the static skeleton but no JS runs. The HTML body is
-    # tiny (~9 KB) so the round-trip cost is negligible.
-    return HTMLResponse(
-        content=stamped,
-        headers={"Cache-Control": "no-cache, must-revalidate"},
-    )
+    # page renders the static skeleton but no JS runs. The ETag (#1324) makes
+    # that revalidation a body-less 304 while the page hasn't changed.
+    headers = {"Cache-Control": "no-cache, must-revalidate", "ETag": etag}
+    if _etag_matches(request.headers.get("if-none-match", ""), etag):
+        return Response(status_code=304, headers=headers)
+    return HTMLResponse(content=stamped, headers=headers)
 
 
 @router.get("/api/version")

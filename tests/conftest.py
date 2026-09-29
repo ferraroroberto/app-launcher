@@ -226,6 +226,24 @@ def _isolated_jobs_index(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _fresh_jobs_snapshot(monkeypatch):
+    """Every test starts with an empty jobs runtime snapshot (#1324), and by
+    default every read rebuilds it, so a test that writes a run and then GETs
+    ``/api/jobs`` sees it as it did before the snapshot existed. The
+    background tick never builds under test: a build left running on one
+    test's temp dirs must not land in the next test's snapshot. The
+    snapshot's own tests (``test_jobs_snapshot.py``) put the real ages back.
+    """
+    from src import jobs_snapshot
+
+    jobs_snapshot.reset()
+    monkeypatch.setattr(jobs_snapshot, "MAX_AGE_SECONDS", -1.0)
+    monkeypatch.setattr(jobs_snapshot, "DEMAND_WINDOW_SECONDS", -1.0)
+    yield
+    jobs_snapshot.reset()
+
+
+@pytest.fixture(autouse=True)
 def _isolated_jobs_registry(request, tmp_path, monkeypatch):
     """Never let a test's run-record read consult the real ``jobs.json``.
 
