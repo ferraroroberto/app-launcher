@@ -273,7 +273,10 @@ class TestRetentionTick:
 
         def _spy(coro, *a, **k):
             task = real_create_task(coro, *a, **k)
-            created.append(task)
+            # The ungated jobs snapshot tick (#1324) is pinned elsewhere
+            # (test_server_coverage_tick); only the gated ticks count here.
+            if coro.__qualname__ != "tick_forever":
+                created.append(task)
             return task
 
         monkeypatch.setattr(server.asyncio, "create_task", _spy)

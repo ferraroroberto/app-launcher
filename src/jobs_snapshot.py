@@ -147,7 +147,7 @@ def rebuild(reason: str, *, unless_younger_than: Optional[float] = None) -> Snap
         with _lock:
             _snapshot = snap
         elapsed = time.monotonic() - start
-    if elapsed >= SLOW_BUILD_SECONDS or reason == "stale on read":
+    if elapsed >= SLOW_BUILD_SECONDS or reason == "stale while polled":
         breadcrumbs.warning(
             "⏱️ jobs snapshot rebuilt (%s): %d jobs in %.2fs", reason, len(jobs), elapsed,
         )
@@ -179,13 +179,17 @@ def current(jobs: Iterable[Any]) -> Snapshot:
     jobs = list(jobs)
     now = time.monotonic()
     with _lock:
+        # Stale after an idle spell is expected (nobody asked, so the tick
+        # rested); stale while the polls kept asking means the tick fell behind.
+        polled = now - _last_demand <= DEMAND_WINDOW_SECONDS
         _last_demand = now
         snap = _snapshot
     if snap is None or now - snap.built_monotonic > MAX_AGE_SECONDS:
-        snap = rebuild(
-            "first read" if snap is None else "stale on read",
-            unless_younger_than=MAX_AGE_SECONDS,
-        )
+        if snap is None:
+            reason = "first read"
+        else:
+            reason = "stale while polled" if polled else "stale after idle"
+        snap = rebuild(reason, unless_younger_than=MAX_AGE_SECONDS)
     with _lock:
         marks = dict(_dirty)
     stale = [job for job in jobs if job.id in marks or job.id not in snap.jobs]

@@ -154,9 +154,15 @@ class TestLifespanGate:
 
         def _spy(coro, *a, **k):
             task = real_create_task(coro, *a, **k)
-            created.append(task)
+            # The jobs snapshot tick (#1324) starts on every instance; it is
+            # pinned by test_jobs_snapshot_tick_runs_on_every_instance below.
+            if coro.__qualname__ == "tick_forever":
+                self.snapshot_ticks.append(task)
+            else:
+                created.append(task)
             return task
 
+        self.snapshot_ticks = []
         monkeypatch.setattr(server.asyncio, "create_task", _spy)
         # Never let the real tick body run — it would sleep two minutes and
         # then shell out to schtasks.
@@ -169,6 +175,16 @@ class TestLifespanGate:
         async with server._lifespan(app):
             pass
         return created
+
+    async def test_jobs_snapshot_tick_runs_on_every_instance(self, monkeypatch):
+        """Unlike the coverage tick, the jobs snapshot tick (#1324) is not
+        gated on the canonical checkout: /api/jobs and /api/board read the
+        snapshot on every instance, and the tick only walks while they poll.
+        It is cancelled with the lifespan like the others."""
+        monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")  # disposable
+        await self._run_lifespan(_app(), monkeypatch)
+        assert len(self.snapshot_ticks) == 1
+        assert self.snapshot_ticks[0].cancelled()
 
     async def test_disposable_instance_never_starts_the_tick(
         self, monkeypatch
