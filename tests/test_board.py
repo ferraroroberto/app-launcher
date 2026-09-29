@@ -2623,7 +2623,9 @@ def test_api_rate_limits_standalone_endpoint_present(webapp_client):
 
     claude = client.get("/api/rate-limits").json()["quota_lines"][0]
     assert claude["state"] == "available"
-    assert claude["five_hour"] == {"used_percentage": 10, "resets_at": 1751640000}
+    assert claude["five_hour"] == {
+        "used_percentage": 10, "resets_at": 1751640000, "duration_minutes": 300,
+    }
     assert claude["weekly"] is None
 
 

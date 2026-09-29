@@ -300,8 +300,10 @@ def test_lines_map_claude_native_window_ids_by_duration(monkeypatch):
 
     assert claude["five_hour"] == {
         "used_percentage": 39, "resets_at": "2026-09-09T18:00:00.000000Z",
+        "duration_minutes": 300,
     }
     assert claude["weekly"]["used_percentage"] == 19
+    assert claude["weekly"]["duration_minutes"] == 10080
 
 
 def test_lines_never_promote_an_unmeasured_window_to_zero(monkeypatch):

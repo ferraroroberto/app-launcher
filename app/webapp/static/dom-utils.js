@@ -447,7 +447,7 @@ export function nameLabel(value) {
 // Two fixed rows — Claude Code above Codex — always both, whatever the
 // model picker is pointed at (issue #860). Each is one nowrap line:
 //
-//   Claude Code · 5h 39% ↻ 14:20 · 1w 19% ↻ Sep 11
+//   Claude Code · 5h 39% ↻ 14:20 · 1w 19% ↻ Sep 11 ⧗53%
 //
 // The whole line carries the tier colour (no status dot), driven by the
 // *worse* of its two windows so a line reddens as soon as either does.
@@ -492,27 +492,59 @@ const QUOTA_RESET_ICON =
   '<svg class="icon" aria-hidden="true" focusable="false">' +
   '<use href="#i-refresh-cw"></use></svg>';
 
-function quotaWindowText(windowData, label, fmtReset) {
+const QUOTA_PACE_ICON =
+  '<svg class="icon" aria-hidden="true" focusable="false">' +
+  '<use href="#i-hourglass"></use></svg>';
+
+// Linear pace (#1330): how much of the window has elapsed, as a whole
+// percent, so weekly usage reads against it directly. Tuesday's `53%` means
+// usage under 53% is under budget. The window starts `duration_minutes`
+// before `resets_at` (7 days when the backend doesn't say). Null when the
+// reset is missing, unparseable or already past: a past reset means the
+// window this reading belongs to is over, and a pace from it would be
+// stale, which is worse than none.
+const DEFAULT_QUOTA_WINDOW_MINUTES = 7 * 24 * 60;
+
+export function quotaPace(windowData, nowMs) {
+  if (!windowData || windowData.resets_at == null) return null;
+  const value = windowData.resets_at;
+  const resetMs = typeof value === 'number' ? value * 1000 : Date.parse(value);
+  if (isNaN(resetMs) || nowMs > resetMs) return null;
+  const minutes = windowData.duration_minutes;
+  const lengthMs = (typeof minutes === 'number' && minutes > 0
+    ? minutes : DEFAULT_QUOTA_WINDOW_MINUTES) * 60000;
+  const elapsed = (nowMs - (resetMs - lengthMs)) / lengthMs;
+  return Math.round(Math.min(1, Math.max(0, elapsed)) * 100);
+}
+
+function quotaWindowText(windowData, label, fmtReset, pace) {
   if (!windowData || typeof windowData.used_percentage !== 'number') return null;
   const head = label + ' ' + Math.round(windowData.used_percentage) + '%';
   const reset = fmtReset(windowData.resets_at);
   if (!reset) return { text: head, html: escapeHtml(head) };
-  return {
+  const result = {
     text: head + ' resets ' + reset,
     html: escapeHtml(head) + ' ' + QUOTA_RESET_ICON + ' ' + escapeHtml(reset),
   };
+  if (pace != null) {
+    result.text += ', ' + pace + '% of the week elapsed';
+    result.html += ' <span class="quota-pace">' + QUOTA_PACE_ICON + pace + '%</span>';
+  }
+  return result;
 }
 
 // ``withResets: false`` for a fallback reading — a percentage that is no
 // longer confirmed has a reset time that may already be in the past, so
 // printing it would be worse than omitting it, and the width it frees is
 // what keeps the "unknown" marker itself from being the part that gets
-// ellipsed off a 390px line.
+// ellipsed off a 390px line. The weekly pace rides the same flag: it is
+// computed from that reset, so a fallback row shows none either.
 function quotaWindowTexts(pair, withResets) {
   const noReset = function () { return ''; };
+  const pace = withResets ? quotaPace(pair[1], Date.now()) : null;
   return [
     quotaWindowText(pair[0], '5h', withResets ? fmtResetClock : noReset),
-    quotaWindowText(pair[1], '1w', withResets ? fmtResetDay : noReset),
+    quotaWindowText(pair[1], '1w', withResets ? fmtResetDay : noReset, pace),
   ].filter(Boolean);
 }
 
