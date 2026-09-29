@@ -2638,6 +2638,61 @@ def test_tail_of_a_half_written_line_waits_for_the_rest(tmp_path: Path):
     assert [e["text"] for e in out["pending"] if e["kind"] == "assistant"] == ["hi"]
 
 
+def test_tail_pairs_a_call_with_a_result_a_tick_later_for_an_unkeyed_flavour(tmp_path: Path):
+    """#1310. Grok's line key is always ``None`` (self-contained lines), so
+    a tool call and its result — always two separate lines — routinely land
+    a tick apart. Before the fix, the "last line" fallback settled the call
+    the moment it was read; the result then arrived with no open call in
+    that tick's build and rendered as a standalone orphan card."""
+    path = _write_jsonl(tmp_path / "updates.jsonl", [_grok_chunk("user_message_chunk", "go")])
+    _, tail, size = _live_view(path, flavor="grok")
+
+    _append_jsonl(path, [_grok({
+        "sessionUpdate": "tool_call", "toolCallId": "t1",
+        "title": "ls", "rawInput": {"command": "ls"},
+    })])
+    out = st.transcript_tail(path, after=tail, size=size, flavor="grok")
+    # The prompt settles now that the call follows it; the call itself, with
+    # no result yet, stays pending rather than settling with none.
+    assert [e["kind"] for e in out["entries"]] == ["user"]
+    assert [e["kind"] for e in out["pending"]] == ["tool_call"]
+
+    _append_jsonl(path, [_grok({
+        "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+        "content": [{"type": "content", "content": {"type": "text", "text": "out"}}],
+    })])
+    out = st.transcript_tail(path, after=out["tail"], size=out["size"], flavor="grok")
+    tool_kinds = [e["kind"] for e in out["entries"] + out["pending"] if e["kind"] != "user"]
+    assert tool_kinds == ["tool_call"], (
+        "the result must land inside its call's card, never as its own tool_result card"
+    )
+    calls = [e for e in out["entries"] + out["pending"] if e["kind"] == "tool_call"]
+    assert len(calls) == 1 and calls[0]["result"] == "out"
+
+
+def test_tail_pairs_a_call_and_result_that_land_in_the_same_read_unkeyed_flavour(tmp_path: Path):
+    """#1310's other half: a call and its result that arrive *together* (a
+    fresh page load, or a tail read that caught up in one tick) must not be
+    split by a naive "just the last line" cut — that settles the call alone
+    (no result) and leaves the result to render as an orphan."""
+    path = _write_jsonl(tmp_path / "updates.jsonl", [_grok_chunk("user_message_chunk", "go")])
+    _, tail, size = _live_view(path, flavor="grok")
+
+    _append_jsonl(path, [
+        _grok({"sessionUpdate": "tool_call", "toolCallId": "t1",
+               "title": "ls", "rawInput": {"command": "ls"}}),
+        _grok({"sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+               "content": [{"type": "content", "content": {"type": "text", "text": "out"}}]}),
+    ])
+    out = st.transcript_tail(path, after=tail, size=size, flavor="grok")
+    tool_kinds = [e["kind"] for e in out["entries"] + out["pending"] if e["kind"] != "user"]
+    assert tool_kinds == ["tool_call"], (
+        "the result must land inside its call's card, never as its own tool_result card"
+    )
+    calls = [e for e in out["entries"] + out["pending"] if e["kind"] == "tool_call"]
+    assert len(calls) == 1 and calls[0]["result"] == "out"
+
+
 @pytest.mark.parametrize("chunk", [1, 3, 7])
 def test_live_replay_matches_one_whole_read(tmp_path: Path, monkeypatch, chunk: int):
     """The design's core claim: following a conversation tick by tick lands

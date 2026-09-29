@@ -110,6 +110,19 @@ def test_last_exchange_skips_harness_wrapper_user_lines(tmp_path: Path):
     assert board.last_exchange(target)["user"]["text"] == "the real prompt"
 
 
+def test_last_exchange_skips_ismeta_string_content_lines(tmp_path: Path):
+    """#1310: a string-content ``isMeta`` line — an ``[Image: ...]``
+    placeholder, a harness re-invocation note — is Claude's own injected
+    content, not something a person typed, even when its wording matches
+    none of ``_SKIP_USER_PREFIXES``."""
+    target = _write_jsonl(tmp_path / "t.jsonl", [
+        _user_line("the real prompt"),
+        {**_user_line("[Image: original 1290x2217, downscaled to 768x1290]"), "isMeta": True},
+        _assistant_line([{"type": "text", "text": "reply"}]),
+    ])
+    assert board.last_exchange(target)["user"]["text"] == "the real prompt"
+
+
 def test_last_exchange_missing_or_empty():
     assert board.last_exchange(None)["available"] is False
     assert board.last_exchange("C:/nope/missing.jsonl")["available"] is False
@@ -149,6 +162,17 @@ def test_typed_prompt_detected(tmp_path: Path):
 
 def test_bootstrap_only_transcript_is_a_confident_no(tmp_path: Path):
     target = _write_jsonl(tmp_path / "t.jsonl", _BOOTSTRAP_ONLY)
+    assert board.has_typed_user_prompt(target) is False
+
+
+def test_typed_prompt_ignores_ismeta_string_content_lines(tmp_path: Path):
+    """#1310: same gap as ``last_exchange`` — a string-content ``isMeta``
+    line (a harness re-invocation note, an image placeholder) must not read
+    as a typed prompt just because it isn't one of ``_SKIP_USER_PREFIXES``."""
+    target = _write_jsonl(tmp_path / "t.jsonl", _BOOTSTRAP_ONLY + [
+        {**_user_line("(Re-invocation of /issue-add — the user's original "
+                      "message is quoted above)"), "isMeta": True},
+    ])
     assert board.has_typed_user_prompt(target) is False
 
 
