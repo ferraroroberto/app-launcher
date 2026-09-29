@@ -21,6 +21,9 @@ STUB_FLAG = "--e2e-stub"
 # The banner that child prints on startup — the marker that identifies a
 # transcript as harness-written (issue #913's isolation check).
 STUB_BANNER = "[e2e-stub]"
+# The stub child's file name, which is how the gate's teardown recognises a
+# leaked child in a process's argv (issue #1335).
+STUB_SCRIPT_NAME = "e2e_stub_child.py"
 
 
 STUB_CHILD_SOURCE = '''\
@@ -61,7 +64,7 @@ def write_claude_shim(shim_dir: Path) -> None:
     it is never reached there, because `launched_claude_pty_session` skips
     first (same `shutil.which` guard as always).
     """
-    stub_py = shim_dir / "e2e_stub_child.py"
+    stub_py = shim_dir / STUB_SCRIPT_NAME
     stub_py.write_text(STUB_CHILD_SOURCE, encoding="utf-8")
     real_claude = shutil.which("claude")
     if real_claude:

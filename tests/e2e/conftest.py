@@ -34,7 +34,6 @@ import logging
 import os
 import re
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -59,6 +58,9 @@ from tests._credential_hygiene import (
     register_secret,
 )
 from tests.e2e._browser_sweep import sweep_browser_helpers
+# Tree-aware stop of the disposable servers + the stub-child reap (#1335).
+from tests.e2e._process_teardown import reap_stub_children
+from tests.e2e._process_teardown import terminate_tree as _terminate
 # The stub child + claude shim live in a plain module the synthetic design-review
 # instance shares (app-launcher#1227); the private names stay for this file's callers.
 from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER
@@ -224,25 +226,6 @@ def _spawn(
             subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         )
     return subprocess.Popen(cmd, **kwargs)
-
-
-def _terminate(proc: Optional[subprocess.Popen]) -> None:
-    if proc is None or proc.poll() is not None:
-        return
-    try:
-        if sys.platform == "win32":
-            try:
-                proc.send_signal(signal.CTRL_BREAK_EVENT)
-            except Exception as exc:  # pragma: no cover - best effort
-                logger.debug("CTRL_BREAK_EVENT failed: %s", exc)
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=3)
-    except Exception as exc:  # pragma: no cover - best effort
-        logger.warning("⚠️  autoboot: process teardown failed: %s", exc)
 
 
 # Parallel workers (#1231): under pytest-xdist every worker is its own pytest
@@ -498,6 +481,13 @@ def _autoboot_server(
     # asserts nothing marked as ours reached the real directory.
     uploads_root = tmp_path_factory.mktemp("upload-root")
 
+    # Lightweight-child shim (issue #534): only the DISPOSABLE session-host
+    # gets the shim on PATH — the pytest process and the live tray keep the
+    # real resolution, so `shutil.which("claude")` in the fixtures below
+    # still faithfully predicts the real CLI. Made before the `try` because
+    # the teardown reaps stub children by this directory (#1335).
+    shim_dir = tmp_path_factory.mktemp("claude-shim")
+
     run_started_at = time.time()
 
     try:
@@ -507,11 +497,6 @@ def _autoboot_server(
         # host starts empty, so the destructive e2e tests can only ever touch
         # sessions this run launched. The disposable webapp is pointed at it
         # via LAUNCHER_SESSION_HOST_PORT below.
-        # Lightweight-child shim (issue #534): only the DISPOSABLE
-        # session-host gets the shim on PATH — the pytest process and the
-        # live tray keep the real resolution, so `shutil.which("claude")`
-        # in the fixtures below still faithfully predicts the real CLI.
-        shim_dir = tmp_path_factory.mktemp("claude-shim")
         _write_claude_shim(shim_dir)
         sh_log_name = _autoboot_log_name("e2e-autoboot-session-host")
         sh_log = _open_log(sh_log_name)
@@ -575,6 +560,13 @@ def _autoboot_server(
         yield base
     finally:
         _teardown()
+        # Stub-child reap (issue #1335): a stub this run launched that is
+        # still alive once both servers are down escaped the tree-aware stop,
+        # and it pins the checkout until reboot. Reap it first, before any
+        # check below can raise, and name it in the gate output so the path
+        # it escaped by can be found. A stub the reap cannot kill raises.
+        for leaked_stub in reap_stub_children(shim_dir):
+            print(f"\n⚠️ autoboot: reaped a leaked e2e stub child: {leaked_stub}")
         # Isolation regression check (issue #441): the real config must be
         # byte-identical to the pre-run snapshot. A mismatch means some path
         # wrote to the real file during the gate — the exact class of bug
@@ -717,6 +709,16 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     print(f"\n{result.summary()}")
     for entry in result.killed:
         print(f"  reclaimed leaked helper: {entry}")
+    # Stub children (#1335): `_autoboot_server`'s own teardown reaps them, but
+    # a worker that died before its finalizers ran never gets there. Every
+    # stub script this run wrote sits under its pytest basetemp (a worker's
+    # `popen-gwN` sits under the controller's), so the scope is this run and
+    # nothing else. Advisory, like the browser sweep.
+    try:
+        for leaked_stub in reap_stub_children(session.config._tmp_path_factory.getbasetemp()):
+            print(f"  reclaimed leaked e2e stub child: {leaked_stub}")
+    except RuntimeError as exc:
+        print(f"  ⚠️ {exc}")
 
 
 @pytest.fixture(scope="session")
