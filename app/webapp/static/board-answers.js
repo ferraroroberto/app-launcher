@@ -116,11 +116,16 @@ function answerText(item, draft) {
 //   Skipped: 3
 //   Also: <anything-else text>
 // Anything else goes as typed (trimmed), not folded to one line: an attached
-// file is its own paragraph, as a Chat send carries it.
-export function composeAnswers(items, drafts, extra) {
+// file is its own paragraph, as a Chat send carries it. `shown` lists the
+// plan positions the sheet offered (a Board repo filter narrows it, #1332);
+// an item the filter hid was never asked, so it is neither answered nor
+// "Skipped", and the count is out of what was shown.
+export function composeAnswers(items, drafts, extra, shown) {
   const lines = [];
   const skipped = [];
-  items.forEach(function (item, i) {
+  const indices = shown || allIndices(items);
+  indices.forEach(function (i) {
+    const item = items[i];
     const answer = answerText(item, drafts[i]);
     if (!answer) {
       skipped.push(i + 1);
@@ -131,7 +136,7 @@ export function composeAnswers(items, drafts, extra) {
       + oneLine(item.question || item.text) + ANSWER_SEP + answer
       + (item.id ? ' {id: ' + item.id + '}' : ''));
   });
-  const out = ['Answers from the Board (' + lines.length + ' of ' + items.length + '):'].concat(lines);
+  const out = ['Answers from the Board (' + lines.length + ' of ' + indices.length + '):'].concat(lines);
   if (skipped.length) out.push('Skipped: ' + skipped.join(', '));
   const also = String(extra || '').trim();
   if (also) out.push('Also: ' + also);
@@ -142,9 +147,13 @@ function alsoText() {
   return also ? also.textarea.value : '';
 }
 
+function allIndices(items) {
+  return items.map(function (_item, i) { return i; });
+}
+
 function answeredCount() {
-  return sheet.items.filter(function (item, i) {
-    return !!answerText(item, sheet.drafts[i]);
+  return sheet.shown.filter(function (i) {
+    return !!answerText(sheet.items[i], sheet.drafts[i]);
   }).length;
 }
 
@@ -287,11 +296,15 @@ export function syncChiefAnswers(run) {
   syncDone();
 }
 
-export function openChiefAnswers(plan, run) {
+// `shown` is the plan positions to ask (the Board's repo filter, #1332);
+// omitted, every item. Drafts stay indexed by plan position, so narrowing
+// or widening the filter between opens keeps whatever was typed.
+export function openChiefAnswers(plan, run, shown) {
   const dialog = els.chiefAnswersDialog;
   if (!dialog || !plan) return;
   const items = plan.waiting_on_roberto || [];
-  if (!items.length) return;
+  const indices = shown || allIndices(items);
+  if (!indices.length) return;
   // Reopening the same version of the plan keeps what was typed.
   const same = sheet && sheet.plan.updated_at === plan.updated_at
     && sheet.items.length === items.length
@@ -299,6 +312,7 @@ export function openChiefAnswers(plan, run) {
   sheet = {
     plan: plan,
     items: items,
+    shown: indices,
     drafts: same ? sheet.drafts : items.map(function () { return { picks: [], other: '' }; }),
     also: same ? sheet.also : '',
   };
@@ -309,8 +323,8 @@ export function openChiefAnswers(plan, run) {
     ocr: !!(state.status && state.status.screenshot_ocr),
   });
   const answered = answeredKeys(plan);
-  els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, items.map(function (item, i) {
-    return renderItem(item, i, answered.indexOf(itemKey(item, i)) !== -1);
+  els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, indices.map(function (i) {
+    return renderItem(items[i], i, answered.indexOf(itemKey(items[i], i)) !== -1);
   }));
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
@@ -324,18 +338,22 @@ async function submitAnswers() {
     toast('Still transcribing — wait for the transcript, then tap Done', 'error', { icon: 'mic' });
     return;
   }
-  const text = composeAnswers(sheet.items, sheet.drafts, alsoText());
+  const text = composeAnswers(sheet.items, sheet.drafts, alsoText(), sheet.shown);
   const done = els.chiefAnswersDone;
   sending = true;
   syncDone();
   const stopTimer = startWorkTimer(done, DONE_LABEL);
   try {
     await sendToChief(text);
-    markAnswered(sheet.plan, sheet.items
-      .map(function (item, i) { return answerText(item, sheet.drafts[i]) ? itemKey(item, i) : null; })
-      .filter(function (k) { return k !== null; }));
-    // Sent: the drafts are done with, so the next open starts clean.
-    sheet = null;
+    markAnswered(sheet.plan, sheet.shown
+      .filter(function (i) { return !!answerText(sheet.items[i], sheet.drafts[i]); })
+      .map(function (i) { return itemKey(sheet.items[i], i); }));
+    // Sent: the drafts it carried are done with, so the next open starts
+    // clean. One typed for an item the filter hid was not sent, and stays.
+    // The close handler saves the box into `sheet.also`, so empty the box.
+    sheet.shown.forEach(function (i) { sheet.drafts[i] = { picks: [], other: '' }; });
+    also.textarea.value = '';
+    sheet.also = '';
     els.chiefAnswersDialog.close();
     toast('Sent to chief', 'good', { icon: 'crown' });
     renderBoard();

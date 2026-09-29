@@ -262,7 +262,13 @@ def _worst_window(observations: list, minutes: int) -> Optional[Dict[str, Any]]:
             if not isinstance(pct, (int, float)) or isinstance(pct, bool):
                 continue
             if best is None or pct > best["used_percentage"]:
-                best = {"used_percentage": pct, "resets_at": window.get("resets_at")}
+                best = {
+                    "used_percentage": pct,
+                    "resets_at": window.get("resets_at"),
+                    # The window length, so the UI can place "now" inside it
+                    # (#1330 weekly pace) without hardcoding 7 days.
+                    "duration_minutes": minutes,
+                }
     return best
 
 

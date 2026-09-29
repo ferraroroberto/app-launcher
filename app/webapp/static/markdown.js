@@ -18,10 +18,11 @@ is how `tests/js/markdown.test.mjs` pins the parser without a browser.
 */
 
 import { escapeHtml } from './dom-utils.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // Escape-first, then apply a small, safe subset (headings, bold, italic,
 // inline code, fenced code, links, bulleted and numbered lists, GFM tables,
-// paragraphs). Content comes from the user's own private files over a
+// blockquotes, paragraphs). Content comes from the user's own private files over a
 // passkey-gated tailnet link, but we still escape every byte before
 // formatting so a stray `<script>` in a note can never execute.
 function inlineMd(s) {
@@ -90,6 +91,39 @@ function renderTable(header, aligns, rows) {
   return html + '</table></div>';
 }
 
+// A `>` line, already escaped: one marker and one optional space come off.
+// Null for anything that is not a quote line.
+const QUOTE_LINE = /^\s*&gt; ?(.*)$/;
+
+// Blockquotes (#1326). A quote is usually a draft the owner will paste
+// somewhere else, so its single line breaks are kept (`<br>`) rather than
+// joined into a paragraph, a bare `>` line is a paragraph break, and the
+// quote carries a copy button whose `data-copy` is its plain text: markers
+// stripped, breaks and blank-line gaps kept. `inner` is already escaped, so
+// the attribute is safe as-is and `getAttribute` hands back the source text;
+// `&#10;` carries each newline through the attribute. Runs of blank lines
+// collapse to one gap, and leading/trailing ones are dropped.
+function renderQuote(inner) {
+  const lines = [];
+  for (const l of inner) {
+    const blank = !l.trim();
+    if (blank && (!lines.length || !lines[lines.length - 1].trim())) continue;
+    lines.push(blank ? '' : l);
+  }
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const paras = [];
+  let cur = [];
+  for (const l of lines) {
+    if (l) { cur.push(inlineMd(l)); continue; }
+    paras.push(cur); cur = [];
+  }
+  if (cur.length) paras.push(cur);
+  const body = paras.map(function (p) { return '<p>' + p.join('<br>') + '</p>'; }).join('');
+  return '<blockquote class="md-quote"><div class="md-quote-body">' + body + '</div>'
+    + '<button type="button" class="md-quote-copy hit-target" aria-label="Copy quote"'
+    + ' data-copy="' + lines.join('&#10;') + '">' + icon('copy') + '</button></blockquote>';
+}
+
 export function renderMarkdown(text) {
   const lines = escapeHtml(text).split('\n');
   const out = [];
@@ -136,6 +170,18 @@ export function renderMarkdown(text) {
         out.push(renderTable(header, aligns, rows));
         continue;
       }
+    }
+
+    if (QUOTE_LINE.test(line)) {
+      flushPara(); flushList();
+      const inner = [];
+      while (i < lines.length && QUOTE_LINE.test(lines[i])) {
+        inner.push(lines[i].match(QUOTE_LINE)[1]);
+        i++;
+      }
+      i--;
+      out.push(renderQuote(inner));
+      continue;
     }
 
     const h = line.match(/^(#{1,6})\s+(.*)$/);

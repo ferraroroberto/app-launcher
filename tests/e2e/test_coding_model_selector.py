@@ -536,6 +536,72 @@ def test_quota_rows_degrade_per_agent_without_collapsing(
     assert rendered[1]["text"] == "Codex · quota unavailable"
 
 
+@pytest.mark.iphone
+def test_quota_rows_show_the_weekly_pace_after_the_reset_day(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1330: the weekly window carries a muted linear-pace percent (how much
+    of the week has elapsed) after its reset day, on both rows and on both
+    surfaces, without widening a phone-width page. A fallback row shows none.
+    The math itself is pinned in ``tests/js/quota_pace.test.mjs``."""
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
+    expect(authed_page.locator("#codingModelBtn")).to_be_visible(timeout=5_000)
+
+    lines = _quota_lines()
+    rendered = authed_page.evaluate(
+        """async payload => {
+          const module = await import('/static/dom-utils.js');
+          // Half a week before the weekly reset, measured in this page's
+          // own clock, so the pace reads 50% on any day the suite runs.
+          const halfWeek = 3.5 * 24 * 3600;
+          const nowS = Date.now() / 1000;
+          payload[0].weekly.resets_at = nowS + halfWeek;
+          payload[1].weekly.resets_at = new Date((nowS + halfWeek) * 1000).toISOString();
+          payload[1].weekly.duration_minutes = 10080;
+          const out = {};
+          for (const id of ['codingUsage', 'boardUsage']) {
+            const root = document.getElementById(id);
+            module.renderQuotaLines(root, payload);
+            out[id] = Array.from(root.querySelectorAll('.quota-line')).map(el => ({
+              pace: Array.from(el.querySelectorAll('.quota-pace')).map(p => p.textContent),
+              glyph: Array.from(el.querySelectorAll('.quota-pace use'))
+                .map(u => u.getAttribute('href')),
+              title: el.title,
+            }));
+          }
+          return out;
+        }""",
+        lines,
+    )
+    for surface, rows in rendered.items():
+        for row in rows:
+            assert row["pace"] == ["50%"], (surface, row)
+            assert row["glyph"] == ["#i-hourglass"], (surface, row)
+            assert row["title"].endswith(", 50% of the week elapsed"), (surface, row)
+
+    expect(authed_page.locator("#codingUsage .quota-line").first).to_have_css(
+        "white-space", "nowrap")
+    widths = stable_read(lambda: authed_page.locator("body").evaluate(
+        "el => el.clientWidth && el.scrollWidth ? [el.clientWidth, el.scrollWidth] : null"
+    ))
+    assert widths is not None and widths[1] <= widths[0], f"pace widens the page: {widths}"
+
+    # A fallback row (nothing measured this poll) shows neither reset nor pace.
+    fallback = authed_page.evaluate(
+        """async () => {
+          const module = await import('/static/dom-utils.js');
+          const root = document.getElementById('codingUsage');
+          module.renderQuotaLines(root, [
+            {harness: 'claude', label: 'Claude Code', state: 'unknown',
+             five_hour: null, weekly: null},
+          ]);
+          return root.querySelector('.quota-line').querySelectorAll('.quota-pace').length;
+        }"""
+    )
+    assert fallback == 0
+
+
 def test_quota_rows_keep_the_last_reading_when_a_poll_goes_unknown(
     authed_page: Page, base_url: str
 ) -> None:

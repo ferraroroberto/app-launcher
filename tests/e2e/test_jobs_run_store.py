@@ -10,7 +10,19 @@ from playwright.sync_api import Page, expect
 
 pytestmark = pytest.mark.smoke
 
+# A design token resolved to the computed `rgb(...)` a colour assertion
+# compares against, in whichever theme the page is in.
+_TOKEN_COLOR = """(name) => {
+  const probe = document.createElement('span');
+  probe.style.color = 'var(' + name + ')';
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}"""
 
+
+@pytest.mark.iphone
 def test_search_jump_artifact_link_and_pin_toggle(
     authed_page: Page, base_url: str
 ) -> None:
@@ -140,7 +152,18 @@ def test_search_jump_artifact_link_and_pin_toggle(
 
     pin = authed_page.locator(".jobs-pin-btn")
     expect(pin).to_have_attribute("aria-pressed", "true")
+    # #1333: the pin is a quiet glyph, never a tile: no fill and no border
+    # in either state, the accent glyph when pinned, the muted one when not.
+    accent = authed_page.evaluate(_TOKEN_COLOR, "--accent")
+    muted = authed_page.evaluate(_TOKEN_COLOR, "--muted")
+    expect(pin).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    expect(pin).to_have_css("border-top-style", "none")
+    expect(pin).to_have_css("filter", "none")
+    expect(pin).to_have_css("color", accent)
     pin.click()
     expect(pin).to_have_attribute("aria-pressed", "false")
+    authed_page.mouse.move(0, 0)  # off the pin: its hover state brightens it
+    expect(pin).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    expect(pin).to_have_css("color", muted)
     assert pin_payloads == [{"pinned": False}]
 

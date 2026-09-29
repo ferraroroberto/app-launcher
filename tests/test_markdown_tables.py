@@ -5,8 +5,9 @@ through to a paragraph and rendered as one run-on line of pipes in the Chat
 pane and Life OS. The parser is pinned without a browser: this module shells
 out to plain Node to import the real ES module, in
 ``tests/js/markdown.test.mjs`` (same pattern as ``test_terminal_keys_bytes``).
-That works because the renderer imports only ``dom-utils.js``, which touches
-no DOM or storage at import time. Machines without Node skip cleanly.
+That works because the renderer imports only ``dom-utils.js`` and the
+vendored ``icons.js`` (#1326's quote copy glyph), neither of which touches
+any DOM or storage at import time. The file also pins blockquotes (#1326). Machines without Node skip cleanly.
 """
 
 from __future__ import annotations
