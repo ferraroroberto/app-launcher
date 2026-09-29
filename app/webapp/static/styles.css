@@ -2531,6 +2531,40 @@ textarea.input-native { height: auto; }
 .md-table .md-al-left { text-align: left; }
 .md-table .md-al-center { text-align: center; }
 .md-table .md-al-right { text-align: right; }
+/* Blockquotes (#1326) -- unscoped like the tables, since every renderer
+   consumer emits them. An indent and a hairline left rule set the quote off
+   from the reply; `white-space: normal` because the renderer already turned
+   each kept line break into a `<br>`. The copy button is the chat card's
+   ghost icon button (.tr-turn-copy): transparent, muted, with .hit-target's
+   invisible 44px expansion. */
+.md-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--line);
+  white-space: normal;
+}
+.md-quote:last-child { margin-bottom: 0; }
+.md-quote-body { flex: 1 1 auto; min-width: 0; }
+.md-quote-body p { margin: 0 0 8px; }
+.md-quote-body p:last-child { margin-bottom: 0; }
+.md-quote-copy {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+.md-quote-copy .icon { width: 16px; height: 16px; }
+.md-quote-copy:active { color: var(--accent); background: var(--card-off); }
 .tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
 /* A run of folded entries is one vendored disclosure card; the items inside
    are flat list rows on a hairline, each its own <details>. */

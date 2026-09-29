@@ -609,6 +609,59 @@ def test_copy_button_copies_turn_text_and_upgrades_a_truncated_reply(
         toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
 
 
+@pytest.mark.iphone
+def test_blockquote_renders_as_a_quote_and_copies_clean_text(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1326: a `>` blockquote in a reply rendered as one run-on paragraph
+    with every marker left in, so a draft meant for pasting was unreadable
+    and copied with its `>`s. It now renders as an indented quote with a
+    left rule, keeps its line breaks, and its own copy button puts the plain
+    text on the clipboard without opening or closing the card. The parser's
+    edge cases are pinned in ``tests/js/markdown.test.mjs``."""
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    reply = "\n".join([
+        "Here is a draft:", "",
+        "> Hello,", ">", "> The installation was finished in August.", ">",
+        "> Best regards,", "> Name", "",
+        "Send it when ready.",
+    ])
+    page_body = {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None,
+        "entries": [
+            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
+             "text": reply, "truncated": False, "sidechain": False},
+        ],
+    }
+    _mock_transcript(authed_page, {None: page_body}, calls)
+    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page, _row(authed_page))
+
+    turn = authed_page.locator("#transcriptList .tr-assistant").first
+    quote = turn.locator("blockquote.md-quote")
+    expect(quote).to_be_visible()
+    expect(quote.locator(".md-quote-body p")).to_have_count(3)
+    expect(quote.locator(".md-quote-body p").nth(2)).to_have_text("Best regards,Name")
+    expect(quote.locator(".md-quote-body p").nth(2).locator("br")).to_have_count(1)
+    expect(quote).to_have_css("border-left-style", "solid")
+    expect(quote).not_to_contain_text(">")
+    expect(turn.locator(".tr-md > p")).to_have_count(2)
+
+    quote.locator(".md-quote-copy").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
+    )
+    assert authed_page.evaluate("() => window.__copied[0]") == (
+        "Hello,\n\nThe installation was finished in August.\n\nBest regards,\nName"
+    )
+    expect(authed_page.locator(".toast")).to_contain_text("Quote copied")
+    expect(turn).to_have_js_property("open", True)
+
+
 # ------------------------------------------------------- #1020 tool errors
 
 def _outcome_page(*, tool_errors: str, failed: bool) -> dict:
