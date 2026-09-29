@@ -836,6 +836,115 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     expect(rows.nth(2)).not_to_contain_text("answered")
 
 
+def test_repo_filter_narrows_the_plan_and_its_questions(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1332: the Dispatch repo picker narrows the Chief's plan as it does
+    the columns. Waiting on you, Lanes and Queue keep only the picked repo's
+    rows (a repo from `repo`, or the repo half of a `repo#N` ref) plus rows
+    with no repo, which are fleet-wide and never hidden; a note counts the
+    questions the filter hides; a group the filter empties is gone. "Answer
+    N questions" counts and opens only what shows, the message numbers each
+    by its place in the whole plan and doesn't list hidden ones as skipped,
+    and clearing the filter restores everything."""
+    authed_page.route(
+        re.compile(r".*/api/apps$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"scan_root": "", "apps": [
+                {"id": "cc-" + name, "kind": "claude-code", "name": name,
+                 "project_dir": "E:/automation/" + name}
+                for name in ("app-launcher", "fleet-config", "life-os")
+            ]}),
+        ),
+    )
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z",
+        "lanes": [
+            {"repo": "app-launcher", "session": "s-a", "item": "#1295", "status": "building"},
+            {"repo": "fleet-config", "session": "s-f", "item": "#959", "status": "gate"},
+        ],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1295", "title": "answer sheet", "status": "building"},
+            {"ref": "fleet-config#900", "title": "hooks sweep", "status": "someday"},
+        ],
+        # fleet-config (repo + ref), life-os (repo only), app-launcher (ref
+        # only), then one with no repo at all.
+        "waiting_on_roberto": _QUESTIONS + [
+            {"id": "q-pause", "text": "Pause every lane tonight?"},
+        ],
+    }), encoding="utf-8")
+    _route_plan_from(authed_page, {"plan": chief_plan.read_chief_plan(f, "octo")})
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured)
+    posts = _capture_chief_input(authed_page)
+    _open_board(authed_page, base_url)
+
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    waiting = plan_body.locator("li.board-plan-waiting")
+    headings = plan_body.locator(".board-plan-heading")
+    button = plan_body.locator(".board-plan-answer")
+    hidden_note = plan_body.locator(".board-plan-hidden")
+    expect(waiting).to_have_count(4)
+    expect(button).to_have_text("Answer 4 questions")
+    expect(hidden_note).to_have_count(0)
+
+    def pick(repo: str) -> None:
+        authed_page.locator("#boardDispatchRepoBtn").click()
+        item = authed_page.locator(f'#boardDispatchRepoList li[data-repo="{repo}"]')
+        expect(item).to_be_visible(timeout=15_000)
+        item.click()
+
+    pick("app-launcher")
+    expect(waiting).to_have_count(2)
+    expect(waiting.nth(0)).to_contain_text("Remember the last tab?")
+    expect(waiting.nth(1)).to_contain_text("Pause every lane tonight?")
+    expect(button).to_have_text("Answer 2 questions")
+    expect(hidden_note).to_have_text("2 more questions in other projects")
+    expect(headings).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    expect(plan_body.locator(".board-plan-group").nth(1).locator("li")).to_have_count(1)
+    expect(plan_body.locator(".board-plan-group").nth(2).locator("li")).to_have_count(1)
+    expect(plan_body.locator(".board-plan-group").nth(2)).to_contain_text("answer sheet")
+
+    # No lane or queue row is life-os's, so both groups go, not left empty.
+    pick("life-os")
+    expect(waiting).to_have_count(2)
+    expect(waiting.nth(0)).to_contain_text("Which days?")
+    expect(headings).to_have_text(["Waiting on you"])
+    expect(hidden_note).to_have_text("2 more questions in other projects")
+
+    # The sheet asks only what shows, each numbered by its place in the plan.
+    pick("app-launcher")
+    button.click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    blocks = dialog.locator(".chief-answer")
+    expect(blocks).to_have_count(2)
+    expect(blocks.nth(0).locator(".chief-answer-num")).to_have_text("3")
+    expect(blocks.nth(1).locator(".chief-answer-num")).to_have_text("4")
+    blocks.nth(0).locator(".tr-ask-input").fill("yes")
+    dialog.locator("#chiefAnswersDone").click()
+    expect(dialog).to_be_hidden()
+    assert posts == [{
+        "data": (
+            "Answers from the Board (1 of 2):\n"
+            "3. [app-launcher#1131] Remember the last tab? → Other: yes\n"
+            "Skipped: 4"
+        ),
+        "submit": True,
+    }], posts
+
+    # All projects again: the whole plan, and the answered mark on its row.
+    pick("")
+    expect(waiting).to_have_count(4)
+    expect(button).to_have_text("Answer 4 questions")
+    expect(hidden_note).to_have_count(0)
+    expect(headings).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    expect(waiting.nth(2)).to_contain_text("answered, waiting for the chief")
+    expect(waiting.nth(0)).not_to_contain_text("answered")
+
+
 @pytest.mark.iphone
 def test_answer_sheet_done_disabled_when_no_chief(
     authed_page: Page, base_url: str, tmp_path
