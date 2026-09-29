@@ -879,15 +879,35 @@ function planGroup(heading, rows, cls) {
   return wrap;
 }
 
-function answerButton(plan, run) {
-  const n = plan.waiting_on_roberto.length;
+// `shown` is the plan positions the repo filter keeps (#1332): the button
+// counts and opens only those.
+function answerButton(plan, run, shown) {
+  const n = shown.length;
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'button-tint board-plan-answer';
   btn.innerHTML = icon('messages-square') + ' ';
   btn.appendChild(document.createTextNode('Answer ' + n + (n === 1 ? ' question' : ' questions')));
-  btn.addEventListener('click', function () { openChiefAnswers(plan, run); });
+  btn.addEventListener('click', function () { openChiefAnswers(plan, run, shown); });
   return btn;
+}
+
+// The Board's repo filter narrows the plan too (#1332), so a filtered Board
+// is one project's whole picture. A row's repo is its own `repo`, else the
+// repo half of a `repo#N` ref. A row with neither is fleet-wide context and
+// stays under any filter: hiding it could hide a question that needs an
+// answer.
+const PLAN_REF_REPO = /^([A-Za-z0-9._-]+)#\d+$/;
+
+function planRowRepo(row) {
+  if (row.repo) return row.repo;
+  const m = PLAN_REF_REPO.exec(row.ref || '');
+  return m ? m[1] : null;
+}
+
+function planRowShown(row, filter) {
+  const repo = planRowRepo(row);
+  return !repo || matchesRepoFilter({ repo: repo }, filter);
 }
 
 // A queue row's secondary text (#1297): the repo and number (`repo#N`, a
@@ -952,8 +972,9 @@ function renderChiefPlan(body, liveRead) {
   // from the sessions, whatever state the plan itself is in.
   syncChiefAnswers(chiefRunState(body, liveRead));
   const answered = plan.state === 'ok' ? answeredKeys(plan) : [];
+  const filter = boardRepoFilter();
   // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age, answered]);
+  const sig = JSON.stringify([plan, run, age, answered, filter]);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.dataset.state = plan.state;
@@ -970,24 +991,37 @@ function renderChiefPlan(body, liveRead) {
     }
     nodes.push(planLine('board-plan-age', age));
     const waiting = plan.waiting_on_roberto || [];
-    if (waiting.length) {
-      const group = planGroup('Waiting on you', waiting.map(function (w, i) {
+    // Positions, not items: an answer's key is its place in the whole list.
+    const shown = [];
+    waiting.forEach(function (w, i) { if (planRowShown(w, filter)) shown.push(i); });
+    const hidden = waiting.length - shown.length;
+    if (shown.length) {
+      const group = planGroup('Waiting on you', shown.map(function (i) {
+        const w = waiting[i];
         const sent = answered.indexOf(itemKey(w, i)) !== -1;
         const meta = [w.text ? w.ref : '', sent ? 'answered, waiting for the chief' : '']
           .filter(Boolean).join(' · ');
         return planRow(w.text || w.question || w.ref, meta, '',
           'board-plan-waiting' + (sent ? ' is-answered' : ''));
       }), 'board-plan-group-waiting');
-      group.appendChild(answerButton(plan, run));
+      group.appendChild(answerButton(plan, run, shown));
       nodes.push(group);
     }
-    const lanes = plan.lanes || [];
+    // A pending decision is never invisible: say what the filter hides.
+    if (hidden) {
+      nodes.push(planLine('board-plan-hidden', hidden + ' more question'
+        + (hidden === 1 ? '' : 's') + ' in other projects'));
+    }
+    const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
     if (lanes.length) {
       nodes.push(planGroup('Lanes', lanes.map(function (l) {
         return planRow(l.repo || 'lane', l.item, l.status);
       })));
     }
-    nodes.push(planGroup('Queue', (plan.queue || []).map(queueRow)));
+    // Unfiltered, the Queue heading shows even when empty, as it always has;
+    // a filter that empties it hides it, as the columns do.
+    const queue = (plan.queue || []).filter(function (q) { return planRowShown(q, filter); });
+    if (queue.length || !filter) nodes.push(planGroup('Queue', queue.map(queueRow)));
   }
   host.replaceChildren.apply(host, nodes);
 }
