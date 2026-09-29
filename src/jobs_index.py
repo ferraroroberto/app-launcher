@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src import jobs_history
+from src.jobs_config import exit_outcomes_for
 from src.jobs_outcome import LAUNCHER_TERMINATED_FIELDS, run_outcome
 from src.runtime_data import runtime_data_dir
 
@@ -287,6 +288,8 @@ def search_runs(
     a search hit's icon agrees with the same run's icon in the history list. The
     ``status`` filter argument still matches the persisted column: filtering is
     a query against what is stored, rendering is a question about what it meant.
+    The hit's job's own ``exit_outcomes`` (#1316) ride along for the same
+    reason.
 
     That agreement needs the launcher-terminated flags too (issue #1007):
     :func:`~src.jobs_outcome.run_outcome` keeps a ``failed`` verdict as
@@ -329,7 +332,9 @@ def search_runs(
     with _connect() as conn:
         hits = [dict(row) for row in conn.execute(sql, params).fetchall()]
     for hit in hits:
-        hit["outcome"], hit["outcome_reason"] = run_outcome(hit)
+        hit["outcome"], hit["outcome_reason"] = run_outcome(
+            hit, exit_outcomes_for(hit["job_id"])
+        )
         for flag in LAUNCHER_TERMINATED_FIELDS:
             hit.pop(flag, None)
     return hits

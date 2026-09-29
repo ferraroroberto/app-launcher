@@ -11,9 +11,14 @@ These pin the render, which is the half a Python test cannot reach: the
 unconfirmed row must be tellable apart from **both** neighbours, not merely
 different from one of them.
 
-Hermetic: route-mock ``/api/jobs`` and one job's run history with three fixed
-rows — exit 0, exit 122, exit 123 — so nothing here depends on real run
-history or on a job ever having failed. Runs in both projections.
+Issue #1316 added a fourth terminal outcome, ``deferred``: an exit code the
+job itself declares a designed deferral (life-os's email sweep exits 3 when it
+has no desktop to start Outlook on). It rides on the same render, because it
+also has to be tellable apart from all three of the others.
+
+Hermetic: route-mock ``/api/jobs`` and one job's run history with four fixed
+rows — exit 0, exit 122, exit 123, a declared exit 3 — so nothing here depends
+on real run history or on a job ever having failed. Runs in both projections.
 """
 
 from __future__ import annotations
@@ -88,6 +93,12 @@ _JOBS = [
              status="failed", outcome="failed", exit_code=123,
              reason="the run reported it delivered no work",
          )),
+    _job("Deferred sweep", job_id="deferred",
+         last7=[{"status": "failed", "outcome": "deferred", "run_id": "r3"}],
+         last_run=_last_run(
+             status="failed", outcome="deferred", exit_code=3,
+             reason="exit 3 is declared deferred by this job",
+         )),
 ]
 
 
@@ -115,10 +126,10 @@ def _dot(page: Page, job_id: str):
 
 
 @pytest.mark.iphone
-def test_three_outcomes_render_distinctly(
+def test_terminal_outcomes_render_distinctly(
     authed_page: Page, base_url: str
 ) -> None:
-    """All three terminal outcomes on one render of the Jobs list (#916).
+    """All four terminal outcomes on one render of the Jobs list (#916, #1316).
 
     One page load for every check (#1215): the dot-class pins, the pairwise
     colour fact, and last the detail block the unconfirmed row opens.
@@ -153,12 +164,22 @@ def test_three_outcomes_render_distinctly(
         ).first
     ).to_have_class(re.compile(r"\bdown\b"))
 
+    # #1316: a declared deferral is its own state on the dot and the
+    # sparkline, neither the success class nor the failure one.
+    expect(_dot(authed_page, "deferred")).to_have_class(re.compile(r"\bdeferred\b"))
+    expect(_dot(authed_page, "deferred")).not_to_have_class(re.compile(r"\b(down|up)\b"))
+    expect(
+        authed_page.locator(
+            "#jobsList li[data-id='deferred'] [data-role='sparkline'] .job-spark-dot"
+        ).first
+    ).to_have_class(re.compile(r"\bdeferred\b"))
+
     # -- was test_three_outcomes_are_three_distinct_colours --
     # "Visually distinct from both success and failure" — asserted as the
     # pairwise fact rather than against hardcoded token values, so a future
     # palette change cannot make this pass while the states look alike.
     colours = {}
-    for job_id in ("clean", "truncated", "broken"):
+    for job_id in ("clean", "truncated", "broken", "deferred"):
         expect(_dot(authed_page, job_id)).to_be_visible()
         colours[job_id] = stable_read(
             lambda jid=job_id: _dot(authed_page, jid).evaluate(
@@ -166,9 +187,9 @@ def test_three_outcomes_render_distinctly(
             )
         )
     assert all(colours.values()), f"unreadable colours: {colours}"
-    assert len(set(colours.values())) == 3, (
-        "success, unconfirmed and failed must each have their own colour; "
-        f"got {colours}"
+    assert len(set(colours.values())) == 4, (
+        "success, unconfirmed, failed and deferred must each have their own "
+        f"colour; got {colours}"
     )
 
     # -- was test_unconfirmed_row_says_not_confirmed_and_explains_itself --

@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.jobs_config import Job
 from src.jobs_history import latest_run, list_runs
-from src.jobs_outcome import OUTCOME_UNCONFIRMED
+from src.jobs_outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
 
 # Process-local TTL cache. Reset per job by `invalidate_stats_cache` once a
 # run finalises so the row updates promptly without waiting out the TTL.
@@ -120,6 +120,13 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
         status = r.get("status")
         outcome = r.get("outcome") or status
         started = _parse_iso(r.get("started_at"))
+        if outcome == OUTCOME_DEFERRED:
+            # A deferred run (#1316) declined the work on purpose. It is
+            # neither side of the success ratio, and its seconds-long
+            # duration says nothing about how long the real work takes, so it
+            # stays out of the p95 that sets the stuck and watchdog
+            # thresholds.
+            continue
         if status in {"success", "failed"}:
             d = _duration_for(r)
             if d is not None:
@@ -178,7 +185,9 @@ def run_stats(job_id: str, *, fresh: bool = False) -> Dict[str, Any]:
 
     ``success_rate_30d`` is a ratio over runs with a *known* outcome only. A
     job whose every recent run was unconfirmed reports ``None`` there and a
-    non-zero ``unconfirmed_30d`` — "we cannot say", not "0%".
+    non-zero ``unconfirmed_30d`` — "we cannot say", not "0%". A ``deferred``
+    run (#1316) is left out of the ratio, the durations and
+    ``completed_count``. It still appears in ``last7``.
 
     ``fresh=True`` skips the cache — used by the stuck-run check, which
     pays the cost rarely (only when the latest run is still running).

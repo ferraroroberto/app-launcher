@@ -52,6 +52,10 @@ const STATUS_META = {
   success: { class: 'up', icon: 'circle-check', spark: 'up' },
   failed: { class: 'down', icon: 'circle-x', spark: 'down' },
   unconfirmed: { class: 'unconfirmed', icon: 'circle-help', spark: 'unconfirmed' },
+  // A designed deferral the job itself declared by exit code (#1316): muted,
+  // because it needs nobody, and a hollow ring, so it is not mistaken for a
+  // run that never happened.
+  deferred: { class: 'deferred', icon: 'clock', spark: 'deferred' },
   skipped: { class: '', icon: 'skip-forward', spark: 'unknown' },
   queued: { class: '', icon: 'link', spark: 'live' },
   dry_run_success: { class: '', icon: 'flask-conical', spark: 'unknown' },

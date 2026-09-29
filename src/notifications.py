@@ -44,7 +44,7 @@ import requests
 
 from src import llm_client
 from src.jobs_history import read_output_tail
-from src.jobs_outcome import OUTCOME_UNCONFIRMED, run_outcome
+from src.jobs_outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
 from src.jobs_stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
 from src.notify import TelegramNotifier
@@ -283,7 +283,8 @@ def notify_failure(
     bypass) instead of ``❌ … failed`` at ``error``, and both bodies name the
     exit code's own meaning so the recipient need not open the log to learn
     that 124 is a stall. A run this launcher killed, reaped or watchdogged is
-    a failure regardless of the code the torn-down tree reported.
+    a failure regardless of the code the torn-down tree reported. An exit code
+    the job itself declares ``deferred`` (#1316) sends nothing at all.
     """
     try:
         if status != "failed":
@@ -305,7 +306,16 @@ def notify_failure(
             "exit_code": exit_code,
             "reaped": reaped,
             "watchdog": bool(watchdog_note),
-        })
+        }, job.exit_outcomes)
+        if outcome == OUTCOME_DEFERRED:
+            # The job declared this exit code a designed deferral (#1316): the
+            # child chose not to do the work, and paging about it every night
+            # is what trains a reader to ignore the real failures.
+            logger.info(
+                f"ℹ️ {job.id} run {run_dir.name} deferred (exit {exit_text}); "
+                f"no failure alert"
+            )
+            return
         unconfirmed = outcome == OUTCOME_UNCONFIRMED
         mark = "❓" if unconfirmed else "❌"
         verdict = "not confirmed" if unconfirmed else "failed"

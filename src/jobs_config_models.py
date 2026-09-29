@@ -20,6 +20,7 @@ from pathlib import Path
 from re import compile as _re_compile
 from typing import Any, Dict, List, Optional, Union
 
+from src.jobs_outcome import DECLARABLE_OUTCOMES
 from src.jobs_webhook import WebhookConfig, webhook_from_dict
 from src.scanner import slugify
 
@@ -398,6 +399,11 @@ class Job:
     # (default off) so the shared Telegram chat isn't spammed by every
     # job's failures — issue #597.
     alert_on_failure: bool = False
+    # What this job's *own* non-zero exit codes mean, e.g. ``{3: "deferred"}``
+    # (#1316): read at render time by ``src.jobs_outcome.run_outcome``, so a
+    # declared code re-labels a ``failed`` run on the card, in the stats and in
+    # the alert path, while ``status`` on disk and chaining stay unchanged.
+    exit_outcomes: Dict[int, str] = field(default_factory=dict)
     # When True, the job's scheduled Task Scheduler entry runs under
     # ``python.exe`` (a real console window in the logged-on session)
     # instead of the silent ``pythonw.exe``, and the executor tees the
@@ -495,6 +501,11 @@ class Job:
             payload["confirm"] = True
         if self.alert_on_failure:
             payload["alert_on_failure"] = True
+        if self.exit_outcomes:
+            payload["exit_outcomes"] = {
+                str(code): outcome
+                for code, outcome in sorted(self.exit_outcomes.items())
+            }
         if self.visible:
             payload["visible"] = True
         if self.elevated:
@@ -658,6 +669,39 @@ def _validate_mutex_group(raw: Any) -> Optional[str]:
     return stripped
 
 
+def exit_outcomes_from_dict(raw: Any) -> Dict[int, str]:
+    """Parse + validate a job's ``exit_outcomes`` declaration (#1316).
+
+    Missing / ``None`` → ``{}``. A JSON object mapping an exit code (a JSON
+    key, so a decimal string; an int is accepted too) to one of
+    :data:`src.jobs_outcome.DECLARABLE_OUTCOMES`. Exit 0 cannot be declared,
+    because it already means success.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"exit_outcomes must be an object, got {type(raw).__name__}"
+        )
+    out: Dict[int, str] = {}
+    for key, outcome in raw.items():
+        try:
+            code = int(str(key).strip())
+        except ValueError:
+            raise ValueError(
+                f"exit_outcomes: key {key!r} is not an integer exit code"
+            ) from None
+        if code == 0:
+            raise ValueError("exit_outcomes: exit 0 always means success")
+        if outcome not in DECLARABLE_OUTCOMES:
+            raise ValueError(
+                f"exit_outcomes: {outcome!r} for exit {code} must be one of "
+                f"{sorted(DECLARABLE_OUTCOMES)}"
+            )
+        out[code] = outcome
+    return out
+
+
 def env_from_dict(raw: Any) -> Dict[str, str]:
     """Parse + validate a job's ``env`` overlay (issue #72).
 
@@ -801,6 +845,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
         alert_on_failure=bool(raw.get("alert_on_failure", False)),
+        exit_outcomes=exit_outcomes_from_dict(raw.get("exit_outcomes")),
         visible=bool(raw.get("visible", False)),
         elevated=bool(raw.get("elevated", False)),
         session_less=bool(raw.get("session_less", False)),

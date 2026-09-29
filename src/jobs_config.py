@@ -62,7 +62,7 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from src._json_io import atomic_write_json, file_lock
 from src.jobs_config_chain import (
@@ -86,6 +86,7 @@ from src.jobs_config_models import (
     _validate_mutex_group,
     _validate_no_output,
     env_from_dict,
+    exit_outcomes_from_dict,
     job_from_dict,
     kind_config_from_dict,
     make_job_id,
@@ -112,6 +113,7 @@ __all__ = [
     "params_from_dict",
     "Job",
     "env_from_dict",
+    "exit_outcomes_from_dict",
     "job_from_dict",
     "make_job_id",
     "kind_config_from_dict",
@@ -125,6 +127,7 @@ __all__ = [
     "DEFAULT_JOBS_PATH",
     "load_jobs",
     "save_jobs",
+    "exit_outcomes_for",
     "jobs_file_lock",
     "get_by_id",
     "add_job",
@@ -177,6 +180,38 @@ def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(target, cfg.to_dict())
     return target
+
+
+# (path, mtime_ns, size) -> {job_id: exit_outcomes}. One entry: the registry
+# is one file, and a changed stat means a fresh parse.
+_exit_outcomes_cache: Dict[Tuple[str, int, int], Dict[str, Dict[int, str]]] = {}
+
+
+def exit_outcomes_for(job_id: str) -> Dict[int, str]:
+    """``job_id``'s declared ``exit_outcomes`` (#1316), ``{}`` if none.
+
+    Every run-record read classifies against this, which on the Jobs tab's
+    4 s poll is every retained run of every job. So the registry is parsed
+    once per on-disk change (keyed on its stat), not once per record. An
+    unknown job, or an unreadable registry, declares nothing: its runs keep
+    their persisted ``status``, which is the pre-#1316 behaviour.
+    """
+    target = DEFAULT_JOBS_PATH
+    try:
+        stat = target.stat()
+    except OSError:
+        return {}
+    key = (str(target), stat.st_mtime_ns, stat.st_size)
+    by_job = _exit_outcomes_cache.get(key)
+    if by_job is None:
+        by_job = {
+            job.id: dict(job.exit_outcomes)
+            for job in load_jobs(target).jobs
+            if job.exit_outcomes
+        }
+        _exit_outcomes_cache.clear()
+        _exit_outcomes_cache[key] = by_job
+    return dict(by_job.get(job_id, {}))
 
 
 @contextmanager

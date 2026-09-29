@@ -705,7 +705,7 @@ So `src/jobs_outcome.py` classifies the exit code into a third state, and `jobs_
 
 | Key | Meaning |
 | --- | --- |
-| `outcome` | `status` widened with `"unconfirmed"`. Equal to `status` for every record except a `failed` one whose exit code says delivery was never established |
+| `outcome` | `status` widened with `"unconfirmed"` and `"deferred"`. Equal to `status` for every record except a `failed` one whose exit code says delivery was never established, or one whose job declares its code (see "Job-declared exit codes" below) |
 | `outcome_reason` | The exit code's own one-line meaning, or `null` for a code the adapter does not define (a child's own bare `1`) |
 
 Derived on read, never persisted: the records already on disk re-render correctly with no migration, and `status` keeps meaning exactly what it always meant for any consumer that has not been taught the new word.
@@ -729,6 +729,24 @@ Derived on read, never persisted: the records already on disk re-render correctl
 A run **this launcher** killed, reaped or watchdogged (`killed` / `reaped` / `watchdog` on the record) is always `failed`, whatever code the torn-down tree reported on its way out: we know what happened to it, and it is not "unconfirmed".
 
 **Where it shows.** The job row's status dot and its sparkline dots use the `--attention` accent rather than `--danger`, and the row reads `last: not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.
+
+### Job-declared exit codes — `deferred` (issue #1316)
+
+The table above is global, and it belongs to the adapter. A job's own child can also have a non-zero code that is not a failure. life-os's nightly email sweep exits `3` when it has mail to sweep but runs in session 0, because starting Outlook there would strand a hidden `OUTLOOK.EXE`. That deferral is by design, and it drew a red dot and an alert every night. A job declares what its own codes mean in its `config/jobs.json` entry:
+
+```json
+"exit_outcomes": { "3": "deferred" }
+```
+
+The only declarable outcome is `deferred`. Exit `0` cannot be declared, and a malformed declaration makes the row fail to load like any other invalid field. The declaration is **per job**, never global, because reading "3 = deferred" into every job would soften other jobs' plain failures. It is resolved at read time by `jobs_config.exit_outcomes_for()`, which re-parses the registry only when the file's stat changes. So runs already on disk re-render once the declaration lands, and `status` on disk stays `failed`. It overrides the adapter table for that job's declared codes only. A run the launcher killed, reaped or watchdogged is still `failed`.
+
+A `deferred` run is neither success nor failure:
+
+- **Card:** a muted hollow ring on the status dot and the sparkline, so it cannot be mistaken for the solid muted dot of a job that never ran. The run history shows a muted clock glyph, and the row reads `deferred`.
+- **Alerts:** none on either channel. Other codes from the same job (`1`, `2`) still alert as `failed`.
+- **Stats:** left out of `success_rate_30d`, of the durations behind p50/p95 (a seconds-long deferral would drag down the stuck and watchdog thresholds), and of `completed_count`. It breaks a failure streak rather than extending it.
+- **Board:** no attention card, because a designed deferral needs nobody.
+- **Chaining:** unaffected. `on_success` / `on_failure` still key on the persisted `status`.
 
 **The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. A second test, `test_exit_code_outcomes_match_scheduled_runner_verdicts`, pins each row's *outcome* too: it reads the `❓`/`❌` glyph `ProgressFormatter.finish` prints for every code-keyed verdict rung, so a row whose class drifts from the adapter's own verdict fails (#959 — 118 sat here as `failed` under 123's wording while the adapter printed `❓ not confirmed`). Rungs keyed on a formatter flag rather than the code are classified by constant name in the test. Both skip where the checkout is absent (CI, a fresh clone).
 

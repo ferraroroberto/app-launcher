@@ -226,6 +226,26 @@ def _isolated_jobs_index(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_jobs_registry(request, tmp_path, monkeypatch):
+    """Never let a test's run-record read consult the real ``jobs.json``.
+
+    Since #1316 every ``jobs_history.read_run`` looks up the owning job's
+    ``exit_outcomes`` in the registry, so a test that only redirects
+    ``JOBS_RUNS_DIR`` would otherwise classify its runs against whatever the
+    dev box's ``config/jobs.json`` declares. Tests that write a registry of
+    their own re-patch ``DEFAULT_JOBS_PATH`` on top of this. Skipped for the
+    ``smoke`` suite, which drives a separate webapp process.
+    """
+    if request.node.get_closest_marker("smoke"):
+        return
+    from src import jobs_config as jobs_cfg_mod
+
+    monkeypatch.setattr(
+        jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_path / "isolated-jobs.json"
+    )
+
+
+@pytest.fixture(autouse=True)
 def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     """Never read or write the real chief pointer from a test (issue #675).
 
