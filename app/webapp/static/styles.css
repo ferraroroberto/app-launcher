@@ -1444,16 +1444,35 @@ summary + .opt-group { border-top: 0; }
   background: rgb(from var(--accent) r g b / 0.12);
 }
 .jobs-run-btn.selected .jobs-run-meta { color: var(--fg); }
-.jobs-pin-btn {
+/* A run row's icon buttons (pin, re-run) are quiet glyphs, not tiles
+   (#1333). `.icon-btn` has no base rule outside the rails, so these fell to
+   the UA button face, and the pin's old `filter: grayscale(1)` greyed that
+   face into a flat grey square. Now: no fill, no border, a muted glyph that
+   brightens on hover/focus, the app-wide :focus-visible ring, and the full
+   44px hit area. `stretch` in the row makes the button its full height, so
+   the centred glyph sits on the row's middle line. A pinned run's glyph
+   takes the accent: on, without a box. */
+.jobs-runs-list > li > .icon-btn {
+  flex: 0 0 auto;
   min-width: 44px;
   min-height: 44px;
-  filter: grayscale(1);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
 }
-.jobs-pin-btn.selected {
-  filter: none;
-  background: var(--accent-soft);
-  border-color: var(--accent);
+.jobs-runs-list > li > .icon-btn .icon { width: 18px; height: 18px; }
+.jobs-runs-list > li > .icon-btn:focus-visible { color: var(--fg); }
+@media (hover: hover) {
+  .jobs-runs-list > li > .icon-btn:hover { color: var(--fg); }
 }
+.jobs-runs-list > li > .icon-btn:active { color: var(--accent); background: var(--card-off); }
+.jobs-runs-list > li > .jobs-pin-btn.selected { color: var(--accent); }
 
 .jobs-output-label {
   margin: 4px 0 6px;
