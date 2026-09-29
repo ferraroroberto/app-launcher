@@ -93,7 +93,9 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     one-liner when it has one, so the card can say *why* without a log dive.
     A run whose job declares its exit code ``deferred`` (#1316) gets no card.
 
-    Blocking file IO (one ``list_runs`` walk per job) — callers wrap in
+    Reads the jobs' in-memory runtime snapshot (#1324), shared with
+    ``/api/jobs``, instead of walking every job's history per poll. Still
+    blocking (a stale or dirty snapshot is rebuilt inline) — callers wrap in
     ``asyncio.to_thread``. Job timestamps are naive local ISO strings
     (``run_job_cmd`` writes ``datetime.now().isoformat()``), so "today" is the
     local calendar day.
@@ -102,21 +104,23 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     than being skipped (#915): skipping it meant that job could never raise
     attention at all, and its absence read as "nothing stuck".
     """
-    from src import jobs as jobs_mod
+    from src import jobs_snapshot
     from src.jobs_config import load_jobs
 
     now_local = (now or _now()).astimezone()
     today = now_local.date()
     cards: List[Dict[str, Any]] = []
 
-    for job in load_jobs().jobs:
-        try:
-            # A run stranded "running" by a dead executor (issue #591) is
-            # reconciled here too, so the Board doesn't keep rendering a
-            # "stuck" card for a run that nothing is actually executing.
-            jobs_mod.reap_stranded_runs(job)
-            latest = jobs_mod.latest_run(job.id)
-        except OSError as exc:
+    jobs = load_jobs().jobs
+    snap = jobs_snapshot.current(jobs)
+    for job in jobs:
+        # The snapshot's walk reaps a run stranded "running" by a dead
+        # executor (issue #591), so the Board doesn't keep rendering a
+        # "stuck" card for a run that nothing is actually executing.
+        runtime = snap.jobs[job.id]  # current() covers every job it is given
+        latest = runtime.latest
+        if runtime.error is not None:
+            exc = runtime.error
             if job.id not in _UNREADABLE_JOBS:
                 logger.warning(
                     "⚠️ board: run history of job %s unreadable, "
@@ -139,9 +143,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
             _UNREADABLE_JOBS.discard(job.id)
         if not latest:
             continue
-        if latest.get("status") == "running" and jobs_mod.is_stuck(
-            job.id, latest=latest
-        ):
+        if latest.get("status") == "running" and runtime.stuck:
             started = _parse_iso(latest.get("started_at"))
             cards.append({
                 "kind": "job",
