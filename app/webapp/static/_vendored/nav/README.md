@@ -66,8 +66,6 @@ Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class
 
 At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-config#968) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281, lifted from app-launcher#1166).
 
-`.tab-emoji` is **legacy** — an emoji span the desktop control used to show instead of the icon, superseded by SVG glyphs fleet-wide (`home-automation#77`, fixed here in `project-scaffolding#142`). `nav-tabs.css` hides it at every width, so an app still shipping the span picks up its desktop icon by re-vendoring the CSS alone; delete the span from your markup when you next touch it. If your app kept a per-app `.tab-icon { display: … }` override to work around the old rule, drop that too — it now fights the vendored file.
-
 ## Required design tokens
 
 `nav-tabs.css` references these CSS custom properties — define them in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Don't copy the spec; point your tokens at it. Reference values (light) from the canonical implementation. The mobile geometry below is the phone-validated standard promoted from `home-automation` issue #118: measured from 1290px-wide iPhone screenshots of the GitHub/VLC apps (~3x CSS pixels), then validated live on Roberto's iPhone.
@@ -81,8 +79,8 @@ At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-c
 | `--line` | `#d1d9e0` | bar border, active-tab border (mobile) |
 | `--space-xs` | `4px` | bar padding / gap (desktop) |
 | `--gap` | `12px` | bottom-padding reserve; phone `.app` side padding (the phone top padding is `env(safe-area-inset-top)` alone, #288) |
-| `--font-label` | `0.92rem` | tab label (desktop) |
-| `--font-caption` | `0.78rem` | tab label (narrow desktop) |
+| `--font-label` | `0.875rem` | tab label (desktop) |
+| `--font-caption` | `0.75rem` | tab label (narrow desktop) |
 | `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
 | `--row-lg` | `60px` | rail tab min-height |
 | `--space-sm` | `8px` | rail tab padding |
