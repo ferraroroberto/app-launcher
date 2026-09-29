@@ -45,7 +45,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
 from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
-from src.board_transcript import _SKIP_USER_PREFIXES, _assistant_text
+from src.board_transcript import _SKIP_USER_PREFIXES, _assistant_text, _typed_user_kind
 
 # One backwards read step. 256 KB is the same window the Board's
 # last-exchange reader uses (`board_transcript._EXCHANGE_TAIL_BYTES`).
@@ -359,7 +359,7 @@ def _page(
     # message, which the agent may still be appending to. No lines at all (an
     # empty file, or one holding only blanks) still needs a cursor a live
     # read can resume from, and that is the end of the file.
-    idx = _pending_from(collected, line_key) if collected else None
+    idx = _pending_from(collected, build, line_key) if collected else None
     tail = collected[idx][0] if idx is not None else size
     # A turn keeps its offset — the copy-full-text route (#985) needs it to
     # ask for the uncapped entry; the folded kinds have no such use and stay
@@ -384,17 +384,42 @@ def _page(
 # --------------------------------------------------------------- live tail
 
 
-def _pending_from(lines: List[Line], line_key: LineKey) -> int:
+def _pending_from(lines: List[Line], build: EntryBuilder, line_key: LineKey) -> int:
     """Index of the first line of the trailing *provisional* region.
 
     Everything from there on may still grow. A harness can write one message
     as several lines — Claude writes one per content block under one
     ``message.id`` — so a read that ends at EOF can be holding half a
     message; and the very last line of a file being appended to may be a
-    partial write with no newline yet. Both cases are the same answer: the
+    partial write with no newline yet. For a keyed flavour the answer is the
     newest keyed span (found by taking the key of the last keyed line and
-    scanning back to that span's first line), or, when no line is keyed, the
-    last line on its own.
+    scanning back to that span's first line).
+
+    For an **unkeyed** flavour (codex, grok, pi, antigravity, copilot —
+    ``line_key`` always ``None``, so every line here reads standalone), the
+    keyed rule degenerates to "just the last line", which is wrong for a
+    tool call: its result is always a separate, later raw line — often the
+    next tick's read entirely — so settling the call as soon as it is read
+    and then rendering its result as an orphan card once it finally arrives
+    is #1310. And when call and result *do* land in the same read (a page
+    load, or a tail read that caught up in one tick), building the whole
+    window together pairs them correctly, but the naive "just the last
+    line" split still cuts between them: the call goes into ``settled``
+    without its result (rebuilt alone, so it renders unresolved) and the
+    result goes into ``pending`` alone, which is exactly the orphan branch
+    of :func:`_attach_result` — the call it belongs to isn't in that half's
+    build.
+
+    The fix widens the pending region backwards, one line at a time, for as
+    long as the **suffix from there on, built on its own, still contains an
+    orphan** (a standalone ``tool_result`` — the tell that some call it
+    would pair with sits outside this window). That is the general form of
+    "the oldest tool call without a result": it stops exactly at the oldest
+    call whose result — found or not — needs to stay grouped with it, using
+    the builder itself as the oracle rather than re-deriving each flavour's
+    call/result grammar here. No orphan even at the last line (plain text,
+    or every call in view already has its result) → same fallback as
+    before, the last line alone.
 
     Never empty for a non-empty read, deliberately: the tail of a live file
     is provisional by definition, and re-reading one line per tick costs
@@ -412,10 +437,13 @@ def _pending_from(lines: List[Line], line_key: LineKey) -> int:
     last_keyed = next(
         (i for i in range(len(lines) - 1, -1, -1) if keys[i] is not None), None
     )
-    if last_keyed is None:
-        return len(lines) - 1
-    key = keys[last_keyed]
-    return next(i for i, k in enumerate(keys) if k == key)
+    if last_keyed is not None:
+        key = keys[last_keyed]
+        return next(i for i, k in enumerate(keys) if k == key)
+    idx = len(lines) - 1
+    while idx > 0 and any(e.get("kind") == "tool_result" for e in build(lines[idx:])):
+        idx -= 1
+    return idx
 
 
 def _split_pending(
@@ -443,7 +471,7 @@ def _split_pending(
     """
     if not lines:
         return [], [], None
-    idx = _pending_from(lines, line_key)
+    idx = _pending_from(lines, build, line_key)
     settled = build(lines[:idx]) if idx else []
     pending = build(lines[idx:])
     return settled, pending, lines[idx][0]
@@ -982,10 +1010,15 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             stripped = text.strip()
             if not stripped and not refs:
                 continue
-            if obj.get("isMeta"):
+            # `_typed_user_kind` (board_transcript.py, #1310) is the one
+            # classification shared with `last_exchange`/`has_typed_user_prompt`
+            # so the Board drawer's "typed prompt" reading never drifts from
+            # this reader's own.
+            user_kind = _typed_user_kind(obj, stripped)
+            if user_kind == "injected":
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                            label="injected", sidechain=sidechain))
-            elif any(stripped.startswith(p) for p in _SKIP_USER_PREFIXES):
+            elif user_kind == "harness":
                 entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                            label=_harness_label(stripped), sidechain=sidechain))
             else:
