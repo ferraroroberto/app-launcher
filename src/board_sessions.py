@@ -207,7 +207,7 @@ def _match_state_row(
     concurrent sessions in one directory, all 3 assigned to each other's
     rows). Degrading to no match (``unknown`` card, no transcript) is safer
     than a confident wrong answer — same principle as the Codex ambiguity
-    guard in :func:`src.board_exchange._find_codex_transcript`. Sessions that
+    guard in :func:`src.transcript_locate.find_codex_transcript`. Sessions that
     carry their own ``launcher_session_id`` (the exact-match path above)
     never reach here, so this only affects legacy/external sessions with no
     launcher id sharing a directory.

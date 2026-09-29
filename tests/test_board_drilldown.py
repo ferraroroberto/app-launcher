@@ -28,7 +28,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src import board, board_exchange
+from src import board, board_exchange, transcript_locate
 
 
 def _iso(moment: datetime) -> str:
@@ -329,7 +329,7 @@ def test_codex_native_exchange_correlates_by_unique_start_and_cwd(
         '{"type":"session_meta","payload":{"cwd":"E:/proj/app"}}\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(board_exchange, "_CODEX_SESSIONS_DIR", sessions)
+    monkeypatch.setattr(transcript_locate, "_CODEX_SESSIONS_DIR", sessions)
     session = {
         "agent": "codex", "project_dir": "E:/proj/app",
         "started_at": NOW.timestamp(), "prompt_title": "status?",
@@ -359,7 +359,7 @@ def test_codex_ambiguous_native_match_degrades_to_exact_launcher_capture(
         )
     capture = tmp_path / "exact.transcript"
     capture.write_text("● Exact session reply.\r\n", encoding="utf-8")
-    monkeypatch.setattr(board_exchange, "_CODEX_SESSIONS_DIR", sessions)
+    monkeypatch.setattr(transcript_locate, "_CODEX_SESSIONS_DIR", sessions)
     result = board_exchange.resolve_exchange({
         "agent": "codex", "project_dir": "E:/proj/app",
         "started_at": NOW.timestamp(), "prompt_title": "question",
@@ -382,12 +382,12 @@ def _claude_projects(tmp_path: Path, monkeypatch, project_dir: str) -> Path:
     under, redirected into ``tmp_path``. Mirrors the real naming: every
     non-alphanumeric of the normalized cwd replaced by ``-``."""
     root = tmp_path / "claude-projects"
-    slug = board_exchange._CLAUDE_SLUG_RE.sub(
+    slug = transcript_locate._CLAUDE_SLUG_RE.sub(
         "-", project_dir.replace("\\", "/").rstrip("/").lower()
     )
     folder = root / slug
     folder.mkdir(parents=True)
-    monkeypatch.setattr(board_exchange, "_CLAUDE_PROJECTS_DIR", root)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", root)
     return folder
 
 

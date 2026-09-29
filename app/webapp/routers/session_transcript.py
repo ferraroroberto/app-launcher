@@ -85,9 +85,9 @@ from websockets.exceptions import InvalidHandshake, WebSocketException
 from src import audit, board, plan_picker, resume_picker, session_client
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
 from src.board_transcript import pending_decision_call
-from src.board_exchange import (
-    _find_codex_transcript,
+from src.transcript_locate import (
     find_antigravity_transcript,
+    find_codex_transcript,
     find_copilot_transcript,
     find_pi_transcript,
     resolve_claude_transcript,
@@ -158,7 +158,7 @@ def _resolve_path(
     for when the fallback's guards refuse: the id names the file (#1155).
     """
     if flavor == "codex":
-        return _find_codex_transcript(session), ""
+        return find_codex_transcript(session), ""
     if flavor == "pi":
         return find_pi_transcript(str(state_sid or "")), ""
     if flavor == "antigravity":

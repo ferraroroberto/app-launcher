@@ -194,7 +194,7 @@ def strip_status_glyph(live_title: Optional[str]) -> str:
 
     An unrecognized future glyph is left in place. That can only make two
     titles compare as *different*, which is the conservative direction for
-    the one caller — :func:`board_exchange._disprove_by_live_title`'s
+    the one caller — :func:`transcript_locate._disprove_by_live_title`'s
     disproof, where a difference refuses an inferred answer rather than
     accepting one.
     """

@@ -60,7 +60,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ask_user_question import Keystroke
-from src.board_exchange import _claude_declared_titles, _claude_project_folders
+from src.transcript_locate import _claude_declared_titles, _claude_project_folders
 
 # "Resume session", or "Resume session (3 of 50)" on a list long enough to
 # scroll.

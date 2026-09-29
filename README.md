@@ -511,6 +511,7 @@ app-launcher/
 │   ├── board_state.py          # session-state join (session-host + fleet-config overlay)
 │   ├── board_sessions.py       # live-session enumeration for the Board
 │   ├── board_exchange.py       # drill-down drawer's last-exchange read
+│   ├── transcript_locate.py    # filesystem correlation of a live session to its harness transcript file
 │   ├── board_transcript.py     # transcript overlay + conversation-source hierarchy
 │   ├── life_os_index.py        # Life OS conversation-artefact reconciliation (index.json/index.md/search db)
 │   └── jobs*.py, jobs_kinds/   # Jobs backend, the largest group in src/ — config chain, scheduling/trigger/queue/reap,

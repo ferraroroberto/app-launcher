@@ -18,7 +18,8 @@
 import { els } from './state.js';
 import { jsonApi } from './api.js';
 import { createRowMenu } from './row-menu.js';
-import { isDecisionCard, openLinksOnThePc, renderEntries } from './session-transcript.js';
+import { openLinksOnThePc, renderEntries } from './session-transcript.js';
+import { isDecisionCard } from './transcript-decisions.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 
