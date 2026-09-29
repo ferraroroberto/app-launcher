@@ -295,14 +295,26 @@ class TrayApp:
     # -- webapp lifecycle ----------------------------------------------------
 
     def _start(self) -> None:
+        # Registered Trays are independent services that do not need this
+        # webapp to be ready: a failed ready-wait (a slow cold-boot uvicorn
+        # import past startup_timeout_seconds) must not skip them, and must
+        # leave its reason in registered_trays.log (#1339).
         try:
             self.manager.start(wait=True)
             _notify("Launcher webapp ready", self.manager.base_url)
-            registered_trays.launch_all()
         except Exception as exc:  # noqa: BLE001
             self.starter_exc = exc
             logger.error(f"❌ webapp start failed: {exc}")
+            registered_trays._log_breadcrumb(
+                f"webapp start failed ({type(exc).__name__}: {exc}) "
+                "— launching autostart entries anyway"
+            )
             _notify("Launcher start failed", str(exc))
+        try:
+            registered_trays.launch_all()
+        except Exception as exc:  # noqa: BLE001 — launch_all must never raise; belt-and-braces
+            logger.error(f"❌ Registered Trays launch failed: {exc}")
+            registered_trays._log_breadcrumb(f"launch_all raised: {exc}")
 
     def _on_webapp_wedge(self, failures: int) -> None:
         msg = (

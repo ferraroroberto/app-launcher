@@ -360,3 +360,56 @@ class TestWaitForTrayReady:
 
         monkeypatch.setattr(rt_mod.time, "sleep", fake_sleep)
         assert rt_mod._wait_for_tray_ready(tmp_path) is False
+
+
+class TestTrayStartLaunchesTraysRegardless:
+    """``TrayApp._start`` must launch Registered Trays even when the webapp
+    ready-wait fails (#1339). A slow cold-boot uvicorn import used to trip
+    ``_wait_until_ready``'s timeout, the shared ``try`` skipped
+    ``launch_all()``, and nothing reached ``registered_trays.log`` — so no
+    sister tray came up and the boot left no trace of why.
+
+    ``_start`` only touches ``self.manager`` and ``self.starter_exc``, so it
+    runs off the class against a stub ``self``, the same way
+    ``test_tray_session_host_log.py`` drives ``_start_session_host``.
+    """
+
+    @pytest.fixture
+    def tray(self, monkeypatch):
+        from app.tray import tray as tray_mod
+
+        launch_all = MagicMock()
+        monkeypatch.setattr(tray_mod.registered_trays, "launch_all", launch_all)
+        monkeypatch.setattr(tray_mod, "_notify", lambda title, message: None)
+        stub = MagicMock()
+        stub.starter_exc = None
+        return tray_mod, stub, launch_all
+
+    def test_webapp_wait_failure_still_launches_trays_and_logs_why(self, tray, tmp_path: Path):
+        tray_mod, stub, launch_all = tray
+        stub.manager.start.side_effect = RuntimeError("webapp not ready after 15.0s")
+
+        tray_mod.TrayApp._start(stub)
+
+        launch_all.assert_called_once_with()
+        assert isinstance(stub.starter_exc, RuntimeError)
+        log = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
+        assert "webapp not ready after 15.0s" in log
+
+    def test_webapp_ready_launches_trays_once(self, tray, tmp_path: Path):
+        tray_mod, stub, launch_all = tray
+
+        tray_mod.TrayApp._start(stub)
+
+        stub.manager.start.assert_called_once_with(wait=True)
+        launch_all.assert_called_once_with()
+        assert stub.starter_exc is None
+        assert not (tmp_path / "webapp" / "registered_trays.log").exists()
+
+    def test_launch_all_raising_never_propagates(self, tray):
+        tray_mod, stub, launch_all = tray
+        launch_all.side_effect = RuntimeError("unexpected")
+
+        tray_mod.TrayApp._start(stub)  # must not raise
+
+        launch_all.assert_called_once_with()
