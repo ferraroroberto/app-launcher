@@ -109,4 +109,49 @@ const md = (lines) => renderMarkdown(lines.join('\n'));
   assert.equal(md(['Plan:', '1. a']), '<p>Plan:</p>\n<ol>\n<li>a</li>\n</ol>');
 }
 
-console.log('markdown tables + lists: OK');
+// Blockquotes (#1326): a `>` run is one quote, markers gone, single breaks
+// kept as <br>, a bare `>` a paragraph break, and a copy button whose
+// `data-copy` decodes (as `getAttribute` would) to the plain pasteable text.
+{
+  const decodeAttr = (s) => s.replace(/&#10;/g, '\n').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const copyOf = (html) => decodeAttr(html.match(/ data-copy="([^"]*)"/)[1]);
+
+  const html = md([
+    '> Hello,', '>', '> The installation was finished in August.', '>',
+    '> Best regards,', '> Name',
+  ]);
+  assert.ok(html.startsWith('<blockquote class="md-quote"><div class="md-quote-body">'), html);
+  assert.ok(html.includes(
+    '<p>Hello,</p><p>The installation was finished in August.</p><p>Best regards,<br>Name</p>'), html);
+  assert.ok(!html.includes('&gt;'), 'no literal > marker may survive: ' + html);
+  assert.ok(html.includes('class="md-quote-copy hit-target" aria-label="Copy quote"'), html);
+  assert.equal(copyOf(html),
+    'Hello,\n\nThe installation was finished in August.\n\nBest regards,\nName');
+
+  // Escaping holds inside a quote, in the body and in the copy text.
+  const esc = md(['> <script>alert(1)</script> "q" & \'s\'']);
+  assert.ok(esc.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), esc);
+  assert.ok(!esc.includes('<script>'), esc);
+  assert.equal(copyOf(esc), '<script>alert(1)</script> "q" & \'s\'');
+
+  // Indented markers and no space after `>` both count; inline markdown
+  // renders in the body while the copy text keeps the source.
+  const inl = md(['  >**bold** line', '> `code`']);
+  assert.ok(inl.includes('<p><strong>bold</strong> line<br><code>code</code></p>'), inl);
+  assert.equal(copyOf(inl), '**bold** line\n`code`');
+
+  // Blank runs collapse to one gap; leading/trailing blanks are dropped.
+  assert.equal(copyOf(md(['>', '> a', '>', '>', '> b', '>'])), 'a\n\nb');
+
+  // The quote ends at the first non-`>` line; neighbours render unchanged.
+  const mixed = md(['Intro', '> quoted', 'After', '', '- item']);
+  assert.ok(mixed.startsWith('<p>Intro</p>\n<blockquote class="md-quote">'), mixed);
+  assert.ok(mixed.includes('</blockquote>\n<p>After</p>\n<ul>\n<li>item</li>\n</ul>'), mixed);
+
+  // A `>` inside a code fence stays code.
+  assert.equal(md(['```', '> not a quote', '```']),
+    '<pre class="md-code"><code>\n&gt; not a quote\n</code></pre>');
+}
+
+console.log('markdown tables + lists + quotes: OK');
