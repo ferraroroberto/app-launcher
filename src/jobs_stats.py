@@ -215,6 +215,12 @@ def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
             _stats_cache.clear()
         else:
             _stats_cache.pop(job_id, None)
+    # The polls' snapshot (#1324) holds these stats too. The run's own
+    # write_run_json marked it dirty a moment earlier, and a read in between
+    # may have stored the old stats and consumed that mark, so mark it again.
+    from src.jobs_snapshot import mark_dirty
+
+    mark_dirty(job_id)
 
 
 # How many *completed* runs a job needs before its derived duration

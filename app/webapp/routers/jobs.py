@@ -183,9 +183,10 @@ def _decorate_job(
     payload["running"] = bool(latest and latest.get("status") == "running")
     payload["stats"] = runtime.stats
     payload["stuck"] = runtime.stuck
-    # Missed-fire coverage (issue #697), from the same process-local cached
-    # scan, now read once per snapshot rather than per poll.
-    payload["coverage"] = runtime.coverage
+    # Missed-fire coverage (issue #697). Reads a process-local cached scan —
+    # the schtasks half rides the same 30 s bulk-query cache `next_run` uses,
+    # and the snapshot tick refreshes both before they expire (#1324).
+    payload["coverage"] = jobs_mod.coverage_for_job(job.id)
     payload["queue_depth"] = (
         len(jobs_mod.peek_mutex_queue(job.mutex_group)) if job.mutex_group else 0
     )

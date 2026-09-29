@@ -517,19 +517,22 @@ def scan_coverage(
     return out
 
 
-def coverage_map() -> Dict[str, Dict[str, Any]]:
+def coverage_map(max_age: Optional[float] = None) -> Dict[str, Dict[str, Any]]:
     """:func:`scan_coverage` behind a process-local TTL cache.
 
     ``/api/jobs`` decorates every row from one cached scan per poll rather
     than re-deriving per job. Invalidated on demand by
     :func:`invalidate_coverage_cache`, not by forcing a fresh scan here.
+    ``max_age`` rescans earlier than the TTL: the jobs snapshot tick (#1324)
+    warms it before it expires, so a poll never pays the scan.
     """
     global _coverage_cache
     monotonic = time.monotonic()
+    limit = _COVERAGE_TTL_SECONDS if max_age is None else max_age
     with _coverage_lock:
         if _coverage_cache is not None:
             ts, snapshot = _coverage_cache
-            if monotonic - ts < _COVERAGE_TTL_SECONDS:
+            if monotonic - ts < limit:
                 return snapshot
     snapshot = scan_coverage()
     with _coverage_lock:

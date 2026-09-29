@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -150,6 +152,7 @@ def test_the_tick_walks_only_while_the_polls_are_asking(real_ages, monkeypatch):
     builds: list = []
     monkeypatch.setattr(jobs_snapshot, "TICK_SECONDS", 0.01)
     monkeypatch.setattr(jobs_snapshot, "rebuild", lambda reason, **kw: builds.append(reason))
+    monkeypatch.setattr(jobs_snapshot, "warm_caches", lambda: builds.append("warm"))
 
     async def _run_for(seconds: float) -> None:
         task = asyncio.create_task(jobs_snapshot.tick_forever())
@@ -163,7 +166,65 @@ def test_the_tick_walks_only_while_the_polls_are_asking(real_ages, monkeypatch):
 
     jobs_snapshot._last_demand = jobs_snapshot.time.monotonic()
     asyncio.run(_run_for(0.1))
-    assert builds and set(builds) == {"tick"}
+    assert builds and set(builds) == {"tick", "warm"}
+
+
+def test_the_age_counts_from_when_the_walk_started(real_ages, monkeypatch):
+    """A slow walk's first job is as old as the walk: the age must say so."""
+    monkeypatch.setattr(jobs_snapshot, "_load_jobs", lambda: [SimpleNamespace(id="a")])
+
+    def _slow(job):
+        jobs_snapshot.time.sleep(0.3)
+        return jobs_snapshot.JobRuntime(latest={"run_id": "r1"})
+
+    monkeypatch.setattr(jobs_snapshot, "compute_job", _slow)
+    snap = jobs_snapshot.rebuild("test")
+    assert jobs_snapshot.age_seconds(snap) >= 0.3
+
+
+def test_overlapping_reads_never_lose_a_recompute(real_ages, monkeypatch):
+    """Two readers recomputing different dirty jobs at once (the Jobs and the
+    Board poll) both land in the live snapshot; neither overwrites the other."""
+    jobs = [SimpleNamespace(id="a"), SimpleNamespace(id="b")]
+    monkeypatch.setattr(jobs_snapshot, "_load_jobs", lambda: jobs)
+    version = {"a": 0, "b": 0}
+    first_a_started = threading.Event()
+    release_first_a = threading.Event()
+
+    def _compute(job):
+        version[job.id] += 1
+        v = version[job.id]
+        if job.id == "a" and v == 2:  # the first reader's recompute of a
+            first_a_started.set()
+            release_first_a.wait(5)
+        return jobs_snapshot.JobRuntime(latest={"v": v})
+
+    monkeypatch.setattr(jobs_snapshot, "compute_job", _compute)
+    jobs_snapshot.rebuild("test")  # a=1, b=1
+    jobs_snapshot.mark_dirty("a")
+    reader = threading.Thread(target=jobs_snapshot.current, args=(jobs,))
+    reader.start()
+    assert first_a_started.wait(5)
+    jobs_snapshot.mark_dirty("b")
+    # The second reader sees both marks (a's is not consumed until the first
+    # reader lands) and recomputes both.
+    second = jobs_snapshot.current(jobs)
+    assert second.jobs["b"].latest == {"v": 2}
+    release_first_a.set()
+    reader.join(5)
+    live = jobs_snapshot._snapshot
+    assert live.jobs["b"].latest == {"v": 2}, "the first reader's write-back lost b"
+    assert live.jobs["a"].latest["v"] >= 2
+    assert jobs_snapshot._dirty == {}
+
+
+def test_board_carries_the_snapshot_age(webapp_client, real_ages):
+    client, _app, overrides = webapp_client
+    local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    _seed_job(overrides, "pipeline", _failed_today(local_now))
+    body = client.get("/api/board").json()
+    assert set(body["jobs_snapshot"]) == {"built_at", "age_seconds"}
+    assert body["jobs_snapshot"]["age_seconds"] <= jobs_snapshot.MAX_AGE_SECONDS
 
 
 def test_index_is_cached_with_an_etag_and_revalidates_304(webapp_client, monkeypatch):
