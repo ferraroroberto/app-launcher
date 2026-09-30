@@ -28,7 +28,7 @@ from playwright.sync_api import Page, expect
 
 from src import chief_plan
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import stable_eval, stable_read
 
 pytestmark = pytest.mark.smoke
 
@@ -348,8 +348,8 @@ def test_board_renders_columns_counts_and_cards(
         # two-line cap and nothing scrolls sideways (#1297).
         authed_page.set_viewport_size({"width": 320, "height": viewport["height"]})
         long_title = queue.nth(1).locator(".board-card-title-compact")
-        clipped = stable_read(lambda: long_title.evaluate(
-            "el => el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0"))
+        clipped = stable_eval(
+            long_title, "el => el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0")
         assert clipped, "long queue title should be clamped with an ellipsis at 320px"
         overflow = stable_read(lambda: authed_page.evaluate(
             "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"))
@@ -381,8 +381,8 @@ def test_board_renders_columns_counts_and_cards(
       return title.getBoundingClientRect().left - list.left - accent;
     }"""
     claude_card = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item').first
-    backlog_inset = stable_read(lambda: backlog.first.evaluate(inset))
-    card_inset = stable_read(lambda: claude_card.evaluate(inset))
+    backlog_inset = stable_eval(backlog.first, inset)
+    card_inset = stable_eval(claude_card, inset)
     assert abs(backlog_inset - card_inset) <= 1, (
         f"Backlog row text inset {backlog_inset}px vs Claude's-turn card {card_inset}px")
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
@@ -842,29 +842,31 @@ def test_backlog_start_button_posts_issue_start(
     )
     _mock_board(authed_page)
 
-    captured: dict = {}
-
-    def _capture_start(route):
-        captured["body"] = route.request.post_data_json
-        route.fulfill(
+    start_url = re.compile(r".*/api/board/issues/start$")
+    authed_page.route(
+        start_url,
+        lambda route: route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "/issue-start 301", "repo": "app-launcher",
                 "session": {"session_id": "sX", "kind": "pty",
                             "name": "app-launcher"},
             }),
-        )
-
-    authed_page.route(re.compile(r".*/api/board/issues/start$"), _capture_start)
+        ),
+    )
 
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
     # The dispatch bar's model selector governs one-tap starts too (#505) —
     # pick a non-default value so the POST provably carries the selection.
+    # The menu's real options arrive with boot's /api/config: until then it
+    # holds only the static Sonnet entry, and the options render that follows
+    # closes an open menu (#1346). So wait for that option to exist before
+    # opening the menu — on a loaded box the config lands after the tab is up.
+    fable = authed_page.locator("#boardDispatchModelMenu [data-value='claude:fable']")
+    expect(fable).to_be_attached()
     authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
-    authed_page.locator(
-        "#boardDispatchModelMenu [data-value='claude:fable']"
-    ).click()
+    fable.click()
     start_btn = authed_page.locator(
         '.board-list[data-col="backlog"] .board-issue-btn'
     ).first
@@ -873,10 +875,11 @@ def test_backlog_start_button_posts_issue_start(
     # (seen on CI). The 5 s poll re-renders with apps loaded, so a budget
     # spanning a full poll cycle makes this deterministic.
     expect(start_btn).to_be_visible(timeout=15_000)
-    start_btn.click()
-    authed_page.wait_for_timeout(500)
+    # Wait for the POST itself, not a fixed 500 ms a loaded box can outlast.
+    with authed_page.expect_request(start_url) as start_request:
+        start_btn.click()
 
-    body = captured.get("body") or {}
+    body = start_request.value.post_data_json or {}
     assert body.get("repo") == "app-launcher"
     assert body.get("number") == 301
     assert body.get("mode") == "start"
@@ -925,18 +928,17 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
 
     # Capture both rectangles in one browser task: separate locator reads can
-    # straddle the Board's 5 s replaceChildren() poll (#868).
-    boxes = stable_read(
-        lambda: tile.evaluate(
-            "el => {"
-            " const action = el.querySelector('.board-issue-btn');"
-            " if (!action) return null;"
-            " const tileBox = el.getBoundingClientRect();"
-            " const actionBox = action.getBoundingClientRect();"
-            " return {tile: {y: tileBox.y, height: tileBox.height},"
-            " action: {y: actionBox.y, height: actionBox.height}};"
-            "}"
-        )
+    # straddle a Board re-render (#868), and on the live node only (#1346).
+    boxes = stable_eval(
+        tile,
+        "el => {"
+        " const action = el.querySelector('.board-issue-btn');"
+        " if (!action) return null;"
+        " const tileBox = el.getBoundingClientRect();"
+        " const actionBox = action.getBoundingClientRect();"
+        " return {tile: {y: tileBox.y, height: tileBox.height},"
+        " action: {y: actionBox.y, height: actionBox.height}};"
+        "}",
     )
     assert boxes is not None
     tile_box = boxes["tile"]
@@ -1078,11 +1080,10 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     # clientWidth. Read the two widths (not the comparison) so a mid-rebuild
     # read is recognisable as the 0/0 artifact it is rather than a silent
     # False (#680).
-    widths = stable_read(
-        lambda: title_el.evaluate(
-            "el => el.scrollWidth && el.clientWidth"
-            " ? [el.scrollWidth, el.clientWidth] : null"
-        )
+    widths = stable_eval(
+        title_el,
+        "el => el.scrollWidth && el.clientWidth"
+        " ? [el.scrollWidth, el.clientWidth] : null",
     )
     assert widths is not None, "title box never reported non-zero widths"
     assert widths[0] <= widths[1], (
@@ -1091,23 +1092,24 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     )
 
     # Keep the three related measurements on one DOM generation; individually
-    # valid reads can still straddle the Board's 5 s rebuild (#868).
-    boxes = stable_read(
-        lambda: tile.evaluate(
-            "el => {"
-            " const title = el.querySelector('.board-card-title-compact');"
-            " const action = el.querySelector('.board-issue-btn');"
-            " if (!title || !action) return null;"
-            " const titleBox = title.getBoundingClientRect();"
-            " const tileBox = el.getBoundingClientRect();"
-            " const actionBox = action.getBoundingClientRect();"
-            " const cs = getComputedStyle(title);"
-            " const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;"
-            " return {title: {height: titleBox.height, lineHeight: lineHeight},"
-            " tile: {y: tileBox.y, height: tileBox.height},"
-            " action: {y: actionBox.y, height: actionBox.height}};"
-            "}"
-        )
+    # valid reads can still straddle a Board re-render (#868). On a node that
+    # re-render already detached, every box reads 0: the "title is only 0px
+    # tall" red of #1346. stable_eval measures the live node only.
+    boxes = stable_eval(
+        tile,
+        "el => {"
+        " const title = el.querySelector('.board-card-title-compact');"
+        " const action = el.querySelector('.board-issue-btn');"
+        " if (!title || !action) return null;"
+        " const titleBox = title.getBoundingClientRect();"
+        " const tileBox = el.getBoundingClientRect();"
+        " const actionBox = action.getBoundingClientRect();"
+        " const cs = getComputedStyle(title);"
+        " const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;"
+        " return {title: {height: titleBox.height, lineHeight: lineHeight},"
+        " tile: {y: tileBox.y, height: tileBox.height},"
+        " action: {y: actionBox.y, height: actionBox.height}};"
+        "}",
     )
     assert boxes is not None
     title_box = boxes["title"]
