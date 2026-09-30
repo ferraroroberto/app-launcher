@@ -94,11 +94,12 @@ export function chiefSessionId() {
 // chat message instead, which is an ordinary Start-equivalent choice, not a
 // race — the resumable conversation's state row survives untouched either
 // way (pruned only after 24h, per _find_resumable_chief_session_id).
-export async function ensureChief(fresh, resume) {
+export async function ensureChief(fresh, resume, ifAbsent) {
   const tt = await ensureTerminalToken();
   const payload = {};
   if (fresh) payload.fresh = true;
   if (resume) payload.resume = true;
+  if (ifAbsent) payload.if_absent = true;
   // Same size contract as every launch (issue #374).
   applyLaunchSizePayload(payload);
   return jsonApi('/api/board/chief/ensure', {
@@ -307,7 +308,10 @@ export async function sendToChief(text) {
   // Restart did before #649/#650 — this is in fact the most likely path a
   // user takes after a session-host restart, since chat mode reads as
   // conversational and the Start/Resume status row is easy to not notice.
-  const ensured = await ensureChief(false, true);
+  // ifAbsent (#1351): resume only when no chief is alive. `resume` alone
+  // stop-and-resumes a live chief, so every answer restarted the chief that
+  // asked the question.
+  const ensured = await ensureChief(false, true, true);
   const tt = await ensureTerminalToken();
   await jsonApi(
     '/api/claude-code/sessions/' + encodeURIComponent(ensured.session_id) + '/input',

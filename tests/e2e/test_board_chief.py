@@ -358,6 +358,8 @@ def test_chat_mode_send_ensures_with_resume_and_toasts_outcome(
     assert ensured["body"].get("fresh") is not True, (
         "chat send must never force-kill a live chief"
     )
+    # #1351: resume only when no chief is alive — never stop-and-resume one.
+    assert ensured["body"].get("if_absent") is True
     expect(authed_page.locator("#toast")).to_contain_text(toast)
 
 
@@ -819,6 +821,8 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
     expect(dialog).to_be_hidden()
     assert ensured.get("body", {}).get("fresh") is not True, "answers must never restart the chief"
+    # #1351: resume alone stop-and-resumed the live chief that asked.
+    assert ensured["body"].get("if_absent") is True, "answers must keep a live chief"
     assert posts == [{
         "data": (
             "Answers from the Board (2 of 3):\n"
