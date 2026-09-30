@@ -4621,6 +4621,22 @@ span.chief-answer-ref { color: var(--muted); }
 }
 .session-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 
+/* Telegram channel session (#1366): a "Telegram · Health" pill on the Board
+   card and the Coding row, so a chat-bound session reads distinct from a
+   worker and from the chief (which owns the full-row accent tint). */
+.session-channel-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--font-caption);
+  white-space: nowrap;
+}
+.session-item .name .session-channel-tag { margin-right: var(--space-sm); vertical-align: middle; }
+.lifeos-channel-running .action-row-meta { color: var(--accent-text); }
+
 /* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
    background/border/radius, just a bottom-border divider between rows
    (GitHub-issue-list style) — with repo/# and the title on their own lines

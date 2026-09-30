@@ -27,6 +27,7 @@ import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-vi
 
 // The skill rows' kebab menu (#1128), on the shared row-menu.js.
 const skillMenu = createRowMenu('project-menu');
+const channelMenu = createRowMenu('project-menu');
 
 // The Skills-summary launch-model dropdown controller ({setValue, getValue}),
 // created in the tab's wiring once the DOM exists (#540). Read at launch time;
@@ -54,6 +55,113 @@ export async function fetchSkills() {
     renderSkills();
   } catch (exc) {
     logPollFailure('life-os skills fetch failed', exc);
+  }
+  // The Telegram card rides every skills refresh (tab open, Settings save,
+  // boot) so it never needs a refresh point of its own (#1366).
+  await fetchChannels();
+}
+
+// -------------------------------------------- Telegram channels (#1366)
+// One row per machine-local profile (config/channel_profiles.json): a life-os
+// skill launched with its own Telegram bot attached. The server answers with
+// each profile's running session, so a second tap opens that session instead
+// of launching a duplicate (the server refuses one with a 409 anyway — one bot
+// token, one getUpdates consumer).
+export async function fetchChannels() {
+  try {
+    const body = await jsonApi('/api/life-os/channels');
+    state.lifeOsChannels = {
+      profiles: body.profiles || [],
+      problems: body.problems || [],
+    };
+    renderChannels();
+  } catch (exc) {
+    logPollFailure('life-os channels fetch failed', exc);
+  }
+}
+
+function renderChannels() {
+  const card = els.lifeOsChannels;
+  if (!card) return;
+  const profiles = state.lifeOsChannels.profiles;
+  const problems = state.lifeOsChannels.problems;
+  // Opt-in: no profile file, no card.
+  card.hidden = profiles.length === 0 && problems.length === 0;
+  const list = els.lifeOsChannelList;
+  list.innerHTML = '';
+  profiles.forEach(function (p) {
+    const usable = p.skill_found;
+    const running = p.running === true;
+    const bits = [p.skill];
+    if (running) bits.push('running');
+    if (!usable) bits.push('skill not found');
+    const row = actionRow({
+      id: p.id,
+      className: 'lifeos-channel-item' + (running ? ' lifeos-channel-running' : ''),
+      title: 'Telegram · ' + p.label,
+      meta: bits.join(' · '),
+      label: (running ? 'Open ' : 'Start ') + p.label + ' Telegram session',
+      onMain: function () {
+        if (running) openChannelSession(p); else launchChannel(p, false);
+      },
+      disabled: !usable,
+      hint: p.label + ': its skill "' + p.skill + '" was not found in life-os',
+      kebabClass: 'lifeos-channel-menu-anchor',
+      kebabLabel: p.label + ' actions',
+    });
+    if (running || !usable) {
+      // Nothing to choose from: a running profile only opens, a broken one
+      // only reports. A menu with no live item would be a dead control.
+      row.kebab.remove();
+    } else {
+      row.li.appendChild(channelMenu.attach(p.id, row.kebab, [{
+        className: 'lifeos-channel-resume-btn', glyph: 'rotate-ccw',
+        label: 'Resume a ' + p.label + ' conversation', text: 'Resume',
+        onTap: function () { launchChannel(p, true); },
+      }]));
+    }
+    list.appendChild(row.li);
+  });
+  channelMenu.endRender();
+  const note = els.lifeOsChannelProblems;
+  note.hidden = problems.length === 0;
+  note.textContent = problems.join(' · ');
+}
+
+function openChannelSession(p) {
+  handleLaunchResponse({ session_id: p.session_id, kind: 'pty', name: p.label });
+}
+
+async function launchChannel(p, resume) {
+  // A Telegram session is a terminal on the phone: there is no detached form
+  // (the server refuses it), so say so instead of silently ignoring the switch.
+  if (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true') {
+    toast('Telegram sessions run in a terminal — turn Detached off.', 'error');
+    return;
+  }
+  const model = lifeOsModel();
+  const payload = { mode: 'pty', model: model, resume: resume };
+  applyLaunchSizePayload(payload);
+  try {
+    const tt = await ensureTerminalToken();
+    const body = await jsonApi(
+      '/api/life-os/channels/' + encodeURIComponent(p.id) + '/launch',
+      {
+        method: 'POST',
+        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
+        body: JSON.stringify(payload),
+      }
+    );
+    toast(
+      (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram' + modelTag(model),
+      'good',
+      { icon: resume ? 'rotate-ccw' : 'send-horizontal' }
+    );
+    fetchChannels().catch(function () {});
+    handleLaunchResponse(body.session);
+  } catch (exc) {
+    apiFailToast('Telegram launch failed', exc);
+    fetchChannels().catch(function () {});
   }
 }
 

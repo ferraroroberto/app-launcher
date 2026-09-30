@@ -297,6 +297,16 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "(#1036). The Life OS tab sends X-Terminal-Token on both.",
     ),
     (
+        lambda p: (
+            p.startswith("/api/life-os/channels/") and p.endswith("/launch")
+        ),
+        "passkey",
+        "Life OS Telegram channel launch (#1366): spawns a coding session with "
+        "a chat bot attached, so it is terminal-grade like the skill launch "
+        "above. The profile list (GET /api/life-os/channels) carries no path or "
+        "secret and stays token-gated.",
+    ),
+    (
         lambda p: p.startswith("/api/life-os/skills/") and p.endswith("/files"),
         "passkey",
         "Life OS per-skill file tree (#102) — same sensitivity as the file endpoint above.",

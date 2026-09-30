@@ -54,7 +54,8 @@ flowchart TB
       R_TRANSCRIPT["session_transcript.py — /api/claude-code/sessions/{sid}/transcript\npaginated typed transcript page (#953)"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n+ jobs_webhook_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab) launch\n+ life_os_conversations.py (history index/search/relaunch)\n+ life_os_files.py (path-jailed content browser,
-  /file/transcript: capture parsed to Chat entries)\n+ life_os_spawn.py (shared skill resolve + spawn tail)"]
+  /file/transcript: capture parsed to Chat entries)\n+ life_os_spawn.py (shared skill resolve + spawn tail)
++ life_os_channels.py (Telegram channel profiles, #1366)"]
       R_BOARD["board.py — /api/board (Board tab) + dispatch\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_SYSMAP["system_map.py — fleet map section"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]

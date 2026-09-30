@@ -97,6 +97,12 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "Forces a refresh of the cached GitHub issue/PR metadata the board "
         "already serves token-gated — no session or transcript access."
     ),
+    "/api/life-os/channels": (
+        "Telegram channel profile *list* (#1366) — profile ids, labels, skill "
+        "names and whether each is running. No state-directory path, token or "
+        "chat content; the Life OS tab renders it off-tailnet like the skills "
+        "list. The launch beside it (/channels/{id}/launch) is passkey-gated."
+    ),
     "/api/life-os/skills": (
         "Skill list — folder ids and public SKILL.md titles. The private "
         "subtrees behind them (/files, /conversations) are passkey-gated."
