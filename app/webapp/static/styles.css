@@ -3448,6 +3448,30 @@ body.terminal-open {
   border-radius: 50%;
   background: var(--muted);
 }
+/* An attach batch in flight (#1354). The image button swaps its glyph for an
+   hourglass over "N/M" and stays tappable (a second pick queues behind the
+   batch), so it is marked busy in the accent, never dimmed like a disabled
+   button. The status line above the compose bar says the same in words. */
+.compose-tools .compose-record.composer-image.is-uploading {
+  flex-direction: column;
+  gap: 1px;
+  color: var(--accent-text);
+  cursor: progress;
+}
+.composer-image.is-uploading .composer-upload-count {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1;
+}
+.composer-image.is-uploading::after { display: none; }
+.composer-upload-status {
+  padding: 4px 4px 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 /* Compose bar (issue #37): a predictive-keyboard text surface docked
    at the bottom of the overlay, between the xterm host and the status
    line. flex-shrink:0 lets it claim its height; the host (flex:1)

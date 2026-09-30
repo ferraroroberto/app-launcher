@@ -1355,3 +1355,42 @@ def session_log_path() -> Callable[[str], Path]:
         return sessions_dir / f"{sid}.log"
 
     return _path
+
+
+class HeldUploads:
+    """Route-mock an upload endpoint and answer each request when the test says.
+
+    The composer's attach queue (#1354) is a run of sequential requests; a
+    stub that answers at once leaves no moment in which "Uploading 2 of 3" is
+    on screen. Each request is parked here instead, and the test settles it
+    with :meth:`ok` / :meth:`fail` — so the state between two uploads is held
+    still for as long as an assertion needs, with no sleep to tune. Requests
+    keep their arrival order, and :attr:`count` is how many have arrived.
+    """
+
+    def __init__(self, page: Page, pattern: "re.Pattern[str]") -> None:
+        self._page = page
+        self.routes: list = []
+        page.route(pattern, lambda route: self.routes.append(route))
+
+    @property
+    def count(self) -> int:
+        return len(self.routes)
+
+    def wait_for(self, n: int, timeout_s: float = 15.0) -> None:
+        """Block until ``n`` requests have arrived (each poll lets the page run)."""
+        deadline = time.monotonic() + timeout_s
+        while len(self.routes) < n:
+            if time.monotonic() > deadline:
+                raise AssertionError(f"only {len(self.routes)} of {n} uploads arrived")
+            self._page.wait_for_timeout(50)
+
+    def ok(self, index: int, path: str) -> None:
+        self.routes[index].fulfill(
+            status=200, content_type="application/json", body=json.dumps({"path": path}),
+        )
+
+    def fail(self, index: int, detail: str) -> None:
+        self.routes[index].fulfill(
+            status=400, content_type="application/json", body=json.dumps({"detail": detail}),
+        )

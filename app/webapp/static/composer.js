@@ -86,12 +86,17 @@
  * them into one deduplicated text (overlapping shots merged), which lands in
  * the textarea for review.
  *
- * Attach (#41 / #366 / #448 / #450): uploads run sequentially (never
+ * Attach (#41 / #366 / #448 / #450 / #1354): uploads run sequentially (never
  * Promise.all — the append reads then writes the textarea), every path is
  * appended at the very end as its own paragraph regardless of the caret,
- * one summary toast fires per pick, and the textarea is refocused
- * synchronously inside the picker's `change` tick so iOS keeps the keyboard
- * up (WebKit honours .focus()→keyboard only inside a user-activation tick).
+ * and the textarea is refocused synchronously inside the picker's `change`
+ * tick so iOS keeps the keyboard up (WebKit honours .focus()→keyboard only
+ * inside a user-activation tick). The queue itself is attach-batch.js: a
+ * pick made mid-batch queues behind it in pick order, an oversize file is
+ * refused before any byte is sent, and one summary toast ends the run,
+ * naming each failure. While it runs the image button shows an hourglass
+ * with "N/M" and a status line above the textarea says "Uploading N of M"
+ * (neither takes focus, so the keyboard stays up).
  */
 
 import { apiFailToast, apiRaw, toast } from './api.js';
@@ -101,6 +106,7 @@ import { createRowMenu } from './row-menu.js';
 import { bindLongPressHint } from './long-press-hint.js';
 import { mountKeysPopover } from './terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
+import { createAttachQueue, summarize } from './attach-batch.js';
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
 // for a long dictated voice note (#165) without the bar eating the whole
@@ -142,6 +148,7 @@ function render(host, placeholder) {
       '<div class="ocr-thumbs"></div>' +
       '<button type="button" class="ocr-extract">' + icon('scan-text') + ' Extract text</button>' +
     '</div>' +
+    '<div class="composer-upload-status" role="status" aria-live="polite" hidden></div>' +
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +
@@ -162,6 +169,7 @@ function render(host, placeholder) {
     tray: host.querySelector('.ocr-tray'),
     thumbs: host.querySelector('.ocr-thumbs'),
     extract: host.querySelector('.ocr-extract'),
+    uploadStatus: host.querySelector('.composer-upload-status'),
     textarea: ta,
     mic: host.querySelector('.composer-mic'),
     keys: host.querySelector('.composer-keys'),
@@ -363,27 +371,50 @@ export function mountComposer(host, opts) {
     hasImage = true;
   }
 
-  async function attachFiles(files) {
+  // #1354: "N of M" on the image button and in the status line while the
+  // queue runs; both go back to rest when it drains. The button stays
+  // tappable (a second pick queues), so it is `aria-busy`, never `disabled`.
+  function showUploadProgress(p) {
+    if (!p) {
+      el.uploadStatus.hidden = true;
+      el.uploadStatus.textContent = '';
+      el.image.classList.remove('is-uploading');
+      el.image.removeAttribute('aria-busy');
+      el.image.innerHTML = icon('image');
+      return;
+    }
+    el.uploadStatus.hidden = false;
+    el.uploadStatus.textContent = 'Uploading ' + p.index + ' of ' + p.total + ' · ' + p.name;
+    el.image.classList.add('is-uploading');
+    el.image.setAttribute('aria-busy', 'true');
+    el.image.innerHTML = icon('hourglass') +
+      '<span class="composer-upload-count">' + p.index + '/' + p.total + '</span>';
+  }
+
+  const attachQueue = createAttachQueue({
+    upload: function (file) { return opts.upload(file); },
+    onAppend: appendPath,
+    onProgress: showUploadProgress,
+    onSettle: function (r) {
+      if (!r.total) return;
+      const s = summarize(r.ok, r.total, r.failures);
+      toast(s.text, s.tone, { icon: 'paperclip' });
+    },
+    log: function (e) {
+      console.info('[composer] upload', e.name, e.bytes + ' B', e.ms + ' ms',
+        e.ok ? 'ok' : 'failed: ' + e.reason);
+    },
+  });
+
+  function attachFiles(files) {
     const list = files ? Array.prototype.slice.call(files) : [];
-    if (!list.length) return;
+    if (!list.length) return Promise.resolve();
     // #450: refocus NOW, synchronously in the caller's gesture tick — the
     // native picker dismissed the keyboard, and a post-upload focus() lands
     // outside the gesture: the caret shows but the keyboard stays down, so
     // the whole composer drops to the screen bottom, out of thumb reach.
     try { el.textarea.focus(); } catch (_) {}
-    let ok = 0;
-    for (let i = 0; i < list.length; i++) {
-      const path = await opts.upload(list[i]);
-      if (path) { appendPath(path); ok++; }
-    }
-    if (!ok) return;
-    const plural = ok > 1;
-    toast(
-      'Uploaded ' + ok + ' file' + (plural ? 's' : '') +
-        ' — path' + (plural ? 's' : '') + ' added to the message.',
-      'good',
-      { icon: 'paperclip' }
-    );
+    return attachQueue.enqueue(list);
   }
 
   el.attachInput.addEventListener('change', function () {
