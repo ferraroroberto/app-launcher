@@ -28,7 +28,7 @@ const STATUS_NAME = {
 // Why a session's Changed files could not be read, in the panel's words.
 const SESSION_REASON = {
   no_transcript: 'No transcript for this session',
-  unsupported_agent: 'Changed files is available for Claude sessions',
+  unsupported_agent: 'Changed files is not available for this agent',
   session_not_found: 'This session has ended',
   session_host_unreachable: 'The session host is unreachable',
 };
@@ -149,11 +149,16 @@ async function loadSessionDiff(file, body) {
     const label = document.createElement('div');
     label.className = 'chg-step muted small';
     const when = stepTime(step.timestamp);
-    label.textContent = (step.created ? 'Created' : 'Edit ' + (i + 1) + ' of ' + file.steps) +
+    label.textContent = (step.deleted ? 'Deleted' : step.created ? 'Created' : 'Edit ' + (i + 1) + ' of ' + file.steps) +
       (when ? ' · ' + when : '');
     body.appendChild(label);
-    body.appendChild(renderHunks(step.diff));
+    if (!step.deleted) body.appendChild(renderHunks(step.diff));
   });
+  // Most agents record only an edit's own text, so their diffs have no line
+  // numbers (#1356); say so once rather than leaving a missing gutter unexplained.
+  if (steps.some(function (s) { return !s.deleted && s.diff && s.diff.hunks.length && !s.diff.numbered; })) {
+    body.insertAdjacentHTML('beforeend', note('This agent’s diffs carry no line numbers'));
+  }
   if (res.truncated) body.insertAdjacentHTML('beforeend', note('Diff truncated at 200 KB'));
 }
 
@@ -252,7 +257,7 @@ function renderSession(body) {
   hideState();
   list.appendChild(summaryLine(files, body.counts || {}, 'from this session’s transcript'));
   if (body.partial) {
-    list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest 256 MB were read'));
+    list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest part was read'));
   }
   if (!body.project_exists) {
     list.insertAdjacentHTML('beforeend',

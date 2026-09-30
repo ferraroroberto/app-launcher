@@ -28,21 +28,22 @@ The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle
 - **Rename · Copy link · Stop and kill** — always.
 - **Show tool calls**, **Load new** and **Reload** — while Chat is showing.
 - **Compact** — for a Claude session. One tap sends `/compact` through the same verified input route as Chat's Send, in either mode, and the toast says whether it landed.
-- **Changed files** — for a Claude session, in either mode. See [Changed files](#changed-files).
+- **Changed files** — for any agent with a transcript reader, in either mode. See [Changed files](#changed-files).
 
 The phone's floating tab bar hides while the session view is open.
 
 ## Changed files
 
-The ⋮ menu's **Changed files** (Claude sessions) lists every file this session's edits created, modified or deleted, in the same panel as the Coding tab's Show changes, so the two viewers match (#1349):
+The ⋮ menu's **Changed files** lists every file this session's edits created, modified or deleted, in the same panel as the Coding tab's Show changes, so the two viewers match (#1349):
 
 - The summary line says what was read: `3 files · +9 −3 · from this session's transcript`.
 - Each file carries a badge — **A** created by the session, **M** modified, **D** deleted — and its `+N −M`. The totals are the sum of the Chat steps' own counts; a failed step counts nowhere.
-- Tapping a file opens each of the session's edits to it, in order, labelled *Created* / *Edit 2 of 3* with the time, each drawn like a Chat step.
+- Tapping a file opens each of the session's edits to it, in order, labelled *Created* / *Edit 2 of 3* / *Deleted* with the time, each drawn like a Chat step. Claude's diffs are numbered; the other agents record only an edit's own text, so theirs show no line numbers and the panel says so.
 - **Built from the transcript, never `git diff`.** The working tree mixes this session's edits with any other work in the folder, and shows nothing once the work is committed or a worktree removed; the transcript still holds after both.
-- **Deleted is best effort.** The session only deletes through shell commands, which record no diff, so **D** means "the session edited it and it is no longer on disk". With the project folder itself gone (a removed worktree) nothing is marked deleted, and the panel says why.
-- **Bounded:** one read of the transcript per open, parsing only its edit lines (about 0.1 s for a 111 MB file), and at most its newest 256 MB, which the panel says when it applies. It does not update itself; ↻ re-reads.
-- A session with no edits, no transcript, or one that has ended each gets its own sentence. Other agents' edits show per step in Chat only, for now.
+- **Deleted is mostly best effort.** Apart from a Codex patch's own *Delete File* step, the session deletes through shell commands, which record no diff, so **D** usually means "the session edited it and it is no longer on disk". With the project folder itself gone (a removed worktree) nothing is marked deleted, and the panel says why.
+- **Bounded:** one read of the transcript per open, and at most its newest part, which the panel says when it applies. Claude's fold parses only its recorded-diff lines (about 0.1 s for a 111 MB file, newest 256 MB). Every other agent's fold runs the same entry reader Chat uses, in 16 MiB windows over at most the newest 64 MiB (the largest Codex rollout on the dev box, 33.8 MB, takes 0.22 s). It does not update itself; ↻ re-reads.
+- **Other agents (#1356).** Codex, Pi, Grok, Antigravity and Copilot edits are folded from the steps Chat already draws, skipping any step the harness marked failed, so the totals equal the sum of the Chat steps. Codex edits through `apply_patch`, direct or inside an `exec` script; a patch that Codex rejected (its own `apply_patch verification failed` message) counts nowhere. Codex, Antigravity and Copilot record only some tool failures (see Chat's outcome note), so a failed edit they did not mark still counts. Relative paths (a Codex patch names files from its working folder) are resolved against the session's project folder. Copilot's `apply_patch` tool is not recognised yet (only `edit` and `create`, whose keys were probed).
+- A session with no edits, no transcript, or one that has ended each gets its own sentence.
 
 ## Stop and kill
 

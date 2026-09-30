@@ -710,8 +710,9 @@ TOOL_ERRORS_NONE = "none"
 FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey, str]] = {
     # `is_error` on every `tool_result` block.
     "claude": (claude_entries, _claude_line_key, TOOL_ERRORS_REPORTED),
-    # No success/error field at any level — see the reader's own comment.
-    "codex": (codex_entries, _codex_line_key, TOOL_ERRORS_NONE),
+    # No success/error field at any level — see the reader's own comment; a
+    # rejected `apply_patch` states so in its fixed tool message (#1356).
+    "codex": (codex_entries, _codex_line_key, TOOL_ERRORS_PARTIAL),
     # `status: "failed"` on the `tool_call_update` that carries the result.
     "grok": (grok_entries, _grok_line_key, TOOL_ERRORS_REPORTED),
     # `isError` on every `toolResult` message.

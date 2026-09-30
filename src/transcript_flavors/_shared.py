@@ -80,14 +80,21 @@ _READ_TOOLS = {
     "Read": "file_path", "read": "path", "read_file": "target_file",
     "view_file": "AbsolutePath", "view": "path",
 }
+# Each argument is a tuple of key names, the first one present wins: the same
+# tool name carries different keys per harness (Pi's ``write`` takes ``path``,
+# Grok's ``file_path``). Every key was read from a real call or the harness's
+# own tool schema (#1356), never guessed.
 _WRITE_TOOLS = {
-    "Write": ("file_path", "content"), "write": ("path", "content"),
-    "write_to_file": ("TargetFile", "CodeContent"),
+    "Write": (("file_path",), ("content",)),
+    "write": (("path", "file_path"), ("content",)),    # Pi / Grok
+    "write_to_file": (("TargetFile",), ("CodeContent",)),
+    "create": (("path",), ("file_text",)),             # Copilot
 }
 _EDIT_TOOLS = {
-    "Edit": ("file_path", "old_string", "new_string"),
-    "MultiEdit": ("file_path", "old_string", "new_string"),   # Claude: a list under `edits`
-    "edit": ("path", "oldText", "newText"),           # Pi: one pair, or a list under `edits`
+    "Edit": (("file_path",), ("old_string",), ("new_string",)),
+    "MultiEdit": (("file_path",), ("old_string",), ("new_string",)),   # Claude: a list under `edits`
+    "edit": (("path",), ("oldText", "old_str"), ("newText", "new_str")),   # Pi (one pair, or a list under `edits`) / Copilot
+    "search_replace": (("file_path",), ("old_string",), ("new_string",)),  # Grok
 }
 ACTION_COMMAND_CAP = 2_000
 
@@ -205,6 +212,8 @@ def cap_diff(hunks: List[Hunk], max_bytes: int, max_lines: Optional[int] = None)
 
 def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[Dict[str, Any]]:
     """``{"verb": "ran" | "edited" | "wrote" | "read", ...}`` for a known tool, else None.
+    (A Codex ``apply_patch`` step can also be ``"deleted"``: built in
+    ``codex.py``, not here, since it has no tool-input shape of its own.)
 
     ``raw_text`` marks an input that is the command itself (Codex's ``exec``
     custom tool), never a JSON argument string.
@@ -215,19 +224,26 @@ def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[
     if not isinstance(inputs, dict):
         return None
 
-    def text(key: str) -> Optional[str]:
-        value = inputs.get(key)
-        return value if isinstance(value, str) and value.strip() else None
+    def first(keys: Tuple[str, ...], source: Dict[str, Any]) -> Optional[str]:
+        return next((k for k in keys if k in source), None)
+
+    def text(keys: Tuple[str, ...]) -> Optional[str]:
+        for key in keys:
+            value = inputs.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        return None
 
     if name in _COMMAND_TOOLS:
-        command = text(_COMMAND_TOOLS[name])
+        command = text((_COMMAND_TOOLS[name],))
         return {"verb": "ran", "command": _cap(command.strip(), ACTION_COMMAND_CAP)[0]} if command else None
     if name in _READ_TOOLS:
-        path = text(_READ_TOOLS[name])
+        path = text((_READ_TOOLS[name],))
         return {"verb": "read", "path": path} if path else None
     if name in _WRITE_TOOLS:
-        path_key, body_key = _WRITE_TOOLS[name]
-        path, body = text(path_key), inputs.get(body_key)
+        path_keys, body_keys = _WRITE_TOOLS[name]
+        path, body_key = text(path_keys), first(body_keys, inputs)
+        body = inputs.get(body_key) if body_key else None
         if not path or not isinstance(body, str):
             return None
         return _with_diff(
@@ -235,10 +251,13 @@ def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[
             _added_hunks(body),
         )
     if name in _EDIT_TOOLS:
-        path_key, old_key, new_key = _EDIT_TOOLS[name]
-        path = text(path_key)
-        edits = [inputs] if old_key in inputs else [e for e in inputs.get("edits") or [] if isinstance(e, dict)]
-        pairs = [(e.get(old_key), e.get(new_key)) for e in edits]
+        path_keys, old_keys, new_keys = _EDIT_TOOLS[name]
+        path = text(path_keys)
+        edits = [inputs] if first(old_keys, inputs) else [e for e in inputs.get("edits") or [] if isinstance(e, dict)]
+        pairs = []
+        for e in edits:
+            old_key, new_key = first(old_keys, e), first(new_keys, e)
+            pairs.append((e.get(old_key) if old_key else None, e.get(new_key) if new_key else None))
         pairs = [(o, n) for o, n in pairs if isinstance(o, str) and isinstance(n, str)]
         if not path or not pairs:
             return None

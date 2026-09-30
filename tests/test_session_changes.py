@@ -1,5 +1,6 @@
 """A session's Changed files (#1349): every file its edits touched, folded
-from the transcript — never git.
+from the transcript — never git. The Claude fold and its routes; the other
+agents' fold is ``test_session_changes_flavors.py`` (#1356).
 
 Every path, id and line of content here is synthetic.
 """
@@ -217,14 +218,12 @@ class TestChangedFilesEndpoints:
                           params={"path": "C:/Windows/win.ini"}).json()
         assert body["available"] is False and body["reason"] == "file_not_found"
 
-    def test_other_agents_are_unsupported(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+    def test_an_agent_without_a_transcript_reader_is_unsupported(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
         client, _, overrides = webapp_client
         project = tmp_path / "proj"
-        path = _session(tmp_path, project)
-        _serve(overrides, monkeypatch, path, project, agent="pi")
-        monkeypatch.setattr(
-            "app.webapp.routers.session_transcript.find_pi_transcript", lambda sid: path,
-        )
+        _serve(overrides, monkeypatch, _session(tmp_path, project), project, agent="aider")
         body = client.get("/api/claude-code/sessions/s1/changed-files").json()
         assert body["available"] is False and body["reason"] == "unsupported_agent"
 

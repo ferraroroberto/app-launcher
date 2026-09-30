@@ -235,9 +235,10 @@ def test_codex_failure_is_left_unmarked_not_guessed(tmp_path: Path):
 
     A failing call and a working one differ only in the English word inside
     ``output`` — "Script failed" vs "Script completed" — and reading that
-    would be the first content-sniffing rule in any reader here. The flavour
-    declares ``none`` instead, which is what makes the client say "can't
-    tell" rather than letting silence read as success.
+    would be a content-sniffing rule (the one exception is a rejected
+    ``apply_patch``, whose own fixed message is read, #1356). The flavour
+    declares ``partial``, which is what makes the client say "can't tell"
+    rather than letting silence read as success.
     """
     path = _write_jsonl(tmp_path / "rollout.jsonl", [
         _codex({"type": "function_call", "name": "shell",
@@ -249,7 +250,7 @@ def test_codex_failure_is_left_unmarked_not_guessed(tmp_path: Path):
     assert _kinds(entries) == ["tool_call"]
     assert "error" not in entries[0]
     assert "regex parse error" in entries[0]["result"]
-    assert st.FLAVORS["codex"][2] == st.TOOL_ERRORS_NONE
+    assert st.FLAVORS["codex"][2] == st.TOOL_ERRORS_PARTIAL
 
 
 def test_every_flavour_declares_its_tool_error_fidelity():
