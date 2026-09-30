@@ -17,6 +17,10 @@ question. A ``ref`` shaped ``repo#N`` (or ``#N`` beside a ``repo``) gains a
 ``ref_url`` on the configured GitHub owner; any other ref stays plain text.
 Queue rows gain a ``ref_url`` the same way, for the card's title-first rows
 (#1297), where the repo and number are the secondary, linked text.
+
+Lane and queue rows may carry an optional ``model`` (``opus`` | ``sonnet``,
+#1352). It passes through unvalidated for the card's quiet chip; anything but
+a string reads as blank.
 """
 
 from __future__ import annotations
@@ -31,9 +35,12 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_VERSION = 1
 
-_LANE_FIELDS = ("repo", "session", "item", "status")
-_QUEUE_FIELDS = ("repo", "ref", "title", "status", "note")
+_LANE_FIELDS = ("repo", "session", "item", "status", "model")
+_QUEUE_FIELDS = ("repo", "ref", "title", "status", "note", "model")
 _WAITING_FIELDS = ("text", "ref", "repo", "detail", "recommendation")
+# Read only when the chief wrote a string: a number here is a wrong type, not
+# a label to show (#1352).
+_STRING_ONLY_FIELDS = frozenset({"model"})
 MAX_OPTIONS = 4
 _REF = re.compile(r"^([A-Za-z0-9._-]*)#(\d+)$")
 
@@ -45,12 +52,20 @@ def _text(value: Any) -> str:
     return " ".join(str(value).split())
 
 
+def _field(entry: Mapping[str, Any], name: str) -> str:
+    """One row field as text; a string-only field of any other type is blank."""
+    value = entry.get(name)
+    if name in _STRING_ONLY_FIELDS and not isinstance(value, str):
+        return ""
+    return _text(value)
+
+
 def _rows(value: Any, fields: Sequence[str]) -> List[Dict[str, str]]:
     """The dict entries of a list, each cut down to ``fields``."""
     if not isinstance(value, list):
         return []
     return [
-        {name: _text(entry.get(name)) for name in fields}
+        {name: _field(entry, name) for name in fields}
         for entry in value
         if isinstance(entry, Mapping)
     ]

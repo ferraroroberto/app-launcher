@@ -2400,12 +2400,15 @@ _PLAN_V1 = {
     "version": 1,
     "updated_at": "2026-09-26T14:40:00Z",
     "future_field": {"ignored": True},
-    "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate", "extra": 1}],
+    "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate", "extra": 1,
+               "model": "opus"}],
     "queue": [
-        {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": ""},
+        {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": "",
+         "model": "sonnet"},
         "not a row",
         {"repo": "automation", "ref": "#135", "title": "parking burst\ttrial", "status": "someday",
-         "note": ["not", "text"]},
+         "note": ["not", "text"], "model": 5},
+        {"repo": "automation", "ref": "#136", "title": "no model", "status": "queued"},
     ],
     "waiting_on_roberto": [{"text": "Remember the last tab?", "ref": "app-launcher#1131"}],
 }
@@ -2423,12 +2426,17 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
     assert plan == {
         "state": "ok",
         "updated_at": "2026-09-26T14:40:00Z",
-        "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate"}],
+        "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate",
+                   "model": "opus"}],
+        # `model` (#1352): a string reads through; a wrong type (5) or a
+        # missing value reads as blank.
         "queue": [
             {"repo": "app-launcher", "ref": "#1273", "title": "Chat by default", "status": "gate", "note": "",
-             "ref_url": ""},
+             "model": "sonnet", "ref_url": ""},
             {"repo": "automation", "ref": "#135", "title": "parking burst trial", "status": "someday",
-             "note": "", "ref_url": ""},
+             "note": "", "model": "", "ref_url": ""},
+            {"repo": "automation", "ref": "#136", "title": "no model", "status": "queued",
+             "note": "", "model": "", "ref_url": ""},
         ],
         # An old text-only item reads as a free-text question (#1295).
         "waiting_on_roberto": [{
@@ -2477,6 +2485,7 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
     assert [q["ref_url"] for q in plan["queue"]] == [
         "https://github.com/octo/app-launcher/issues/1273",
         "https://github.com/octo/automation/issues/135",
+        "https://github.com/octo/automation/issues/136",
     ]
     first, second, third = plan["waiting_on_roberto"]
     assert first == {
@@ -2508,7 +2517,7 @@ def test_api_board_chief_plan_reads_the_configured_file_behind_board_auth(webapp
     assert client.get("/api/board/chief-plan").json() == {"state": "empty"}
     plan_file.write_text(json.dumps(_PLAN_V1), encoding="utf-8")
     body = client.get("/api/board/chief-plan").json()
-    assert body["state"] == "ok" and [q["ref"] for q in body["queue"]] == ["#1273", "#135"]
+    assert body["state"] == "ok" and [q["ref"] for q in body["queue"]] == ["#1273", "#135", "#136"]
     owner = app.state.webapp_config.github_owner
     assert body["waiting_on_roberto"][0]["ref_url"] == f"https://github.com/{owner}/app-launcher/issues/1131"
 
