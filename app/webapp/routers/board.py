@@ -71,6 +71,7 @@ from src import (
     chief_plan,
     dispatch_brief,
     github_client,
+    jobs_snapshot,
     quota_usage,
     session_client,
 )
@@ -277,6 +278,9 @@ async def get_board(request: Request) -> Dict[str, Any]:
             "count": len(active_issues["rows"]),
         },
         "quota_lines": quota_lines,
+        # Age of the jobs runtime snapshot the job cards came from (#1324),
+        # so a stale one can never pass for current.
+        "jobs_snapshot": jobs_snapshot.latest_description(),
     }
 
 

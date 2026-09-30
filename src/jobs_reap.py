@@ -33,10 +33,10 @@ never triggers a re-entrant mutex-queue spawn off stale information:
 - :func:`reap_stranded_runs` — the above, plus draining the job's mutex
   queue once if anything was reaped. Safe from a pure read/refresh context
   that isn't deciding an admission itself:
-  ``app/webapp/routers/jobs.py::_decorate_job`` (every ``/api/jobs`` poll)
-  and ``src.board.jobs_attention``. Mirrors
-  :func:`src.app_runtime.prune_dead`'s lazy-on-read pattern rather than a
-  background sweep loop.
+  ``src.jobs_snapshot.compute_job``, the one walk behind the ``/api/jobs``
+  and ``/api/board`` polls (#1324), rebuilt by a tick only while those polls
+  are asking, and a single-job ``_decorate_job``. Still lazy-on-read in
+  spirit (:func:`src.app_runtime.prune_dead`): nobody polling, nothing reaped.
 
 The reconciler discovers a death lazily — sometimes hours after the process
 actually exited (issue #747: the machine had no live user session to poll

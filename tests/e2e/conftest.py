@@ -46,7 +46,7 @@ from typing import Callable, IO, Iterator, List, Optional, Tuple
 import psutil
 import pytest
 import requests
-from playwright.sync_api import BrowserContext, Page, expect
+from playwright.sync_api import BrowserContext, Locator, Page, expect
 
 from src.git_utils import run_git
 from src.scanner import dir_ignored, slugify
@@ -171,13 +171,16 @@ def stable_read(read: Callable[[], object], attempts: int = 50,
     from ``getComputedStyle`` (shorthand *and* longhand) and ``None`` from
     ``bounding_box()``; ``scrollWidth``/``clientWidth`` both read ``0``.
 
-    The Board is exactly such a surface — ``renderBoard()`` unconditionally
-    calls ``list.replaceChildren()`` on every column, and ``fetchBoard()``
-    re-renders every ``BOARD_POLL_MS`` (5 s) while the Board tab is up with no
-    drawer open. So a board test that runs longer than 5 s *will* eventually
-    read across a rebuild (#680: measured 3 bad reads in 700 with every fetch
-    stubbed, at the 5 s cadence). Auto-retrying ``expect()`` assertions
-    re-resolve and are immune; these raw reads are not.
+    The Board is exactly such a surface — ``renderBoard()`` builds a fresh
+    ``<li>`` for every card on every render (``placeChildren()`` keeps only an
+    open drawer's), and it renders on the 5 s ``BOARD_POLL_MS`` poll *and*
+    whenever a late boot fetch (``/api/apps``, ``/api/status``) lands. So a
+    board test can read across a rebuild at any time, and more often on a
+    loaded box, where those fetches land later (#680: measured 3 bad reads in
+    700 with every fetch stubbed, at the 5 s cadence; #1346). Auto-retrying
+    ``expect()`` assertions re-resolve and are immune; these raw reads are not.
+    A script evaluated on a card goes through :func:`stable_eval`, which also
+    refuses the detached node such a rebuild leaves behind.
 
     Returns the first read that isn't one of those artifacts, so the caller
     asserts on a real measurement. Assertion strength is unchanged — only
@@ -191,6 +194,24 @@ def stable_read(read: Callable[[], object], attempts: int = 50,
             return value
         time.sleep(interval_s)
     return value
+
+
+def stable_eval(locator: Locator, script: str, attempts: int = 50,
+                interval_s: float = 0.1) -> object:
+    """:func:`stable_read` of ``locator.evaluate(script)`` on the live node only.
+
+    ``script`` is a one-argument JS function (``"el => ..."``). A rebuild that
+    lands between Playwright resolving the locator and running the script
+    leaves the script a *detached* node (#1346): ``querySelector`` still finds
+    its children, but every ``getBoundingClientRect()`` is all zeros and
+    ``closest()`` finds no ancestor. That read is a real-looking wrong number
+    (a "0px tall" title) or a ``TypeError``, and neither is an artifact
+    :func:`stable_read` knows to skip. Checking ``isConnected`` in the same
+    JS task as the measurement turns it into ``None``, which is retried
+    against the freshly rendered node; nothing can re-render in between.
+    """
+    guarded = f"(el) => el.isConnected ? ({script})(el) : null"
+    return stable_read(lambda: locator.evaluate(guarded), attempts, interval_s)
 
 
 def _free_tcp_port() -> int:

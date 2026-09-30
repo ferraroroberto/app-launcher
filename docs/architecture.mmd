@@ -104,6 +104,7 @@ life-os.js, life-os-viewer.js, voice.js"]
     JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
     JOBSOUTCOME["jobs_outcome.py\nexit code → success / failed / unconfirmed (#916)"]
     JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
+    JOBSSNAPSHOT["jobs_snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
     JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
@@ -163,6 +164,11 @@ life-os.js, life-os-viewer.js, voice.js"]
   NOTIFY --> JOBSOUTCOME
   BOARD --> JOBSOUTCOME
   WSERVER -->|"lifespan coverage tick (#697)"| JOBSCOVERAGE
+  WSERVER -->|"lifespan snapshot tick, while polled (#1324)"| JOBSSNAPSHOT
+  R_JOBS --> JOBSSNAPSHOT
+  BOARD --> JOBSSNAPSHOT
+  JOBSSNAPSHOT --> JOBSFACADE
+  JOBSHISTORY -->|"run.json written here: mark dirty"| JOBSSNAPSHOT
   WSERVER -->|"lifespan daily retention tick (#902)"| SESSRETENTION
   SESSRETENTION --> AUDIT
   SESSRETENTION -->|"live session list"| SESSCLIENT

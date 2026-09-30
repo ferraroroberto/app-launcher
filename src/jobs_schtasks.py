@@ -821,18 +821,30 @@ def _bulk_records(
 
 def _cached_bulk_records(
     runner: Optional[Callable[[List[str]], subprocess.CompletedProcess]] = None,
+    *,
+    max_age: Optional[float] = None,
 ) -> Optional[Dict[str, Dict[str, Any]]]:
-    """Return the bulk record map, refreshing the cache on TTL miss."""
+    """Return the bulk record map, refreshing the cache on TTL miss.
+
+    ``max_age`` refreshes earlier than the TTL: the jobs snapshot tick
+    (#1324) warms it before it expires, so a poll never pays the query.
+    """
     global _next_run_cache
     now = time.monotonic()
+    limit = _NEXT_RUN_TTL_SECONDS if max_age is None else max_age
     with _next_run_lock:
         if _next_run_cache is not None:
             ts, snapshot = _next_run_cache
-            if now - ts < _NEXT_RUN_TTL_SECONDS:
+            if now - ts < limit:
                 return snapshot
         fresh = _bulk_records(runner=runner)
         _next_run_cache = (now, fresh)
         return fresh
+
+
+def warm_bulk_records(ahead_seconds: float) -> None:
+    """Refresh the bulk ``schtasks`` cache if it expires within ``ahead_seconds``."""
+    _cached_bulk_records(max_age=max(0.0, _NEXT_RUN_TTL_SECONDS - ahead_seconds))
 
 
 def _cached_bulk_next_runs(

@@ -65,7 +65,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import instance_role, launcher, session_client
+from src import instance_role, jobs_snapshot, launcher, session_client
 from src.app_config import load_app_config
 from src.static_versioning import (
     compute_asset_hashes,
@@ -351,7 +351,10 @@ async def _session_retention_tick(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
-    tasks = []
+    # The jobs runtime snapshot behind /api/jobs and /api/board (#1324). It
+    # only walks while those polls are asking, so every instance runs it:
+    # the reads it serves happen on every instance too.
+    tasks = [asyncio.create_task(jobs_snapshot.tick_forever())]
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
     if cfg is not None and canonical:

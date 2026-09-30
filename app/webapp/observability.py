@@ -7,6 +7,9 @@ This middleware leaves one, in ``webapp/slow-requests.log``:
 * one line per request slower than ``LAUNCHER_SLOW_REQUEST_S`` (default 3 s):
   method, path, status, elapsed, and how many other requests were still in
   flight when it finished;
+* one line per hot-path GET (``/``, ``/api/jobs``, ``/api/board``) over its
+  :data:`HOT_PATH_BUDGET_S` budget (#1324), so a regression in the paths the
+  phone opens on is on disk before anyone notices it by feel;
 * a rate-limited in-flight line whenever a new request arrives while more
   than ``LAUNCHER_INFLIGHT_WARN`` (default 16) are already in flight — with
   the age + path of the oldest, enough to tell "event-loop blocked" from
@@ -41,6 +44,11 @@ DEFAULT_INFLIGHT_WARN = 16
 # Floor between two in-flight breadcrumbs, so a hammered server logs a
 # heartbeat, not a flood.
 _INFLIGHT_LOG_INTERVAL_S = 30.0
+# The phone's hot paths (#1324): what opening the app and its two busiest
+# tabs hits. They answer from memory in tens of milliseconds, so going over
+# this is a regression worth a line long before it reaches the 3 s floor.
+# Written to the same file, since the webapp's own log is discarded.
+HOT_PATH_BUDGET_S = {"/": 0.25, "/api/jobs": 0.25, "/api/board": 0.5}
 
 
 def ensure_slow_log_handler() -> None:
@@ -124,6 +132,14 @@ class SlowRequestLogMiddleware:
                     status_holder["status"] or "?",
                     elapsed,
                     len(self._inflight),
+                )
+            elif method == "GET" and elapsed >= HOT_PATH_BUDGET_S.get(path, float("inf")):
+                slow_logger.warning(
+                    "⏱️ over budget: GET %s → %s in %.2fs (budget %.2fs)",
+                    path,
+                    status_holder["status"] or "?",
+                    elapsed,
+                    HOT_PATH_BUDGET_S[path],
                 )
 
     def _maybe_log_inflight(self, now: float) -> None:
