@@ -597,7 +597,7 @@ export function wireSessions() {
     els.codingChiefResume.addEventListener('click', function () {
       runChiefAction({
         button: els.codingChiefResume, label: 'Resume', fresh: false, resume: true,
-        onDone: fetchSessions,
+        restart: true, onDone: fetchSessions,
       });
     });
   }

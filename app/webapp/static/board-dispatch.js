@@ -94,12 +94,15 @@ export function chiefSessionId() {
 // chat message instead, which is an ordinary Start-equivalent choice, not a
 // race — the resumable conversation's state row survives untouched either
 // way (pruned only after 24h, per _find_resumable_chief_session_id).
-export async function ensureChief(fresh, resume, ifAbsent) {
+//
+// `restart` (#1351) is the explicit intent to stop a live chief; `resume`
+// alone keeps one, so a stale page's send can never replace it server-side.
+export async function ensureChief(fresh, resume, restart) {
   const tt = await ensureTerminalToken();
   const payload = {};
   if (fresh) payload.fresh = true;
   if (resume) payload.resume = true;
-  if (ifAbsent) payload.if_absent = true;
+  if (restart) payload.restart = true;
   // Same size contract as every launch (issue #374).
   applyLaunchSizePayload(payload);
   return jsonApi('/api/board/chief/ensure', {
@@ -118,15 +121,17 @@ export async function ensureChief(fresh, resume, ifAbsent) {
 // "Chief started" / "Chief already running") and whether the crown icon is
 // unconditional (resume/restart) or gated on an actual spawn (start).
 // `confirmMessage`, when given, gates the whole action on `confirm()` before
-// anything else runs (Restart's are-you-sure).
+// anything else runs (Restart's are-you-sure). `restart` is passed through to
+// ensureChief (the Resume buttons' stop-a-live-chief intent, #1351).
 export async function runChiefAction({
-  button, label, fresh, resume, onDone, useTimer = false, confirmMessage,
+  button, label, fresh, resume, restart = false, onDone, useTimer = false,
+  confirmMessage,
 }) {
   if (confirmMessage && !confirm(confirmMessage)) return;
   button.disabled = true;
   const stopTimer = useTimer ? startWorkTimer(button, label) : null;
   try {
-    const body = await ensureChief(fresh, resume);
+    const body = await ensureChief(fresh, resume, restart);
     const text = resume
       ? (body.resumed ? 'Chief resumed' : 'No resumable conversation — started fresh')
       : (body.spawned ? 'Chief started' : 'Chief already running');
@@ -308,10 +313,9 @@ export async function sendToChief(text) {
   // Restart did before #649/#650 — this is in fact the most likely path a
   // user takes after a session-host restart, since chat mode reads as
   // conversational and the Start/Resume status row is easy to not notice.
-  // ifAbsent (#1351): resume only when no chief is alive. `resume` alone
-  // stop-and-resumes a live chief, so every answer restarted the chief that
-  // asked the question.
-  const ensured = await ensureChief(false, true, true);
+  // Never `restart` (#1351): with a chief alive the text lands in it — a
+  // restart here would drop the in-flight turn of the chief being answered.
+  const ensured = await ensureChief(false, true);
   const tt = await ensureTerminalToken();
   await jsonApi(
     '/api/claude-code/sessions/' + encodeURIComponent(ensured.session_id) + '/input',
@@ -430,10 +434,13 @@ function wireChief() {
     // resume=true (#633): reattach the most recent chief conversation
     // (direct claude --resume <id>, label declared at spawn) instead of
     // starting fresh — falls back to a fresh spawn server-side when no
-    // resumable conversation is found, never a hard failure.
+    // resumable conversation is found, never a hard failure. restart=true
+    // (#1351): the button is only shown with no chief alive, but if one came
+    // up meanwhile it is still stopped and resumed, as before — `resume`
+    // alone now keeps a live chief.
     runChiefAction({
       button: els.boardChiefResume, label: 'Resume', fresh: false, resume: true,
-      useTimer: true, onDone: afterEnsure,
+      restart: true, useTimer: true, onDone: afterEnsure,
     });
   });
   els.boardChiefRestart.addEventListener('click', function () {

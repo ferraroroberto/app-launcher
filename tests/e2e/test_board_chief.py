@@ -358,8 +358,8 @@ def test_chat_mode_send_ensures_with_resume_and_toasts_outcome(
     assert ensured["body"].get("fresh") is not True, (
         "chat send must never force-kill a live chief"
     )
-    # #1351: resume only when no chief is alive — never stop-and-resume one.
-    assert ensured["body"].get("if_absent") is True
+    # #1351: a send never asks to stop a live chief.
+    assert ensured["body"].get("restart") is not True
     expect(authed_page.locator("#toast")).to_contain_text(toast)
 
 
@@ -381,6 +381,28 @@ def test_chat_mode_offers_manual_start_when_chief_down(
     start.click()
     authed_page.wait_for_timeout(500)
     assert ensured.get("method") == "POST", "Start never POSTed ensure"
+
+
+def test_resume_button_sends_explicit_restart_intent(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1351: ``resume`` alone now keeps a live chief server-side, so the
+    Resume button carries ``restart`` to keep #633's stop-then-resume when a
+    chief came up after the button was drawn."""
+    _mock_board(authed_page, _board_payload(with_chief=False))
+    ensured: dict = {}
+    _mock_ensure(authed_page, ensured, spawned=True, resumed=True)
+
+    _open_board(authed_page, base_url)
+    _enter_chat_mode(authed_page)
+
+    resume = authed_page.locator("#boardChiefResume")
+    expect(resume).to_be_visible()
+    resume.click()
+    expect(authed_page.locator("#toast")).to_contain_text("Chief resumed")
+    assert ensured.get("body", {}).get("resume") is True
+    assert ensured["body"].get("restart") is True
+    assert ensured["body"].get("fresh") is not True
 
 
 @pytest.mark.parametrize("resumed, fallback_reason, toast", [
@@ -821,8 +843,8 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
     expect(dialog).to_be_hidden()
     assert ensured.get("body", {}).get("fresh") is not True, "answers must never restart the chief"
-    # #1351: resume alone stop-and-resumed the live chief that asked.
-    assert ensured["body"].get("if_absent") is True, "answers must keep a live chief"
+    # #1351: answers must keep the live chief that asked.
+    assert ensured["body"].get("restart") is not True, "answers must keep a live chief"
     assert posts == [{
         "data": (
             "Answers from the Board (2 of 3):\n"
