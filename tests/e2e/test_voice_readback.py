@@ -235,9 +235,11 @@ def test_speak_button_in_toolbar(
         authed_page.locator(".terminal-bar-actions #terminalSpeak")
     ).to_have_count(1)
     expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
-    # Document order: 🔊 Speak → ⋮ menu, the group's last control.
+    # Document order: 🔊 Speak → ⋮ menu, the group's last control. Scoped to
+    # the session bar: the Show changes panel's own bar sits after it in the
+    # DOM since #1349.
     order = authed_page.eval_on_selector_all(
-        ".terminal-bar-actions .term-btn", "els => els.map(e => e.id)"
+        "#terminalOverlay .terminal-bar-actions .term-btn", "els => els.map(e => e.id)"
     )
     assert order.index("terminalMenu") == order.index("terminalSpeak") + 1
     assert order[-1] == "terminalMenu"
