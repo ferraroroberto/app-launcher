@@ -1611,7 +1611,7 @@
           <p id="channelSkills" class="channel-skill-chips"></p>
           <h4 class="context-filter-subhead">Setup, in order</h4>
           <ol class="channel-steps">
-            <li>In <strong>@BotFather</strong> create <strong>one bot per profile</strong> (for a group chat also <code>/setprivacy</code> → Disable). A bot token allows only one listener, so two sessions on one bot fight — never share one.</li>
+            <li>In <strong>@BotFather</strong> create <strong>one bot per profile</strong> (for a group chat also send <code>/setprivacy</code> and choose Disable). A bot token allows only one listener, so two sessions on one bot fight — never share one.</li>
             <li>Install the plugin once in the life-os project: <code>/plugin install telegram@claude-plugins-official</code>. It needs <strong>Bun</strong> on your PATH.</li>
             <li>Give each bot its own folder and put its token there yourself: create <code>.env</code> in it with one line, <code>TELEGRAM_BOT_TOKEN=&lt;token&gt;</code>. Edit it in an editor, not in a chat — the launcher never reads it.</li>
             <li>Copy <code>config/channel_profiles.sample.json</code> to <code>config/channel_profiles.json</code> and list each profile: <code>id</code>, <code>label</code>, <code>skill</code> (from above) and <code>state_dir</code> (the folder from step 3, an absolute path that exists).</li>
