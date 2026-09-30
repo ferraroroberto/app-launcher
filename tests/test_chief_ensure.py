@@ -802,15 +802,15 @@ class TestEnsureResume:
         # The conversation is already past its own boot — no /chief re-typed.
         overrides["session"].send_input.assert_not_called()
 
-    def test_resume_stops_live_chief_first_then_reattaches_it(
+    def test_restart_resume_stops_live_chief_first_then_reattaches_it(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _fleet_config_dir,
     ):
-        """Resume repurposes the same stop-first ordering ``fresh`` uses
-        (#633) — deliberately: the chief being stopped is exactly the
-        conversation the state row (fresh off its own hook write) points
-        back to, so this is a context-preserving restart, not an accident of
-        shared plumbing."""
+        """The Resume button (``resume`` + ``restart``) repurposes the same
+        stop-first ordering ``fresh`` uses (#633) — deliberately: the chief
+        being stopped is exactly the conversation the state row (fresh off
+        its own hook write) points back to, so this is a context-preserving
+        restart, not an accident of shared plumbing."""
         client, app, overrides = webapp_client
         cfg = app.state.webapp_config
         overrides["session"].list_sessions.return_value = [_chief_row()]
@@ -831,7 +831,9 @@ class TestEnsureResume:
                 return {"alive": True, "output_chars": 64}
 
         overrides["session"].get_session.side_effect = _get_session
-        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        resp = client.post(
+            "/api/board/chief/ensure", json={"resume": True, "restart": True},
+        )
         assert resp.status_code == 200
         body = resp.json()
         assert body["resumed"] is True
@@ -840,15 +842,21 @@ class TestEnsureResume:
         )
         assert "--resume chief-old" in _spawn["flags"]
 
-    def test_if_absent_resume_keeps_a_live_chief(
+    @pytest.mark.parametrize("payload", [
+        pytest.param({"resume": True}, id="pre-fix-page"),
+        pytest.param({"resume": True, "if_absent": True}, id="1353-page"),
+    ])
+    def test_resume_alone_keeps_a_live_chief(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
-        _fleet_config_dir,
+        _fleet_config_dir, payload,
     ):
-        """#1351: a message send (chat bar, Board answer sheet) ensures with
-        ``resume`` + ``if_absent``. With a chief already alive that must keep
-        it: no stop, no spawn, the same session id back so the text lands in
-        the conversation that asked. Before the fix ``if_absent`` was ignored
-        and every answer stop-and-resumed the live chief."""
+        """#1351: ``resume`` without an explicit restart intent must keep a
+        live chief: no stop, no spawn, the same session id back so the text
+        lands in the conversation that asked. A message send (chat bar, Board
+        answer sheet) ensures this way — and so does every Board page loaded
+        before the fix, which sends ``resume`` alone and is never reloaded on
+        a phone. Before the fix that shape stop-and-resumed the live chief
+        (twice in real use after #1353 had shipped)."""
         client, app, overrides = webapp_client
         cfg = app.state.webapp_config
         overrides["session"].list_sessions.return_value = [_chief_row()]
@@ -869,9 +877,7 @@ class TestEnsureResume:
                 return {"alive": True, "output_chars": 64}
 
         overrides["session"].get_session.side_effect = _get_session
-        resp = client.post(
-            "/api/board/chief/ensure", json={"resume": True, "if_absent": True},
-        )
+        resp = client.post("/api/board/chief/ensure", json=payload)
         assert resp.status_code == 200
         body = resp.json()
         assert body["session_id"] == "chief-old"
@@ -879,35 +885,12 @@ class TestEnsureResume:
         overrides["session"].stop.assert_not_called()
         assert _spawn == {}, "a live chief must not be respawned"
 
-    def test_if_absent_resume_still_resumes_when_no_chief_is_alive(
-        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
-        _fleet_config_dir, _ready_session,
-    ):
-        """#651/#670 unchanged: with no chief alive, the send's ensure still
-        reattaches the last conversation rather than spawning a blank one."""
-        client, app, overrides = webapp_client
-        cfg = app.state.webapp_config
-        Path(cfg.sessions_state_file).write_text(
-            json.dumps({
-                "old-chief-sess": _chief_state_row("chief-1", _recent_iso(minutes=5)),
-            }),
-            encoding="utf-8",
-        )
-        resp = client.post(
-            "/api/board/chief/ensure", json={"resume": True, "if_absent": True},
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["spawned"] is True
-        assert body["resumed"] is True
-        assert "--resume old-chief-sess" in _spawn["flags"]
-
-    def test_if_absent_never_blocks_fresh(
+    def test_restart_button_shape_stops_and_resumes_a_live_chief(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _fleet_config_dir,
     ):
-        """``fresh`` (the Restart button) always restarts; ``if_absent`` only
-        narrows ``resume``."""
+        """``fresh`` (the Restart button sends ``fresh`` + ``resume``, #649)
+        is an explicit restart intent on its own — no ``restart`` needed."""
         client, _app, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_chief_row()]
         probes = iter([{"alive": False}])
@@ -920,8 +903,7 @@ class TestEnsureResume:
 
         overrides["session"].get_session.side_effect = _get_session
         resp = client.post(
-            "/api/board/chief/ensure",
-            json={"fresh": True, "resume": True, "if_absent": True},
+            "/api/board/chief/ensure", json={"fresh": True, "resume": True},
         )
         assert resp.status_code == 200
         assert resp.json()["spawned"] is True
@@ -962,7 +944,9 @@ class TestEnsureResume:
                 return {"alive": True, "output_chars": 64}
 
         overrides["session"].get_session.side_effect = _get_session
-        resp = client.post("/api/board/chief/ensure", json={"resume": True})
+        resp = client.post(
+            "/api/board/chief/ensure", json={"resume": True, "restart": True},
+        )
         assert resp.status_code == 200
         assert resp.json()["resumed"] is True
         assert "--resume real-conv" in _spawn["flags"]

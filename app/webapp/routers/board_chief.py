@@ -651,8 +651,7 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     — the manual Restart button's mode (#616/#617; the query form keeps a
     bodyless ``curl -X POST`` usable for a manual operator restart). ``resume``
     truthy → reattach the chief conversation worth continuing instead of
-    starting fresh (#633): stops any live chief first (same as ``fresh`` —
-    never end up with two), looks up the newest *substantive* same-day chief
+    starting fresh (#633): looks up the newest *substantive* same-day chief
     conversation in ``sessions-state.json`` for the fleet-config checkout —
     preferring the one the just-stopped PTY was attached to, and never a
     conversation confirmed to hold nothing but its own ``/chief`` bootstrap
@@ -660,9 +659,16 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     ``label="chief"`` declared at spawn time and a direct
     ``claude --resume <id>`` (never the bare interactive picker), skipping the
     ``/chief`` type-in entirely since a resumed conversation is already past
-    that point. A chief stopped for a ``resume`` request is thus resumed right
-    back into itself — a context-preserving restart, not a coincidence of the
-    shared stop-first ordering with ``fresh`` — *unless* that conversation is
+    that point. ``resume`` alone never touches a live chief (#1351): it is
+    kept exactly as with no flags, and the lookup runs only when there is
+    none. Stopping one takes an explicit restart intent — ``fresh`` (the
+    Restart button) or ``restart`` (the Resume buttons, which pair it with
+    ``resume``) — so a stale page can't do it: a Board loaded before #1353
+    sends ``resume`` alone from every chat send and answer sheet, and a
+    phone never reloads it. A chief stopped for a ``resume`` + restart
+    request is resumed right back into itself — a context-preserving
+    restart, not a coincidence of the shared stop-first ordering with
+    ``fresh`` — *unless* that conversation is
     a bootstrap-only one, in which case the substantive conversation it
     displaced wins instead (#670: that is exactly the case where resuming
     "itself" is what loses the real chief). The lookup also consults the
@@ -672,18 +678,12 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     conversations) degrades to today's fresh-spawn-
     and-``/chief`` path, never a hard failure — the response's ``resumed`` /
     ``resume_fallback_reason`` fields tell the caller which happened.
-    ``if_absent`` truthy narrows ``resume`` to "only when no chief is alive"
-    (#1351): a live chief is kept exactly as with no flags, and the resume
-    lookup runs only when there is none. It is what a message send uses (the
-    chat bar and the Board answer sheet, ``board-dispatch.js::sendToChief``)
-    — ``resume`` alone stop-and-resumed the very chief that was being
-    answered, dropping its in-flight turn and background waiters. It never
-    blocks ``fresh``.
+    ``if_absent``, which #1353's pages still send, is now the default and is
+    ignored.
     ``rows``/``cols`` size the PTY like every other launch. Returns
     ``{"session_id", "spawned", "resumed", "resume_fallback_reason"}`` —
-    ``spawned`` False when an alive chief was found and kept (only possible
-    when ``fresh`` was not requested, and ``resume`` either was not or came
-    with ``if_absent``).
+    ``spawned`` False when an alive chief was found and kept (whenever
+    neither ``fresh`` nor ``restart`` was requested).
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -691,8 +691,8 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
     resume_raw = body.get("resume", request.query_params.get("resume"))
     resume = str(resume_raw).strip().lower() in ("1", "true", "yes")
-    if_absent_raw = body.get("if_absent", request.query_params.get("if_absent"))
-    if_absent = str(if_absent_raw).strip().lower() in ("1", "true", "yes")
+    restart_raw = body.get("restart", request.query_params.get("restart"))
+    restart = str(restart_raw).strip().lower() in ("1", "true", "yes")
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
 
@@ -713,10 +713,10 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
         preferred_sid = ""
         if chief:
             sid = str(chief.get("session_id") or "")
-            if not fresh and (not resume or if_absent):
+            if not fresh and not restart:
                 logger.info(
-                    "ℹ️ chief ensure: kept live chief %s (resume=%s, if_absent=%s)",
-                    sid[:8], resume, if_absent,
+                    "ℹ️ chief ensure: kept live chief %s (resume=%s)",
+                    sid[:8], resume,
                 )
                 return {"session_id": sid, "spawned": False}
             # Resolve the conversation behind the PTY *before* stopping it —
@@ -814,9 +814,9 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
         # The branch ensure took (#1351), paired with the "kept" line above:
         # a chief that disappears and comes back is diagnosable from here.
         logger.info(
-            "ℹ️ chief ensure: %s chief %s (replaced_live=%s, fresh=%s, resume=%s, if_absent=%s)",
+            "ℹ️ chief ensure: %s chief %s (replaced_live=%s, fresh=%s, resume=%s, restart=%s)",
             "resumed" if resumed_session_id else "fresh-spawned", sid[:8],
-            bool(chief), fresh, resume, if_absent,
+            bool(chief), fresh, resume, restart,
         )
         return {
             "session_id": sid,
