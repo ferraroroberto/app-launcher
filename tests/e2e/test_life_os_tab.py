@@ -820,7 +820,7 @@ def test_life_os_convos_bar_buttons_match_model_selector(
     expect(scope).to_be_visible()  # opened scoped from a tile, so the toggle shows
     for locator in (back, scope, combo):
         expect(locator).to_have_css("height", "36px")
-        expect(locator).to_have_css("font-size", "12.48px")
+        expect(locator).to_have_css("font-size", "12px")
     sort = authed_page.locator("#lifeOsConvosSort")
     expect(sort).to_be_visible()
     for locator in (back, scope, sort, combo):

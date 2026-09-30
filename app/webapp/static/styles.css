@@ -108,7 +108,7 @@
   --font-body: 1rem;
   --font-body-sm: 0.875rem;  /* every secondary line: paths, status, row meta, helper copy */
   --font-label: 0.92rem;
-  --font-caption: 0.78rem;
+  --font-caption: 0.75rem;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;
   /* The vendored select-native/modal components fill their controls with
@@ -4023,7 +4023,7 @@ body.terminal-open {
    height: the .compose-input recipe's 92px min-height (and the old 56px
    override) both give way to the row's shared 36px control height.
 
-   NOTE (#869 constraint): --font-caption is 0.78rem/~12.5px, below the 16px
+   NOTE (#869 constraint): --font-caption is 0.75rem/12px, below the 16px
    threshold at which iOS Safari auto-zooms the page on focus — the reason
    .compose-input pins --font-body (see the comment there). The compact row
    was the explicit ask and this is the one declaration that trades against
