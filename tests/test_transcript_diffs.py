@@ -95,6 +95,23 @@ def test_write_input_is_all_added():
     assert act["diff"]["numbered"] is False
 
 
+def test_each_harnesss_own_edit_and_write_keys_are_read():
+    """(#1356) One tool name, several key sets: Pi's ``write`` takes ``path``, Grok's
+    ``file_path``; Pi's ``edit`` takes ``oldText``/``newText``, Copilot's
+    ``old_str``/``new_str``. Each set was read from a real call or the
+    harness's own tool schema."""
+    act = tf_shared._tool_action
+    grok_edit = act("search_replace", {"file_path": "a", "old_string": "x", "new_string": "y"})
+    assert (grok_edit["verb"], grok_edit["path"], grok_edit["added"], grok_edit["removed"]) == ("edited", "a", 1, 1)
+    assert act("write", {"file_path": "g", "content": "1\n2"})["added"] == 2         # Grok
+    assert act("write", {"path": "p", "content": "1"})["path"] == "p"               # Pi
+    cop_edit = act("edit", {"path": "c", "old_str": "beta", "new_str": "gamma"})
+    assert (cop_edit["path"], cop_edit["added"], cop_edit["removed"]) == ("c", 1, 1)
+    assert act("edit", {"path": "c", "oldText": "a", "newText": "b"})["added"] == 1  # Pi
+    assert act("create", {"path": "n", "file_text": "hi\nthere"})["added"] == 2      # Copilot
+    assert act("create", {"path": "n"}) is None and act("search_replace", {"file_path": "a"}) is None
+
+
 def test_an_edit_that_changes_no_line_gets_no_diff():
     act = tf_shared._tool_action("Edit", {"file_path": "a.py", "old_string": "same", "new_string": "same"})
     assert "diff" not in act and (act["added"], act["removed"]) == (0, 0)

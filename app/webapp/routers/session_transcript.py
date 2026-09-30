@@ -412,20 +412,19 @@ async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
     """Every file this session's edits touched (Tailscale + passkey, #1349).
 
     Folded from the transcript, never ``git diff`` — see
-    :mod:`src.session_changes` for why. Claude only for now:
-    ``reason: "unsupported_agent"`` for the rest, whose ⋮ menu hides the
-    item anyway. On demand only, like Show changes: nothing polls this.
+    :mod:`src.session_changes` for why. Every agent with a transcript reader
+    (#1356); ``reason: "unsupported_agent"`` for one without, whose ⋮ menu
+    hides the item anyway. On demand only, like Show changes: nothing polls
+    this.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     reason, flavor, path, agent, _why, session = await _resolve_source(sid, cfg)
-    if reason is None and flavor != "claude":
-        reason = "unsupported_agent"
     if reason is not None:
         logger.info("ℹ️ changed files %s (%s) unavailable: %s", sid[:8], agent, reason)
         return _unavailable(sid, reason)
     project_dir = str((session or {}).get("project_dir") or "") or None
     try:
-        found = await asyncio.to_thread(changed_files, path, project_dir)
+        found = await asyncio.to_thread(changed_files, path, project_dir, flavor)
     except OSError as exc:
         logger.warning(
             "⚠️ changed files %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
@@ -451,13 +450,14 @@ async def session_changed_file_diff(
     handed out; a file the session never edited is ``file_not_found`` —
     nothing here reads the file system, only the transcript."""
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, flavor, source, agent, _why, _session = await _resolve_source(sid, cfg)
-    if reason is None and flavor != "claude":
-        reason = "unsupported_agent"
+    reason, flavor, source, agent, _why, session = await _resolve_source(sid, cfg)
     if reason is not None:
         return _unavailable(sid, reason)
+    project_dir = str((session or {}).get("project_dir") or "") or None
     try:
-        found = await asyncio.to_thread(file_steps, source, path)
+        found = await asyncio.to_thread(
+            file_steps, source, path, flavor=flavor, project_dir=project_dir
+        )
     except OSError as exc:
         logger.warning(
             "⚠️ changed file diff %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__

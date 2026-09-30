@@ -32,7 +32,9 @@ import { openSessionChanges } from './changes-overlay.js';
 import { createRowMenu } from './row-menu.js';
 import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
-import { groupsAreHidden, loadNew, reloadNewest, toggleGroups } from './session-transcript.js';
+import {
+  groupsAreHidden, hasTranscriptReader, loadNew, reloadNewest, toggleGroups,
+} from './session-transcript.js';
 import { inChatMode } from './session-overlay.js';
 
 const terminalMenu = createRowMenu('terminal-menu');
@@ -90,11 +92,11 @@ function notInChat() {
   return !inChatMode();
 }
 
-// Whether ⋮ Changed files applies (#1349): a Claude session (a missing
-// agent reads as Claude, as canCompact does), whose transcript the fold
-// reads. Other agents' edits show per step in Chat only, for now.
+// Whether ⋮ Changed files applies (#1349, #1356): any agent with a
+// transcript reader (a missing agent reads as Claude), whose transcript the
+// fold reads.
 function hasChangedFiles(s) {
-  return !!s && (s.agent || 'claude') === 'claude';
+  return !!s && hasTranscriptReader(s);
 }
 
 // Whether ⋮ Compact applies (#1218): a Claude session (a missing agent reads

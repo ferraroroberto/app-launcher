@@ -4,8 +4,9 @@ Every file the session's edits touched, folded from its transcript (never
 git), in the Show changes panel (#977) so the two viewers match. Pinned
 against stubbed routes (every path and line synthetic):
 
-* the item sits in the session view's own ⋮ menu for a Claude session and
-  is absent for other agents;
+* the item sits in the session view's own ⋮ menu for every agent with a
+  transcript reader (#1356) — a Codex session's opens the same panel, its
+  unnumbered diffs show no gutter and say so, and a deleted file is a step;
 * the panel opens *over* the session view, says what it read, lists each
   file with its A / M / D badge and +/− counts, and opens a file into its
   own edits in order (numbered diffs, the Chat step renderer);
@@ -70,7 +71,7 @@ _STEPS = {
 }
 
 
-def _mock(page: Page, *, agent: str = "claude", files: dict = _FILES) -> list:
+def _mock(page: Page, *, agent: str = "claude", files: dict = _FILES, steps: dict = _STEPS) -> list:
     _mock_git_status(page)
     _mock_sessions_list(page, [_session_row(_SID, kind="remote", agent=agent, title="Changes demo")])
     page.route(
@@ -87,7 +88,7 @@ def _mock(page: Page, *, agent: str = "claude", files: dict = _FILES) -> list:
 
     def _diff(route):
         diffs.append(route.request.url)
-        route.fulfill(status=200, content_type="application/json", body=_json.dumps(_STEPS))
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(steps))
 
     page.route(
         re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files/diff\?.*"),
@@ -203,9 +204,34 @@ def test_changed_files_empty_and_unreadable_states_and_other_agents(
     authed_page.locator("#changesClose").click()
 
 
-def test_changed_files_is_absent_for_other_agents(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, agent="codex")
+def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(
+    authed_page: Page, base_url: str
+) -> None:
+    steps = {
+        **_STEPS,
+        "steps": [
+            {"timestamp": "2026-09-30T10:01:00Z", "created": False,
+             "diff": {"hunks": [{"old_start": None, "new_start": None, "lines": [" ctx", "-old", "+new"]}],
+                      "numbered": False, "truncated": False}},
+            {"timestamp": "2026-09-30T10:04:00Z", "created": False, "deleted": True,
+             "diff": {"hunks": [], "numbered": False, "truncated": False}},
+        ],
+    }
+    diffs = _mock(authed_page, agent="codex", steps=steps)
     _open_session(authed_page, base_url)
-    menu = _menu(authed_page)
-    expect(menu.get_by_role("menuitem", name="Rename session")).to_be_visible()
-    expect(menu.get_by_role("menuitem", name="Changed files")).to_have_count(0)
+    _menu(authed_page).get_by_role("menuitem", name="Changed files").click()
+    expect(authed_page.locator("#changesList .chg-file")).to_have_count(3)
+
+    first = authed_page.locator("#changesList .chg-file").first
+    first.locator("summary").click()
+    labels = first.locator(".chg-step")
+    expect(labels).to_have_count(2)
+    expect(labels.nth(0)).to_contain_text("Edit 1 of 2")
+    expect(labels.nth(1)).to_contain_text("Deleted")
+    expect(first.locator(".tr-diff")).to_have_count(1)          # a delete draws no diff
+    expect(first.locator(".tr-diff .d-add")).to_have_count(1)
+    expect(first.locator(".tr-diff .d-ln")).to_have_count(0)    # unnumbered: no gutter
+    expect(first).to_contain_text("This agent’s diffs carry no line numbers")
+    assert len(diffs) == 1, diffs
+
+
