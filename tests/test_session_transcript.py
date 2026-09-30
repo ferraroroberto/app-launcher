@@ -2842,12 +2842,16 @@ def test_tool_action_covers_the_probed_tools_of_every_harness():
     assert act("exec", "git status", raw_text=True) == {"verb": "ran", "command": "git status"}
     # A JSON argument string is never mistaken for a raw command.
     assert act("exec", '{"cmd": "ls"}') is None
-    assert act("Edit", {"file_path": "a/b.py", "old_string": "x\ny", "new_string": "x\nz\nw"}) == {
+    # Edits and writes also carry their diff (#1349): tests/test_transcript_diffs.py.
+    def plain(action):
+        return {k: v for k, v in action.items() if k != "diff"}
+
+    assert plain(act("Edit", {"file_path": "a/b.py", "old_string": "x\ny", "new_string": "x\nz\nw"})) == {
         "verb": "edited", "path": "a/b.py", "added": 2, "removed": 1}
-    assert act("edit", {"path": "c.md", "edits": [
-        {"oldText": "a", "newText": "a\nb"}, {"oldText": "q\nr", "newText": ""}]}) == {
+    assert plain(act("edit", {"path": "c.md", "edits": [
+        {"oldText": "a", "newText": "a\nb"}, {"oldText": "q\nr", "newText": ""}]})) == {
         "verb": "edited", "path": "c.md", "added": 1, "removed": 2}
-    assert act("Write", {"file_path": "n.txt", "content": "1\n2\n3"}) == {
+    assert plain(act("Write", {"file_path": "n.txt", "content": "1\n2\n3"})) == {
         "verb": "wrote", "path": "n.txt", "added": 3, "removed": 0}
     assert act("write_to_file", {"TargetFile": "m.txt", "CodeContent": "x"})["added"] == 1
     for name, key in (("Read", "file_path"), ("read", "path"), ("read_file", "target_file"),

@@ -2979,6 +2979,35 @@ textarea.input-native { height: auto; }
 .chg-diff .d-del { background: var(--diff-del-bg); color: var(--diff-del-fg); }
 .chg-diff .d-hunk { color: var(--diff-hunk-fg); padding-top: 4px; padding-bottom: 4px; }
 .chg-diff .d-meta { color: var(--muted); }
+/* Per-step diffs (#1349): the same diff inside a Chat step, plus a
+   line-number gutter when the harness recorded real numbers. A numbered line
+   is a two-track grid, so a wrapped long line stays right of its number and
+   the page never scrolls sideways; an unnumbered diff keeps the plain block
+   lines above. Long diffs scroll inside their own box. */
+.tr-diff { margin: 0 0 8px; max-height: 60vh; overflow-y: auto; }
+.tr-diff-numbered > span {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-left: 0;
+}
+.tr-diff .d-ln {
+  min-width: 4ch;
+  padding: 0 8px 0 6px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tr-diff-path {
+  margin: 0 0 6px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.tr-diff-result { color: var(--muted); }
+.tr-diff-more { margin: 0 0 8px; }
+.tr-diff-note { margin: 0 0 8px; }
 .chg-branch {
   display: inline-flex;
   align-items: center;

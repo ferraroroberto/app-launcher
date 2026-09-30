@@ -27,7 +27,34 @@ from src.transcript_flavors._shared import (
     _tool_summary,
     _with_action,
     _with_placeholders,
+    apply_patch_result,
 )
+
+
+def _same_path(a: Any, b: Any) -> bool:
+    return isinstance(a, str) and isinstance(b, str) and (
+        a.replace("\\", "/").lower() == b.replace("\\", "/").lower()
+    )
+
+
+def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
+    """Give an Edit/Write/MultiEdit step Claude's own recorded diff (#1349).
+
+    A successful edit's line carries ``toolUseResult`` with ``filePath``,
+    ``structuredPatch`` (hunks with real line numbers) and, for a Write,
+    ``type`` — ``"create"`` with an empty patch and the new file under
+    ``content``. The shape was probed from the 40 newest transcripts on the
+    dev box (key names and types only). Only applied when the line holds this
+    one result and names the call's own file; a failed call records a plain
+    error string instead and keeps its action untouched.
+    """
+    action = call.get("action") if call is not None else None
+    if not isinstance(action, dict) or action.get("verb") not in ("edited", "wrote"):
+        return
+    if not isinstance(tool_use_result, dict) or not _same_path(tool_use_result.get("filePath"), action.get("path")):
+        return
+    created = tool_use_result.get("content") if tool_use_result.get("type") == "create" else None
+    apply_patch_result(action, tool_use_result.get("structuredPatch"), created)
 
 
 def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
@@ -162,6 +189,8 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                             decision=decision,
                             images=refs,
                         )
+                        if len(results) == 1 and not block.get("is_error"):
+                            _patch_from_result(call, tool_use_result)
                     continue
                 refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
                 text = _with_placeholders(_blocks_text(content), missing)

@@ -44,7 +44,9 @@ import binascii
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from src.transcript_flavors._shared import Entry, EntryBuilder, Line, _loads, _line_image_blocks, _image_data
+from src.transcript_flavors._shared import (
+    Entry, EntryBuilder, Line, _loads, _line_image_blocks, _image_data, cap_diff,
+)
 from src.transcript_flavors.antigravity import _antigravity_line_key, antigravity_entries
 from src.transcript_flavors.claude import _claude_line_key, claude_entries
 from src.transcript_flavors.codex import _codex_line_key, codex_entries
@@ -252,6 +254,88 @@ def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, 
     return None
 
 
+# ------------------------------------------------ per-step diffs (#1349)
+#
+# A builder hands every edit/write action its diff capped at
+# ``_shared.DIFF_FULL_BYTES``; a page carries far less per step, since one
+# page holds up to MAX_LIMIT turns and a turn can hold many edits. The rest
+# is one request away: :func:`entry_diff` re-reads the step by ``offset`` and
+# its index ``n`` among the tool calls built from that line.
+DIFF_INLINE_LINES = 80
+DIFF_INLINE_BYTES = 6_000
+
+
+def _inline_diffs(entries: List[Entry]) -> List[Entry]:
+    """Trim each tool call's diff to the page caps and give it the ref
+    :func:`entry_diff` answers to: ``diff.offset``, the line the call was
+    built from (a folded entry's own offset is not exposed), and
+    ``diff.n``, its index among that line's calls."""
+    seen: Dict[int, int] = {}
+    for e in entries:
+        if e.get("kind") != "tool_call" or not isinstance(e.get("offset"), int):
+            continue
+        offset = e["offset"]
+        n = seen.get(offset, 0)
+        seen[offset] = n + 1
+        action = e.get("action")
+        diff = action.get("diff") if isinstance(action, dict) else None
+        if not diff:
+            continue
+        inline = cap_diff(diff["hunks"], DIFF_INLINE_BYTES, DIFF_INLINE_LINES)
+        inline["numbered"] = diff["numbered"]
+        inline["truncated"] = inline["truncated"] or diff["truncated"]
+        inline["offset"] = offset
+        inline["n"] = n
+        action["diff"] = inline
+    return entries
+
+
+def entry_diff(path: Path, offset: int, n: int, flavor: str) -> Optional[Dict[str, Any]]:
+    """The whole diff (up to ``DIFF_FULL_BYTES``) of the ``n``-th tool call
+    built from the line at byte ``offset`` — a page's ``diff_truncated``
+    step, fetched on demand.
+
+    Reads forward from ``offset`` like :func:`entry_full_text`, until the
+    call's result has been read too (a Claude result carries the recorded
+    diff that replaces the one worked out from the input) or
+    :data:`REQUEST_BYTE_CAP`, so each request is bounded. ``None`` when that
+    line holds no such call with a diff any more (rotated, or a bad ref).
+    """
+    build, _line_key, _ = _flavor(flavor)
+    eof = path.stat().st_size
+    if offset < 0 or offset >= eof:
+        return None
+    lines: List[Line] = []
+    pos = offset
+    span = WINDOW_BYTES
+    while True:
+        more, new_pos = _read_lines_from(path, pos, span, eof)
+        if not more and new_pos == pos:
+            if (pos - offset) + span * 2 > REQUEST_BYTE_CAP:
+                break  # one line past the cap: nothing bounded reads it
+            span *= 2
+            continue
+        lines.extend(more)
+        pos, span = new_pos, WINDOW_BYTES
+        if lines[0][0] != offset:
+            return None
+        calls = [e for e in build(lines) if e.get("kind") == "tool_call" and e.get("offset") == offset]
+        call = calls[n] if 0 <= n < len(calls) else None
+        if call is not None and call.get("result") is not None:
+            break
+        if pos >= eof or pos - offset >= REQUEST_BYTE_CAP:
+            break
+    if not lines or lines[0][0] != offset:
+        return None
+    calls = [e for e in build(lines) if e.get("kind") == "tool_call" and e.get("offset") == offset]
+    if not 0 <= n < len(calls):
+        return None
+    action = calls[n].get("action")
+    if not isinstance(action, dict) or not action.get("diff"):
+        return None
+    return {"path": action.get("path"), "diff": action["diff"]}
+
+
 def _page(
     path: Path, before: Optional[int], limit: int, build: EntryBuilder, line_key: LineKey
 ) -> Dict[str, Any]:
@@ -349,6 +433,8 @@ def _page(
     # the region a live view re-renders and it needs a stable key per card to
     # carry an open disclosure across the rebuild. `entries` itself stays one
     # complete list — the page contract every other caller reads is unchanged.
+    # Diff refs (#1349) are taken first: they need every call's offset.
+    _inline_diffs(entries)
     for e in entries:
         if not _is_turn(e) and not (at_eof and e.get("offset", -1) >= tail):
             e.pop("offset", None)
@@ -697,5 +783,7 @@ def transcript_tail(
     """
     build, line_key, tool_errors = _flavor(flavor)
     out = _tail(Path(str(path)), int(after), size, build, line_key)
+    _inline_diffs(out["entries"])
+    _inline_diffs(out["pending"])
     out["tool_errors"] = tool_errors
     return out

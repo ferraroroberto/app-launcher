@@ -86,21 +86,121 @@ _WRITE_TOOLS = {
 }
 _EDIT_TOOLS = {
     "Edit": ("file_path", "old_string", "new_string"),
+    "MultiEdit": ("file_path", "old_string", "new_string"),   # Claude: a list under `edits`
     "edit": ("path", "oldText", "newText"),           # Pi: one pair, or a list under `edits`
 }
 ACTION_COMMAND_CAP = 2_000
 
+# Per-step diffs (#1349). An edit/write action carries ``diff``: ``hunks``,
+# each ``{"old_start", "new_start", "lines"}`` with every line keeping its
+# unified-diff prefix (" ", "-", "+"), plus ``numbered`` and ``truncated``.
+# The starts are real file line numbers only where the harness recorded them
+# (Claude's ``structuredPatch``, or a Write that created the file); a diff
+# worked out from an edit's own old/new text has none, so they are ``None`` --
+# never invented. A builder caps at DIFF_FULL_BYTES (the #977 viewer's cap);
+# a transcript page trims each step further, see
+# ``session_transcript._inline_diffs``.
+DIFF_FULL_BYTES = 200_000
+DIFF_CONTEXT = 3
 
-def _line_delta(old: str, new: str) -> Tuple[int, int]:
-    """``(added, removed)`` lines between an edit's own old and new text."""
+Hunk = Dict[str, Any]
+
+
+def _edit_hunks(old: str, new: str) -> Tuple[List[Hunk], int, int]:
+    """``(hunks, added, removed)`` between an edit's own old and new text --
+    one matcher for both, so the counts are exactly the diff's +/- lines."""
+    a, b = old.splitlines(), new.splitlines()
+    matcher = difflib.SequenceMatcher(None, a, b, autojunk=False)
     added = removed = 0
-    matcher = difflib.SequenceMatcher(None, old.splitlines(), new.splitlines(), autojunk=False)
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag in ("replace", "delete"):
             removed += i2 - i1
         if tag in ("replace", "insert"):
             added += j2 - j1
+    hunks: List[Hunk] = []
+    for group in matcher.get_grouped_opcodes(DIFF_CONTEXT):
+        lines: List[str] = []
+        for tag, i1, i2, j1, j2 in group:
+            if tag == "equal":
+                lines.extend(" " + line for line in a[i1:i2])
+                continue
+            if tag in ("replace", "delete"):
+                lines.extend("-" + line for line in a[i1:i2])
+            if tag in ("replace", "insert"):
+                lines.extend("+" + line for line in b[j1:j2])
+        hunks.append({"old_start": None, "new_start": None, "lines": lines})
+    return hunks, added, removed
+
+
+def _added_hunks(text: str, *, numbered: bool = False) -> List[Hunk]:
+    """A whole new text as one all-added hunk (a Write). ``numbered`` only
+    when the file is known to be new, so line 1 really is line 1."""
+    lines = ["+" + line for line in text.splitlines()]
+    if not lines:
+        return []
+    return [{
+        "old_start": 0 if numbered else None,
+        "new_start": 1 if numbered else None,
+        "lines": lines,
+    }]
+
+
+def _patch_hunks(patch: Any) -> Optional[List[Hunk]]:
+    """Claude's ``toolUseResult.structuredPatch`` as hunks, or None when it
+    is absent, empty or not the probed shape (``oldStart``/``newStart`` ints,
+    ``lines`` strings each carrying its own prefix)."""
+    if not isinstance(patch, list) or not patch:
+        return None
+    hunks: List[Hunk] = []
+    for h in patch:
+        if not isinstance(h, dict):
+            return None
+        old_start, new_start, lines = h.get("oldStart"), h.get("newStart"), h.get("lines")
+        if not isinstance(old_start, int) or not isinstance(new_start, int) or not isinstance(lines, list):
+            return None
+        if not all(isinstance(line, str) for line in lines):
+            return None
+        hunks.append({"old_start": old_start, "new_start": new_start, "lines": list(lines)})
+    return hunks
+
+
+def diff_counts(hunks: List[Hunk]) -> Tuple[int, int]:
+    """``(added, removed)`` lines of a diff."""
+    added = removed = 0
+    for h in hunks:
+        for line in h["lines"]:
+            if line.startswith("+"):
+                added += 1
+            elif line.startswith("-"):
+                removed += 1
     return added, removed
+
+
+def cap_diff(hunks: List[Hunk], max_bytes: int, max_lines: Optional[int] = None) -> Dict[str, Any]:
+    """``{"hunks", "numbered", "truncated"}`` holding at most ``max_bytes``
+    (and ``max_lines``) of diff lines; a hunk cut short keeps what fits."""
+    kept: List[Hunk] = []
+    used = count = 0
+    truncated = False
+    for h in hunks:
+        lines: List[str] = []
+        for line in h["lines"]:
+            cost = len(line.encode("utf-8", errors="replace")) + 1
+            if used + cost > max_bytes or (max_lines is not None and count >= max_lines):
+                truncated = True
+                break
+            lines.append(line)
+            used += cost
+            count += 1
+        if lines:
+            kept.append({**h, "lines": lines})
+        if truncated:
+            break
+    return {
+        "hunks": kept,
+        "numbered": bool(hunks) and all(h["new_start"] is not None for h in hunks),
+        "truncated": truncated,
+    }
 
 
 def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[Dict[str, Any]]:
@@ -130,7 +230,10 @@ def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[
         path, body = text(path_key), inputs.get(body_key)
         if not path or not isinstance(body, str):
             return None
-        return {"verb": "wrote", "path": path, "added": len(body.splitlines()), "removed": 0}
+        return _with_diff(
+            {"verb": "wrote", "path": path, "added": len(body.splitlines()), "removed": 0},
+            _added_hunks(body),
+        )
     if name in _EDIT_TOOLS:
         path_key, old_key, new_key = _EDIT_TOOLS[name]
         path = text(path_key)
@@ -139,12 +242,41 @@ def _tool_action(name: str, inputs: Any, *, raw_text: bool = False) -> Optional[
         pairs = [(o, n) for o, n in pairs if isinstance(o, str) and isinstance(n, str)]
         if not path or not pairs:
             return None
+        # A multi-edit (Claude's MultiEdit, Pi's `edits`) is one combined
+        # diff: each pair's hunks in the order the edits were applied.
+        hunks: List[Hunk] = []
         added = removed = 0
         for old, new in pairs:
-            a, r = _line_delta(old, new)
+            h, a, r = _edit_hunks(old, new)
+            hunks.extend(h)
             added, removed = added + a, removed + r
-        return {"verb": "edited", "path": path, "added": added, "removed": removed}
+        return _with_diff({"verb": "edited", "path": path, "added": added, "removed": removed}, hunks)
     return None
+
+
+def _with_diff(action: Dict[str, Any], hunks: List[Hunk]) -> Dict[str, Any]:
+    """Attach a capped ``diff`` to an edit/write action; an edit that
+    changes no line keeps today's action with no diff at all."""
+    if hunks:
+        action["diff"] = cap_diff(hunks, DIFF_FULL_BYTES)
+    return action
+
+
+def apply_patch_result(action: Dict[str, Any], patch: Any, created_text: Optional[str] = None) -> bool:
+    """Upgrade an edit/write action from what the harness recorded after the
+    call ran (#1349): ``patch`` in Claude's ``structuredPatch`` shape gives
+    real line numbers, and ``created_text`` the whole of a file the call
+    created. The counts follow the recorded diff, so a Write over an existing
+    file counts its removed lines too. False, leaving ``action`` untouched,
+    when neither applies."""
+    hunks = _patch_hunks(patch)
+    if hunks is None and isinstance(created_text, str):
+        hunks = _added_hunks(created_text, numbered=True)
+    if not hunks:
+        return False
+    action["added"], action["removed"] = diff_counts(hunks)
+    action["diff"] = cap_diff(hunks, DIFF_FULL_BYTES)
+    return True
 
 
 def _with_action(entry: Entry, action: Optional[Dict[str, Any]]) -> Entry:
@@ -258,6 +390,11 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
         call["result_truncated"] = truncated
         if error:
             call["error"] = True
+            # A failed edit changed nothing (#1349): its row keeps today's
+            # shape, never a diff of what it only attempted.
+            action = call.get("action")
+            if isinstance(action, dict):
+                action.pop("diff", None)
         if images:
             call["result_images"] = images
         call.update(decision or {})
