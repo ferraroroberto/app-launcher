@@ -15,7 +15,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, apiRaw } from './api.js';
+import { apiRaw } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { mountComposer } from './composer.js';
 import { stopReading } from './terminal-readaloud.js';
@@ -141,25 +141,25 @@ export function sendSubmit(t, text, opts) {
 // serves a detached session too (#983) — the host saves under the session's
 // project_dir and never writes to it. Errors toast here and resolve null so
 // the composer's batch loop counts only the files that landed (#448).
+// #1354: a failure throws its reason and does not toast — the composer names
+// every failed file in the one summary toast that ends the batch, instead of
+// one toast per file.
 export async function uploadSessionFile(sid, file) {
-  if (!sid || !file) return null;
+  if (!sid || !file) throw new Error('no session to attach to');
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
-  try {
-    const res = await apiRaw(
-      '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
-      { method: 'POST', terminalToken: readTerminalToken(), body: fd }
-    );
-    if (!res.ok) {
-      const b = await res.json().catch(function () { return null; });
-      throw new Error((b && b.detail) || ('HTTP ' + res.status));
-    }
-    const body = await res.json().catch(function () { return null; });
-    return (body && body.path) || null;
-  } catch (exc) {
-    apiFailToast('Image failed', exc);
-    return null;
+  const res = await apiRaw(
+    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
+    { method: 'POST', terminalToken: readTerminalToken(), body: fd }
+  );
+  if (!res.ok) {
+    const b = await res.json().catch(function () { return null; });
+    throw new Error((b && b.detail) || ('HTTP ' + res.status));
   }
+  const body = await res.json().catch(function () { return null; });
+  const path = body && body.path;
+  if (!path) throw new Error('the host returned no path');
+  return path;
 }
 
 function uploadTerminalImage(file) {

@@ -371,10 +371,7 @@ async function submitAnswers() {
 // on its session's; with no chief there is nowhere to put it.
 function uploadToChief(file) {
   const sid = chiefSessionId();
-  if (!sid) {
-    toast('Start the chief to attach a file', 'error', { icon: 'paperclip' });
-    return Promise.resolve(null);
-  }
+  if (!sid) return Promise.reject(new Error('the chief is not running'));
   return uploadSessionFile(sid, file);
 }
 

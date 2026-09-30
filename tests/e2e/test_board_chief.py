@@ -29,7 +29,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src import chief_plan
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import HeldUploads, stable_read
 
 pytestmark = pytest.mark.smoke
 
@@ -1038,3 +1038,56 @@ def test_answer_sheet_done_disabled_when_no_chief(
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
     assert posts == []
+
+
+@pytest.mark.iphone
+def test_answer_sheet_attach_shows_progress_and_names_a_failure(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1354: the answer sheet's field composer is the same composer.js, so a
+    multi-file pick there shows "Uploading N of M" too, and a failed file is
+    named in the one summary toast."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    held = HeldUploads(authed_page, re.compile(r".*/api/claude-code/sessions/s-chief/image(?:\?.*)?$"))
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog).to_be_visible()
+    also = dialog.locator("#chiefAnswersAlso")
+    also.locator(".composer-attach-input").set_input_files(files=[
+        {"name": "e2e-stub-a.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+        {"name": "e2e-stub-b.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+    ])
+    held.wait_for(1)
+    expect(also.locator(".composer-upload-status")).to_have_text("Uploading 1 of 2 · e2e-stub-a.png")
+    expect(also.locator(".composer-image .composer-upload-count")).to_have_text("1/2")
+    held.ok(0, _CHIEF_UPLOAD)
+    held.wait_for(2)
+    held.fail(1, "file exceeds 12 MB")
+
+    expect(also.locator(".composer-upload-status")).to_be_hidden()
+    expect(authed_page.locator("#toast")).to_have_text(
+        "Uploaded 1 of 2 — 1 failed: e2e-stub-b.png (file exceeds 12 MB)")
+    expect(also.locator(".composer-input")).to_have_value(_CHIEF_UPLOAD)
+
+
+@pytest.mark.iphone
+def test_answer_sheet_attach_with_no_chief_says_why(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1354: with no chief there is no session to store an attachment on; the
+    summary toast says so instead of a silent nothing."""
+    _mock_board(authed_page, _board_payload(with_chief=False))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    also = authed_page.locator("#chiefAnswersDialog #chiefAnswersAlso")
+    also.locator(".composer-attach-input").set_input_files(files=[
+        {"name": "e2e-stub-a.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+    ])
+    expect(authed_page.locator("#toast")).to_have_text(
+        "Uploaded 0 of 1 — 1 failed: e2e-stub-a.png (the chief is not running)")
+    expect(also.locator(".composer-input")).to_have_value("")
