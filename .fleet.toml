@@ -481,6 +481,12 @@ pytest_targets = [
     "tests/e2e/test_touch_targets.py",
 ]
 
+# [design] wide_views -- tabs whose content is two-dimensional (the Board's lanes) may
+# span the window; every other tab keeps the 772px measure. design.md Layout:
+# width follows the shape of the view (fleet-config#1113).
+[design]
+wide_views = ["board"]
+
 # [design.review] -- the rendered design review's walk (fleet-config
 # skills/_lib/design_review, docs/skills.md "Two legs, two interpreters").
 # The walk clicks the primary tabs, opens every <details> and showModal()s
