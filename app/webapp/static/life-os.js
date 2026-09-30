@@ -21,6 +21,7 @@ import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { actionRow } from './action-rows.js';
 import { openSettingsAt } from './tabs.js';
+import { renderChannelSetup } from './telegram-setup.js';
 import { createRowMenu } from './row-menu.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
@@ -73,8 +74,10 @@ export async function fetchChannels() {
     state.lifeOsChannels = {
       profiles: body.profiles || [],
       problems: body.problems || [],
+      setup: body.setup || null,
     };
     renderChannels();
+    renderChannelSetup();
   } catch (exc) {
     logPollFailure('life-os channels fetch failed', exc);
   }
@@ -85,8 +88,10 @@ function renderChannels() {
   if (!card) return;
   const profiles = state.lifeOsChannels.profiles;
   const problems = state.lifeOsChannels.problems;
-  // Opt-in: no profile file, no card.
-  card.hidden = profiles.length === 0 && problems.length === 0;
+  // With nothing configured the card explains itself instead of vanishing
+  // (#1369): a hidden card made "where do I set this up?" unanswerable.
+  const unconfigured = profiles.length === 0 && problems.length === 0;
+  if (els.lifeOsChannelsEmpty) els.lifeOsChannelsEmpty.hidden = !unconfigured;
   const list = els.lifeOsChannelList;
   list.innerHTML = '';
   profiles.forEach(function (p) {
@@ -1178,6 +1183,21 @@ export function wireLifeOs() {
   if (lifeOsEmptyAction) {
     lifeOsEmptyAction.addEventListener('click', function () {
       openSettingsAt('lifeOsDir');
+    });
+  }
+  // No Telegram profile yet: the Settings card says what to do (#1369).
+  const channelsEmptyAction = document.getElementById('lifeOsChannelsEmptyAction');
+  if (channelsEmptyAction) {
+    channelsEmptyAction.addEventListener('click', function () {
+      openSettingsAt('channelsPanel');
+    });
+  }
+  const channelRecheck = document.getElementById('channelRecheck');
+  if (channelRecheck) {
+    channelRecheck.addEventListener('click', function () {
+      fetchChannels().then(function () {
+        toast('Telegram setup re-checked', 'good');
+      });
     });
   }
   if (els.lifeOsBrowserBack) {

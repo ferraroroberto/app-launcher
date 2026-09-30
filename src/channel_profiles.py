@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -160,3 +161,64 @@ def write_channel_settings(profile: ChannelProfile) -> str:
             "APP_LAUNCHER_DATA_DIR at a plain path"
         )
     return flag_path
+
+
+# ------------------------------------------------------------ setup checks
+PLUGIN_ID = "telegram@claude-plugins-official"
+
+
+def profiles_file_present(path: Optional[Path] = None) -> bool:
+    """Whether the profile file exists (the feature's opt-in switch)."""
+    return (Path(path) if path is not None else DEFAULT_PROFILES_PATH).is_file()
+
+
+def env_file_present(profile: ChannelProfile) -> bool:
+    """Whether the profile's ``<state dir>/.env`` exists.
+
+    A stat, never an open: the file holds the bot token, which the launcher
+    must not read. Presence says the owner did step 3 of the setup, nothing
+    about whether the token is valid.
+    """
+    return (Path(profile.state_dir) / ".env").is_file()
+
+
+def bun_available() -> bool:
+    """Whether Bun (the plugin server's runtime) is on ``PATH`` or in its
+    default install directory."""
+    if shutil.which("bun"):
+        return True
+    return (Path.home() / ".bun" / "bin" / "bun.exe").is_file() or (
+        Path.home() / ".bun" / "bin" / "bun"
+    ).is_file()
+
+
+def plugin_installed_for(
+    life_os_dir: Path, installed_plugins: Optional[Path] = None
+) -> Optional[bool]:
+    """Whether the Telegram channel plugin is installed for the life-os project.
+
+    ``True`` for a user-scope install or a project-scope one whose
+    ``projectPath`` is ``life_os_dir``; ``False`` when it is absent or
+    installed for other projects only; ``None`` (unknown) when Claude's install
+    record cannot be read — never folded into ``False`` or ``True``.
+    """
+    record = installed_plugins or (
+        Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+    )
+    try:
+        data = json.loads(record.read_text(encoding="utf-8"))
+        entries = data["plugins"].get(PLUGIN_ID, [])
+    except (OSError, ValueError, KeyError, AttributeError):
+        return None
+    if not isinstance(entries, list):
+        return None
+    target = str(Path(life_os_dir).resolve()).lower()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("scope") == "user":
+            return True
+        project = entry.get("projectPath")
+        if isinstance(project, str) and str(Path(project).resolve()).lower() == target:
+            return True
+    return False

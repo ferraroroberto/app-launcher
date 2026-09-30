@@ -285,3 +285,99 @@ class TestChannelRoutes:
         life_os_channels.session_client.list_sessions.side_effect = err("down")
         rows = channels.client.get("/api/life-os/channels").json()["profiles"]
         assert all(p["running"] is None for p in rows)
+
+
+# ------------------------------------------------------------- setup checks
+class TestSetupChecks:
+    """The Settings card's read-only checks (#1369)."""
+
+    def test_plugin_install_record_three_states(self, tmp_path):
+        life = tmp_path / "life-os"
+        life.mkdir()
+        record = tmp_path / "installed_plugins.json"
+
+        def write(entries):
+            record.write_text(json.dumps(
+                {"plugins": {channel_profiles.PLUGIN_ID: entries}}
+            ), encoding="utf-8")
+
+        check = channel_profiles.plugin_installed_for
+        assert check(life, tmp_path / "missing.json") is None  # unknown, not False
+        record.write_text("{nope", encoding="utf-8")
+        assert check(life, record) is None
+        write([])
+        assert check(life, record) is False
+        write([{"scope": "project", "projectPath": str(tmp_path / "other")}])
+        assert check(life, record) is False  # installed, but not for life-os
+        write([{"scope": "project", "projectPath": str(life)}])
+        assert check(life, record) is True
+        write([{"scope": "user"}])
+        assert check(life, record) is True
+
+    def test_env_presence_is_a_stat_never_an_open(self, tmp_path, monkeypatch):
+        profile = channel_profiles.ChannelProfile(
+            "health", "Health", "health", _state_dir(tmp_path, "h")
+        )
+        assert channel_profiles.env_file_present(profile) is False
+        (tmp_path / "h" / ".env").write_text("TELEGRAM_BOT_TOKEN=secret", "utf-8")
+        opened: list = []
+        real_open = Path.open
+        monkeypatch.setattr(
+            Path, "open", lambda self, *a, **k: opened.append(self) or real_open(self, *a, **k)
+        )
+        monkeypatch.setattr(
+            Path, "read_text",
+            lambda self, *a, **k: pytest.fail(f"read {self}"),
+        )
+        assert channel_profiles.env_file_present(profile) is True
+        assert opened == []
+
+    def test_setup_block_reports_checks_and_leaks_nothing(
+        self, life_os_client, tmp_path, monkeypatch  # noqa: F811
+    ):
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware, "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+        client, app, _ = life_os_client
+        from app.webapp.routers import life_os_channels
+        life_os_channels.session_client.list_sessions.side_effect = lambda port: []
+        state = _state_dir(tmp_path, "tg-secret-dir")
+        (tmp_path / "tg-secret-dir" / ".env").write_text(
+            "TELEGRAM_BOT_TOKEN=123456:TOP-SECRET-TOKEN", encoding="utf-8"
+        )
+        app.state.channel_profiles_path = _write_profiles(tmp_path / "p.json", [
+            {"id": "health", "skill": "journal-daily", "state_dir": state},
+            {"id": "school", "skill": "no-such-skill",
+             "state_dir": _state_dir(tmp_path, "tg-other")},
+        ])
+        app.state.installed_plugins_path = tmp_path / "absent.json"
+        body = client.get("/api/life-os/channels").json()
+        rows = {p["id"]: p for p in body["profiles"]}
+        assert rows["health"]["env_present"] is True
+        assert rows["school"]["env_present"] is False
+        assert rows["school"]["skill_found"] is False
+        setup = body["setup"]
+        assert setup["file_present"] is True
+        assert setup["life_os_found"] is True
+        assert setup["plugin"] is None  # unreadable record → unknown
+        assert isinstance(setup["bun"], bool)
+        assert any(s["id"] == "journal-daily" for s in setup["skills"])
+        raw = json.dumps(body)
+        assert "tg-secret-dir" not in raw and "tg-other" not in raw
+        assert "TOP-SECRET" not in raw and str(tmp_path) not in raw
+
+    def test_setup_without_a_profile_file(
+        self, life_os_client, tmp_path, monkeypatch  # noqa: F811
+    ):
+        from app.webapp import middleware
+        monkeypatch.setattr(
+            middleware, "LOOPBACK_HOSTS",
+            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+        )
+        client, app, _ = life_os_client
+        app.state.channel_profiles_path = tmp_path / "nope.json"
+        body = client.get("/api/life-os/channels").json()
+        assert body["profiles"] == [] and body["problems"] == []
+        assert body["setup"]["file_present"] is False
