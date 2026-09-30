@@ -28,8 +28,21 @@ The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle
 - **Rename · Copy link · Stop and kill** — always.
 - **Show tool calls**, **Load new** and **Reload** — while Chat is showing.
 - **Compact** — for a Claude session. One tap sends `/compact` through the same verified input route as Chat's Send, in either mode, and the toast says whether it landed.
+- **Changed files** — for a Claude session, in either mode. See [Changed files](#changed-files).
 
 The phone's floating tab bar hides while the session view is open.
+
+## Changed files
+
+The ⋮ menu's **Changed files** (Claude sessions) lists every file this session's edits created, modified or deleted, in the same panel as the Coding tab's Show changes, so the two viewers match (#1349):
+
+- The summary line says what was read: `3 files · +9 −3 · from this session's transcript`.
+- Each file carries a badge — **A** created by the session, **M** modified, **D** deleted — and its `+N −M`. The totals are the sum of the Chat steps' own counts; a failed step counts nowhere.
+- Tapping a file opens each of the session's edits to it, in order, labelled *Created* / *Edit 2 of 3* with the time, each drawn like a Chat step.
+- **Built from the transcript, never `git diff`.** The working tree mixes this session's edits with any other work in the folder, and shows nothing once the work is committed or a worktree removed; the transcript still holds after both.
+- **Deleted is best effort.** The session only deletes through shell commands, which record no diff, so **D** means "the session edited it and it is no longer on disk". With the project folder itself gone (a removed worktree) nothing is marked deleted, and the panel says why.
+- **Bounded:** one read of the transcript per open, parsing only its edit lines (about 0.1 s for a 111 MB file), and at most its newest 256 MB, which the panel says when it applies. It does not update itself; ↻ re-reads.
+- A session with no edits, no transcript, or one that has ended each gets its own sentence. Other agents' edits show per step in Chat only, for now.
 
 ## Stop and kill
 
@@ -57,6 +70,15 @@ Chat shows the session's whole conversation as a chat-style list that reads on t
 - Your typed prompts and the agent's replies are expanded. Each prompt/reply card collapses on tap, and URLs in any text are clickable.
 - Everything else — tool calls with their results, thinking, harness plumbing, sub-agent traffic — is folded per run into one line (`3 tool calls · 1 thinking`) you can open, then open item by item.
 - Those groups are **hidden by default**. The ⋮ menu's **Show tool calls** reveals them, still folded, so the view opens as a plain you ↔ agent exchange.
+
+### Edit steps open as their diff
+
+An Edit, Write or MultiEdit step (and the other agents' edit and write tools the reader recognises) opens as a unified diff: added lines green, removed lines red, each keeping its `+`/`−` prefix, with the tool's own "updated" line underneath in the quiet result style (#1349).
+
+- **Line numbers only where they are real.** A Claude step uses the diff Claude Code records after the edit ran (`toolUseResult.structuredPatch`), so it shows a line-number gutter and `@@` headers; a Write that created a file counts from line 1. Everything else is worked out from the tool's own old and new text, which carries no file position, so it shows no gutter and separates its hunks with `⋯`, rather than inventing numbers.
+- **Counts follow the recorded diff.** For a Claude step the row's `+N −M` comes from that recorded diff, so a Write over an existing file counts the lines it replaced.
+- **Capped per step.** A page carries at most 80 lines (6 KB) of each step's diff; **Show full diff** fetches the rest (`GET /api/claude-code/sessions/{sid}/transcript/diff?offset=&n=`, capped at 200 KB like Show changes). Long lines wrap inside the diff box; the page never scrolls sideways.
+- A failed step keeps its usual body: it changed nothing, so it shows no diff.
 
 ### Failed tool calls
 

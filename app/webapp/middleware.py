@@ -225,6 +225,18 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "fetched on demand: the transcript's own sensitivity.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/changed-files"),
+        "passkey",
+        "Session Changed files (#1349): every file a session edited, with counts, "
+        "folded from the transcript: the transcript's own sensitivity.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/changed-files/diff"),
+        "passkey",
+        "Session Changed files (#1349): one file's edits out of the transcript — "
+        "a distinct row, since it does not end with '/changed-files'.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/image"),
         "passkey",
         "Chat transcript images (#1265): a pasted image or screenshot out of the "

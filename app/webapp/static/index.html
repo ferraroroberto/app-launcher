@@ -109,6 +109,12 @@
     <circle cx="18" cy="6" r="3" />
     <circle cx="6" cy="18" r="3" />
   </symbol>
+  <symbol id="i-file-diff" viewBox="0 0 24 24" fill="none">
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+    <path d="M9 10h6" />
+    <path d="M12 13V7" />
+    <path d="M9 17h6" />
+  </symbol>
   <symbol id="i-folder" viewBox="0 0 24 24" fill="none">
     <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
   </symbol>
@@ -1682,26 +1688,6 @@
     <!-- The session transcript (#953) is no longer its own overlay: it is
          the Chat pane of #terminalOverlay below (#982). -->
 
-    <!-- Show changes (#977): one Coding project's working tree, read-only —
-         files grouped Changes / Untracked, each row expanding to its unified
-         diff (GitHub "Files changed" shape, phone-first). Opened from the
-         row's ⋯ project menu or by tapping a red / yellow tile name. Same
-         overlay chrome as the transcript. Driven by changes-overlay.js. -->
-    <div id="changesOverlay" class="terminal-overlay changes-overlay" hidden>
-      <div class="terminal-bar">
-        <span id="changesTitle" class="terminal-title">changes</span>
-        <div class="terminal-bar-actions">
-          <button id="changesRefresh" type="button" class="term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
-          <!-- ✕ close is always the rightmost control (modal contract #545). -->
-          <button id="changesClose" type="button" class="term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
-        </div>
-      </div>
-      <div id="changesBody" class="changes-body">
-        <div id="changesState" class="chg-state" role="status" aria-live="polite" hidden></div>
-        <div id="changesList" class="chg-list"></div>
-      </div>
-    </div>
-
     <dialog id="jobDialog" class="detail-dialog">
       <form id="jobForm" class="detail-card">
         <div class="detail-header">
@@ -2148,6 +2134,31 @@
          region that appears together with its text is often not announced. -->
     <div id="terminalStatusStrip" class="terminal-status-strip" role="status" aria-live="polite">
       <div id="terminalStatus" class="terminal-status" hidden></div>
+    </div>
+  </div>
+
+  <!-- Body-level, after #terminalOverlay (#1349): since a session's ⋮ →
+       Changed files opens this panel *over* the session view, it cannot
+       live inside <main class="app">: the standalone shell makes .app a
+       fixed stacking context, which traps any z-index inside it under the
+       body-level session overlay. Same z-index, later in the DOM: on top. -->
+  <!-- Show changes (#977): one Coding project's working tree, read-only —
+       files grouped Changes / Untracked, each row expanding to its unified
+       diff (GitHub "Files changed" shape, phone-first). Opened from the
+       row's ⋯ project menu or by tapping a red / yellow tile name. Same
+       overlay chrome as the transcript. Driven by changes-overlay.js. -->
+  <div id="changesOverlay" class="terminal-overlay changes-overlay" hidden>
+    <div class="terminal-bar">
+      <span id="changesTitle" class="terminal-title">changes</span>
+      <div class="terminal-bar-actions">
+        <button id="changesRefresh" type="button" class="term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
+        <!-- ✕ close is always the rightmost control (modal contract #545). -->
+        <button id="changesClose" type="button" class="term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+      </div>
+    </div>
+    <div id="changesBody" class="changes-body">
+      <div id="changesState" class="chg-state" role="status" aria-live="polite" hidden></div>
+      <div id="changesList" class="chg-list"></div>
     </div>
   </div>
 

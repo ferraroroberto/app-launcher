@@ -26,8 +26,9 @@ import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import {
   detachedSendRefused, openSessionRename, providerWebUrl, sendOutcome,
-  sendSessionMessage, stopSession,
+  sendSessionMessage, sessionTitle, stopSession,
 } from './sessions.js';
+import { openSessionChanges } from './changes-overlay.js';
 import { createRowMenu } from './row-menu.js';
 import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
@@ -89,6 +90,13 @@ function notInChat() {
   return !inChatMode();
 }
 
+// Whether ⋮ Changed files applies (#1349): a Claude session (a missing
+// agent reads as Claude, as canCompact does), whose transcript the fold
+// reads. Other agents' edits show per step in Chat only, for now.
+function hasChangedFiles(s) {
+  return !!s && (s.agent || 'claude') === 'claude';
+}
+
 // Whether ⋮ Compact applies (#1218): a Claude session (a missing agent reads
 // as Claude, as session-transcript.js's hasTranscriptReader does) whose input
 // route is open — a detached agent never probed for console input is not.
@@ -137,6 +145,16 @@ export function wireTerminalMenu() {
           function () { toast(link.message, 'good', { icon: 'link' }); },
           function (exc) { apiFailToast('Copy link failed', exc); }
         );
+      },
+    },
+    // Changed files (#1349): every file this session edited, folded from
+    // its transcript into the Show changes panel. In both modes.
+    {
+      glyph: 'file-diff', label: 'Changed files', text: 'Changed files',
+      hidden: function () { return !hasChangedFiles(currentSession()); },
+      onTap: function () {
+        const s = currentSession();
+        if (s) openSessionChanges(s, sessionTitle(s));
       },
     },
     // Chat-only (#982): the transcript bar's 👁 and 🔄 moved here when the

@@ -2985,6 +2985,10 @@ textarea.input-native { height: auto; }
    the page never scrolls sideways; an unnumbered diff keeps the plain block
    lines above. Long diffs scroll inside their own box. */
 .tr-diff { margin: 0 0 8px; max-height: 60vh; overflow-y: auto; }
+/* Changed files (#1349): a file's edits each get a quiet label above their
+   diff, and the panel scrolls as a whole rather than per diff. */
+.chg-body .tr-diff { max-height: none; }
+.chg-step { padding: 6px 0 4px; }
 .tr-diff-numbered > span {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -5026,8 +5030,8 @@ span.chief-answer-ref { color: var(--muted); }
     overscroll-behavior: contain;
     box-sizing: border-box;
     /* Fixed makes .app a stacking context, so the full-screen overlays
-       nested inside it (changes viewer, system-map lightbox, summary modal)
-       stack within it. Lifting it over the docked view (300) keeps them on
+       nested inside it (system-map lightbox, summary modal) stack within
+       it; the changes viewer is body-level since #1349. Lifting it over the docked view (300) keeps them on
        top; the two panes never overlap, so nothing else changes order. */
     z-index: 310;
   }
