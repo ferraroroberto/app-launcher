@@ -219,6 +219,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "end with '/transcript' so the rule above does not already cover it.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/diff"),
+        "passkey",
+        "Chat per-step diffs (#1349): one edit's whole diff out of the transcript, "
+        "fetched on demand: the transcript's own sensitivity.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/image"),
         "passkey",
         "Chat transcript images (#1265): a pasted image or screenshot out of the "

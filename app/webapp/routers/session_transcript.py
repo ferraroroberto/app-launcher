@@ -95,6 +95,7 @@ from src.transcript_locate import (
 from src.session_transcript import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    entry_diff,
     entry_full_text,
     transcript_image,
     transcript_page,
@@ -362,6 +363,46 @@ async def session_transcript_entry(
     return {
         "available": True, "reason": None, "session_id": sid,
         "text": entry["text"], "truncated": entry["truncated"],
+    }
+
+
+@router.get("/api/claude-code/sessions/{sid}/transcript/diff")
+async def session_transcript_diff(
+    sid: str,
+    request: Request,
+    offset: int = Query(ge=0),
+    n: int = Query(default=0, ge=0, le=999),
+) -> Dict[str, Any]:
+    """One edit step's whole diff (Tailscale + passkey, #1349).
+
+    ``offset`` and ``n`` are the ``diff.n`` ref a page's tool call carried
+    when its inline diff came ``truncated``: the line the call was built
+    from, and its index among that line's calls. ``reason: "diff_not_found"``
+    covers a bad ref and a file that moved on alike — the client keeps the
+    inline diff it already has either way.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    if reason is not None:
+        return _unavailable(sid, reason)
+    try:
+        found = await asyncio.to_thread(entry_diff, path, offset, n, flavor)
+    except OSError as exc:
+        logger.warning(
+            "⚠️ transcript diff %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
+        )
+        return _unavailable(sid, "read_failed")
+    if found is None:
+        logger.info("ℹ️ transcript diff %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
+        return _unavailable(sid, "diff_not_found")
+    diff = found["diff"]
+    logger.info(
+        "ℹ️ transcript diff %s (%s): %d hunks, numbered=%s, truncated=%s",
+        sid[:8], agent, len(diff["hunks"]), diff["numbered"], diff["truncated"],
+    )
+    return {
+        "available": True, "reason": None, "session_id": sid,
+        "path": found["path"], "diff": diff,
     }
 
 

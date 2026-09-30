@@ -88,6 +88,7 @@ import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { renderHunks } from './diff-view.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
 import { closeResumeCard, openResumeCard, wireResumeCard } from './chat-resume.js';
 import {
@@ -673,6 +674,71 @@ function newerNote(text, ms) {
   }
 }
 
+// --- per-step diffs (#1349) -------------------------------------------------
+//
+// An edit/write call's `action.diff` carries the page's share of its diff
+// (capped per step, server-side); the rest is one request away through the
+// step's own ref ({offset, n}). A failed call carries no diff and keeps
+// today's body, as does any call whose tool the server doesn't recognise.
+
+function stepDiff(e) {
+  const a = e.action;
+  if (!a || !a.diff || e.error === true || (a.verb !== 'edited' && a.verb !== 'wrote')) return null;
+  const wrap = document.createElement('div');
+  wrap.className = 'tr-diff-wrap';
+  const path = document.createElement('div');
+  path.className = 'tr-diff-path';
+  path.textContent = a.path || '';
+  wrap.appendChild(path);
+  wrap.appendChild(renderHunks(a.diff));
+  if (a.diff.truncated) wrap.appendChild(fullDiffControl(wrap, a.diff));
+  return wrap;
+}
+
+function truncNote(text) {
+  const note = document.createElement('div');
+  note.className = 'tr-trunc tr-diff-note';
+  note.setAttribute('role', 'status');
+  note.textContent = text;
+  return note;
+}
+
+// "Show full diff" in Chat; outside it (the Life OS viewer has no session
+// to ask) just the note that there is more.
+function fullDiffControl(wrap, diff) {
+  if (!view || diff.offset == null) return truncNote('Diff truncated');
+  const sid = view.session.session_id;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'button-tint tr-diff-more';
+  btn.textContent = 'Show full diff';
+  btn.addEventListener('click', async function (ev) {
+    ev.stopPropagation();
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    let body = null;
+    try {
+      const tt = await ensureTerminalToken();
+      body = await jsonApi(
+        '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+          '/transcript/diff?offset=' + encodeURIComponent(diff.offset) +
+          '&n=' + encodeURIComponent(diff.n || 0),
+        { headers: authHeaders({ terminalToken: tt }) }
+      );
+    } catch (exc) {
+      body = null;
+    }
+    if (!body || !body.available || !body.diff) {
+      btn.replaceWith(truncNote('Couldn’t load the full diff — showing the first part'));
+      return;
+    }
+    wrap.querySelector('.tr-diff').replaceWith(renderHunks(body.diff));
+    if (body.diff.truncated) btn.replaceWith(truncNote('Diff truncated at 200 KB'));
+    else btn.remove();
+  });
+  return btn;
+}
+
 // One folded item inside a run group — its own <details>, so a single
 // tool call can be opened without expanding its siblings.
 function renderItem(e, toolErrors) {
@@ -730,11 +796,16 @@ function renderItem(e, toolErrors) {
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
     // A command opens as a terminal: `$ command`, then its output (#1266).
+    // An edit opens as its diff (#1349), the tool's own "updated" line
+    // kept underneath in the quiet result style.
     const ran = e.action && e.action.verb === 'ran';
+    const diff = stepDiff(e);
     if (ran) body.appendChild(term(pre('$ ' + e.action.command, false)));
+    else if (diff) body.appendChild(diff);
     else if (e.summary) body.appendChild(pre(e.summary, false));
     if (e.result != null) {
       const out = pre(e.result, e.result_truncated);
+      if (diff) out.classList.add('tr-diff-result');
       body.appendChild(ran ? term(out) : out);
       const shots = thumbs(e.result_images);
       if (shots) body.appendChild(shots);
