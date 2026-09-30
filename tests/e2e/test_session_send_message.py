@@ -174,11 +174,12 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="chat")
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    # Chat mode's full set (#982): the two chat-only rows sit between Copy
-    # link and Stop, and nothing named Send appears for either kind. Compact
-    # (#1218) sits last in the safe group, above the destructive divider.
+    # Chat mode's full set (#982): the chat-only rows sit between Copy
+    # link and Stop, and nothing named Send appears for either kind. Changed
+    # files (#1349) follows Copy link in both modes; Compact (#1218) sits
+    # last in the safe group, above the destructive divider.
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Show tool calls", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Show tool calls", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 
@@ -198,14 +199,15 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="terminal")
 
-    # Terminal mode: Rename · Copy link · Compact · Stop and kill (the
-    # chat-only rows are detached from the DOM, not hidden — #982; Compact
-    # shows in both modes for a Claude session — #1218).
+    # Terminal mode: Rename · Copy link · Changed files · Compact · Stop and
+    # kill (the chat-only rows are detached from the DOM, not hidden — #982;
+    # Changed files and Compact show in both modes for a Claude session —
+    # #1349, #1218).
     buttons = menu.locator("button")
-    expect(buttons).to_have_count(4)
+    expect(buttons).to_have_count(5)
     labels = menu.locator(".row-menu-label")
-    expect(labels).to_have_text(["Rename", "Copy link", "Compact", "Stop and kill"])
-    for i in range(4):
+    expect(labels).to_have_text(["Rename", "Copy link", "Changed files", "Compact", "Stop and kill"])
+    for i in range(5):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
 

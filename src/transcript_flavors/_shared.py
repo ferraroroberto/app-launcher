@@ -262,21 +262,16 @@ def _with_diff(action: Dict[str, Any], hunks: List[Hunk]) -> Dict[str, Any]:
     return action
 
 
-def apply_patch_result(action: Dict[str, Any], patch: Any, created_text: Optional[str] = None) -> bool:
-    """Upgrade an edit/write action from what the harness recorded after the
-    call ran (#1349): ``patch`` in Claude's ``structuredPatch`` shape gives
-    real line numbers, and ``created_text`` the whole of a file the call
-    created. The counts follow the recorded diff, so a Write over an existing
-    file counts its removed lines too. False, leaving ``action`` untouched,
-    when neither applies."""
+def recorded_hunks(patch: Any, created_text: Optional[str] = None) -> List[Hunk]:
+    """The diff a harness recorded for one edit: ``patch`` in Claude's
+    ``structuredPatch`` shape, else ``created_text`` as a new file from line
+    1, else nothing. The one reading both a Chat step (#1349) and the
+    session's Changed files fold count from, so their totals agree."""
     hunks = _patch_hunks(patch)
     if hunks is None and isinstance(created_text, str):
         hunks = _added_hunks(created_text, numbered=True)
-    if not hunks:
-        return False
-    action["added"], action["removed"] = diff_counts(hunks)
-    action["diff"] = cap_diff(hunks, DIFF_FULL_BYTES)
-    return True
+    return hunks or []
+
 
 
 def _with_action(entry: Entry, action: Optional[Dict[str, Any]]) -> Entry:

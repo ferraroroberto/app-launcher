@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
 from src.board_transcript import _typed_user_kind
@@ -27,7 +27,11 @@ from src.transcript_flavors._shared import (
     _tool_summary,
     _with_action,
     _with_placeholders,
-    apply_patch_result,
+    DIFF_FULL_BYTES,
+    Hunk,
+    cap_diff,
+    diff_counts,
+    recorded_hunks,
 )
 
 
@@ -37,24 +41,42 @@ def _same_path(a: Any, b: Any) -> bool:
     )
 
 
-def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
-    """Give an Edit/Write/MultiEdit step Claude's own recorded diff (#1349).
+def recorded_edit(tool_use_result: Any) -> Optional[Tuple[str, List[Hunk], bool]]:
+    """``(file path, hunks, created)`` Claude recorded for one successful
+    edit, or None (#1349).
 
-    A successful edit's line carries ``toolUseResult`` with ``filePath``,
-    ``structuredPatch`` (hunks with real line numbers) and, for a Write,
-    ``type`` — ``"create"`` with an empty patch and the new file under
-    ``content``. The shape was probed from the 40 newest transcripts on the
-    dev box (key names and types only). Only applied when the line holds this
-    one result and names the call's own file; a failed call records a plain
-    error string instead and keeps its action untouched.
+    A successful Edit/Write/MultiEdit line carries ``toolUseResult`` with
+    ``filePath``, ``structuredPatch`` (hunks with real line numbers) and, for
+    a Write, ``type`` — ``"create"`` with an empty patch and the new file
+    under ``content``. The shape was probed from the 40 newest transcripts on
+    the dev box (key names and types only). A failed call records a plain
+    error string instead, so it never reads as an edit. The one reading a
+    Chat step and the session's Changed files fold share.
     """
+    if not isinstance(tool_use_result, dict):
+        return None
+    path = tool_use_result.get("filePath")
+    if not isinstance(path, str) or not path:
+        return None
+    created = tool_use_result.get("type") == "create"
+    hunks = recorded_hunks(
+        tool_use_result.get("structuredPatch"),
+        tool_use_result.get("content") if created else None,
+    )
+    return (path, hunks, created) if hunks else None
+
+
+def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
+    """Give an Edit/Write/MultiEdit step Claude's own recorded diff (#1349),
+    when the line holds this one result and it names the call's own file."""
     action = call.get("action") if call is not None else None
     if not isinstance(action, dict) or action.get("verb") not in ("edited", "wrote"):
         return
-    if not isinstance(tool_use_result, dict) or not _same_path(tool_use_result.get("filePath"), action.get("path")):
+    edit = recorded_edit(tool_use_result)
+    if edit is None or not _same_path(edit[0], action.get("path")):
         return
-    created = tool_use_result.get("content") if tool_use_result.get("type") == "create" else None
-    apply_patch_result(action, tool_use_result.get("structuredPatch"), created)
+    action["added"], action["removed"] = diff_counts(edit[1])
+    action["diff"] = cap_diff(edit[1], DIFF_FULL_BYTES)
 
 
 def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:

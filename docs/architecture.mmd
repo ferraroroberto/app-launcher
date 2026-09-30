@@ -95,6 +95,7 @@ life-os.js, life-os-viewer.js, voice.js"]
     SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]
     VSCODEWS["vscode_workspace.py\n.code-workspace resolve + create,\ncode CLI spawn (#802)"]
     GITCHANGES["git_changes.py\nworking-tree list + per-file diff,\nexplorer spawn (#977)"]
+    SESSCHANGES["session_changes.py\na session's Changed files,\nfolded from its transcript (#1349)"]
     JOBSFACADE["jobs.py (facade)"]
     JOBSCFG["jobs_config.py"]
     JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
@@ -143,6 +144,7 @@ life-os.js, life-os-viewer.js, voice.js"]
   R_APPS --> SCANNER
   R_CC --> VSCODEWS
   R_CC --> GITCHANGES
+  R_TRANSCRIPT --> SESSCHANGES
   R_JOBS --> JOBSFACADE
   RUNJOBCMD --> JOBSFACADE
   RUNJOBCMD --> NOTIFY
