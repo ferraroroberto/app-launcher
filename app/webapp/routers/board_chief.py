@@ -672,10 +672,18 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     conversations) degrades to today's fresh-spawn-
     and-``/chief`` path, never a hard failure — the response's ``resumed`` /
     ``resume_fallback_reason`` fields tell the caller which happened.
+    ``if_absent`` truthy narrows ``resume`` to "only when no chief is alive"
+    (#1351): a live chief is kept exactly as with no flags, and the resume
+    lookup runs only when there is none. It is what a message send uses (the
+    chat bar and the Board answer sheet, ``board-dispatch.js::sendToChief``)
+    — ``resume`` alone stop-and-resumed the very chief that was being
+    answered, dropping its in-flight turn and background waiters. It never
+    blocks ``fresh``.
     ``rows``/``cols`` size the PTY like every other launch. Returns
     ``{"session_id", "spawned", "resumed", "resume_fallback_reason"}`` —
     ``spawned`` False when an alive chief was found and kept (only possible
-    when neither ``fresh`` nor ``resume`` was requested).
+    when ``fresh`` was not requested, and ``resume`` either was not or came
+    with ``if_absent``).
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -683,6 +691,8 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
     resume_raw = body.get("resume", request.query_params.get("resume"))
     resume = str(resume_raw).strip().lower() in ("1", "true", "yes")
+    if_absent_raw = body.get("if_absent", request.query_params.get("if_absent"))
+    if_absent = str(if_absent_raw).strip().lower() in ("1", "true", "yes")
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
 
@@ -703,7 +713,11 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
         preferred_sid = ""
         if chief:
             sid = str(chief.get("session_id") or "")
-            if not fresh and not resume:
+            if not fresh and (not resume or if_absent):
+                logger.info(
+                    "ℹ️ chief ensure: kept live chief %s (resume=%s, if_absent=%s)",
+                    sid[:8], resume, if_absent,
+                )
                 return {"session_id": sid, "spawned": False}
             # Resolve the conversation behind the PTY *before* stopping it —
             # the live list is the only place that join can be made, and a
@@ -796,6 +810,13 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             skill=None if resumed_session_id else _CHIEF_COMMAND,
             resume=bool(resumed_session_id),
             audit_mod=audit, mirror_fn=open_local_terminal_window,
+        )
+        # The branch ensure took (#1351), paired with the "kept" line above:
+        # a chief that disappears and comes back is diagnosable from here.
+        logger.info(
+            "ℹ️ chief ensure: %s chief %s (replaced_live=%s, fresh=%s, resume=%s, if_absent=%s)",
+            "resumed" if resumed_session_id else "fresh-spawned", sid[:8],
+            bool(chief), fresh, resume, if_absent,
         )
         return {
             "session_id": sid,

@@ -840,6 +840,95 @@ class TestEnsureResume:
         )
         assert "--resume chief-old" in _spawn["flags"]
 
+    def test_if_absent_resume_keeps_a_live_chief(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir,
+    ):
+        """#1351: a message send (chat bar, Board answer sheet) ensures with
+        ``resume`` + ``if_absent``. With a chief already alive that must keep
+        it: no stop, no spawn, the same session id back so the text lands in
+        the conversation that asked. Before the fix ``if_absent`` was ignored
+        and every answer stop-and-resumed the live chief."""
+        client, app, overrides = webapp_client
+        cfg = app.state.webapp_config
+        overrides["session"].list_sessions.return_value = [_chief_row()]
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "chief-conv": _chief_state_row("chief-old", _recent_iso(minutes=5)),
+            }),
+            encoding="utf-8",
+        )
+        # Probes a respawn would need, so a regression fails on the
+        # assertions below rather than on an unmocked wait.
+        probes = iter([{"alive": False}])
+
+        def _get_session(port, sid):
+            try:
+                return next(probes)
+            except StopIteration:
+                return {"alive": True, "output_chars": 64}
+
+        overrides["session"].get_session.side_effect = _get_session
+        resp = client.post(
+            "/api/board/chief/ensure", json={"resume": True, "if_absent": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["session_id"] == "chief-old"
+        assert body["spawned"] is False
+        overrides["session"].stop.assert_not_called()
+        assert _spawn == {}, "a live chief must not be respawned"
+
+    def test_if_absent_resume_still_resumes_when_no_chief_is_alive(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir, _ready_session,
+    ):
+        """#651/#670 unchanged: with no chief alive, the send's ensure still
+        reattaches the last conversation rather than spawning a blank one."""
+        client, app, overrides = webapp_client
+        cfg = app.state.webapp_config
+        Path(cfg.sessions_state_file).write_text(
+            json.dumps({
+                "old-chief-sess": _chief_state_row("chief-1", _recent_iso(minutes=5)),
+            }),
+            encoding="utf-8",
+        )
+        resp = client.post(
+            "/api/board/chief/ensure", json={"resume": True, "if_absent": True},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["spawned"] is True
+        assert body["resumed"] is True
+        assert "--resume old-chief-sess" in _spawn["flags"]
+
+    def test_if_absent_never_blocks_fresh(
+        self, webapp_client, _bypass_gate, _fast_probe, _spawn,
+        _fleet_config_dir,
+    ):
+        """``fresh`` (the Restart button) always restarts; ``if_absent`` only
+        narrows ``resume``."""
+        client, _app, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [_chief_row()]
+        probes = iter([{"alive": False}])
+
+        def _get_session(port, sid):
+            try:
+                return next(probes)
+            except StopIteration:
+                return {"alive": True, "output_chars": 64}
+
+        overrides["session"].get_session.side_effect = _get_session
+        resp = client.post(
+            "/api/board/chief/ensure",
+            json={"fresh": True, "resume": True, "if_absent": True},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["spawned"] is True
+        assert overrides["session"].stop.call_args_list[0].args == (
+            8446, "chief-old", "quit"
+        )
+
     def test_resume_skips_the_live_blank_chief_for_the_real_conversation(
         self, webapp_client, _bypass_gate, _fast_probe, _spawn,
         _fleet_config_dir, tmp_path,
