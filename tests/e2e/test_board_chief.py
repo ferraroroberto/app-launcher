@@ -711,6 +711,54 @@ def _capture_chief_input(page: Page) -> list:
 
 
 @pytest.mark.iphone
+def test_plan_rows_show_the_model_only_when_the_chief_named_one(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1352: a lane or queue row that carries a `model` shows it as quiet
+    text before its status chip; a row without one (or with a non-string one)
+    shows nothing extra, and keeps its status chip and title."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z",
+        "lanes": [
+            {"repo": "app-launcher", "session": "s-a", "item": "#1352", "status": "building",
+             "model": "opus"},
+            {"repo": "fleet-config", "session": "s-f", "item": "#959", "status": "gate"},
+        ],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1199", "title": "pin the model", "status": "queued",
+             "model": "sonnet"},
+            {"repo": "app-launcher", "ref": "#1354", "title": "photo batch", "status": "queued",
+             "model": 5},
+        ],
+    }), encoding="utf-8")
+    _route_plan_from(authed_page, {"plan": chief_plan.read_chief_plan(f, "octo")})
+    _open_board(authed_page, base_url)
+
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    lanes = plan_body.locator(".board-plan-group").nth(0).locator("li")
+    queue = plan_body.locator(".board-plan-group").nth(1).locator("li")
+    expect(lanes).to_have_count(2)
+    expect(queue).to_have_count(2)
+
+    expect(lanes.nth(0).locator(".board-plan-model")).to_have_text("Opus")
+    expect(lanes.nth(0).locator(".board-plan-model")).to_be_visible()
+    expect(lanes.nth(0).locator(".board-plan-chip")).to_have_text("building")
+    expect(queue.nth(0).locator(".board-plan-model")).to_have_text("Sonnet")
+    expect(queue.nth(0).locator(".board-plan-model")).to_be_visible()
+    expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("queued")
+
+    # No model (missing, or the wrong type): today's row, no extra text.
+    expect(lanes.nth(1).locator(".board-plan-model")).to_have_count(0)
+    expect(lanes.nth(1).locator(".board-plan-chip")).to_have_text("gate")
+    expect(queue.nth(1).locator(".board-plan-model")).to_have_count(0)
+    expect(queue.nth(1)).to_contain_text("photo batch")
+    expect(queue.nth(1).locator(".board-plan-chip")).to_have_text("queued")
+
+
+@pytest.mark.iphone
 def test_answer_button_shows_only_with_questions(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:

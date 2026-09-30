@@ -4402,6 +4402,15 @@ body.terminal-open {
 }
 .launch-btn .kind-pill.board-plan-chip[data-tone="attention"] { color: var(--attention-text); }
 .launch-btn .kind-pill.board-plan-chip[data-tone="done"] { color: var(--success-text); }
+/* A row's model (#1352): quiet text beside the status chip -- muted caption,
+   no fill, so it never competes with the status. */
+.launch-btn .board-plan-model {
+  flex: 0 0 auto;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
 /* What waits on Roberto leads the card, marked like an attention item. */
 .board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
 .board-plan-waiting { box-shadow: inset 3px 0 0 var(--attention); }

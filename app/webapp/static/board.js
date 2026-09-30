@@ -932,11 +932,13 @@ function queueRow(q) {
     }
   }
   if (q.note) meta.push((meta.length ? ' · ' : '') + q.note);
-  return planRow(q.title || label, meta, q.status);
+  return planRow(q.title || label, meta, q.status, '', q.model);
 }
 
 // `meta` is a line of text, or a list of text and nodes (a queue row's link).
-function planRow(title, meta, status, cls) {
+// `model` is the chief's optional lane/queue model (#1352): quiet muted text
+// beside the status chip, sentence case, absent when blank.
+function planRow(title, meta, status, cls, model) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-plan-row' + (cls ? ' ' + cls : '');
   const body = document.createElement('div');
@@ -951,6 +953,12 @@ function planRow(title, meta, status, cls) {
     textCol.appendChild(m);
   }
   body.appendChild(textCol);
+  if (model) {
+    const tag = document.createElement('span');
+    tag.className = 'board-plan-model';
+    tag.textContent = model.charAt(0).toUpperCase() + model.slice(1);
+    body.appendChild(tag);
+  }
   if (status) {
     const chip = document.createElement('span');
     chip.className = 'kind-pill board-plan-chip';
@@ -1015,7 +1023,7 @@ function renderChiefPlan(body, liveRead) {
     const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
     if (lanes.length) {
       nodes.push(planGroup('Lanes', lanes.map(function (l) {
-        return planRow(l.repo || 'lane', l.item, l.status);
+        return planRow(l.repo || 'lane', l.item, l.status, '', l.model);
       })));
     }
     // Unfiltered, the Queue heading shows even when empty, as it always has;
