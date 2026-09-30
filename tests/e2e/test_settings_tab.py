@@ -304,6 +304,19 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
         page.locator(".pane:not([hidden]) .settings-open-btn").click()
         _open_card(page, "chiefSettingsPanel")
 
+    def saving(control) -> None:
+        """Click ``control`` and wait for its save's round-trip to land.
+
+        The card repaints only after patchConfig's POST and the GET that
+        follows it, so assertions on the repaint wait for that GET, not for
+        a 5 s DOM poll a loaded webapp outlasted (#1346: a ~7 s whole-server
+        stall left the switch unflipped when the budget ran out).
+        """
+        with page.expect_response(
+            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
+        ):
+            control.click()
+
     open_card()
     field = page.locator("#chiefAutoCompactThreshold")
     switch = page.locator("#chiefAutoCompactToggle")
@@ -318,7 +331,7 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts == [], posts
 
     field.fill("45")
-    save.click()
+    saving(save)
     expect(page.locator("#toast")).to_contain_text("Chief settings saved")
     assert posts[-1] == {"chief_auto_compact_threshold": 45}, posts
 
@@ -326,7 +339,7 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     expect(field).to_have_value("45")
     expect(switch).to_have_attribute("aria-checked", "true")
 
-    switch.click()
+    saving(switch)
     expect(switch).to_have_attribute("aria-checked", "false")
     expect(field).to_be_disabled()
     expect(page.locator("#toast")).to_contain_text("Chief auto-compact off")
@@ -337,7 +350,7 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     expect(field).to_be_disabled()
 
     # Back on at the default, so the shared webapp is left as found.
-    switch.click()
+    saving(switch)
     expect(switch).to_have_attribute("aria-checked", "true")
     expect(field).to_be_enabled()
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts

@@ -39,6 +39,7 @@ from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
     open_session_row,
+    stable_eval,
     stable_read,
     stub_session_mirror,
 )
@@ -193,11 +194,24 @@ def test_row_carries_a_centred_kebab_and_no_chevron(
     kebab = row.locator(".session-kebab")
     expect(kebab).to_be_visible()
     # Centred against the whole row — the alignment half of #1025, and the
-    # one part the first attempt got right. Both boxes are read through
-    # `stable_read` because the Coding rows are rebuilt by the git-status
-    # poll (#680), and compared with a 1px tolerance for sub-pixel heights.
-    row_box = stable_read(row.bounding_box)
-    keb_box = stable_read(kebab.bounding_box)
+    # one part the first attempt got right. All three boxes come from one
+    # browser task on the live row: read one at a time they straddled a
+    # layout shift above the list (kebab 41px below the row centre, #1346),
+    # and the Coding rows are rebuilt by the git-status poll (#680).
+    # Compared with a 1px tolerance for sub-pixel heights.
+    boxes = stable_eval(
+        row,
+        "el => {"
+        " const kebab = el.querySelector('.session-kebab');"
+        " const open = el.querySelector('.session-open');"
+        " if (!kebab || !open) return null;"
+        " const box = (n) => { const r = n.getBoundingClientRect();"
+        " return {x: r.x, y: r.y, width: r.width, height: r.height}; };"
+        " return {row: box(el), kebab: box(kebab), open: box(open)};"
+        "}",
+    )
+    assert boxes is not None, "session row never rendered its kebab and open target"
+    row_box, keb_box, open_box = boxes["row"], boxes["kebab"], boxes["open"]
     row_mid = row_box["y"] + row_box["height"] / 2
     keb_mid = keb_box["y"] + keb_box["height"] / 2
     assert abs(row_mid - keb_mid) <= 1, (
@@ -207,7 +221,6 @@ def test_row_carries_a_centred_kebab_and_no_chevron(
     right_gap = (row_box["x"] + row_box["width"]) - (keb_box["x"] + keb_box["width"])
     assert 0 <= right_gap <= 1, f"kebab is not flush right (gap {right_gap})"
     # The row's own tap target stays a full-size row.
-    open_box = stable_read(row.locator(".session-open").bounding_box)
     assert open_box["height"] >= 44, open_box["height"]
 
 
