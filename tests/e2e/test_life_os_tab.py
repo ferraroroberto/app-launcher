@@ -1740,14 +1740,24 @@ def test_life_os_launch_sends_terminal_token(
 
 
 # ------------------------------------------------ Telegram channels (#1366)
+_FAKE_SETUP = {
+    "file_present": True, "life_os_found": True, "bun": True, "plugin": True,
+    "skills": [
+        {"id": "journal-daily", "name": "Journal Daily"},
+        {"id": "sparring-work", "name": "Sparring Work"},
+    ],
+}
 _FAKE_CHANNELS = {
     "profiles": [
         {"id": "health", "label": "Health", "skill": "journal-daily",
-         "skill_found": True, "running": False, "session_id": ""},
+         "skill_found": True, "env_present": True, "running": False,
+         "session_id": ""},
         {"id": "school", "label": "School", "skill": "sparring-work",
-         "skill_found": True, "running": True, "session_id": "s-school"},
+         "skill_found": True, "env_present": True, "running": True,
+         "session_id": "s-school"},
     ],
     "problems": [],
+    "setup": _FAKE_SETUP,
 }
 
 
@@ -1824,18 +1834,82 @@ def test_channel_profiles_render_and_launch(
     assert len(launches) == 2, launches
 
 
-def test_channel_card_hidden_without_profiles(
+def test_channel_card_explains_itself_without_profiles(
     authed_page: Page, base_url: str
 ) -> None:
-    """The feature is opt-in: no profile file, no card."""
+    """No profile file: the card stays and says where to set it up (#1369),
+    and its button lands on the Settings card, opened."""
     _mock_skills(authed_page)
-    _mock_channels(authed_page, {"profiles": [], "problems": []}, [])
+    _mock_channels(
+        authed_page,
+        {"profiles": [], "problems": [],
+         "setup": {**_FAKE_SETUP, "file_present": False, "plugin": None}},
+        [],
+    )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
         timeout=5_000
     )
-    expect(authed_page.locator("#lifeOsChannels")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsChannels")).to_be_visible()
+    expect(authed_page.locator("#lifeOsChannelsEmpty")).to_be_visible()
+    expect(authed_page.locator("#lifeOsChannelList li")).to_have_count(0)
+    authed_page.locator("#lifeOsChannelsEmptyAction").click()
+    expect(authed_page.locator("#paneSettings")).to_be_visible()
+    expect(authed_page.locator("#channelsPanel")).to_have_attribute("open", "")
+    checks = authed_page.locator("#channelChecks .channel-check")
+    expect(checks).to_have_count(4)
+    # File missing is "Missing"; an unreadable plugin record is "Unknown", not
+    # folded into either verdict.
+    expect(checks.nth(0).locator(".channel-check-chip")).to_have_text("Missing")
+    expect(checks.nth(2).locator(".channel-check-chip")).to_have_text("Unknown")
+    expect(authed_page.locator("#channelProfilesEmpty")).to_be_visible()
+    expect(authed_page.locator("#channelSkills .channel-skill-chip")).to_have_count(2)
+
+
+def test_settings_channels_card_reports_each_profile(
+    authed_page: Page, base_url: str
+) -> None:
+    """With profiles, the Settings card lists each one as Ready or Needs setup
+    and names what is missing; Re-check re-reads the server (#1369)."""
+    _mock_skills(authed_page)
+    body = {
+        "profiles": [
+            {"id": "health", "label": "Health", "skill": "journal-daily",
+             "skill_found": True, "env_present": True, "running": False,
+             "session_id": ""},
+            {"id": "school", "label": "School", "skill": "nope",
+             "skill_found": False, "env_present": False, "running": False,
+             "session_id": ""},
+        ],
+        "problems": ["profile 'house': state_dir does not exist"],
+        "setup": _FAKE_SETUP,
+    }
+    _mock_channels(authed_page, body, [])
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsChannelList li").first).to_be_visible(
+        timeout=5_000
+    )
+    authed_page.locator("#paneLifeOS > .home-head .settings-open-btn").click()
+    expect(authed_page.locator("#paneSettings")).to_be_visible()
+    # Closed by default, like its sibling Settings cards.
+    expect(authed_page.locator("#channelsPanel")).not_to_have_attribute("open", "")
+    authed_page.locator("#channelsPanel > summary").click()
+    rows = authed_page.locator("#channelProfileChecks .channel-check")
+    expect(rows).to_have_count(2)
+    expect(rows.nth(0).locator(".channel-check-chip")).to_have_text("Ready")
+    expect(rows.nth(1).locator(".channel-check-chip")).to_have_text("Needs setup")
+    expect(rows.nth(1)).to_contain_text("skill “nope” not found")
+    expect(rows.nth(1)).to_contain_text("no .env")
+    expect(authed_page.locator("#channelProfileProblems")).to_contain_text("house")
+    # Names and booleans only: no drive path, no token line anywhere in the card.
+    expect(authed_page.locator("#channelsPanel")).not_to_contain_text(
+        re.compile(r"[A-Za-z]:[\\/]|TELEGRAM_BOT_TOKEN=\d")
+    )
+    body["profiles"][1].update({"skill_found": True, "env_present": True})
+    authed_page.locator("#channelRecheck").click()
+    expect(rows.nth(1).locator(".channel-check-chip")).to_have_text("Ready")
 
 
 def test_channel_session_carries_its_label_in_the_coding_list(

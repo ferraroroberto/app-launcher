@@ -4637,6 +4637,61 @@ span.chief-answer-ref { color: var(--muted); }
 .session-item .name .session-channel-tag { margin-right: var(--space-sm); vertical-align: middle; }
 .lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
+/* Settings → Telegram channels (#1369): read-only check rows, the same
+   meta-left / pill-right shape as the context-filter harness rows. */
+.channel-check-list .channel-check {
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 10px 0;
+}
+.channel-check-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.channel-check-chip {
+  flex-shrink: 0;
+  font-size: var(--font-caption);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.channel-check-chip-ok {
+  background: rgb(from var(--success) r g b / 0.16);
+  color: var(--success-text);
+}
+.channel-check-chip-missing {
+  background: rgb(from var(--danger) r g b / 0.16);
+  color: var(--danger-text);
+}
+.channel-check-chip-unknown {
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+.channel-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: 0;
+}
+.channel-skill-chip {
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+}
+.channel-steps {
+  margin: 0;
+  padding-left: 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: var(--font-body-sm);
+}
+
 /* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
    background/border/radius, just a bottom-border divider between rows
    (GitHub-issue-list style) — with repo/# and the title on their own lines

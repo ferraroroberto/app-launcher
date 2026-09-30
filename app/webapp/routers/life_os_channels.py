@@ -4,7 +4,8 @@ Split off ``life_os.py`` the way ``life_os_conversations.py`` and
 ``life_os_files.py`` were (#884): mounted from there via ``include_router``, so
 ``app/webapp/server.py`` still registers one ``life_os.router``.
 
-    GET  /api/life-os/channels                    → the profiles + which are running
+    GET  /api/life-os/channels                    → the profiles + which are running,
+                                                     and the setup checks (#1369)
     POST /api/life-os/channels/{id}/launch        → start (or resume) a profile's
                                                      Claude session with the
                                                      Telegram channel attached
@@ -35,9 +36,13 @@ from fastapi import APIRouter, HTTPException, Request
 from src import session_client
 from src.channel_profiles import (
     ChannelProfile,
+    bun_available,
+    env_file_present,
     label_profile_id,
     load_channel_profiles,
+    plugin_installed_for,
     profile_session_label,
+    profiles_file_present,
     write_channel_settings,
 )
 from src.launch_flags import build_claude_flags
@@ -81,18 +86,21 @@ async def _live_profile_sessions(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]
 
 @router.get("/api/life-os/channels")
 async def list_channels(request: Request) -> Dict[str, Any]:
-    """The configured profiles, each with the session it is running in.
+    """The configured profiles, each with the session it is running in, plus the
+    setup checks the Settings card shows (#1369).
 
     ``running`` is ``None`` (not ``False``) for every profile when the
     session-host cannot be reached: an unknown is not "nothing running". The
-    state directory is never returned — the tab has no use for it.
+    same rule holds for ``setup.plugin`` (``None`` = Claude's install record
+    could not be read). Only booleans and names leave here: no state
+    directory, no path, no file content — ``env_present`` is a stat of the
+    token file, which is never opened.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     profiles, problems = _profiles(request)
     life_os_dir = Path(cfg.life_os_dir)
-    skill_ids = (
-        {s.id for s in scan_skills(life_os_dir)} if life_os_dir.is_dir() else set()
-    )
+    skills = scan_skills(life_os_dir) if life_os_dir.is_dir() else []
+    skill_ids = {s.id for s in skills}
     live: Optional[Dict[str, Dict[str, Any]]] = None
     if profiles:
         try:
@@ -107,10 +115,26 @@ async def list_channels(request: Request) -> Dict[str, Any]:
             "label": profile.label,
             "skill": profile.skill,
             "skill_found": profile.skill in skill_ids,
+            "env_present": env_file_present(profile),
             "running": None if live is None else bool(sess),
             "session_id": str((sess or {}).get("session_id") or ""),
         })
-    return {"profiles": rows, "problems": problems}
+    return {
+        "profiles": rows,
+        "problems": problems,
+        "setup": {
+            "file_present": profiles_file_present(
+                getattr(request.app.state, "channel_profiles_path", None)
+            ),
+            "life_os_found": life_os_dir.is_dir(),
+            "bun": bun_available(),
+            "plugin": plugin_installed_for(
+                life_os_dir,
+                getattr(request.app.state, "installed_plugins_path", None),
+            ),
+            "skills": [{"id": s.id, "name": s.name} for s in skills],
+        },
+    }
 
 
 @router.post("/api/life-os/channels/{profile_id}/launch")

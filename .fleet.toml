@@ -456,6 +456,7 @@ pytest_targets = [
 name     = "lifeos"
 paths    = [
     "app/webapp/static/life-os.js",
+    "app/webapp/static/telegram-setup.js",
     "app/webapp/routers/life_os.py",
     "app/webapp/routers/life_os_conversations.py",
     "app/webapp/routers/life_os_files.py",

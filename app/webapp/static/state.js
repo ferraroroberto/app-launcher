@@ -110,7 +110,7 @@ export const state = {
   // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
-  lifeOsChannels: { profiles: [], problems: [] },
+  lifeOsChannels: { profiles: [], problems: [], setup: null },
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   systemMapAvailable: false, // /api/system-map/status → show/hide the section
   systemMapObjectUrl: null,  // object URL of the loaded map blob (revoked on reload)
@@ -194,6 +194,12 @@ export const els = {
   lifeOsChannels: document.getElementById('lifeOsChannels'),
   lifeOsChannelList: document.getElementById('lifeOsChannelList'),
   lifeOsChannelProblems: document.getElementById('lifeOsChannelProblems'),
+  lifeOsChannelsEmpty: document.getElementById('lifeOsChannelsEmpty'),
+  channelChecks: document.getElementById('channelChecks'),
+  channelProfileChecks: document.getElementById('channelProfileChecks'),
+  channelProfilesEmpty: document.getElementById('channelProfilesEmpty'),
+  channelProfileProblems: document.getElementById('channelProfileProblems'),
+  channelSkills: document.getElementById('channelSkills'),
   lifeOsRecapBadge: document.getElementById('lifeOsRecapBadge'),
   lifeOsRecapLaunch: document.getElementById('lifeOsRecapLaunch'),
   lifeOsDir: document.getElementById('lifeOsDir'),
