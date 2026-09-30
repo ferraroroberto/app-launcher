@@ -681,9 +681,13 @@ Once scanned in, each `tray`-kind row gets an autostart switch in the
 collapsible **Trays** panel, sharing the row's control cluster with the ⚡ and
 🚫👁 launch buttons. It carries no visible label — the panel is called Trays
 and it is the row's only toggle — but its accessible name is the full
-"Autostart &lt;name&gt; at boot". When app-launcher's own
-webapp comes up (see the Settings-tab boot toggle above), it walks every
-autostart-enabled tray one at a time — in the registry's existing
+"Autostart &lt;name&gt; at boot". When app-launcher's tray starts (see
+the Settings-tab boot toggle above), right after it tries to bring its own
+webapp up, it walks every autostart-enabled tray one at a time. The walk
+does not depend on that attempt succeeding: a webapp that misses its
+ready-wait (a slow cold-boot import) writes the reason to
+`webapp/registered_trays.log`, and the sister trays launch anyway (#1339).
+They launch in the registry's existing
 alphabetical order, no reordering UI yet — waiting for each to report
 ready (via its `.fleet.toml`'s declared `port`, or a fixed delay if that's
 missing) before starting the next. This avoids a boot-time CPU/disk spike
