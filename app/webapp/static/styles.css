@@ -1308,13 +1308,13 @@ summary + .opt-group { border-top: 0; }
 
 /* The row's detail block (#1130): the facts the two-line row hands off,
    as label/value rows above the runs list. Caption-size keys in --muted, so
-   the values read first. */
+   the values read first. No rule under it (#1348): the run tiles carry their
+   own edges, so its bottom padding alone sets them apart. */
 .job-details {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 10px 16px 12px;
-  border-bottom: 1px solid var(--line);
 }
 .job-detail-row {
   display: flex;

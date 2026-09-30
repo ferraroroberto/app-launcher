@@ -162,6 +162,12 @@ def test_row_is_two_lines_with_one_action_and_a_menu(
     expect(details.locator("[data-role='status-dot']")).to_have_count(0)
     expect(details.locator(".job-mutex-pill")).to_contain_text("reporting")
     expect(details.locator(".job-webhook-pill")).to_contain_text("github")
+    # Nothing draws a rule between the details and the runs they head
+    # (#1348): the run tiles carry their own edges, so the block ends on
+    # its padding and the runs list follows it directly.
+    expect(details).to_have_css("border-bottom-width", "0px")
+    expect(authed_page.locator("[data-role='job-details'] + *")).to_have_class(
+        re.compile(r"\bjobs-runs-list\b"))
 
 
 def test_the_menu_holds_the_actions_the_rail_used_to_stack(
