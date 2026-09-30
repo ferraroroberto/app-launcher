@@ -399,6 +399,23 @@ export function isChiefSession(s) {
   return !!s && (s.label === 'chief' || (s.kind === 'pty' && s.name === 'chief'));
 }
 export const CHIEF_KILL_CONFIRM = 'Kill the chief session?';
+
+// A Telegram channel session (#1366): the session-host label is
+// `telegram:<profile id>`, set only by the Life OS channel launch. Its
+// "Telegram · Health" name is derived from the id, so the Board and the Coding
+// tab need nothing but the label the host already echoes.
+const CHANNEL_LABEL_PREFIX = 'telegram:';
+export function isChannelSession(s) {
+  return !!s && typeof s.label === 'string' && s.label.indexOf(CHANNEL_LABEL_PREFIX) === 0;
+}
+export function channelSessionName(s) {
+  if (!isChannelSession(s)) return '';
+  const id = s.label.slice(CHANNEL_LABEL_PREFIX.length);
+  return 'Telegram · ' + id.replace(/-/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+}
+export function channelKillConfirm(s) {
+  return 'Stop the ' + channelSessionName(s) + ' session? Its bot goes offline until you start it again.';
+}
 export const CHIEF_RESTART_CONFIRM =
   'Restart the chief? It will stop the current one gracefully and resume ' +
   'the same conversation (falling back to a fresh one only if nothing is ' +

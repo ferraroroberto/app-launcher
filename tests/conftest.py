@@ -417,6 +417,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import board_spawn as board_spawn_router
     from app.webapp.routers import life_os_conversations as life_os_conversations_router
     from app.webapp.routers import life_os_files as life_os_files_router
+    from app.webapp.routers import life_os_channels as life_os_channels_router
     from app.webapp.routers import life_os_spawn as life_os_spawn_router
     from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
     from app.webapp.routers import misc as misc_router
@@ -449,6 +450,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(board_chief_router, "session_client", session_mock)
     monkeypatch.setattr(board_spawn_router, "session_client", session_mock)
     monkeypatch.setattr(misc_router, "session_client", session_mock)
+    monkeypatch.setattr(life_os_channels_router, "session_client", session_mock)
     # The Chat question card's /answer route types into a session (#1149).
     from app.webapp.routers import session_transcript as session_transcript_router
     monkeypatch.setattr(session_transcript_router, "session_client", session_mock)

@@ -56,7 +56,10 @@ import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
-import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, renderQuotaLines, revealInCard } from './dom-utils.js';
+import {
+  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtDuration,
+  isChannelSession, renderQuotaLines, revealInCard,
+} from './dom-utils.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -185,6 +188,16 @@ function renderSessionCard(card, openItem) {
     crown.innerHTML = icon('crown');
     const chiefMeta = shell.btn.querySelector('.board-card-meta');
     chiefMeta.insertBefore(crown, chiefMeta.firstChild);
+  }
+  // A Telegram channel session (#1366) carries a "Telegram · Health" pill.
+  if (isChannelSession(card)) {
+    shell.li.classList.add('board-item-channel');
+    const tag = document.createElement('span');
+    tag.className = 'session-channel-tag';
+    tag.textContent = channelSessionName(card);
+    shell.btn.querySelector('.board-card-meta').insertBefore(
+      tag, shell.btn.querySelector('.board-card-meta').firstChild
+    );
   }
   // The Board now includes every launcher-owned agent, not only Claude Code
   // (#455). Show the same registry-backed brand identity as the Coding tab so
@@ -379,6 +392,7 @@ function buildDrawer(card) {
     'board-stop-btn', 'x', 'Stop', 'Stop and kill this session', null,
     async function (btn) {
       if (isChiefCard(card) && !confirm(CHIEF_KILL_CONFIRM)) return;
+      if (isChannelSession(card) && !confirm(channelKillConfirm(card))) return;
       btn.disabled = true;
       // Close the drawer first — the session it belongs to is going away.
       state.boardExpanded = null;

@@ -47,8 +47,16 @@ from src.webapp_config import (
 )
 
 
+# The Claude Code Telegram channel plugin (#1366). ``--channels`` makes Claude
+# start that plugin's server and inject the chat's messages into the session.
+CHANNEL_PLUGIN = "plugin:telegram@claude-plugins-official"
+
+
 def build_claude_flags(
-    cfg: WebappConfig, model_override: Optional[str] = None
+    cfg: WebappConfig,
+    model_override: Optional[str] = None,
+    *,
+    channel_settings: Optional[str] = None,
 ) -> str:
     """Compose the `claude` CLI flags from the persisted defaults.
 
@@ -58,9 +66,17 @@ def build_claude_flags(
     rest of the flags (effort, permission, verbose, debug) still come
     from the shared Coding options. Other callers pass nothing and keep
     the persisted model.
+
+    ``channel_settings`` — the path of a per-profile settings file — turns the
+    session into a Telegram channel session (#1366): ``--channels`` starts the
+    plugin and ``--settings <file>`` hands it its ``TELEGRAM_STATE_DIR``
+    through Claude's own settings ``env`` block, so the variable reaches that
+    session's plugin server and no other. A channel session never runs in
+    bypass mode, whatever the shared Coding option says (#1338 constraint).
+    ``None`` (every other caller) leaves the output exactly as before.
     """
     parts: list[str] = list(ALWAYS_ON_CLAUDE_FLAGS)
-    if cfg.claude_permission_mode == "skip":
+    if cfg.claude_permission_mode == "skip" and not channel_settings:
         parts.append("--dangerously-skip-permissions")
     else:
         parts.extend(["--permission-mode", "auto"])
@@ -73,6 +89,8 @@ def build_claude_flags(
         parts.append("--verbose")
     if cfg.claude_debug:
         parts.append("--debug")
+    if channel_settings:
+        parts.extend(["--channels", CHANNEL_PLUGIN, "--settings", channel_settings])
     return " ".join(parts)
 
 

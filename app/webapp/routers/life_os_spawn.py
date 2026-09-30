@@ -97,13 +97,16 @@ async def _spawn_skill_session(
     audit_skill: str,
     body: Dict[str, Any],
     resume_sid: str = "",
+    label: str = "",
 ) -> Dict[str, Any]:
     """Spawn a Claude or Codex session in life-os and shape the reply.
 
     The shared tail of the skill-launch and recap-launch routes: each has
     already resolved provider-specific flags and the session kind; this runs
     the spawn + audit + optional PC mirror identically and returns the common
-    response fields. The caller prepends its own ``launched`` id.
+    response fields. The caller prepends its own ``launched`` id. ``label``
+    tags the session with a role (#1366's ``telegram:<profile>``); ``""``
+    for every other launch.
     """
     # The phone passes its real terminal size (issue #374): a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120
@@ -115,7 +118,7 @@ async def _spawn_skill_session(
     session, sid = await spawn_launcher_session(
         spawn_claude_session, cfg,
         project_dir=life_os_dir, name=name, flags=flags, agent=agent,
-        rows=rows, cols=cols, kind=kind,
+        rows=rows, cols=cols, kind=kind, label=label,
     )
     # The shared audit+mirror tail (#1003). This used to be a second,
     # parallel copy of _helpers.audit_session_start_and_maybe_mirror,

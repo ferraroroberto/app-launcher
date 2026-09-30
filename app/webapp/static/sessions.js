@@ -30,7 +30,7 @@ import { renderHomeHead } from './home-head.js';
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, brandIconEl, fmtDuration, isChiefSession, renderQuotaLines, revealInCard } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, renderQuotaLines, revealInCard } from './dom-utils.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
@@ -187,6 +187,12 @@ export function renderSessions() {
       crown.className = 'board-chief-crown';
       crown.innerHTML = icon('crown');
       name.appendChild(crown);
+    }
+    if (isChannelSession(s)) {
+      const tag = document.createElement('span');
+      tag.className = 'session-channel-tag';
+      tag.textContent = channelSessionName(s);
+      name.appendChild(tag);
     }
     name.appendChild(document.createTextNode(sessionTitle(s)));
     open.appendChild(name);
@@ -360,6 +366,7 @@ export async function stopSession(s) {
   // {session_id, name} object with no kind/label, so isChiefSession() is a
   // safe no-op there and it never double-confirms.
   if (isChiefSession(s) && !confirm(CHIEF_KILL_CONFIRM)) return;
+  if (isChannelSession(s) && !confirm(channelKillConfirm(s))) return;
   try {
     await jsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +

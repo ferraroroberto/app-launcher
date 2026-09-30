@@ -1,0 +1,16 @@
+{
+  "profiles": [
+    {
+      "id": "health",
+      "label": "Health",
+      "skill": "health",
+      "state_dir": "C:/Users/you/.claude/channels/telegram-health"
+    },
+    {
+      "id": "school",
+      "label": "School",
+      "skill": "school",
+      "state_dir": "C:/Users/you/.claude/channels/telegram-school"
+    }
+  ]
+}

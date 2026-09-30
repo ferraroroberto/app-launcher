@@ -1146,6 +1146,23 @@
         </div>
       </section>
 
+      <!-- Telegram channel profiles (#1366): one row per bot, each opening
+           its life-os skill with that bot attached. Hidden until the machine-
+           local config/channel_profiles.json defines a profile. -->
+      <details id="lifeOsChannels" class="card card--collapsible action-list lifeos-channels-card" open hidden>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+            <h3 class="collapse-title">Telegram</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+          <ul id="lifeOsChannelList" class="card-list action-rows" aria-label="Telegram channel profiles"></ul>
+          <p id="lifeOsChannelProblems" class="field-help" role="status" hidden></p>
+        </div>
+      </details>
+
       <details class="card card--collapsible action-list lifeos-list-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">

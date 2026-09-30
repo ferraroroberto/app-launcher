@@ -5,6 +5,9 @@ specialised to the skills in the sibling ``life-os`` repo:
 
     GET  /api/life-os/skills                  → list skills (public, token-gated)
     POST /api/life-os/skills/{id}/launch      → spawn a skill session (token)
+    GET  /api/life-os/channels                → Telegram channel profiles (#1366)
+    POST /api/life-os/channels/{id}/launch    → start/resume a profile's skill session
+                                                 with its Telegram bot (Tailscale + passkey)
     POST /api/life-os/skills/{id}/conversations/launch → verified source resume
                                                  or new handoff (Tailscale + passkey)
     GET  /api/life-os/skills/{id}/files        → file tree   (Tailscale + passkey)
@@ -27,7 +30,8 @@ skill list, the weekly-recap tile, skill launch, and a skill's file tree. The
 conversation history (index, search, targeted relaunch) lives in
 :mod:`app.webapp.routers.life_os_conversations` and the path-jailed content
 browser (read / delete / rename) in :mod:`app.webapp.routers.life_os_files`,
-both mounted here via ``include_router`` so ``app/webapp/server.py`` still
+and the Telegram channel profiles (#1366) in
+:mod:`app.webapp.routers.life_os_channels`, all mounted here via ``include_router`` so ``app/webapp/server.py`` still
 registers one ``life_os.router``. Skill resolution and the spawn tail that
 this module and the conversations router share live in
 :mod:`app.webapp.routers.life_os_spawn`, which neither imports the other
@@ -46,7 +50,11 @@ from src.launch_flags import build_claude_flags, build_codex_flags, build_resume
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, update_webapp_config
 
-from app.webapp.routers import life_os_conversations, life_os_files
+from app.webapp.routers import (
+    life_os_channels,
+    life_os_conversations,
+    life_os_files,
+)
 from app.webapp.routers._helpers import maybe_json
 from app.webapp.routers.life_os_conversations import (
     _SESSION_ID_RE,
@@ -61,6 +69,7 @@ from app.webapp.routers.life_os_spawn import (
 )
 
 router = APIRouter()
+router.include_router(life_os_channels.router)
 router.include_router(life_os_conversations.router)
 router.include_router(life_os_files.router)
 

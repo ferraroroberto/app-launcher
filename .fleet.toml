@@ -460,6 +460,7 @@ paths    = [
     "app/webapp/routers/life_os_conversations.py",
     "app/webapp/routers/life_os_files.py",
     "app/webapp/routers/life_os_spawn.py",
+    "app/webapp/routers/life_os_channels.py",
     "tests/e2e/test_life_os_tab.py",
     "tests/e2e/test_markdown_link_rendering.py",
 ]

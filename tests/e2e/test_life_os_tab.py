@@ -1737,3 +1737,126 @@ def test_life_os_launch_sends_terminal_token(
         f"{target} launch sent no X-Terminal-Token — behind a configured "
         "passkey gate this is a 401 + login overlay on the phone (#1036, #997)"
     )
+
+
+# ------------------------------------------------ Telegram channels (#1366)
+_FAKE_CHANNELS = {
+    "profiles": [
+        {"id": "health", "label": "Health", "skill": "journal-daily",
+         "skill_found": True, "running": False, "session_id": ""},
+        {"id": "school", "label": "School", "skill": "sparring-work",
+         "skill_found": True, "running": True, "session_id": "s-school"},
+    ],
+    "problems": [],
+}
+
+
+def _mock_channels(page: Page, body: dict, launches: list) -> None:
+    page.route(
+        re.compile(r".*/api/life-os/channels$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body),
+        ),
+    )
+
+    def _launch(route):
+        launches.append({
+            "url": route.request.url,
+            "body": _json.loads(route.request.post_data or "{}"),
+        })
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "launched": "journal-daily", "profile": "health",
+                "session": {"session_id": "s-health", "kind": "remote"},
+            }),
+        )
+
+    page.route(re.compile(r".*/api/life-os/channels/[^/]+/launch$"), _launch)
+
+
+def _wait_for_launches(page: Page, launches: list, count: int) -> None:
+    """Wait (bounded) until the mocked launch route has seen ``count`` POSTs."""
+    for _ in range(50):
+        if len(launches) >= count:
+            return
+        page.wait_for_timeout(100)
+    raise AssertionError(f"expected {count} channel launch POSTs, saw {launches}")
+
+
+def test_channel_profiles_render_and_launch(
+    authed_page: Page, base_url: str
+) -> None:
+    """The Telegram card lists each profile; a tap starts it (channel launch
+    route, PTY, no resume), its ⋯ → Resume resumes it, and a profile already
+    running only opens its session — no launch POST, no menu (#1366)."""
+    _mock_skills(authed_page)
+    launches: list = []
+    _mock_channels(authed_page, _FAKE_CHANNELS, launches)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    card = authed_page.locator("#lifeOsChannels")
+    expect(card).to_be_visible(timeout=5_000)
+    rows = authed_page.locator("#lifeOsChannelList li.lifeos-channel-item")
+    expect(rows).to_have_count(2)
+    health = authed_page.locator("#lifeOsChannelList li[data-id='health']")
+    school = authed_page.locator("#lifeOsChannelList li[data-id='school']")
+    expect(health).to_contain_text("Telegram · Health")
+    expect(school).to_contain_text("running")
+    # A running profile only opens: its dead menu is gone.
+    expect(school.locator(".action-row-kebab")).to_have_count(0)
+
+    health.locator(".action-row-main").click()
+    _wait_for_launches(authed_page, launches, 1)
+    assert launches[0]["url"].endswith("/api/life-os/channels/health/launch")
+    assert launches[0]["body"]["mode"] == "pty", launches[0]
+    assert launches[0]["body"]["resume"] is False, launches[0]
+
+    health.locator(".action-row-kebab").click()
+    health.locator(".lifeos-channel-resume-btn").click()
+    _wait_for_launches(authed_page, launches, 2)
+    assert launches[1]["body"]["resume"] is True, launches[1]
+
+    # Tapping the running row must not POST a second launch.
+    school.locator(".action-row-main").click()
+    authed_page.wait_for_timeout(400)
+    assert len(launches) == 2, launches
+
+
+def test_channel_card_hidden_without_profiles(
+    authed_page: Page, base_url: str
+) -> None:
+    """The feature is opt-in: no profile file, no card."""
+    _mock_skills(authed_page)
+    _mock_channels(authed_page, {"profiles": [], "problems": []}, [])
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
+        timeout=5_000
+    )
+    expect(authed_page.locator("#lifeOsChannels")).to_be_hidden()
+
+
+def test_channel_session_carries_its_label_in_the_coding_list(
+    authed_page: Page, base_url: str
+) -> None:
+    """A telegram:<profile> session reads "Telegram · Health" on its Coding
+    row, so a chat-bound session is recognisable at a glance (#1366)."""
+    session = {
+        "session_id": "s-tg", "kind": "pty", "agent": "claude",
+        "label": "telegram:health", "project_dir": "E:/automation/life-os",
+        "name": "journal-daily", "flags": "", "started_at": "2026-07-19T06:30:00Z",
+        "alive": True, "rows": 40, "cols": 120, "live_title": "",
+        "prompt_title": "", "manual_title": "", "output_chars": 10,
+    }
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"sessions": [session]}),
+        ),
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    tag = authed_page.locator(".session-item .session-channel-tag")
+    expect(tag).to_have_text("Telegram · Health", timeout=10_000)
