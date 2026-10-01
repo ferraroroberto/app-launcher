@@ -4691,6 +4691,11 @@ span.chief-answer-ref { color: var(--muted); }
   gap: var(--space-sm);
   font-size: var(--font-body-sm);
 }
+/* The playbook names long folder/file paths inline (#1371); let them wrap at
+   any character so a phone-width card never scrolls sideways. */
+.channel-steps code {
+  overflow-wrap: anywhere;
+}
 
 /* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
    background/border/radius, just a bottom-border divider between rows
