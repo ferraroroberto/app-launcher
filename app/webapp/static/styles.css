@@ -2313,6 +2313,32 @@ textarea.input-native { height: auto; }
   box-shadow: none;
   cursor: default;
 }
+/* Model pill (#1383): the session's model, left of the context ring. A
+   neutral chip (design.md: neutral-soft fill, text in fg, pill radius,
+   caption type) at the compact control height so it sits level with the
+   header's buttons. Not a control, so no tap target to size. The title gives
+   way first (flex: 1, min-width: 0, ellipsis); only once the title is gone
+   does the pill itself shrink, ellipsising its text, so at 360px with every
+   control showing the bar still never overflows. display: block, not flex,
+   because text-overflow does not apply to a flex container's own text. */
+.terminal-model {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  align-self: center;
+  height: var(--control-h);
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: var(--control-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-model[hidden] { display: none; }
 /* Context ring (#1223): the session's context-window use, just before the
    toggle. A real 44×44 term-btn (the bar is a cluster, so no expanded hit
    area), holding an 18px SVG ring — the toggle's own glyph size. The track

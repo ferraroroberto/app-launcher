@@ -37,6 +37,7 @@ from websockets.exceptions import InvalidHandshake
 
 from src import audit, board, launcher, session_client
 from src.session_host_paths import sha_contains_commit
+from src.session_model import attach_models
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -86,6 +87,8 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
             board.read_sessions_state, Path(cfg.sessions_state_file)
         )
         sessions = board.attach_shared_names(sessions, state["rows"])
+        # The model's display name (#1383), for the chat header's pill.
+        sessions = attach_models(sessions)
     return {"sessions": sessions}
 
 

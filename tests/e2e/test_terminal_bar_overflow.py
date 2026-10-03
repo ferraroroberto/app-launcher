@@ -160,8 +160,11 @@ def test_terminal_bar_fits_at_once_on_default_phone(
     assert abs(toggle["height"] - widths[0]) <= 1, f"toggle height {toggle['height']} vs 44px controls"
     ring_box = authed_page.eval_on_selector("#contextRing", "el => el.getBoundingClientRect()")
     assert abs(ring_box["height"] - widths[0]) <= 1, f"ring height {ring_box['height']} vs 44px controls"
+    # The model pill (#1383) leads the group when a model is known; the stub
+    # child has none, so it is hidden and not part of the visible order.
     order = authed_page.eval_on_selector_all(
-        "#terminalOverlay .terminal-bar-actions > *", "els => els.map(el => el.id)"
+        "#terminalOverlay .terminal-bar-actions > *:not([hidden])",
+        "els => els.map(el => el.id)",
     )
     assert order[:3] == ["contextRing", "sessionMode", "terminalSpeak"], order
 

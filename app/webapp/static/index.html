@@ -2109,6 +2109,10 @@
       <button id="terminalBack" type="button" class="term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
       <div class="terminal-bar-actions">
+        <!-- Model pill (#1383): the session's model, left of the context ring.
+             Not a control (no tap target); hidden whenever the model isn't
+             known — never a guess. Set by terminal-mirror.js with the title. -->
+        <span id="terminalModel" class="terminal-model" hidden></span>
         <!-- Context ring (#1223): how full the session's context window is,
              read off the terminal's statusline by the server. Hidden, not
              drawn at 0%, whenever the number isn't known; a tap toasts it.

@@ -442,6 +442,7 @@ export const els = {
   terminalOverlay: document.getElementById('terminalOverlay'),
   terminalBack: document.getElementById('terminalBack'),
   terminalTitle: document.getElementById('terminalTitle'),
+  terminalModel: document.getElementById('terminalModel'),
   terminalHost: document.getElementById('terminalHost'),
   terminalStatus: document.getElementById('terminalStatus'),
   terminalLatest: document.getElementById('terminalLatest'),

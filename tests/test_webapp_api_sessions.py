@@ -36,6 +36,21 @@ class TestListSessions:
         assert len(sessions) == 1
         assert sessions[0]["session_id"] == "abc-123"
 
+    def test_each_session_carries_its_model_display_name(self, webapp_client):
+        """#1383: derived webapp-side from the spawn flags (the session-host
+        reports no model field); no ``--model`` flag -> ``None``, never a guess."""
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {"session_id": "a", "kind": "pty", "agent": "claude",
+             "name": "p", "project_dir": "C:\\stub",
+             "flags": "--permission-mode auto --model opus"},
+            {"session_id": "b", "kind": "pty", "agent": "claude",
+             "name": "p", "project_dir": "C:\\stub2",
+             "flags": "--permission-mode auto"},
+        ]
+        sessions = client.get("/api/claude-code/sessions").json()["sessions"]
+        assert [s["model"] for s in sessions] == ["Opus", None]
+
     def test_session_host_error_returns_empty_not_500(self, webapp_client):
         """When session-host is down, the SPA should still render — the
         list endpoint logs and returns empty rather than 500ing."""
