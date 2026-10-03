@@ -21,7 +21,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e._geometry import assert_min_target
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import flush_requests, stable_read, wait_until
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_overlay_standalone_scrollable import (
     _PATCH_MATCH_MEDIA,
@@ -148,7 +148,7 @@ def test_life_os_recap_launch_posts(
     authed_page.locator("#lifeOsDetached").click()
     authed_page.locator("#lifeOsRecapLaunch").click()
 
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: "body" in captured, "the recap launch POST")
     assert "body" in captured, "recap launch POST was never intercepted"
     payload = _json.loads(captured["body"])
     assert payload["mode"] == "remote", payload
@@ -272,7 +272,7 @@ def _launch_journal_daily(
     tile.locator(".action-row-main").click()
 
     # Wait for the launch route to capture the POST body.
-    page.wait_for_timeout(400)
+    wait_until(page, lambda: "body" in captured, "the launch POST")
     assert "body" in captured, "launch POST was never intercepted"
     return _json.loads(captured["body"])
 
@@ -534,7 +534,7 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
 
     # Confirm delete → DELETE fires, doc closes back to the list, log gone.
     authed_page.locator("#lifeOsDocDelete").click()
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: deleted["hit"], "the doc DELETE")
     assert deleted["hit"], "DELETE /api/life-os/file was never called"
     expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
@@ -1731,7 +1731,7 @@ def test_life_os_launch_sends_terminal_token(
         expect(authed_page.locator("#lifeOsRecap")).to_be_visible()
         authed_page.locator("#lifeOsRecapLaunch").click()
 
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: "headers" in captured, f"the {target} launch POST")
     assert "headers" in captured, f"{target} launch POST was never intercepted"
     assert captured["headers"].get("x-terminal-token") == _SEEDED_TERMINAL_TOKEN, (
         f"{target} launch sent no X-Terminal-Token — behind a configured "
@@ -1787,11 +1787,8 @@ def _mock_channels(page: Page, body: dict, launches: list) -> None:
 
 def _wait_for_launches(page: Page, launches: list, count: int) -> None:
     """Wait (bounded) until the mocked launch route has seen ``count`` POSTs."""
-    for _ in range(50):
-        if len(launches) >= count:
-            return
-        page.wait_for_timeout(100)
-    raise AssertionError(f"expected {count} channel launch POSTs, saw {launches}")
+    wait_until(page, lambda: len(launches) >= count,
+               f"{count} channel launch POST(s), saw {launches}")
 
 
 def test_channel_profiles_render_and_launch(
@@ -1830,7 +1827,7 @@ def test_channel_profiles_render_and_launch(
 
     # Tapping the running row must not POST a second launch.
     school.locator(".action-row-main").click()
-    authed_page.wait_for_timeout(400)
+    flush_requests(authed_page)
     assert len(launches) == 2, launches
 
 

@@ -23,7 +23,13 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._geometry import assert_no_overlap
-from tests.e2e.conftest import OVERLAY_OPEN_MS, open_session_row, stub_session_mirror
+from tests.e2e.conftest import (
+    OVERLAY_OPEN_MS,
+    flush_requests,
+    open_session_row,
+    stub_session_mirror,
+    wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -160,7 +166,8 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     open_session_row(authed_page, chief_row)
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
     _menu_stop()
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: len(dialogs) >= 1, "the chief stop confirm")
+    flush_requests(authed_page)
     assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
     assert stops == [], "dismissing the confirm must not stop the chief"
     expect(overlay).to_be_visible()
@@ -168,7 +175,7 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     # 2. Chief + accept -> stop fires, and the overlay showing it closes.
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
     _menu_stop()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: len(stops) >= 1, "the confirmed chief stop POST")
     assert len(dialogs) == 2
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
     expect(overlay).to_be_hidden()
@@ -177,7 +184,8 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     # be auto-dismissed by Playwright and show up as a missing stop call.)
     open_session_row(authed_page, worker_row)
     _menu_stop()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: len(stops) >= 2, "the worker stop POST")
+    flush_requests(authed_page)
     assert len(dialogs) == 2, "worker row must not raise a confirm dialog"
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
 
@@ -205,7 +213,8 @@ def test_coding_tab_offers_manual_start_when_chief_down(
     assert_no_overlap([start_btn, authed_page.locator("#sessionsList .session-open")])
 
     start_btn.click()
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: captured.get("method") == "POST",
+               "the Start button's ensure POST")
     assert captured.get("method") == "POST"
 
 

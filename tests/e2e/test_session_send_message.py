@@ -26,7 +26,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror
+from tests.e2e.conftest import open_session_row, stable_read, stub_session_mirror, wait_until
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -154,11 +154,8 @@ def _open_chat(page: Page, sid: str = _SID) -> None:
 
 
 def _wait_for_calls(page: Page, calls: list, n: int) -> None:
-    # Route handlers run while Playwright waits, so poll by waiting.
-    for _ in range(40):
-        if len(calls) >= n:
-            return
-        page.wait_for_timeout(250)
+    wait_until(page, lambda: len(calls) >= n, f"{n} transcript request(s)",
+               timeout_ms=10_000)
 
 
 @pytest.mark.parametrize("kind", ["pty", "remote"])
@@ -231,17 +228,30 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     )
 
 
-# Every /input held 1.5 s in the page before it leaves: a send that "takes a
-# moment" (#1239), long enough to look at the button mid-flight.
+# Every /input held in the page until the test releases it: a send that "takes
+# a moment" (#1239), for exactly as long as the test needs to look at the
+# button mid-flight, instead of a fixed guess at it.
 _SLOW_INPUT = """
 (() => {
   const realFetch = window.fetch.bind(window);
-  window.fetch = async (url, opts) => {
-    if (String(url).endsWith('/input')) await new Promise((r) => setTimeout(r, 1500));
+  window.__heldInput = [];
+  window.fetch = (url, opts) => {
+    if (String(url).endsWith('/input')) {
+      return new Promise((release) => {
+        window.__heldInput.push(() => release(realFetch(url, opts)));
+      });
+    }
     return realFetch(url, opts);
   };
 })()
 """
+
+
+def _release_input(page: Page) -> None:
+    """Let the held /input send(s) leave. Waits for the send to be held first,
+    so the release can never run ahead of the tap that causes it."""
+    page.wait_for_function("() => window.__heldInput.length > 0")
+    page.evaluate("() => window.__heldInput.splice(0).forEach((go) => go())")
 
 
 def test_chat_composer_sends_to_detached_session_and_refreshes(
@@ -280,6 +290,7 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     # A failed send keeps the text to retry and never says "sent".
     field.fill("continue")
     send.click()
+    _release_input(authed_page)
     toast = authed_page.locator("#toast")
     expect(toast).to_have_class(re.compile(r"\berror\b"))
     expect(toast).to_contain_text("Send failed")
@@ -297,6 +308,7 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     expect(send).to_have_class(re.compile(r"\bis-sending\b"))
     expect(send).to_have_attribute("aria-busy", "true")
     send.click(force=True)
+    _release_input(authed_page)
     expect(field).to_have_value("")
     expect(send).not_to_have_class(re.compile(r"\bis-sending\b"))
     expect(send).not_to_have_attribute("aria-busy", "true")
