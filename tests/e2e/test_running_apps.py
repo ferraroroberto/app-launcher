@@ -15,6 +15,8 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e import _fake_clock
+
 pytestmark = pytest.mark.smoke
 
 
@@ -184,24 +186,29 @@ def test_polling_pauses_on_other_tab(authed_page: Page, base_url: str) -> None:
             body=json.dumps({"running": []}),
         )
 
+    _fake_clock.install(authed_page)
     authed_page.route("**/api/apps/running", _handler)
     _navigate(authed_page, base_url)
+    # The poll is armed once boot's first fetch settles: wait for it, so the
+    # jump below passes a poll that exists rather than one boot hasn't made yet.
+    _fake_clock.wait_for_interval(authed_page, 4_000)  # RUNNING_APPS_POLL_MS
 
     # Boot lands on the Claude Code tab — fetchRunningApps self-gates, so
-    # no /api/apps/running request should fire there. Wait past one poll.
-    authed_page.wait_for_timeout(5_000)
+    # no /api/apps/running request should fire there. Jump past one poll.
+    _fake_clock.advance(authed_page, 5_000)
     assert calls == [], f"polled while Apps tab hidden: {len(calls)} call(s)"
 
     # Switch to Apps tab → polling resumes (tab-click triggers one fetch).
-    authed_page.locator("#tabApps").click()
-    authed_page.wait_for_timeout(1_000)
+    with authed_page.expect_request("**/api/apps/running"):
+        authed_page.locator("#tabApps").click()
+    _fake_clock.advance(authed_page, 0)
     after_open = len(calls)
     assert after_open >= 1, "no /api/apps/running request after opening Apps tab"
 
     # Switch away again → polling pauses; count must stop climbing.
     authed_page.locator("#tabClaude").click()
     paused_at = len(calls)
-    authed_page.wait_for_timeout(5_000)
+    _fake_clock.advance(authed_page, 5_000)
     assert len(calls) == paused_at, (
         f"polling kept firing after leaving the Apps tab: "
         f"{len(calls) - paused_at} extra call(s)"

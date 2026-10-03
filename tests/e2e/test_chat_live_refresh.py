@@ -30,6 +30,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
     open_session_row,
@@ -318,17 +319,9 @@ def _boot(page: Page, base_url: str, alive: bool = True) -> _Transcript:
         _turn("user", "please look at the flaky test", 100),
         _turn("assistant", "opening conftest now", 200),
     )
-    # A fake clock the tests can jump (#1376): the live poll is a plain
-    # setTimeout, so waiting out a 3 s tick (or 5 s of "nothing fires") in
-    # real time bought nothing the jump below doesn't. Installed before the
-    # first navigation so the page's own timers are the fake ones; it keeps
-    # flowing at the real rate otherwise, so nothing else in the page stalls.
-    page.clock.install()
-    # The request the flush below rides: any answer will do.
-    page.route(
-        re.compile(r".*/__clock_flush$"),
-        lambda route: route.fulfill(status=204),
-    )
+    # The live poll is a plain setTimeout: the tests jump it (#1376) rather
+    # than wait it out.
+    _fake_clock.install(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     return tr
 
@@ -337,19 +330,6 @@ def _boot(page: Page, base_url: str, alive: bool = True) -> _Transcript:
 # source backs off up to LIVE_BACKOFF_MAX_MS.
 _POLL_MS = 3_000
 _BACKOFF_MAX_MS = 30_000
-
-
-def _advance(page: Page, ms: int) -> None:
-    """Jump the page's clock ``ms`` forward, then let every request the timers
-    fired reach the route handlers.
-
-    ``run_for`` fires the armed timer synchronously, but its fetch is still on
-    its way to the stub; a sentinel fetch queued behind it comes back only
-    after the stub has seen everything ahead of it, so the counts read next
-    are final rather than racing the network.
-    """
-    page.clock.run_for(ms)
-    page.evaluate("() => fetch('/__clock_flush').then(() => undefined)")
 
 
 def _tick(page: Page, tr: _Transcript) -> None:
@@ -364,7 +344,7 @@ def _tick(page: Page, tr: _Transcript) -> None:
     """
     before = tr.tail_calls()
     for _ in range(_BACKOFF_MAX_MS // _POLL_MS + 5):
-        _advance(page, _POLL_MS + 1)
+        _fake_clock.advance(page, _POLL_MS + 1)
         if tr.tail_calls() > before:
             return
     raise AssertionError("the live poll never fired on the fake clock")
@@ -392,7 +372,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept = 1")
     _menu_item(page, "Load new messages").click()
     expect(newer).to_have_text("No new messages")
-    _advance(page, 2_500)       # NEWER_NOTE_MS (2 s) in session-transcript.js
+    _fake_clock.advance(page, 2_500)       # NEWER_NOTE_MS (2 s) in session-transcript.js
     expect(newer).to_be_hidden()
 
     # Timed against the poll: right after a tick's read lands, the next is a
@@ -416,7 +396,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     # A drag too short to be a pull does nothing.
     calls = tr.tail_calls()
     _pull(page, -20)
-    _advance(page, 1)           # only to let a (wrongly) fired read reach the stub
+    _fake_clock.advance(page, 1)           # only to let a (wrongly) fired read reach the stub
     assert tr.tail_calls() == calls
 
     # #1149 — a question the agent asks arrives the same way, as its own
@@ -569,7 +549,7 @@ def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> 
     page.locator("#sessionModeTerminal").click()
     expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", "terminal")
     settled = tr.tail_calls()
-    _advance(page, 2 * _BACKOFF_MAX_MS)          # long enough for several ticks
+    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)          # long enough for several ticks
     assert tr.tail_calls() == settled, (
         "Terminal mode kept fetching chat: "
         f"{tr.tail_calls() - settled} request(s) after the switch"
@@ -587,7 +567,7 @@ def test_a_closed_overlay_fetches_nothing(authed_page: Page, base_url: str) -> N
     page.locator("#terminalBack").click()
     expect(page.locator("#terminalOverlay")).to_be_hidden()
     settled = tr.tail_calls()
-    _advance(page, 2 * _BACKOFF_MAX_MS)
+    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)
     assert tr.tail_calls() == settled, "a closed overlay kept polling"
 
 
@@ -670,7 +650,7 @@ def test_a_session_that_ends_stops_refreshing_and_says_so(
         "no longer running", timeout=OVERLAY_OPEN_MS
     )
     settled = tr.tail_calls()
-    _advance(page, 2 * _BACKOFF_MAX_MS)
+    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)
     assert tr.tail_calls() == settled, "a dead session was still being polled"
     # What was already read stays readable.
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)

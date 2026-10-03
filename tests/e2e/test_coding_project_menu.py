@@ -36,6 +36,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e import _fake_clock
+
 pytestmark = pytest.mark.smoke
 
 AGENTS = [
@@ -145,6 +147,7 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
 ) -> None:
     posted = _install_routes(authed_page, vscode_available=True)
     _reset_visibility(authed_page, base_url)
+    _fake_clock.install(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
@@ -200,7 +203,21 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
     # open row's key is remembered and the menu reopens on the rebuilt row.
     anchor.click()
     expect(_menu(authed_page)).to_be_visible()
-    authed_page.wait_for_timeout(5_000)
+    # Jump the 4 s apps poll (TUNNEL_POLL_MS) and prove it rebuilt the row: a
+    # marker on the row's node is gone once the poll has replaced it, so the
+    # survival checks below can't pass against a list that never re-rendered.
+    authed_page.evaluate(
+        "() => { document.querySelector('.coding-item[data-id=\"alpha\"]').__beforePoll = true; }"
+    )
+    _fake_clock.wait_for_interval(authed_page, 4_000)
+    for _ in range(10):
+        _fake_clock.advance(authed_page, 4_000)
+        if authed_page.evaluate(
+            "() => !document.querySelector('.coding-item[data-id=\"alpha\"]').__beforePoll"
+        ):
+            break
+    else:
+        raise AssertionError("the apps poll never rebuilt the Coding list on the fake clock")
     expect(_menu(authed_page)).to_be_visible()
     expect(_anchor(authed_page)).to_have_attribute("aria-expanded", "true")
 
