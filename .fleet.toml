@@ -29,11 +29,11 @@ description = "<b>Where I live</b> — the central hub. Coding · Apps · Jobs �
 extra_junctions = ["webapp/certificates"]
 
 [vendored]
-switch = { src = "app/webapp/static/_vendored/switch", sha = "88612f23b1ab61ed2bfd96fde5b1085a051e4f90", dest = "app/webapp/static/_vendored/switch" }
+switch = { src = "app/webapp/static/_vendored/switch", sha = "f23a32ea8d24cf5291df482f988dee334617409c", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "a16c9aab845a97499406284107e62e8ae3a5a9ec", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/disclosure" }
-home-head = { src = "app/webapp/static/_vendored/home-head", sha = "fb908611e52996bcc83f5749506f5926944d9ba1", dest = "app/webapp/static/_vendored/home-head" }
+home-head = { src = "app/webapp/static/_vendored/home-head", sha = "f23a32ea8d24cf5291df482f988dee334617409c", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "41af40ac3633a3e7ded88553b95726092344faf9", dest = "app/webapp/static/_vendored/nav" }
 select-native = { src = "app/webapp/static/_vendored/select-native", sha = "91bf2dc77e2845d072d34944eb61bd461bf08041", dest = "app/webapp/static/_vendored/select-native" }
 empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "app/webapp/static/_vendored/empty-state" }

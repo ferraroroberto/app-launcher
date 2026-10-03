@@ -92,6 +92,42 @@ def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None
     expect(toggle).to_have_attribute("aria-checked", "false")
 
 
+@pytest.mark.iphone
+def test_on_switch_track_is_the_accent_fill_in_both_themes(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1385 — a switch that is on draws `accent-fill`, never green. Pinned as
+    "equals what `var(--accent-fill)` resolves to in that theme" rather than a
+    literal, so it survives a token revalue; `to_have_css` auto-retries past
+    the track's background transition."""
+    payload = {"new": [{"id": "sample-app", "name": "Sample App", "kind": "webapp",
+                        "bat_path": "C:\\stub\\sample\\webapp.bat"}]}
+    authed_page.route(
+        "**/api/apps/scan",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(payload)
+        ),
+    )
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
+    authed_page.locator("#settingsPanel > summary").click()
+    authed_page.locator("#rescanBtn").click()
+    toggle = authed_page.locator("#scanResults .scan-row .toggle")
+    expect(toggle).to_have_attribute("aria-checked", "true")
+
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "t => document.documentElement.setAttribute('data-theme', t)", theme
+        )
+        accent_fill = authed_page.evaluate(
+            "() => { const p = document.createElement('i');"
+            "p.style.background = 'var(--accent-fill)'; document.body.appendChild(p);"
+            "const c = getComputedStyle(p).backgroundColor; p.remove(); return c; }"
+        )
+        assert accent_fill and accent_fill != "rgba(0, 0, 0, 0)", accent_fill
+        expect(toggle).to_have_css("background-color", accent_fill)
+
+
 def test_job_dialog_switches_use_vendored_component(
     authed_page: Page, base_url: str
 ) -> None:

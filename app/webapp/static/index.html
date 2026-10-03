@@ -36,8 +36,8 @@
   <link rel="stylesheet" href="/static/_vendored/base/base.css">
   <link rel="stylesheet" href="/static/vendor/xterm.css">
   <link rel="stylesheet" href="/static/_vendored/card/card.css">
-  <!-- home-head.css must load AFTER card.css — it overrides the card's own
-       padding for the 52px header row (its README's load-order contract). -->
+  <!-- home-head.css overrides the card's own padding for the 52px header row
+       with a two-class rule, so its position after card.css is not load-bearing. -->
   <link rel="stylesheet" href="/static/_vendored/home-head/home-head.css">
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
