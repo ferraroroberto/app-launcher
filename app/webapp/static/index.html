@@ -1268,30 +1268,16 @@
                   aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
         </div>
         <div class="board-dispatch-row">
-          <!-- Mode was a 4-segment radiogroup until #547 collapsed it into a
-               native <select> — the segments no longer fit an iPhone-width row
-               once chat mode (#245) landed. #869 took the last step: the same
-               .model-combo trigger + portaled listbox as the model picker
-               beside it, so the two adjacent dropdowns are one control family
-               instead of a native OS picker next to a custom one. -->
-          <span id="boardDispatchMode" class="model-combo" data-value="add">
-            <button type="button" class="model-combo-trigger" aria-label="Dispatch mode"
-                    aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModeMenu"
-                    title="add — file the issue only / build — file and build straight away / yolo — file, build, and ship / chat — talk to the standing fleet chief (#245)">Add</button>
-            <span id="boardDispatchModeMenu" class="model-combo-menu" role="listbox"
-                  aria-label="Dispatch mode" hidden>
-              <button type="button" role="option" data-value="add" aria-selected="true">Add</button>
-              <button type="button" role="option" data-value="build" aria-selected="false">Build</button>
-              <button type="button" role="option" data-value="yolo" aria-selected="false">Yolo</button>
-              <button type="button" role="option" data-value="chat" aria-selected="false">Chat</button>
-            </span>
-          </span>
+          <!-- The model pick (#500/#845/#1382) no longer steers a free-text
+               dispatch — that path is gone and the bar always talks to the
+               fleet chief, whose model is a chief setting. It feeds the
+               issue cards' one-tap Start / YOLO, which is why it stays. -->
           <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
-            <button type="button" class="model-combo-trigger" aria-label="Dispatch model"
+            <button type="button" class="model-combo-trigger" aria-label="Start model"
                     aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
-                    title="Exact Claude or Codex model for dispatches and one-tap start/YOLO">Claude · Sonnet</button>
+                    title="Model for the one-tap Start / YOLO on issue cards (the chief's own model is in its settings)">Claude · Sonnet</button>
             <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
-                  aria-label="Dispatch model" hidden>
+                  aria-label="Start model" hidden>
               <button type="button" role="option" data-value="claude:sonnet"
                       aria-selected="true">Claude · Sonnet</button>
             </span>
@@ -1301,18 +1287,18 @@
             class="compose-input board-dispatch-goal"
             rows="1"
             wrap="off"
-            placeholder="Speak or type a goal — send dispatches an /issue-* session."
+            placeholder="Ask the chief — questions answer, directions dispatch."
             enterkeyhint="enter"></textarea>
           <button id="boardDispatchRecord" type="button" class="compose-record"
                   title="Dictate (voice to text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
           <button id="boardDispatchClear" type="button" class="compose-record"
-                  title="Clear the goal"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+                  title="Clear the message"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
           <button id="boardDispatchSend" type="button" class="compose-send"
-                  title="Dispatch the goal"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
+                  title="Send to the chief" aria-label="Send to the chief"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
         </div>
-        <!-- Chief status row (#245) — chat mode only. Static markup like the
-             rest of the bar; renderChiefStatus() only flips hidden/text. -->
-        <div id="boardChiefStatus" class="board-chief-status" hidden>
+        <!-- Chief status row (#245). Static markup like the rest of the bar;
+             renderChiefStatus() only flips hidden/text. -->
+        <div id="boardChiefStatus" class="board-chief-status">
           <span class="board-chief-crown"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg></span>
           <span id="boardChiefStatusText" class="board-chief-status-text"></span>
           <button id="boardChiefStart" type="button" class="board-chief-start" hidden>Start</button>

@@ -305,14 +305,18 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
   inset: -7px 0;
 }
 
-/* The Board dispatch row's record/send pair is short on both axes (38x36).
-   Scoped to that row by the child combinator on purpose: the same classes in
+/* The Board dispatch row's record/send pair is short on both axes (38x36),
+   and so is the chief status row's settings gear — which only became
+   reachable by the touch-target pin once #1382 made that row always visible.
+   Scoped to those rows by the child combinator on purpose: the same classes in
    the docked composer's grid are already real 44px squares, and expanding
    those would make them overlap at the grid's 6px gap. */
 .board-dispatch-row > .compose-record,
-.board-dispatch-row > .compose-send { position: relative; }
+.board-dispatch-row > .compose-send,
+.board-chief-status > .compose-record { position: relative; }
 .board-dispatch-row > .compose-record::before,
-.board-dispatch-row > .compose-send::before {
+.board-dispatch-row > .compose-send::before,
+.board-chief-status > .compose-record::before {
   content: "";
   position: absolute;
   inset: -4px;
@@ -4008,9 +4012,9 @@ body.terminal-open {
 .lifeos-viewer-trunc { padding: 0 14px; }
 
 /* ---------- Board tab (issue #300 / #164) ---------- */
-/* Dispatch bar (#302): speak/type a goal → a fresh /issue-* session.
-   Static markup above the column strip — renderBoard() never touches it,
-   so the poll can't wipe a goal being typed. */
+/* Dispatch bar (#302, chat-only since #1382): type or dictate a message to
+   the fleet chief. Static markup above the column strip — renderBoard()
+   never touches it, so the poll can't wipe a message being typed. */
 .board-dispatch {
   display: flex;
   flex-direction: column;
@@ -4086,8 +4090,8 @@ body.terminal-open {
 /* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable
    field — a <button> trigger, not a native <select> (which paints its own
    OS chrome) or a text input (which would invite typing). Doubles as the
-   dispatch target AND a live filter over the board's kanban cards; "All
-   projects" (the default) shows everything. */
+   live filter over the board's kanban cards; "All projects" (the default)
+   shows everything. */
 .board-repo-combo { position: relative; }
 .board-repo-combo::after {
   content: '';
@@ -4145,14 +4149,11 @@ body.terminal-open {
 }
 .board-repo-list li[data-repo]:hover,
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
-/* Dispatch mode + model dropdowns (#500 / #547 / #869): both are now the
-   shared .model-combo — a trigger button plus a portaled listbox. #869 took
-   the mode picker off the native <select>, which also retired the
-   @media (pointer: coarse) rules that flattened iOS's own select chrome to
-   imitate the custom control beside it. Nothing left in this row to
-   un-nativise; .model-combo carries the whole look. */
+/* Start-model dropdown (#500 / #547 / #869): the shared .model-combo — a
+   trigger button plus a portaled listbox, so there is no native <select>
+   chrome in this row to flatten. .model-combo carries the whole look. */
 
-/* Fleet chief (#245): the chat-mode status row under the dispatch bar —
+/* Fleet chief (#245): the status row under the dispatch bar —
    crown + one-line liveness + Start (only when down) + the settings gear.
    Same caption voice as .board-status; the row is static markup like the
    rest of the bar, renderChiefStatus() only flips hidden/text. */
@@ -4955,7 +4956,7 @@ span.chief-answer-ref { color: var(--muted); }
      title, so the grid's bodies drop the sides. */
   .board-col > .collapse-body { padding: 4px 0 8px; }
   /* The whole bar is one line on a desktop-width pane (#869 round 2): the
-     project filter at the far left, then the mode/model combos, the goal,
+     project filter at the far left, then the model combo, the message box,
      the compose buttons and ↻. The three .board-dispatch children lay out
      as a row here instead of a stack, so the phone's `order` overrides go
      back to source order — filter first — and the chief-status row claims a

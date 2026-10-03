@@ -248,11 +248,6 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board drill-down (#301): issue-start spawns a coding session.",
     ),
     (
-        lambda p: p == "/api/board/dispatch",
-        "passkey",
-        "Board dispatch (#302): spawn + type — both terminal-grade.",
-    ),
-    (
         lambda p: p.startswith("/api/board/chief/"),
         "passkey",
         "Fleet chief (#245): ensure spawns + types into a PTY, settings steer "

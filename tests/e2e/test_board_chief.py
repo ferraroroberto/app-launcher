@@ -1,8 +1,9 @@
 """Fleet chief e2e (issue #245).
 
-Browser-side coverage of the Board's chat mode and chief card: the chat
-segment reroutes the dispatch bar's send to ensure-then-reply (the message
-rides the same input proxy as drawer replies, never /api/board/dispatch),
+Browser-side coverage of the Board's chief chat bar and chief card: the
+bar's send is ensure-then-reply (the message rides the same input proxy as
+drawer replies; the free-text Add/Build/Yolo dispatch and its mode dropdown
+are gone, #1382),
 a mocked chief reply renders through the drawer's exchange surface, the
 chief card is visually distinct and confirm-protected against the one-tap
 stop every other card keeps, the manual Start affordance shows when no
@@ -171,16 +172,6 @@ def _open_board(page: Page, base_url: str) -> None:
     expect(page.locator("#paneBoard")).to_be_visible()
 
 
-def _enter_chat_mode(page: Page) -> None:
-    # Mode collapsed from a 4-segment radiogroup into a <select> in #547 (the
-    # segments no longer fit an iPhone-width row), then into the same
-    # .model-combo as the model picker beside it in #869 — so it is driven
-    # like that combo, not with select_option.
-    page.locator("#boardDispatchMode .model-combo-trigger").click()
-    page.locator("#boardDispatchModeMenu [data-value='chat']").click()
-    expect(page.locator("#boardDispatchMode")).to_have_attribute("data-value", "chat")
-
-
 @pytest.mark.iphone
 def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     authed_page: Page, base_url: str
@@ -256,7 +247,6 @@ def test_chief_recognized_by_name_when_label_missing(
 
     _open_board(authed_page, base_url)
     expect(authed_page.locator("li.board-item-chief")).to_be_visible()
-    _enter_chat_mode(authed_page)
     expect(authed_page.locator("#boardChiefStatus")).not_to_contain_text(
         "not running"
     )
@@ -349,7 +339,6 @@ def test_chat_mode_send_ensures_with_resume_and_toasts_outcome(
     )
 
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
 
     authed_page.locator("#boardDispatchGoal").fill("hey")
     authed_page.locator("#boardDispatchSend").click()
@@ -374,7 +363,6 @@ def test_chat_mode_offers_manual_start_when_chief_down(
     _mock_ensure(authed_page, ensured, spawned=True)
 
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
 
     row = authed_page.locator("#boardChiefStatus")
     expect(row).to_be_visible()
@@ -398,7 +386,6 @@ def test_resume_button_sends_explicit_restart_intent(
     _mock_ensure(authed_page, ensured, spawned=True, resumed=True)
 
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
 
     resume = authed_page.locator("#boardChiefResume")
     expect(resume).to_be_visible()
@@ -440,7 +427,6 @@ def test_chat_mode_offers_restart_when_chief_alive(
     )
 
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
 
     expect(authed_page.locator("#boardChiefStart")).to_be_hidden()
     restart = authed_page.locator("#boardChiefRestart")
@@ -483,7 +469,6 @@ def test_chief_settings_dialog_roundtrip(
     authed_page.route(re.compile(r".*/api/board/chief/settings$"), _settings)
 
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
     authed_page.locator("#boardChiefSettings").click()
 
     dialog = authed_page.locator("#chiefSettingsDialog")
@@ -514,9 +499,8 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     re-render, which is the #301 typing guarantee the pause used to buy.
 
     Merged in #1215 — was test_chat_mode_routes_message_to_chief_not_dispatch:
-    Chat mode send = ensure → input proxy ({data, submit:true}); the
-    one-shot /api/board/dispatch is never touched; the box clears
-    (conversation semantics, unlike dispatch's keep-for-multi-dispatch).
+    A send = ensure → input proxy ({data, submit:true}); the box clears
+    (conversation semantics).
     Its checks run right after the send, before the payload swap below."""
     board = {"body": _json.dumps(_board_payload(with_chief=True))}
     authed_page.route(
@@ -545,22 +529,14 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
         _capture_input,
     )
 
-    dispatch_hits: list[str] = []
-    authed_page.route(
-        re.compile(r".*/api/board/dispatch$"),
-        lambda route: (dispatch_hits.append(route.request.method),
-                       route.fulfill(status=500, body="must not be called")),
-    )
-
     _open_board(authed_page, base_url)
-    _enter_chat_mode(authed_page)
 
     # -- was test_chat_mode_routes_message_to_chief_not_dispatch --
-    # Chat mode: the model select greys out (chief model is owned by chief
-    # settings) and the status row appears.
-    expect(
-        authed_page.locator("#boardDispatchModel .model-combo-trigger")
-    ).to_be_disabled()
+    # The bar only ever talks to the chief (#1382): no mode control, the
+    # status row is always there, and the Start-model combo stays live — it
+    # feeds the issue cards' one-tap Start now, not a dispatch.
+    expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
+    expect(authed_page.locator("#boardDispatchModel .model-combo-trigger")).to_be_enabled()
     expect(authed_page.locator("#boardChiefStatus")).to_be_visible()
 
     # (The message text is that test's, so its input-body assertion stands
@@ -575,7 +551,6 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     assert captured_input.get("body") == {
         "data": "what's open in app-launcher?", "submit": True,
     }
-    assert dispatch_hits == [], "chat mode must never hit /api/board/dispatch"
     expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
 
     # The chief's drawer opened so the reply has somewhere to land.

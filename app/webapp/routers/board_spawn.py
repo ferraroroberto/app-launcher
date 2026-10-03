@@ -14,7 +14,7 @@ reused across *both* route modules:
   writing text into a freshly spawned PTY (#64/#166/#245/#302/#549/#611).
 
 Kept as its own module so neither route module has to import the other:
-``board.py`` (columns, drill-down, issue-start, dispatch) and
+``board.py`` (columns, drill-down, issue-start) and
 ``board_chief.py`` (the fleet-chief lifecycle) both need this machinery, and
 ``board.py`` already imports ``board_chief`` to mount its router — a shared
 dependency, not a ``board.py`` <-> ``board_chief.py`` cycle.
@@ -82,7 +82,7 @@ def _read_live_sessions(port: int) -> Tuple[List[Dict[str, Any]], Optional[str]]
 def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:
     """Resolve ``repo`` to a live claude-code entry, or 404.
 
-    Shared by ``start_issue``, ``dispatch_goal`` and the chief ensure — all
+    Shared by ``start_issue`` and the chief ensure — both
     take a bare repo name (or the hardcoded ``fleet-config``) and need the
     same case-insensitive lookup against the live projects-folder listing.
     """
@@ -249,8 +249,8 @@ async def _type_into_session(port: int, sid: str, command: str) -> None:
     typing while the agent's boot output is still growing, which can swallow
     the submitting CR — first-paint alone is not enough. On any failure past
     the spawn the half-spawned session is killed, so a timeout can't strand
-    an orphan the user never asked for. Shared by dispatch (#302) and the
-    chief ensure (#245) so the timing rules stay single-sourced instead of
+    an orphan the user never asked for. Shared by the chief ensure (#245) and
+    its siblings so the timing rules stay single-sourced instead of
     drifting between call sites.
     """
     try:

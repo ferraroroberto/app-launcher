@@ -36,10 +36,10 @@ import pytest
 # least one row in ``_TERMINAL_GUARD_RULES``, so a *new* sibling under one of
 # them is far more likely to need gating than not. Matched as "the prefix
 # itself, or anything below it" — ``/api/board`` covers ``/api/board`` and
-# ``/api/board/dispatch``, and does not reach an unrelated ``/api/boardgames``.
+# ``/api/board/issues/start``, and does not reach an unrelated ``/api/boardgames``.
 TERMINAL_PREFIXES = (
     "/api/claude-code/sessions",  # live PTY sessions: input, image, transcript
-    "/api/board",                 # drill-down, dispatch, fleet chief
+    "/api/board",                 # drill-down, issue start, fleet chief
     "/api/life-os",               # private knowledge + skill spawns
     "/api/transcribe",            # voice dictation into the compose bar
     "/api/ocr",                   # screenshot OCR into the compose bar
@@ -79,7 +79,7 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
     ),
     "/api/board": (
         "The kanban board: GitHub issue/PR metadata plus session pointers. "
-        "The terminal-grade drill-downs beside it (/exchange, /dispatch, "
+        "The terminal-grade drill-downs beside it (/exchange, "
         "/issues/start, /chief/*) each carry their own passkey row."
     ),
     "/api/board/chief-plan": (

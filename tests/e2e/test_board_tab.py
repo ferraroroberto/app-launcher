@@ -1200,8 +1200,8 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     repo/project, drop out of any specific-project filter). #399: Your turn
     and Other are now separate single-purpose columns.
 
-    Then, last, the dispatch POST itself (#302 — merged in #1215 from
-    test_dispatch_bar_posts_repo_mode_goal_and_keeps_text)."""
+    Then, last, the bar's remaining controls (#1382 — the free-text
+    dispatch POST this used to end on is gone)."""
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -1270,80 +1270,24 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
-    # -- was test_dispatch_bar_posts_repo_mode_goal_and_keeps_text (last: it
-    # POSTs a dispatch) --
-    # #302: goal + repo + mode ride POST /api/board/dispatch; the goal text
-    # survives the send (populated-but-clearable for rapid multi-dispatch).
-    # Same app-launcher entry that test's _mock_apps_with_app_launcher served,
-    # among the four projects mocked above.
-    captured: dict = {}
-
-    def _capture_dispatch(route):
-        captured["method"] = route.request.method
-        captured["body"] = route.request.post_data_json
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "/issue-yolo ship the goal bar",
-                "repo": "app-launcher",
-                "session": {"session_id": "sD", "kind": "pty",
-                            "name": "app-launcher"},
-            }),
-        )
-
-    authed_page.route(re.compile(r".*/api/board/dispatch$"), _capture_dispatch)
-
-    # The repo dropdown fills once boot's /api/apps fetch lands; the board
-    # render re-syncs it, so a full poll cycle is the worst case. It defaults
-    # to "All projects" (empty target), so the send needs an explicit pick.
-    expect(authed_page.locator("#boardDispatchRepoBtn")).to_be_visible(timeout=15_000)
-    authed_page.locator("#boardDispatchRepoBtn").click()
-    authed_page.locator('#boardDispatchRepoList li[data-repo="app-launcher"]').click()
-    expect(
-        authed_page.locator('#boardDispatchRepo')
-    ).to_have_value("app-launcher")
-    expect(authed_page.locator("#boardDispatchRepoBtn")).to_have_text("app-launcher")
-
-    authed_page.locator("#boardDispatchGoal").fill("ship the goal bar")
-    # Mode is the shared .model-combo since #869 — trigger + listbox, not a
-    # native <select>.
-    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
-    authed_page.locator("#boardDispatchModeMenu [data-value='yolo']").click()
-    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
-        "data-value", "yolo"
-    )
-    # Model selector (#500): defaults to Sonnet; pick a non-default value so
-    # the POST provably carries the selection, not a hardcoded default.
+    # -- was test_dispatch_bar_posts_repo_mode_goal_and_keeps_text --
+    # #1382: the free-text Add / Build / Yolo dispatch is gone. The bar has
+    # no mode control, its box is the chief's message box, and the model
+    # combo that stays is the Start model — its pick riding a one-tap start
+    # is pinned by the issue-start test above.
+    expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
     expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
         "data-value", "claude:sonnet"
     )
-    authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
-    authed_page.locator(
-        "#boardDispatchModelMenu [data-value='codex:gpt-5.6-sol']"
-    ).click()
-    authed_page.locator("#boardDispatchSend").click()
-    wait_until(authed_page, lambda: captured.get("method") == "POST",
-               "the dispatch POST")
-
-    assert captured.get("method") == "POST"
-    body = captured.get("body") or {}
-    assert body.get("repo") == "app-launcher"
-    assert body.get("goal") == "ship the goal bar"
-    assert body.get("mode") == "yolo"
-    assert body.get("model") == "codex:gpt-5.6-sol"
-    # #374: a phone (non-desktop) dispatch carries the PTY spawn size so a
-    # streaming agent's first output is authored at the width the overlay
-    # will fit() to; a desktop client sends the mirror flag instead.
-    if body.get("desktop"):
-        assert "rows" not in body and "cols" not in body
-    else:
-        assert body.get("rows", 0) >= 10 and body.get("cols", 0) >= 20
-    # Populated-but-clearable: the goal stays after a successful send.
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value(
-        "ship the goal bar"
+    expect(authed_page.locator("#boardDispatchModel .model-combo-trigger")).to_have_attribute(
+        "aria-label", "Start model"
     )
+    goal = authed_page.locator("#boardDispatchGoal")
+    expect(goal).to_have_attribute("placeholder", re.compile(r"Ask the chief"))
+    goal.fill("a message for the chief")
+    expect(goal).to_have_value("a message for the chief")
     authed_page.locator("#boardDispatchClear").click()
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
+    expect(goal).to_have_value("")
 
 
 def test_dispatch_and_reply_mics_render_when_voice_available(
@@ -1690,8 +1634,8 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     (1) The goal input lives *inside* the control row rather than as its own
     full-width block above it, so the phone bar is 3 rows, not 4, and ➤ docks
     right after ✕ instead of being flung across the row by a `margin-left:
-    auto`. (2) Mode is the shared `.model-combo`, the same control family as
-    the model picker beside it — no native `<select>` left in the row.
+    auto`. (2) The Start model is the shared `.model-combo` — no native
+    `<select>` in the row, and no mode control beside it since #1382.
     (3) ↻ is projection-dependent: docked into the dispatch row on the desktop
     grid, beside the project filter on the phone (#1198).
     (4) The project filter leads the desktop line at the far left, and drops
@@ -1735,19 +1679,13 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
         authed_page.locator(".board-dispatch-row #boardDispatchGoal")
     ).to_have_count(1)
 
-    # (2) mode is a combo, not a <select>; picking one applies it.
+    # (2) the model is a combo, not a <select>; the Add/Build/Yolo mode
+    # control is gone (#1382).
     expect(authed_page.locator(".board-dispatch-row select")).to_have_count(0)
+    expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
     expect(
-        authed_page.locator("#boardDispatchMode.model-combo .model-combo-trigger")
+        authed_page.locator("#boardDispatchModel.model-combo .model-combo-trigger")
     ).to_be_visible()
-    authed_page.locator("#boardDispatchMode .model-combo-trigger").click()
-    authed_page.locator("#boardDispatchModeMenu [data-value='build']").click()
-    expect(authed_page.locator("#boardDispatchMode")).to_have_attribute(
-        "data-value", "build"
-    )
-    expect(
-        authed_page.locator("#boardDispatchMode .model-combo-trigger")
-    ).to_have_text("Build")
 
     # (1b) ➤ sits immediately after ✕ — the old `margin-left: auto` pushed it
     # to the row's far edge with a wide gap between the two.
@@ -1771,13 +1709,13 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
     filter_box = stable_read(
         lambda: authed_page.locator("#boardDispatchRepoBtn").bounding_box()
     )
-    mode_box = stable_read(
-        lambda: authed_page.locator("#boardDispatchMode").bounding_box()
+    model_box = stable_read(
+        lambda: authed_page.locator("#boardDispatchModel").bounding_box()
     )
     refresh_box = stable_read(
         lambda: authed_page.locator("#boardRefresh").bounding_box()
     )
-    assert filter_box and mode_box and refresh_box, "dispatch bar not laid out"
+    assert filter_box and model_box and refresh_box, "dispatch bar not laid out"
 
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
@@ -1789,21 +1727,21 @@ def test_dispatch_bar_is_compact_and_mode_is_a_combo(
         fg = authed_page.evaluate("getComputedStyle(document.body).color")
         expect(authed_page.locator("#boardColBacklog .board-count")).to_have_css("color", fg)
         # Filter drops BELOW the control row, so it sits just above the columns.
-        assert filter_box["y"] > mode_box["y"], (
+        assert filter_box["y"] > model_box["y"], (
             "phone filter should stack under the controls: "
-            f"filter y={filter_box['y']}, mode y={mode_box['y']}"
+            f"filter y={filter_box['y']}, model y={model_box['y']}"
         )
     else:
         expect(
             authed_page.locator(".board-dispatch-row #boardRefresh")
         ).to_have_count(1)
         # One line: filter at the far left, ↻ last, everything on the same row.
-        assert filter_box["x"] < mode_box["x"], (
+        assert filter_box["x"] < model_box["x"], (
             "desktop filter should lead the line: "
-            f"filter x={filter_box['x']}, mode x={mode_box['x']}"
+            f"filter x={filter_box['x']}, model x={model_box['x']}"
         )
-        assert refresh_box["x"] > mode_box["x"], "↻ should trail the controls"
-        for name, box in (("mode", mode_box), ("refresh", refresh_box)):
+        assert refresh_box["x"] > model_box["x"], "↻ should trail the controls"
+        for name, box in (("model", model_box), ("refresh", refresh_box)):
             assert abs(box["y"] - filter_box["y"]) < 8, (
                 f"desktop {name} should share the filter's line: "
                 f"{name} y={box['y']}, filter y={filter_box['y']}"

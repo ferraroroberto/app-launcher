@@ -30,9 +30,9 @@
  *
  * Split off a single-file module (issue #691, `/codebase-audit`), the way
  * `jobs.js` and `terminal.js` already were: the dispatch bar above the
- * columns — free-text dispatch (#302), the repo/project combo that doubles
- * as the card filter (#337), chat mode and the whole fleet-chief lifecycle
- * plus its settings dialog (#245/#547) — lives in `board-dispatch.js`. This
+ * columns — the repo/project combo that doubles as the card filter (#337),
+ * the chat bar and the whole fleet-chief lifecycle plus its settings
+ * dialog (#245/#547) — lives in `board-dispatch.js`. This
  * module keeps card rendering, the drill-down drawer, one-tap issue-start
  * and the column sections, and calls into that one for the bar.
  */
@@ -544,8 +544,8 @@ async function startIssue(card, mode, btn) {
     const payload = {
       repo: card.repo, number: card.number, mode: mode,
       title: card.title || '',
-      // The dispatch bar's model selector governs one-tap starts too
-      // (#505), overriding the shared Coding model per launch.
+      // The bar's Start-model selector governs one-tap starts (#505),
+      // overriding the shared Coding model per launch.
       model: getBoardDispatchModel(),
     };
     // Desktop browsers get the PC mirror window, like every launch (#241).
