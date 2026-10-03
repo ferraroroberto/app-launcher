@@ -19,18 +19,18 @@
  * `font-family: inherit` pulls the app's type system onto the control — UA
  * stylesheets otherwise give form controls their own platform font (Arial on
  * Windows Chrome), the off-brand-control root cause (home-automation#359).
- * The declaration is intentionally byte-identical to the modal component's
- * inline `.input-native, .select-native` rule so an app that vendors both
- * gets one consistent `.select-native` — change both here to change the
- * contract.
+ * `.input-native` (the text input in a modal row) shares this one recipe so
+ * a select and an input line up on one line; the modal component links this
+ * file rather than re-declaring it.
  */
 
+.input-native,
 .select-native {
   height: var(--control-h);
   font-size: var(--font-label);
   padding: 0 10px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   background: var(--input-bg);
   color: var(--ink);
   font-family: inherit;
