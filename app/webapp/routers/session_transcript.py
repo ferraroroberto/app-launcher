@@ -19,7 +19,11 @@ Claude has a filesystem fallback too (#1023): the hook deletes its row on
 live session can be rowless for as long as the user is reading rather than
 typing — the newest conversation in that cwd's own project folder covers
 it, refused when a second live Claude session shares the folder or when
-nothing was written there since this session started.
+nothing was written there since this session started. Where it refuses, a
+``--resume <id>`` launch (#1155) or a Remote Control link (#1393: its bridge
+id names the session's own Claude process in Claude Code's per-pid registry,
+which is how a Telegram channel session with no hook row reads its chat in a
+folder shared by its siblings) still names the file exactly.
 A session no source can name answers ``no_transcript`` rather than
 guessing a neighbour's file, so a harness that keeps one session folder per
 working directory (Grok does, including for directories that no longer
@@ -159,7 +163,9 @@ def _resolve_path(
     deleted the row out from under a still-live session — ``SessionEnd``
     fires on ``/resume`` and ``/clear``, not just on exit, and only the
     next prompt writes the row back. A ``--resume <id>`` launch adds a third,
-    for when the fallback's guards refuse: the id names the file (#1155).
+    for when the fallback's guards refuse: the id names the file (#1155). A
+    Remote Control link adds a fourth: its bridge id names the file through
+    Claude Code's per-pid registry (#1393).
     """
     if flavor == "codex":
         return find_codex_transcript(session), ""

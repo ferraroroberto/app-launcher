@@ -2073,6 +2073,120 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
         assert transcript_locate.resolve_claude_transcript(same, [same])[0] == path, title
 
 
+# ----------------------------- #1393: a channel session, named by its bridge id
+
+_BRIDGE = {"a": "session_01AAAAAAAAAAAAAAAAAAAAAA", "b": "session_01BBBBBBBBBBBBBBBBBBBBBB",
+           "c": "session_01CCCCCCCCCCCCCCCCCCCCCC"}
+_CONV = {"a": "3a999eec-ac85-4ee6-af21-998993027c9a", "b": "50f600b2-c3a6-47b9-99ad-be0c57792e16",
+         "c": "23ed6350-8f51-49cd-9991-0a8bff9c92a6"}
+
+
+def _registry_entry(root: Path, pid: int, key: str, **over: Any) -> None:
+    """One ``~/.claude/sessions/<pid>.json``: Claude Code's own per-process
+    record, naming its conversation and its Remote Control bridge."""
+    entry = {"pid": pid, "sessionId": _CONV[key], "cwd": r"E:\work\project",
+             "bridgeSessionId": _BRIDGE[key], "kind": "interactive"}
+    entry.update(over)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / f"{pid}.json").write_text(json.dumps(entry), encoding="utf-8")
+
+
+def _channel_session(key: str, **extra: Any) -> Dict[str, Any]:
+    return _claude_session(
+        session_id=f"s-{key}", started_at=2_000_000.0,
+        web_url=f"https://claude.ai/code/{_BRIDGE[key]}", **extra,
+    )
+
+
+def _channel_world(tmp_path: Path, monkeypatch, keys: str = "abc") -> Tuple[Path, List[Dict[str, Any]]]:
+    """Three live channel sessions in one folder, none with a hook row and
+    every conversation older than the launch, so each guard of the folder
+    scan refuses all three."""
+    from src import transcript_locate
+
+    projects, registry = tmp_path / "projects", tmp_path / "sessions"
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", projects)
+    monkeypatch.setattr(transcript_locate, "_CLAUDE_SESSIONS_DIR", registry)
+    folder = _claude_folder(projects, "E--work-project", *((_CONV[k], 1_000_100.0 + i) for i, k in enumerate(keys)))
+    for pid, key in enumerate(keys, start=100):
+        _registry_entry(registry, pid, key)
+    return folder, [_channel_session(k) for k in keys]
+
+
+def test_channel_sessions_in_a_shared_folder_each_read_their_own_conversation(
+    tmp_path: Path, monkeypatch
+):
+    """#1393: three live Telegram channel sessions share one cwd and none has
+    a hook row, so the folder scan refuses all of them. Each session's own
+    Remote Control link names its Claude process in Claude Code's per-pid
+    registry, and that record names the conversation, so every one resolves
+    to its own file and never to a neighbour's."""
+    from src import transcript_locate
+
+    folder, live = _channel_world(tmp_path, monkeypatch)
+    for key, session in zip("abc", live):
+        assert transcript_locate.resolve_claude_transcript(session, live) == (
+            folder / f"{_CONV[key]}.jsonl", "bridge_id"
+        ), key
+
+
+def test_bridge_id_never_guesses_when_the_registry_cannot_say(tmp_path: Path, monkeypatch):
+    """The registry is trusted only when it names exactly this session's
+    process in exactly this folder, and its file is on disk."""
+    from src import transcript_locate
+
+    folder, live = _channel_world(tmp_path, monkeypatch)
+    registry = tmp_path / "sessions"
+    refused = "folder_shared"
+    a = live[0]
+
+    # No Remote Control link: a session the registry cannot be asked about.
+    bare = {k: v for k, v in a.items() if k != "web_url"}
+    assert transcript_locate.resolve_claude_transcript(bare, live) == (None, refused)
+    # A link that is not a session link.
+    odd = {**a, "web_url": "https://example.com/code/" + _BRIDGE["a"] + "/x"}
+    assert transcript_locate.resolve_claude_transcript(odd, live) == (None, refused)
+    # Two registry records claiming one bridge id: ambiguous, so nothing.
+    _registry_entry(registry, 999, "a", sessionId=_CONV["b"])
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    (registry / "999.json").unlink()
+    # A record from another folder is not this session's.
+    _registry_entry(registry, 100, "a", cwd=r"E:\work\elsewhere")
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    _registry_entry(registry, 100, "a")
+    # A conversation id with no file on disk, or no id at all.
+    _registry_entry(registry, 100, "a", sessionId="0c7a1d2e-9b3f-4e1a-8c6d-5f4e3d2c1b0a")
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    _registry_entry(registry, 100, "a", sessionId="not-a-uuid")
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    # A corrupt record and an absent registry directory both just refuse.
+    (registry / "100.json").write_text("{", encoding="utf-8")
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    import shutil
+    shutil.rmtree(registry)
+    assert transcript_locate.resolve_claude_transcript(a, live) == (None, refused)
+    assert (folder / f"{_CONV['a']}.jsonl").is_file()
+
+
+def test_bridge_id_conversation_that_moved_on_is_refused_by_its_title(
+    tmp_path: Path, monkeypatch
+):
+    """The registry's conversation id can lag a ``/resume`` inside the
+    session, so the live-title disproof (#1034) applies to it as it does to a
+    launch-flag id."""
+    from src import transcript_locate
+
+    folder, live = _channel_world(tmp_path, monkeypatch)
+    path = folder / f"{_CONV['a']}.jsonl"
+    path.write_text(json.dumps({"type": "ai-title", "aiTitle": "Fix the backup job"}) + "\n", encoding="utf-8")
+    moved = {**live[0], "live_title": "✳ Plan the garden"}
+    assert transcript_locate.resolve_claude_transcript(moved, live) == (
+        None, "folder_shared; bridge_id title_disproved"
+    )
+    same = {**live[0], "live_title": "✳ Fix the backup job"}
+    assert transcript_locate.resolve_claude_transcript(same, live)[0] == path
+
+
 class TestTranscriptEndpoint:
 
     def test_an_unreachable_session_host_is_not_a_missing_session(
@@ -2149,6 +2263,43 @@ class TestTranscriptEndpoint:
         ]
         refused = client.get("/api/claude-code/sessions/s1/transcript").json()
         assert refused["available"] is False and refused["reason"] == "no_transcript"
+
+    def test_channel_session_in_a_shared_folder_reads_its_own_conversation(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
+    ):
+        """#1393 end to end: a rowless Remote Control session whose folder is
+        shared by two live siblings reads the conversation its own bridge id
+        names, and each sibling reads its own, not this one's."""
+        from src import transcript_locate
+
+        client, _, overrides = webapp_client
+        live = [
+            _live(sid=f"s-{k}", project_dir=r"E:\work\project", started_at=2_000_000.0,
+                  web_url=f"https://claude.ai/code/{_BRIDGE[k]}")
+            for k in "abc"
+        ]
+        overrides["session"].list_sessions.return_value = live
+        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
+        projects, registry = tmp_path / "projects", tmp_path / "sessions"
+        monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", projects)
+        monkeypatch.setattr(transcript_locate, "_CLAUDE_SESSIONS_DIR", registry)
+        folder = projects / "E--work-project"
+        folder.mkdir(parents=True)
+        for pid, key in enumerate("abc", start=100):
+            _registry_entry(registry, pid, key)
+            path = _write_jsonl(folder / f"{_CONV[key]}.jsonl", _conversation(2))
+            os.utime(path, (1_000_100.0, 1_000_100.0))
+        # Distinguish the conversations by content.
+        _write_jsonl(folder / f"{_CONV['b']}.jsonl", _conversation(3))
+
+        def prompts(sid: str) -> List[str]:
+            body = client.get(f"/api/claude-code/sessions/{sid}/transcript").json()
+            assert body["available"] is True, body
+            return [e["text"] for e in body["entries"] if e["kind"] == "user"]
+
+        assert "prompt 2 pp" not in prompts("s-a")
+        assert "prompt 2 pp" in prompts("s-b")
+        assert "prompt 2 pp" not in prompts("s-c")
 
     def test_resumed_claude_session_shows_history_before_its_first_prompt(
         self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
