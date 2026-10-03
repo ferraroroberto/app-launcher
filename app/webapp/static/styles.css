@@ -2840,7 +2840,32 @@ textarea.input-native { height: auto; }
    has no transcript yet, and "No transcript found" under the very card that
    resumes one reads as a failure. */
 .tr-resume-live:not([hidden]) + #transcriptState { display: none; }
-.tr-resume-close { margin-left: auto; width: 44px; height: 44px; }
+/* The card's ✕ is a ghost icon button, the same treatment as the Jobs run
+   list's .icon-btn: transparent, muted glyph that brightens on hover/focus
+   (the app-wide :focus-visible ring draws the outline), a 44px hit area. The
+   bare class had no rules, so it rendered as the UA's grey square on a grey
+   card. The negative margin keeps the 44px box from growing the 24px head row. */
+.tr-resume-close {
+  margin: -10px -8px -10px auto;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tr-resume-close .icon { width: 18px; height: 18px; }
+.tr-resume-close:focus-visible { color: var(--fg); }
+@media (hover: hover) {
+  .tr-resume-close:hover { color: var(--fg); background: var(--card-off); }
+}
+.tr-resume-close:active { color: var(--accent); background: var(--card-off); }
 .tr-resume-search { margin-top: 8px; }
 .tr-resume-list { max-height: 50vh; overflow-y: auto; }
 .tr-resume-opt[hidden] { display: none; }

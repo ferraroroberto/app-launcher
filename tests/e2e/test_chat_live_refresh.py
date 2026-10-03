@@ -34,6 +34,7 @@ from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
     open_session_row,
+    stable_eval,
     stable_read,
     stub_session_mirror,
 )
@@ -819,6 +820,31 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     card.locator(".tr-resume-search").fill("theme")
     box = stable_read(card.locator(".tr-resume-close").bounding_box)
     assert box and box["height"] >= 44 and box["width"] >= 44, box
+    # The ✕ is a ghost icon button like the Jobs run list's, not the UA's grey
+    # square: same computed fill, border, glyph colour and radius as a probe
+    # built from that real rule, and its colour reacts on hover (pointer only).
+    ghost = (
+        "el => { const s = getComputedStyle(el); return el.isConnected ? "
+        "{bg: s.backgroundColor, border: s.borderTopWidth, color: s.color, "
+        "radius: s.borderTopLeftRadius} : null; }"
+    )
+    probe = (
+        "() => { const ul = document.createElement('ul'); ul.className = 'jobs-runs-list';"
+        "ul.hidden = true; const li = document.createElement('li');"
+        "const b = document.createElement('button'); b.className = 'icon-btn';"
+        "li.appendChild(b); ul.appendChild(li); document.body.appendChild(ul);"
+        "const s = getComputedStyle(b); const out = {bg: s.backgroundColor,"
+        "border: s.borderTopWidth, color: s.color, radius: s.borderTopLeftRadius};"
+        "ul.remove(); return out; }"
+    )
+    close = card.locator(".tr-resume-close")
+    sibling = page.evaluate(probe)
+    assert sibling["bg"] == "rgba(0, 0, 0, 0)" and sibling["border"] == "0px", sibling
+    assert stable_eval(close, ghost) == sibling, sibling
+    # Hover only exists on a pointer device; the touch projection has none.
+    if page.evaluate("matchMedia('(hover: hover)').matches"):
+        close.hover()
+        assert stable_eval(close, ghost)["color"] != sibling["color"]
     shown.first.click()
     expect(page.locator("#toast")).to_contain_text("Resumed: Add a dark theme")
     assert resume.picks == [{"session_id": _RESUMABLE[1]["id"], "via": "picker"}], resume.picks
