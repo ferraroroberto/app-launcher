@@ -4664,6 +4664,60 @@ span.chief-answer-ref { color: var(--muted); }
 .session-item .name .session-channel-tag { margin-right: var(--space-sm); vertical-align: middle; }
 .lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
+/* Telegram sessions hidden from the lists (#1384): one summary line where
+   they were, opening a read-only list. A full-width 44px row, so the tap
+   target is real geometry; the card tokens, not an accent fill, because it
+   is a quiet status line and not a call to action. */
+.channel-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 var(--gap);
+  padding: 0 14px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--font-body-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.channel-summary[hidden] { display: none; }
+.channel-summary .icon { color: var(--accent); flex: none; }
+.channel-summary-text { flex: 1; min-width: 0; }
+.channel-summary-chevron { color: var(--muted); flex: none; }
+
+/* The read-only list those lines open: name + status over two meta cells per
+   session. Rows are buttons (a read-only look), never carrying a Stop. */
+.channel-list { margin: 0 0 var(--gap); }
+.channel-list-row + .channel-list-row { margin-top: 8px; }
+.channel-list-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-list-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-list-status { font-size: var(--font-caption); font-weight: 600; justify-self: end; }
+.channel-list-status.is-up { color: var(--success); }
+.channel-list-status.is-down { color: var(--muted); }
+.channel-list-meta { display: inline-flex; gap: 6px; font-size: var(--font-body-sm); }
+.channel-list-context[data-tier="warn"] { color: var(--attention); }
+.channel-list-context[data-tier="danger"] { color: var(--danger); }
+
 /* Settings → Telegram channels (#1369): read-only check rows, the same
    meta-left / pill-right shape as the context-filter harness rows. */
 .channel-check-list .channel-check {

@@ -243,6 +243,7 @@ _BOARD_TARGETS = (
     "tests/e2e/test_wide_layout.py "
     "tests/e2e/test_wide_code_detail.py "
     "tests/e2e/test_coding_chief.py "
+    "tests/e2e/test_channel_sessions_hidden.py "
     "tests/e2e/test_session_rename.py tests/e2e/test_shared_session_title.py "
     "tests/e2e/test_coding_model_selector.py tests/e2e/test_terminal_bar_overflow.py "
     "tests/e2e/test_primary_nav.py tests/e2e/test_smoke.py "

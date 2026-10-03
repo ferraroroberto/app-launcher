@@ -108,6 +108,9 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
   renderChiefAutoCompact(body);
+  if (els.hideChannelSessionsToggle) {
+    setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);
+  }
   renderClaudeOptions();
   return true;
 }

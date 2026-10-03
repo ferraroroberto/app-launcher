@@ -330,6 +330,35 @@ class TestPatchConfig:
             assert resp.status_code == 200, junk
             assert app.state.webapp_config.coding_favorite_agent == DEFAULT_AGENT, junk
 
+    def test_hide_channel_sessions_defaults_on_and_round_trips(self, webapp_client):
+        """hide_channel_sessions (#1384): Telegram sessions leave the Board and
+        the session list unless the user turns it off. Default ON; the choice
+        must reach disk (a switch that reverts on restart would put the
+        household's Stop button back); only a real boolean is accepted."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["hide_channel_sessions"] is True
+
+        resp = client.post("/api/config", json={"hide_channel_sessions": False})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.hide_channel_sessions is False
+        assert client.get("/api/config").json()["hide_channel_sessions"] is False
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).hide_channel_sessions is False
+
+        resp = client.post("/api/config", json={"hide_channel_sessions": True})
+        assert resp.status_code == 200
+        assert load_webapp_config(cfg_path).hide_channel_sessions is True
+
+    @pytest.mark.parametrize("junk", ["false", "no", 0, 1, None, []])
+    def test_hide_channel_sessions_rejects_non_booleans(self, webapp_client, junk):
+        """"false" is truthy in Python: a string must never flip the switch."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"hide_channel_sessions": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.hide_channel_sessions is True
+
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is
         in the allow-list — it patches through, surfaces on the next GET,

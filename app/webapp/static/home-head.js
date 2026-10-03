@@ -15,12 +15,13 @@ function setStatus(el, text) {
 }
 
 import { els, state } from './state.js';
+import { isHiddenChannel } from './channel-sessions.js';
 
 export function renderHomeHead() {
   const el = els.homeHeadStatus;
   if (!el) return;
   const parts = [];
-  const sessions = state.sessions.length;
+  const sessions = state.sessions.filter(function (s) { return !isHiddenChannel(s); }).length;
   parts.push(sessions + (sessions === 1 ? ' session' : ' sessions'));
   // Running apps only when known non-zero — the running-apps poll gates on
   // the Apps tab being visible, so away from that tab the count is merely

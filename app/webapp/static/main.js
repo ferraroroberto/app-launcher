@@ -10,7 +10,8 @@ import { AuthRequiredError, apiFailToast, consumeUrlParam, jsonApi, toast, wireL
 import { setTab, wireTabs } from './tabs.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js';
-import { fetchRateLimits, fetchSessions, wireSessions } from './sessions.js';
+import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
+import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './context-filter.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps-coding.js';
@@ -138,6 +139,23 @@ function wireChiefSettings() {
     if (value === null) return;
     if (await patchConfig({ chief_auto_compact_threshold: value })) {
       toast('Chief settings saved.', 'good');
+    }
+  });
+}
+
+// Telegram channel sessions (#1384): the switch saves at once like every other
+// Settings switch, then both lists repaint under the new setting.
+function wireChannelHide() {
+  const el = els.hideChannelSessionsToggle;
+  if (!el) return;
+  el.addEventListener('click', async function () {
+    const next = el.getAttribute('aria-checked') !== 'true';
+    setSwitch(el, next);
+    if (await patchConfig({ hide_channel_sessions: next })) {
+      renderSessions();
+      renderBoard();
+    } else {
+      setSwitch(el, !next);   // patchConfig already fired the failure toast
     }
   });
 }
@@ -393,6 +411,8 @@ async function boot() {
 wireLoginForm(boot);
 wireTabs();
 wireClaudeOptions();
+wireChannelHide();
+wireChannelSessions();
 wireSessions();
 wireApps();
 wireJobs();

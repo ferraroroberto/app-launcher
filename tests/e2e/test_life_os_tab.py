@@ -1928,6 +1928,15 @@ def test_channel_session_carries_its_label_in_the_coding_list(
             body=_json.dumps({"sessions": [session]}),
         ),
     )
+    # Channel sessions are hidden from the list by default (#1384); this test is
+    # about the row they wear when shown, so the setting is off here.
+    def _show_channels(route):
+        resp = route.fetch()
+        body = resp.json()
+        body["hide_channel_sessions"] = False
+        route.fulfill(response=resp, json=body)
+
+    authed_page.route(re.compile(r".*/api/config$"), _show_channels)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     tag = authed_page.locator(".session-item .session-channel-tag")
     expect(tag).to_have_text("Telegram · Health", timeout=10_000)
