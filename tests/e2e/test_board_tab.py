@@ -27,8 +27,9 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src import chief_plan
+from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.conftest import stable_eval, stable_read
+from tests.e2e.conftest import flush_requests, stable_eval, stable_read, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -432,7 +433,15 @@ def test_board_github_refresh_on_open_tracks_cache_age(
     authed_page.route(re.compile(r".*/api/board/github/refresh$"), _capture)
 
     _open_board(authed_page, base_url)
-    authed_page.wait_for_timeout(1_000)
+    # The automatic refresh is a POST fired as the board loads: wait for it,
+    # or (fresh cache, none expected) for the board to have rendered, then let
+    # any request still in flight land before the exact-list check.
+    if expected_posts:
+        wait_until(authed_page, lambda: len(posts) >= len(expected_posts),
+                   "the automatic gh refresh POST")
+    else:
+        expect(authed_page.locator("li.board-item").first).to_be_visible()
+    flush_requests(authed_page)
 
     assert posts == expected_posts, (
         f"gh cache aged {gh_age_seconds}s should auto-refresh {expected_posts} "
@@ -444,7 +453,9 @@ def test_board_github_refresh_on_open_tracks_cache_age(
     # the automatic one settle before tapping it.
     expect(authed_page.locator("#boardRefresh")).to_be_enabled()
     authed_page.locator("#boardRefresh").click()
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: len(posts) >= len(expected_posts) + 1,
+               "the refresh tap's gh refresh POST")
+    flush_requests(authed_page)
 
     assert posts == expected_posts + ["POST"], (
         f"↻ never POSTed /api/board/github/refresh (got {posts})"
@@ -690,6 +701,7 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
         re.compile(r".*/api/claude-code/sessions/s-wait/input$"), _capture_input
     )
 
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
     # (#461, before the reply) the card starts in Your turn.
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("1")
@@ -758,7 +770,11 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     # reverts the move. (This 1 s wait also covers the 500 ms the #301 half
     # used to give the POST to land before reading `captured` below; the
     # window after the send is kept as short as #461's own was.)
-    authed_page.wait_for_timeout(1_000)
+    wait_until(authed_page, lambda: captured.get("method") == "POST",
+               "the reply POST")
+    # The window the old 1 s sleep gave a revert to show up in, jumped on the
+    # fake clock instead (still well under the 5 s poll).
+    _fake_clock.advance(authed_page, 1_000)
     expect(authed_page.locator("#boardColYours .board-count")).to_have_text("0")
     expect(authed_page.locator("#boardColClaude .board-count")).to_have_text("2")
 
@@ -1306,7 +1322,8 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
         "#boardDispatchModelMenu [data-value='codex:gpt-5.6-sol']"
     ).click()
     authed_page.locator("#boardDispatchSend").click()
-    authed_page.wait_for_timeout(500)
+    wait_until(authed_page, lambda: captured.get("method") == "POST",
+               "the dispatch POST")
 
     assert captured.get("method") == "POST"
     body = captured.get("body") or {}
@@ -1450,7 +1467,8 @@ def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
                 )
 
     buttons.nth(1).click()
-    authed_page.wait_for_timeout(500)
+    wait_until(authed_page, lambda: captured.get("method") == "POST",
+               "the drawer's quit POST")
     assert captured.get("method") == "POST"
     assert captured.get("body") == {"mode": "quit"}
     # The drawer closes (boardExpanded cleared + re-render).

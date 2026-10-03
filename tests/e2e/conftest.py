@@ -160,6 +160,40 @@ def _autoboot_enabled(config: pytest.Config) -> bool:
     )
 
 
+def wait_until(page: Page, predicate: Callable[[], bool], what: str,
+               timeout_ms: int = 5_000, interval_ms: int = 20) -> None:
+    """Wait until ``predicate()`` holds, or fail naming ``what`` (#1376).
+
+    The event-driven replacement for ``page.wait_for_timeout(N)`` followed by
+    an assertion on something a route handler records: it returns the moment
+    the thing has happened instead of after a fixed guess, and a thing that
+    never happens is a named failure instead of whatever the later assertion
+    says. Route handlers run while Playwright waits, which is why the poll
+    waits through ``page`` rather than sleeping.
+    """
+    deadline = time.monotonic() + timeout_ms / 1000
+    while not predicate():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"timed out after {timeout_ms} ms waiting for {what}")
+        page.wait_for_timeout(interval_ms)
+
+
+def flush_requests(page: Page) -> None:
+    """Return once every request the page has already issued has reached its
+    route handler.
+
+    For the negative half of a check ("dismissing the confirm must not stop
+    the chief"): the guess it replaces is a sleep long enough for a wrongly
+    fired request to show up. A sentinel fetch queued behind whatever the page
+    sent comes back only after the handlers have seen everything ahead of it,
+    so a count read next is final.
+    """
+    if not getattr(page, "_flush_route_installed", False):
+        page.route(re.compile(r".*/__flush$"), lambda route: route.fulfill(status=204))
+        page._flush_route_installed = True  # type: ignore[attr-defined]
+    page.evaluate("() => fetch('/__flush').then(() => undefined)")
+
+
 def stable_read(read: Callable[[], object], attempts: int = 50,
                 interval_s: float = 0.1) -> object:
     """Retry a raw DOM measurement past a mid-render stale element handle.

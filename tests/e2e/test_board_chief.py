@@ -29,7 +29,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src import chief_plan
-from tests.e2e.conftest import HeldUploads, stable_read
+from tests.e2e.conftest import HeldUploads, flush_requests, stable_read, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -294,7 +294,8 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
     authed_page.locator("li.board-item-chief button.board-card").click()
     authed_page.locator(".board-stop-btn").click()
-    authed_page.wait_for_timeout(400)
+    wait_until(authed_page, lambda: len(dialogs) >= 1, "the chief stop confirm")
+    flush_requests(authed_page)
     assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
     assert stops == [], "dismissing the confirm must not stop the chief"
     expect(authed_page.locator(".board-drawer")).to_be_visible()
@@ -302,7 +303,7 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     # 2. Chief + accept → stop fires.
     authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
     authed_page.locator(".board-stop-btn").click()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: len(stops) >= 1, "the confirmed chief stop POST")
     assert len(dialogs) == 2
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
 
@@ -312,7 +313,8 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
         "li.board-item:not(.board-item-chief) button.board-card"
     ).first.click()
     authed_page.locator(".board-stop-btn").click()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: len(stops) >= 2, "the worker stop POST")
+    flush_requests(authed_page)
     assert len(dialogs) == 2, "a worker stop must not raise a confirm"
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
 
@@ -351,7 +353,8 @@ def test_chat_mode_send_ensures_with_resume_and_toasts_outcome(
 
     authed_page.locator("#boardDispatchGoal").fill("hey")
     authed_page.locator("#boardDispatchSend").click()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: ensured.get("method") == "POST",
+               "the chat send's ensure POST")
 
     assert ensured.get("method") == "POST", "send never POSTed ensure"
     assert ensured.get("body", {}).get("resume") is True
@@ -379,7 +382,8 @@ def test_chat_mode_offers_manual_start_when_chief_down(
     start = authed_page.locator("#boardChiefStart")
     expect(start).to_be_visible()
     start.click()
-    authed_page.wait_for_timeout(500)
+    wait_until(authed_page, lambda: ensured.get("method") == "POST",
+               "Start's ensure POST")
     assert ensured.get("method") == "POST", "Start never POSTed ensure"
 
 
@@ -444,7 +448,8 @@ def test_chat_mode_offers_restart_when_chief_alive(
 
     authed_page.once("dialog", lambda d: d.accept())
     restart.click()
-    authed_page.wait_for_timeout(500)
+    wait_until(authed_page, lambda: ensured.get("method") == "POST",
+               "Restart's ensure POST")
 
     assert ensured.get("method") == "POST", "Restart never POSTed ensure"
     assert ensured.get("body", {}).get("fresh") is True
@@ -492,7 +497,7 @@ def test_chief_settings_dialog_roundtrip(
     authed_page.locator("#chiefModelMenu [data-value='opus']").click()
     authed_page.locator("#chiefWorkerCap").fill("5")
     authed_page.locator('#chiefSettingsForm button[type="submit"]').click()
-    authed_page.wait_for_timeout(500)
+    wait_until(authed_page, lambda: "body" in put, "the chief settings PUT")
 
     assert put.get("body") == {"model": "opus", "worker_cap": 5}
     expect(dialog).not_to_be_visible()
@@ -562,7 +567,9 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     # verbatim; this test never asserted on its own send text.)
     authed_page.locator("#boardDispatchGoal").fill("what's open in app-launcher?")
     authed_page.locator("#boardDispatchSend").click()
-    authed_page.wait_for_timeout(600)
+    wait_until(authed_page, lambda: captured_input.get("body") is not None,
+               "the chat message's input POST")
+    flush_requests(authed_page)
 
     assert ensured.get("method") == "POST", "send never ensured the chief"
     assert captured_input.get("body") == {
