@@ -278,6 +278,8 @@ function overlaySession(card) {
     kind: card.kind,
     agent: card.agent,
     label: card.label,
+    // The header's model pill (#1383) paints on first open, before any poll.
+    model: card.model,
   };
 }
 

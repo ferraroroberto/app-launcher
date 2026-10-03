@@ -76,6 +76,18 @@ export function dropEarlyMirrorMarker() {
   _preMarkerTitle = null;
 }
 
+// The model pill (#1383): the session's model display name ("Opus", "Sol"),
+// derived server-side. Hidden, never a placeholder, when it isn't known.
+function setTerminalModelPill(session) {
+  const pill = els.terminalModel;
+  if (!pill) return;
+  const model = String((session && session.model) || '').trim();
+  pill.textContent = model;
+  pill.hidden = !model;
+  if (model) pill.title = 'Model: ' + model;
+  else pill.removeAttribute('title');
+}
+
 // Set the overlay header's title text, prepending the fleet chief's crown
 // marker (#547) when this session is the chief — same crown as the Board
 // and Coding-tab rows. Built from DOM nodes, not string concat, since
@@ -84,6 +96,7 @@ export function dropEarlyMirrorMarker() {
 // for the OS title bar, which carries no icon.
 export function setTerminalTitleText(session) {
   const title = sessionTitle(session);
+  setTerminalModelPill(session);
   if (!els.terminalTitle) return title;
   els.terminalTitle.textContent = '';
   if (isChiefSession(session)) {

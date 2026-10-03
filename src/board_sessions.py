@@ -29,6 +29,7 @@ from src import audit, plan_picker
 from src._log_once import log_once
 from src.active_issue_claims import CLAIM_DEAD
 from src.board_state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
+from src.session_model import session_model_label
 from src.board_transcript import (
     _ExchangeTail,
     _external_row_liveness,
@@ -478,6 +479,7 @@ def merge_sessions(
             "live_title": sess.get("live_title") or "",
             "prompt_title": sess.get("prompt_title") or "",
             "manual_title": sess.get("manual_title") or "",
+            "model": session_model_label(sess),
             "shared_name": (row or {}).get("name"),
             "shared_name_source": (row or {}).get("name_source"),
             "project": project,
