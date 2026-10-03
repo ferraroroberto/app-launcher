@@ -26,6 +26,7 @@ import { els, state } from './state.js';
 import { apiFailToast, authHeaders, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
+import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 // The session overlay's two modes (#982). Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
@@ -141,11 +142,14 @@ const sessionMenu = createRowMenu('session-menu');
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
-  els.sessionsEmpty.hidden = state.sessions.length !== 0;
+  // Telegram channel sessions leave the list for one summary line (#1384).
+  const shown = state.sessions.filter(function (s) { return !isHiddenChannel(s); });
+  els.sessionsEmpty.hidden = shown.length !== 0;
   renderHomeHead();
   renderCodingChiefStatus();
+  renderChannelSummaries();
 
-  state.sessions.forEach(function (s) {
+  shown.forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item session-item';
     // Same accent tint + crown as the Board tab's chief card (#547) — the
@@ -366,6 +370,14 @@ export async function stopSession(s) {
   // {session_id, name} object with no kind/label, so isChiefSession() is a
   // safe no-op there and it never double-confirms.
   if (isChiefSession(s) && !confirm(CHIEF_KILL_CONFIRM)) return;
+  // While Telegram sessions are hidden (#1384) nothing may stop one: the Board
+  // drawer passes a stripped {session_id, name} with no label, so resolve the
+  // full record first. The refusal names how to get the control back.
+  const full = (state.sessions || []).find(function (x) { return x.session_id === s.session_id; });
+  if (isHiddenChannel(full || s)) {
+    toast('Telegram sessions are protected — turn off "Hide Telegram sessions" in Settings to stop one.', 'error');
+    return;
+  }
   if (isChannelSession(s) && !confirm(channelKillConfirm(s))) return;
   try {
     await jsonApi(

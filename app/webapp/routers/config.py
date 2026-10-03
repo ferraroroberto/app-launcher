@@ -67,6 +67,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # every other visible one is a row in that row's ⋯ menu.
         "coding_favorite_agent": cfg.coding_favorite_agent,
         "coding_model_choice": cfg.coding_model_choice,
+        # Telegram channel sessions leave the Board and session list (#1384).
+        "hide_channel_sessions": cfg.hide_channel_sessions,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "claude_config_dir": cfg.claude_config_dir,
@@ -146,6 +148,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "coding_hidden_agents",
         "coding_favorite_agent",
         "coding_model_choice",
+        "hide_channel_sessions",
         "apps_scan_root",
         "life_os_dir",
         "claude_config_dir",
@@ -193,6 +196,14 @@ async def patch_config(request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
             )
+    # A switch (#1384): anything but a real boolean is a client bug, and a
+    # truthy string must never flip it ("false" is truthy in Python).
+    if "hide_channel_sessions" in patch and not isinstance(
+        patch["hide_channel_sessions"], bool
+    ):
+        raise HTTPException(
+            status_code=400, detail="hide_channel_sessions must be true or false"
+        )
     # The favourite agent (#1070) must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
     # coerced to DEFAULT_AGENT rather than stored, because the row renders

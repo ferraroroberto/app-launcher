@@ -699,6 +699,13 @@
           <button id="codingChiefResume" type="button" class="board-chief-start" title="Reattach the most recent chief conversation" aria-label="Resume chief">Resume</button>
         </div>
         <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
+        <!-- Telegram channel sessions hidden from the list above (#1384): one
+             line that opens the read-only list. channel-sessions.js. -->
+        <button type="button" id="sessionsChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+          <span class="channel-summary-text"></span>
+          <span class="channel-summary-chevron" aria-hidden="true">›</span>
+        </button>
         <div id="sessionsEmpty" class="empty-state">
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
           <p class="empty-state-message">No sessions launched from here yet.</p>
@@ -1325,6 +1332,11 @@
            default; the GitHub-fed ones wait folded on the phone (board.js
            opens all five on the desktop grid). The count is text, not a
            control, so it may sit in the summary. -->
+      <button type="button" id="boardChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+          <span class="channel-summary-text"></span>
+          <span class="channel-summary-chevron" aria-hidden="true">›</span>
+        </button>
       <div id="boardColumns" class="board-columns">
         <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
           <summary class="collapse-summary">
@@ -1585,6 +1597,11 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+          <div class="switch-row settings-switch-row">
+            <span>Hide Telegram sessions from the Board and session list</span>
+            <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="hideChannelSessionsHelp" class="field-help">A Telegram session serves someone through their own chat, and stopping it cuts that chat off. On, those sessions leave the Board and the session list; one line there says how many are running and opens a read-only list — no Stop, no delete. Off, they show and behave like any other session.</p>
           <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; the Life OS tab then starts it. Nothing here edits files — it shows what is ready and what is missing.</p>
           <h4 class="context-filter-subhead">Checks</h4>
           <ul id="channelChecks" class="card-list channel-check-list" aria-label="Telegram setup checks"></ul>
@@ -2021,6 +2038,26 @@
           <button type="submit" class="detail-save-btn">Save</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Telegram sessions, read-only (#1384): status, last activity and context
+         use per session. Header ✕ plus one full-width action (modal contract,
+         #545) — and no Stop or delete, by design. Built by channel-sessions.js
+         while open; the context figure is polled only while this is showing. -->
+    <dialog id="channelListDialog" class="detail-dialog">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg> Telegram sessions</h2>
+          <button type="button" id="channelListClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <ul id="channelListRows" class="card-list channel-list" aria-label="Telegram sessions"></ul>
+        <p id="channelListEmpty" class="empty muted small" hidden>No Telegram sessions are running.</p>
+        <div class="detail-actions">
+          <button type="button" id="channelListDone" class="detail-save-btn">Close</button>
+        </div>
+      </div>
     </dialog>
 
     <!-- The chief's answer sheet (#1295): one block per question waiting on

@@ -36,6 +36,7 @@ import {
   groupsAreHidden, hasTranscriptReader, loadNew, reloadNewest, toggleGroups,
 } from './session-transcript.js';
 import { inChatMode } from './session-overlay.js';
+import { isHiddenChannel } from './channel-sessions.js';
 
 const terminalMenu = createRowMenu('terminal-menu');
 
@@ -207,6 +208,8 @@ export function wireTerminalMenu() {
     {
       className: 'action-stop-close', glyph: 'x', danger: true,
       label: 'Stop and kill session', text: 'Stop and kill',
+      // A hidden Telegram session can be looked at, never stopped (#1384).
+      hidden: function () { return isHiddenChannel(currentSession()); },
       // stopSession() keeps the chief confirm (#547) and closes the overlay
       // once the session it is showing stops.
       onTap: function () {

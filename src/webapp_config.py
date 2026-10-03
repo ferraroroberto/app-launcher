@@ -431,6 +431,12 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
+    # Telegram channel sessions (#1384) are long-lived and serve a household
+    # member, so on by default they leave the Board and the Coding tab's
+    # session list for one summary line (and a read-only list) — a mis-tap
+    # on their Stop would cut off a person's channel. Off restores today's
+    # behaviour exactly. UI-only: the sessions themselves are untouched.
+    hide_channel_sessions: bool = True
     # Where a link tapped in Chat or a transcript opens when the page runs on
     # the PC itself (#1274): "chrome" (found through the registry's App
     # Paths, falling back to the default when absent) or "system" (the

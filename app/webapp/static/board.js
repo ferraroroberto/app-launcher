@@ -56,6 +56,7 @@ import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
+import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 import {
   CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtDuration,
   isChannelSession, renderQuotaLines, revealInCard,
@@ -1057,7 +1058,8 @@ export function renderBoard() {
   const visible = {};
   COLUMNS.forEach(function (col) {
     visible[col.key] = (columns[col.key] || []).filter(function (card) {
-      return matchesRepoFilter(card, repoFilter);
+      // Telegram channel sessions leave the columns for the summary line (#1384).
+      return !isHiddenChannel(card) && matchesRepoFilter(card, repoFilter);
     });
   });
   let expandedCard = null;
@@ -1160,6 +1162,7 @@ export function renderBoard() {
     activeEl.focus({ preventScroll: true });
   }
 
+  renderChannelSummaries();
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
   renderQuotaLines(els.boardUsage, body.quota_lines);
