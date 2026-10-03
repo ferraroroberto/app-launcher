@@ -76,7 +76,9 @@ full_pytest_target    = "tests/e2e"
 progress_log          = "webapp/verify-progress.log"
 # Budget for that browser leg, in seconds (#1255): the parallel plus serial
 # e2e passes of the latest quiet full-tier run in progress_log, not the whole
-# gate. 20 min against ~12.5 min measured 2026-09-26 (gate total ~16 min).
+# gate. 20 min against ~8.9 min measured 2026-10-03 (508 s parallel + 26 s
+# serial; gate total ~12.5 min). The budget is deliberately not ratcheted down
+# with the measurement: lowering it is the owner's call (#1376).
 # Over it, /e2e fires /e2e-audit; a narrow-routed or overlapped run is
 # `unknown`, never `within`. Same rule as test_budget: move it only with a
 # written reason.
@@ -357,11 +359,39 @@ tier       = "none"
 prefix     = "src/"
 extensions = ["py"]
 label      = "backend-python"
+# Test support the e2e suite itself loads (#1376): a change to one reaches the
+# browser run, so it must not fall into the non-e2e-test rule below.
+[[e2e.rule]]
+tier  = "full"
+path  = "tests/_credential_hygiene.py"
+label = "e2e-test-support"
+[[e2e.rule]]
+tier  = "full"
+path  = "tests/_progress_log.py"
+label = "e2e-test-support"
+[[e2e.rule]]
+tier  = "full"
+path  = "tests/__init__.py"
+label = "e2e-test-support"
+
 [[e2e.rule]]
 tier       = "none"
 prefix     = "tests/"
 extensions = ["py"]
 label      = "non-e2e-test"
+# Node-run unit tests of the static JS modules; the browser suite never
+# executes them (a change to the JS they cover routes full on its own).
+[[e2e.rule]]
+tier       = "none"
+prefix     = "tests/js/"
+extensions = ["mjs"]
+label      = "non-e2e-test"
+# The tray process entry point: the webapp and the e2e fixture never import it
+# (only the lazy `tray` CLI command does).
+[[e2e.rule]]
+tier  = "none"
+path  = "app/tray/tray.py"
+label = "tray-process"
 [[e2e.rule]]
 tier       = "none"
 extensions = ["md"]
