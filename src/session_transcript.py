@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -612,6 +613,113 @@ def _is_turn(entry: Entry) -> bool:
 
 def _turns(entries: List[Entry]) -> int:
     return sum(1 for e in entries if _is_turn(e))
+
+
+# ------------------------------------------------ live activity line (#1387)
+#
+# One line in the chat's bottom strip — "⏱ 15:02 · 10 actions · Running Bash"
+# — summarising the turn in progress. Everything is read off the
+# flavour-normalised entries, so every harness is handled at once; nothing
+# here knows a line grammar.
+
+# Every flavour in :data:`FLAVORS` records its tool calls today. A harness
+# that did not would go here, and its line would carry the elapsed time alone:
+# "0 actions" would be a guess, and the line never guesses.
+_NO_TOOL_CALL_FLAVORS: frozenset = frozenset()
+# A turn the transcript says is still open (it ends on a tool call or on
+# thinking, not a reply) counts as working only while the file is still being
+# written. An interrupted turn ends the same way and never writes again.
+ACTIVITY_FRESH_S = 120
+# How many turns the newest-page read widens to while it looks for the last
+# user message, before the line gives up rather than guess.
+_ACTIVITY_TURN_STEPS = (2, 8, 32)
+# `action.verb` is the flavour-normalised classification of a tool call.
+_ACTION_LABELS = {"edited": "Editing a file", "wrote": "Editing a file", "read": "Reading a file"}
+
+
+def _step_label(entry: Entry) -> str:
+    """What the agent is doing, from the newest entry of the turn."""
+    kind = entry.get("kind")
+    if kind != "tool_call":
+        return "Writing a reply" if kind == "assistant" else "Thinking"
+    if entry.get("result") is not None:
+        return "Thinking"  # the call is done; the agent is reading what it returned
+    name = str(entry.get("name") or "tool")
+    action = entry.get("action")
+    verb = action.get("verb") if isinstance(action, dict) else None
+    if verb == "ran":
+        return f"Running {name}"
+    return _ACTION_LABELS.get(verb, name)
+
+
+def turn_activity(entries: List[Entry], *, tool_calls: bool = True) -> Optional[Dict[str, Any]]:
+    """The turn in progress, summarised: ``since`` (the last user message's
+    timestamp), ``actions`` (tool calls since it, ``None`` for a harness with
+    no tool-call data), ``last`` (a label for the newest step) and ``open``
+    (does the transcript end mid-turn).
+
+    ``None`` when ``entries`` holds no user message with a timestamp — the
+    view that cannot say when the turn began says nothing.
+    """
+    top = [e for e in entries if not e.get("sidechain")]
+    start = next((i for i in range(len(top) - 1, -1, -1) if top[i].get("kind") == "user"), None)
+    if start is None or not top[start].get("timestamp"):
+        return None
+    turn = [e for e in top[start + 1:] if e.get("kind") in ("assistant", "thinking", "tool_call")]
+    newest = turn[-1] if turn else None
+    return {
+        "since": top[start]["timestamp"],
+        "actions": sum(1 for e in turn if e["kind"] == "tool_call") if tool_calls else None,
+        "last": _step_label(newest) if newest else "Thinking",
+        "open": newest is None or newest["kind"] != "assistant",
+    }
+
+
+# The last read per file, so a tick that finds the file unchanged (every idle
+# chat view, every 3 s) costs a ``stat`` and a dict hit, never a page read.
+_ACTIVITY_MEMO: Dict[str, Tuple[Tuple[int, int], Optional[Dict[str, Any]]]] = {}
+_ACTIVITY_MEMO_MAX = 64
+
+
+def transcript_activity(
+    path: Any, *, flavor: str = "claude", busy: bool = False, now: Optional[float] = None
+) -> Optional[Dict[str, Any]]:
+    """:func:`turn_activity` of ``path``'s newest turn, plus ``working``.
+
+    ``working`` is the harness's own busy signal (``busy``, the caller's) or,
+    failing that, a transcript that ends mid-turn and was written within
+    :data:`ACTIVITY_FRESH_S`. Reads the newest page, widening only while no
+    user message is in it, so it costs one window in the usual case and
+    nothing while the file is unchanged; ``None`` when none turns up within
+    the widest read or the file cannot be read.
+    """
+    p = Path(str(path))
+    try:
+        st = p.stat()
+        sig = (st.st_size, st.st_mtime_ns)
+        key = str(p)
+        if key in _ACTIVITY_MEMO and _ACTIVITY_MEMO[key][0] == sig:
+            found = _ACTIVITY_MEMO[key][1]
+        else:
+            build, line_key, _ = _flavor(flavor)
+            found = None
+            for limit in _ACTIVITY_TURN_STEPS:
+                page = _page(p, None, limit, build, line_key)
+                found = turn_activity(page["entries"], tool_calls=flavor not in _NO_TOOL_CALL_FLAVORS)
+                if found is not None or page["next_cursor"] is None:
+                    break
+            if len(_ACTIVITY_MEMO) >= _ACTIVITY_MEMO_MAX:
+                _ACTIVITY_MEMO.clear()
+            _ACTIVITY_MEMO[key] = (sig, found)
+    except OSError:
+        return None
+    if found is None:
+        return None
+    fresh = (time.time() if now is None else now) - st.st_mtime <= ACTIVITY_FRESH_S
+    out = dict(found)
+    is_open = out.pop("open")
+    out["working"] = bool(busy or (is_open and fresh))
+    return out
 
 
 # ------------------------------------------------------ transcript images (#1265)

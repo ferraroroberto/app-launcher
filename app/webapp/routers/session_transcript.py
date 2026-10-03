@@ -75,6 +75,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -84,7 +85,7 @@ from websockets.exceptions import InvalidHandshake, WebSocketException
 
 from src import audit, board, plan_picker, resume_picker, session_client
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
-from src.board_transcript import pending_decision_call
+from src.board_transcript import _live_title_is_busy, _pty_output_is_fresh, pending_decision_call
 from src.transcript_locate import (
     find_antigravity_transcript,
     find_codex_transcript,
@@ -97,6 +98,7 @@ from src.session_transcript import (
     MAX_LIMIT,
     entry_diff,
     entry_full_text,
+    transcript_activity,
     transcript_image,
     transcript_page,
     transcript_tail,
@@ -253,7 +255,7 @@ async def session_transcript(
         raise HTTPException(
             status_code=400, detail="pass either before or after, not both"
         )
-    reason, flavor, path, agent, why, _session = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, why, session = await _resolve_source(sid, cfg)
     if reason is not None:
         # Neither of these is a source problem, and the live tick asks every
         # few seconds: the unreachable one is already latched by the list read.
@@ -264,7 +266,7 @@ async def session_transcript(
             )
         return _unavailable(sid, reason)
     if after is not None:
-        return await _tail_response(sid, agent, flavor, path, after, size)
+        return await _tail_response(sid, agent, flavor, path, after, size, session)
     try:
         page = await asyncio.to_thread(
             transcript_page, path, before=before, limit=limit, flavor=flavor
@@ -278,7 +280,7 @@ async def session_transcript(
         "ℹ️ transcript %s (%s) page: %d entries, source=%s, more=%s",
         sid[:8], agent, len(page["entries"]), flavor, page["next_cursor"] is not None,
     )
-    return {
+    body = {
         "available": True,
         # Claude's own hook JSONL kept its historical name; every other
         # flavour reports itself, so a third one isn't mislabelled as Codex.
@@ -287,6 +289,10 @@ async def session_transcript(
         "session_id": sid,
         **page,
     }
+    if before is None:
+        # The newest page is the chat's first read: its activity line starts here.
+        body["activity"] = await _activity(session, flavor, path)
+    return body
 
 
 async def _tail_response(
@@ -296,6 +302,7 @@ async def _tail_response(
     path: Path,
     after: int,
     size: Optional[int],
+    session: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """The forward-cursor half of the route above (#1050).
 
@@ -325,7 +332,29 @@ async def _tail_response(
         "reason": None,
         "session_id": sid,
         **tail,
+        "activity": await _activity(session, flavor, path),
     }
+
+
+async def _activity(
+    session: Optional[Dict[str, Any]], flavor: str, path: Path
+) -> Optional[Dict[str, Any]]:
+    """The chat strip's one-line summary of the turn in progress (#1387):
+    ``since`` / ``actions`` / ``last`` / ``working``, or ``None`` when the
+    transcript cannot say. Rides the page and tail responses — no route or
+    poll of its own — and costs a ``stat`` while the file is unchanged.
+
+    Claude's busy signal is its animated title glyph on a PTY that is still
+    producing output, the same evidence the Board's status uses; the other
+    harnesses have none, so theirs is read off the transcript alone.
+    """
+    busy = (
+        flavor == "claude"
+        and session is not None
+        and _live_title_is_busy(session.get("live_title"))
+        and _pty_output_is_fresh(session.get("last_output_at"), datetime.now(timezone.utc))
+    )
+    return await asyncio.to_thread(transcript_activity, path, flavor=flavor, busy=busy)
 
 
 @router.get("/api/claude-code/sessions/{sid}/transcript/entry")

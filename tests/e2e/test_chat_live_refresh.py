@@ -219,6 +219,8 @@ class _Transcript:
         # rowless window. Distinct from `dead` on purpose: one latches
         # refresh off, the other must not.
         self.unavailable: str | None = None
+        # The `activity` the server rides on every page/tail answer (#1387).
+        self.activity: dict | None = None
         self._page = page
         page.route(
             re.compile(r".*/api/claude-code/sessions/" + sid + r"/transcript(\?.*)?$"),
@@ -254,6 +256,7 @@ class _Transcript:
                 "session_id": _SID, "next_cursor": None,
                 "entries": list(self.entries), "tail": self.tail,
                 "size": self.size, "tool_errors": "reported",
+                "activity": self.activity,
             }
         else:
             after = int(m.group(1))
@@ -266,7 +269,7 @@ class _Transcript:
                 "entries": fresh[:-1] if changed else [],
                 "pending": fresh[-1:] if changed else [],
                 "tail": self.tail, "size": self.size,
-                "tool_errors": "reported",
+                "tool_errors": "reported", "activity": self.activity,
             }
         route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)
@@ -369,7 +372,9 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
 
     # -- #1292: forcing a read, for when polling seems stuck --
     # ⋮ Load new with nothing new says so, briefly, and rebuilds nothing.
-    newer = page.locator("#transcriptNewer")
+    # The note lives in the bottom strip (#1387), not over the transcript.
+    newer = page.locator("#terminalActivity")
+    expect(page.locator("#transcriptNewer")).to_have_count(0)
     page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept = 1")
     _menu_item(page, "Load new messages").click()
     expect(newer).to_have_text("No new messages")
@@ -861,3 +866,58 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     expect(page.locator("#toast")).to_contain_text("Resumed: Fix the login redirect")
     assert resume.picks[-1] == {"session_id": _RESUMABLE[0]["id"], "via": "composer"}, resume.picks
     assert typed == [], "the bare /resume must never reach the terminal"
+
+
+def _since(page: Page, seconds: int) -> str:
+    """An ISO stamp ``seconds`` before the page's (fake) now."""
+    return page.evaluate("(s) => new Date(Date.now() - s * 1000).toISOString()", seconds)
+
+
+@pytest.mark.iphone
+def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1387: one line in the bottom strip while a turn runs — elapsed time,
+    the action count and the newest step — ticking on the client with no
+    request of its own, gone when the turn ends, and never over a
+    connection status."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    tr.activity = {"since": _since(page, 902), "actions": 10, "last": "Running Bash", "working": True}
+    _open_chat(page)
+
+    line = page.locator("#terminalActivity")
+    expect(line).to_have_text(re.compile(r"^⏱ 15:0\d · 10 actions · Running Bash$"), timeout=OVERLAY_OPEN_MS)
+    # One line that ellipsizes, with tabular numerals — and the strip's box is
+    # the one it already reserved when idle, so nothing above it moved.
+    expect(line).to_have_css("white-space", "nowrap")
+    expect(line).to_have_css("text-overflow", "ellipsis")
+    expect(line).to_have_css("font-variant-numeric", "tabular-nums")
+    strip = page.locator("#terminalStatusStrip")
+    assert stable_eval(strip, "el => el.isConnected ? el.getBoundingClientRect().height : null")         == stable_eval(line, "el => el.isConnected ? el.parentElement.getBoundingClientRect().height : null")
+
+    # The counter moves on the client: 2 s on the clock is under the 3 s poll,
+    # so no read goes out, yet the text has advanced.
+    shown = line.text_content()
+    before = tr.tail_calls()
+    _fake_clock.advance(page, 2_000)
+    assert tr.tail_calls() == before
+    assert line.text_content() != shown
+
+    # Connection status wins the row while it shows, and the line returns.
+    page.evaluate("() => { const s = document.getElementById('terminalStatus');"
+                  "s.textContent = 'Reconnecting…'; s.hidden = false; }")
+    expect(line).to_be_hidden()
+    page.evaluate("() => { const s = document.getElementById('terminalStatus');"
+                  "s.hidden = true; s.textContent = ''; }")
+    expect(line).to_be_visible()
+
+    # A harness with no tool data gives the time alone — never "0 actions".
+    tr.activity = {"since": tr.activity["since"], "actions": None, "last": "Thinking", "working": True}
+    _tick(page, tr)
+    expect(line).to_have_text(re.compile(r"^⏱ \d+:\d\d · Thinking$"))
+
+    # The turn ends: the line goes, and its timer with it.
+    tr.activity = {**tr.activity, "working": False}
+    _tick(page, tr)
+    expect(line).to_be_hidden()

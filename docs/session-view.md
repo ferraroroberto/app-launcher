@@ -98,11 +98,12 @@ The conversation keeps itself up to date while you are reading it: new prompts, 
 - **Only for the chat you are looking at.** A window showing Terminal does not also fetch chat, a closed session view fetches nothing, and a backgrounded tab or a locked phone stops entirely and does one catch-up fetch when you come back, rather than replaying every tick it missed. On the PC, where several session windows can be open at once, each window refreshes only its own conversation, and only while it is showing Chat.
 - **Incremental.** Only what the agent has appended is fetched and added to the bottom, so your scroll position, an open tool-call group and read-aloud are never disturbed. An unchanged session costs the PC one file-size check rather than a re-read (measured flat at ~2.8 ms of server time per check whatever the session's size, versus 5-45 ms to re-read the newest page of a long one).
 - **A session that ends** stops refreshing and says so instead of polling a dead session.
+- **The turn in progress**, as one line in the bottom strip (#1387): `⏱ 15:02 · 10 actions · Running Bash`. It shows elapsed time since your last message, how many tool calls the agent has made since, and its newest step, and it is gone when the turn ends. It rides the same read as the refresh above, so it costs no request of its own, and the counter ticks on the phone. "Working" is Claude's busy title on a PTY that is still producing output, or, for every agent, a transcript that ends mid-turn and was written within the last two minutes; an interrupted turn that stopped writing does not stay lit. An agent whose history records no tool calls would show the time alone, never a guessed `0 actions`. A connection status ("Reconnecting…") always takes the strip instead, and the line returns when it clears.
 
 Two menu items are the manual escape hatches:
 
 - **Reload** restarts refresh after repeated network failures or a finished session, and re-reads the conversation from scratch.
-- **Load new** fetches only what came after the newest turn shown — the live refresh's own read, forced now — and appends it without rebuilding anything. It says *No new messages* briefly when there are none.
+- **Load new** fetches only what came after the newest turn shown — the live refresh's own read, forced now — and appends it without rebuilding anything. It says *No new messages* briefly when there are none, in the same bottom strip.
 
 On the phone, the same read as Load new is a **pull up** past the bottom of the list, and a **pull down** at the top loads older turns (this also works on a list too short to scroll). Both gestures only read the drag, so ordinary scrolling, iOS's bounce and the Latest pill behave as before.
 
