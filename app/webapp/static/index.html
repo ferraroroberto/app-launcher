@@ -2187,9 +2187,6 @@
         <div id="transcriptBody" class="transcript-body">
           <button id="transcriptOlder" type="button" class="transcript-older" hidden>Load older</button>
           <ol id="transcriptList" class="transcript-list" aria-label="Session transcript"></ol>
-          <!-- A forced read's status (#1292): ⋮ Load new or a pull up past
-               the bottom. Driven by session-transcript.js. -->
-          <div id="transcriptNewer" class="transcript-newer" role="status" aria-live="polite" hidden></div>
           <!-- The plan picker read off the terminal (#1151), answerable from
                here while it is up. Driven by session-transcript.js. -->
           <div id="transcriptPlanLive" class="tr-plan-live" hidden></div>
@@ -2226,9 +2223,13 @@
          idle; the one message (connection state, "Tap to reconnect") is
          #terminalStatus inside it, centred, and only that child toggles
          `hidden`. The live region is the strip, not the message, because a
-         region that appears together with its text is often not announced. -->
+         region that appears together with its text is often not announced.
+         Chat mode's own line (#1387) is #terminalActivity beside it: the turn
+         in progress, or a forced read's "No new messages". Connection status
+         wins — the CSS hides it while #terminalStatus shows. -->
     <div id="terminalStatusStrip" class="terminal-status-strip" role="status" aria-live="polite">
       <div id="terminalStatus" class="terminal-status" hidden></div>
+      <div id="terminalActivity" class="terminal-activity" hidden></div>
     </div>
   </div>
 

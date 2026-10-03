@@ -151,6 +151,9 @@ const LIVE_BACKOFF_MAX_MS = 30000;
 export const SENT_REFRESH_MS = 3000;
 // A forced read's "No new messages" stays this long (#1292).
 const NEWER_NOTE_MS = 2000;
+// The activity line's elapsed counter redraws this often (#1387). A local
+// repaint of what the last read said, not a request.
+const ACTIVITY_TICK_MS = 1000;
 // How far a finger must drag past an edge before it counts as a pull, well
 // beyond a tap's jitter and short of a deliberate scroll (#1292).
 const PULL_PX = 64;
@@ -652,25 +655,67 @@ export async function loadNew() {
   }
 }
 
-// The status line under the list for a forced read. Null hides it; `ms`
-// hides it again after that long. Kept in view when the reader is at the
-// bottom, which is where a pull up leaves them.
+// A forced read's status, in the bottom strip (#1387; it floated over the
+// transcript before). Null clears it; `ms` clears it after that long. While
+// it shows it takes the activity line's place.
 function newerNote(text, ms) {
-  const el = els.transcriptNewer;
-  if (!el || !view) return;
+  if (!view) return;
   window.clearTimeout(view.newerTimer);
-  if (!text) {
-    el.hidden = true;
-    el.textContent = '';
-    return;
-  }
-  const box = els.transcriptBody;
-  const pinned = !scrollerIsAway(box);
-  el.textContent = text;
-  el.hidden = false;
-  if (pinned) box.scrollTop = box.scrollHeight;
-  if (ms) {
+  view.note = text || null;
+  renderStripLine();
+  if (text && ms) {
     view.newerTimer = window.setTimeout(function () { newerNote(null); }, ms);
+  }
+}
+
+// --- the strip's live line (#1387) -----------------------------------------
+//
+// "⏱ 15:02 · 10 actions · Running Bash": the turn in progress, from the
+// `activity` the transcript responses carry (src/session_transcript.py).
+// Everything but the elapsed counter is the last read's word; the counter is
+// redrawn here once a second from `since`.
+
+function fmtElapsed(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const pad = function (n) { return String(n).padStart(2, '0'); };
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return (h ? h + ':' + pad(m) : String(m)) + ':' + pad(s % 60);
+}
+
+// The line, or null when nothing is mid-turn or the turn's start is unknown.
+// `actions` is null for a harness that records no tool calls: omitted, never 0.
+function activityLine(a) {
+  if (!a || !a.working) return null;
+  const since = new Date(a.since).getTime();
+  if (Number.isNaN(since)) return null;
+  const parts = ['⏱ ' + fmtElapsed(Date.now() - since)];
+  if (a.actions != null) parts.push(a.actions + (a.actions === 1 ? ' action' : ' actions'));
+  if (a.last) parts.push(a.last);
+  return parts.join(' · ');
+}
+
+let activityTimer = null;
+
+// Writes the strip's line: a forced read's note, else the activity line, and
+// nothing outside Chat mode. Connection status outranks both in CSS (it hides
+// this element while #terminalStatus shows). The counter's tick lives exactly
+// as long as a live activity line does.
+function renderStripLine() {
+  const el = els.terminalActivity;
+  if (!el) return;
+  const note = view && view.note;
+  const live = !note && view && liveAllowed() ? activityLine(view.activity) : null;
+  const text = note || live;
+  // The ticking counter must not be announced every second; a note should be.
+  el.setAttribute('aria-live', note ? 'polite' : 'off');
+  el.textContent = text || '';
+  el.hidden = !text;
+  if (live && !activityTimer) {
+    activityTimer = window.setInterval(renderStripLine, ACTIVITY_TICK_MS);
+  } else if (!live && activityTimer) {
+    window.clearInterval(activityTimer);
+    activityTimer = null;
   }
 }
 
@@ -1125,6 +1170,7 @@ export function scheduleLive(delay) {
 // Called whenever the answer to `liveAllowed()` may have changed.
 export function syncLiveRefresh() {
   if (!view) return;
+  renderStripLine();
   if (!liveAllowed()) {
     stopLiveTimer();
     return;
@@ -1216,6 +1262,10 @@ async function forwardRead(target, manual) {
     loadNewest();
     return 'reset';
   }
+  if (body.activity !== undefined) {
+    target.activity = body.activity;
+    renderStripLine();
+  }
   if (body.changed) {
     target.tail = body.tail;
     target.size = body.size;
@@ -1282,6 +1332,8 @@ async function loadNewest() {
     pollPicker();
     return;
   }
+  view.activity = body.activity || null;
+  renderStripLine();
   // The page is one complete list, as it has always been. #1050 adds `tail`
   // — the offset where its newest, still-growing message begins — and keys
   // every entry from there on, so the live region can be told apart locally
@@ -1549,7 +1601,9 @@ export function openChatPane(s) {
     ended: false, reasonShown: false,
     // A forced read (#1292): the read in flight (either kind), whether a
     // forced one is running, and the status line's hide timer.
-    inflight: null, forcing: false, newerTimer: null,
+    inflight: null, forcing: false, newerTimer: null, note: null,
+    // The turn in progress (#1387), as the last read described it.
+    activity: null,
     settled: [], pending: [], pendingNodes: [],
     // The plan panel (#1151): the last screen read, its render signature,
     // and when an answer was sent from it.
@@ -1571,6 +1625,7 @@ export function closeChatPane() {
     stopLiveTimer();  // a closed overlay fetches nothing (#1050)
   }
   view = null;
+  renderStripLine();
   if (!els.chatPane) return;
   els.transcriptList.innerHTML = '';
   clearPicker();

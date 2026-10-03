@@ -2389,13 +2389,6 @@ textarea.input-native { height: auto; }
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
-/* A forced read's status line under the list (#1292): quiet, like the
-   start-of-transcript marker. */
-.transcript-newer {
-  text-align: center;
-  font-size: var(--font-body-sm);
-  color: var(--muted);
-}
 /* Where a Load older that found only tool calls ran out (#1120). */
 .tr-start {
   text-align: center;
@@ -3768,6 +3761,26 @@ body.terminal-open {
   text-align: center;
   color: var(--attention);
 }
+/* Chat mode's line in the same strip (#1387): the turn in progress, or a
+   forced read's note (#1292). One line that ellipsizes, never wraps, so it
+   fills the reserved row exactly like a message does and moves nothing.
+   Muted, not attention: it is ambient, not an instruction. Connection
+   status always wins the row. */
+.terminal-activity {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.terminal-activity[hidden],
+.terminal-status:not([hidden]) ~ .terminal-activity { display: none; }
 
 /* ---------- Life OS tab (issue #102) ---------- */
 /* The model combo + Detached/Resume controls live in the Skills card's
