@@ -163,7 +163,6 @@ export const els = {
   boardDispatchRepo: document.getElementById('boardDispatchRepo'),
   boardDispatchRepoBtn: document.getElementById('boardDispatchRepoBtn'),
   boardDispatchRepoList: document.getElementById('boardDispatchRepoList'),
-  boardDispatchMode: document.getElementById('boardDispatchMode'),
   boardDispatchModel: document.getElementById('boardDispatchModel'),
   boardDispatchRecord: document.getElementById('boardDispatchRecord'),
   boardDispatchClear: document.getElementById('boardDispatchClear'),

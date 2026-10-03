@@ -6,9 +6,6 @@
                                             (Tailscale + passkey — transcript text)
     POST /api/board/issues/start          → spawn /issue-start|yolo <N> in the
                                             issue's repo (Tailscale + passkey)
-    POST /api/board/dispatch              → speak/type a goal into a fresh
-                                            /issue-add|yolo session (Tailscale
-                                            + passkey)
 
 Split off a single-file god-router (issue #691, `/codebase-audit`), the way
 ``jobs.py`` and ``sessions.py`` already were: the fleet-chief lifecycle and its
@@ -38,19 +35,6 @@ int-validated, so the string that reaches the session-host's unquoted
 ``cmd /c`` line can never contain a metacharacter. An optional dispatch brief
 (#1114) keeps that property: its text goes to a launcher-owned file and only
 the uuid-named path rides the prompt as ``--brief <path>``.
-
-Dispatch (#302) carries free text — the goal — so it can't use a positional
-prompt at all. Instead it **spawns-then-types**: the session starts with only
-the shared flags (no prompt), the endpoint polls until the agent has painted
-its first output (``output_chars`` in the session dict) and its boot output
-has gone quiet (the shared PTY-quiescence wait, #245/#549 — first paint alone
-is not "input ready" and typing into a still-booting agent can swallow the
-submitting CR, leaving the goal typed but never sent), then writes
-``/issue-<mode> <goal>`` through the PTY input path inside bracketed-paste
-framing with the submitting CR as its own second write (the #64/#166 framing
-the reply proxy uses). The goal therefore never touches the unquoted
-``cmd /c`` string. PTY-only: a remote session has no input path, and handing
-free text to its command line is the exact injection this design avoids.
 """
 
 from __future__ import annotations
@@ -93,7 +77,6 @@ from app.webapp.routers.board_spawn import (
     _agent_and_flags,
     _read_live_sessions,
     _resolve_repo_entry,
-    _type_into_session,
 )
 
 logger = logging.getLogger(__name__)
@@ -516,61 +499,3 @@ async def start_issue(request: Request) -> Dict[str, Any]:
                 sid[:8], exc,
             )
     return {"launched": prompt, "repo": entry.name, "session": session}
-
-
-_DISPATCH_COMMANDS = {
-    "add": "/issue-add",
-    "build": "/issue-add now",
-    "yolo": "/issue-yolo",
-}
-
-
-@router.post("/api/board/dispatch")
-async def dispatch_goal(request: Request) -> Dict[str, Any]:
-    """Free-text goal → a fresh ``/issue-*`` session (Tailscale + passkey, #302).
-
-    Body: ``{"repo": str, "goal": str, "mode": "add"|"build"|"yolo",
-    "model": "claude:<alias>"|"codex:<id>", "rows": int, "cols": int}``.
-    Spawn-then-type per the module docstring: the goal rides the PTY input
-    path, never the command line. The half-spawned session is killed on any
-    failure past the spawn, so a timeout can't strand an orphan the user
-    never asked for.
-    """
-    cfg: WebappConfig = request.app.state.webapp_config
-    body = await maybe_json(request)
-    repo = str(body.get("repo") or "").strip()
-    mode = str(body.get("mode") or "add").strip().lower()
-    if mode not in _DISPATCH_COMMANDS:
-        raise HTTPException(status_code=400, detail=f"unknown mode: {mode}")
-    goal = body.get("goal")
-    if not isinstance(goal, str) or not goal.strip():
-        raise HTTPException(
-            status_code=400, detail="goal must be a non-empty string"
-        )
-    goal = goal.strip()
-    # Per-launch model (#500) — sonnet default when absent (stale-cache
-    # client). No positional prompt — see the module docstring.
-    model = str(body.get("model") or "sonnet").strip().lower()
-    agent, flags = _agent_and_flags(cfg, model)
-    rows = safe_int(body, "rows", 40)
-    cols = safe_int(body, "cols", 120)
-
-    entry = _resolve_repo_entry(cfg, repo)
-
-    session, sid = await spawn_launcher_session(
-        spawn_claude_session, cfg,
-        project_dir=Path(entry.project_dir), name=entry.name,
-        flags=flags, agent=agent, rows=rows, cols=cols,
-    )
-    command = f"{_DISPATCH_COMMANDS[mode]} {goal}"
-    await _type_into_session(cfg.session_host_port, sid, command)
-    chief_dispatch = await board_chief._mark_chief_managed(
-        cfg, request, sid, entry.name, 0)
-
-    await audit_session_start_and_maybe_mirror(
-        cfg, request, body,
-        sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
-        skill=command, audit_mod=audit, mirror_fn=open_local_terminal_window,
-        mirror=_opens_pc_window(chief_dispatch, body),
-    )
-    return {"launched": command, "repo": entry.name, "session": session}

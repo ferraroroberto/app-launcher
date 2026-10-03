@@ -1,4 +1,4 @@
-/* Board dispatch bar + fleet chief (issues #302 / #245 / #337 / #500 / #547).
+/* Board bar — fleet chief chat + repo filter (issues #245 / #337 / #500 / #547).
  *
  * Split off `board.js` (issue #691, a `/codebase-audit` maintainability
  * finding) the same way `jobs.js` became jobs-row/jobs-dialog/jobs-agenda and
@@ -8,12 +8,11 @@
  *
  * - the repo/project combo (#337), which doubles as the kanban's card filter
  *   (`boardRepoFilter` / `matchesRepoFilter`, read by `renderBoard`);
- * - free-text dispatch (#302) — goal → a fresh /issue-add | /issue-add now |
- *   /issue-yolo session via POST /api/board/dispatch (spawn-then-type
- *   server-side, so free text never touches a spawn command line);
- * - chat mode (#245/#547) — the same bar rerouted into the standing fleet
- *   chief's PTY, plus the chief's Start/Resume/Restart status row and the
- *   chief settings dialog.
+ * - the chat bar (#245/#547) — text goes into the standing fleet chief's PTY,
+ *   plus the chief's Start/Resume/Restart status row and the chief settings
+ *   dialog. It is the bar's only send path since #1382 removed the free-text
+ *   Add/Build/Yolo dispatch; the model combo beside it now only feeds the
+ *   issue cards' one-tap Start.
  *
  * The bar is static markup `renderBoard()` never touches, so the 5 s poll
  * can't wipe a goal being typed. Dictation mics (shared voice.js) mount on
@@ -37,7 +36,7 @@ import { fetchBoard, renderBoard } from './board.js';
 
 // ---------------------------------------------------- fleet chief (#245)
 // The standing conversational orchestrator: one label="chief" PTY session
-// the chat dispatch mode talks to. Server-side plumbing in routers/board.py;
+// the chat bar talks to. Server-side plumbing in routers/board.py;
 // the brain is fleet-config's /chief skill.
 
 // isChiefCard is the board-card-shaped alias of the shared dom-utils.js
@@ -78,7 +77,7 @@ export function chiefSessionId() {
 }
 
 // Exported (#547) so the Coding tab's manual Start-chief affordance
-// (sessions.js) can call the same ensure endpoint the Board's chat mode
+// (sessions.js) can call the same ensure endpoint the Board's chat bar
 // uses.
 // ``resume`` (#633) reattaches the most recent chief conversation instead of
 // starting fresh — mutually exclusive with ``fresh`` in practice (the two
@@ -86,7 +85,7 @@ export function chiefSessionId() {
 //
 // No auto-ensure race with the Resume button's !alive-gated visibility
 // (#633 review): every call site — this Board row's Start/Restart/Resume
-// (below), the Coding tab's Start (sessions.js), and dispatchChat's
+// (below), the Coding tab's Start (sessions.js), and sendChat's
 // spawn-then-type on first chat send — fires only from an explicit user
 // action (a click or a Send tap), never a background poll or timer. So
 // nothing silently spawns a fresh chief out from under a still-visible
@@ -147,16 +146,13 @@ export async function runChiefAction({
   }
 }
 
-// -------------------------------------------------------- dispatch (#302)
-
-let dispatchMode = 'add';
+// ------------------------------------------------------- repo filter (#337)
 
 // Repo/project dropdown (#337) ← the same live claude-code listing the
 // Coding tab renders (state.apps). It is a plain tap-to-open/tap-to-select
-// dropdown, not a typable field — a button trigger, not an <input>. It does
-// double duty: the real dispatch target lives in the hidden
-// #boardDispatchRepo input dispatchGoal() reads, AND the current selection
-// (or "All projects", the default) filters which cards renderBoard() shows
+// dropdown, not a typable field — a button trigger, not an <input>. The
+// current selection (or "All projects", the default) lives in the hidden
+// #boardDispatchRepo input and filters which cards renderBoard() shows
 // in every column via boardRepoFilter()/cardRepoOf() below.
 // Re-synced on tab activation and on every board render (so a boot /api/apps
 // fetch that lands late still populates it), but the underlying name list is
@@ -261,39 +257,8 @@ export function matchesRepoFilter(card, filter) {
   return !!repo && String(repo).toLowerCase() === String(filter).toLowerCase();
 }
 
-const DISPATCH_PLACEHOLDER =
-  'Speak or type a goal — send dispatches an /issue-* session.';
-const CHAT_PLACEHOLDER =
-  'Ask the chief — questions answer, directions dispatch.';
-
-function setDispatchMode(mode) {
-  dispatchMode = mode;
-  // The combo trigger already shows the chosen label (#869 swapped the
-  // native <select> for the shared .model-combo) — nothing else to paint
-  // here beyond the mode-dependent chat UI.
-  syncChatModeUi();
-}
-
-// Chat mode (#245): the same bar, rerouted — text goes to the standing
-// chief's PTY instead of a fresh /issue-* session. Toggling off restores
-// the one-shot dispatch exactly (the mode governs only the send path).
-function syncChatModeUi() {
-  const chat = dispatchMode === 'chat';
-  els.boardDispatchGoal.placeholder = chat ? CHAT_PLACEHOLDER : DISPATCH_PLACEHOLDER;
-  if (els.boardDispatchModel) {
-    // The chief's model is owned by chief settings, not the per-dispatch
-    // selector — grey it out so the bar doesn't suggest otherwise.
-    if (dispatchModelCombo) dispatchModelCombo.setDisabled(chat);
-  }
-  renderChiefStatus();
-}
-
 function renderChiefStatus() {
-  const row = els.boardChiefStatus;
-  if (!row) return;
-  const chat = dispatchMode === 'chat';
-  row.hidden = !chat;
-  if (!chat) return;
+  if (!els.boardChiefStatus) return;
   const chief = findChiefCard();
   const alive = !!(chief && chief.alive);
   els.boardChiefStart.hidden = alive;
@@ -328,7 +293,7 @@ export async function sendToChief(text) {
   return ensured;
 }
 
-async function dispatchChat() {
+async function sendChat() {
   const text = els.boardDispatchGoal.value.trim();
   if (!text) {
     toast('Type or dictate a message first', 'error');
@@ -337,13 +302,13 @@ async function dispatchChat() {
   const btn = els.boardDispatchSend;
   btn.disabled = true;
   // A first message may spawn the chief (spawn-then-type server-side), so
-  // this legitimately takes seconds — tick like dispatchGoal does.
+  // this legitimately takes seconds — tick while it does.
   const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
   try {
     const ensured = await sendToChief(text);
     const sid = ensured.session_id;
-    // Conversation semantics: unlike dispatch's keep-for-multi-dispatch,
-    // a sent chat message clears — the reply is the next thing you want.
+    // Conversation semantics: a sent message clears — the reply is the
+    // next thing you want.
     els.boardDispatchGoal.value = '';
     if (ensured.spawned) {
       toast(
@@ -466,49 +431,6 @@ function wireChief() {
   });
 }
 
-async function dispatchGoal() {
-  const goal = els.boardDispatchGoal.value.trim();
-  if (!goal) {
-    toast('Type or dictate a goal first', 'error');
-    return;
-  }
-  const repo = els.boardDispatchRepo.value;
-  if (!repo) {
-    toast('No repo to dispatch to', 'error');
-    return;
-  }
-  const btn = els.boardDispatchSend;
-  btn.disabled = true;
-  // The server waits for the agent's first output before typing the goal
-  // in (spawn-then-type), so this call legitimately takes seconds — tick.
-  const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
-  try {
-    const tt = await ensureTerminalToken();
-    const payload = {
-      repo: repo,
-      goal: goal,
-      mode: dispatchMode,
-      model: getBoardDispatchModel(),
-    };
-    // Same size contract as startIssue (issue #374).
-    applyLaunchSizePayload(payload);
-    const body = await jsonApi('/api/board/dispatch', {
-      method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify(payload),
-    });
-    toast((body.launched || dispatchMode) + ' started in ' + (body.repo || repo), 'good', { icon: 'rocket' });
-    // The goal stays in the bar for rapid multi-dispatch ("create more");
-    // ✕ clears it. The new card lands in Claude's turn on the next poll.
-    fetchBoard().catch(function () {});
-  } catch (exc) {
-    apiFailToast('Dispatch failed', exc);
-  } finally {
-    stopTimer();
-    btn.disabled = false;
-  }
-}
-
 export function syncDispatchBar() {
   syncDispatchRepos();
   if (els.boardDispatchRecord) {
@@ -547,16 +469,9 @@ export function wireDispatch() {
   dispatchModelCombo = wireModelCombo(els.boardDispatchModel, function () {
     els.boardDispatchModel.dispatchEvent(new Event('change'));
   });
-  // Same shared combo as the model picker beside it (#869) — the value lives
-  // on the wrapper's data-value, so the pick arrives through onChange rather
-  // than a <select>'s change event.
-  wireModelCombo(els.boardDispatchMode, setDispatchMode);
-  // Both combos (#500 / #869) are plain client-side controls (issue #355
-  // pattern) — no server config, just read at dispatch time above.
-  els.boardDispatchSend.addEventListener('click', function () {
-    if (dispatchMode === 'chat') dispatchChat();
-    else dispatchGoal();
-  });
+  // The model combo (#500 / #869) is a plain client-side control (issue #355
+  // pattern) — no server config, read when an issue card's Start is tapped.
+  els.boardDispatchSend.addEventListener('click', sendChat);
   els.boardDispatchClear.addEventListener('click', function () {
     els.boardDispatchGoal.value = '';
     els.boardDispatchGoal.focus();

@@ -56,7 +56,7 @@ flowchart TB
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab) launch\n+ life_os_conversations.py (history index/search/relaunch)\n+ life_os_files.py (path-jailed content browser,
   /file/transcript: capture parsed to Chat entries)\n+ life_os_spawn.py (shared skill resolve + spawn tail)
 + life_os_channels.py (Telegram channel profiles, #1366)"]
-      R_BOARD["board.py — /api/board (Board tab) + dispatch\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
+      R_BOARD["board.py — /api/board (Board tab) + issue start\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_SYSMAP["system_map.py — fleet map section"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
     end
@@ -179,7 +179,7 @@ life-os.js, life-os-viewer.js, voice.js"]
   JOBSFACADE --> JOBSPREFLIGHT
   JOBSFACADE --> JOBSARGV
   R_BOARD --> BOARD
-  R_BOARD -->|"dispatch + chief spawn-then-type\n(chief session cwd = fleet-config,\nbrain = its /chief skill)"| SESSCLIENT
+  R_BOARD -->|"issue start + chief spawn-then-type\n(chief session cwd = fleet-config,\nbrain = its /chief skill)"| SESSCLIENT
   BOARD --> SESSCLIENT
   BOARD --> JOBSFACADE
   BOARD --> GHCLIENT
