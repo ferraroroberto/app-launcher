@@ -103,6 +103,9 @@ _AGY_CACHE_CAP_BYTES = 1024 * 1024
 # clock granularity between the two is not worth a false negative.
 _AGY_MTIME_SLOP_SECONDS = 60
 _CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
+# Claude Code's own per-process registry: one `<pid>.json` per running
+# interactive session, naming its conversation and its Remote Control bridge.
+_CLAUDE_SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 # Claude Code names a project folder after its cwd with every non-alphanumeric
 # character replaced by `-`. Measured across the 107 folders on this box whose
 # own JSONL records a `cwd`: 103 match that transform exactly and 4 older ones
@@ -119,6 +122,12 @@ _CLAUDE_RESUME_ID_RE = re.compile(
     r"(?:^|\s)(?:--resume|-r)(?:\s+|=)"
     r"([0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12})"
     r"(?=\s|$)"
+)
+# The Remote Control link a `--remote-control` session shows, whose last
+# segment is the same id the registry records as `bridgeSessionId`.
+_CLAUDE_BRIDGE_URL_RE = re.compile(r"^https://claude\.ai/code/(session_[A-Za-z0-9]+)/?$")
+_CLAUDE_CONVERSATION_ID_RE = re.compile(
+    r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
 )
 # Why the Claude filesystem fallback answered nothing (#1155), named in the
 # `/transcript` route's `no_transcript` log line so the next report is
@@ -558,10 +567,67 @@ def _claude_resumed_transcript(session: Dict[str, Any]) -> Optional[Path]:
     return None
 
 
+def claude_bridge_id(session: Dict[str, Any]) -> Optional[str]:
+    """The Remote Control bridge id a session shows in its ``web_url``, if any."""
+    match = _CLAUDE_BRIDGE_URL_RE.match(str(session.get("web_url") or "").strip())
+    return match.group(1) if match else None
+
+
+def _claude_bridge_transcript(session: Dict[str, Any]) -> Optional[Path]:
+    """``<cwd folder>/<conversation id>.jsonl`` named by the session's own
+    Claude process (#1393).
+
+    A ``--remote-control`` session carries its bridge id in ``web_url``, and
+    Claude Code records the same id as ``bridgeSessionId`` in its per-process
+    registry entry, next to that process's ``sessionId``. The bridge id is
+    unique to one process, so unlike the folder scan this holds in a folder
+    shared by several live sessions and before anything is written, which is
+    the state of a Telegram channel session whose messages arrive through the
+    plugin rather than a typed prompt (no hook row, three siblings in one
+    repo).
+
+    Trusted only when exactly one registry entry carries the id, that entry
+    is for this session's folder, and its conversation file is on disk;
+    anything less answers None. The registry's ``sessionId`` can lag a
+    ``/resume`` inside the session (:func:`_claude_scan`), which the caller's
+    title disproof covers.
+    """
+    bridge = claude_bridge_id(session)
+    project_dir = str(session.get("project_dir") or "")
+    if not bridge or not project_dir:
+        return None
+    try:
+        entries = list(_CLAUDE_SESSIONS_DIR.glob("*.json"))
+    except OSError:
+        return None
+    named: List[Dict[str, Any]] = []
+    for entry in entries:
+        try:
+            record = json.loads(entry.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("bridgeSessionId") == bridge:
+            named.append(record)
+    if len(named) != 1:
+        return None
+    record = named[0]
+    conversation = str(record.get("sessionId") or "")
+    if (
+        _normalize_dir(record.get("cwd")) != _normalize_dir(project_dir)
+        or not _CLAUDE_CONVERSATION_ID_RE.match(conversation)
+    ):
+        return None
+    for folder in _claude_project_folders(project_dir) or ():
+        path = folder / f"{conversation.lower()}.jsonl"
+        if path.is_file():
+            return path
+    return None
+
+
 def resolve_claude_transcript(
     session: Dict[str, Any], live: Iterable[Dict[str, Any]]
 ) -> Tuple[Optional[Path], str]:
-    """``/transcript``'s row-less Claude resolution (#1023, #1155).
+    """``/transcript``'s row-less Claude resolution (#1023, #1155, #1393).
 
     The scan (two guards, no title disproof) answers first. When it refuses,
     a ``--resume <id>`` launch still names its conversation: the resumed
@@ -574,18 +640,30 @@ def resolve_claude_transcript(
     genuinely conflicts with the resumed file's own name refuses it. A fresh
     launch and a bare ``--resume`` have no id and are unaffected.
 
-    Returns ``(path, why)``: ``why`` is ``"scan"`` or ``"resume_id"`` for an
-    answer, else the refusing guard, for the ``no_transcript`` log line.
+    A session with a Remote Control link has a third exact id, its bridge
+    id's registry entry (#1393), tried last and checked by the same title
+    disproof; a channel session with no hook row in a shared folder has no
+    other.
+
+    Returns ``(path, why)``: ``why`` is ``"scan"``, ``"resume_id"`` or
+    ``"bridge_id"`` for an answer, else the refusing guard, for the
+    ``no_transcript`` log line.
     """
     path, _verdict, refused = _claude_scan(session, live)
     if path is not None:
         return path, "scan"
-    resumed = _claude_resumed_transcript(session)
-    if resumed is None:
-        return None, refused
-    if _disprove_by_live_title(resumed, session) == _TITLE_CHECK_DISPROVED:
-        return None, f"{refused}; resume_id {_CLAUDE_REFUSED_TITLE}"
-    return resumed, "resume_id"
+    for source, find in (
+        ("resume_id", _claude_resumed_transcript),
+        ("bridge_id", _claude_bridge_transcript),
+    ):
+        found = find(session)
+        if found is None:
+            continue
+        if _disprove_by_live_title(found, session) == _TITLE_CHECK_DISPROVED:
+            refused = f"{refused}; {source} {_CLAUDE_REFUSED_TITLE}"
+            continue
+        return found, source
+    return None, refused
 
 
 def _claude_declared_titles(path: Path) -> Tuple[Optional[str], Optional[str]]:
