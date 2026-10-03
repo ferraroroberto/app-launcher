@@ -1,9 +1,11 @@
 <!-- Markup skeleton — copy and adapt. A `.card home-head` row: leading glyph +
      title (+ optional inline .status) on the left, an icon-only theme toggle
-     pinned right. Link home-head.css AFTER card.css — it zeroes the card's own
-     padding for the 52px row, the same source-order convention the disclosure
-     card uses. Wire the toggle to your theme boot script (design.md v2 "Theme
-     switching"): swap the glyph and persist the `<app>.theme` key. -->
+     pinned right, followed by the Settings gear (Settings is never a tab).
+     `.card.home-head` overrides the card's own padding for the
+     52px row, load-order independent. Keep BOTH trailing actions on every
+     pane (design.md `page-header`). Wire the toggle to your theme boot script
+     (design.md v2 "Theme switching"): swap the glyph and persist the
+     `<app>.theme` key. Wire the gear to your Settings view. -->
 <div class="card home-head">
   <span class="home-title">
     <svg class="icon" aria-hidden="true"><use href="#i-house"></use></svg>
@@ -12,5 +14,8 @@
   <span class="status">All systems normal</span>
   <button type="button" class="home-toggle" aria-label="Toggle theme" title="Toggle theme">
     <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
+  </button>
+  <button type="button" class="button-surface home-toggle home-settings" aria-label="Settings" title="Settings">
+    <svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg>
   </button>
 </div>

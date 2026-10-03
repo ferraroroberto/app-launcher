@@ -9,11 +9,12 @@
  * Contract: ONE row at the disclosure closed-summary geometry (--row-md 52px,
  * 0 14px inset) so it aligns as a peer of the cards below it — a leading
  * title glyph + bold title on the left, an optional inline status that
- * ellipsizes, and an icon-only theme toggle pinned right. Everything is
- * vertically centered.
+ * ellipsizes, and the trailing icon actions pinned right: the theme toggle
+ * then the Settings gear (design.md `page-header`: always both, on every
+ * tab). Everything is vertically centered.
  */
 
-.home-head {
+.card.home-head {
   display: flex;
   align-items: center;
   gap: var(--gap);
@@ -51,15 +52,24 @@
   font-size: var(--font-label);
 }
 
-/* Icon-only theme toggle, pinned right (margin-left:auto holds it there even
- * when no .status is present). Same subtle-contrast recipe as the modal's
+/* Icon-only trailing actions: the theme toggle and the Settings gear, pinned
+ * right (the first one's margin-left:auto holds the pair there even when no
+ * .status is present). Same subtle-contrast recipe as the modal's
  * .detail-close / home-automation's .weather-icon-btn — a filled tap target,
- * not a bare floating glyph. */
+ * not a bare floating glyph. The gear also carries `.button-surface` (its
+ * tier, per design.md); this rule is the more specific one, so the pair
+ * draws identically whatever the stylesheet order.
+ *
+ * The visual stays 34px; the ::before extends each target to the 44px floor
+ * (34 + 2 x 5). The pair's --gap (12px) is wider than the two 5px expansions
+ * together, so neighbouring targets never share a tappable pixel. */
 .home-head .home-toggle {
+  position: relative;
   flex: none;
   margin-left: auto;
   width: 34px;
   height: 34px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -69,6 +79,10 @@
   color: var(--muted);
   cursor: pointer;
 }
+.home-head .home-toggle::before { content: ""; position: absolute; inset: -5px; }
+/* The second action in the cluster must not also take an auto margin, or the
+ * free space splits between the two. */
+.home-head .home-toggle + .home-toggle { margin-left: 0; }
 .home-head .home-toggle .icon {
   width: var(--icon-title);
   height: var(--icon-title);

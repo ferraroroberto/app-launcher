@@ -133,9 +133,8 @@
      this app's dark --card-off is true black and would vanish on the card. */
   --close-bg: var(--card-2);
   /* Vendored switch.css contract (project-scaffolding#120); its off-track
-     is --control-border since #274. */
+     is --control-border since #274 and its on-track is --accent-fill. */
   --toggle-knob: #ffffff;
-  --on: var(--success);
   color-scheme: light;
   /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
      label) is intentionally undefined here (issue #355) — nav-tabs.css's
@@ -554,10 +553,8 @@ html, body {
 /* ---------- page header (#1131) ---------- */
 /* Every pane opens with the vendored home-head: the tab's name, one context
    line, then two trailing actions — the theme toggle and the Settings gear.
-   The component pins its one toggle right with margin-left:auto; a second
-   one must not also take an auto margin, or the free space splits between
-   them. */
-.home-head .home-toggle + .home-toggle { margin-left: 0; }
+   The vendored home-head owns the pair's layout (auto margin on the first,
+   none on the second, 44px hit areas). */
 
 /* Settings → Text size (#1134): a label beside the vendored range-tab row. */
 .text-size-card {

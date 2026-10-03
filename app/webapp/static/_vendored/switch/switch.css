@@ -7,9 +7,12 @@
  *
  * shadcn Switch shape: a compact 44x26 track + 20px sliding thumb, no text
  * label — state is read from thumb position + track color; role="switch" +
- * aria-checked carry it for assistive tech. The on-track is GREEN (success),
- * the fleet default per design.md v2 — a state toggle may substitute another
- * status color only where that state carries its own meaning.
+ * aria-checked carry it for assistive tech. The on-track is the ACCENT
+ * (accent-fill, design.md `switch.trackOn`), never green: a switch sits in the
+ * same palette as the buttons and tabs beside it. A STATE toggle (alarm armed,
+ * a destructive mode) may substitute danger / attention in the app's own
+ * markup where that state carries its own meaning; success is never an
+ * on-colour.
  */
 
 .toggle {
@@ -43,7 +46,7 @@
 /* No visual text label — role="switch" + aria-checked carry the state. */
 .toggle-label { display: none; }
 
-.toggle.on { background: var(--on); }   /* switch.trackOn = success (green) */
+.toggle.on { background: var(--accent-fill); }   /* switch.trackOn */
 .toggle.on .knob { transform: translateX(18px); }
 
 .toggle:disabled {
