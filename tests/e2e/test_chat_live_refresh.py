@@ -318,8 +318,56 @@ def _boot(page: Page, base_url: str, alive: bool = True) -> _Transcript:
         _turn("user", "please look at the flaky test", 100),
         _turn("assistant", "opening conftest now", 200),
     )
+    # A fake clock the tests can jump (#1376): the live poll is a plain
+    # setTimeout, so waiting out a 3 s tick (or 5 s of "nothing fires") in
+    # real time bought nothing the jump below doesn't. Installed before the
+    # first navigation so the page's own timers are the fake ones; it keeps
+    # flowing at the real rate otherwise, so nothing else in the page stalls.
+    page.clock.install()
+    # The request the flush below rides: any answer will do.
+    page.route(
+        re.compile(r".*/__clock_flush$"),
+        lambda route: route.fulfill(status=204),
+    )
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     return tr
+
+
+# session-transcript.js: LIVE_POLL_MS is 3 s, and a failing or unavailable
+# source backs off up to LIVE_BACKOFF_MAX_MS.
+_POLL_MS = 3_000
+_BACKOFF_MAX_MS = 30_000
+
+
+def _advance(page: Page, ms: int) -> None:
+    """Jump the page's clock ``ms`` forward, then let every request the timers
+    fired reach the route handlers.
+
+    ``run_for`` fires the armed timer synchronously, but its fetch is still on
+    its way to the stub; a sentinel fetch queued behind it comes back only
+    after the stub has seen everything ahead of it, so the counts read next
+    are final rather than racing the network.
+    """
+    page.clock.run_for(ms)
+    page.evaluate("() => fetch('/__clock_flush').then(() => undefined)")
+
+
+def _tick(page: Page, tr: _Transcript) -> None:
+    """Fire the next live-poll read and return once the stub has seen it.
+
+    One poll interval is the smallest jump that can fire the armed timer, and
+    a tick re-arms only after its request resolves, so a longer jump would
+    run a whole chain of ticks (each a real round trip). The loop covers the
+    beat where the previous tick has not re-armed yet, and a backed-off
+    source (up to ``_BACKOFF_MAX_MS``). Every pass is a real round trip,
+    never a sleep.
+    """
+    before = tr.tail_calls()
+    for _ in range(_BACKOFF_MAX_MS // _POLL_MS + 5):
+        _advance(page, _POLL_MS + 1)
+        if tr.tail_calls() > before:
+            return
+    raise AssertionError("the live poll never fired on the fake clock")
 
 
 @pytest.mark.iphone
@@ -332,6 +380,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
 
     tr.append(_turn("assistant", "found it — a missing await", 300))
     # No tap, no reload: the next tick brings it in.
+    _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "found it — a missing await", timeout=OVERLAY_OPEN_MS
     )
@@ -343,13 +392,13 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept = 1")
     _menu_item(page, "Load new messages").click()
     expect(newer).to_have_text("No new messages")
-    expect(newer).to_be_hidden(timeout=5_000)
+    _advance(page, 2_500)       # NEWER_NOTE_MS (2 s) in session-transcript.js
+    expect(newer).to_be_hidden()
 
     # Timed against the poll: right after a tick's read lands, the next is a
     # full LIVE_POLL_MS (3 s) away, so a turn that shows within 1.5 s of the
     # tap came from the forced read, not the timer.
-    with page.expect_response(lambda r: "after=" in r.url, timeout=OVERLAY_OPEN_MS):
-        pass
+    _tick(page, tr)
     tr.append(_turn("user", "and the second flake?", 350))
     before = tr.tail_calls()
     _menu_item(page, "Load new messages").click()
@@ -359,8 +408,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     assert page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept") == 1
 
     # A pull up past the bottom is the same read.
-    with page.expect_response(lambda r: "after=" in r.url, timeout=OVERLAY_OPEN_MS):
-        pass
+    _tick(page, tr)
     tr.append(_turn("assistant", "same cause, same fix", 380))
     page.evaluate("const b = document.getElementById('transcriptBody'); b.scrollTop = b.scrollHeight")
     _pull(page, -120)
@@ -368,7 +416,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     # A drag too short to be a pull does nothing.
     calls = tr.tail_calls()
     _pull(page, -20)
-    page.wait_for_timeout(300)
+    _advance(page, 1)           # only to let a (wrongly) fired read reach the stub
     assert tr.tail_calls() == calls
 
     # #1149 — a question the agent asks arrives the same way, as its own
@@ -389,6 +437,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
         _turn("assistant", "retrying did not help", 450),
         _question("toolu_live", 500),
     )
+    _tick(page, tr)
     cards = page.locator("#transcriptList .tr-ask-item")
     expect(cards).to_have_count(2, timeout=OVERLAY_OPEN_MS)
     old, live = cards.nth(0), cards.nth(1)
@@ -415,6 +464,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
         "text": "answered", "truncated": False, "tool_use_id": "toolu_live",
         "answers": {"Which fix?": "Await it"}, "sidechain": False, "offset": 600,
     }, _turn("assistant", "adding the await", 700))
+    _tick(page, tr)
     expect(live).to_have_attribute("data-mode", "answered", timeout=OVERLAY_OPEN_MS)
     expect(live.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Await it")
     expect(live.locator(".tr-ask-opt:enabled")).to_have_count(0)
@@ -432,6 +482,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
         _turn("assistant", "on it", 950),
         _plan("plan_wait", 1000),
     )
+    _tick(page, tr)
     plans = page.locator("#transcriptList .tr-plan-item")
     expect(plans).to_have_count(3, timeout=OVERLAY_OPEN_MS)
     back, ok, wait = plans.nth(0), plans.nth(1), plans.nth(2)
@@ -456,6 +507,7 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     panel = page.locator("#transcriptPlanLive")
     expect(panel).to_be_hidden()
     picker.show(plan="## Add the await\n\n- wrap the call")
+    _tick(page, tr)
     expect(panel).to_be_visible(timeout=OVERLAY_OPEN_MS)
     expect(panel.locator(".tr-ask-opt .tr-ask-label")).to_have_text(
         [_BYPASS, "Yes, manually approve edits", "Tell Claude what to change"]
@@ -470,18 +522,21 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     assert picker.answers == [{"option": 1, "label": _BYPASS, "feedback": None}], picker.answers
     # The picker closes on the terminal and the approval reaches the card.
     picker.showing = None
+    _tick(page, tr)
     expect(panel).to_be_hidden(timeout=OVERLAY_OPEN_MS)
     tr.append({
         "kind": "tool_result", "timestamp": "2026-09-19T10:01:12Z", "text": "ok",
         "truncated": False, "tool_use_id": "plan_wait", "plan_outcome": "approved",
         "sidechain": False, "offset": 1100,
     }, _turn("assistant", "editing now", 1150))
+    _tick(page, tr)
     expect(wait).to_have_attribute("data-mode", "approved", timeout=OVERLAY_OPEN_MS)
 
     # A picker whose call never reached the transcript: the panel carries
     # the plan itself (from the plan file the screen names), and sends it
     # back with the reader's feedback.
     picker.show(plan="## Revised plan\n\n- keep the retry")
+    _tick(page, tr)
     expect(panel.locator(".tr-plan-body h2")).to_have_text("Revised plan", timeout=OVERLAY_OPEN_MS)
     send_back = panel.locator(".tr-ask-send")
     expect(send_back).to_be_disabled()
@@ -508,13 +563,13 @@ def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> 
     tr = _boot(page, base_url)
     _open_chat(page)
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-    page.wait_for_timeout(3500)          # at least one tick while Chat shows
+    _tick(page, tr)          # at least one tick while Chat shows
     assert tr.tail_calls() >= 1, "Chat mode should have ticked at least once"
 
     page.locator("#sessionModeTerminal").click()
     expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", "terminal")
     settled = tr.tail_calls()
-    page.wait_for_timeout(5000)          # long enough for several ticks
+    _advance(page, 2 * _BACKOFF_MAX_MS)          # long enough for several ticks
     assert tr.tail_calls() == settled, (
         "Terminal mode kept fetching chat: "
         f"{tr.tail_calls() - settled} request(s) after the switch"
@@ -526,13 +581,13 @@ def test_a_closed_overlay_fetches_nothing(authed_page: Page, base_url: str) -> N
     tr = _boot(page, base_url)
     _open_chat(page)
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-    page.wait_for_timeout(3500)
+    _tick(page, tr)
     assert tr.tail_calls() >= 1
 
     page.locator("#terminalBack").click()
     expect(page.locator("#terminalOverlay")).to_be_hidden()
     settled = tr.tail_calls()
-    page.wait_for_timeout(5000)
+    _advance(page, 2 * _BACKOFF_MAX_MS)
     assert tr.tail_calls() == settled, "a closed overlay kept polling"
 
 
@@ -552,7 +607,7 @@ def test_only_the_open_conversation_is_refreshed(
     )
     _open_chat(page)
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-    page.wait_for_timeout(4000)
+    _tick(page, tr)
     assert tr.tail_calls() >= 1
     assert other_calls == [], "a session nobody opened was polled"
 
@@ -587,6 +642,7 @@ def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
     assert before, "the transcript did not scroll; the fixture is too short"
 
     tr.append(_turn("assistant", "a brand new reply", 5000))
+    _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "a brand new reply", timeout=OVERLAY_OPEN_MS
     )
@@ -609,11 +665,12 @@ def test_a_session_that_ends_stops_refreshing_and_says_so(
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
 
     tr.dead = True
+    _tick(page, tr)
     expect(page.locator("#transcriptState")).to_contain_text(
         "no longer running", timeout=OVERLAY_OPEN_MS
     )
     settled = tr.tail_calls()
-    page.wait_for_timeout(5000)
+    _advance(page, 2 * _BACKOFF_MAX_MS)
     assert tr.tail_calls() == settled, "a dead session was still being polled"
     # What was already read stays readable.
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
@@ -634,16 +691,18 @@ def test_a_transient_unavailable_source_recovers_without_a_tap(
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
 
     tr.unavailable = "no_transcript"
+    _tick(page, tr)
     expect(page.locator("#transcriptState")).to_contain_text(
         "No transcript found", timeout=OVERLAY_OPEN_MS
     )
     # It is still trying, unlike the ended case above.
     settled = tr.tail_calls()
-    page.wait_for_timeout(6000)
+    _tick(page, tr)
     assert tr.tail_calls() > settled, "a transient condition latched refresh off"
 
     tr.unavailable = None
     tr.append(_turn("assistant", "back again", 400))
+    _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "back again", timeout=OVERLAY_OPEN_MS
     )
@@ -681,6 +740,7 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
     expect(pill).to_be_visible()
 
     tr.append(_turn("assistant", "a brand new reply", 5000))
+    _tick(page, tr)
     expect(listing).to_contain_text("a brand new reply", timeout=OVERLAY_OPEN_MS)
     expect(pill).to_be_visible()
 
@@ -690,6 +750,7 @@ def test_latest_pill_brings_a_scrolled_up_reader_back_to_the_newest_turn(
 
     # Sticking resumed: the next live turn arrives on screen with no scroll.
     tr.append(_turn("user", "and one more after the jump", 6000))
+    _tick(page, tr)
     expect(
         listing.locator(".tr-turn", has_text="and one more after the jump")
     ).to_be_in_viewport(timeout=OVERLAY_OPEN_MS)
@@ -715,6 +776,7 @@ def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty
 
     card = page.locator("#transcriptResumeLive")
     state = page.locator("#transcriptState")
+    _tick(page, tr)
     expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
     expect(card.locator(".tr-resume-opt")).to_have_count(3)
     expect(state).to_be_hidden()
@@ -729,6 +791,7 @@ def test_a_resume_launch_with_no_transcript_shows_the_card_in_place_of_the_empty
     # The view stayed live: once a transcript appears, its turns land by
     # themselves and the reason line goes with them.
     tr.unavailable = None
+    _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "opening conftest now", timeout=OVERLAY_OPEN_MS
     )
@@ -745,7 +808,7 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     the composer opens the same card instead of sending anything to the
     terminal, and a pick from it posts via=composer."""
     page = authed_page
-    _boot(page, base_url)
+    tr = _boot(page, base_url)
     picker = _Picker(page)
     resume = _Resume(page)
     typed: list = []
@@ -760,6 +823,7 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     expect(card).to_be_hidden()
 
     picker.resume_up = True
+    _tick(page, tr)
     expect(card).to_be_visible(timeout=OVERLAY_OPEN_MS)
     rows = card.locator(".tr-resume-opt")
     expect(rows).to_have_count(3)
