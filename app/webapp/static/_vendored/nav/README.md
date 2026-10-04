@@ -60,7 +60,7 @@ Each `.tab` carries `data-tab` (its name) and `aria-controls` (the id of the pan
 
 ## Tab icons
 
-Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the pill uses `--bottom-tabs-icon`. Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract, fleet-config#966); the label ellipsizes only as a last resort (#278).
+Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the pill uses `--bottom-tabs-icon`. Every icon size is scoped as `.tabs .tab-icon`, so an app's own single-class icon utility (a `.icon { width: 1em }` you also put on the glyph) can't resize it, whatever order the stylesheets load in (#303). Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract, fleet-config#966); the label ellipsizes only as a last resort (#278).
 
 ## Wide layout: left rail
 
@@ -84,7 +84,7 @@ At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-c
 | `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
 | `--row-lg` | `60px` | rail tab min-height |
 | `--space-sm` | `8px` | rail tab padding |
-| `--icon-feature` | `24px` | rail icon size (`icons.size.feature`) |
+| `--icon-feature` | `24px` | rail icon size (`icons.size.feature`; falls back to `24px` if undefined) |
 | `--layout-measure` | `772px` | desktop column the control spans (falls back to 772px if unset) |
 | `--layout-rail` | `80px` | wide-layout rail width + content offset (falls back to 80px if unset) |
 | `--radius-md` | `12px` | bar corners (desktop) |

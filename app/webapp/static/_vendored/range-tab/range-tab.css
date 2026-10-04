@@ -29,6 +29,8 @@
   border-radius: var(--radius-md);
   padding: 0 10px;
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-label);
   font-weight: 600;
   white-space: nowrap;

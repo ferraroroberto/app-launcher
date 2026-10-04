@@ -60,6 +60,8 @@
   border-radius: var(--radius-md);
   background: transparent;
   color: inherit;
+  font: inherit;
+  line-height: normal;
   text-align: left;
   text-decoration: none;
   cursor: pointer;
@@ -102,6 +104,8 @@
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   cursor: pointer;
 }
 .action-row-fav .icon,
@@ -157,6 +161,8 @@
   border: 0;
   background: transparent;
   color: var(--ink);
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-body);
 }
 .action-row-filter input:focus-visible { outline: none; }
