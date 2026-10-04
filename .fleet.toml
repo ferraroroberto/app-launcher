@@ -513,6 +513,7 @@ paths    = [
 ]
 pytest_targets = [
     "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_resume_toggle.py",
     "tests/e2e/test_page_headers.py",
     "tests/e2e/test_text_size.py",
     "tests/e2e/test_action_row_lists.py",

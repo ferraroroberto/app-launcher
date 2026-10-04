@@ -149,9 +149,9 @@ def test_checked_toggle_carries_no_accent_border_or_tint(
     Detached/Resume used to flip `border-color` to `var(--accent)` and paint
     an accent-tinted background when checked, which made them the only
     accent-boxed controls in the Projects header — next to a borderless
-    model combo and a `.button-ghost` favourites filter. design.md reserves
-    the accent for interactive emphasis and names success as the on-state
-    for a `role="switch"`, so the box goes and the glyph turns green.
+    model combo and a `.button-ghost` favourites filter, so the box goes
+    and the on-state is a glyph-colour step (the accent since #1396, which
+    pins the colour; green was the earlier reading of design.md).
 
     Pinned as "the border does not change and the fill stays transparent"
     rather than against a literal colour, so the assertion holds in both
@@ -199,3 +199,51 @@ def test_checked_toggle_carries_no_accent_border_or_tint(
         "the Detached toggle's border no longer matches the favourites "
         f"filter beside it: {resting_border} vs {fav_border}"
     )
+
+
+@pytest.mark.iphone
+def test_on_glyph_switches_use_the_accent_not_success(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1396 — the fleet design standard: a `role="switch"`'s on-state is the
+    app's accent, and `success` is never a switch's on-colour. The Detached
+    and Resume glyph switches (Coding and Life OS rows) kept the green glyph
+    #1070 gave them; the track-and-thumb switches had already moved.
+
+    The expected colours are resolved from the tokens in the page's own
+    theme (a probe element), in light and in dark, so the assertion survives
+    a token revalue. Auto-retrying `to_have_css` throughout (#680). Life OS's
+    pair sits in a hidden pane, which computed style still reads.
+    """
+    _install_mocks(authed_page)
+    authed_page.add_init_script(
+        "document.addEventListener('DOMContentLoaded', () => {"
+        "  const st = document.createElement('style');"
+        "  st.textContent = '*, *::before, *::after "
+        "{ transition: none !important; animation: none !important; }';"
+        "  document.head.appendChild(st);"
+        "});"
+    )
+    _open_coding(authed_page, base_url)
+    resolve = (
+        "name => { const p = document.createElement('span');"
+        "p.style.color = `var(${name})`; document.body.appendChild(p);"
+        "const c = getComputedStyle(p).color; p.remove(); return c; }"
+    )
+    ids = ("#claudeDetached", "#claudeResume", "#lifeOsDetached", "#lifeOsResume")
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "t => document.documentElement.setAttribute('data-theme', t)", theme
+        )
+        accent = authed_page.evaluate(resolve, "--accent")
+        success = authed_page.evaluate(resolve, "--success")
+        assert accent != success, f"{theme}: the probe cannot tell the accent from success"
+        for sel in ids:
+            toggle = authed_page.locator(sel)
+            toggle.evaluate("el => el.setAttribute('aria-checked', 'false')")
+            off_colour = toggle.evaluate("el => getComputedStyle(el).color")
+            assert off_colour not in (accent, success), (
+                f"{theme} {sel} off already shows an on-colour: {off_colour}"
+            )
+            toggle.evaluate("el => el.setAttribute('aria-checked', 'true')")
+            expect(toggle).to_have_css("color", accent)
