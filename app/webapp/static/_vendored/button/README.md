@@ -74,9 +74,9 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--radius-md` | `12px` | corners (`rounded.md`), all tiers |
 | `--control-h` | `36px` | surface tier height |
 | `--font-body` | `1rem` | tint text |
-| `--font-label` | `0.92rem` | surface text |
-| `--font-caption` | `0.78rem` | ghost text |
+| `--font-label` | `0.875rem` | surface text |
+| `--font-caption` | `0.75rem` | ghost text |
 
 ## Don't diverge
 
-`button.css` is vendored verbatim — to change a tier's recipe, change it **here in `project-scaffolding`** and re-vendor downstream. The modal's own `.detail-save-btn` (`_vendored/modal/modal.css`) is a separate, still-current embedded copy scoped to the footer context (full width); both hold the spec's 48px height, never `--control-h` (#280). This component generalizes the same visual recipe for standalone use. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.
+`button.css` is vendored verbatim — to change a tier's recipe, change it **here in `project-scaffolding`** and re-vendor downstream. The modal's footer primary is a `.button-primary` (`_vendored/modal/` links this file; its `.detail-save-btn` only adds full width), so the spec's 48px height, never `--control-h` (#280), lives here once. If your own CSS declares the same selector this file touches (e.g. `.app`, `.card`), use longhand properties or a disjoint media condition — a shorthand property at equal specificity is decided by source order, and can silently override a rule you didn't intend to touch. Streamlit POC spikes are exempt.

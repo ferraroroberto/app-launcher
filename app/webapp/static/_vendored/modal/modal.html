@@ -1,4 +1,5 @@
-<!-- Fleet editor modal — markup skeleton (copy and adapt).
+<!-- Fleet editor modal — markup skeleton (copy and adapt). Link modal.css
+     together with select-native.css and button.css (it reuses their recipes).
      A native <dialog>: open with el.showModal(), close with el.close().
      The fleet nav hides itself automatically while it is open
      (body:has(dialog[open]) — see the nav component). -->
@@ -25,7 +26,7 @@
     </div>
 
     <div class="detail-actions">
-      <button type="button" class="detail-save-btn" disabled>Save</button>
+      <button type="button" class="button-primary detail-save-btn" disabled>Save</button>
     </div>
   </div>
 </dialog>

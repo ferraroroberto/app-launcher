@@ -42,6 +42,8 @@
   padding: 9px 10px;
   border-radius: var(--radius-pill);
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-label);
   font-weight: 600;
   cursor: pointer;
@@ -53,8 +55,12 @@
    pill alike (home-automation #77 made icon-as-SVG the fleet's direction; this
    file hid it on desktop until project-scaffolding #142). Sized in `em` so it
    tracks the label's font-size; the coarse-pointer block below re-sizes it to
-   the pill's --bottom-tabs-icon and stacks it above the label. */
-.tab-icon {
+   the pill's --bottom-tabs-icon and stacks it above the label.
+   Scoped under .tabs (0,2,0) here and in both re-sizes below, so an app's own
+   single-class icon utility (`.icon { width: 1em }`, loaded after this file)
+   can't resize the nav's glyphs: it shrank the rail's icons to 12px in
+   home-automation (project-scaffolding#303). */
+.tabs .tab-icon {
   display: block;
   flex: none;
   width: 1.05em;
@@ -142,9 +148,9 @@
     font-size: var(--font-caption);
     line-height: 1.1;
   }
-  .tab-icon {
-    width: var(--icon-feature);
-    height: var(--icon-feature);
+  .tabs .tab-icon {
+    width: var(--icon-feature, 24px);
+    height: var(--icon-feature, 24px);
   }
   .tab-label {
     display: block;
@@ -358,7 +364,7 @@
   /* Fixed px, not the desktop rule's `em`: the pill's label is 11px, so an
      em-relative icon would shrink to ~11px inside it. Stroke presentation is
      inherited from the base rule. */
-  .tab-icon {
+  .tabs .tab-icon {
     width: var(--bottom-tabs-icon, 20px);
     height: var(--bottom-tabs-icon, 20px);
   }

@@ -19,6 +19,12 @@
      and above it in the mobile pill. Replace the <path> data with your own
      glyphs; the icons below are placeholders.
 
+     SETTINGS IS NEVER A TAB (design.md "Navigation"). Do not add a Settings
+     tab, a gear-only tab, or a "More" tab that holds only Settings: Settings is
+     the gear beside the theme toggle in the page header (the vendored
+     home-head, on every pane), so it is one tap from every tab. The three tabs
+     below are placeholders; keep at most five.
+
      IMPORTANT: keep <nav class="tabs"> as a direct <body> child, sibling to
      <main class="app"> — never nested inside the content wrapper/scroller. iOS
      installed PWAs can capture fixed-position descendants of scroll containers
@@ -54,13 +60,13 @@
     </svg>
     <span class="tab-label">Stats</span>
   </button>
-  <button id="tabSettings" type="button" class="tab" data-tab="settings"
-          role="tab" aria-selected="false" aria-controls="paneSettings" tabindex="-1">
+  <button id="tabHistory" type="button" class="tab" data-tab="history"
+          role="tab" aria-selected="false" aria-controls="paneHistory" tabindex="-1">
     <svg class="tab-icon" aria-hidden="true" viewBox="0 0 24 24" focusable="false">
-      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z" />
-      <path d="M19 12a7 7 0 0 0-.1-1l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 2h-4l-.3 2.6a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7 7 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 2.4h4l.3-2.6a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6a7 7 0 0 0 .1-1z" />
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z" />
+      <path d="M12 7.5V12l3 2" />
     </svg>
-    <span class="tab-label">Settings</span>
+    <span class="tab-label">History</span>
   </button>
 </nav>
 
@@ -74,7 +80,7 @@
 <section id="paneStats" class="pane" role="tabpanel" aria-labelledby="tabStats" aria-label="Stats" hidden>
   <!-- … stats content … -->
 </section>
-<section id="paneSettings" class="pane" role="tabpanel" aria-labelledby="tabSettings" aria-label="Settings" hidden>
-  <!-- … settings content … -->
+<section id="paneHistory" class="pane" role="tabpanel" aria-labelledby="tabHistory" aria-label="History" hidden>
+  <!-- … history content … -->
 </section>
 </main>

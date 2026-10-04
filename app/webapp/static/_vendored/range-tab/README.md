@@ -51,7 +51,7 @@ The fleet's canonical **range-tab**: a row of equal-width pills (Day/Week/Month,
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active fill |
 | `--radius-md` | `12px` | pill corners |
 | `--control-h` | `36px` | pill height |
-| `--font-label` | `0.92rem` | pill text |
+| `--font-label` | `0.875rem` | pill text |
 
 ## Don't diverge
 

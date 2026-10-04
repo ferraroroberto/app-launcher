@@ -77,6 +77,8 @@
   border-radius: var(--radius-md);
   background: var(--close-bg);
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   cursor: pointer;
 }
 .home-head .home-toggle::before { content: ""; position: absolute; inset: -5px; }

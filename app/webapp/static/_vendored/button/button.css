@@ -11,9 +11,9 @@
  * .big-btn became a solid primary, voice-transcriber's .ghost-btn became a
  * tint). This file generalizes the reference recipes out of their per-app
  * homes so the drift stops:
- *   - .button-primary        <- _vendored/modal/modal.css .detail-save-btn
- *                                (this repo) — the modal's embedded copy keeps
- *                                its footer-context width:100%; both hold the
+ *   - .button-primary        <- the former modal.css .detail-save-btn (this
+ *                                repo); the modal now links this file and
+ *                                keeps only its footer width:100%. Holds the
  *                                spec's 48px height, never --control-h
  *                                (#280).
  *   - .button-tint            <- home-automation styles.css .big-btn
@@ -53,7 +53,7 @@
 
 .button-primary {
   min-height: 48px;   /* spec value (design.md components.button-primary);
-                          the modal's embedded .detail-save-btn matches it. */
+                          the modal's footer primary inherits it. */
   border: 1px solid var(--accent-border-strong);
   border-radius: var(--radius-md);
   background: var(--accent-fill);
@@ -70,6 +70,8 @@
   border-radius: var(--radius-md);
   padding: 13px;
   min-height: 48px;
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-body);
   font-weight: 700;
   cursor: pointer;
@@ -90,6 +92,8 @@
   color: var(--muted);
   border: 1px solid var(--line);
   padding: 6px 10px;
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-caption);
   font-weight: 600;
   border-radius: var(--radius-md);
@@ -103,6 +107,8 @@
   height: var(--control-h);
   padding: 0 10px;
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   font-size: var(--font-label);
   font-weight: 600;
   cursor: pointer;

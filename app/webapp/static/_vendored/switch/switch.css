@@ -27,6 +27,8 @@
   border: none;
   border-radius: var(--radius-pill);
   padding: 3px;
+  font: inherit;
+  line-height: normal;
   cursor: pointer;
   transition: background 0.15s ease;
 }
