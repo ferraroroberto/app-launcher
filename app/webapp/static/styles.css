@@ -3769,15 +3769,24 @@ body.terminal-open {
 .terminal-activity {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   padding: 8px 12px;
   font-size: var(--font-body-sm);
   line-height: 1.45;
-  text-align: center;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+/* The text is the part that ellipsizes (an ellipsis needs a block box, not the
+   flex row); the timer icon (#1394) is the vendored glyph, in the line's own
+   muted colour and centred on the text by the row's align-items. */
+.terminal-activity-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .terminal-activity[hidden],
 .terminal-status:not([hidden]) ~ .terminal-activity { display: none; }
