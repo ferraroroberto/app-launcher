@@ -111,7 +111,7 @@ from src.session_changes import changed_files, file_steps
 from src.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
-from app.webapp.routers._helpers import audit_off_loop, maybe_json
+from app.webapp.routers._helpers import attach_provider_web_urls, audit_off_loop, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 
 logger = logging.getLogger(__name__)
@@ -180,7 +180,19 @@ def _resolve_path(
         return Path(str(raw)), "row"
     if flavor != "claude":
         return None, ""
-    return resolve_claude_transcript(session, live)
+    path, why = resolve_claude_transcript(session, live)
+    if path is not None or session.get("web_url"):
+        return path, why
+    # Nothing cheaper named the file. The session-host's row carries no Remote
+    # Control link (the Coding tab and the Board attach it from the PTY
+    # capture), so read it the same way and let its bridge id answer (#1399):
+    # only on a refusal, since the capture read is the dearer step. On a
+    # copy, so the caller's row stays as the host reported it.
+    linked = dict(session)
+    attach_provider_web_urls([linked])
+    if not linked.get("web_url"):
+        return path, why
+    return resolve_claude_transcript(linked, live)
 
 
 async def _resolve_source(

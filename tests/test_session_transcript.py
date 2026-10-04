@@ -2269,16 +2269,28 @@ class TestTranscriptEndpoint:
     ):
         """#1393 end to end: a rowless Remote Control session whose folder is
         shared by two live siblings reads the conversation its own bridge id
-        names, and each sibling reads its own, not this one's."""
+        names, and each sibling reads its own, not this one's. The link comes
+        from the session's PTY capture (#1399), not the session-host's row."""
         from src import transcript_locate
 
+        from src import audit
+
         client, _, overrides = webapp_client
+        # The session-host's rows carry no link: the router reads it off each
+        # session's PTY capture, as the Coding tab and the Board do (#1399).
         live = [
-            _live(sid=f"s-{k}", project_dir=r"E:\work\project", started_at=2_000_000.0,
-                  web_url=f"https://claude.ai/code/{_BRIDGE[k]}")
+            _live(sid=f"s-{k}", project_dir=r"E:\work\project", started_at=2_000_000.0)
             for k in "abc"
         ]
         overrides["session"].list_sessions.return_value = live
+        captures = tmp_path / "captures"
+        captures.mkdir()
+        for k in "abc":
+            (captures / f"s-{k}.transcript").write_text(
+                f"Remote Control active\nhttps://claude.ai/code/{_BRIDGE[k]}\n",
+                encoding="utf-8",
+            )
+        monkeypatch.setattr(audit, "transcript_path", lambda sid: captures / f"{sid}.transcript")
         monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: None)
         projects, registry = tmp_path / "projects", tmp_path / "sessions"
         monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", projects)
