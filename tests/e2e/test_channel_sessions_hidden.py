@@ -29,7 +29,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import flush_requests, wait_until
+from tests.e2e.conftest import flush_requests, stable_eval, wait_until
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -381,18 +381,48 @@ def test_popup_compact_sends_slash_compact_through_the_verified_route(
 
     high = dialog.locator('li[data-session-id="s-tg-health"] .channel-list-compact')
     low = dialog.locator('li[data-session-id="s-tg-family"] .channel-list-compact')
-    # On every running row; the one at >= 50 % is the highlighted one.
-    expect(high).to_have_text(re.compile(r"Compact"))
-    expect(low).to_have_text(re.compile(r"Compact"))
+    # On every running row, as a borderless icon-only control with no text
+    # label; the one at >= 50 % is highlighted by colour on the icon itself.
+    expect(high).to_have_count(1)
+    expect(low).to_have_count(1)
+    expect(high).to_have_text("")
+    expect(high.locator("svg")).to_have_count(1)
+    name = dialog.locator(
+        'li[data-session-id="s-tg-health"] .channel-list-name').inner_text()
+    expect(high).to_have_attribute("aria-label", f"Compact {name}")
     expect(high).to_have_attribute("data-high", "true")
     expect(low).not_to_have_attribute("data-high", "true")
-    box = high.bounding_box()
-    assert box and box["height"] >= 44, f"Compact is not a 44px target: {box}"
+    expect(high).to_have_css("border-top-width", "0px")
+    expect(high).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    assert stable_eval(high, "e => getComputedStyle(e).color") != stable_eval(
+        low, "e => getComputedStyle(e).color"), "the >= 50 % highlight is not on the icon"
+    # A 44x44 hit area at the right end of the row itself, not under it.
+    geo = stable_eval(dialog.locator('li[data-session-id="s-tg-health"]'), """li => {
+      const r = li.getBoundingClientRect();
+      const o = li.querySelector('.channel-list-open').getBoundingClientRect();
+      const c = li.querySelector('.channel-list-compact').getBoundingClientRect();
+      return { row: [r.left, r.top, r.right, r.bottom],
+               look: [o.left, o.top, o.right, o.bottom],
+               btn: [c.left, c.top, c.right, c.bottom] };
+    }""")
+    row, look, btn = geo["row"], geo["look"], geo["btn"]
+    assert btn[2] - btn[0] >= 44 and btn[3] - btn[1] >= 44, f"not a 44px target: {btn}"
+    assert btn[0] >= look[2] - 1, f"Compact is not after the row's content: {btn} {look}"
+    assert btn[2] <= row[2] + 1, f"Compact overflows the row: {btn} {row}"
+    assert btn[1] >= row[1] - 1 and btn[3] <= row[3] + 1, \
+        f"Compact sits outside the row's height: {btn} {row}"
 
     high.click()
     wait_until(authed_page, lambda: len(knobs["inputs"]) == 1, "the /input POST")
     assert knobs["inputs"] == [("s-tg-health", {"data": "/compact", "submit": True})]
     expect(authed_page.locator("#toast")).to_contain_text("Compact: Sent")
+    # The outcome rides on the row (a modal <dialog> paints over the toast)
+    # without making it taller: it takes the place of the status word.
+    status = dialog.locator('li[data-session-id="s-tg-health"] .channel-list-status')
+    expect(status).to_have_text("Sent")
+    after = stable_eval(dialog.locator('li[data-session-id="s-tg-health"]'),
+                        "li => li.getBoundingClientRect().height")
+    assert abs(after - (row[3] - row[1])) < 1, f"the row grew: {row[3] - row[1]} -> {after}"
     # Compact acts; it does not open the read-only look underneath.
     expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
     expect(dialog).to_be_visible()
