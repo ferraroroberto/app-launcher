@@ -52,36 +52,39 @@ _RESYNC_TIMEOUT_S = 30
 
 def _patch_conversation_index(
     index_path: Path, mutate: Callable[[List[Any]], Optional[List[Any]]]
-) -> None:
+) -> bool:
     """Best-effort read-mutate-write of a skill's ``conversations/index.json``.
 
     The index is written by an external capture/index pipeline (life-os#68) —
     this repo doesn't own its format, so any read/parse/write failure is
     logged and swallowed rather than failing the delete/rename that triggered
     it (#906). ``mutate`` returns the new row list, or ``None`` to skip the
-    write (nothing matched).
+    write (nothing matched). Answers whether the file was rewritten, so a
+    caller can report what it actually changed (#1410).
     """
     try:
         raw = index_path.read_text(encoding="utf-8")
     except OSError:
-        return
+        return False
     try:
         rows = json.loads(raw)
     except ValueError:
         logger.warning("⚠️ unreadable conversation index, leaving as-is: %s", index_path)
-        return
+        return False
     if not isinstance(rows, list):
-        return
+        return False
     updated = mutate(rows)
     if updated is None:
-        return
+        return False
     try:
         atomic_write_json(index_path, updated)
     except OSError as exc:
         logger.warning("⚠️ could not update conversation index: %s", exc)
+        return False
+    return True
 
 
-def _prune_conversation_index(resolved: Path) -> None:
+def _prune_conversation_index(resolved: Path) -> bool:
     """Drop ``resolved``'s row from its skill's digested index, if present (#906).
 
     Keeps the Conversations view from showing a just-deleted log until the
@@ -90,7 +93,7 @@ def _prune_conversation_index(resolved: Path) -> None:
     def _drop(rows: List[Any]) -> Optional[List[Any]]:
         kept = [r for r in rows if not (isinstance(r, dict) and r.get("file") == resolved.name)]
         return kept if len(kept) != len(rows) else None
-    _patch_conversation_index(resolved.parent / _CONVERSATIONS_INDEX, _drop)
+    return _patch_conversation_index(resolved.parent / _CONVERSATIONS_INDEX, _drop)
 
 
 def _rename_conversation_index(resolved: Path, new_name: str) -> None:
@@ -134,7 +137,7 @@ def _rename_index_md(resolved: Path, new_name: str) -> None:
 _INDEX_MD_DECAY_MARKER_PREFIX = "<!-- decay-zone:"
 
 
-def _prune_index_md(resolved: Path) -> None:
+def _prune_index_md(resolved: Path) -> bool:
     """Drop ``resolved``'s whole ``<!-- idx file="..." -->`` entry from index.md (#971).
 
     Deterministic line-based removal matching the exact block shape
@@ -152,14 +155,14 @@ def _prune_index_md(resolved: Path) -> None:
     try:
         lines = index_md.read_text(encoding="utf-8").split("\n")
     except OSError:
-        return
+        return False
     marker = f'file="{resolved.name}"'
     start = next(
         (i for i, ln in enumerate(lines) if ln.startswith("<!-- idx ") and marker in ln),
         None,
     )
     if start is None:
-        return
+        return False
     end = start + 1
     while (
         end < len(lines)
@@ -171,6 +174,8 @@ def _prune_index_md(resolved: Path) -> None:
         index_md.write_text("\n".join(lines[:start] + lines[end:]), encoding="utf-8")
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
+        return False
+    return True
 
 
 def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
@@ -229,16 +234,23 @@ def _resync_search_index(cfg: WebappConfig) -> None:
         )
 
 
-async def reconcile_delete(resolved: Path, cfg: WebappConfig) -> None:
+async def reconcile_delete(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
     """Bring the external artefacts in line with a deleted conversation.
 
     The on-loop/off-thread split is deliberate and unchanged from when the
     router did this inline: the two index patches are small local file
     rewrites, while the search-db rebuild shells out and is given a thread.
+
+    Answers which index files actually lost the row (a file that was absent
+    or had no matching row is ``False``, not an error), so the caller can say
+    what it removed rather than what it hoped to (#1410).
     """
-    _prune_conversation_index(resolved)
-    _prune_index_md(resolved)
+    removed = {
+        "index_json": _prune_conversation_index(resolved),
+        "index_md": _prune_index_md(resolved),
+    }
     await asyncio.to_thread(_resync_search_index, cfg)
+    return removed
 
 
 async def reconcile_rename(resolved: Path, new_name: str, cfg: WebappConfig) -> None:

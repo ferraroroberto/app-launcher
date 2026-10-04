@@ -2090,3 +2090,205 @@ def test_shared_capture_subprocess_contract(tmp_path, monkeypatch, output, succe
     assert json.loads(kwargs["input"]) == ["private synthetic text"]
     assert "parse_capture_header" in argv[-1] and "resume_command" in argv[-1]
     assert kwargs["timeout"] == 15 and kwargs["cwd"] == tmp_path / "hooks"
+
+
+# ------------------------------------------------ delete a conversation (#1410)
+class TestDeleteConversation:
+    """DELETE /api/life-os/skills/{id}/conversations: capture + exact transcript + indexes.
+
+    Synthetic files in a temporary home and Life OS folder only: ``HOME`` /
+    ``USERPROFILE`` point at ``tmp_path`` and the fixture asserts it, so a real
+    ``~/.claude/projects`` can never be reached.
+    """
+
+    ENDPOINT = "/api/life-os/skills/journal-daily/conversations"
+    CAPTURE = "2026-08-01-0900-ferry-booking.md"
+    NEIGHBOUR_SID = "e70b4cb1-9f3d-4a21-8c55-2b7d19a4f6e1"  # one digit off RESUMABLE_SID
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, life_os_client, tmp_path, monkeypatch):
+        from app.webapp import middleware
+        from src import session_client
+        from src.life_os_transcript import claude_projects_dir
+
+        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("USERPROFILE", str(home))
+        assert tmp_path in claude_projects_dir().parents, "must never touch the real home"
+        self.projects = claude_projects_dir()
+        self.folder = self.projects / "proj-a"
+        self.folder.mkdir(parents=True)
+        self.sessions: list = []
+        monkeypatch.setattr(session_client, "list_sessions", lambda port: self.sessions)
+        self.client, _, overrides = life_os_client
+        self.audit = overrides["audit"]
+        self.conversations = overrides["life_os_dir"] / ".claude/skills/journal-daily/conversations"
+
+    def _delete(self, name: str = CAPTURE):
+        return self.client.delete(
+            self.ENDPOINT, params={"path": f".claude/skills/journal-daily/conversations/{name}"}
+        )
+
+    def _transcript(self, sid=RESUMABLE_SID, folder=None, sidecar=True):
+        folder = folder or self.folder
+        jsonl = folder / f"{sid}.jsonl"
+        jsonl.write_text('{"synthetic": true}\n', encoding="utf-8")
+        if sidecar:
+            (folder / sid / "subagents").mkdir(parents=True)
+            (folder / sid / "subagents" / "agent.jsonl").write_text("{}", encoding="utf-8")
+        return jsonl
+
+    def _index_files(self):
+        return [r["file"] for r in json.loads((self.conversations / "index.json").read_text("utf-8"))]
+
+    def test_exact_id_removes_capture_transcript_sidecar_and_index_row(self):
+        jsonl = self._transcript()
+        resp = self._delete()
+        assert resp.status_code == 200, resp.text
+        removed = resp.json()["removed"]
+        assert removed["capture"] and removed["transcript"] == "removed"
+        assert (removed["transcript_files"], removed["transcript_folders"]) == (1, 1)
+        assert removed["index_json"] is True
+        assert not (self.conversations / self.CAPTURE).exists()
+        assert not jsonl.exists() and not (self.folder / RESUMABLE_SID).exists()
+        assert self.CAPTURE not in self._index_files()
+        assert len(self._index_files()) == 2
+        event = self.audit.audit_event.call_args
+        assert event.args == ("lifeos_conversation_delete",)
+        assert event.kwargs["transcript"] == "removed" and event.kwargs["sid"] == RESUMABLE_SID
+
+    def test_neighbouring_transcripts_are_left_alone(self):
+        self._transcript()
+        neighbour = self._transcript(self.NEIGHBOUR_SID)
+        agent_file = self.folder / f"{RESUMABLE_SID}-agent.jsonl"
+        agent_file.write_text("{}", encoding="utf-8")
+        backup = self.folder / f"{RESUMABLE_SID}.jsonl.bak"
+        backup.write_text("{}", encoding="utf-8")
+        other_capture = self.conversations / "2026-07-02-1030-notion-schema.md"
+        assert self._delete().status_code == 200
+        assert neighbour.exists() and (self.folder / self.NEIGHBOUR_SID).is_dir()
+        assert agent_file.exists() and backup.exists()
+        assert other_capture.exists()
+
+    def test_no_transcript_still_deletes_the_capture_and_says_so(self):
+        self._transcript(self.NEIGHBOUR_SID)
+        resp = self._delete()
+        assert resp.status_code == 200, resp.text
+        removed = resp.json()["removed"]
+        assert removed["transcript"] == "not_found" and removed["transcript_files"] == 0
+        assert not (self.conversations / self.CAPTURE).exists()
+        assert (self.folder / f"{self.NEIGHBOUR_SID}.jsonl").exists()
+
+    @pytest.mark.parametrize("by_hook_row", [False, True])
+    def test_live_session_conversation_is_refused(self, by_hook_row, tmp_path):
+        jsonl = self._transcript()
+        if by_hook_row:
+            # A session that moved to this conversation via /resume: only the hook row knows.
+            session = {"session_id": "s1", "alive": True, "flags": "--model opus", "project_dir": "x"}
+            (tmp_path / "sessions-state.json").write_text(json.dumps({
+                RESUMABLE_SID: {"launcher_session_id": "s1", "agent": "claude", "cwd": "x",
+                                "updated_at": datetime.now().astimezone().isoformat()},
+            }), encoding="utf-8")
+        else:
+            session = {"session_id": "s1", "alive": True, "flags": f"--model opus --resume {RESUMABLE_SID}"}
+        self.sessions = [session]
+        resp = self._delete()
+        assert resp.status_code == 409, resp.text
+        assert "running session" in resp.json()["detail"]
+        assert jsonl.exists() and (self.conversations / self.CAPTURE).exists()
+        assert self.CAPTURE in self._index_files()
+
+    def test_a_stopped_session_does_not_block(self):
+        self._transcript()
+        self.sessions = [{"session_id": "s1", "alive": False, "flags": f"--resume {RESUMABLE_SID}"}]
+        assert self._delete().status_code == 200
+
+    def test_unreachable_session_host_is_unknown_not_clear(self, monkeypatch):
+        from src import session_client
+
+        def down(port):
+            raise session_client.SessionHostError("down")
+        monkeypatch.setattr(session_client, "list_sessions", down)
+        jsonl = self._transcript()
+        resp = self._delete()
+        assert resp.status_code == 503, resp.text
+        assert jsonl.exists() and (self.conversations / self.CAPTURE).exists()
+
+    @pytest.mark.parametrize("rel", [
+        "../../../../outside.md",
+        "../2026-08-01-0900-ferry-booking.md",
+        ".claude/skills/journal-daily/SKILL.md",
+        ".claude/skills/journal-daily/conversations/index.json",
+        ".claude/skills/journal-daily/conversations/index.md",
+        "C:/Windows/win.ini",
+        "",
+    ])
+    def test_path_escape_is_refused_and_nothing_is_deleted(self, rel, tmp_path):
+        canary = tmp_path / "outside.md"
+        canary.write_text("canary", encoding="utf-8")
+        jsonl = self._transcript()
+        resp = self.client.delete(self.ENDPOINT, params={"path": rel})
+        assert resp.status_code in (400, 404), resp.text
+        assert canary.exists() and jsonl.exists() and (self.conversations / self.CAPTURE).exists()
+
+    def test_a_linked_project_folder_is_never_entered(self, tmp_path):
+        outside = tmp_path / "outside-projects"
+        outside.mkdir()
+        victim = self._transcript(folder=outside)
+        link = self.projects / "linked"
+        if os.name == "nt":
+            import _winapi
+            _winapi.CreateJunction(str(outside), str(link))
+        else:
+            link.symlink_to(outside, target_is_directory=True)
+        try:
+            resp = self._delete()
+            assert resp.status_code == 200, resp.text
+            assert resp.json()["removed"]["transcript"] == "not_found"
+            assert victim.exists() and (outside / RESUMABLE_SID).is_dir()
+        finally:
+            if os.name == "nt":
+                os.rmdir(link)
+            else:
+                link.unlink()
+
+    def test_codex_capture_deletes_only_the_capture(self):
+        (self.conversations / "2026-06-01-1917-trial.md").write_text(
+            f'<!-- capture sid="{RESUMABLE_SID}" agent="codex" updated="synthetic" -->\ncodex log',
+            encoding="utf-8",
+        )
+        jsonl = self._transcript()
+        resp = self._delete("2026-06-01-1917-trial.md")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["removed"]["transcript"] == "not_claude"
+        assert jsonl.exists()
+
+    def test_capture_whose_header_cannot_be_read_is_refused(self, monkeypatch):
+        from src import life_os_history
+
+        def broken(fleet_dir, texts):
+            raise OSError("shared interpreter missing")
+        monkeypatch.setattr(life_os_history, "_parse_capture_texts", broken)
+        jsonl = self._transcript()
+        resp = self._delete()
+        assert resp.status_code == 409, resp.text
+        assert jsonl.exists() and (self.conversations / self.CAPTURE).exists()
+
+    def test_transcript_failure_leaves_the_capture_intact(self, monkeypatch):
+        from app.webapp.routers import life_os_conversations as router
+
+        def locked(*args, **kwargs):
+            raise PermissionError("locked")
+        monkeypatch.setattr(router, "remove_claude_transcript", locked)
+        resp = self._delete()
+        assert resp.status_code == 500, resp.text
+        assert (self.conversations / self.CAPTURE).exists() and self.CAPTURE in self._index_files()
+
+    def test_route_is_passkey_gated(self, monkeypatch):
+        from app.webapp import middleware
+        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset())
+        jsonl = self._transcript()
+        resp = self._delete()
+        assert resp.status_code in (401, 403), resp.text
+        assert jsonl.exists()

@@ -916,9 +916,33 @@ function convoRow(r, scoped) {
   const detail = document.createElement('div');
   detail.className = 'lifeos-convo-detail';
   detail.hidden = true;
-  appendConvoField(detail, 'Decisions', r.decisions);
-  appendConvoField(detail, 'Open loops', r.open_loops);
-  appendConvoField(detail, 'Source', r.agent || 'Unknown legacy harness');
+  // The summary block is how a row opens the transcript viewer (#1410): Read
+  // came off the button strip, and the head toggles the row, so reading is a
+  // tap on what the row says. A row with no readable capture has no viewer.
+  const summary = document.createElement('div');
+  summary.className = 'lifeos-convo-summary';
+  appendConvoField(summary, 'Decisions', r.decisions);
+  appendConvoField(summary, 'Open loops', r.open_loops);
+  appendConvoField(summary, 'Source', r.agent || 'Unknown legacy harness');
+  if (r.path) {
+    // A div, not a <button>: the fields inside are <p>s, which a button may
+    // not contain.
+    summary.setAttribute('role', 'button');
+    summary.tabIndex = 0;
+    summary.setAttribute('aria-label', 'Read this conversation');
+    const hint = document.createElement('span');
+    hint.className = 'lifeos-convo-read-hint';
+    hint.innerHTML = icon('book-open') + ' Tap to read';
+    summary.appendChild(hint);
+    const read = function () { openConvoViewer(r, CONVO_VIEWER_ACTIONS); };
+    summary.addEventListener('click', read);
+    summary.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      read();
+    });
+  }
+  detail.appendChild(summary);
   detail.appendChild(convoActions(r));
   li.appendChild(detail);
 
@@ -1023,7 +1047,7 @@ const CONVO_VIEWER_ACTIONS = {
   canLink: function (r) { return !!(r.skill && r.file); },
   copyLink: copyConvoLink,
   rename: function (r) { return renameFile({ path: r.path, name: r.file }); },
-  del: function (r) { return deleteFile({ path: r.path, name: r.file }); },
+  del: deleteConversation,
   openRaw: openCapture,
 };
 
@@ -1052,12 +1076,12 @@ export async function openConvoByLink(skillId, file) {
   openConvoViewer(row, CONVO_VIEWER_ACTIONS);
 }
 
-// The row leads with Resume (#1137) — what nearly every capture is opened
-// for — then 📖 Read into the transcript viewer (#1119) and Copy link
-// (#1170). The same state drives both, so the row and the viewer's ⋮ menu
-// can't disagree; Rename / Delete / Open raw stay in that menu only. One
-// primary per row: Resume (or the handoff, which only shows while Resume is
-// greyed out) is tinted, Read and Copy link are outlined.
+// The row is Resume (#1137) and Delete (#1410), nothing else: Read and Copy
+// link came off it. Reading is a tap on the expanded row's summary block
+// (see convoRow), and Copy link / Rename / Open raw stay in the viewer's ⋮
+// menu. The same state drives the row and that menu, so they can't disagree.
+// One primary per row: Resume (or the handoff, which only shows while Resume
+// is greyed out) is tinted; Delete is the tint recipe restated on danger.
 function convoActions(r) {
   const wrap = document.createElement('div');
   wrap.className = 'lifeos-convo-actions';
@@ -1094,27 +1118,44 @@ function convoActions(r) {
     });
     wrap.appendChild(handoffBtn);
   }
-  if (!r.path) return wrap;
-  const openBtn = document.createElement('button');
-  openBtn.type = 'button';
-  openBtn.className = 'button-ghost lifeos-convo-read';
-  openBtn.innerHTML = icon('book-open') + ' Read';
-  openBtn.title = 'Read this conversation';
-  openBtn.setAttribute('aria-label', 'Read this conversation');
-  openBtn.addEventListener('click', function () {
-    openConvoViewer(r, CONVO_VIEWER_ACTIONS);
-  });
-  wrap.appendChild(openBtn);
-  if (!CONVO_VIEWER_ACTIONS.canLink(r)) return wrap;
-  const linkBtn = document.createElement('button');
-  linkBtn.type = 'button';
-  linkBtn.className = 'button-ghost lifeos-convo-copy-link';
-  linkBtn.innerHTML = icon('link') + ' Copy link';
-  linkBtn.title = 'Copy a link to this conversation';
-  linkBtn.setAttribute('aria-label', 'Copy a link to this conversation');
-  linkBtn.addEventListener('click', function () { copyConvoLink(r); });
-  wrap.appendChild(linkBtn);
+  // A row with no readable capture path has nothing the server could delete.
+  if (!r.path || !r.skill) return wrap;
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'button-tint danger lifeos-convo-delete';
+  deleteBtn.innerHTML = icon('trash-2') + ' Delete';
+  deleteBtn.setAttribute('aria-label', 'Delete this conversation');
+  deleteBtn.addEventListener('click', function () { deleteConversation(r); });
+  wrap.appendChild(deleteBtn);
   return wrap;
+}
+
+// Delete one conversation everywhere it lives (#1410): the capture, the
+// Claude Code transcript it was captured from, and the indexes. One confirm
+// that names the conversation and says what goes. Resolves true when it is
+// gone — the viewer's ⋮ Delete closes itself on that — and false for a
+// cancel or a refusal (a conversation open in a running session says so).
+async function deleteConversation(r) {
+  const title = r.topic || r.slug || r.file || 'this conversation';
+  if (!confirm(
+    'Delete “' + title + '”?\n\n' +
+    'This removes the saved log, the Claude Code transcript it came from, ' +
+    'and its index entries. It cannot be undone.'
+  )) return false;
+  try {
+    await jsonApi(
+      '/api/life-os/skills/' + encodeURIComponent(r.skill) +
+        '/conversations?path=' + encodeURIComponent(r.path),
+      { method: 'DELETE' }
+    );
+  } catch (exc) {
+    apiFailToast('Delete failed', exc);
+    return false;
+  }
+  closeConvoViewer();
+  toast('Deleted ' + title, 'good', { icon: 'trash-2' });
+  await refreshAfterLogChange();
+  return true;
 }
 
 // A model change re-derives every row's Resume state in place, so an

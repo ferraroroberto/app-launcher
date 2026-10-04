@@ -217,7 +217,7 @@ export function wireConvoViewer() {
     },
     {
       glyph: 'trash-2', className: 'lifeos-viewer-delete', danger: true,
-      label: 'Delete this conversation log', text: 'Delete',
+      label: 'Delete this conversation', text: 'Delete',
       onTap: async function () {
         const open = viewer;
         if (open && await open.actions.del(open.row)) closeConvoViewer();

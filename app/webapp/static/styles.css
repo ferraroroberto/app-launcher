@@ -4003,6 +4003,29 @@ body.terminal-open {
   padding: 2px 8px;
 }
 .lifeos-convo-detail { padding: 0 4px 10px; }
+/* The summary block is a button-role div (#1410): it opens the transcript viewer. It
+   looks like the plain text block it was; only the "Tap to read" line says
+   it does something. Full row width so the whole block is the target. */
+.lifeos-convo-summary {
+  display: block;
+  width: 100%;
+  margin: 0 0 6px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+[role="button"].lifeos-convo-summary { cursor: pointer; }
+.lifeos-convo-read-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--row-sm);
+  font-size: var(--font-label);
+  color: var(--accent-text);
+}
 .lifeos-convo-field {
   margin: 0 0 6px;
   font-size: var(--font-label);

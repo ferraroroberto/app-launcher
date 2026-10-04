@@ -638,7 +638,7 @@ def _open_viewer(page: Page, index: int = 0) -> Locator:
     """Expand conversation row ``index`` and open it in the transcript viewer."""
     rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
     rows.nth(index).locator(".lifeos-convo-head").click()
-    rows.nth(index).locator(".lifeos-convo-read").click()
+    rows.nth(index).locator(".lifeos-convo-summary").click()
     expect(page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
     return page.locator("#lifeOsViewerList")
 
@@ -962,30 +962,24 @@ def test_life_os_row_leads_with_resume(
     expect(resume).to_be_visible()
     expect(resume).to_be_enabled()
     expect(resume).to_contain_text("Resume in Claude")
-    expect(actions.locator(".lifeos-convo-read")).to_be_visible()
     # Resume is the primary action: first in the strip.
     expect(actions.locator("button").first).to_have_class(
         re.compile(r"\blifeos-convo-resume\b"))
     expect(actions.locator(".lifeos-convo-nosession")).to_have_count(0)
     expect(actions.locator(".lifeos-convo-handoff")).to_have_count(0)
-    # Rename / Delete / Open raw stay in the viewer's ⋮ menu; Copy link (#1170)
-    # joins Read on the row.
-    expect(actions.locator("button")).to_have_count(3)
-    # One row, one size (#1170): Resume stays the tinted primary, Read and
-    # Copy link are outlined, and every button is the same 44px tall — Resume
-    # used to keep .button-tint's 14px block padding and outgrow Read.
+    # #1410: exactly Resume and Delete. Read and Copy link came off the row;
+    # Copy link / Rename / Open raw stay in the viewer's ⋮ menu and reading is
+    # a tap on the summary block.
+    expect(actions.locator("button")).to_have_count(2)
+    expect(actions.locator(".lifeos-convo-read, .lifeos-convo-copy-link")).to_have_count(0)
+    # One row, one size (#1170): Resume stays the tinted primary, Delete is
+    # the tint recipe on danger, and both are the same 44px tall.
     expect(resume).to_have_class(re.compile(r"\bbutton-tint\b"))
-    for cls in (".lifeos-convo-read", ".lifeos-convo-copy-link"):
-        expect(actions.locator(cls)).to_have_class(re.compile(r"\bbutton-ghost\b"))
-    for i in range(3):
+    expect(actions.locator(".lifeos-convo-delete")).to_have_class(
+        re.compile(r"\bbutton-tint\b.*\bdanger\b|\bdanger\b.*\bbutton-tint\b"))
+    for i in range(2):
         expect(actions.locator("button").nth(i)).to_have_css("height", "44px")
-    # Copy link writes the ?convo= deep link inside the tap (iOS).
-    actions.locator(".lifeos-convo-copy-link").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
-    assert authed_page.evaluate("() => window.__copied[0]") == (
-        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
-    expect(authed_page.locator("#toast")).to_contain_text("link copied")
+    expect(rows.first.locator(".lifeos-convo-summary")).to_contain_text("Tap to read")
 
     # Another provider: the open row updates in place — Resume greys out with
     # its reason on screen, and the explicit handoff appears.
@@ -999,12 +993,12 @@ def test_life_os_row_leads_with_resume(
     for cls in (".lifeos-convo-resume", ".lifeos-convo-handoff"):
         expect(actions.locator(cls)).to_have_css("height", "44px")
 
-    # An unresumable row says why and offers only Read.
+    # An unresumable row says why and offers only Delete.
     rows.nth(1).locator(".lifeos-convo-head").click()
     other = rows.nth(1).locator(".lifeos-convo-actions")
     expect(other.locator(".lifeos-convo-nosession")).to_contain_text("readable only")
     expect(other.locator(".lifeos-convo-resume")).to_have_count(0)
-    expect(other.locator(".lifeos-convo-read")).to_be_visible()
+    expect(other.locator(".lifeos-convo-delete")).to_be_visible()
 
     # Back on a matching model, the row's Resume posts the viewer's payload.
     _open_convos_model_menu(authed_page, "claude:opus").click()
@@ -1015,6 +1009,110 @@ def test_life_os_row_leads_with_resume(
         "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
                     for key in ("path", "revision", "agent", "sid")},
     }], launches
+
+
+def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1410: the row's Delete asks first (naming the conversation and what
+    goes), Cancel leaves everything alone, a refusal keeps the row and says
+    why, and confirming sends one DELETE for that capture, closes the viewer
+    and lands back on the refreshed list without the row, with a toast."""
+    _mock_skills(authed_page)
+    _mock_transcript(authed_page)
+    remaining = list(_FAKE_CONVERSATIONS["conversations"])
+    deletes: list = []
+    refuse = {"on": True}
+
+    def _list(route):
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {**_FAKE_CONVERSATIONS, "conversations": remaining}))
+
+    def _delete(route):
+        deletes.append(route.request.url)
+        if refuse["on"]:
+            route.fulfill(status=409, content_type="application/json", body=_json.dumps(
+                {"detail": "Nothing was deleted: this conversation is open in a running session."}))
+            return
+        remaining.pop(0)
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"deleted": "x", "removed": {"capture": True, "transcript": "removed"}}))
+
+    authed_page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations$"), _list)
+    authed_page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"),
+                      lambda route: _delete(route) if route.request.method == "DELETE"
+                      else route.fallback())
+    _open_conversations(authed_page, base_url)
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    expect(rows).to_have_count(2)
+    rows.first.locator(".lifeos-convo-head").click()
+    delete_btn = rows.first.locator(".lifeos-convo-delete")
+
+    # Cancel: the confirm names the conversation and what goes; nothing is sent.
+    dialogs: list = []
+    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    delete_btn.click()
+    wait_until(authed_page, lambda: len(dialogs) == 1, "the confirm dialog")
+    assert "booking the ferry" in dialogs[0]
+    assert "transcript" in dialogs[0] and "cannot be undone" in dialogs[0]
+    flush_requests(authed_page)
+    assert deletes == []
+    expect(rows).to_have_count(2)
+
+    # A refusal (the conversation is open in a running session): row stays.
+    authed_page.once("dialog", lambda d: d.accept())
+    delete_btn.click()
+    wait_until(authed_page, lambda: len(deletes) == 1, "the refused DELETE")
+    expect(authed_page.locator("#toast")).to_contain_text("running session")
+    expect(rows).to_have_count(2)
+
+    # Confirm: one DELETE for that capture, then the refreshed list.
+    refuse["on"] = False
+    authed_page.once("dialog", lambda d: d.accept())
+    delete_btn.click()
+    wait_until(authed_page, lambda: len(deletes) == 2, "the confirmed DELETE")
+    assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
+        "2026-08-01-0900-ferry-booking.md" in deletes[1]
+    expect(rows).to_have_count(1)
+    expect(rows.first.locator(".lifeos-convo-topic")).to_have_text("an early trial run")
+    expect(authed_page.locator("#toast")).to_contain_text("Deleted booking the ferry")
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+
+
+def test_life_os_viewer_delete_is_the_full_delete(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1410: the viewer's ⋮ Delete is the same confirmed, full delete as the
+    row's (never a second, narrower one), and it closes the viewer on the way
+    back to the refreshed list."""
+    _mock_skills(authed_page)
+    _mock_transcript(authed_page)
+    remaining = list(_FAKE_CONVERSATIONS["conversations"])
+    deletes: list = []
+
+    def _delete(route):
+        deletes.append(route.request.url)
+        remaining.pop(0)
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"deleted": "x", "removed": {"capture": True, "transcript": "not_found"}}))
+
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations$"),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {**_FAKE_CONVERSATIONS, "conversations": remaining})))
+    authed_page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"),
+                      lambda route: _delete(route) if route.request.method == "DELETE"
+                      else route.fallback())
+    _open_conversations(authed_page, base_url)
+    _open_viewer(authed_page, 0)
+    menu = _open_viewer_menu(authed_page)
+    dialogs: list = []
+    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    menu.locator(".lifeos-viewer-delete").click()
+    wait_until(authed_page, lambda: len(deletes) == 1, "the viewer's DELETE")
+    assert "transcript" in dialogs[0]
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(1)
 
 
 @pytest.mark.iphone
