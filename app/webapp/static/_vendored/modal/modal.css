@@ -8,6 +8,10 @@
  * on-device-validated (home-automation #214/#300/#303); do not "simplify"
  * them away.
  *
+ * Requires select-native.css (.input-native/.select-native, the shared 36px
+ * inline control) and button.css (.button-primary) linked alongside — the
+ * recipes live there once, not re-declared here.
+ *
  * Contract: heading-lg title + 34px square × close (modal.closeSize) with a
  * 44px effective hit area; label/value rows at 12px 0 on a top-border
  * divider, value control >= 55%; exactly one full-width primary button,
@@ -92,6 +96,8 @@ body:has(dialog[open]) .app { overflow: hidden; }
   height: 34px;
   cursor: pointer;
   color: var(--muted);
+  font: inherit;
+  line-height: normal;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -114,19 +120,6 @@ body:has(dialog[open]) .app { overflow: hidden; }
 .detail-card .row .select-native,
 .detail-card .row .input-native { min-width: 55%; }
 
-/* The shared inline control (the `control` component token: 36px). */
-.input-native,
-.select-native {
-  height: var(--control-h);
-  font-size: var(--font-label);
-  padding: 0 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line);
-  background: var(--input-bg);
-  color: var(--ink);
-  font-family: inherit;
-}
-
 /* Footer: sticky action bar + exactly one full-width primary. */
 .detail-actions {
   position: sticky;
@@ -137,29 +130,8 @@ body:has(dialog[open]) .app { overflow: hidden; }
   border-top: 1px solid var(--line);
   border-radius: 0 0 var(--radius) var(--radius);
 }
-/* The footer primary IS button-primary (design.md modal.primaryButton), so it
-   takes the spec's 48px, never --control-h: an app whose --control-h is its
-   36px inline-control height would otherwise get 36px dialog primaries
-   (#280). 48px clears the 44px tap floor on its own, so no hit-area
-   extension is needed. */
-.detail-save-btn {
-  width: 100%;
-  min-height: 48px;
-  border: 1px solid var(--accent-border-strong);
-  border-radius: var(--radius-md);
-  background: var(--accent-fill);
-  color: var(--accent-fg);
-  font: inherit;
-  font-weight: 700;
-  cursor: pointer;
-}
-/* One disabled recipe for both themes (home-automation#362): opacity on the
-   solid accent fill blends sub-AA either way (~2.2:1 light / ~2.5:1 dark);
-   the flat card-off/muted/line trio reads identically greyed-out in both
-   themes and passes AA (~4.9:1 light, ~5.5:1 dark). */
-.detail-save-btn:disabled {
-  background: var(--card-off);
-  border-color: var(--line);
-  color: var(--muted);
-  cursor: default;
-}
+/* The footer primary is `button-primary` (button.css — design.md
+   modal.primaryButton: the spec's 48px, never --control-h, #280; the AA
+   disabled recipe lives there too, home-automation#362); the modal only
+   stretches it to the full footer width. */
+.detail-save-btn { width: 100%; }
