@@ -4,6 +4,9 @@
                                                  or new handoff (Tailscale + passkey)
     GET  /api/life-os/skills/{id}/conversations → digested conversation index
                                                  (Tailscale + passkey)
+    DELETE /api/life-os/skills/{id}/conversations?path=<capture>
+                                               → capture + Claude transcript + indexes
+                                                 (Tailscale + passkey, #1410)
     GET  /api/life-os/conversations/search     → ranked cross-skill search
                                                  (Tailscale + passkey)
 
@@ -38,17 +41,19 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit
+from src import audit, board, session_client
 from src.agents import is_installed
 from src.life_os_history import MAX_HANDOFF_CHARS, read_captures, write_handoff
+from src.life_os_transcript import claude_projects_dir, remove_claude_transcript
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, skills_dir_for
 from src.subprocess_flags import NO_WINDOW
+from src.transcript_locate import claude_resume_id
 from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
-from src.life_os_index import search_cli
+from src.life_os_index import reconcile_delete, search_cli
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
@@ -339,6 +344,104 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
         "available": True,
         "conversations": conversations,
     }
+
+
+async def _live_conversation_ids(cfg: WebappConfig) -> set[str]:
+    """Claude conversation ids a running launcher session is attached to.
+
+    Two independent signals, either of which makes a conversation live: the
+    id a session was *launched* to resume (``--resume <id>`` in its flags, what
+    Life OS's Resume spawns), and the id the Board's claim walk assigns it from
+    the hook state row (a session that moved to another conversation via
+    ``/resume`` or ``/clear``). Raises ``SessionHostError`` when the host
+    cannot be asked: that is "unknown", and the caller must not read it as
+    "nothing is running".
+    """
+    sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+    alive = [s for s in sessions if s.get("alive", True)]
+    state = await asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file))
+    ids: set[str] = set()
+    for sess in alive:
+        resumed = claude_resume_id(sess)
+        if resumed:
+            ids.add(resumed)
+        claimed = board.state_sid_for_session(alive, state["rows"], str(sess.get("session_id")))
+        if claimed:
+            ids.add(str(claimed).lower())
+    return ids
+
+
+@router.delete("/api/life-os/skills/{skill_id}/conversations")
+async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
+    """Delete one conversation everywhere it lives (Tailscale + passkey, #1410).
+
+    ``?path=`` is the capture's vault-relative path, exactly as the list rows
+    carry it. Removes the Claude Code transcript (matched by the capture
+    header's **exact** session id, plus its sidecar folder), then the capture,
+    then the skill's ``conversations/index.json`` row, the ``index.md`` entry
+    and the cross-skill search index. The transcript goes *first* on purpose:
+    it is the step that can fail on a locked file, and the capture's header is
+    the only record of which transcript to remove, so a failure there leaves
+    everything intact and retryable instead of orphaning a transcript nobody
+    can find any more.
+
+    Refuses, before touching anything, when the conversation is attached to a
+    running session, when the session host cannot say, and when the capture's
+    session id cannot be read (an unverified capture could name any
+    transcript). A capture with no transcript on disk is still deleted, and the
+    reply says ``transcript: "not_found"``.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    root = Path(cfg.life_os_dir)
+    skill = _resolve_skill(cfg, skill_id)
+    rel = request.query_params.get("path", "")
+    path = _conversation_path(root, skill, rel)
+    if path is None:
+        raise HTTPException(400, "path is not a conversation capture of this skill")
+    if not path.is_file():
+        raise HTTPException(404, "file not found")
+
+    source = (await asyncio.to_thread(read_captures, Path(cfg.claude_config_dir), [path]))[0]
+    if "body" not in source:
+        raise HTTPException(409, "Nothing was deleted: can't tell which Claude transcript this "
+                                 f"capture belongs to. {source['reason']}")
+    agent, sid = str(source.get("agent", "")), str(source.get("sid", "")).lower()
+    try:
+        live = await _live_conversation_ids(cfg)
+    except session_client.SessionHostError as exc:
+        logger.warning("⚠️ Life OS delete: session host unavailable (%s)", exc)
+        raise HTTPException(503, "Nothing was deleted: the session host can't be reached, so "
+                                 "it isn't known whether this conversation is open in a running session.")
+    if sid and sid in live:
+        raise HTTPException(409, "Nothing was deleted: this conversation is open in a running "
+                                 "session. Stop that session first.")
+
+    try:
+        transcript = await asyncio.to_thread(remove_claude_transcript, claude_projects_dir(), agent, sid)
+    except OSError as exc:
+        logger.warning("⚠️ Life OS delete: transcript removal failed: %s", exc)
+        raise HTTPException(500, "Nothing else was deleted: the Claude transcript could not be removed "
+                                 "(is it open in another program?).")
+    try:
+        path.unlink()
+    except OSError as exc:
+        logger.warning("⚠️ Life OS delete: capture removal failed after the transcript went: %s", exc)
+        raise HTTPException(500, "The Claude transcript was removed but the capture could not be: "
+                                 "try Delete again.")
+    indexes = await reconcile_delete(path, cfg)
+    removed = {
+        "capture": True, "transcript": transcript["status"],
+        "transcript_files": transcript["files"], "transcript_folders": transcript["folders"],
+        **indexes,
+    }
+    logger.info("ℹ️ Life OS conversation deleted: skill=%s %s", skill.id, removed)
+    await audit_off_loop(
+        audit.audit_event, "lifeos_conversation_delete", skill=skill.id, path=rel, sid=sid,
+        transcript=removed["transcript"], files=removed["transcript_files"],
+        folders=removed["transcript_folders"], index_json=removed["index_json"],
+        index_md=removed["index_md"], client=client_ip(request),
+    )
+    return {"deleted": rel, "removed": removed}
 
 
 def _search_unavailable(reason: str) -> Dict[str, Any]:
