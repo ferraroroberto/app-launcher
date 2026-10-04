@@ -466,11 +466,13 @@ html, body {
    a tick that everyone misses on a phone.
    #1070 dropped the accent border + accent-tinted fill the on-state used
    to carry: an accent-boxed control next to three borderless-or-ghost
-   siblings read as the only emphasised thing in the Projects header, and
-   design.md reserves the accent for interactive emphasis while naming
-   success as the universal on-state for a `role="switch"`. The border now
-   stays `--line` in both states, matching the `.button-ghost` favourites
-   filter beside it; on/off is the opacity step plus a green glyph. */
+   siblings read as the only emphasised thing in the Projects header. The
+   border now stays `--line` in both states, matching the `.button-ghost`
+   favourites filter beside it; on/off is the opacity step plus an accent
+   glyph. The glyph is the accent, never green (#1396): design.md makes a
+   `role="switch"`'s on-state the app's accent and `success` is never a
+   switch's on-colour (fleet-config#1200 reversed the earlier green-on
+   decision), the same as the track-and-thumb switches. */
 .detached-toggle {
   display: inline-flex;
   align-items: center;
@@ -496,7 +498,7 @@ html, body {
 .detached-toggle:active { background: var(--card-2); }
 .detached-toggle[aria-checked="true"] {
   opacity: 1;
-  color: var(--success);
+  color: var(--accent);
 }
 /* #540: Detached/Resume are icon-only now (the Coding + Life OS launch rows
    gained a model combo and needed the room). Render the glyph at the app's
