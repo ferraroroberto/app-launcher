@@ -17,13 +17,16 @@ import re
 
 from playwright.sync_api import Page
 
-# Records the delay of every interval the page arms, so a test can wait for the
-# poll it is about to jump instead of guessing when boot has armed it.
+# Records the delay (and the callback's source) of every interval the page arms,
+# so a test can wait for the poll it is about to jump instead of guessing when
+# boot has armed it.
 _SPY_INTERVALS = """(() => {
   const real = window.setInterval;
   window.__armed = [];
+  window.__armedSrc = [];
   window.setInterval = function (fn, ms, ...rest) {
     window.__armed.push(ms);
+    window.__armedSrc.push(ms + ':' + String(fn));
     return real.call(this, fn, ms, ...rest);
   };
 })();"""
@@ -43,8 +46,18 @@ def advance(page: Page, ms: int) -> None:
     page.evaluate("() => fetch('/__clock_flush').then(() => undefined)")
 
 
-def wait_for_interval(page: Page, ms: int) -> None:
+def wait_for_interval(page: Page, ms: int, calls: str | None = None) -> None:
     """Wait until the page has armed a ``setInterval`` of ``ms``: a poll that
     boot arms only after its first fetch settles, so a jump made earlier would
-    pass a poll that does not exist yet."""
-    page.wait_for_function("(ms) => window.__armed.includes(ms)", arg=ms)
+    pass a poll that does not exist yet.
+
+    Several polls share a period (4 s is the Jobs, Apps and Running-apps polls),
+    and the Jobs one is armed first, so waiting on the period alone returns
+    before the poll under test exists (#1405). Name it with ``calls``: the
+    interval's callback source must contain that text (``"fetchApps"``).
+    """
+    page.wait_for_function(
+        "([ms, calls]) => window.__armedSrc.some(s => s.startsWith(ms + ':')"
+        " && (!calls || s.includes(calls)))",
+        arg=[ms, calls],
+    )

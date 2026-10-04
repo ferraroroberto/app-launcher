@@ -209,7 +209,9 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
     authed_page.evaluate(
         "() => { document.querySelector('.coding-item[data-id=\"alpha\"]').__beforePoll = true; }"
     )
-    _fake_clock.wait_for_interval(authed_page, 4_000)
+    # By name: the Jobs poll shares the 4 s period and is armed first, so the
+    # period alone returns before boot's `lists` has armed the apps poll (#1405).
+    _fake_clock.wait_for_interval(authed_page, 4_000, calls="fetchApps")
     for _ in range(10):
         _fake_clock.advance(authed_page, 4_000)
         if authed_page.evaluate(
