@@ -887,11 +887,11 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     _open_chat(page)
 
     line = page.locator("#terminalActivity")
-    expect(line).to_have_text(re.compile(r"^⏱ 15:0\d · 10 actions · Running Bash$"), timeout=OVERLAY_OPEN_MS)
+    expect(line).to_have_text(re.compile(r"^15:0\d · 10 actions · Running Bash$"), timeout=OVERLAY_OPEN_MS)
     # One line that ellipsizes, with tabular numerals — and the strip's box is
     # the one it already reserved when idle, so nothing above it moved.
     expect(line).to_have_css("white-space", "nowrap")
-    expect(line).to_have_css("text-overflow", "ellipsis")
+    expect(line.locator(".terminal-activity-text")).to_have_css("text-overflow", "ellipsis")
     expect(line).to_have_css("font-variant-numeric", "tabular-nums")
     strip = page.locator("#terminalStatusStrip")
     assert stable_eval(strip, "el => el.isConnected ? el.getBoundingClientRect().height : null")         == stable_eval(line, "el => el.isConnected ? el.parentElement.getBoundingClientRect().height : null")
@@ -915,9 +915,89 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     # A harness with no tool data gives the time alone — never "0 actions".
     tr.activity = {"since": tr.activity["since"], "actions": None, "last": "Thinking", "working": True}
     _tick(page, tr)
-    expect(line).to_have_text(re.compile(r"^⏱ \d+:\d\d · Thinking$"))
+    expect(line).to_have_text(re.compile(r"\d+:\d\d · Thinking$"))
 
     # The turn ends: the line goes, and its timer with it.
     tr.activity = {**tr.activity, "working": False}
     _tick(page, tr)
     expect(line).to_be_hidden()
+
+
+# The line's own box and its strip, in one evaluate so a re-render between two
+# reads cannot hand back two different nodes (#680, #1346). `span` is the
+# union of everything the line drew (icon and text): its vertical centre is
+# what the eye reads as "where the line sits".
+_STRIP_LINE_JS = """el => {
+  if (!el.isConnected) return null;
+  const strip = el.parentElement.getBoundingClientRect();
+  const icon = el.querySelector('svg.icon');
+  const text = el.querySelector('.terminal-activity-text');
+  const box = icon && icon.getBoundingClientRect();
+  const tbox = text && text.getBoundingClientRect();
+  const boxes = [box, tbox].filter(Boolean);
+  const top = Math.min(...boxes.map(b => b.top));
+  const bottom = Math.max(...boxes.map(b => b.bottom));
+  const span = { top: top, height: bottom - top };
+  const cs = getComputedStyle(el);
+  return {
+    stripMid: strip.top + strip.height / 2,
+    spanMid: span.top + span.height / 2,
+    iconMid: box ? box.top + box.height / 2 : null,
+    iconSize: box ? box.height : null,
+    iconColor: icon ? getComputedStyle(icon).color : null,
+    textMid: tbox ? tbox.top + tbox.height / 2 : null,
+    lineColor: cs.color,
+    text: el.textContent,
+    use: icon && icon.querySelector('use') ? icon.querySelector('use').getAttribute('href') : null,
+  };
+}"""
+
+
+@pytest.mark.iphone
+def test_the_activity_line_is_an_icon_and_sits_in_the_middle_of_its_strip_at_phone_width(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    """#1394: the timer is the vendored `i-timer` icon in the line's muted
+    colour, not the ⏱ emoji (iOS draws a colour stopwatch, desktop another
+    glyph), and at 390 px the line's vertical centre is within 1 px of the
+    strip's. The icon is centred on the text, so it cannot lift or sink it."""
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    tr = _boot(page, base_url)
+    tr.activity = {"since": _since(page, 902), "actions": 10, "last": "Running Bash", "working": True}
+    _open_chat(page)
+    line = page.locator("#terminalActivity")
+    expect(line).to_have_text(re.compile(r"^15:0\d · 10 actions · Running Bash$"), timeout=OVERLAY_OPEN_MS)
+    # A connection status owns the row while the mirror is down, and the
+    # stubbed mirror re-shows it whenever it reconnects (WebKit, under load):
+    # a style rule keeps it off for the whole measurement, where flipping
+    # `hidden` once would be undone before the read.
+    page.evaluate("""() => {
+      const s = document.getElementById('terminalStatus');
+      const hide = () => { if (!s.hidden) { s.hidden = true; s.textContent = ''; } };
+      new MutationObserver(hide).observe(s, { attributes: true, childList: true, characterData: true, subtree: true });
+      hide();
+    }""")
+    expect(line).to_be_visible()
+
+    got = stable_eval(line, _STRIP_LINE_JS)
+    assert "⏱" not in got["text"], got
+    assert got["use"] == "#i-timer", got
+    assert got["iconColor"] == got["lineColor"], f"the icon is not in the line's muted colour: {got}"
+    assert 12 <= got["iconSize"] <= 18, got
+    assert abs(got["spanMid"] - got["stripMid"]) <= 1, (
+        f"the line's centre is {got['spanMid'] - got['stripMid']:+.1f}px off the strip's: {got}"
+    )
+    assert abs(got["iconMid"] - got["textMid"]) <= 1.5, f"the icon is off the text's centre: {got}"
+
+    # The strip is max(row, home-indicator inset) tall (#1219), so a taller
+    # inset leaves slack the line must split evenly, not keep at its top.
+    # Chromium can emulate an inset over CDP; WebKit has no such override.
+    if browser_name == "chromium":
+        cdp = page.context.new_cdp_session(page)
+        cdp.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"bottom": 56, "bottomMax": 56}})
+        tall = stable_eval(line, _STRIP_LINE_JS)
+        assert tall["stripMid"] != got["stripMid"], f"the emulated inset did not reach the strip: {tall}"
+        assert abs(tall["spanMid"] - tall["stripMid"]) <= 1, (
+            f"in a taller strip the line is {tall['spanMid'] - tall['stripMid']:+.1f}px off its centre: {tall}"
+        )

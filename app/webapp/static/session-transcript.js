@@ -670,10 +670,13 @@ function newerNote(text, ms) {
 
 // --- the strip's live line (#1387) -----------------------------------------
 //
-// "⏱ 15:02 · 10 actions · Running Bash": the turn in progress, from the
-// `activity` the transcript responses carry (src/session_transcript.py).
+// "[timer icon] 15:02 · 10 actions · Running Bash": the turn in progress, from
+// the `activity` the transcript responses carry (src/session_transcript.py).
 // Everything but the elapsed counter is the last read's word; the counter is
-// redrawn here once a second from `since`.
+// redrawn here once a second from `since`. The timer is the vendored `i-timer`
+// icon, never the emoji (#1394): iOS draws a colour stopwatch for it and
+// desktop another glyph, and the emoji's fallback font metrics inflate the
+// line box, which is what let the line sit low on the phone.
 
 function fmtElapsed(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -689,13 +692,27 @@ function activityLine(a) {
   if (!a || !a.working) return null;
   const since = new Date(a.since).getTime();
   if (Number.isNaN(since)) return null;
-  const parts = ['⏱ ' + fmtElapsed(Date.now() - since)];
+  const parts = [fmtElapsed(Date.now() - since)];
   if (a.actions != null) parts.push(a.actions + (a.actions === 1 ? ' action' : ' actions'));
   if (a.last) parts.push(a.last);
   return parts.join(' · ');
 }
 
 let activityTimer = null;
+
+// The line's two children, built once: the timer icon (shown for the live
+// line only) and the text, which alone is rewritten on every tick. The line
+// is a centring flex row (styles.css), so neither child can lift or sink it.
+function stripLineParts(el) {
+  let text = el.querySelector('.terminal-activity-text');
+  if (!text) {
+    el.innerHTML = icon('timer', 'terminal-activity-icon');
+    text = document.createElement('span');
+    text.className = 'terminal-activity-text';
+    el.appendChild(text);
+  }
+  return { icon: el.querySelector('.terminal-activity-icon'), text };
+}
 
 // Writes the strip's line: a forced read's note, else the activity line, and
 // nothing outside Chat mode. Connection status outranks both in CSS (it hides
@@ -707,9 +724,11 @@ function renderStripLine() {
   const note = view && view.note;
   const live = !note && view && liveAllowed() ? activityLine(view.activity) : null;
   const text = note || live;
+  const parts = stripLineParts(el);
   // The ticking counter must not be announced every second; a note should be.
   el.setAttribute('aria-live', note ? 'polite' : 'off');
-  el.textContent = text || '';
+  parts.text.textContent = text || '';
+  parts.icon.style.display = live ? '' : 'none';
   el.hidden = !text;
   if (live && !activityTimer) {
     activityTimer = window.setInterval(renderStripLine, ACTIVITY_TICK_MS);
