@@ -25,7 +25,8 @@
  * At >= CONTEXT_ALERT_PCT (dom-utils.js) any session raises the alert icon on
  * both summary lines, and its popup row's Compact button is highlighted.
  *
- * The popup stays read-only apart from Compact: it sends /compact through the
+ * The popup stays read-only apart from Compact: a borderless icon-only button
+ * at the right end of each running row (#1402) that sends /compact through the
  * same verified /input route as the terminal ⋮ menu (sessions.js::
  * sendSessionMessage) and reports the real outcome. There is still no Stop and
  * no delete here.
@@ -45,10 +46,10 @@ const CONTEXT_SLOW_POLL_MS = 60000;
 // How long a Compact outcome stays on its row. The toast says it too, but a
 // modal <dialog> sits in the top layer above the toast, so the row carries it.
 const COMPACT_NOTE_MS = 6000;
-// The terminal ⋮ menu's Compact (terminal-bar.js): same glyph, same label. The
-// glyph is an app-local one that lives in index.html's inline sprite only, so
-// it travels as data, not as a literal icon() call.
-const COMPACT_ACTION = { glyph: 'chevrons-down-up', label: 'Compact conversation' };
+// The terminal ⋮ menu's Compact (terminal-bar.js): same glyph. The glyph is an
+// app-local one that lives in index.html's inline sprite only, so it travels as
+// data, not as a literal icon() call.
+const COMPACT_ACTION = { glyph: 'chevrons-down-up' };
 
 // Default on: before the first config lands, or if it is unreadable, the safe
 // reading is "hidden" — never a flash of the cards the user chose to hide.
@@ -161,8 +162,11 @@ function renderRows() {
     open.title = 'Open a read-only look at this session';
     open.appendChild(textEl(channelSessionName(s), 'channel-list-name'));
     const running = s.alive !== false;
-    open.appendChild(textEl(running ? 'Running' : 'Stopped',
-      'channel-list-status ' + (running ? 'is-up' : 'is-down')));
+    const note = compactNotes.get(s.session_id);
+    open.appendChild(note
+      ? textEl(note.text, 'channel-list-status channel-list-note' + (note.kind ? ' is-' + note.kind : ''))
+      : textEl(running ? 'Running' : 'Stopped',
+        'channel-list-status ' + (running ? 'is-up' : 'is-down')));
     const last = fmtDuration(s.last_output_at, { fromEpoch: true });
     open.appendChild(meta('Last activity', textEl(last ? (last === 'now' ? 'just now' : last + ' ago') : '—', 'channel-list-last')));
     const ctx = textEl(contextText(s.session_id), 'channel-list-context');
@@ -175,47 +179,40 @@ function renderRows() {
       openSessionOverlay(s, 'chat');
     });
     li.appendChild(open);
-    if (running && canCompact(s)) li.appendChild(compactActions(s, pct));
+    if (running && canCompact(s)) li.appendChild(compactButton(s, pct));
     host.appendChild(li);
   });
 }
 
-// The row's one action (#1402): Compact, with its last outcome beside it. A
-// sibling of the open button, never inside it — a tap here acts and must not
-// also open the look. Highlighted (data-high) at >= the alert threshold.
-function compactActions(s, pct) {
+// The row's one action (#1402): Compact, a borderless icon at the row's right
+// end after Running / Context. A sibling of the open button, never inside it —
+// a tap here acts and must not also open the look. The icon takes the attention
+// colour (data-high) at >= the alert threshold; there is no border and no text.
+function compactButton(s, pct) {
   const sid = s.session_id;
-  const wrap = document.createElement('div');
-  wrap.className = 'channel-list-actions';
-  const note = compactNotes.get(sid);
-  if (note) {
-    const n = textEl(note.text, 'channel-list-compact-note' + (note.kind ? ' is-' + note.kind : ''));
-    n.setAttribute('role', 'status');
-    wrap.appendChild(n);
-  }
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'button-ghost channel-list-compact';
+  btn.className = 'channel-list-compact';
   if (contextAlert(pct)) btn.dataset.high = 'true';
   btn.disabled = compacting.has(sid);
   btn.title = 'Send /compact to this session';
-  btn.setAttribute('aria-label', COMPACT_ACTION.label);
-  btn.innerHTML = icon(COMPACT_ACTION.glyph) + ' Compact';
+  btn.setAttribute('aria-label', 'Compact ' + channelSessionName(s));
+  btn.innerHTML = icon(COMPACT_ACTION.glyph);
   btn.addEventListener('click', function () { compactSession(s); });
-  wrap.appendChild(btn);
-  return wrap;
+  return btn;
 }
 
 // /compact through the verified /input route, the toast saying what actually
-// happened (the terminal ⋮ menu's Compact, #1218). The same words go on the
-// row too: a modal <dialog> paints over the toast.
+// happened (the terminal ⋮ menu's Compact, #1218). A modal <dialog> paints over
+// the toast, so the outcome's first clause also replaces the row's status word
+// for COMPACT_NOTE_MS — in the same cell, so the row never grows.
 function compactSession(s) {
   const sid = s.session_id;
   if (!canCompact(s) || compacting.has(sid)) return;
   compacting.add(sid);
   renderRows();
   function note(text, kind) {
-    compactNotes.set(sid, { text: text, kind: kind });
+    compactNotes.set(sid, { text: text.split(':')[0], kind: kind });
     window.setTimeout(function () {
       compactNotes.delete(sid);
       if (dialogOpen()) renderRows();

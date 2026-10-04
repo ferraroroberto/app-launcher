@@ -4743,42 +4743,59 @@ span.chief-answer-ref { color: var(--muted); }
 .channel-summary .channel-summary-alert .icon { color: inherit; }
 
 /* The read-only list those lines open: name + status over two meta cells per
-   session. Rows are buttons (a read-only look), never carrying a Stop. */
+   session. The row is the card; its look (a button, read-only) fills it, and
+   Compact (#1402) is a borderless icon at its right end. Never a Stop. */
 .channel-list { margin: 0 0 var(--gap); }
 .channel-list-row + .channel-list-row { margin-top: 8px; }
-/* Compact (#1402) sits under the row's read-only look, right-aligned, with its
-   last outcome to its left. Ghost tier normally; tinted at >= 50% context. */
-.channel-list-row { display: flex; flex-direction: column; gap: 6px; }
-.channel-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); }
-.channel-list-compact { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
-.channel-list-compact[data-high="true"] {
-  color: var(--attention);
-  border-color: var(--attention);
-  font-weight: 600;
+.channel-list-row {
+  display: flex;
+  align-items: center;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
 }
-.channel-list-compact-note { flex: 1; min-width: 0; font-size: var(--font-caption); color: var(--muted); text-align: right; }
-.channel-list-compact-note.is-good { color: var(--success); }
-.channel-list-compact-note.is-error { color: var(--danger); }
 .channel-list-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px 12px;
   align-items: center;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 44px;
   padding: 10px 12px;
-  background: var(--card-2);
+  background: transparent;
   color: var(--fg);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius-md);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
+/* Icon only: the 44x44 box is the hit area, the glyph keeps its own size. The
+   >= 50% highlight is the icon's colour, not a border. */
+.channel-list-compact {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.channel-list-compact[data-high="true"] { color: var(--attention); }
+.channel-list-compact:disabled { opacity: 0.5; cursor: default; }
 .channel-list-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .channel-list-status { font-size: var(--font-caption); font-weight: 600; justify-self: end; }
 .channel-list-status.is-up { color: var(--success); }
 .channel-list-status.is-down { color: var(--muted); }
+/* A Compact outcome standing in for the status word (same cell, same height). */
+.channel-list-note.is-good { color: var(--success); }
+.channel-list-note.is-error { color: var(--danger); }
 .channel-list-meta { display: inline-flex; gap: 6px; font-size: var(--font-body-sm); }
 .channel-list-context[data-tier="warn"] { color: var(--attention); }
 .channel-list-context[data-tier="danger"] { color: var(--danger); }
