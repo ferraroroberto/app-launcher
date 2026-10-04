@@ -25,7 +25,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import {
-  detachedSendRefused, openSessionRename, providerWebUrl, sendOutcome,
+  canCompact, openSessionRename, providerWebUrl, sendOutcome,
   sendSessionMessage, sessionTitle, stopSession,
 } from './sessions.js';
 import { openSessionChanges } from './changes-overlay.js';
@@ -98,13 +98,6 @@ function notInChat() {
 // fold reads.
 function hasChangedFiles(s) {
   return !!s && hasTranscriptReader(s);
-}
-
-// Whether ⋮ Compact applies (#1218): a Claude session (a missing agent reads
-// as Claude, as session-transcript.js's hasTranscriptReader does) whose input
-// route is open — a detached agent never probed for console input is not.
-function canCompact(s) {
-  return !!s && (s.agent || 'claude') === 'claude' && !detachedSendRefused(s);
 }
 
 // The shared ↓ Latest pill (latest-pill.js, #1140) over the xterm buffer,

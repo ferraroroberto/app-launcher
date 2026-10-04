@@ -4735,11 +4735,30 @@ span.chief-answer-ref { color: var(--muted); }
 .channel-summary .icon { color: var(--accent); flex: none; }
 .channel-summary-text { flex: 1; min-width: 0; }
 .channel-summary-chevron { color: var(--muted); flex: none; }
+/* Any Telegram session at >= 50% context (#1402): the attention colour, the
+   same one the list's warn tier uses. A glyph plus the aria-label, never colour
+   alone. */
+.channel-summary-alert { display: inline-flex; flex: none; color: var(--attention); }
+.channel-summary-alert[hidden] { display: none; }
+.channel-summary .channel-summary-alert .icon { color: inherit; }
 
 /* The read-only list those lines open: name + status over two meta cells per
    session. Rows are buttons (a read-only look), never carrying a Stop. */
 .channel-list { margin: 0 0 var(--gap); }
 .channel-list-row + .channel-list-row { margin-top: 8px; }
+/* Compact (#1402) sits under the row's read-only look, right-aligned, with its
+   last outcome to its left. Ghost tier normally; tinted at >= 50% context. */
+.channel-list-row { display: flex; flex-direction: column; gap: 6px; }
+.channel-list-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-sm); }
+.channel-list-compact { min-height: 44px; display: inline-flex; align-items: center; gap: 6px; }
+.channel-list-compact[data-high="true"] {
+  color: var(--attention);
+  border-color: var(--attention);
+  font-weight: 600;
+}
+.channel-list-compact-note { flex: 1; min-width: 0; font-size: var(--font-caption); color: var(--muted); text-align: right; }
+.channel-list-compact-note.is-good { color: var(--success); }
+.channel-list-compact-note.is-error { color: var(--danger); }
 .channel-list-open {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

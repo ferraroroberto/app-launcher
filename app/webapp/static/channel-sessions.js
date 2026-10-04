@@ -15,17 +15,40 @@
  * kill path (`stopSession`) refuses a hidden channel session.
  *
  * The context figure is the existing per-session route the overlay's ring uses
- * (GET /api/claude-code/sessions/{sid}/context), polled for the sessions in
- * the list only while the list is open — closing it stops the timer — so the
- * summary line itself costs no requests.
+ * (GET /api/claude-code/sessions/{sid}/context). Request cadence (#1402):
+ *   - list closed, summary line showing: one read per running Claude session
+ *     the moment the line first has it (and for any session that appears
+ *     later), then every CONTEXT_SLOW_POLL_MS (60 s). That is the whole cost
+ *     of the alert icon; there is no fast poll behind a closed popup.
+ *   - list open: every CONTEXT_POLL_MS (10 s), so a figure on screen is live.
+ *   - setting off, no running session, or the page hidden: no reads.
+ * At >= CONTEXT_ALERT_PCT (dom-utils.js) any session raises the alert icon on
+ * both summary lines, and its popup row's Compact button is highlighted.
+ *
+ * The popup stays read-only apart from Compact: it sends /compact through the
+ * same verified /input route as the terminal ⋮ menu (sessions.js::
+ * sendSessionMessage) and reports the real outcome. There is still no Stop and
+ * no delete here.
  */
 
 import { els, state } from './state.js';
-import { jsonApi } from './api.js';
-import { channelSessionName, fmtDuration, isChannelSession, usageTier } from './dom-utils.js';
+import { apiFailToast, jsonApi, toast } from './api.js';
+import {
+  channelSessionName, contextAlert, fmtDuration, isChannelSession, usageTier,
+} from './dom-utils.js';
+import { icon } from './_vendored/icons/icons.js';
 import { openSessionOverlay } from './session-overlay.js';
+import { canCompact, sendOutcome, sendSessionMessage } from './sessions.js';
 
 const CONTEXT_POLL_MS = 10000;
+const CONTEXT_SLOW_POLL_MS = 60000;
+// How long a Compact outcome stays on its row. The toast says it too, but a
+// modal <dialog> sits in the top layer above the toast, so the row carries it.
+const COMPACT_NOTE_MS = 6000;
+// The terminal ⋮ menu's Compact (terminal-bar.js): same glyph, same label. The
+// glyph is an app-local one that lives in index.html's inline sprite only, so
+// it travels as data, not as a literal icon() call.
+const COMPACT_ACTION = { glyph: 'chevrons-down-up', label: 'Compact conversation' };
 
 // Default on: before the first config lands, or if it is unreadable, the safe
 // reading is "hidden" — never a flash of the cards the user chose to hide.
@@ -49,30 +72,56 @@ function runningCount() {
 
 // ------------------------------------------------------------- summary line
 
-function paintSummary(btn, count) {
+// session_id → percent (number) or null for "not known". Survives a row
+// re-render so a poll tick never blanks a figure that was already read.
+const contextBySid = new Map();
+let timer = null;
+let reading = false;
+
+// A running session whose context is at or over the alert threshold.
+function anyContextAlert() {
+  return channelSessions().some(function (s) {
+    return s.alive !== false && contextAlert(contextBySid.get(s.session_id));
+  });
+}
+
+function paintSummary(btn, count, alerting) {
   if (!btn) return;
   btn.hidden = !(channelSessionsHidden() && count > 0);
   if (btn.hidden) return;
   btn.querySelector('.channel-summary-text').textContent =
     count + ' Telegram ' + (count === 1 ? 'session' : 'sessions') + ' running';
+  const flag = btn.querySelector('.channel-summary-alert');
+  if (flag) flag.hidden = !alerting;
+}
+
+function paintSummaries() {
+  const count = runningCount();
+  const alerting = anyContextAlert();
+  paintSummary(els.sessionsChannelSummary, count, alerting);
+  paintSummary(els.boardChannelSummary, count, alerting);
+  if (dialogOpen()) renderRows();
 }
 
 // Repaint both summary lines (Board, Coding tab) and, when the list is open,
 // its rows. Called from every render that filters a list, so a session that
-// starts or stops moves the count on the next poll.
+// starts or stops moves the count on the next poll — and a session the alert
+// has not read yet gets its first context read here.
 export function renderChannelSummaries() {
-  const count = runningCount();
-  paintSummary(els.sessionsChannelSummary, count);
-  paintSummary(els.boardChannelSummary, count);
-  if (els.channelListDialog && els.channelListDialog.open) renderRows();
+  paintSummaries();
+  ensureReading();
 }
 
 // -------------------------------------------------------------- read-only list
 
-// session_id → percent (number) or null for "not known". Survives a row
-// re-render so a poll tick never blanks a figure that was already read.
-const contextBySid = new Map();
-let timer = null;
+function dialogOpen() {
+  return !!(els.channelListDialog && els.channelListDialog.open);
+}
+
+// Compact outcome per session, kept for COMPACT_NOTE_MS: { text, kind }.
+const compactNotes = new Map();
+// Sessions with a /compact in flight, so a second tap cannot queue another.
+const compacting = new Set();
 
 function contextText(sid) {
   const pct = contextBySid.get(sid);
@@ -126,39 +175,129 @@ function renderRows() {
       openSessionOverlay(s, 'chat');
     });
     li.appendChild(open);
+    if (running && canCompact(s)) li.appendChild(compactActions(s, pct));
     host.appendChild(li);
   });
 }
 
-// One context read per Claude PTY session in the list; any failure or an
-// answer without a number is "not known", never 0%.
+// The row's one action (#1402): Compact, with its last outcome beside it. A
+// sibling of the open button, never inside it — a tap here acts and must not
+// also open the look. Highlighted (data-high) at >= the alert threshold.
+function compactActions(s, pct) {
+  const sid = s.session_id;
+  const wrap = document.createElement('div');
+  wrap.className = 'channel-list-actions';
+  const note = compactNotes.get(sid);
+  if (note) {
+    const n = textEl(note.text, 'channel-list-compact-note' + (note.kind ? ' is-' + note.kind : ''));
+    n.setAttribute('role', 'status');
+    wrap.appendChild(n);
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'button-ghost channel-list-compact';
+  if (contextAlert(pct)) btn.dataset.high = 'true';
+  btn.disabled = compacting.has(sid);
+  btn.title = 'Send /compact to this session';
+  btn.setAttribute('aria-label', COMPACT_ACTION.label);
+  btn.innerHTML = icon(COMPACT_ACTION.glyph) + ' Compact';
+  btn.addEventListener('click', function () { compactSession(s); });
+  wrap.appendChild(btn);
+  return wrap;
+}
+
+// /compact through the verified /input route, the toast saying what actually
+// happened (the terminal ⋮ menu's Compact, #1218). The same words go on the
+// row too: a modal <dialog> paints over the toast.
+function compactSession(s) {
+  const sid = s.session_id;
+  if (!canCompact(s) || compacting.has(sid)) return;
+  compacting.add(sid);
+  renderRows();
+  function note(text, kind) {
+    compactNotes.set(sid, { text: text, kind: kind });
+    window.setTimeout(function () {
+      compactNotes.delete(sid);
+      if (dialogOpen()) renderRows();
+    }, COMPACT_NOTE_MS);
+  }
+  sendSessionMessage(sid, '/compact').then(
+    function (verdict) {
+      const outcome = sendOutcome(verdict);
+      toast('Compact: ' + outcome.text, outcome.kind, { icon: COMPACT_ACTION.glyph });
+      note(outcome.text, outcome.kind);
+    },
+    function (exc) {
+      apiFailToast('Compact failed', exc);
+      note('Compact failed', 'error');
+    }
+  ).finally(function () {
+    compacting.delete(sid);
+    if (dialogOpen()) renderRows();
+  });
+}
+
+// ------------------------------------------------------------ context reads
+
+// The sessions a context read applies to: running Claude PTY sessions.
+function contextTargets() {
+  return channelSessions().filter(function (s) {
+    return s.alive !== false && s.kind !== 'remote' &&
+      String(s.agent || 'claude').toLowerCase() === 'claude';
+  });
+}
+
+// Reads happen only while a summary line is showing something to alert on.
+function wantsPolling() {
+  return channelSessionsHidden() && contextTargets().length > 0;
+}
+
+// One context read per target; any failure or an answer without a number is
+// "not known", never 0%. Reschedules itself at the cadence the list's state
+// asks for (module header).
 async function pollContext() {
   timer = null;
-  if (!els.channelListDialog.open) return;
+  if (reading || !wantsPolling()) return;
   if (document.visibilityState === 'visible') {
-    const targets = channelSessions().filter(function (s) {
-      return s.alive !== false && s.kind !== 'remote' &&
-        String(s.agent || 'claude').toLowerCase() === 'claude';
-    });
-    await Promise.all(targets.map(async function (s) {
-      let body = null;
-      try {
-        body = await jsonApi('/api/claude-code/sessions/' + encodeURIComponent(s.session_id) + '/context');
-      } catch (_) {
-        body = null;
-      }
-      contextBySid.set(s.session_id,
-        body && typeof body.percent === 'number' ? body.percent : null);
-    }));
-    if (!els.channelListDialog.open) return;
-    renderRows();
+    reading = true;
+    try {
+      await Promise.all(contextTargets().map(async function (s) {
+        let body = null;
+        try {
+          body = await jsonApi('/api/claude-code/sessions/' + encodeURIComponent(s.session_id) + '/context');
+        } catch (_) {
+          body = null;
+        }
+        contextBySid.set(s.session_id,
+          body && typeof body.percent === 'number' ? body.percent : null);
+      }));
+    } finally {
+      reading = false;
+    }
+    paintSummaries();
   }
-  timer = window.setTimeout(pollContext, CONTEXT_POLL_MS);
+  if (wantsPolling()) scheduleContext();
+}
+
+function scheduleContext() {
+  stopPolling();
+  timer = window.setTimeout(pollContext, dialogOpen() ? CONTEXT_POLL_MS : CONTEXT_SLOW_POLL_MS);
 }
 
 function stopPolling() {
   if (timer) window.clearTimeout(timer);
   timer = null;
+}
+
+// Start (or catch up) the reads: nothing running yet, or a session that has
+// no figure yet, reads now; otherwise the timer already in place stands.
+function ensureReading() {
+  if (reading || !wantsPolling()) return;
+  const fresh = contextTargets().some(function (s) { return !contextBySid.has(s.session_id); });
+  if (!timer || fresh) {
+    stopPolling();
+    pollContext();
+  }
 }
 
 export function openChannelList() {
@@ -169,7 +308,6 @@ export function openChannelList() {
 }
 
 export function closeChannelList() {
-  stopPolling();
   if (els.channelListDialog.open) els.channelListDialog.close();
 }
 
@@ -180,6 +318,10 @@ export function wireChannelSessions() {
   if (!els.channelListDialog) return;
   els.channelListClose.addEventListener('click', closeChannelList);
   els.channelListDone.addEventListener('click', closeChannelList);
-  // Esc and a backdrop dismissal close the <dialog> without our handlers.
-  els.channelListDialog.addEventListener('close', stopPolling);
+  // Every way of closing the <dialog> (Esc and a backdrop dismissal included)
+  // ends in this event: the fast poll stops and the slow one takes over.
+  els.channelListDialog.addEventListener('close', function () {
+    stopPolling();
+    if (wantsPolling()) scheduleContext();
+  });
 }

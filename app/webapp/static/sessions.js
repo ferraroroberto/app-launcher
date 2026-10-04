@@ -496,6 +496,14 @@ export function detachedSendRefused(s) {
   return !!known && known.console_input === false;
 }
 
+// Whether /compact applies (#1218): a Claude session (a missing agent reads as
+// Claude, as session-transcript.js's hasTranscriptReader does) whose input
+// route is open — a detached agent never probed for console input is not.
+// Shared by the terminal ⋮ menu and the Telegram sessions popup (#1402).
+export function canCompact(s) {
+  return !!s && (s.agent || 'claude') === 'claude' && !detachedSendRefused(s);
+}
+
 // /input is passkey-gated (middleware `_TERMINAL_GUARD_RULES`), so the
 // request carries the terminal token — without it a phone behind a configured
 // passkey gate gets a 401, which api() turns into the login overlay. Loopback

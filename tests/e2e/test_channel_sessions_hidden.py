@@ -8,9 +8,13 @@ activity and context use, with no Stop or delete. Switched off, both lists
 behave as they always did.
 
 Hermetic: the session list, the Board, the context route and the setting are
-route-mocked, so no real session is involved. The context poll is driven with
-the fake page clock (#1376): the claim "only while the list is open" is a
-claim about time, so the test jumps time instead of sleeping on it.
+route-mocked, so no real session is involved. The context polls are driven with
+the fake page clock (#1376): "slow while the list is closed, fast only while it
+is open" is a claim about time, so the tests jump time instead of sleeping on it.
+
+#1402 adds the alert icon on the summary line at >= 50 % context and a Compact
+button per popup row. ``/input`` is route-mocked: a real Telegram session is
+never sent ``/compact`` from a test.
 """
 
 from __future__ import annotations
@@ -60,7 +64,11 @@ def _card(sess: dict, status: str = "working") -> dict:
 
 def _mock(page: Page, *, hidden: bool = True) -> dict:
     """Route-mock everything the lists read. Returns the live knobs."""
-    knobs = {"hidden": hidden, "posts": [], "context_hits": []}
+    knobs = {
+        "hidden": hidden, "posts": [], "context_hits": [], "inputs": [],
+        # session_id -> context percent; absent = "not showing" (no figure).
+        "pct": {"s-tg-health": 42},
+    }
 
     def _sessions(route):
         route.fulfill(status=200, content_type="application/json",
@@ -95,7 +103,7 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     def _context(route):
         sid = route.request.url.split("/sessions/")[1].split("/")[0]
         knobs["context_hits"].append(sid)
-        pct = 42 if sid == "s-tg-health" else None
+        pct = knobs["pct"].get(sid)
         route.fulfill(status=200, content_type="application/json", body=json.dumps(
             {"available": pct is not None, "percent": pct,
              "reason": None if pct is not None else "not_showing"}))
@@ -104,6 +112,13 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     page.route(re.compile(r".*/api/board(?:\?.*)?$"), _board)
     page.route(re.compile(r".*/api/config$"), _config)
     page.route(re.compile(r".*/api/claude-code/sessions/[^/]+/context$"), _context)
+    def _input(route):
+        sid = route.request.url.split("/sessions/")[1].split("/")[0]
+        knobs["inputs"].append((sid, route.request.post_data_json))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(
+            {"delivered": True, "submit_state": "confirmed"}))
+
+    page.route(re.compile(r".*/api/claude-code/sessions/[^/]+/input$"), _input)
     page.route(re.compile(r".*/api/board/chief-plan$"), lambda r: r.fulfill(
         status=200, content_type="application/json", body=json.dumps({"state": "empty"})))
     page.route(re.compile(r".*/api/claude-code/git-status$"), lambda r: r.fulfill(
@@ -159,7 +174,7 @@ def test_board_swaps_channel_cards_for_a_summary_line(
         re.compile(r"2 Telegram sessions running"))
 
 
-def test_summary_opens_a_read_only_list_and_polls_context_only_while_open(
+def test_summary_opens_a_read_only_list_and_polls_context_fast_only_while_open(
     authed_page: Page, base_url: str
 ) -> None:
     _fake_clock.install(authed_page)
@@ -167,10 +182,15 @@ def test_summary_opens_a_read_only_list_and_polls_context_only_while_open(
     _open_coding(authed_page, base_url)
     _fake_clock.wait_for_interval(authed_page, 5000)   # boot has armed its polls
 
-    # Nothing asks for a context figure while the list is closed.
+    # The summary line reads each running session once on its own (#1402),
+    # then only at the slow cadence: 30 s later nothing has been asked again.
+    wait_until(authed_page, lambda: len(knobs["context_hits"]) >= 2,
+               "the summary line's first context reads")
+    flush_requests(authed_page)
+    first = len(knobs["context_hits"])
     _fake_clock.advance(authed_page, 30_000)
     flush_requests(authed_page)
-    assert knobs["context_hits"] == [], "context polled with the list closed"
+    assert len(knobs["context_hits"]) == first, "context polled fast with the list closed"
 
     authed_page.locator("#sessionsChannelSummary").click()
     dialog = authed_page.locator("#channelListDialog")
@@ -202,14 +222,20 @@ def test_summary_opens_a_read_only_list_and_polls_context_only_while_open(
     flush_requests(authed_page)
     assert len(knobs["context_hits"]) > before, "the open list never re-polled context"
 
-    # …and stops the moment it closes.
+    # …and drops back to the slow cadence the moment it closes: 10 s later
+    # nothing is asked; a minute later each running session is read again.
     authed_page.locator("#channelListDone").click()
     expect(dialog).to_be_hidden()
     flush_requests(authed_page)
     closed_at = len(knobs["context_hits"])
+    _fake_clock.advance(authed_page, 10_000)
+    flush_requests(authed_page)
+    assert len(knobs["context_hits"]) == closed_at, "context polled fast after the list closed"
     _fake_clock.advance(authed_page, 60_000)
     flush_requests(authed_page)
-    assert len(knobs["context_hits"]) == closed_at, "context polled after the list closed"
+    # Two sessions, so one slow tick is 2 reads; the fast cadence would be 12.
+    assert closed_at < len(knobs["context_hits"]) <= closed_at + 4, \
+        "the slow summary poll is not one read per session per minute"
 
 
 def test_a_hidden_channel_session_opens_for_a_look_but_cannot_be_stopped(
@@ -218,7 +244,8 @@ def test_a_hidden_channel_session_opens_for_a_look_but_cannot_be_stopped(
     _mock(authed_page)
     _open_coding(authed_page, base_url)
     authed_page.locator("#sessionsChannelSummary").click()
-    authed_page.locator('#channelListDialog li[data-session-id="s-tg-health"] button').click()
+    authed_page.locator(
+        '#channelListDialog li[data-session-id="s-tg-health"] .channel-list-open').click()
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])")
     expect(authed_page.locator("#channelListDialog")).to_be_hidden()
 
@@ -283,3 +310,103 @@ def test_the_one_kill_path_refuses_a_hidden_channel_session(
     flush_requests(authed_page)
     assert stops == [], f"a hidden Telegram session was stopped: {stops}"
     expect(authed_page.locator("#toast")).to_contain_text("Telegram sessions are protected")
+
+
+# ------------------------------------------------------------------ #1402
+
+
+def _alert(page: Page, which: str = "#sessionsChannelSummary"):
+    return page.locator(f"{which} .channel-summary-alert")
+
+
+def test_summary_does_not_alert_one_point_under_fifty_percent(
+    authed_page: Page, base_url: str
+) -> None:
+    knobs = _mock(authed_page)
+    knobs["pct"] = {"s-tg-health": 49, "s-tg-family": 20}
+    _open_coding(authed_page, base_url)
+    expect(authed_page.locator("#sessionsChannelSummary")).to_be_visible()
+    wait_until(authed_page, lambda: len(knobs["context_hits"]) >= 2,
+               "the summary line's context reads")
+    flush_requests(authed_page)
+    expect(_alert(authed_page)).to_be_hidden()
+    expect(_alert(authed_page, "#boardChannelSummary")).to_be_hidden()
+
+
+def test_summary_shows_the_alert_icon_at_fifty_percent_with_a_label(
+    authed_page: Page, base_url: str
+) -> None:
+    knobs = _mock(authed_page)
+    knobs["pct"] = {"s-tg-health": 42, "s-tg-family": 50}
+    _open_coding(authed_page, base_url)
+    alert = _alert(authed_page)
+    expect(alert).to_be_visible()
+    expect(alert).to_have_attribute("role", "img")
+    expect(alert).to_have_attribute("aria-label", "context high")
+    # The Board's line is the same line: it shows the alert too.
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
+    expect(_alert(authed_page, "#boardChannelSummary")).to_be_visible()
+    box = authed_page.locator("#boardChannelSummary").bounding_box()
+    assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
+
+
+def test_alert_follows_the_context_as_it_changes(
+    authed_page: Page, base_url: str
+) -> None:
+    _fake_clock.install(authed_page)
+    knobs = _mock(authed_page)
+    knobs["pct"] = {"s-tg-health": 55}
+    _open_coding(authed_page, base_url)
+    _fake_clock.wait_for_interval(authed_page, 5000)
+    expect(_alert(authed_page)).to_be_visible()
+
+    # The session compacts: its next slow read is under the threshold and the
+    # icon goes away without a reload.
+    knobs["pct"] = {"s-tg-health": 8}
+    _fake_clock.advance(authed_page, 60_000)
+    flush_requests(authed_page)
+    expect(_alert(authed_page)).to_be_hidden()
+
+
+def test_popup_compact_sends_slash_compact_through_the_verified_route(
+    authed_page: Page, base_url: str
+) -> None:
+    knobs = _mock(authed_page)
+    knobs["pct"] = {"s-tg-health": 71, "s-tg-family": 12}
+    _open_coding(authed_page, base_url)
+    authed_page.locator("#sessionsChannelSummary").click()
+    dialog = authed_page.locator("#channelListDialog")
+    expect(dialog).to_be_visible()
+
+    high = dialog.locator('li[data-session-id="s-tg-health"] .channel-list-compact')
+    low = dialog.locator('li[data-session-id="s-tg-family"] .channel-list-compact')
+    # On every running row; the one at >= 50 % is the highlighted one.
+    expect(high).to_have_text(re.compile(r"Compact"))
+    expect(low).to_have_text(re.compile(r"Compact"))
+    expect(high).to_have_attribute("data-high", "true")
+    expect(low).not_to_have_attribute("data-high", "true")
+    box = high.bounding_box()
+    assert box and box["height"] >= 44, f"Compact is not a 44px target: {box}"
+
+    high.click()
+    wait_until(authed_page, lambda: len(knobs["inputs"]) == 1, "the /input POST")
+    assert knobs["inputs"] == [("s-tg-health", {"data": "/compact", "submit": True})]
+    expect(authed_page.locator("#toast")).to_contain_text("Compact: Sent")
+    # Compact acts; it does not open the read-only look underneath.
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+    expect(dialog).to_be_visible()
+
+
+def test_popup_has_compact_but_still_no_stop_or_delete(
+    authed_page: Page, base_url: str
+) -> None:
+    _mock(authed_page)
+    _open_coding(authed_page, base_url)
+    authed_page.locator("#sessionsChannelSummary").click()
+    dialog = authed_page.locator("#channelListDialog")
+    expect(dialog.locator("li.channel-list-row")).to_have_count(2)
+    expect(dialog.locator(".channel-list-compact")).to_have_count(2)
+    labels = dialog.locator("button").all_inner_texts()
+    assert not [t for t in labels if re.search(r"stop|delete|kill|remove", t, re.I)], labels
+    expect(dialog.locator(".action-stop-close, .board-stop-btn")).to_have_count(0)

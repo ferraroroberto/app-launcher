@@ -704,6 +704,7 @@
         <button type="button" id="sessionsChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
           <span class="channel-summary-text"></span>
+          <span class="channel-summary-alert" role="img" aria-label="context high" title="A Telegram session is at 50% context or more" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg></span>
           <span class="channel-summary-chevron" aria-hidden="true">›</span>
         </button>
         <div id="sessionsEmpty" class="empty-state">
@@ -1335,6 +1336,7 @@
       <button type="button" id="boardChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
           <span class="channel-summary-text"></span>
+          <span class="channel-summary-alert" role="img" aria-label="context high" title="A Telegram session is at 50% context or more" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg></span>
           <span class="channel-summary-chevron" aria-hidden="true">›</span>
         </button>
       <div id="boardColumns" class="board-columns">
@@ -2043,7 +2045,9 @@
     <!-- Telegram sessions, read-only (#1384): status, last activity and context
          use per session. Header ✕ plus one full-width action (modal contract,
          #545) — and no Stop or delete, by design. Built by channel-sessions.js
-         while open; the context figure is polled only while this is showing. -->
+         while open; the context figure is polled fast only while this is
+         showing (channel-sessions.js header). Each running row has a Compact
+         button (#1402). -->
     <dialog id="channelListDialog" class="detail-dialog">
       <div class="detail-card">
         <div class="detail-header">

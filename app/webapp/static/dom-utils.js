@@ -435,6 +435,18 @@ export function usageTier(pct) {
   return 'good';
 }
 
+// Context use at which a Telegram channel session is flagged (#1402): the
+// summary line's alert icon and the popup's highlighted Compact button. Lower
+// than usageTier()'s 60 "warn" on purpose — a compaction wants a head start,
+// not a last-minute scramble.
+export const CONTEXT_ALERT_PCT = 50;
+
+// True only for a real figure at or over the threshold; "not known" (null,
+// NaN, a non-number) is never an alert.
+export function contextAlert(pct) {
+  return typeof pct === 'number' && pct >= CONTEXT_ALERT_PCT;
+}
+
 // Compact reset stamps for the two-line rows (#860). A full "Sep 11, 14:20"
 // on both windows is what pushes a line past a 390px viewport, so the
 // 5-hour window — which always resets today or tomorrow — shows the clock
