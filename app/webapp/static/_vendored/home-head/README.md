@@ -31,7 +31,7 @@ The fleet's canonical **home-head**: a home-only header card rendered as **one r
   <button type="button" class="home-toggle" aria-label="Toggle theme" title="Toggle theme">
     <svg class="icon" aria-hidden="true"><use href="#i-moon"></use></svg>
   </button>
-  <button type="button" class="button-surface home-toggle home-settings" aria-label="Settings" title="Settings">
+  <button type="button" class="home-toggle home-settings" aria-label="Settings" title="Settings">
     <svg class="icon" aria-hidden="true"><use href="#i-settings"></use></svg>
   </button>
 </div>
@@ -40,9 +40,9 @@ The fleet's canonical **home-head**: a home-only header card rendered as **one r
 - It is a **`.card` modifier** (`class="card home-head"`) — `.card` supplies the surface (fill, hairline border, radius); `.card.home-head` supplies the row layout and overrides the card's padding to the 52px `0 14px` geometry.
 - `.home-title` is the leading glyph + bold title, kept on one line. `.home-title .icon` is title-size (`--icon-title`, 18px), muted.
 - `.status` is **optional** — an inline muted line that takes the remaining width and ellipsizes, so a long status can never wrap the row or shove the toggle off-screen. Omit the span entirely if the header carries no status.
-- `.home-toggle` is an icon-only trailing action, a 34px square with a subtle-contrast fill (`--close-bg`) — the same recipe as the modal's `.detail-close`, never a bare floating glyph. The first one is pinned right (`margin-left: auto`) even when no `.status` is present; the next sits beside it (`.home-toggle + .home-toggle` takes no auto margin). Swapping its glyph (sun ⇄ moon) and persisting the theme is the caller's job per design.md's "Theme switching" contract — this component owns the button's look, not the theme logic.
-- **The Settings gear** is the second `.home-toggle`, with `.button-surface` (its tier, per design.md) and `.home-settings` (a hook for your click handler) beside it. **Settings is never a tab:** the gear sits beside the theme toggle on **every** pane, always both, at every nav size, so Settings is one tap from each tab (design.md "Navigation" and `page-header`). Do not drop the gear on a tab that has "nothing to set", and do not add a Settings tab to `nav/`. Where the gear leads (a settings view, a modal, a sheet) is the app's call.
-- **Both actions are 44px targets.** Each stays a 34px visual; its `::before` extends the hit area to the 44px floor, and the row's `--gap` (12px) is wider than the two 5px expansions together, so the pair never overlaps (design.md "Touch targets"). The e2e harness asserts both on the gallery.
+- `.home-toggle` is an icon-only trailing action and follows the **icon button** contract ([`icon-button/`](../icon-button/), fleet-config#1259) — the same as the modal's `.detail-close`: a glyph on nothing, **transparent at rest** with no border or shadow, its 34px box invisible and grown to the 44px target by its `::before`. `--close-bg` defaults to `transparent`; leave it unset (it is never a fill). The glyph keeps the `--icon-title` size. The first one is pinned right (`margin-left: auto`) even when no `.status` is present; the next sits beside it (`.home-toggle + .home-toggle` takes no auto margin). Swapping its glyph (sun ⇄ moon) and persisting the theme is the caller's job per design.md's "Theme switching" contract — this component owns the button's look, not the theme logic.
+- **The Settings gear** is the second `.home-toggle`, with `.home-settings` (a hook for your click handler) beside it and no button tier: it is an icon button like the toggle, never `.button-surface`. **Settings is never a tab:** the gear sits beside the theme toggle on **every** pane, always both, at every nav size, so Settings is one tap from each tab (design.md "Navigation" and `page-header`). Do not drop the gear on a tab that has "nothing to set", and do not add a Settings tab to `nav/`. Where the gear leads (a settings view, a modal, a sheet) is the app's call.
+- **Both actions are 44px targets.** Each keeps an invisible 34px box; its `::before` extends the hit area to the 44px floor, and the row's `--gap` (12px) is wider than the two 5px expansions together, so the pair never overlaps (design.md "Touch targets"). The e2e harness asserts both on the gallery.
 
 ## Load order
 
@@ -56,8 +56,8 @@ The fleet's canonical **home-head**: a home-only header card rendered as **one r
 | `--gap` | `12px` | gap between title, status, and toggle |
 | `--space-sm` | `8px` | gap inside the title cluster (glyph ↔ text) |
 | `--icon-title` | `18px` | title + toggle and gear glyph size |
-| `--radius-md` | `12px` | toggle and gear corners |
-| `--close-bg` | `var(--card-off)` | toggle and gear fill |
+| `--radius-md` | `12px` | toggle and gear corners (the focus ring follows them) |
+| `--close-bg` (default `transparent`) | `transparent` | toggle and gear background — leave unset; an icon button is unpainted at rest |
 | `--ink` | `#1f2328` | title text |
 | `--muted` | `#656d76` | status + toggle and gear glyph |
 | `--font-body` | `1rem` | title text size |

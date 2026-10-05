@@ -1,0 +1,35 @@
+<!-- Fleet icon button — markup skeletons (copy and adapt).
+     A glyph-only control: one inline-size Lucide glyph on nothing (no fill,
+     border or shadow at rest). It has no visible text, so an aria-label is
+     REQUIRED (and a title for the pointer tooltip). Neighbours sit in an
+     .icon-button-group so their 44px targets touch and never overlap. -->
+<button type="button" class="icon-button" aria-label="Edit" title="Edit">
+  <svg class="icon" aria-hidden="true"><use href="#i-pencil"></use></svg>
+</button>
+
+<!-- A toggle: the caller flips aria-pressed; pressed takes --accent-text. -->
+<button type="button" class="icon-button" aria-pressed="true" aria-label="Pin" title="Pin">
+  <svg class="icon" aria-hidden="true"><use href="#i-pin"></use></svg>
+</button>
+
+<!-- Destructive: quiet until hovered, then the danger tone. -->
+<button type="button" class="icon-button danger" aria-label="Delete" title="Delete">
+  <svg class="icon" aria-hidden="true"><use href="#i-trash-2"></use></svg>
+</button>
+
+<!-- Disabled: the plain attribute — a faint glyph, default cursor. -->
+<button type="button" class="icon-button" aria-label="Edit" title="Edit" disabled>
+  <svg class="icon" aria-hidden="true"><use href="#i-pencil"></use></svg>
+</button>
+
+<!-- Side by side: the group's gap is --hit-min minus --icon-btn-box. A context
+     that wants a bigger box sets --icon-btn-box on the group, e.g.
+     style="--icon-btn-box: var(--control-h)". -->
+<span class="icon-button-group">
+  <button type="button" class="icon-button" aria-label="Previous" title="Previous">
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+  </button>
+  <button type="button" class="icon-button" aria-label="Next" title="Next">
+    <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+  </button>
+</span>
