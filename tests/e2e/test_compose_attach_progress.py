@@ -4,7 +4,8 @@ The image button swaps to an hourglass over "N/M" and a status line above the
 textarea reads "Uploading N of M · name" while the queue runs; one summary
 toast ends the run and names every failure; a file over the host's 12 MB
 limit never leaves the browser; a second pick made mid-batch queues behind
-the first, in pick order, with nothing sent twice.
+the first, in pick order, with nothing sent twice; a tap on the busy image
+button cancels the run (#1413) and the next pick works without a reload.
 
 The upload endpoint is route-mocked and each request is held until the test
 answers it (``HeldUploads``), so every state between two uploads is on screen
@@ -64,8 +65,9 @@ def test_progress_shows_on_the_button_and_status_line_then_clears(
     expect(button).to_have_attribute("aria-busy", "true")
     expect(button.locator(".composer-upload-count")).to_have_text("1/3")
     expect(button.locator('use[href="#i-hourglass"]')).to_have_count(1)
-    # The button is still tappable: a second pick queues, it is not refused.
+    # The button is still tappable, and says what a tap does now (#1413).
     expect(button).to_be_enabled()
+    expect(button).to_have_attribute("aria-label", "Cancel upload")
     # Progress must not steal focus: the keyboard stays up (#450).
     assert authed_page.evaluate(
         "() => document.activeElement && document.activeElement.classList.contains('composer-input')"
@@ -158,3 +160,41 @@ def test_a_second_pick_mid_batch_queues_in_order_without_duplicates(
     )
     expect(authed_page.locator("#toast")).to_contain_text("Uploaded 3 files")
     assert held.count == 3, "each file is uploaded exactly once"
+
+
+def test_a_tap_on_the_busy_button_cancels_and_a_fresh_pick_works(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """#1413: an upload that hangs used to strand the button busy until the
+    app was closed. A second tap on it now aborts the upload in flight, drops
+    the rest of the queue and puts the button back at rest with a toast; the
+    held request is never answered, and a fresh pick then uploads normally."""
+    held = _ready(authed_page, base_url, launched_pty_session)
+    authed_page.locator(ATTACH_INPUT).set_input_files(
+        files=[_png("e2e-stub-a.png"), _png("e2e-stub-b.png")]
+    )
+    held.wait_for(1)
+    button = authed_page.locator(IMAGE_BTN)
+    expect(button).to_have_attribute("aria-busy", "true")
+    expect(button).to_have_attribute("aria-label", "Cancel upload")
+
+    button.click()
+
+    expect(authed_page.locator("#toast")).to_have_text("Upload cancelled")
+    expect(button).not_to_have_attribute("aria-busy", "true")
+    expect(button).not_to_have_class(re.compile(r"\bis-uploading\b"))
+    expect(button).not_to_have_attribute("aria-label", "Cancel upload")
+    expect(button.locator('use[href="#i-image"]')).to_have_count(1)
+    expect(authed_page.locator(STATUS)).to_be_hidden()
+    # No picker or menu opened in place of the cancel.
+    expect(authed_page.locator(".composer-menu:not([hidden])")).to_have_count(0)
+    expect(authed_page.locator(INPUT)).to_have_value("")
+    assert held.count == 1, "the dropped file must never be requested"
+
+    # A fresh pick, same page: it uploads and its path lands.
+    authed_page.locator(ATTACH_INPUT).set_input_files(files=[_png("e2e-stub-c.png")])
+    held.wait_for(2)
+    held.ok(1, _path("e2e-stub-c.png"))
+    expect(authed_page.locator(INPUT)).to_have_value(_path("e2e-stub-c.png"))
+    expect(authed_page.locator("#toast")).to_contain_text("Uploaded 1 file")
+    expect(button).not_to_have_attribute("aria-busy", "true")

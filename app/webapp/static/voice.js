@@ -11,6 +11,12 @@
  * /api/transcribe) so dictation degrades rather than breaks. The `finish`
  * call is the source of truth either way. The transcript always lands in
  * the target textarea for review — never straight into a PTY or a dispatch.
+ *
+ * A tap while recording stops and transcribes; a tap while the stopped take
+ * is still transcribing cancels it (#1413): its requests are aborted, the
+ * button is at rest again at once with "Dictation cancelled", and whatever
+ * text is already in the textarea stays. The voice-transcriber has no abort
+ * route, so its server-side session is simply dropped.
  */
 
 import { AuthRequiredError, apiFailToast, apiRaw, readToken, toast } from './api.js';
@@ -102,7 +108,7 @@ export function startWorkTimer(btn, restoreHtml, workingLabel) {
  *                  compose bar re-grows its textarea),
  *     onStart:     optional — called when recording starts (the compose
  *                  bar silences an in-flight read-aloud, #190),
- *   }) → { toggle, stop, isRecording }
+ *   }) → { toggle, stop, dispose, isRecording, isBusy }
  */
 export function createDictation(opts) {
   const button = opts.button;
@@ -159,17 +165,47 @@ export function createDictation(opts) {
   // mutex below only refuses *another* instance. While arming the button
   // shows a pending hourglass and toggle() ignores taps.
   let _arming = false;
-  // The button's own accessible label, put back when arming ends.
+  // The button's own accessible label and title, put back when a busy state
+  // (arming, or finalizing a take) ends.
+  let _labelHeld = false;
   let _idleLabel = null;
+  let _idleTitle = '';
+  // One take's requests (#1413): the session create, the chunk uploads, the
+  // finish and the single-shot transcribe all carry this signal, so a cancel
+  // or a dispose aborts whatever is still in flight. New per take.
+  let _takeCtrl = null;
+  // The finalizing phase in progress, or null: `{ stopTimer }`. A cancel ends
+  // it at once and clears this, so the aborted request's own settle, when it
+  // comes back later, sees it is no longer current and touches nothing.
+  let _finishOp = null;
+
+  function holdLabel(text) {
+    if (!button) return;
+    if (!_labelHeld) {
+      _labelHeld = true;
+      _idleLabel = button.getAttribute('aria-label');
+      _idleTitle = button.title;
+    }
+    button.setAttribute('aria-busy', 'true');
+    button.setAttribute('aria-label', text);
+    button.title = text;
+  }
+
+  function releaseLabel() {
+    if (!button || !_labelHeld) return;
+    _labelHeld = false;
+    button.removeAttribute('aria-busy');
+    if (_idleLabel === null) button.removeAttribute('aria-label');
+    else button.setAttribute('aria-label', _idleLabel);
+    button.title = _idleTitle;
+    _idleLabel = null;
+  }
 
   function setArmingUI() {
     _arming = true;
     if (!button) return;
-    _idleLabel = button.getAttribute('aria-label');
+    holdLabel('Starting…');
     button.classList.add('arming');
-    button.setAttribute('aria-busy', 'true');
-    button.setAttribute('aria-label', 'Starting…');
-    button.title = 'Starting…';
     button.innerHTML = icon('hourglass');
   }
 
@@ -178,10 +214,7 @@ export function createDictation(opts) {
     if (!button) return;
     if (button.classList.contains('arming')) {
       button.classList.remove('arming');
-      button.removeAttribute('aria-busy');
-      if (_idleLabel === null) button.removeAttribute('aria-label');
-      else button.setAttribute('aria-label', _idleLabel);
-      _idleLabel = null;
+      releaseLabel();
     }
     button.classList.toggle('recording', on);
     button.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -209,18 +242,19 @@ export function createDictation(opts) {
   // POST one chunk, retrying a failure. A non-2xx answer is a failure too:
   // api() throws only on 401, so a 502 from a loaded proxy used to count as
   // delivered. Resolves true once the server accepted the chunk.
-  async function sendChunk(sid, blob) {
+  async function sendChunk(sid, blob, signal) {
     for (let attempt = 1; attempt <= _CHUNK_ATTEMPTS; attempt++) {
+      if (signal.aborted) return false;
       try {
         const res = await apiRaw(
           '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/chunk',
-          { method: 'POST', terminalToken: readTerminalToken(), body: blob }
+          { method: 'POST', terminalToken: readTerminalToken(), body: blob, signal: signal }
         );
         if (res.ok) return true;
         console.warn('dictation: chunk upload answered HTTP ' + res.status +
           ' (attempt ' + attempt + '/' + _CHUNK_ATTEMPTS + ')');
       } catch (exc) {
-        if (exc instanceof AuthRequiredError) return false;
+        if (exc instanceof AuthRequiredError || signal.aborted) return false;
         console.warn('dictation: chunk upload failed (attempt ' + attempt +
           '/' + _CHUNK_ATTEMPTS + ')', exc);
       }
@@ -243,18 +277,21 @@ export function createDictation(opts) {
   // still queued. Batched, a slow request simply carries more audio.
   function drainChunks() {
     if (!_drain) {
+      const signal = _takeCtrl.signal;
       _drain = (async function () {
         try {
-          while (_chunkQueue.length && _voiceSession) {
+          while (_chunkQueue.length && _voiceSession && !signal.aborted) {
             const batch = _chunkQueue.slice();
             const blob = batch.length === 1
               ? batch[0]
               : new Blob(batch, { type: batch[0].type });
-            if (!(await sendChunk(_voiceSession, blob))) _chunksLost += batch.length;
+            if (!(await sendChunk(_voiceSession, blob, signal))) _chunksLost += batch.length;
             _chunkQueue.splice(0, batch.length);
           }
         } finally {
-          _drain = null;
+          // An aborted drain was already let go by dropFinishing(); clearing
+          // _drain now could drop the next take's.
+          if (!signal.aborted) _drain = null;
         }
       })();
     }
@@ -278,6 +315,8 @@ export function createDictation(opts) {
     // below; the 'stop' listener clears it on the normal path.
     _activeInstance = api;
     _aborted = false;
+    _takeCtrl = new AbortController();
+    const signal = _takeCtrl.signal;
     setArmingUI();
     onStart();
     let stream;
@@ -313,6 +352,7 @@ export function createDictation(opts) {
     }
     _recordChunks = [];
     _chunkQueue = [];
+    _drain = null;
     _chunksLost = 0;
     _voiceSession = null;
     _streaming = false;
@@ -321,7 +361,7 @@ export function createDictation(opts) {
     // the buffered single-shot path (#165) — _streaming stays false.
     try {
       const res = await apiRaw('/api/transcribe/sessions', {
-        method: 'POST', terminalToken: readTerminalToken(),
+        method: 'POST', terminalToken: readTerminalToken(), signal: signal,
       });
       if (res.ok) {
         const body = await res.json().catch(function () { return null; });
@@ -422,32 +462,72 @@ export function createDictation(opts) {
     }
   }
 
+  // The finalizing phase: from stop until the transcript has settled. The
+  // button stays tappable — a tap now cancels (#1413) — so it is aria-busy
+  // with a Cancel label, never `disabled`: iOS fires no tap on a disabled
+  // button, which is how a hung request used to strand it for good.
+  function beginFinishing() {
+    _finishing = true;
+    holdLabel('Cancel dictation');
+    _finishOp = { stopTimer: startWorkTimer(button, icon('mic')) };
+    return _finishOp;
+  }
+
+  // Back to rest, once per phase. False when `op` was already ended (by a
+  // cancel or a dispose) — the caller's late settle then does nothing.
+  function endFinishing(op) {
+    if (_finishOp !== op) return false;
+    _finishOp = null;
+    _finishing = false;
+    op.stopTimer();
+    releaseLabel();
+    return true;
+  }
+
+  // Abandon a stopped take still finalizing: abort its requests, stop partials
+  // landing in the textarea and put the button at rest now, not whenever the
+  // aborted request comes back. Text already in the textarea stays. Returns
+  // whether a take was finalizing.
+  function dropFinishing() {
+    const op = _finishOp;
+    if (!op) return false;
+    if (_takeCtrl) _takeCtrl.abort();
+    _chunkQueue = [];
+    _drain = null;
+    closeVoiceEvents();
+    _voiceSession = null;
+    _streaming = false;
+    endFinishing(op);
+    return true;
+  }
+
   // Streamed stop (#168): flush remaining chunks, ask the voice-transcriber
   // for the canonical transcript, settle the dictated span, tear down.
   async function finishStreaming() {
     const sid = _voiceSession;
+    const signal = _takeCtrl.signal;
     _recorder = null;
-    _finishing = true;
-    button.disabled = true;
-    const stopTimer = startWorkTimer(button, icon('mic'));
+    const op = beginFinishing();
+    // A dispose() (#755) or a cancel (#1413) that lands mid-finalize: the
+    // caller has moved on (a torn-down compose bar, a collapsed drawer, a
+    // retry), so a late transcript must not be written into whatever textarea
+    // getTextarea() now resolves to.
+    const gone = function () { return _aborted || _finishOp !== op; };
     try {
       // The recorder's last dataavailable (the flush on stop) has just been
       // queued; wait until it and every chunk before it reached the server.
       await drainChunks();
+      if (gone()) return;
       const res = await apiRaw(
         '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/finish',
-        { method: 'POST', terminalToken: readTerminalToken() }
+        { method: 'POST', terminalToken: readTerminalToken(), signal: signal }
       );
       if (!res.ok) {
         const b = await res.json().catch(function () { return null; });
         throw new Error((b && b.detail) || ('HTTP ' + res.status));
       }
       const body = await res.json().catch(function () { return null; });
-      // A dispose() (#755) that lands mid-finalize (the caller has already
-      // moved on — a torn-down compose bar, a collapsed drawer) must not
-      // write a late transcript into whatever textarea getTextarea() now
-      // resolves to.
-      if (_aborted) {
+      if (gone()) {
         // no-op
       } else if (body && body.silent) {
         // Nothing heard — drop the empty span we anchored.
@@ -464,16 +544,18 @@ export function createDictation(opts) {
           toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
         }
       }
-      if (!_aborted) getTextarea().focus();
+      if (!gone()) getTextarea().focus();
     } catch (exc) {
-      if (!_aborted) apiFailToast('Transcription failed', exc);
+      if (!gone()) apiFailToast('Transcription failed', exc);
     } finally {
-      closeVoiceEvents();
-      _voiceSession = null;
-      _streaming = false;
-      _finishing = false;
-      stopTimer();
-      button.disabled = false;
+      // A cancelled phase was torn down by dropFinishing(); a new take may
+      // own the session fields by now.
+      if (_finishOp === op) {
+        closeVoiceEvents();
+        _voiceSession = null;
+        _streaming = false;
+        endFinishing(op);
+      }
     }
   }
 
@@ -482,21 +564,22 @@ export function createDictation(opts) {
     const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
     const fd = new FormData();
     fd.append('file', blob, 'recording.' + ext);
-    _finishing = true;
-    button.disabled = true;
-    const stopTimer = startWorkTimer(button, icon('mic'));
+    const signal = _takeCtrl.signal;
+    const op = beginFinishing();
+    // A dispose() (#755) or a cancel (#1413) that lands mid-request must not
+    // write a late transcript into whatever textarea getTextarea() now
+    // resolves to.
+    const gone = function () { return _aborted || _finishOp !== op; };
     try {
       const res = await apiRaw('/api/transcribe', {
-        method: 'POST', terminalToken: readTerminalToken(), body: fd,
+        method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal,
       });
       if (!res.ok) {
         const b = await res.json().catch(function () { return null; });
         throw new Error((b && b.detail) || ('HTTP ' + res.status));
       }
-      // A dispose() (#755) that lands mid-request must not write a late
-      // transcript into whatever textarea getTextarea() now resolves to.
-      if (_aborted) return;
       const body = await res.json().catch(function () { return null; });
+      if (gone()) return;
       const text = body && body.transcript;
       if (body && body.silent) {
         toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
@@ -516,11 +599,9 @@ export function createDictation(opts) {
       ta.focus();
       toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
     } catch (exc) {
-      if (!_aborted) apiFailToast('Transcription failed', exc);
+      if (!gone()) apiFailToast('Transcription failed', exc);
     } finally {
-      _finishing = false;
-      stopTimer();
-      button.disabled = false;
+      endFinishing(op);
     }
   }
 
@@ -537,6 +618,8 @@ export function createDictation(opts) {
   // once.
   function dispose() {
     _aborted = true;
+    // Abort the take's requests too (#1413): nothing will read their answers.
+    if (_takeCtrl) _takeCtrl.abort();
     if (_recorder && _recorder.state !== 'inactive') {
       // The 'stop' handler releases the stream, clears _activeInstance and
       // (seeing _aborted) skips finish/transcribe.
@@ -554,6 +637,7 @@ export function createDictation(opts) {
       _stream = null;
     }
     if (_activeInstance === api) _activeInstance = null;
+    dropFinishing();
     closeVoiceEvents();
     setRecordingUI(false);
   }
@@ -561,6 +645,11 @@ export function createDictation(opts) {
   const api = {
     toggle: function () {
       if (_arming) return;
+      // A tap while the stopped take is still transcribing cancels it (#1413).
+      if (dropFinishing()) {
+        toast('Dictation cancelled', undefined, { icon: 'mic' });
+        return;
+      }
       if (_recorder && _recorder.state === 'recording') stopRecording();
       else startRecording();
     },

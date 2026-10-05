@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  MAX_UPLOAD_BYTES, createAttachQueue, formatMB, oversizeReason, summarize,
+  MAX_UPLOAD_BYTES, cancelledSummary, createAttachQueue, formatMB, oversizeReason, summarize,
 } from '../../app/webapp/static/attach-batch.js';
 
 const MB = 1024 * 1024;
@@ -37,10 +37,11 @@ assert.equal(
 // ---- the queue --------------------------------------------------------------
 // A controllable upload: each call parks until the test settles it.
 function harness() {
-  const h = { appended: [], progress: [], settled: [], logs: [], calls: [], gates: [] };
+  const h = { appended: [], progress: [], settled: [], logs: [], calls: [], gates: [], signals: [] };
   h.queue = createAttachQueue({
-    upload: (f) => new Promise((resolve, reject) => {
+    upload: (f, signal) => new Promise((resolve, reject) => {
       h.calls.push(f.name);
+      h.signals.push(signal);
       h.gates.push({ resolve, reject });
     }),
     onAppend: (p) => h.appended.push(p),
@@ -138,5 +139,47 @@ const tick = () => new Promise((r) => setImmediate(r));
   assert.deepEqual(h.settled.map((r) => r.total), [1, 1]);
   assert.deepEqual(h.progress[2], { index: 1, total: 1, name: 'b' });
 }
+
+{
+  // cancel() (#1413): the upload in flight is aborted, the rest is dropped,
+  // the run settles at once, and a late answer from the aborted upload never
+  // appends. A fresh pick afterwards runs as a new batch.
+  const h = harness();
+  const q = h.queue;
+  const signals = h.signals;
+  q.enqueue([file('a'), file('b'), file('c')]);
+  await tick();
+  h.gates[0].resolve('/p/a');
+  await tick();
+  assert.deepEqual(h.calls, ['a', 'b']);
+  q.cancel();
+  assert.equal(signals[1].aborted, true, 'the upload in flight is aborted');
+  assert.equal(signals[0].aborted, false, 'a finished upload is left alone');
+  assert.equal(q.busy(), false, 'idle again on the same tick');
+  assert.deepEqual(h.progress.at(-1), null);
+  assert.deepEqual(h.settled, [{ ok: 1, total: 3, failures: [], cancelled: true }]);
+  // The aborted upload's answer arrives late anyway: nothing is appended.
+  h.gates[1].resolve('/p/b');
+  await tick(); await tick();
+  assert.deepEqual(h.appended, ['/p/a']);
+  assert.deepEqual(h.calls, ['a', 'b'], 'the dropped file is never requested');
+  assert.equal(h.settled.length, 1, 'the cancelled run settles once');
+
+  const again = q.enqueue([file('d')]);
+  await tick();
+  assert.deepEqual(h.calls, ['a', 'b', 'd']);
+  assert.equal(signals[2].aborted, false, 'a new run gets a fresh signal');
+  h.gates[2].resolve('/p/d');
+  await again;
+  assert.deepEqual(h.appended, ['/p/a', '/p/d']);
+  assert.deepEqual(h.settled[1], { ok: 1, total: 1, failures: [] });
+  q.cancel();
+  assert.equal(h.settled.length, 2, 'cancel when idle does nothing');
+}
+
+assert.deepEqual(cancelledSummary(0, 3), { text: 'Upload cancelled', tone: '' });
+assert.deepEqual(cancelledSummary(1, 3), {
+  text: 'Upload cancelled — 1 of 3 attached.', tone: '',
+});
 
 console.log('OK');

@@ -297,7 +297,7 @@ function buildDrawerComposer(card) {
   drawerComposer = mountComposer(host, {
     placeholder: 'Reply to ' + (card.project || 'session') + '…',
     send: function (text) { return sendFromDrawer(card, text); },
-    upload: function (file) { return uploadSessionFile(card.session_id, file); },
+    upload: function (file, signal) { return uploadSessionFile(card.session_id, file, signal); },
     // The Board never opens the PTY's WebSocket, so ⌨ has nothing to drive
     // for either kind — disabled, with the way to get keys as its reason.
     keys: null,

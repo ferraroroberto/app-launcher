@@ -121,6 +121,8 @@ export async function jsonApi(path, opts) {
 // usual fetch options — then goes through the exact same 401 → showLogin() +
 // AuthRequiredError path as jsonApi(), via api(). Callers still own res.ok /
 // res.json() beyond that, same as they did calling fetch() directly before.
+// `opts.signal` rides through to fetch() untouched: the composer's upload and
+// dictation requests pass one so a second tap can abort them (#1413).
 export async function apiRaw(path, opts) {
   opts = opts || {};
   const headers = Object.assign(
