@@ -29,9 +29,11 @@
  *                        rejects — to KEEP the draft (a failed send must not
  *                        eat the text); anything else clears the buffer.
  *                        Send is disabled while a promise is pending.
- *     upload(file):      store one attachment and resolve its path (or null
- *                        on failure, after the caller's own error toast).
- *                        The composer appends the path to the text.
+ *     upload(file, signal): store one attachment and resolve its path (or
+ *                        null on failure, after the caller's own error
+ *                        toast). The composer appends the path to the text.
+ *                        `signal` aborts when the operator cancels (#1413);
+ *                        pass it to the request.
  *     keys:              { send(bytes), onOpen() } to drive a PTY from the
  *                        ⌨ D-pad, or null when the session has none — the
  *                        button then renders disabled with the reason.
@@ -96,7 +98,10 @@
  * refused before any byte is sent, and one summary toast ends the run,
  * naming each failure. While it runs the image button shows an hourglass
  * with "N/M" and a status line above the textarea says "Uploading N of M"
- * (neither takes focus, so the keyboard stays up).
+ * (neither takes focus, so the keyboard stays up). A tap on the busy image
+ * button cancels the run (#1413): the upload in flight is aborted, the rest of
+ * the queue is dropped, and the button is ready again with "Upload
+ * cancelled". A paste or drop mid-run still queues behind it.
  */
 
 import { apiFailToast, apiRaw, toast } from './api.js';
@@ -106,7 +111,7 @@ import { createRowMenu } from './row-menu.js';
 import { bindLongPressHint } from './long-press-hint.js';
 import { mountKeysPopover } from './terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
-import { createAttachQueue, summarize } from './attach-batch.js';
+import { cancelledSummary, createAttachQueue, summarize } from './attach-batch.js';
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
 // for a long dictated voice note (#165) without the bar eating the whole
@@ -126,6 +131,7 @@ const _TITLE_IMAGE_MENU = 'Attach image or file · Extract text from screenshots
 // code implemented and described the opposite of what the return key does.
 const _TITLE_SEND = 'Send';
 const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
+const _TITLE_CANCEL_UPLOAD = 'Cancel upload';
 const _LABEL_ATTACH = 'Attach image or file';
 const _LABEL_OCR = 'Extract text from screenshots';
 
@@ -209,6 +215,8 @@ export function mountComposer(host, opts) {
   bindLongPressHint(el.keys);
   let keysOpts = opts.keys || null;
   let ocrOn = false;
+  // The image button's resting title; while an upload runs it says Cancel.
+  let imageTitle = _TITLE_IMAGE;
   // Fixed for the life of the mount: the surface opts into the shortcut at
   // mount time, so the title can't drift from the binding (#1072).
   const titleSend = opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND;
@@ -371,9 +379,15 @@ export function mountComposer(host, opts) {
     hasImage = true;
   }
 
+  function labelImage(text) {
+    el.image.title = text;
+    el.image.setAttribute('aria-label', text);
+  }
+
   // #1354: "N of M" on the image button and in the status line while the
   // queue runs; both go back to rest when it drains. The button stays
-  // tappable (a second pick queues), so it is `aria-busy`, never `disabled`.
+  // tappable — a tap now cancels the run (#1413) — so it is `aria-busy`,
+  // never `disabled`: iOS fires no tap on a disabled button.
   function showUploadProgress(p) {
     if (!p) {
       el.uploadStatus.hidden = true;
@@ -381,23 +395,25 @@ export function mountComposer(host, opts) {
       el.image.classList.remove('is-uploading');
       el.image.removeAttribute('aria-busy');
       el.image.innerHTML = icon('image');
+      labelImage(imageTitle);
       return;
     }
     el.uploadStatus.hidden = false;
     el.uploadStatus.textContent = 'Uploading ' + p.index + ' of ' + p.total + ' · ' + p.name;
     el.image.classList.add('is-uploading');
     el.image.setAttribute('aria-busy', 'true');
+    labelImage(_TITLE_CANCEL_UPLOAD);
     el.image.innerHTML = icon('hourglass') +
       '<span class="composer-upload-count">' + p.index + '/' + p.total + '</span>';
   }
 
   const attachQueue = createAttachQueue({
-    upload: function (file) { return opts.upload(file); },
+    upload: function (file, signal) { return opts.upload(file, signal); },
     onAppend: appendPath,
     onProgress: showUploadProgress,
     onSettle: function (r) {
       if (!r.total) return;
-      const s = summarize(r.ok, r.total, r.failures);
+      const s = r.cancelled ? cancelledSummary(r.ok, r.total) : summarize(r.ok, r.total, r.failures);
       toast(s.text, s.tone, { icon: 'paperclip' });
     },
     log: function (e) {
@@ -448,7 +464,13 @@ export function mountComposer(host, opts) {
   // The image button's two options. Registered BEFORE the menu binds its own
   // anchor handler, so with OCR unavailable this listener wins the click,
   // opens the picker directly and stops the (one-row) menu from opening.
+  // While an upload runs the same tap cancels it instead (#1413), menu or not.
   el.image.addEventListener('click', function (ev) {
+    if (attachQueue.busy()) {
+      ev.stopImmediatePropagation();
+      attachQueue.cancel();
+      return;
+    }
     if (ocrOn) return;
     ev.stopImmediatePropagation();
     el.attachInput.click();
@@ -571,8 +593,8 @@ export function mountComposer(host, opts) {
       ocrOn = !!a.ocr;
       ocrItem.hidden = !ocrOn;
       el.image.classList.toggle('has-options', ocrOn);
-      el.image.title = ocrOn ? _TITLE_IMAGE_MENU : _TITLE_IMAGE;
-      el.image.setAttribute('aria-label', el.image.title);
+      imageTitle = ocrOn ? _TITLE_IMAGE_MENU : _TITLE_IMAGE;
+      if (!attachQueue.busy()) labelImage(imageTitle);
       el.image.setAttribute('aria-haspopup', ocrOn ? 'menu' : 'false');
       if (!ocrOn) imageMenu.close();
     }

@@ -10,7 +10,8 @@ stop every other card keeps, the manual Start affordance shows when no
 chief is alive (Restart when one is, #617), and the settings dialog
 round-trips GET → edit → PUT. The Chief's-plan card's answer sheet
 (#1295) renders the chief's questions and sends every answer as one message
-down that same input path.
+down that same input path. A hung upload in the sheet or a hung dictation in
+the chat bar is cancelled by a second tap on its busy button (#1413).
 Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
@@ -1073,3 +1074,132 @@ def test_answer_sheet_attach_with_no_chief_says_why(
     expect(authed_page.locator("#toast")).to_have_text(
         "Uploaded 0 of 1 — 1 failed: e2e-stub-a.png (the chief is not running)")
     expect(also.locator(".composer-input")).to_have_value("")
+
+
+@pytest.mark.iphone
+def test_answer_sheet_busy_image_tap_cancels_the_upload(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1413: the chief's composer cancels a hung upload as the session
+    composer does — a tap on the busy image button aborts it and drops the
+    rest of the pick, and the next pick reaches the chief without a reload."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    held = HeldUploads(authed_page, re.compile(r".*/api/claude-code/sessions/s-chief/image(?:\?.*)?$"))
+    _open_board(authed_page, base_url)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    also = authed_page.locator("#chiefAnswersDialog #chiefAnswersAlso")
+    also.locator(".composer-attach-input").set_input_files(files=[
+        {"name": "e2e-stub-a.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+        {"name": "e2e-stub-b.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+    ])
+    held.wait_for(1)
+    image = also.locator(".composer-image")
+    expect(image).to_have_attribute("aria-label", "Cancel upload")
+
+    image.click()
+
+    expect(authed_page.locator("#toast")).to_have_text("Upload cancelled")
+    expect(image).not_to_have_attribute("aria-busy", "true")
+    expect(also.locator(".composer-upload-status")).to_be_hidden()
+    expect(also.locator(".composer-input")).to_have_value("")
+    expect(authed_page.locator("#chiefAnswersDialog")).to_be_visible()
+    assert held.count == 1, "the dropped file must never be requested"
+
+    also.locator(".composer-attach-input").set_input_files(files=[
+        {"name": "e2e-stub-c.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+    ])
+    held.wait_for(2)
+    held.ok(1, _CHIEF_UPLOAD)
+    expect(also.locator(".composer-input")).to_have_value(_CHIEF_UPLOAD)
+
+
+# getUserMedia + a recorder that hands over one blob on stop, as
+# test_voice_dictation.py's single-shot mock does.
+_RECORDER_MOCK = """
+(() => {
+  navigator.mediaDevices = navigator.mediaDevices || {};
+  navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => {} }] });
+  class FakeRecorder {
+    constructor(stream, opts) {
+      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
+      this.state = 'inactive';
+      this._listeners = {};
+    }
+    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+    start() { this.state = 'recording'; }
+    stop() {
+      this.state = 'inactive';
+      const da = this._listeners['dataavailable'];
+      if (da) da({ data: new Blob(['fake-audio'], { type: this.mimeType }) });
+      const st = this._listeners['stop'];
+      if (st) st();
+    }
+  }
+  FakeRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = FakeRecorder;
+})()
+"""
+
+
+@pytest.mark.iphone
+def test_chat_bar_busy_mic_tap_cancels_the_transcription(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1413: the chief chat bar's mic is its own dictation mount, and the
+    single-shot path (no streamed session) hangs the same way. A tap while it
+    transcribes cancels; a tap while recording still stops; the next take on
+    the same page lands its transcript in the goal box."""
+    authed_page.add_init_script(_RECORDER_MOCK)
+
+    def _status_voice_on(route):
+        resp = route.fetch()
+        body = resp.json()
+        body["voice_dictation"] = True
+        route.fulfill(response=resp, json=body)
+
+    authed_page.route(re.compile(r".*/api/status$"), _status_voice_on)
+    authed_page.route(
+        re.compile(r".*/api/transcribe/sessions$"),
+        lambda route: route.fulfill(status=503, body="nope"),
+    )
+    takes: list = []
+
+    def _transcribe(route):
+        takes.append(route)
+        if len(takes) > 1:
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=_json.dumps({"transcript": "e2e dictated goal", "language": "en"}),
+            )
+
+    authed_page.route(re.compile(r".*/api/transcribe$"), _transcribe)
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _mock_exchange(authed_page)
+    _open_board(authed_page, base_url)
+
+    mic = authed_page.locator("#boardDispatchRecord")
+    goal = authed_page.locator("#boardDispatchGoal")
+    expect(mic).to_be_visible(timeout=15_000)
+    goal.fill("typed first")
+    mic.click()
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    mic.click()  # stop
+    wait_until(authed_page, lambda: len(takes) == 1, "the stop never reached /api/transcribe")
+    expect(mic).to_have_attribute("aria-busy", "true")
+    expect(mic).to_have_attribute("aria-label", "Cancel dictation")
+
+    mic.click()  # cancel
+
+    expect(authed_page.locator("#toast")).to_have_text("Dictation cancelled")
+    expect(mic).not_to_have_attribute("aria-busy", "true")
+    expect(mic).not_to_have_attribute("aria-label", "Cancel dictation")
+    expect(mic.locator('use[href="#i-mic"]')).to_have_count(1)
+    expect(goal).to_have_value("typed first")
+
+    mic.click()
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    mic.click()
+    expect(goal).to_have_value(re.compile(r"e2e dictated goal"))
+    assert len(takes) == 2

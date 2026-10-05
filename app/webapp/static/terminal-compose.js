@@ -144,13 +144,15 @@ export function sendSubmit(t, text, opts) {
 // #1354: a failure throws its reason and does not toast — the composer names
 // every failed file in the one summary toast that ends the batch, instead of
 // one toast per file.
-export async function uploadSessionFile(sid, file) {
+// `signal` (#1413) is the composer's per-upload AbortSignal: a second tap on
+// the busy image button aborts the request instead of waiting it out.
+export async function uploadSessionFile(sid, file, signal) {
   if (!sid || !file) throw new Error('no session to attach to');
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   const res = await apiRaw(
     '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
-    { method: 'POST', terminalToken: readTerminalToken(), body: fd }
+    { method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal }
   );
   if (!res.ok) {
     const b = await res.json().catch(function () { return null; });
@@ -162,9 +164,9 @@ export async function uploadSessionFile(sid, file) {
   return path;
 }
 
-function uploadTerminalImage(file) {
+function uploadTerminalImage(file, signal) {
   const t = state.terminal;
-  return t ? uploadSessionFile(t.sid, file) : Promise.resolve(null);
+  return t ? uploadSessionFile(t.sid, file, signal) : Promise.resolve(null);
 }
 
 // sendSubmit's options for one composed send. #499: bulk text (a long

@@ -570,3 +570,99 @@ def test_leaving_terminal_mid_recording_releases_mic(
     )
     record.click()
     expect(record).to_have_class(re.compile(r"\brecording\b"), timeout=5_000)
+
+
+def test_a_tap_while_transcribing_cancels_and_a_fresh_take_works(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A tap while the stopped take is still transcribing cancels it (#1413).
+
+    A /finish that never answered left the mic ``disabled`` with its timer
+    ticking for good: a disabled button takes no tap, so the only way out was
+    closing the app. Now the button stays tappable and says it cancels; a tap
+    aborts the request, puts the mic at rest with "Dictation cancelled" and
+    keeps the partial already in the textarea. A tap while recording still
+    means stop and transcribe, and the next take, on the same page, settles
+    its transcript normally."""
+    sid = launched_pty_session
+    authed_page.add_init_script(_MEDIA_MOCK)
+    authed_page.route(
+        "**/api/transcribe/sessions",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body='{"session_id": "vt-1"}',
+        ),
+    )
+    # One partial on the first stream only: a reconnect left pending can't
+    # re-deliver it after the cancel (as in the #489 test above).
+    events = {"n": 0}
+
+    def _events(route):
+        events["n"] += 1
+        if events["n"] == 1:
+            route.fulfill(
+                status=200, content_type="text/event-stream",
+                body='event: partial\ndata: {"version":1,"transcript":"%s"}\n\n' % _PARTIAL,
+            )
+
+    authed_page.route("**/api/transcribe/sessions/vt-1/events*", _events)
+    authed_page.route(
+        "**/api/transcribe/sessions/vt-1/chunk",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"raw_bytes": 9}',
+        ),
+    )
+    # The first /finish hangs (held, never answered); the second answers.
+    finishes: list = []
+
+    def _finish(route):
+        finishes.append(route)
+        if len(finishes) > 1:
+            route.fulfill(
+                status=200, content_type="application/json",
+                body='{"transcript": "%s", "language": "en"}' % _FINAL,
+            )
+
+    authed_page.route("**/api/transcribe/sessions/vt-1/finish", _finish)
+    _open_terminal(authed_page, base_url, sid)
+    _open_compose_with_record(authed_page)
+    record = authed_page.locator("#terminalComposeBar .composer-mic")
+    box = authed_page.locator("#terminalComposeBar .composer-input")
+    idle_label = record.get_attribute("aria-label")
+
+    record.click()
+    expect(record).to_have_class(re.compile(r"\brecording\b"))
+    expect(box).to_have_value(re.compile(re.escape(_PARTIAL)), timeout=10_000)
+    record.click()  # stop: still means stop and transcribe
+    expect(record).not_to_have_class(re.compile(r"\brecording\b"))
+    expect(record).to_have_attribute("aria-busy", "true")
+    expect(record).to_have_attribute("aria-label", "Cancel dictation")
+    expect(record).to_be_enabled()
+    for _ in range(100):
+        if finishes:
+            break
+        authed_page.wait_for_timeout(50)
+    assert finishes, "the stop never reached /finish"
+
+    record.click()  # cancel
+
+    expect(authed_page.locator("#toast")).to_have_text("Dictation cancelled")
+    expect(record).not_to_have_attribute("aria-busy", "true")
+    expect(record).not_to_have_class(re.compile(r"\bworking\b"))
+    expect(record).to_have_attribute("aria-label", idle_label or "")
+    expect(record.locator('use[href="#i-mic"]')).to_have_count(1)
+    # What was already dictated stays for the operator to keep or delete.
+    expect(box).to_have_value(re.compile(re.escape(_PARTIAL)))
+
+    # A fresh take on the same page settles normally.
+    authed_page.evaluate(
+        "() => { const t = document.querySelector('#terminalComposeBar .composer-input');"
+        " t.value = ''; t.selectionStart = t.selectionEnd = 0; }"
+    )
+    record.click()
+    expect(record).to_have_class(re.compile(r"\brecording\b"))
+    record.click()
+    expect(box).to_have_value(_FINAL, timeout=10_000)
+    expect(authed_page.locator("#toast")).to_contain_text("Transcribed")
+    expect(record).not_to_have_attribute("aria-busy", "true")
+    assert len(finishes) == 2

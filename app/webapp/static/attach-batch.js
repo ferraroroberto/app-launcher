@@ -8,6 +8,12 @@
 // "N of M" over everything queued since the queue last went idle, so a second
 // pick just grows M. A failure is recorded with its reason and the queue moves
 // on; the summary is one message for the whole run, not one per file.
+//
+// cancel() (#1413) ends a run at once: the upload in flight is aborted through
+// the AbortSignal it was handed, the rest of the queue is dropped, and the run
+// settles there and then, so the button is ready again on the same tap. A file
+// that was in flight never appends its path, even if its answer was already on
+// the way: the run it belonged to is over.
 
 // The session-host rejects anything larger (`_MAX_IMAGE_BYTES` in
 // app/session_host/server.py; tests/test_attach_batch.py pins the two equal).
@@ -51,13 +57,25 @@ export function summarize(ok, total, failures) {
   };
 }
 
+// The toast a cancelled run ends with. Files that landed before the tap keep
+// their paths in the message, so say how many there are.
+export function cancelledSummary(ok, total) {
+  return {
+    text: ok ? 'Upload cancelled — ' + ok + ' of ' + total + ' attached.' : 'Upload cancelled',
+    tone: '',
+  };
+}
+
 // opts:
-//   upload(file)  → path, or null; a throw carries the reason
+//   upload(file, signal)  → path, or null; a throw carries the reason. The
+//                 signal aborts when the run is cancelled.
+
 //   onAppend(path)  each successful path, in order
 //   onProgress({index, total, name})  before each file; null when idle again
-//   onSettle({ok, total, failures})  once the queue has drained
+//   onSettle({ok, total, failures, cancelled?})  once the queue has drained,
+//                 or at once on cancel() with `cancelled: true`
 //   log(entry)  one per upload attempt: {name, bytes, ms, ok, reason?}
-// Returns {enqueue(files) → promise for the drain, busy()}.
+// Returns {enqueue(files) → promise for the drain, busy(), cancel()}.
 export function createAttachQueue(opts) {
   const log = opts.log || function () {};
   let pending = [];
@@ -67,14 +85,21 @@ export function createAttachQueue(opts) {
   let current = '';
   let ok = 0;
   let failures = [];
+  // One per run: cancel() bumps it, and a drain or an attempt holding an older
+  // value stops touching anything when its await comes back.
+  let run = 0;
+  let controller = null;
 
-  async function attempt(file) {
+  async function attempt(file, myRun) {
     const name = file.name || 'file';
     const started = Date.now();
     let reason = oversizeReason(file);
     if (!reason) {
+      const ctrl = new AbortController();
+      controller = ctrl;
       try {
-        const path = await opts.upload(file);
+        const path = await opts.upload(file, ctrl.signal);
+        if (myRun !== run) return;
         if (path) {
           opts.onAppend(path);
           ok++;
@@ -83,23 +108,36 @@ export function createAttachQueue(opts) {
         }
         reason = 'upload failed';
       } catch (exc) {
+        if (myRun !== run) {
+          log({ name: name, bytes: file.size, ms: Date.now() - started, ok: false, reason: 'cancelled' });
+          return;
+        }
         reason = (exc && exc.message) || 'upload failed';
+      } finally {
+        // A cancelled run's attempt may come back after the next run began.
+        if (controller === ctrl) controller = null;
       }
     }
     failures.push({ name: name, reason: reason });
     log({ name: name, bytes: file.size, ms: Date.now() - started, ok: false, reason: reason });
   }
 
+  function reset() {
+    pending = []; running = null; total = 0; done = 0; current = ''; ok = 0; failures = [];
+  }
+
   async function drain() {
+    const myRun = run;
     while (pending.length) {
       const file = pending.shift();
       done++;
       current = file.name || 'file';
       opts.onProgress({ index: done, total: total, name: current });
-      await attempt(file);
+      await attempt(file, myRun);
+      if (myRun !== run) return;
     }
     const result = { ok: ok, total: total, failures: failures };
-    pending = []; running = null; total = 0; done = 0; current = ''; ok = 0; failures = [];
+    reset();
     opts.onProgress(null);
     opts.onSettle(result);
   }
@@ -116,5 +154,15 @@ export function createAttachQueue(opts) {
       return running;
     },
     busy: function () { return !!running; },
+    // Abort the upload in flight, drop the rest and settle now. No-op when idle.
+    cancel: function () {
+      if (!running) return;
+      run++;
+      if (controller) controller.abort();
+      const result = { ok: ok, total: total, failures: failures, cancelled: true };
+      reset();
+      opts.onProgress(null);
+      opts.onSettle(result);
+    },
   };
 }
