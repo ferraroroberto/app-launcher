@@ -12,8 +12,8 @@
  * inline control) and button.css (.button-primary) linked alongside — the
  * recipes live there once, not re-declared here.
  *
- * Contract: heading-lg title + 34px square × close (modal.closeSize) with a
- * 44px effective hit area; label/value rows at 12px 0 on a top-border
+ * Contract: heading-lg title + an unpainted 34px × close (modal.closeSize)
+ * with a 44px effective hit area; label/value rows at 12px 0 on a top-border
  * divider, value control >= 55%; exactly one full-width primary button,
  * whose disabled state clears AA in both themes; the nav hides while the
  * dialog is open; top-anchored on mobile so it never jumps on open/close.
@@ -79,7 +79,10 @@ body:has(dialog[open]) .app { overflow: hidden; }
   padding: 18px;
 }
 
-/* Header: heading-lg title left, square close button right. */
+/* Header: heading-lg title left, close button right. The close is an icon
+   button (design.md, fleet-config#1259; icon-button/): an invisible 34px box,
+   no fill, border or shadow at rest — --close-bg defaults to transparent and
+   an app leaves it unset. */
 .detail-header {
   display: flex;
   align-items: center;
@@ -89,7 +92,7 @@ body:has(dialog[open]) .app { overflow: hidden; }
 .detail-header h2 { margin: 0; font-size: var(--font-heading-lg); }
 .detail-close {
   position: relative;
-  background: var(--close-bg);
+  background: var(--close-bg, transparent);
   border: none;
   border-radius: var(--radius-md);
   width: 34px;                /* modal.closeSize */

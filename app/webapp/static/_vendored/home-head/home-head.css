@@ -54,15 +54,15 @@
 
 /* Icon-only trailing actions: the theme toggle and the Settings gear, pinned
  * right (the first one's margin-left:auto holds the pair there even when no
- * .status is present). Same subtle-contrast recipe as the modal's
- * .detail-close / home-automation's .weather-icon-btn — a filled tap target,
- * not a bare floating glyph. The gear also carries `.button-surface` (its
- * tier, per design.md); this rule is the more specific one, so the pair
- * draws identically whatever the stylesheet order.
+ * .status is present). Each is an icon button (design.md, fleet-config#1259;
+ * the same contract as the modal's .detail-close and icon-button/): a glyph
+ * on nothing — no fill, border or shadow at rest: --close-bg defaults to
+ * transparent, and an app leaves it unset. Neither carries a button tier:
+ * `.button-surface` is the labelled utility button, never a glyph.
  *
- * The visual stays 34px; the ::before extends each target to the 44px floor
- * (34 + 2 x 5). The pair's --gap (12px) is wider than the two 5px expansions
- * together, so neighbouring targets never share a tappable pixel. */
+ * The 34px box is invisible; the ::before extends each target to the 44px
+ * floor (34 + 2 x 5). The pair's --gap (12px) is wider than the two 5px
+ * expansions together, so neighbouring targets never share a tappable pixel. */
 .home-head .home-toggle {
   position: relative;
   flex: none;
@@ -75,7 +75,7 @@
   justify-content: center;
   border: none;
   border-radius: var(--radius-md);
-  background: var(--close-bg);
+  background: var(--close-bg, transparent);
   color: var(--muted);
   font: inherit;
   line-height: normal;
