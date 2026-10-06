@@ -3444,7 +3444,6 @@ body.terminal-open {
   cursor: pointer;
 }
 .ocr-extract:active { opacity: 0.85; }
-.ocr-extract:disabled { opacity: 0.6; cursor: default; }
 .ocr-extract.working { opacity: 1; }
 /* The session overlay's bottom status strip (#1219). Always laid out, in
    both modes, one status line tall — the height the old status line added

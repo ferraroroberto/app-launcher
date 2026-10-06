@@ -122,6 +122,40 @@ class TestOcr:
         assert "unreachable" in resp.json()["detail"]
 
 
+    def test_still_running_past_budget_maps_to_504(self, webapp_client):
+        """#1420: 'photo-ocr never answered' reaches the phone as a 504, apart
+        from the 503 'unreachable' above."""
+        client, _, overrides = webapp_client
+        photo = overrides["photo_ocr"]
+        photo.extract.side_effect = photo.PhotoOcrError(
+            "photo-ocr was still working after 960s with no answer", status=504
+        )
+        resp = client.post(
+            "/api/ocr",
+            files={"files": ("s.png", b"img", "image/png")},
+        )
+        assert resp.status_code == 504
+        assert "still working" in resp.json()["detail"]
+
+    def test_partial_result_reaches_the_phone_with_missing_photos(self, webapp_client):
+        """#1420: a partly read take is a 200; the phone gets `missing_photos`
+        so the composer can say how many screenshots were not read."""
+        client, _, overrides = webapp_client
+        overrides["photo_ocr"].extract.return_value = {
+            "text": "one\n[missing: photo 2 (b.png) could not be read]",
+            "missing_photos": ["b.png"],
+        }
+        resp = client.post(
+            "/api/ocr",
+            files=[
+                ("files", ("a.png", b"1", "image/png")),
+                ("files", ("b.png", b"2", "image/png")),
+            ],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["missing_photos"] == ["b.png"]
+
+
 class TestStatusOcrFlag:
     def test_status_reports_screenshot_ocr_enabled(self, webapp_client):
         client, _, _ = webapp_client

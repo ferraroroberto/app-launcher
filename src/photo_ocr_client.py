@@ -25,9 +25,13 @@ from src import _loopback_http
 
 logger = logging.getLogger(__name__)
 
-# A vision-hub round-trip on one screenshot is usually a few seconds, but
-# allow ample headroom for a cold hub on the first extract after boot.
-_TIMEOUT = 120.0
+# One ``/api/extract`` call is bounded by photo-ocr's own run budget, not by a
+# single hub round-trip: it reads photos in parallel with a retry and answers
+# within ``extract_run_budget_s`` (900 s by default, photo-ocr#166). Wait a
+# little longer than that so we never give up on a run photo-ocr is still
+# entitled to finish — a client-side timeout would discard text it then returns
+# (#1420). A usual 1-2 screenshot attach still answers in 10-15 s.
+_TIMEOUT = 960.0
 
 # photo-ocr serves a self-signed loopback cert, so every call sets verify=False
 # (the per-call InsecureRequestWarning is suppressed once in _loopback_http).
@@ -50,12 +54,16 @@ def extract(
     ``files`` is a list of ``(filename, content, content_type)`` tuples.
     photo-ocr collates multiple images of one document into a single
     deduplicated text (its whole point). Returns the response —
-    ``{"text", "model", "session_id", ...}`` (``text`` may be empty when the
-    images hold no readable text). The session is left in photo-ocr's
-    History so the take stays recoverable on disk.
+    ``{"text", "model", "session_id", "missing_photos", ...}`` (``text`` may be
+    empty when the images hold no readable text). A partly read take is a
+    *success*: ``missing_photos`` names the unread files and ``text`` carries a
+    ``[missing: photo N ...]`` line where each belongs. The session is left in
+    photo-ocr's History so the take stays recoverable on disk.
 
     Raises :class:`PhotoOcrError` (carrying an HTTP status) on any transport
-    or upstream failure.
+    or upstream failure, keeping three states apart: 503 photo-ocr unreachable,
+    504 connected but no answer within ``_TIMEOUT`` (still running), and
+    photo-ocr's own status (502: no photo could be read) with its detail.
     """
     if not files:
         raise PhotoOcrError("no images to OCR", status=400)
@@ -71,7 +79,7 @@ def extract(
     multipart = [
         ("files", (name, content, ctype)) for (name, content, ctype) in files
     ]
-    return _loopback_http.request(
+    result = _loopback_http.request(
         "POST",
         f"{base}/api/extract",
         error=PhotoOcrError,
@@ -79,6 +87,15 @@ def extract(
         timeout=_TIMEOUT,
         verify=_VERIFY,
         allow_empty=False,
+        read_timeout_status=504,
         params=params or None,
         files=multipart,
     )
+    missing = result.get("missing_photos") or []
+    result["missing_photos"] = missing
+    if missing:
+        logger.warning(
+            "⚠️ photo-ocr read %d of %d photos; unread: %s",
+            len(files) - len(missing), len(files), ", ".join(map(str, missing)),
+        )
+    return result
