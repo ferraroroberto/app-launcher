@@ -567,7 +567,7 @@ function renderTurn(e) {
   s.appendChild(hint);
   const copyBtn = document.createElement('button');
   copyBtn.type = 'button';
-  copyBtn.className = 'tr-turn-copy hit-target';
+  copyBtn.className = 'icon-button tr-turn-copy';
   copyBtn.setAttribute('aria-label', 'Copy ' + copyLabel(e.kind).toLowerCase());
   copyBtn.innerHTML = icon('copy');
   copyBtn.addEventListener('click', function (ev) {

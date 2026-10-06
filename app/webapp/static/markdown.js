@@ -120,7 +120,7 @@ function renderQuote(inner) {
   if (cur.length) paras.push(cur);
   const body = paras.map(function (p) { return '<p>' + p.join('<br>') + '</p>'; }).join('');
   return '<blockquote class="md-quote"><div class="md-quote-body">' + body + '</div>'
-    + '<button type="button" class="md-quote-copy hit-target" aria-label="Copy quote"'
+    + '<button type="button" class="icon-button md-quote-copy" aria-label="Copy quote"'
     + ' data-copy="' + lines.join('&#10;') + '">' + icon('copy') + '</button></blockquote>';
 }
 

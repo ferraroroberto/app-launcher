@@ -192,7 +192,7 @@ function compactButton(s, pct) {
   const sid = s.session_id;
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'channel-list-compact';
+  btn.className = 'icon-button channel-list-compact';
   if (contextAlert(pct)) btn.dataset.high = 'true';
   btn.disabled = compacting.has(sid);
   btn.title = 'Send /compact to this session';

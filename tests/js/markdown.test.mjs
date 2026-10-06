@@ -125,7 +125,7 @@ const md = (lines) => renderMarkdown(lines.join('\n'));
   assert.ok(html.includes(
     '<p>Hello,</p><p>The installation was finished in August.</p><p>Best regards,<br>Name</p>'), html);
   assert.ok(!html.includes('&gt;'), 'no literal > marker may survive: ' + html);
-  assert.ok(html.includes('class="md-quote-copy hit-target" aria-label="Copy quote"'), html);
+  assert.ok(html.includes('class="icon-button md-quote-copy" aria-label="Copy quote"'), html);
   assert.equal(copyOf(html),
     'Hello,\n\nThe installation was finished in August.\n\nBest regards,\nName');
 

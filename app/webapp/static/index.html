@@ -42,6 +42,7 @@
   <link rel="stylesheet" href="/static/_vendored/disclosure/disclosure.css">
   <link rel="stylesheet" href="/static/_vendored/nav/nav-tabs.css">
   <link rel="stylesheet" href="/static/_vendored/button/button.css">
+  <link rel="stylesheet" href="/static/_vendored/icon-button/icon-button.css">
   <link rel="stylesheet" href="/static/_vendored/switch/switch.css">
   <link rel="stylesheet" href="/static/_vendored/select-native/select-native.css">
   <link rel="stylesheet" href="/static/_vendored/range-tab/range-tab.css">
@@ -754,7 +755,7 @@
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume
             </button>
           </div>
-          <button id="favFilterBtn" type="button" class="button-ghost fav-filter-btn"
+          <button id="favFilterBtn" type="button" class="icon-button fav-filter-btn"
                   aria-pressed="false" aria-label="Show only favorites"
                   title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
         </div>
@@ -1078,7 +1079,7 @@
              a near-miss beside one toggled the whole card. -->
         <div class="card-toolbar">
           <div class="jobs-header-actions">
-            <button id="jobsAddBtn" type="button" class="button-ghost jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
+            <button id="jobsAddBtn" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
             <span class="jobs-edit-control">
               <span class="jobs-edit-label">Edit mode</span>
               <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
@@ -1094,7 +1095,7 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="jobsSearchInput" type="search" autocomplete="off"
                  placeholder="Search jobs and run output" aria-label="Search jobs and run output">
-          <button id="jobsSearchClear" type="button" class="button-ghost hit-target"
+          <button id="jobsSearchClear" type="button" class="icon-button"
                   aria-label="Clear run search" title="Clear run search" hidden>
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
@@ -1148,7 +1149,7 @@
             <span id="lifeOsRecapBadge" class="lifeos-recap-badge"></span>
           </span>
           <button id="lifeOsRecapLaunch" type="button"
-                  class="icon-btn agent-btn lifeos-recap-launch"
+                  class="icon-button agent-btn lifeos-recap-launch"
                   title="Review the weekly recap (/weekly-recap)"
                   aria-label="Launch weekly recap review"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg></button>
         </div>
@@ -1202,7 +1203,7 @@
                  Conversations view a tile's 🕘 opens, but unscoped — every
                  skill at once, which is the only way to find a conversation
                  when you can't remember which skill it happened in. -->
-            <button type="button" id="lifeOsConvoSearch" class="lifeos-convo-open"
+            <button type="button" id="lifeOsConvoSearch" class="icon-button lifeos-convo-open"
                    aria-label="Search all conversations"
                    title="Search conversations across every skill">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
@@ -1271,7 +1272,7 @@
             <input type="hidden" id="boardDispatchRepo">
             <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
           </div>
-          <button id="boardRefresh" type="button" class="icon-btn board-refresh"
+          <button id="boardRefresh" type="button" class="icon-button board-refresh"
                   title="Refresh GitHub issues / PRs / done-today (runs gh)"
                   aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
         </div>
@@ -1297,11 +1298,11 @@
             wrap="off"
             placeholder="Ask the chief — questions answer, directions dispatch."
             enterkeyhint="enter"></textarea>
-          <button id="boardDispatchRecord" type="button" class="compose-record"
-                  title="Dictate (voice to text)" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
-          <button id="boardDispatchClear" type="button" class="compose-record"
-                  title="Clear the message"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
-          <button id="boardDispatchSend" type="button" class="compose-send"
+          <button id="boardDispatchRecord" type="button" class="icon-button compose-record"
+                  title="Dictate (voice to text)" aria-label="Dictate" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
+          <button id="boardDispatchClear" type="button" class="icon-button compose-record"
+                  title="Clear the message" aria-label="Clear the message"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+          <button id="boardDispatchSend" type="button" class="icon-button compose-send"
                   title="Send to the chief" aria-label="Send to the chief"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
         </div>
         <!-- Chief status row (#245). Static markup like the rest of the bar;
@@ -1312,7 +1313,7 @@
           <button id="boardChiefStart" type="button" class="board-chief-start" hidden>Start</button>
           <button id="boardChiefResume" type="button" class="board-chief-start" hidden title="Reattach the most recent chief conversation" aria-label="Resume chief">Resume</button>
           <button id="boardChiefRestart" type="button" class="board-chief-start" hidden>Restart</button>
-          <button id="boardChiefSettings" type="button" class="compose-record"
+          <button id="boardChiefSettings" type="button" class="icon-button compose-record"
                   title="Chief settings" aria-label="Chief settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
         </div>
       </div>
@@ -1674,9 +1675,9 @@
         <button id="lifeOsBrowserBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
         <span id="lifeOsBrowserTitle" class="terminal-title">skill</span>
         <div class="terminal-bar-actions">
-          <button id="lifeOsDocDelete" type="button" class="term-btn" title="Delete this conversation log" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg></button>
-          <button id="lifeOsDocRename" type="button" class="term-btn" title="Rename this conversation log" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></button>
-          <button id="lifeOsDocClose" type="button" class="term-btn" title="Close file" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+          <button id="lifeOsDocDelete" type="button" class="icon-button term-btn" title="Delete this conversation log" aria-label="Delete this conversation log" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg></button>
+          <button id="lifeOsDocRename" type="button" class="icon-button term-btn" title="Rename this conversation log" aria-label="Rename this conversation log" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg></button>
+          <button id="lifeOsDocClose" type="button" class="icon-button term-btn" title="Close file" aria-label="Close file" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
         </div>
       </div>
       <div class="lifeos-browser-body">
@@ -1738,10 +1739,10 @@
          and there is deliberately no composer. -->
     <div id="lifeOsConvoViewer" class="terminal-overlay" hidden>
       <div class="terminal-bar">
-        <button id="lifeOsViewerBack" type="button" class="term-btn" title="Back to conversations" aria-label="Back to conversations"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+        <button id="lifeOsViewerBack" type="button" class="icon-button term-btn" title="Back to conversations" aria-label="Back to conversations"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
         <span id="lifeOsViewerTitle" class="terminal-title">conversation</span>
         <div class="terminal-bar-actions">
-          <button id="lifeOsViewerMenu" type="button" class="term-btn" title="Conversation actions" aria-label="Conversation actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
+          <button id="lifeOsViewerMenu" type="button" class="icon-button term-btn" title="Conversation actions" aria-label="Conversation actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
         </div>
       </div>
       <!-- Why Resume is off for this capture, said on screen: a phone has no
@@ -2101,7 +2102,7 @@
         <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
         <div id="sessionLinkRow" class="session-link-row" hidden>
           <input id="sessionLinkInput" type="text" class="input-native" aria-label="Session link" readonly>
-          <button type="button" id="sessionLinkCopy" class="detail-close session-link-copy" title="Copy link" aria-label="Copy session link">
+          <button type="button" id="sessionLinkCopy" class="icon-button session-link-copy" title="Copy link" aria-label="Copy session link">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
           </button>
         </div>
@@ -2147,7 +2148,7 @@
        terminal.js, the chat pane in session-transcript.js. -->
   <div id="terminalOverlay" class="terminal-overlay" hidden>
     <div class="terminal-bar">
-      <button id="terminalBack" type="button" class="term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+      <button id="terminalBack" type="button" class="icon-button term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
       <span id="terminalTitle" class="terminal-title">session</span>
       <div class="terminal-bar-actions">
         <!-- Model pill (#1383): the session's model, left of the context ring.
@@ -2158,7 +2159,7 @@
              read off the terminal's statusline by the server. Hidden, not
              drawn at 0%, whenever the number isn't known; a tap toasts it.
              Driven by context-ring.js. -->
-        <button id="contextRing" type="button" class="term-btn context-ring" title="Context used" aria-label="Context used" hidden><svg class="context-ring-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="context-ring-track" cx="12" cy="12" r="9"></circle><circle class="context-ring-fill" cx="12" cy="12" r="9" transform="rotate(-90 12 12)"></circle></svg></button>
+        <button id="contextRing" type="button" class="icon-button term-btn context-ring" title="Context used" aria-label="Context used" hidden><svg class="context-ring-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="context-ring-track" cx="12" cy="12" r="9"></circle><circle class="context-ring-fill" cx="12" cy="12" r="9" transform="rotate(-90 12 12)"></circle></svg></button>
         <!-- Icon-only Terminal / Chat segmented toggle (#982). A segment the
              session can't offer (a detached session has no terminal; an
              agent without a transcript reader has no chat) is aria-disabled
@@ -2167,10 +2168,10 @@
           <button id="sessionModeTerminal" type="button" class="session-mode-btn" data-mode="terminal" title="Show the terminal" aria-label="Terminal" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg></button>
           <button id="sessionModeChat" type="button" class="session-mode-btn" data-mode="chat" title="Show the chat" aria-label="Chat" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg></button>
         </div>
-        <button id="terminalSpeak" type="button" class="term-btn" title="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
+        <button id="terminalSpeak" type="button" class="icon-button term-btn" title="Read the last reply aloud" aria-label="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
         <!-- ⋮ session menu (#981): Rename · Copy link · Stop and kill, built by
              terminal-bar.js on the shared row-menu component. -->
-        <button id="terminalMenu" type="button" class="term-btn" title="Session actions" aria-label="Session actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
+        <button id="terminalMenu" type="button" class="icon-button term-btn" title="Session actions" aria-label="Session actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
       </div>
       <div id="terminalSpeakPopover" class="speak-popover" hidden>
         <button type="button" class="speak-action" data-action="read"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Read aloud</button>
@@ -2251,9 +2252,9 @@
     <div class="terminal-bar">
       <span id="changesTitle" class="terminal-title">changes</span>
       <div class="terminal-bar-actions">
-        <button id="changesRefresh" type="button" class="term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
+        <button id="changesRefresh" type="button" class="icon-button term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
         <!-- ✕ close is always the rightmost control (modal contract #545). -->
-        <button id="changesClose" type="button" class="term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+        <button id="changesClose" type="button" class="icon-button term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
       </div>
     </div>
     <div id="changesBody" class="changes-body">
@@ -2268,7 +2269,7 @@
     <div class="summary-card" role="dialog" aria-label="Reply summary">
       <div class="summary-head">
         <span class="summary-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summary</span>
-        <button id="summaryModalClose" type="button" class="summary-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+        <button id="summaryModalClose" type="button" class="icon-button summary-close" title="Close" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
       </div>
       <p id="summaryModalText" class="summary-text"></p>
       <div class="summary-foot muted small"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Reading aloud… tap anywhere to dismiss</div>

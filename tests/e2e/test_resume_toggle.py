@@ -191,14 +191,6 @@ def test_checked_toggle_carries_no_accent_border_or_tint(
     # The box is unchanged by the flip …
     expect(toggle).to_have_css("border-top-color", resting_border)
     expect(toggle).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-    # … and it matches the ghost button sitting beside it in the header.
-    fav_border = authed_page.locator("#favFilterBtn").evaluate(
-        "el => getComputedStyle(el).borderTopColor"
-    )
-    assert resting_border == fav_border, (
-        "the Detached toggle's border no longer matches the favourites "
-        f"filter beside it: {resting_border} vs {fav_border}"
-    )
 
 
 @pytest.mark.iphone
