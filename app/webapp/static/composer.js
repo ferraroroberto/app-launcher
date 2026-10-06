@@ -86,7 +86,9 @@
  * Screenshot OCR (#171): the option *stages* screenshots into the tray;
  * Extract sends ALL of them to photo-ocr in one /api/ocr call so it collates
  * them into one deduplicated text (overlapping shots merged), which lands in
- * the textarea for review.
+ * the textarea for review. photo-ocr may hold that call for ~15 min on a slow
+ * hub, so a tap on the busy Extract button cancels it (#1420, as #1413 does
+ * for uploads); the staged shots stay for a retry.
  *
  * Attach (#41 / #366 / #448 / #450 / #1354): uploads run sequentially (never
  * Promise.all — the append reads then writes the textarea), every path is
@@ -132,6 +134,7 @@ const _TITLE_IMAGE_MENU = 'Attach image or file · Extract text from screenshots
 const _TITLE_SEND = 'Send';
 const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
 const _TITLE_CANCEL_UPLOAD = 'Cancel upload';
+const _TITLE_CANCEL_EXTRACT = 'Cancel extraction';
 const _LABEL_ATTACH = 'Attach image or file';
 const _LABEL_OCR = 'Extract text from screenshots';
 
@@ -298,16 +301,31 @@ export function mountComposer(host, opts) {
     renderOcrTray();
   }
 
+  // The in-flight extraction's AbortController, or null at rest. photo-ocr may
+  // hold one call for ~15 min on a slow hub (#1420), so the busy Extract button
+  // stays tappable and a second tap cancels it, like the upload (#1413).
+  let ocrCtrl = null;
+
   // Run OCR over EVERY staged image in one call so photo-ocr deduplicates
-  // the overlap. Same bearer + passkey terminal token as an upload.
+  // the overlap. Same bearer + passkey terminal token as an upload. A tap while
+  // one is running cancels it instead: staged images are kept for a retry.
   async function runOcrExtraction() {
+    if (ocrCtrl) {
+      ocrCtrl.abort();
+      return;
+    }
     const list = ocrStaged.slice();
     if (!list.length) return;
     const fd = new FormData();
     list.forEach(function (f, i) {
       fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
     });
-    el.extract.disabled = true;
+    const ctrl = new AbortController();
+    ocrCtrl = ctrl;
+    // `aria-busy`, never `disabled`: iOS fires no tap on a disabled button.
+    el.extract.setAttribute('aria-busy', 'true');
+    el.extract.title = _TITLE_CANCEL_EXTRACT;
+    el.extract.setAttribute('aria-label', _TITLE_CANCEL_EXTRACT);
     el.image.disabled = true;
     const stopTimer = startWorkTimer(
       el.extract, icon('camera') + ' Extract text', icon('hourglass') + ' Reading '
@@ -315,6 +333,7 @@ export function mountComposer(host, opts) {
     try {
       const res = await apiRaw('/api/ocr', {
         method: 'POST', terminalToken: readTerminalToken(), body: fd,
+        signal: ctrl.signal,
       });
       if (!res.ok) {
         const b = await res.json().catch(function () { return null; });
@@ -336,17 +355,40 @@ export function mountComposer(host, opts) {
       grow();
       ta.focus();
       clearOcrStaging();
-      toast(
-        'Text extracted from ' + list.length + ' image' +
-          (plural ? 's' : '') + ' — review, then tap Send.',
-        'good',
-        { icon: 'camera' }
-      );
+      // A partly read take is a 200 whose text already carries a
+      // `[missing: photo N …]` line per unread photo (photo-ocr#166); say so
+      // up front rather than a plain success the owner might not look past.
+      const missed = (body.missing_photos || []).length;
+      if (missed) {
+        toast(
+          missed + ' of ' + list.length + ' screenshot' + (plural ? 's' : '') +
+            ' could not be read — see the [missing] lines.',
+          'error',
+          { icon: 'camera' }
+        );
+      } else {
+        toast(
+          'Text extracted from ' + list.length + ' image' +
+            (plural ? 's' : '') + ' — review, then tap Send.',
+          'good',
+          { icon: 'camera' }
+        );
+      }
     } catch (exc) {
-      apiFailToast('OCR failed', exc);
+      if (ctrl.signal.aborted) {
+        toast('Extraction cancelled', undefined, { icon: 'camera' });
+      } else {
+        apiFailToast('OCR failed', exc);
+      }
     } finally {
+      ocrCtrl = null;
       stopTimer();
-      el.extract.disabled = false;
+      // The timer restores the bare label; a kept (cancelled/failed) staging
+      // needs its "(N)" back.
+      if (ocrStaged.length) renderOcrTray();
+      el.extract.removeAttribute('aria-busy');
+      el.extract.removeAttribute('aria-label');
+      el.extract.removeAttribute('title');
       el.image.disabled = false;
     }
   }

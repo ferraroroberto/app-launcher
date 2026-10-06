@@ -125,3 +125,118 @@ def test_extract_connection_failure_is_503(monkeypatch):
             "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
         )
     assert exc.value.status == 503
+
+
+# --- #1420: wait out photo-ocr's run budget, keep the three states apart -----
+
+# photo-ocr's default ``extract_run_budget_s`` (photo-ocr#166): the longest a
+# single ``/api/extract`` call can legitimately run before it answers.
+_PHOTO_OCR_RUN_BUDGET_S = 900.0
+
+
+def test_timeout_outlasts_photo_ocr_run_budget(monkeypatch):
+    """A slow hub on a multi-screenshot attach must not make us give up while
+    photo-ocr is still inside its own budget — the call carries a timeout
+    longer than that budget, not the old 120 s."""
+    captured = {}
+
+    def fake_request(method, url, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        return _Resp(200, {"text": "x"})
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    photo_ocr_client.extract("https://127.0.0.1:8444", [("s.png", b"a", "image/png")])
+
+    assert photo_ocr_client._TIMEOUT > _PHOTO_OCR_RUN_BUDGET_S
+    assert captured["timeout"] == photo_ocr_client._TIMEOUT
+
+
+def test_extract_still_running_past_budget_is_504_not_unreachable(monkeypatch):
+    """Connected but never answered within the budget is its own state: 504
+    with a message that says photo-ocr was *still working*, not the 503
+    "unreachable" a refused connection gets."""
+
+    def fake_request(method, url, **kwargs):
+        raise photo_ocr_client.requests.exceptions.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    with pytest.raises(photo_ocr_client.PhotoOcrError) as exc:
+        photo_ocr_client.extract(
+            "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
+        )
+    assert exc.value.status == 504
+    assert "still" in str(exc.value)
+    assert "unreachable" not in str(exc.value)
+
+
+def test_extract_connect_timeout_stays_unreachable(monkeypatch):
+    """A connect timeout never reached photo-ocr at all — that is the
+    unreachable state (503), not "still running"."""
+
+    def fake_request(method, url, **kwargs):
+        raise photo_ocr_client.requests.exceptions.ConnectTimeout("connect timed out")
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    with pytest.raises(photo_ocr_client.PhotoOcrError) as exc:
+        photo_ocr_client.extract(
+            "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
+        )
+    assert exc.value.status == 503
+    assert "unreachable" in str(exc.value)
+
+
+def test_extract_partial_result_is_a_success_carrying_missing_photos(
+    monkeypatch, caplog
+):
+    """photo-ocr#166: a partly read take is a 200 whose ``text`` holds a
+    ``[missing: photo N …]`` line per unread photo and ``missing_photos``
+    names them. It is returned whole (never raised) and logged."""
+    payload = {
+        "text": "page one\n[missing: photo 2 (b.jpg) could not be read]\npage three",
+        "model": "claude_opus",
+        "missing_photos": ["b.jpg"],
+    }
+
+    def fake_request(method, url, **kwargs):
+        return _Resp(200, payload)
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    with caplog.at_level("WARNING", logger=photo_ocr_client.logger.name):
+        result = photo_ocr_client.extract(
+            "https://127.0.0.1:8444",
+            [("a.jpg", b"1", "image/jpeg"), ("b.jpg", b"2", "image/jpeg")],
+        )
+
+    assert result["missing_photos"] == ["b.jpg"]
+    assert "[missing: photo 2" in result["text"]
+    assert any("b.jpg" in r.getMessage() for r in caplog.records)
+
+
+def test_extract_complete_result_reports_no_missing_photos(monkeypatch):
+    """The field is always a list for the phone, even from a photo-ocr that
+    predates it."""
+
+    def fake_request(method, url, **kwargs):
+        return _Resp(200, {"text": "all read"})
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    result = photo_ocr_client.extract(
+        "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
+    )
+    assert result["missing_photos"] == []
+
+
+def test_extract_nothing_readable_is_a_502_from_upstream(monkeypatch):
+    """photo-ocr's own 502 (no photo could be read) passes through with its
+    detail — the hub-down and too-slow wording stays the upstream's."""
+
+    def fake_request(method, url, **kwargs):
+        return _Resp(502, {"detail": "LLM hub still working on photos after the 420s request timeout"})
+
+    monkeypatch.setattr(photo_ocr_client._loopback_http.SESSION, "request", fake_request)
+    with pytest.raises(photo_ocr_client.PhotoOcrError) as exc:
+        photo_ocr_client.extract(
+            "https://127.0.0.1:8444", [("s.png", b"a", "image/png")]
+        )
+    assert exc.value.status == 502
+    assert "still working" in str(exc.value)

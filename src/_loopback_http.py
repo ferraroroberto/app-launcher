@@ -29,7 +29,7 @@ several ``asyncio.to_thread`` worker threads that share it concurrently.
 from __future__ import annotations
 
 import logging
-from typing import Any, Type
+from typing import Any, Optional, Type
 
 import requests
 import urllib3
@@ -109,6 +109,7 @@ def request(
     timeout: float,
     verify: bool = True,
     allow_empty: bool = True,
+    read_timeout_status: Optional[int] = None,
     **kwargs: Any,
 ) -> Any:
     """Make one loopback HTTP call and apply the shared error mapping.
@@ -117,11 +118,22 @@ def request(
     ``service`` the human label used in generated messages. A transport
     failure becomes a 503; a ``>= 400`` response is raised with its own status;
     a non-JSON body returns ``{}`` when ``allow_empty`` (the default), else
-    raises a 502. ``**kwargs`` (``json``, ``params``, ``files``, ``data``,
+    raises a 502. ``read_timeout_status`` (default ``None``) splits one case out
+    of the transport failures: a *read* timeout — the peer accepted the call and
+    never answered in time — raises that status with a "still working" message
+    instead of the 503 "unreachable" a refused or timed-out connect gets, for a
+    caller whose upstream legitimately runs long (photo-ocr, #1420). ``**kwargs`` (``json``, ``params``, ``files``, ``data``,
     ``headers``, ...) flow straight to ``requests.request``.
     """
     try:
         resp = pooled_request(method, url, timeout=timeout, verify=verify, **kwargs)
+    except requests.exceptions.ReadTimeout as exc:
+        if read_timeout_status is None:
+            raise error(f"{service} unreachable at {url} ({exc})", status=503) from exc
+        raise error(
+            f"{service} was still working after {timeout:.0f}s with no answer ({exc})",
+            status=read_timeout_status,
+        ) from exc
     except requests.RequestException as exc:
         raise error(f"{service} unreachable at {url} ({exc})", status=503) from exc
     if resp.status_code >= 400:
