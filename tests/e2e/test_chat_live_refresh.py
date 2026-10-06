@@ -836,7 +836,7 @@ def test_the_resume_card_lists_searches_and_resumes_from_the_picker_or_the_compo
     probe = (
         "() => { const ul = document.createElement('ul'); ul.className = 'jobs-runs-list';"
         "ul.hidden = true; const li = document.createElement('li');"
-        "const b = document.createElement('button'); b.className = 'icon-btn';"
+        "const b = document.createElement('button'); b.className = 'icon-button';"
         "li.appendChild(b); ul.appendChild(li); document.body.appendChild(ul);"
         "const s = getComputedStyle(b); const out = {bg: s.backgroundColor,"
         "border: s.borderTopWidth, color: s.color, radius: s.borderTopLeftRadius};"

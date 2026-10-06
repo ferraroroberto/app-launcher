@@ -264,7 +264,7 @@ export function renderSessions() {
     // the contents are the gear's, unchanged (#1025, second attempt).
     const kebab = document.createElement('button');
     kebab.type = 'button';
-    kebab.className = 'icon-btn session-kebab';
+    kebab.className = 'icon-button session-kebab';
     kebab.innerHTML = icon('ellipsis-vertical');
     kebab.title = 'Session actions';
     kebab.setAttribute('aria-label', 'Session actions');

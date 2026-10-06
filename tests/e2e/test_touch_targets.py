@@ -83,7 +83,7 @@ _TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane
 _DATA_CONTROL = {
     "#tabJobs": "#jobsAgendaBody .empty-state-action",
     "#tabLifeOS": "#lifeOsRecapLaunch",
-    ".pane:not([hidden]) .settings-open-btn": "#webauthnDevices .icon-btn",
+    ".pane:not([hidden]) .settings-open-btn": "#webauthnDevices .icon-button",
 }
 
 

@@ -158,10 +158,10 @@ function render(host, placeholder) {
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +
-        '<button type="button" class="compose-record composer-mic" aria-pressed="false">' + icon('mic') + '</button>' +
-        '<button type="button" class="compose-record composer-keys">' + icon('keyboard') + '</button>' +
-        '<button type="button" class="compose-record composer-image">' + icon('image') + '</button>' +
-        '<button type="button" class="compose-send composer-send">' + icon('send-horizontal') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-mic" aria-pressed="false">' + icon('mic') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-keys">' + icon('keyboard') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-image">' + icon('image') + '</button>' +
+        '<button type="button" class="icon-button compose-send composer-send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
     // No accept filter on the attach input (#366): iOS then offers Photo

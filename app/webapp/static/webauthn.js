@@ -129,9 +129,10 @@ function renderWebauthn() {
     li.appendChild(label);
     const rm = document.createElement('button');
     rm.type = 'button';
-    rm.className = 'icon-btn danger';
+    rm.className = 'icon-button danger';
     rm.innerHTML = icon('trash-2');
     rm.title = 'Remove passkey';
+    rm.setAttribute('aria-label', 'Remove passkey');
     rm.addEventListener('click', function () { removeDevice(d); });
     li.appendChild(rm);
     els.webauthnDevices.appendChild(li);

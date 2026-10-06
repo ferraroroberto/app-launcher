@@ -97,7 +97,7 @@ function renderParamRow(param) {
 
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
-  rmBtn.className = 'icon-btn danger';
+  rmBtn.className = 'icon-button danger';
   rmBtn.innerHTML = icon('x');
   rmBtn.title = 'Remove parameter';
   rmBtn.setAttribute('aria-label', 'Remove parameter');
@@ -219,7 +219,7 @@ function renderMappingRow(name, path) {
 
   const rmBtn = document.createElement('button');
   rmBtn.type = 'button';
-  rmBtn.className = 'icon-btn danger';
+  rmBtn.className = 'icon-button danger';
   rmBtn.innerHTML = icon('x');
   rmBtn.title = 'Remove mapping';
   rmBtn.setAttribute('aria-label', 'Remove mapping');

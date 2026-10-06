@@ -134,7 +134,7 @@ function render() {
   const head = el('div', 'tr-ask-head tr-resume-head');
   head.innerHTML = icon('rotate-ccw');
   head.appendChild(el('span', 'tr-ask-header', 'Resume a session'));
-  const close = el('button', 'icon-btn tr-resume-close');
+  const close = el('button', 'icon-button tr-resume-close');
   close.type = 'button';
   close.title = 'Close';
   close.setAttribute('aria-label', 'Close');

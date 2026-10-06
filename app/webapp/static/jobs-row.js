@@ -380,7 +380,7 @@ export function renderJobRow(job, options) {
   if (menuItems.some(function (item) { return !item.hidden; })) {
     const anchor = document.createElement('button');
     anchor.type = 'button';
-    anchor.className = 'icon-btn job-menu-anchor';
+    anchor.className = 'icon-button job-menu-anchor';
     anchor.dataset.role = 'job-menu';
     anchor.innerHTML = icon('ellipsis-vertical');
     anchor.title = 'Job actions for ' + job.name;
@@ -394,7 +394,7 @@ export function renderJobRow(job, options) {
     // other row's (#1207). The same box, never seen, focused or announced.
     const slot = document.createElement('button');
     slot.type = 'button';
-    slot.className = 'icon-btn job-menu-slot';
+    slot.className = 'icon-button job-menu-slot';
     slot.disabled = true;
     slot.tabIndex = -1;
     slot.setAttribute('aria-hidden', 'true');

@@ -291,46 +291,12 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
   /* -5, not -4: these sit at 35-36px rendered, and -4 leaves 43.6. */
   inset: -5px 0;
 }
-/* The recap tile's launch and a passkey row's remove render 30px tall and
-   stand alone in their row (#1190): -7 reaches 44 inside the card's and the
-   row's own padding, so the expansion never meets a neighbour's. */
-.lifeos-recap-card .icon-btn,
-.webauthn-devices .icon-btn { position: relative; }
-.lifeos-recap-card .icon-btn::before,
-.webauthn-devices .icon-btn::before {
-  content: "";
-  position: absolute;
-  inset: -7px 0;
-}
-
-/* The Board dispatch row's record/send pair is short on both axes (38x36),
-   and so is the chief status row's settings gear — which only became
-   reachable by the touch-target pin once #1382 made that row always visible.
-   Scoped to those rows by the child combinator on purpose: the same classes in
-   the docked composer's grid are already real 44px squares, and expanding
-   those would make them overlap at the grid's 6px gap. */
-.board-dispatch-row > .compose-record,
-.board-dispatch-row > .compose-send,
-.board-chief-status > .compose-record { position: relative; }
-.board-dispatch-row > .compose-record::before,
-.board-dispatch-row > .compose-send::before,
-.board-chief-status > .compose-record::before {
-  content: "";
-  position: absolute;
-  inset: -4px;
-}
-
 /* Compact squares: +4 a side takes 36x36 to 44x44, which needs an 8px gap
    between neighbours — the clusters below carry it, and the e2e pin checks
-   no two expanded rectangles overlap. */
-.detached-toggle,
-.fav-filter-btn,
-.board-refresh,
-.lifeos-convo-open { position: relative; }
-.detached-toggle::before,
-.fav-filter-btn::before,
-.board-refresh::before,
-.lifeos-convo-open::before {
+   no two expanded rectangles overlap. (The icon buttons get the same
+   expansion from the vendored icon-button's own ::before.) */
+.detached-toggle { position: relative; }
+.detached-toggle::before {
   content: "";
   position: absolute;
   inset: -4px;
@@ -821,42 +787,17 @@ summary + .opt-group { border-top: 0; }
   /* No border-left: the divider was part of the boxed-card look; flat
      rows (issue #365) keep the action rail as plain glyphs. */
 }
-.app-item .row-actions .icon-btn {
-  flex: 1;
-  width: 52px;
-  /* Two stacked rail buttons fit one standard two-line row exactly. */
-  min-height: calc(var(--row-lg) / 2);
-  display: flex;
+/* The rail's glyph buttons are the vendored icon-button at the 44px floor,
+   centred in the 52px rail. */
+.app-item .row-actions {
+  --icon-btn-box: var(--hit-min);
+  min-width: 52px;
   align-items: center;
-  justify-content: center;
-  font-size: var(--font-body);
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  cursor: pointer;
 }
-/* Every rail button, not only the session rail's: the Apps rows' edit-mode
-   buttons measured 38-39px tall (#1124). */
-.app-item .row-actions .icon-btn {
-  min-height: var(--row-sm);
-}
-.app-item .row-actions .icon-btn + .icon-btn {
-  border-top: 1px solid var(--line);
-}
-.app-item .row-actions .icon-btn:active {
-  background: var(--card-2);
-  color: var(--fg);
-}
-.app-item .row-actions .icon-btn.danger:active { color: var(--danger); }
 .app-item .row-actions .action-stop-close:active,
 .terminal-bar .row-menu .action-stop-close:active {
   background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger-text);
-}
-/* Open button before its app has bound a port / with no tailnet_host */
-.app-item .row-actions .icon-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
 }
 /* `flex: none`: the dot sits in a flex head row, so without it a narrow row
    squeezes the circle into an oval (#1130, seen at 320px). */
@@ -1111,26 +1052,13 @@ summary + .opt-group { border-top: 0; }
      themes by construction — the chip has nothing left to do. */
   flex-shrink: 0;
 }
-/* "Favorites" header filter toggle — icon-only at every width (#1070,
-   kept by #1194 after the Detached/Resume toggles beside it gained a word
-   in #1176), at the same height as those toggles. Gold outline + filled
-   star glyph when the filter is active (fill rule: `.fav-filter-btn.active .icon`, near
-   `.opt-group`). The accessible name stays on aria-label/title.
-   Written as `.button-ghost.fav-filter-btn` on purpose: the plain
-   `.fav-filter-btn` selector loses the padding to `.button-ghost`'s own
-   rule further down this file, which would leave the button ~44px tall
-   next to a 36px toggle. Matching both classes wins on specificity rather
-   than on source order, so it cannot silently break if either rule moves. */
-.button-ghost.fav-filter-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  min-width: var(--control-h);
-  min-height: var(--control-h);
-}
-.fav-filter-btn .icon { font-size: var(--icon-title); }
-.fav-filter-btn.active { color: var(--star); border-color: var(--star); }
+/* "Favorites" header filter toggle — icon-only at every width (#1070, kept by
+   #1194), at the same height as the Detached/Resume toggles beside it: the
+   vendored icon-button at the 36px control box. The active filter takes the
+   star's gold glyph (fill rule: `.fav-filter-btn.active .icon`, near
+   `.opt-group`); the accessible name stays on aria-label/title. */
+.fav-filter-btn { --icon-btn-box: var(--control-h); }
+.fav-filter-btn.active { color: var(--star); }
 /* Shown in place of the list when the filter is on but nothing is starred. */
 .coding-fav-empty {
   list-style: none;
@@ -1165,11 +1093,7 @@ summary + .opt-group { border-top: 0; }
   font-weight: 600;
   white-space: nowrap;
 }
-.jobs-add-btn {
-  font-size: var(--font-caption);
-  padding: 6px 10px;
-  white-space: nowrap;
-}
+.jobs-add-btn { --icon-btn-box: var(--control-h); }
 /* Sort toggle (issue #229) — same compact footprint as the Add button,
    always visible (Add is edit-mode-only). */
 /* Measured 26x18 (#1124) — the smallest control in the app. */
@@ -1199,15 +1123,9 @@ summary + .opt-group { border-top: 0; }
   color: var(--fg);
   font: inherit;
 }
-/* Scoped to the .button-ghost class (the sole search-bar button, #jobsSearchClear)
-   rather than the bare element: the button co-applies the shared .hit-target
-   utility in markup, which reaches the 44px effective floor around this 36px
-   visual (design.md Touch targets). */
-.jobs-search-bar .button-ghost {
-  width: 36px;
-  height: 36px;
-  padding: 0;
-}
+/* The sole search-bar button (#jobsSearchClear): the vendored icon-button at
+   36px, its ::before reaching the 44px floor (design.md Touch targets). */
+.jobs-search-bar .icon-button { --icon-btn-box: 36px; }
 .jobs-search-empty {
   list-style: none;
   padding: 16px 4px;
@@ -1446,34 +1364,11 @@ summary + .opt-group { border-top: 0; }
   background: rgb(from var(--accent) r g b / 0.12);
 }
 .jobs-run-btn.selected .jobs-run-meta { color: var(--fg); }
-/* A run row's icon buttons (pin, re-run) are quiet glyphs, not tiles
-   (#1333). `.icon-btn` has no base rule outside the rails, so these fell to
-   the UA button face, and the pin's old `filter: grayscale(1)` greyed that
-   face into a flat grey square. Now: no fill, no border, a muted glyph that
-   brightens on hover/focus, the app-wide :focus-visible ring, and the full
-   44px hit area. `stretch` in the row makes the button its full height, so
-   the centred glyph sits on the row's middle line. A pinned run's glyph
-   takes the accent: on, without a box. */
-.jobs-runs-list > li > .icon-btn {
-  flex: 0 0 auto;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  cursor: pointer;
-}
-.jobs-runs-list > li > .icon-btn .icon { width: 18px; height: 18px; }
-.jobs-runs-list > li > .icon-btn:focus-visible { color: var(--fg); }
-@media (hover: hover) {
-  .jobs-runs-list > li > .icon-btn:hover { color: var(--fg); }
-}
-.jobs-runs-list > li > .icon-btn:active { color: var(--accent); background: var(--card-off); }
+/* A run row's icon buttons (pin, re-run) are the vendored icon-button at the
+   44px floor: `stretch` in the row makes the button its full height, so the
+   centred glyph sits on the row's middle line. A pinned run's glyph takes
+   the accent: on, without a box. */
+.jobs-runs-list > li > .icon-button { --icon-btn-box: var(--hit-min); }
 .jobs-runs-list > li > .jobs-pin-btn.selected { color: var(--accent); }
 
 .jobs-output-label {
@@ -1822,23 +1717,16 @@ textarea.input-native { height: auto; }
   color: var(--muted);
   cursor: default;
 }
-.session-link-row .session-link-copy,
 #sessionRenameCancel {
   width: var(--row-sm);
   height: var(--row-sm);
   flex: 0 0 var(--row-sm);
 }
+.session-link-copy { --icon-btn-box: var(--row-sm); }
 /* Adjacent controls need real, non-overlapping 44px geometry; the modal
    close button's invisible expansion is only safe while isolated. */
-.session-link-row .session-link-copy::before,
 #sessionRenameCancel::before { content: none; }
 #sessionRenameCancel .icon { width: 20px; height: 20px; }
-.session-link-row .session-link-copy:disabled {
-  background: var(--card-off);
-  border-color: var(--line);
-  color: var(--muted);
-  cursor: default;
-}
 .session-link-row .session-link-copy:active,
 .session-link-row .session-link-copy.is-copied { opacity: 0.5; }
 #sessionRenameDialog .detail-actions { border-top: 0; }
@@ -2103,24 +1991,11 @@ textarea.input-native { height: auto; }
   padding: 0 10px;
   font-size: var(--font-label);
 }
-.job-item .job-menu-anchor,
-.job-item .job-menu-slot {
-  flex: none;
-  min-height: 44px;
-  min-width: 36px;
-}
 /* The kebab's stand-in on a row with no menu (#1207): its box, unseen. */
 .job-item .job-menu-slot { visibility: hidden; }
-/* The rail's divider rule targets adjacent .icon-btn siblings; the pair
-   here is a tint button beside a kebab, which is not that shape. */
-.app-item .row-actions.job-row-actions .icon-btn + .icon-btn { border-top: 0; }
 /* The kebab keeps the 52px slot the gear held, and `justify-content: center`
    on the rail above centres it against the row's full height — the
    alignment #1025 asked for. */
-.app-item .row-actions.session-actions .session-kebab {
-  flex: 0 0 auto;
-  min-height: var(--row-sm);
-}
 .app-item .row-actions .row-menu-anchor[aria-expanded="true"],
 .terminal-bar .row-menu-anchor[aria-expanded="true"] {
   color: var(--accent);
@@ -2472,24 +2347,9 @@ textarea.input-native { height: auto; }
   text-overflow: ellipsis;
 }
 .tr-turn[open] .tr-turn-hint { visibility: hidden; }
-/* Ghost icon button (design.md button-ghost): transparent fill, muted glyph.
-   .hit-target (co-applied) supplies the invisible 44px hit-area expansion —
-   see the vendored modal's .detail-close for the same idiom. */
-.tr-turn-copy {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  cursor: pointer;
-}
-.tr-turn-copy .icon { width: 16px; height: 16px; }
-.tr-turn-copy:active { color: var(--accent); background: var(--card-off); }
+/* The chat card's copy glyph: the vendored icon-button at 32px, its ::before
+   reaching the 44px floor. */
+.tr-turn-copy { --icon-btn-box: 32px; }
 .tr-turn-chevron {
   margin-left: auto;
   color: var(--muted);
@@ -2590,21 +2450,7 @@ textarea.input-native { height: auto; }
 .md-quote-body { flex: 1 1 auto; min-width: 0; }
 .md-quote-body p { margin: 0 0 8px; }
 .md-quote-body p:last-child { margin-bottom: 0; }
-.md-quote-copy {
-  flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  cursor: pointer;
-}
-.md-quote-copy .icon { width: 16px; height: 16px; }
-.md-quote-copy:active { color: var(--accent); background: var(--card-off); }
+.md-quote-copy { --icon-btn-box: 32px; }
 .tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
 /* A run of folded entries is one vendored disclosure card; the items inside
    are flat list rows on a hairline, each its own <details>. */
@@ -2831,32 +2677,9 @@ textarea.input-native { height: auto; }
    has no transcript yet, and "No transcript found" under the very card that
    resumes one reads as a failure. */
 .tr-resume-live:not([hidden]) + #transcriptState { display: none; }
-/* The card's ✕ is a ghost icon button, the same treatment as the Jobs run
-   list's .icon-btn: transparent, muted glyph that brightens on hover/focus
-   (the app-wide :focus-visible ring draws the outline), a 44px hit area. The
-   bare class had no rules, so it rendered as the UA's grey square on a grey
-   card. The negative margin keeps the 44px box from growing the 24px head row. */
-.tr-resume-close {
-  margin: -10px -8px -10px auto;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--muted);
-  cursor: pointer;
-}
-.tr-resume-close .icon { width: 18px; height: 18px; }
-.tr-resume-close:focus-visible { color: var(--fg); }
-@media (hover: hover) {
-  .tr-resume-close:hover { color: var(--fg); background: var(--card-off); }
-}
-.tr-resume-close:active { color: var(--accent); background: var(--card-off); }
+/* The card's ✕ is the vendored icon-button at the 44px floor. The negative
+   margin keeps the 44px box from growing the 24px head row. */
+.tr-resume-close { margin: -10px -8px -10px auto; --icon-btn-box: var(--hit-min); }
 .tr-resume-search { margin-top: 8px; }
 .tr-resume-list { max-height: 50vh; overflow-y: auto; }
 .tr-resume-opt[hidden] { display: none; }
@@ -3089,23 +2912,9 @@ textarea.input-native { height: auto; }
   font-size: var(--font-body-sm);
 }
 .webauthn-devices li span { flex: 1; word-break: break-word; }
-/* Not an .app-item, so it doesn't inherit the tab's
-   .app-item .row-actions .icon-btn treatment — restate it here, same
-   pattern as .lifeos-recap-card .icon-btn. */
-.webauthn-devices .icon-btn {
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: var(--icon-title);
-  min-width: 44px;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.webauthn-devices .icon-btn:active { background: var(--card-2); color: var(--fg); }
-.webauthn-devices .icon-btn.danger:active { color: var(--danger); }
+/* A passkey row's remove stands alone in its row: the vendored icon-button at
+   30px, its ::before reaching the 44px floor. */
+.webauthn-devices .icon-button { --icon-btn-box: 30px; }
 
 /* ---------- interactive terminal overlay ---------- */
 /* Stop iOS rubber-band / pull-to-refresh chrome from leaking through
@@ -3206,7 +3015,7 @@ body.terminal-open {
    320px phone with all four showing, title keeps the rest). Only the Life OS
    bars (#886) still scroll. */
 #terminalOverlay .terminal-bar-actions { overflow-x: visible; }
-.term-btn {
+.term-btn:not(.icon-button) {
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--line);
@@ -3222,11 +3031,12 @@ body.terminal-open {
 /* Reading the last reply aloud (issue #190) — success-green pulse so the ⏹
    stop state is unmistakable while speech is playing (on-state, #391). */
 .term-btn.speaking {
-  background: var(--success);
-  color: var(--accent-fg);
-  border-color: transparent;
+  color: var(--success-text);
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
+/* The glyph-only bar controls are the vendored icon-button at the 44px
+   floor (the bar is a cluster, so no expanded hit area). */
+.term-btn.icon-button { --icon-btn-box: var(--hit-min); }
 /* Every icon-only button in the terminal toolbar meets the 44x44pt HIG
    minimum (issue #477) — restated here for clarity even though the base
    .term-btn now carries 44×44 itself (#496). */
@@ -3332,16 +3142,7 @@ body.terminal-open {
   margin-bottom: 10px;
 }
 .summary-title { font-weight: 700; font-size: var(--font-body); }
-.summary-close {
-  background: var(--card);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  min-width: 36px;
-  min-height: var(--control-h);
-  font-size: var(--font-label);
-  cursor: pointer;
-}
+.summary-close { --icon-btn-box: var(--control-h); }
 .summary-text {
   margin: 0 0 12px;
   font-size: var(--font-body);
@@ -3551,28 +3352,8 @@ body.terminal-open {
   gap: 6px;
   flex-shrink: 0;
 }
-/* Override the base .compose-record/.compose-send padding (which differ
-   from each other, and are reused/re-sized by the board dispatch row) so
-   all four buttons in the terminal compose grid are identical squares. */
-.compose-tools .compose-record,
-.compose-tools .compose-send {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-/* An unavailable mic / keys button stays in the grid, disabled — the one
-   shared disabled recipe (design.md button-disabled): flat muted text on
-   the same surface, never opacity, so the 2x2 shape never collapses. */
-.compose-tools .compose-record:disabled {
-  opacity: 1;
-  color: var(--muted);
-  background: var(--card-2);
-}
+/* All four buttons in the terminal compose grid are identical 44px squares. */
+.compose-tools { --icon-btn-box: var(--hit-min); }
 /* A refused ➤ Send takes that same recipe — without it the button kept its
    full accent fill and read as perfectly usable (#1069). On aria-disabled,
    not :disabled, so the tap still lands and toasts the reason. A send in
@@ -3581,10 +3362,7 @@ body.terminal-open {
 .compose-tools .compose-send[aria-disabled="true"],
 .compose-tools .compose-send[aria-disabled="true"]:active,
 .compose-tools .compose-send.is-sending {
-  opacity: 1;
-  color: var(--muted);
-  background: var(--card-2);
-  border-color: var(--line);
+  color: var(--line);
   cursor: default;
 }
 .compose-tools .compose-send.is-sending { cursor: progress; }
@@ -3609,43 +3387,15 @@ body.terminal-open {
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
 }
-.compose-send {
-  flex-shrink: 0;
-  min-height: 44px;
-  padding: 0 16px;
-  font-size: var(--icon-title);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  border: 1px solid var(--accent-border-soft);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.compose-send:active { opacity: 0.85; }
-.compose-record {
-  flex-shrink: 0;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 12px;
-  font-size: var(--icon-title);
-  background: var(--card-2);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.compose-record:active { opacity: 0.85; }
-.compose-record:disabled { opacity: 0.4; cursor: default; }
 /* Background work in progress (OCR / transcribe) — keep the ticking timer
    legible despite the disabled dim, and tint it so it reads as "busy". */
-.compose-record.working { opacity: 1; color: var(--accent); font-size: var(--font-label); }
+.compose-record.working { color: var(--accent); font-size: var(--font-label); }
 /* Arming (#1295 follow-up): the tap landed and the mic is starting — an
    hourglass in the accent, so a second tap is not needed to find out. */
 .compose-record.arming { color: var(--accent-text); cursor: progress; }
 /* Recording in progress — red pulse so the state is unmistakable. */
 .compose-record.recording {
-  background: var(--danger, #d9534f);
-  color: var(--accent-fg);
-  border-color: transparent;
+  color: var(--danger-text);
   animation: compose-record-pulse 1.2s ease-in-out infinite;
 }
 @keyframes compose-record-pulse {
@@ -3836,26 +3586,9 @@ body.terminal-open {
 .lifeos-recap-badge.overdue { color: var(--danger); }
 .lifeos-recap-badge.overdue::before { background: var(--danger); }
 .lifeos-recap-badge.never::before { background: var(--muted); }
-/* The recap card isn't an .app-item, so it doesn't inherit the tab's
-   .app-item .row-actions .icon-btn treatment — restate it here so the 🚀
-   matches the skill-tile launch buttons instead of rendering as a default
-   (white) UA button. */
-.lifeos-recap-card .icon-btn {
-  background: transparent;
-  border: 0;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: var(--icon-title);
-  min-width: 52px;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.lifeos-recap-card .icon-btn:active {
-  background: var(--card-2);
-  color: var(--fg);
-}
+/* The recap tile's launch stands alone in its row: the vendored icon-button
+   at 30px, its ::before reaching the 44px floor inside the card's padding. */
+.lifeos-recap-card .icon-button { --icon-btn-box: 30px; }
 
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
@@ -3902,22 +3635,7 @@ body.terminal-open {
    neighbours and land taps on the wrong control — worse than a small target,
    per the spec's own carve-out. It matches its neighbours' geometry instead;
    widening the whole cluster to 44px is a separate change to that row. */
-.lifeos-convo-open {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 6px;
-  min-width: var(--control-h);
-  min-height: var(--control-h);
-  border: 1px solid var(--line-muted);
-  border-radius: var(--radius-md);
-  background: none;
-  color: var(--fg);
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.lifeos-convo-open .icon { font-size: var(--icon-title); }
-.lifeos-convo-open:active { background: var(--card-2); }
+.lifeos-convo-open { --icon-btn-box: var(--control-h); }
 
 /* Sits one layer *below* the Browse viewer and the terminal (both z-index
    300) on purpose: tapping a row's 📖 opens the document viewer over this
@@ -4269,11 +3987,7 @@ body.terminal-open {
    row's .compose-record shrink rule and rendered at the base 44px size —
    visibly bigger than every other icon button in the bar (#547). Match the
    same 36px --control-h square footprint here directly. */
-.board-chief-status .compose-record {
-  min-height: var(--control-h);
-  min-width: var(--control-h);
-  padding: 0;
-}
+.board-chief-status { --icon-btn-box: var(--control-h); }
 .board-chief-start {
   min-height: var(--control-h);
   padding: 0 14px;
@@ -4380,13 +4094,7 @@ body.terminal-open {
    height so the dispatch row lines up. (The drawer reply mic is NOT in
    this shrink set any more — #496 round 2: inside the drawer every button
    keeps the canonical 44px footprint.) */
-.board-dispatch-row .compose-record,
-.board-dispatch-row .compose-send {
-  min-height: var(--control-h);
-  min-width: 36px;
-  padding: 0 10px;
-  font-size: var(--font-label);
-}
+.board-dispatch-row { --icon-btn-box: var(--control-h); }
 /* No margin-left: auto any more (#869) — the goal input now absorbs the row's
    free space, so ➤ docks immediately after ✕ instead of being flung to the
    row's far edge with a gap in between. */
@@ -4412,28 +4120,7 @@ body.terminal-open {
    ↻/send buttons above it). Same 36px --control-h square recipe as
    .board-dispatch-row .compose-record and .model-combo-trigger, so every
    icon-sized button in the Board tab now shares one footprint. */
-.board-refresh {
-  flex: 0 0 auto;
-  height: var(--control-h);
-  min-height: var(--control-h);
-  width: var(--control-h);
-  min-width: var(--control-h);
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--font-label);
-  background: var(--card-2);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
-.board-refresh:active { background: var(--card); }
-/* Docked into the control row on desktop (#869), where it is one of the
-   36px-square siblings — not the wider .board-issue-btn padding the shared
-   board-button rule below hands it. */
-.board-dispatch-row .board-refresh { padding: 0; }
+.board-refresh { --icon-btn-box: var(--control-h); }
 .board-status { color: var(--muted); font-size: var(--font-body-sm); margin: 0 0 8px; }
 
 /* Quota rows (issues #326/#847/#860) — one line per heavy agent, Claude
@@ -4793,24 +4480,10 @@ span.chief-answer-ref { color: var(--muted); }
   text-align: left;
   cursor: pointer;
 }
-/* Icon only: the 44x44 box is the hit area, the glyph keeps its own size. The
-   >= 50% highlight is the icon's colour, not a border. */
-.channel-list-compact {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--muted);
-  border: 0;
-  border-radius: var(--radius-md);
-  cursor: pointer;
-}
+/* Icon only: the vendored icon-button's 44px box is the hit area. The >= 50%
+   highlight is the icon's colour, not a border. */
+.channel-list-compact { --icon-btn-box: var(--hit-min); }
 .channel-list-compact[data-high="true"] { color: var(--attention); }
-.channel-list-compact:disabled { opacity: 0.5; cursor: default; }
 .channel-list-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .channel-list-status { font-size: var(--font-caption); font-weight: 600; justify-self: end; }
 .channel-list-status.is-up { color: var(--success); }
@@ -5031,7 +4704,6 @@ span.chief-answer-ref { color: var(--muted); }
 }
 /* Every board action button gets the dark theme explicitly — without this
    they render as the UA's native white buttons (phone feedback, #301). */
-.board-refresh,
 .board-issue-btn,
 .board-drawer-action {
   background: var(--card-2);

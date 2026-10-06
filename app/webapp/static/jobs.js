@@ -430,7 +430,7 @@ function redrawRunsList(jobId, runs) {
 
     const pin = document.createElement('button');
     pin.type = 'button';
-    pin.className = 'icon-btn jobs-pin-btn' + (r.pinned ? ' selected' : '');
+    pin.className = 'icon-button jobs-pin-btn' + (r.pinned ? ' selected' : '');
     pin.innerHTML = icon('pin');
     pin.title = r.pinned ? 'Unpin run' : 'Pin run — keep forever';
     pin.setAttribute('aria-label', pin.title);
@@ -446,7 +446,7 @@ function redrawRunsList(jobId, runs) {
     if (job && declaredNames.size && r.params && typeof r.params === 'object') {
       const rerun = document.createElement('button');
       rerun.type = 'button';
-      rerun.className = 'icon-btn';
+      rerun.className = 'icon-button';
       rerun.innerHTML = icon('refresh-cw');
       rerun.title = 'Re-run with these parameters';
       rerun.setAttribute('aria-label', 'Re-run with these parameters');
