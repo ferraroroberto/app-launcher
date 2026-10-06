@@ -121,6 +121,9 @@
   --row-sm: 44px;
   --row-md: 52px;
   --row-lg: 60px;
+  /* components.hit-target.min: the 44px effective pointer-target floor the
+     vendored icon-button sizes its invisible target against. */
+  --hit-min: 44px;
   /* canonical icon-size steps — emoji glyph buttons size via font-size */
   --icon-inline: 16px;
   /* Lucide chevron-down (the sprite's i-chevron-down) for a CSS-only caret:
@@ -788,11 +791,10 @@ summary + .opt-group { border-top: 0; }
      rows (issue #365) keep the action rail as plain glyphs. */
 }
 /* The rail's glyph buttons are the vendored icon-button at the 44px floor,
-   centred in the 52px rail. */
+   flush with the rail's right edge. */
 .app-item .row-actions {
   --icon-btn-box: var(--hit-min);
-  min-width: 52px;
-  align-items: center;
+  align-items: flex-end;
 }
 .app-item .row-actions .action-stop-close:active,
 .terminal-bar .row-menu .action-stop-close:active {
