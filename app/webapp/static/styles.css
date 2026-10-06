@@ -3283,20 +3283,6 @@ body.terminal-open {
   right: 10px;
   min-width: 260px;
 }
-/* A small dot marks the image button as having options; it hides with the
-   OCR option when photo-ocr is unconfigured (the button then opens the
-   picker directly). */
-.composer-image { position: relative; }
-.composer-image.has-options::after {
-  content: '';
-  position: absolute;
-  right: 5px;
-  bottom: 4px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--muted);
-}
 /* An attach batch in flight (#1354). The image button swaps its glyph for an
    hourglass over "N/M" and stays tappable (a second pick queues behind the
    batch), so it is marked busy in the accent, never dimmed like a disabled
@@ -3312,7 +3298,6 @@ body.terminal-open {
   font-weight: 600;
   line-height: 1;
 }
-.composer-image.is-uploading::after { display: none; }
 .composer-upload-status {
   padding: 4px 4px 0;
   font-size: var(--font-body-sm);

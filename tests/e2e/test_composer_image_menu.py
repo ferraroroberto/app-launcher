@@ -3,9 +3,10 @@
 The image button in the composer's 2×2 grid is a two-option menu (the same
 row-menu component as the session ⚙️ gear): **Attach image or file**
 (today's inline upload flow) and **Extract text from screenshots** (the OCR
-staging tray). A small dot marks the button as having options. With photo-ocr
-unconfigured the OCR *option* hides (not the button): the menu would have one
-row, so the button then opens the attach picker directly and the dot hides.
+staging tray). With photo-ocr unconfigured the OCR *option* hides (not the
+button): the menu would have one row, so the button then opens the attach
+picker directly. The button never carries a "has options" dot (#1418): it
+read as a stray artefact once the composer buttons became plain glyph icons.
 
 Each option opens a native file picker, which Playwright surfaces as a
 ``filechooser`` event — that is how the test proves which input each option
@@ -46,6 +47,13 @@ def _open_composer(page: Page, base_url: str, sid: str) -> None:
     expect(page.locator(COMPOSER)).to_be_visible()
 
 
+def _expect_no_dot(image) -> None:
+    """The image button draws nothing in ::before/::after beyond the vendored
+    icon-button's own invisible hit-target expansion (#1418)."""
+    after = image.evaluate("el => getComputedStyle(el, '::after').content")
+    assert after in ("none", "normal"), f"image button grew an ::after: {after!r}"
+
+
 def _status_with_ocr(enabled: bool):
     def _route(route):
         resp = route.fetch()
@@ -64,6 +72,7 @@ def test_image_button_menu_reaches_both_options(
     image = authed_page.locator(IMAGE_BTN)
     menu = authed_page.locator(MENU)
     expect(image).to_have_class(re.compile(r"\bhas-options\b"))
+    _expect_no_dot(image)
     expect(menu).to_be_hidden()
 
     # Tap → the two-option menu opens above the composer.
@@ -99,6 +108,7 @@ def test_image_button_opens_picker_directly_without_ocr(
 
     image = authed_page.locator(IMAGE_BTN)
     expect(image).not_to_have_class(re.compile(r"\bhas-options\b"))
+    _expect_no_dot(image)
     expect(authed_page.locator(OCR_OPTION)).to_have_attribute("hidden", "")
 
     # One option left → no menu; the tap goes straight to the attach picker.
