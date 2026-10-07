@@ -1542,8 +1542,8 @@ async function sendFromChat(text) {
   return true;
 }
 
-function uploadFromChat(file, signal) {
-  return uploadSessionFile(view ? view.session.session_id : null, file, signal);
+function uploadFromChat(file, signal, kind) {
+  return uploadSessionFile(view ? view.session.session_id : null, file, signal, kind);
 }
 
 // The live terminal socket of the session Chat is showing, if one is open.

@@ -94,6 +94,10 @@ function wireSettings() {
       const lines = parseInt(els.terminalHistoryLines.value, 10);
       if (Number.isFinite(lines)) patch.terminal_history_lines = lines;
     }
+    if (els.largeUploadMaxMb && els.largeUploadMaxMb.value !== '') {
+      const mb = parseInt(els.largeUploadMaxMb.value, 10);
+      if (Number.isFinite(mb)) patch.large_upload_max_mb = mb;
+    }
     const saved = await patchConfig(patch);
     if (!saved) return; // patchConfig already fired the failure toast
     await fetchApps();

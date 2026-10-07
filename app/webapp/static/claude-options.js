@@ -104,6 +104,11 @@ export async function fetchConfig(shouldApply) {
     }
     els.terminalHistoryLines.value = body.terminal_history_lines || '';
   }
+  if (els.largeUploadMaxMb) {
+    if (body.large_upload_max_mb_min != null) els.largeUploadMaxMb.min = body.large_upload_max_mb_min;
+    if (body.large_upload_max_mb_max != null) els.largeUploadMaxMb.max = body.large_upload_max_mb_max;
+    els.largeUploadMaxMb.value = body.large_upload_max_mb || '';
+  }
   if (els.bootAutostartToggle) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }

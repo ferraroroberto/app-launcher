@@ -31,6 +31,7 @@ from fastapi import (
     UploadFile,
     WebSocket,
 )
+from starlette.requests import ClientDisconnect
 from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
@@ -231,6 +232,77 @@ async def session_image(
     await audit_off_loop(
         audit.session_log,
         sid, "image", path=result.get("path"), bytes=len(content), inline=inline,
+    )
+    return result
+
+
+class _LargeUploadTooBig(Exception):
+    """Raised from the forwarding stream once a large upload passes the limit."""
+
+
+def _mb(n: int) -> str:
+    """"34.7 MB": one decimal, the composer's own wording (attach-batch.js)."""
+    return f"{round(n / (1024 * 1024), 1):g} MB"
+
+
+@router.post("/api/claude-code/sessions/{sid}/large-file")
+async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
+    """Stream a large file onto the machine for a session (#1430).
+    Tailscale-only + passkey, like ``/image``.
+
+    The body is the raw file (``?name=`` carries its filename) and is relayed
+    to the session-host as it arrives, so neither process holds it whole. The
+    limit is ``large_upload_max_mb``: a declared ``Content-Length`` over it is
+    refused before anything moves, and the relayed byte count is checked again
+    as it streams. The session-host returns the stored path; the composer turns
+    it into a line telling the agent to use the file by path, not to read it.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    limit = cfg.large_upload_max_mb * 1024 * 1024
+    too_big = f"limit {cfg.large_upload_max_mb} MB"
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise HTTPException(status_code=413, detail=f"{_mb(int(declared))}, {too_big}")
+    supported = await asyncio.to_thread(
+        session_client.supports_large_upload, cfg.session_host_port
+    )
+    if supported is None:
+        raise HTTPException(status_code=503, detail="session-host unreachable")
+    if not supported:
+        # The session-host is excluded from the webapp's restart, so it can
+        # run a build older than this route for days (#615).
+        raise HTTPException(
+            status_code=501,
+            detail="session-host restart needed: the running build predates large-file upload",
+        )
+    received = 0
+
+    async def chunks():
+        nonlocal received
+        async for chunk in request.stream():
+            received += len(chunk)
+            if received > limit:
+                raise _LargeUploadTooBig()
+            yield chunk
+
+    name = request.query_params.get("name") or "file"
+    try:
+        result = await session_client.upload_large_file(
+            cfg.session_host_port, sid, name, chunks(), limit
+        )
+    except _LargeUploadTooBig:
+        raise HTTPException(status_code=413, detail=f"over {_mb(limit)}, {too_big}")
+    except ClientDisconnect:
+        # The phone cancelled (a tap on the busy 📎, #1413) or lost the link;
+        # the session-host has already dropped its partial file.
+        logger.info(f"ℹ️ large upload to {sid[:8]} interrupted by the client after {received} B")
+        raise HTTPException(status_code=400, detail="upload interrupted by the client")
+    except session_client.SessionHostError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    await audit_off_loop(
+        audit.session_log,
+        sid, "large_file", path=result.get("path"), bytes=result.get("bytes"),
+        client=client_ip(request),
     )
     return result
 

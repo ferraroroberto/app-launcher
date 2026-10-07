@@ -13,7 +13,7 @@ textarea plus a 2×2 grid — mic · keys / image · send. Its markup is rendere
 by the module, so tests key on class hooks scoped to the terminal's mount
 (``#terminalComposeBar .composer-*``), not page-unique ids.
 
-Attach (#41 / #366 / #448): the image button's *Attach image or file* option
+Attach (#41 / #366 / #448): the 📎 button's *Attach file (to context)* option
 uploads with ``?inline=1`` so the session-host returns the stored path
 *without* pasting it into the PTY, and the composer appends that path to
 the text — review before send.

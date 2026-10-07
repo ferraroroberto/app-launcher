@@ -100,6 +100,15 @@ DEFAULT_TERMINAL_HISTORY_LINES = 10_000
 MIN_TERMINAL_HISTORY_LINES = 200
 MAX_TERMINAL_HISTORY_LINES = 50_000
 
+# The compose bar's large-file attach (issue #1430): the most it will take,
+# in MB. Separate from the ordinary attach's fixed 12 MB, because a large file
+# is stored for the agent to use by path and never read into its context.
+# 2 GB covers an archive of scanned documents with room to spare; the ceiling
+# keeps a typo from turning into an unbounded write to the project drive.
+DEFAULT_LARGE_UPLOAD_MAX_MB = 2048
+MIN_LARGE_UPLOAD_MAX_MB = 1
+MAX_LARGE_UPLOAD_MAX_MB = 10240
+
 # --- Fleet chief (issue #245) ---------------------------------------
 # The standing conversational orchestrator the Board's chat mode talks to.
 # `chief_model` must be a dispatchable Claude tier; the worker cap is read
@@ -447,6 +456,9 @@ class WebappConfig:
     # replays on a (re)connect. See DEFAULT_TERMINAL_HISTORY_LINES for the
     # real-session evidence behind the default.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
+    # Large-file attach limit in MB (issue #1430), Settings-tab configurable.
+    # See DEFAULT_LARGE_UPLOAD_MAX_MB.
+    large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
     # https origin the phone connects to. Empty disables the passkey gate.
@@ -858,6 +870,11 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"terminal_history_lines must be between {MIN_TERMINAL_HISTORY_LINES} "
             f"and {MAX_TERMINAL_HISTORY_LINES}; got {cfg.terminal_history_lines}"
+        )
+    if not (MIN_LARGE_UPLOAD_MAX_MB <= cfg.large_upload_max_mb <= MAX_LARGE_UPLOAD_MAX_MB):
+        raise ValueError(
+            f"large_upload_max_mb must be between {MIN_LARGE_UPLOAD_MAX_MB} "
+            f"and {MAX_LARGE_UPLOAD_MAX_MB}; got {cfg.large_upload_max_mb}"
         )
     for field_name, allowed, allow_empty in _ENUM_VALIDATIONS:
         value = getattr(cfg, field_name)

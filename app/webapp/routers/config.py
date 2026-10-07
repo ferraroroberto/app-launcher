@@ -29,8 +29,10 @@ from src.model_catalog import (
 )
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MAX_LARGE_UPLOAD_MAX_MB,
     MAX_TERMINAL_HISTORY_LINES,
     MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MIN_LARGE_UPLOAD_MAX_MB,
     MIN_TERMINAL_HISTORY_LINES,
     VALID_CODEX_PERMISSION_MODES,
     VALID_GROK_EFFORTS,
@@ -75,6 +77,10 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "terminal_history_lines": cfg.terminal_history_lines,
         "terminal_history_lines_min": MIN_TERMINAL_HISTORY_LINES,
         "terminal_history_lines_max": MAX_TERMINAL_HISTORY_LINES,
+        # The compose bar's large-file attach limit (#1430), in MB.
+        "large_upload_max_mb": cfg.large_upload_max_mb,
+        "large_upload_max_mb_min": MIN_LARGE_UPLOAD_MAX_MB,
+        "large_upload_max_mb_max": MAX_LARGE_UPLOAD_MAX_MB,
         # The chief's auto-compact threshold (#1298): percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -153,6 +159,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "life_os_dir",
         "claude_config_dir",
         "terminal_history_lines",
+        "large_upload_max_mb",
         "chief_auto_compact_threshold",
         "claude_model",
         "claude_effort",
@@ -195,6 +202,13 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
+            )
+    # The large-file limit (#1430) is whole MB, refused the same way.
+    if "large_upload_max_mb" in patch:
+        value = patch["large_upload_max_mb"]
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise HTTPException(
+                status_code=400, detail="large_upload_max_mb must be a whole number of MB"
             )
     # A switch (#1384): anything but a real boolean is a client bug, and a
     # truthy string must never flip it ("false" is truthy in Python).

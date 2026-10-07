@@ -83,7 +83,7 @@ def test_progress_shows_on_the_button_and_status_line_then_clears(
 
     expect(status).to_be_hidden()
     expect(button).not_to_have_class(re.compile(r"\bis-uploading\b"))
-    expect(button.locator('use[href="#i-image"]')).to_have_count(1)
+    expect(button.locator('use[href="#i-paperclip"]')).to_have_count(1)
     expect(authed_page.locator(INPUT)).to_have_value(
         "\n\n".join(_path(n) for n in ("e2e-stub-a.png", "e2e-stub-b.png", "e2e-stub-c.png"))
     )
@@ -184,7 +184,7 @@ def test_a_tap_on_the_busy_button_cancels_and_a_fresh_pick_works(
     expect(button).not_to_have_attribute("aria-busy", "true")
     expect(button).not_to_have_class(re.compile(r"\bis-uploading\b"))
     expect(button).not_to_have_attribute("aria-label", "Cancel upload")
-    expect(button.locator('use[href="#i-image"]')).to_have_count(1)
+    expect(button.locator('use[href="#i-paperclip"]')).to_have_count(1)
     expect(authed_page.locator(STATUS)).to_be_hidden()
     # No picker or menu opened in place of the cancel.
     expect(authed_page.locator(".composer-menu:not([hidden])")).to_have_count(0)

@@ -1290,13 +1290,13 @@ class SessionManager:
         session.manual_title = title.strip()[:_MANUAL_TITLE_MAX_CHARS]
         return session
 
-    def reap_dead(self) -> int:
-        """Drop sessions whose process has exited. Returns the count reaped."""
+    def reap_dead(self) -> List[Any]:
+        """Drop sessions whose process has exited. Returns the sessions
+        reaped, so the caller can clean up after them (their large uploads,
+        #1430)."""
         with self._lock:
             dead = [sid for sid, s in self._sessions.items() if not s.alive]
-            for sid in dead:
-                self._sessions.pop(sid, None)
-        return len(dead)
+            return [self._sessions.pop(sid) for sid in dead]
 
     def shutdown(self) -> None:
         """Force-kill PTY sessions on host exit; leave detached ones running.

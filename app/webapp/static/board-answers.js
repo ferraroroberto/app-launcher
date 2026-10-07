@@ -369,10 +369,10 @@ async function submitAnswers() {
 
 // An attachment is stored on the running chief's session, as Chat stores one
 // on its session's; with no chief there is nowhere to put it.
-function uploadToChief(file, signal) {
+function uploadToChief(file, signal, kind) {
   const sid = chiefSessionId();
   if (!sid) return Promise.reject(new Error('the chief is not running'));
-  return uploadSessionFile(sid, file, signal);
+  return uploadSessionFile(sid, file, signal, kind);
 }
 
 export function wireChiefAnswers() {
