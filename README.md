@@ -529,6 +529,12 @@ app-launcher/
 │   ├── board_exchange.py       # drill-down drawer's last-exchange read
 │   ├── transcript_locate.py    # filesystem correlation of a live session to its harness transcript file
 │   ├── board_transcript.py     # transcript overlay + conversation-source hierarchy
+│   ├── session_transcript.py   # paginated, typed transcript pages for one live Coding session
+│   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
+│   ├── session_changes.py      # a session's Changed files, folded from its transcript (never `git diff`)
+│   ├── resume_picker.py        # Claude Code's `/resume` picker, answered from a Chat card
+│   ├── plan_picker.py          # Claude Code's plan picker, read off the live terminal screen
+│   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it (#794, #1111)
 │   ├── life_os_index.py        # Life OS conversation-artefact reconciliation (index.json/index.md/search db)
 │   ├── channel_profiles.py     # Telegram channel launch profiles: loader + per-session settings file (#1366)
 │   └── jobs*.py, jobs_kinds/   # Jobs backend, the largest group in src/ — config chain, scheduling/trigger/queue/reap,
@@ -693,10 +699,10 @@ A `tray` kind (issue #456) is surfaced by the same scan flow above — a
 `tray_lifecycle.ps1` helper (see `tray.bat`'s own header) is recognized as
 a sister project's tray, not a plain streamlit/webapp/tunnel launcher.
 
-Once scanned in, each `tray`-kind row gets an autostart switch in the
-collapsible **Trays** panel, sharing the row's control cluster with the ⚡ and
-🚫👁 launch buttons. It carries no visible label — the panel is called Trays
-and it is the row's only toggle — but its accessible name is the full
+Once scanned in, each `tray`-kind row is an **action-row** shaped like the
+**Apps** bullet above, with the autostart switch as its one leading toggle.
+It carries no visible label — the section is called Trays and it is the
+row's only toggle — but its accessible name is the full
 "Autostart &lt;name&gt; at boot". When app-launcher's tray starts (see
 the Settings-tab boot toggle above), right after it tries to bring its own
 webapp up, it walks every autostart-enabled tray one at a time. The walk
@@ -771,13 +777,13 @@ curl http://127.0.0.1:8445/healthz
 
 ### Pytest API tests
 
-In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering `/healthz`, `/api/config` (GET + POST allow-list, incl. `projects_ignore`), `/api/login` + bearer-token gate, `/api/apps` CRUD, live Coding-tab directory discovery (`src/scanner.py` + the ignore list), coding-agent detection + dual launch (`src/agents.py`, `/api/agents`), `/api/claude-code/sessions` (list + stop), and the **Life OS** tab (`src/scanner.py:scan_skills`, `/api/life-os/*` — skill discovery, the bare `/skill-name` launch wiring + opus model override, the content browser's path-jail, the Tailscale/Cloudflare gate on the content endpoints, and — issue #727 — the conversation index's ordering + derived capture path, the search shell's every-failure-degrades contract, and the targeted resume's UUID validation). Session-host loopback client is mocked — no live tray, no port :8446 needed.
+In-process FastAPI `TestClient` suite under `tests/` (the sister-project pattern) covering the webapp's API surface end to end — config, auth, Apps/Jobs/Life OS/Board CRUD and scanning, coding-agent detection and launch, and the static convention guards described below. Session-host loopback client is mocked — no live tray, no port :8446 needed.
 
 ```powershell
 & .\.venv\Scripts\python.exe -m pytest tests -m "not smoke" -v
 ```
 
-Runs in about a second. The `-m "not smoke"` flag excludes the live-tray Playwright suite below.
+Runtime lives in `CLAUDE.md`'s pre-ship gate block and only there, same as the "Verifying changes before ship" section below (#1008) — a number copied here would go stale unnoticed. The `-m "not smoke"` flag excludes the live-tray Playwright suite below.
 
 The same suite carries a few static convention guards that parse the tree rather than exercise it — `test_icon_sprite_coverage.py` (every `#i-NAME` resolves to a vendored sprite `<symbol>`) and `test_subprocess_flags_guard.py` (every `subprocess.*` spawn under `src/`, `app/`, `scripts/` passes `creationflags` resolving to `src/subprocess_flags.py`'s `NO_WINDOW` / `NO_WINDOW_NEW_GROUP`). The spawn guard exists because an unsuppressed spawn only misbehaves under a *console-less* parent — the `pythonw` tray and its descendants — so it is invisible in the terminal where tests normally run, and drifted unnoticed after #585 consolidated the constant. A deliberately-visible console (the Apps tab's `cmd /k` window) is carved out by an explicit, reviewable `path::function` entry in that file's `_VISIBLE_CONSOLE_EXEMPT`.
 
